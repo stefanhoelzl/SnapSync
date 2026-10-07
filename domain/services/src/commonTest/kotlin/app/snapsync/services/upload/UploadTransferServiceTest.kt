@@ -138,13 +138,16 @@ class UploadTransferServiceTest {
     }
 
     /** The shared area as a set of paths, located under `/shared/` — or unreachable when [reachable] is off. */
-    private class SharedArea(private val reachable: Boolean = true) : Files {
+    private class SharedArea(private val reachable: Boolean = true, private val deletable: Boolean = true) : Files {
         val files = mutableSetOf<String>()
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.NotFound
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = FileResult.NotFound
         override fun write(area: FileArea, path: String, bytes: ByteArray) = FileResult.Ok(Unit).also { files += path }
-        override fun delete(area: FileArea, path: String): FileResult<Unit> =
-            if (files.remove(path)) FileResult.Ok(Unit) else FileResult.NotFound
+        override fun delete(area: FileArea, path: String): FileResult<Unit> = when {
+            !deletable -> FileResult.Denied("locked")
+            files.remove(path) -> FileResult.Ok(Unit)
+            else -> FileResult.NotFound
+        }
         override fun exists(area: FileArea, path: String) = FileResult.Ok(path in files)
         override fun locate(area: FileArea, path: String): FileResult<String> =
             if (reachable) FileResult.Ok("/shared/$path") else FileResult.AreaUnavailable
@@ -246,6 +249,25 @@ class UploadTransferServiceTest {
         }
         service(upload, files = files).releaseUnclaimedStaging()
         assertEquals(setOf("upload-staging/A-primary.jpg", "elsewhere/C.bin"), files.files)
+    }
+
+    @Test
+    fun `a sweep with every staged upload file claimed deletes nothing`() = runTest {
+        // An in-flight job with no tag claims nothing, and is no reason to stop.
+        val upload = ScriptedUpload(
+            accepts = UploadSourceKind.FILE,
+            inFlight = listOf(job(UploadJobState.PENDING), job(UploadJobState.PENDING, tag = "A-primary.jpg")),
+        )
+        val files = SharedArea(deletable = false).apply { this.files += "upload-staging/A-primary.jpg" }
+        service(upload, files = files).releaseUnclaimedStaging()
+        assertEquals(setOf("upload-staging/A-primary.jpg"), files.files)
+    }
+
+    @Test
+    fun `an unclaimed staged upload file that cannot be deleted stays and the sweep goes on`() = runTest {
+        val files = SharedArea(deletable = false).apply { this.files += listOf("upload-staging/B-primary.jpg", "upload-staging/C-primary.jpg") }
+        service(ScriptedUpload(accepts = UploadSourceKind.FILE), files = files).releaseUnclaimedStaging() // must not throw
+        assertEquals(setOf("upload-staging/B-primary.jpg", "upload-staging/C-primary.jpg"), files.files)
     }
 
     @Test
