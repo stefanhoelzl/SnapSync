@@ -341,7 +341,10 @@ class StagingClaims internal constructor(private val queries: () -> DownloadStor
      */
     suspend fun pathsInUse(root: String): Set<String> =
         queries().selectResourcePaths().executeAsList().flatMapTo(HashSet()) { row ->
-            listOfNotNull(row.stagedPath, stagingPath(root, AssetRef(row.sourceDeviceId, row.sourceAssetId), row.resourceKey))
+            val ref = AssetRef(row.sourceDeviceId, row.sourceAssetId)
+            // Its event's folder, and the event-less path a transfer started before transfers named their event
+            // still lands at.
+            listOfNotNull(row.stagedPath, stagingPath(root, row.eventId, ref, row.resourceKey), stagingPath(root, "", ref, row.resourceKey))
         }
 }
 

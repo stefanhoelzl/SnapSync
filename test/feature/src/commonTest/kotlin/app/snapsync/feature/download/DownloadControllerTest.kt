@@ -1324,10 +1324,16 @@ class DownloadControllerTest {
         // What older installs hold: a resource downloaded twice whose second copy landed after the first was
         // imported — on disk, named by no row, so no release path ever reaches it (measured: 1.14 GB on the XS).
         val store = DownloadService(inMemoryDatabases())
-        val landing = "$DOWNLOAD_STAGING_DIR/DEVICE-A/Q-primary.heic"
-        val unclaimed = listOf("$DOWNLOAD_STAGING_DIR/DEVICE-A/OLD-primary.mov", "$DOWNLOAD_STAGING_DIR/DEVICE-B/X-primary.heic")
+        val landing = "$DOWNLOAD_STAGING_DIR/event/DEVICE-A/Q-primary.heic"
+        // Where a transfer started before transfers named their event lands, for the same row.
+        val legacyLanding = "$DOWNLOAD_STAGING_DIR/DEVICE-A/Q-live.mov"
+        val unclaimed = listOf(
+            "$DOWNLOAD_STAGING_DIR/DEVICE-A/OLD-primary.mov",
+            "$DOWNLOAD_STAGING_DIR/DEVICE-B/X-primary.heic",
+            "$DOWNLOAD_STAGING_DIR/other-event/DEVICE-A/Q-primary.heic",
+        )
         val outside = "elsewhere/kept.bin"
-        val staged = disk(landing, outside, *unclaimed.toTypedArray())
+        val staged = disk(landing, legacyLanding, outside, *unclaimed.toTypedArray())
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, disk = staged)
         // Q is planned, its downloads in flight: one has landed at its path and is not recorded yet.
         c.reconcile("event", UnionTrigger.FOREGROUND)
@@ -1335,7 +1341,11 @@ class DownloadControllerTest {
         c.releaseSettledBytes()
 
         assertTrue(unclaimed.all { staged.deleted(it) }, "a staged file no row claims stays on disk forever")
-        assertEquals(setOf(landing, outside), staged.shared.keys, "a planned row's landed bytes, and anything outside staging, are kept")
+        assertEquals(
+            setOf(landing, legacyLanding, outside),
+            staged.shared.keys,
+            "a planned row's landed bytes — at its event's path or the event-less one — and anything outside staging, are kept",
+        )
     }
 
     @Test
