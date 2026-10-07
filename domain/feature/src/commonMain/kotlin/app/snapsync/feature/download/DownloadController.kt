@@ -58,22 +58,8 @@ class DownloadController(
     // `receiving-photos`). Required: a composition that downloads must say where the bytes land.
     private val stagedBytes: StagingService,
     private val myDeviceId: String,
-    // The download arm runs only when the current membership's participation direction includes download
-    // (capability `join-event`): an upload-only membership performs no reconcile at ANY trigger. Injected
-    // as a plain predicate so this capability gains no config dependency; the composition root binds it to
-    // `EventConfig.direction.includesDownload`. This is the SINGLE choke point — every trigger (join,
-    // foreground, push) funnels through `reconcile`, so the gate lives here and not in the untested shell.
-    // It is orthogonal to the push receiver's active-event guard (which answers "is this push for my event").
-    //
-    // **Three-valued, and required.** `true` = joined and the direction includes download; `false` = joined
-    // but upload-only; `null` = **no membership at all**. Those last two are different answers and neither
-    // enables the arm — collapsing them is not a nicety. This was `() -> Boolean = { true }`, bound at the
-    // root with a `?: true`, so "we have no membership" resolved to "download freely": the same `?: true`
-    // shape the former upload arm's KDoc blamed for starting an upload producer for an event that did not exist. It was
-    // unreachable only because every caller happened to pass a config-derived event id — a property of the
-    // callers, not of the gate. The default is gone for the same reason the cutoff and the reconcile have
-    // none: a permissive default on a safety gate is how a caller ships without one.
-    private val downloadEnabled: () -> Boolean?,
+    // Whether the download arm may run at all ([DownloadArm]): the membership's direction and the event's key.
+    private val arm: DownloadArm,
     // When a background wake last read the union (decision record `changes/timely-background-receiving`, D4): every
     // read stamps it, and [reconcileIfDue] reads the union only when an hour has passed. Required: the bound is what
     // keeps a busy heartbeat from reading a whole union per wake.
@@ -86,7 +72,7 @@ class DownloadController(
     // without a grant gate all four of a rejoin's photos (2026-09-30), and with one, the foreground that follows the
     // dialog importing while the grant's own pass was still reading names (2026-10-01). Asked here, every import path
     // waits for it, whichever trigger reaches the drain first. Required, and with no default, for the reason
-    // [downloadEnabled] has none.
+    // [DownloadArm.enabled] has none.
     private val readyToImport: suspend () -> Boolean,
     private val log: Logger = Logger.withTag("DownloadController"),
     private val entryContext: EntryScope = EntryScope.None,
@@ -165,7 +151,7 @@ class DownloadController(
      * event has closed, so its union no longer changes, and it is the one decision where doubt must keep the member.
      */
     suspend fun everythingReceived(eventId: String): Boolean =
-        downloadEnabled() != true || holdsEveryForeignPhoto(eventId)
+        arm.enabled() != true || holdsEveryForeignPhoto(eventId)
 
     /**
      * [everythingReceived] for a membership that receives, asked without the joined configuration — what a leave asks
@@ -235,9 +221,13 @@ class DownloadController(
     ) {
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
         // (`null`). Neither enables the arm, and neither is inferred from the other.
-        if (downloadEnabled() != true) {
+        if (arm.enabled() != true) {
             // Upload-only membership, or none: skip discovery entirely (no union fetch, no enqueue, no import).
             log.i { "reconcile skipped — this membership does not download" }
+            return@invocation
+        }
+        if (!arm.keyHeld()) {
+            log.i { "reconcile skipped — the event's key is lost; nothing downloads until its invite is opened again" }
             return@invocation
         }
         val stored = store.union.cursor(eventId)
@@ -800,3 +790,36 @@ class DownloadController(
             .onFailure { log.w(it) { "releasing pruned staged bytes failed — files left behind" } }
     }
 }
+
+/**
+ * **Whether the download arm may run at all** — asked by every trigger before it reads the union or starts a transfer
+ * ([DownloadController.reconcile]). Two questions, and different ones: [enabled] can answer "nothing to receive", which
+ * also decides [DownloadController.everythingReceived]; [keyHeld] never does.
+ */
+class DownloadArm(
+    /**
+     * The download arm runs only when the current membership's participation direction includes download
+     * (capability `join-event`): an upload-only membership performs no reconcile at ANY trigger. Injected
+     * as a plain predicate so this capability gains no config dependency; the composition root binds it to
+     * `EventConfig.direction.includesDownload`. This is the SINGLE choke point — every trigger (join,
+     * foreground, push) funnels through `reconcile`, so the gate lives here and not in the untested shell.
+     * It is orthogonal to the push receiver's active-event guard (which answers "is this push for my event").
+     *
+     * **Three-valued, and required.** `true` = joined and the direction includes download; `false` = joined
+     * but upload-only; `null` = **no membership at all**. Those last two are different answers and neither
+     * enables the arm — collapsing them is not a nicety. This was `() -> Boolean = { true }`, bound at the
+     * root with a `?: true`, so "we have no membership" resolved to "download freely": the same `?: true`
+     * shape the former upload arm's KDoc blamed for starting an upload producer for an event that did not exist. It was
+     * unreachable only because every caller happened to pass a config-derived event id — a property of the
+     * callers, not of the gate. The default is gone for the same reason the cutoff and the reconcile have
+     * none: a permissive default on a safety gate is how a caller ships without one.
+     */
+    val enabled: () -> Boolean?,
+    /**
+     * Whether the joined event's key is in reach — `false` only when it is LOST (capability `sync-status`): then no
+     * download starts, since none could be opened, until the event's invite brings the key back. Unlike [enabled] it
+     * never answers "nothing to receive", so a member who lost the key is never taken for one who holds everything.
+     * Required, and with no default, for the reason [enabled] has none.
+     */
+    val keyHeld: () -> Boolean,
+)

@@ -4,6 +4,7 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Clock
+import app.snapsync.ports.Crypto
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DevControls
@@ -50,6 +51,8 @@ class JvmAdapters(
  * channel nobody observes).
  */
 class JvmDevice(
+    /** The process's primitives — the JDK's own, recording the keys it draws ([EventKeyLedger]). */
+    val crypto: Crypto,
     val clock: Clock,
     val crashReporter: CrashReporter,
     val extensionCrashReporter: CrashReporter,

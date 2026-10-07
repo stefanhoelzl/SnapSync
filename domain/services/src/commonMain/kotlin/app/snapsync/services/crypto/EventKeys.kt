@@ -7,6 +7,8 @@ import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.decodeEventKey
 import app.snapsync.model.encodeEventKey
+import app.snapsync.model.EventConfig
+import app.snapsync.model.KeyPresence
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.DevControls
@@ -14,9 +16,11 @@ import app.snapsync.ports.SecureStore
 import app.snapsync.services.secure.persist
 import app.snapsync.services.secure.readExisting
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -61,14 +65,42 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
     fun linkKey(): String? = readExisting(store, SecureSlots.EVENT_KEY)
 
     /**
-     * The key an invite to the joined event carries, following [membership]: read from the store each time the
-     * membership changes, `null` for a plain one or while the store cannot be read (a locked device), so an invite
-     * never carries a key that is not the event's.
+     * The key an invite to the joined event carries, following [membership] and read again whenever [rereads] emits:
+     * `null` for a plain one or while the store cannot be read (a locked device, a lost key), so an invite never
+     * carries a key that is not the event's — and an encrypted event's invite is then not offered at all.
      */
-    fun inviteKeyOf(membership: StateFlow<EventConfig?>, scope: CoroutineScope): StateFlow<String?> =
-        membership
-            .map { config -> config?.keyId?.let { runCatchingCancellable { linkKey() }.getOrNull() } }
-            .stateIn(scope, SharingStarted.Eagerly, null)
+    fun inviteKeyOf(membership: StateFlow<EventConfig?>, rereads: Flow<Unit>, scope: CoroutineScope): StateFlow<String?> =
+        combine(membership, rereads.onStart { emit(Unit) }) { config, _ ->
+            config?.keyId?.let { runCatchingCancellable { linkKey() }.getOrNull() }
+        }.stateIn(scope, SharingStarted.Eagerly, null)
+
+    /**
+     * Whether the key of [membership]'s event is kept — read fresh from the store each call. A plain event or none
+     * needs none; a store that cannot be read is [KeyPresence.Unknown], never mistaken for a lost key.
+     */
+    fun presenceFor(membership: EventConfig?): KeyPresence {
+        val keyId = membership?.keyId ?: return KeyPresence.NotNeeded
+        val kept = try {
+            current()
+        } catch (_: SecureStoreUnavailable) {
+            return KeyPresence.Unknown
+        }
+        return if (kept != null && idOf(kept) == keyId) KeyPresence.Held else KeyPresence.Lost
+    }
+
+    /** Whether [membership]'s event key is [KeyPresence.Lost] — what stops both directions. */
+    fun lostFor(membership: EventConfig?): Boolean = presenceFor(membership) == KeyPresence.Lost
+
+    /** [membership]'s key id while its key is lost, else `null` — what a reopened invite must name to restore it. */
+    fun lostKeyIdOf(membership: EventConfig?): String? = membership?.keyId?.takeIf { lostFor(membership) }
+
+    /**
+     * [presenceFor] over [membership], re-read whenever the membership changes and whenever [rereads] emits — a
+     * foreground, a key kept from a reopened invite.
+     */
+    fun presenceOf(membership: StateFlow<EventConfig?>, rereads: Flow<Unit>, scope: CoroutineScope): StateFlow<KeyPresence> =
+        combine(membership, rereads.onStart { emit(Unit) }) { config, _ -> presenceFor(config) }
+            .stateIn(scope, SharingStarted.Eagerly, KeyPresence.Unknown)
 
     /** Remove the kept key — at a leave or a reset. Deleting nothing is fine. */
     fun forget() {
@@ -84,9 +116,9 @@ class MintedKey(val linkKey: String, val keyId: String)
 
 /**
  * **Whether a new event is encrypted, and its key** (the encrypted file format, `docs/architecture.md`): a fresh key
- * while the build's development control says so ([DevControls.encryptsNewEvents] — a rig build's switch until
- * encryption is enabled), else none and the event is plain. Asked once per create.
+ * for every event, unless the build's development control asks for a plain one ([DevControls.createsPlainEvents] —
+ * a rig build's switch, inert in production). Asked once per create.
  */
 class EventKeyMinting(private val keys: EventKeys, private val controls: DevControls) {
-    fun forNewEvent(): MintedKey? = if (controls.encryptsNewEvents()) keys.mint() else null
+    fun forNewEvent(): MintedKey? = if (controls.createsPlainEvents()) null else keys.mint()
 }

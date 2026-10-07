@@ -1980,7 +1980,7 @@ class StatusContainerHostTest {
             commands = testCommands(),
             diagnostics = testDiagnostics(),
         )
-        val invite = (host.container.stateFlow.value.layer as Layer.Joined).inviteUrl
+        val invite = (host.container.stateFlow.value.layer as Layer.Joined).inviteUrl!!
         assertEquals(encodeEventUrl(EventLinkPayload(EVENT_ID)), invite)
         val decoded = decodeEventUrl(invite)
         assertTrue(decoded is ConfigDecodeResult.Success)

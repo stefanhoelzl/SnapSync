@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.ConfigDecodeResult
+import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.encodeEventUrl
@@ -65,16 +67,25 @@ suspend fun Rig.openLink(url: String) {
     os("app", "onSceneContinueActivity", url)
 }
 
-/** The link a member scans for [eventId]. */
-fun Rig.inviteLink(
+/**
+ * The link a member scans for [eventId]: its whole invite — carrying an encrypted event's key, as the device that
+ * created it shares it — with any development hints added.
+ */
+suspend fun Rig.inviteLink(
     eventId: String,
     autoJoin: Boolean = false,
     minPhotoDate: String? = null,
     direction: String? = null,
     saveToAlbum: Boolean? = null,
 ): String = encodeEventUrl(
-    EventLinkPayload(eventId, autoJoin, minPhotoDate, direction = direction, saveToAlbum = saveToAlbum),
+    EventLinkPayload(eventId, autoJoin, minPhotoDate, direction = direction, saveToAlbum = saveToAlbum, key = keyOf(eventId)),
 )
+
+/** [eventId]'s key as its invite carries it, or `null` for a plain event. */
+suspend fun Rig.keyOf(eventId: String): String? {
+    val invite = deviceJson("invite", "event" to eventId)["invite"]!!.jsonPrimitive.content
+    return (decodeEventUrl(invite) as ConfigDecodeResult.Success).payload.key
+}
 
 suspend fun Rig.leave() {
     user("leave")

@@ -700,8 +700,8 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
             CommandResult.ok("""{"honoured":$honoured}""")
         },
     ),
-    // Whether an event this device creates is encrypted (the encrypted file format): a shipped build creates only
-    // plain events until encryption is enabled; `on=true` plays the build that encrypts. The build's own control.
+    // Whether an event this device creates is encrypted (the encrypted file format): a shipped build encrypts every
+    // event; `on=false` creates the plain events older builds still create. The build's own control.
     "encrypt-new-events" to Lever(
         emptyList(),
         RigCommand { params, _ ->

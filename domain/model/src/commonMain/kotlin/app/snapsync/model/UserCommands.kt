@@ -99,6 +99,9 @@ enum class JoinCommit {
  *   only way a screen-local surface, which touches no port, reaches a report), and what that surface showed.
  *   Present on every build: where the report goes is [UiState.reportDestination], which the sheet states, so
  *   the affordance never suggests a destination the build does not have.
+ * - [restoreEventKey] — keep the key a reopened invite of the joined event carries, when this device lost it
+ *   (capability `join-event`, "Reopening the current event's invite changes nothing"): answers whether it was kept —
+ *   only the event's own key, only while it is lost — and sharing and receiving resume at once.
  */
 class UserCommands(
     val leave: suspend () -> Unit,
@@ -127,4 +130,5 @@ class UserCommands(
     val sendDiagnostics: suspend (note: String, context: ReportContext) -> ReportOutcome,
     /** The device's mobile-data choice, from the app menu (capability `mobile-data`): answers whether it was saved. */
     val setMobileData: suspend (on: Boolean) -> Boolean,
+    val restoreEventKey: suspend (linkKey: String) -> Boolean,
 )

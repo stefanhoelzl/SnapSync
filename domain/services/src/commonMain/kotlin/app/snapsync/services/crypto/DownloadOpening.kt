@@ -62,6 +62,12 @@ class DownloadOpening(
             failures.update { it - id }
             return true
         }
+        // A lost key is the membership's state, not this file's fault (capability `sync-status`): the joined screen
+        // says so and no new download starts, so it counts toward no report.
+        if (outcome == NO_KEY) {
+            log.w { "an encrypted download could not be opened: $outcome" }
+            return false
+        }
         val count = failures.updateAndGet { it + (id to (it[id] ?: 0) + 1) }.getValue(id)
         if (count == REPORT_AFTER) {
             log.e { "an encrypted download failed to open $count times in a row (${ref.sourceDeviceId}): $outcome" }
@@ -83,7 +89,7 @@ class DownloadOpening(
             keys.current()
         } catch (locked: SecureStoreUnavailable) {
             return "the event key cannot be read now: ${locked.detail}"
-        } ?: return "no event key is kept"
+        } ?: return NO_KEY
         val ad = EncryptedFileFormat.associatedData(
             joined.eventId,
             ref.sourceDeviceId,
@@ -99,5 +105,8 @@ class DownloadOpening(
     private companion object {
         /** Failures in a row before one is reported: past a transfer glitch, and still within the first hour. */
         const val REPORT_AFTER = 4
+
+        /** Why a resource did not open when no key is kept for the joined event. */
+        const val NO_KEY = "no event key is kept"
     }
 }

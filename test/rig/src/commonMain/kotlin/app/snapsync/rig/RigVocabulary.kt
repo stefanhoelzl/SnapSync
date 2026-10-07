@@ -118,6 +118,8 @@ object RigVocabulary {
         "device/app-version",
         "device/relaunch",
         "device/reinstall",
+        "device/invite",
+        "device/event-key/lose",
         "device/selection/change",
         "device/gallery/add",
         "device/gallery/remove",

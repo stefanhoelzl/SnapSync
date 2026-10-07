@@ -341,12 +341,8 @@ class AppCore internal constructor(
     /** The membership's cell, for readers outside the core (the status host), which see no service type. */
     val membership: StateFlow<EventConfig?> get() = services.config.config
 
-    /**
-     * The joined event's key as its invite carries it, while the membership is ENCRYPTED (the encrypted file format,
-     * `docs/architecture.md`): read from the secure store each time the membership changes, `null` for a plain one or
-     * while the store cannot be read (a locked device), so an invite never carries a key that is not the event's.
-     */
-    val inviteKey: StateFlow<String?> by lazy { services.eventKeys.inviteKeyOf(membership, scope) }
+    /** What the screen reads of the joined event's key: the invite's, and whether it is lost ([EventKeyReads]). */
+    val eventKeyReads: EventKeyReads by lazy { EventKeyReads(services.eventKeys, membership, scope) }
 
     /** The device's mobile-data choice (capability `mobile-data`), for the status host's menu and waiting line. */
     val mobileDataChoice: StateFlow<Boolean> get() = services.mobileData.allowed
@@ -411,8 +407,7 @@ class AppCore internal constructor(
             },
             stagedBytes = services.stagedBytes,
             myDeviceId = services.deviceIdentity.deviceId(),
-            // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
-            downloadEnabled = { services.config.config.value?.direction?.includesDownload },
+            arm = downloadArm(),
             checks = services.eventChecks,
             readyToImport = { importsReady() },
             entryContext = process.entryContext,

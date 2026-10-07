@@ -35,6 +35,17 @@ Deno.test("the Play link carries exactly v and d, encoded as one query value", (
   assertEquals(url.searchParams.get("referrer"), `v=3&d=${D}`); // what Play hands the app, decoded once
 });
 
+Deno.test("an encrypted event's Play link carries its key after v and d", () => {
+  const K = "A".repeat(42) + "E";
+  const href = playHrefFor(PLAY, inviteFor(EVENT), K);
+  assertEquals(new URL(href).searchParams.get("referrer"), `v=3&d=${D}&k=${K}`);
+  assertEquals(
+    playHrefFor(PLAY, inviteFor(EVENT), null),
+    playHrefFor(PLAY, inviteFor(EVENT)),
+    "no key, no k",
+  );
+});
+
 Deno.test("a path-form page names its event; any other path names none", () => {
   assertEquals(eventIdFromPath(`/join/${EVENT}`), EVENT);
   assertEquals(eventIdFromPath(`/join/${EVENT}/`), EVENT);

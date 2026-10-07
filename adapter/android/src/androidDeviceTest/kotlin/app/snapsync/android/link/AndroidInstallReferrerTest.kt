@@ -3,8 +3,11 @@ package app.snapsync.android.link
 import android.content.Context
 import android.content.SharedPreferences
 import app.snapsync.android.storage.context
+import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.LINK_ORIGIN
 import app.snapsync.model.LinkDelivery
+import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.ports.LinkHandlers
 import co.touchlab.kermit.Logger
@@ -59,6 +62,13 @@ class AndroidInstallReferrerTest {
             "Play answers the same referrer for 90 days — the second start delivers nothing",
         )
         assertTrue(asks.isEmpty(), "a handled installation does not even ask")
+    }
+
+    @Test
+    fun `an encrypted event's referrer is delivered as its whole invite`() {
+        val key = encodeEventKey(ByteArray(EncryptedFileFormat.KEY_LENGTH))
+        start(ReferrerAnswer.Referrer(invite.substringAfter('#') + "&k=$key"))
+        assertEquals(listOf("$LINK_ORIGIN/join/11111111-1111-4111-8111-111111111111#k=$key"), delivered.map { it.url })
     }
 
     @Test

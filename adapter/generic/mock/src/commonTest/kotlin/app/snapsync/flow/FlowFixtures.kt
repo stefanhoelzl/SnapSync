@@ -1,5 +1,6 @@
 package app.snapsync.flow
 
+import app.snapsync.feature.download.DownloadArm
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
@@ -61,7 +62,7 @@ internal fun CoroutineScope.flowDownloadController(union: EventUnionSource): Dow
         onImportedIntoAlbum = {},
         stagedBytes = staging,
         myDeviceId = "DEV",
-        downloadEnabled = { true },
+        arm = DownloadArm(enabled = { true }, keyHeld = { true }),
         checks = EventChecks(inMemoryPreferences(), now = { Instant.parse("2026-07-09T12:00:00Z") }),
         readyToImport = { true },
     )

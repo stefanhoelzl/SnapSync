@@ -181,6 +181,7 @@ class DownloadControllerTest {
         downloadEnabled: () -> Boolean? = { true },
         checks: EventChecks = EventChecks(inMemoryPreferences(), now = { NOW }),
         readyToImport: suspend () -> Boolean = { true },
+        keyHeld: () -> Boolean = { true },
     ): DownloadController {
         val staging = StagingService(disk)
         return DownloadController(
@@ -196,8 +197,27 @@ class DownloadControllerTest {
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,
-            myDeviceId = myDevice, downloadEnabled = downloadEnabled, checks = checks, readyToImport = readyToImport,
+            myDeviceId = myDevice, arm = DownloadArm(enabled = downloadEnabled, keyHeld = keyHeld), checks = checks,
+            readyToImport = readyToImport,
         )
+    }
+
+    @Test
+    fun a_lost_key_starts_no_download_and_the_kept_key_resumes() = runTest {
+        val download = RecordingDownload()
+        var held = false
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))), download = download, keyHeld = { held })
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        assertTrue(download.started.isEmpty(), "a lost key fetches nothing it could not open")
+        held = true
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        assertTrue(download.started.isNotEmpty(), "the key back, the photo downloads")
+    }
+
+    @Test
+    fun a_lost_key_is_never_taken_for_everything_received() = runTest {
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))), keyHeld = { false })
+        assertFalse(c.everythingReceived("event"), "a member missing photos is never told it holds them all")
     }
 
     @Test

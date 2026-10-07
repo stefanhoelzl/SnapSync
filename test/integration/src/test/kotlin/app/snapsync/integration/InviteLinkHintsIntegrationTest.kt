@@ -19,8 +19,8 @@ import kotlin.test.assertNull
  */
 class InviteLinkHintsIntegrationTest {
 
-    /** Every hint the decoder accepts, set to its most damaging value. */
-    private fun craftedLink(eventId: String) = encodeEventUrl(
+    /** Every hint the decoder accepts, set to its most damaging value, on the event's whole invite. */
+    private suspend fun Rig.craftedLink(eventId: String) = encodeEventUrl(
         EventLinkPayload(
             eventId,
             autoJoin = true,
@@ -28,6 +28,7 @@ class InviteLinkHintsIntegrationTest {
             maxPhotoDate = "2099-01-01T00:00:00Z",
             direction = "upload",
             saveToAlbum = true,
+            key = keyOf(eventId),
         ),
     )
 

@@ -96,7 +96,7 @@ class JvmApp<D>(
             files = files,
             clock = ports.device.clock,
             // The JDK's own primitives: stateless, so every launch's are the real ones.
-            crypto = JcaCrypto(),
+            crypto = ports.device.crypto,
             entryContext = NoEntryContext,
             build = ports.build.port(),
         )

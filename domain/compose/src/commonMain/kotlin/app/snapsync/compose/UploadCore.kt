@@ -17,6 +17,7 @@ import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.SelectionScope
+import app.snapsync.model.EventConfig
 import app.snapsync.model.hasEnded
 import app.snapsync.model.instantToCutoff
 import app.snapsync.model.runCatchingCancellable
@@ -312,13 +313,20 @@ private suspend fun readEntryGate(ports: UploadServices): CycleGate {
             )
         },
         host = ports.host,
-        // Each root states its own answer — the app from resolution, the extension from its own grant read.
-        admission = ports.process.admission(),
+        admission = admissionFor(ports, payload),
         // The forensics for a skip: the decision is made in shared code that cannot see WHY the
         // read failed, and an unreadable config is invisible on a device except through this string.
         skipDetail = skipDetail(read, identityFailure, version.exceptionOrNull()),
     )
 }
+
+/**
+ * Whether this process may create now. Each root states its own answer — the app from resolution, the extension from
+ * its own grant read. A LOST event key withholds in both: nothing is walked, staged, sealed or published until the
+ * invite brings it back (capability `sync-status`), where an unreadable one still runs and withholds at each seal.
+ */
+private fun admissionFor(ports: UploadServices, membership: EventConfig?): UploadAdmission =
+    if (ports.eventKeys.lostFor(membership)) UploadAdmission.Withheld else ports.process.admission()
 
 /** The skip line [readGate] hands the cycle: which read failed, and how. */
 private fun skipDetail(read: ConfigRead, identityFailure: Throwable?, versionFailure: Throwable?): String =

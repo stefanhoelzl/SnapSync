@@ -86,6 +86,7 @@ import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
 import org.orbitmvi.orbit.orbitContainer
+import app.snapsync.model.KeyPresence
 
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
@@ -151,7 +152,8 @@ class StatusContainerHost(
     private val renameFlow: StateFlow<RenameStatus> = sources.rename
     private val store = sources.store
     private val foreground = sources.foreground
-    private val inviteKey = sources.inviteKey
+    private val inviteKey = sources.eventKey.inviteKey
+    private val keyPresence = sources.eventKey.presence
 
     private val log = diagnostics.log
     private val onIntentError = diagnostics.onIntentError
@@ -321,6 +323,10 @@ class StatusContainerHost(
             intent {
                 inviteKey.collect { key -> local.update { it.copy(inviteKey = key) } }
             }
+            // A lost key is the joined screen's status line until a reopened invite gives it back (capability `sync-status`).
+            intent {
+                keyPresence.collect { presence -> local.update { it.copy(keyLost = presence == KeyPresence.Lost) } }
+            }
             // The create draft follows the app's returns to the foreground (capability `create-event`).
             intent {
                 foreground.collect { back ->
@@ -468,7 +474,9 @@ class StatusContainerHost(
     // The invite URL is read off the state the reduction already derived, so the shared link is
     // byte-identical to the QR being rendered rather than a second derivation that could drift.
     fun onShareInvite() = intent {
-        (state.layer as? Layer.Joined)?.let { commands.share(it.inviteUrl, it.membership.name) }
+        (state.layer as? Layer.Joined)?.let { joined ->
+            joined.inviteUrl?.let { commands.share(it, joined.membership.name) }
+        }
     }
 
     /**
@@ -845,11 +853,16 @@ class StatusContainerHost(
             is ConfigDecodeResult.Failure -> showTransientError()
             is ConfigDecodeResult.Success -> {
                 val eventId = result.payload.eventId
+                val linkKey = result.payload.key
                 val current = config.value
                 when {
                     // The two DUPLICATE rungs, first because they outrank every other reading of the same
                     // link — including `autoJoin`, which tested earlier would auto-provision once per delivery.
                     pending.value?.eventId == eventId -> ignoreRepeat(eventId, "a pending join is open")
+                    // The joined event's own invite gives a LOST key back (capability `join-event`); any other
+                    // reopening of it changes nothing.
+                    current?.eventId == eventId && linkKey != null && keyPresence.value == KeyPresence.Lost ->
+                        restoreKey(eventId, linkKey)
                     current?.eventId == eventId -> ignoreRepeat(eventId, "already joined")
                     // A crafted link must not join, switch or start sharing without a tap, so the link's
                     // own `autoJoin` is never the authority — the root's [inviteLinkHints] is.
@@ -897,6 +910,12 @@ class StatusContainerHost(
      */
     private fun ignoreRepeat(eventId: String, because: String) {
         log("join gate: ignoring a repeated delivery of $eventId — $because")
+    }
+
+    /** The joined event's reopened invite, offered to give its lost key back — kept only if it is the event's own. */
+    private suspend fun restoreKey(eventId: String, linkKey: String) {
+        val kept = commands.restoreEventKey(linkKey)
+        log("join gate: the reopened invite of $eventId ${if (kept) "gave its lost key back" else "did not open it — nothing changed"}")
     }
 
     /** Retry the details fetch after a transient load failure. */
@@ -1308,7 +1327,7 @@ private fun reduceFrom(
         val create = Creation(creation, local.createDraft)
         return unjoinedLayer(pending, create, transient, form, permission, network, membership.refusal, resolveAgainst)
     }
-    val health = joinedHealth(membership, config, network, nowCutoff)
+    val health = joinedHealth(membership, config, network, nowCutoff, local.keyLost)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
     val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
     // Where the event is in its life, for the dates line (capability `sync-status`). Informational only —
@@ -1336,6 +1355,7 @@ private fun joinedHealth(
     config: EventConfig,
     network: NetworkNotice?,
     nowCutoff: CaptureDate,
+    keyLost: Boolean,
 ): SyncHealth {
     val (_, permission, snapshot, download, attested, access) = membership
     // What the snapshot says on its own: not read yet, settled, or work remaining. The bottom of the ladder below,
@@ -1371,6 +1391,9 @@ private fun joinedHealth(
         // ladder below, never masked (the reason above `syncHealth`).
         config.direction == Direction.Neither && settled == SyncHealth.InSync -> SyncHealth.Inactive
         config.direction == Direction.Neither && settled == SyncHealth.Loading -> SyncHealth.Loading
+        // The device lost the event's key (capability `sync-status`): nothing moves in either direction, and only the
+        // event's invite — from someone in the group — brings it back, so no rung below says anything truer.
+        keyLost -> SyncHealth.KeyLost
         // Missing permission is the sole attention state — the only reason contribution cannot run. It
         // outranks NotStarted because it is the only ACTIONABLE state, and the member must resolve it
         // BEFORE the event begins or they miss the start; hiding it behind the clock line would ambush
@@ -1529,8 +1552,12 @@ private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
  * The invite a member shares. An ENCRYPTED event's carries its key — only ever the key of the event its config names
  * (a key read for no encrypted membership is ignored); a plain event's carries none, in the form every build reads.
  */
-private fun EventConfig.inviteUrl(key: String?): String =
-    encodeEventUrl(EventLinkPayload(eventId, key = key.takeIf { keyId != null }))
+private fun EventConfig.inviteUrl(key: String?): String? = when {
+    keyId == null -> encodeEventUrl(EventLinkPayload(eventId))
+    // An encrypted event's invite is offered only whole: no key read, no invite (capability `manage-membership`).
+    key == null -> null
+    else -> encodeEventUrl(EventLinkPayload(eventId, key = key))
+}
 
 private fun RenameStatus.toRenameState(): RenameState = when (this) {
     RenameStatus.Idle -> RenameState.Idle
@@ -1708,8 +1735,10 @@ private data class Local(
     val lastApplied: Owned<SettingChange?> = Owned(null, null),
     /** The event the last rename was fired for: a rename result for an event no longer joined reads as Idle. */
     val renameOwner: String? = null,
-    /** The joined event's invite key, when it is encrypted — copied from [StatusSources.inviteKey], shown nowhere. */
+    /** The joined event's invite key, when it is encrypted — copied from [EventKeyView.inviteKey], shown nowhere. */
     val inviteKey: String? = null,
+    /** Whether this device lost the joined event's key — copied from [EventKeyView.presence]. */
+    val keyLost: Boolean = false,
     /**
      * The shareable count for whichever surface is showing a range (capability `join-event`), computed over the
      * query bundle and reduced into the range. It starts Unavailable (no row) rather than Counting: a count is only

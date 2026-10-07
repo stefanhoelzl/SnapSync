@@ -561,9 +561,12 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   `device/foreign-device?device=&assets=a,b[&event=][&filename=][&kind=motion-photo]` (`motion-photo`: each a real Google
   motion photo, as an Android member shares it),
   `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read),
-  `device/encrypt-new-events?on=true` (the next event this device creates is ENCRYPTED — its invite carries `#k=`; a
-  shipped build creates only plain events until encryption is enabled. The mocked download session's fixed JPEG does
-  not open as an encrypted file, so a mocked-download world stages nothing of an encrypted event).
+  `device/encrypt-new-events?on=false` (the next event this device creates is PLAIN — its invite the fragment form;
+  every build, like a shipped one, encrypts by default, its invite carrying `#k=`. The mocked download session's fixed
+  JPEG does not open as an encrypted file, so a mocked-download world stages nothing of an encrypted event: create a
+  plain one to see downloads land on a device; the JVM host seals them itself),
+  `device/invite?event=` (JVM host only: the event's whole invite, key included, as its creating device shares it),
+  `device/event-key/lose` (JVM host only: the joined event's key gone from the Keychain, the membership kept).
 - The **integration surface's** levers and reads (the same rule on the app host):
   - backend reads (`[event=]` defaults to the joined one, `[device=]` to this one): `backend/union`, `backend/manifest`,
     `backend/device-config` (`token`, `env`, `writes`), `backend/event`, `backend/departed`, `backend/publishes`,

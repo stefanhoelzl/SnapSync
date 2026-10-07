@@ -230,6 +230,10 @@ class HostStatusActionsTest {
                     record("setMobileData:$on")
                     true
                 },
+                restoreEventKey = {
+                    record("restoreEventKey")
+                    false
+                },
             ),
             queries = UserQueries(loadJoinDetails = { id, _ -> details(id) }, shareableCount = { _, _ -> null }),
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),

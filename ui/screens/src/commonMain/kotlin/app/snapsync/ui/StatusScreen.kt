@@ -123,7 +123,7 @@ fun StatusScreen(
         // each is shown when it is). Null everywhere else, so the create layer and the join gate keep their own
         // bottom edge.
         val bottomActions: (@Composable ColumnScope.() -> Unit)? = if (chrome.showsJoinedChrome) {
-            { JoinedFooter(actions, closed = chrome.closed) }
+            { JoinedFooter(actions, closed = chrome.closed, invitable = chrome.invitable) }
         } else {
             null
         }
@@ -235,6 +235,8 @@ private class StatusChrome(
     val pinsActionCluster: Boolean,
     /** The joined event has closed: only Leave remains (capability `manage-membership`). */
     val closed: Boolean,
+    /** There is a whole invite to offer — not for an encrypted event whose key cannot be read. */
+    val invitable: Boolean,
 )
 
 private fun statusChrome(state: UiState): StatusChrome {
@@ -244,6 +246,7 @@ private fun statusChrome(state: UiState): StatusChrome {
         showsJoinedChrome = showsJoinedChrome,
         canRename = joinedLayer != null && !joinedLayer.closed,
         closed = joinedLayer?.closed == true,
+        invitable = joinedLayer?.inviteUrl != null,
         // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the create form
         // its Create + hint (the in-flight create screen too, so the swap does not jump), and the joined screen docks
         // its invite and membership actions — so all take the safe-area-anchored bottom edge.
@@ -283,10 +286,11 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
     if (overlays.renaming && joined != null) {
         RenameSheet(joined.membership, joined.renameState, actions)
     }
-    if (overlays.showingQr && joined != null) {
+    val qrInvite = joined?.inviteUrl
+    if (overlays.showingQr && qrInvite != null) {
         AppQrSheet(
             title = stringResource(Res.string.qr_sheet_title, joined.membership.name),
-            content = joined.inviteUrl,
+            content = qrInvite,
             caption = stringResource(Res.string.invite_caption),
             onDismiss = actions.joined.onQrDismiss,
         )
@@ -441,7 +445,7 @@ private fun BugReportSheet(
  * The joined layer's docked footer (capabilities `manage-membership`, `sync-status`): the two equal ways to
  * invite — share the link, show its QR code — then, set apart by a line, the quiet text actions for the
  * event's settings and for leaving. A CLOSED event admits nobody and changes nothing any more, so it offers
- * only Leave (capability `manage-membership`).
+ * only Leave (capability `manage-membership`); an encrypted event whose key this device cannot read offers no invite.
  *
  * Settings is deliberately NOT suppressed while a `pendingSwitch` is carried, though it once was: the race that
  * justified it is prevented downstream by `ReconfigureEvent`'s own `eventId` guard, and a `pendingSwitch` is
@@ -449,8 +453,9 @@ private fun BugReportSheet(
  * the reported symptom in `SNAPSYNC-26`.
  */
 @Composable
-private fun JoinedFooter(actions: StatusActions, closed: Boolean) {
-    if (!closed) {
+private fun JoinedFooter(actions: StatusActions, closed: Boolean, invitable: Boolean) {
+    // An encrypted event's invite is offered only whole (capability `manage-membership`): no key read, no invite.
+    if (!closed && invitable) {
         AppFooterTextActions {
             ShareTextAction(label = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
             QrTextAction(label = stringResource(Res.string.show_qr), onClick = actions.joined.onQrOpen)
