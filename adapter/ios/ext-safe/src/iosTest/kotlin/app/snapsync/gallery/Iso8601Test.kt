@@ -1,14 +1,12 @@
 package app.snapsync.gallery
 
 import platform.Foundation.NSDate
-import platform.Foundation.NSISO8601DateFormatWithFractionalSeconds
 import platform.Foundation.NSISO8601DateFormatWithInternetDateTime
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.Foundation.timeIntervalSince1970
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
@@ -36,10 +34,6 @@ class Iso8601Test {
     fun `the shared formatter carries Foundation's default options`() {
         assertEquals(NSISO8601DateFormatter().formatOptions, Iso8601.internetDateTime.formatOptions)
         assertEquals(NSISO8601DateFormatWithInternetDateTime, Iso8601.internetDateTime.formatOptions)
-        assertEquals(
-            NSISO8601DateFormatWithInternetDateTime or NSISO8601DateFormatWithFractionalSeconds,
-            Iso8601.withFractionalSeconds.formatOptions,
-        )
     }
 
     @Test
@@ -48,16 +42,5 @@ class Iso8601Test {
         assertEquals(NSISO8601DateFormatter().dateFromString(plain)?.timeIntervalSince1970, Iso8601.parse(plain)?.timeIntervalSince1970)
         assertNull(Iso8601.parse("2026-07-09T19:24:17.182Z"))
         assertNull(Iso8601.parse("not a date"))
-    }
-
-    @Test
-    fun `parseTolerant also accepts a fraction`() {
-        assertNotNull(Iso8601.parseTolerant("2026-07-09T19:24:17Z"))
-        assertEquals(
-            Iso8601.parseTolerant("2026-07-09T19:24:17Z")!!.timeIntervalSince1970 + 0.182,
-            Iso8601.parseTolerant("2026-07-09T19:24:17.182Z")!!.timeIntervalSince1970,
-            absoluteTolerance = 0.0005,
-        )
-        assertNull(Iso8601.parseTolerant("not a date"))
     }
 }

@@ -23,8 +23,8 @@ sealed interface EventTiming {
     data class Upcoming(val remaining: TimeLeft) : EventTiming
 
     /**
-     * Between the start and the end: [remaining] until the end — `null` only for a legacy membership with no
-     * stored end (before its reconcile backfill), which then says nothing about an end it does not know.
+     * Between the start and the end: [remaining] until the end — `null` only in the placeholder state before the
+     * first reduction ([UiState]'s default), which says nothing about an end it does not know.
      */
     @Serializable
     data class Running(val remaining: TimeLeft?) : EventTiming
@@ -68,11 +68,10 @@ sealed interface TimeLeft {
  * begun AT its start) and so is the end: an event is [EventTiming.Ended] only once `now` is past [endsAt],
  * the same comparison the ended marker always made.
  */
-fun eventTiming(startsAt: EventStart, endsAt: EventEnd?, now: CaptureDate): EventTiming {
+fun eventTiming(startsAt: EventStart, endsAt: EventEnd, now: CaptureDate): EventTiming {
     val at = Instant.parse(now.iso)
     return when {
         startsAt.at > now -> EventTiming.Upcoming(TimeLeft.of(Instant.parse(startsAt.at.iso) - at))
-        endsAt == null -> EventTiming.Running(remaining = null)
         endsAt.at < now -> EventTiming.Ended
         else -> EventTiming.Running(TimeLeft.of(Instant.parse(endsAt.at.iso) - at))
     }

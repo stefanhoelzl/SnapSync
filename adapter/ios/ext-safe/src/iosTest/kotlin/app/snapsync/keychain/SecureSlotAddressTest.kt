@@ -3,7 +3,6 @@ package app.snapsync.keychain
 import app.snapsync.model.SecureSlots
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * Where the [SecureSlots] live in the iOS Keychain (capabilities `photo-sharing` and `privacy-security`): the
@@ -15,8 +14,8 @@ import kotlin.test.assertTrue
  * upload extension on another, **both reads reporting success**.
  *
  * `RuntimeIdentityTest` (a JVM text gate) pins that the literals appear exactly once. What it cannot see is the
- * *mapping* from a slot to a query — whether a shared slot names the shared group, and whether the legacy slot is
- * the same item with the group dropped. A Kotlin/Native test binary is refused Keychain access outright (see
+ * *mapping* from a slot to a query — whether a shared slot names the shared group, and whether an unshared one
+ * names none. A Kotlin/Native test binary is refused Keychain access outright (see
  * [IosSecureStoreTest]), so these assertions read back the address the adapter would have issued. The order and
  * roles of the resolution are pinned platform-free in `PersistedDeviceIdentityTest` and `AttestStateTest`.
  */
@@ -46,21 +45,6 @@ class SecureSlotAddressTest {
     @Test
     fun `the shared access group is the one both entitlements declare`() {
         assertEquals("E9Z8BADH58.app.snapsync.shared", SHARED_KEYCHAIN_ACCESS_GROUP)
-    }
-
-    /**
-     * The legacy slot is the *same item* with the group dropped — not a different service or account. If it
-     * addressed something else it would find nothing, and every device an older build provisioned would be
-     * re-minted a second identity instead of having its first one adopted.
-     */
-    @Test
-    fun `the legacy device-id slot is the same item searched without a group`() {
-        val address = store.item(SecureSlots.DEVICE_ID_LEGACY).itemAddress()
-
-        assertEquals("app.snapsync.deviceid", address["svce"])
-        assertEquals("deviceid", address["acct"])
-        assertTrue("agrp" in address, "the access group must be reported even when there is none")
-        assertEquals(null, address["agrp"], "the legacy read must span every group this process can reach")
     }
 
     /**

@@ -1,5 +1,9 @@
 package app.snapsync.services.config
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
@@ -37,6 +41,8 @@ class ConfigFileReadTest {
         name = "Party",
         minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
         maxPhotoDate = FIXTURE_CEILING,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     private fun content(text: String) = FileResult.Ok(text.encodeToByteArray())

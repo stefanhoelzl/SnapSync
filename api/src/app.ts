@@ -9,11 +9,10 @@
 // `support.ts` (the device binding, the refusals and the event gate every route shares).
 //
 // VERSIONED PREFIX (`docs/deployment.md`): every device-API route below is served under the
-// prefix `/api/v2` — the paths are written that way here, and that is the one shape they answer at. `/api/v1`
-// is RETIRED: every request to it is answered `426`, never routed (decision record
-// `changes/separate-event-page-from-device-api`). The web/link routes (`/`, `/join`, the AASA, the event page's
-// read) stay at the ROOT only, never under `/api/vN`. The routing is version-parametric: a future `/api/v3` is
-// one more mount in `createApp`.
+// prefix `/api/v2` — the paths are written that way here, and that is the one shape they answer at. No other
+// version is served: `/api/v1`, what builds below 0.4 spoke, is gone. The web/link routes (`/`, `/join`, the
+// AASA, the event page's read) stay at the ROOT only, never under `/api/vN`. The routing is
+// version-parametric: a future `/api/v3` is one more mount in `createApp`.
 //
 // ── WHERE STATE LIVES ─────────────────────────────────────────────────────────────────────────────
 //
@@ -139,7 +138,7 @@
 
 import { type Context, Hono } from "hono";
 import { AwsClient } from "aws4fetch";
-import { APP_VERSION_HEADER, compareVersions, isRetiredVersion, splitVersion } from "./version.ts";
+import { APP_VERSION_HEADER, compareVersions, splitVersion } from "./version.ts";
 import { BUILD_SHA, type Config } from "./config.ts";
 import { createPushSender } from "./push.ts";
 import { verifyToken } from "./attest.ts";
@@ -337,17 +336,6 @@ export function createApp(
   // middleware for mounted sub-apps, so anything registered on the v2 mount would run AFTER the token
   // gate, which is precisely the order this exists to avoid.
   //
-  // v1 IS RETIRED (decision record `changes/separate-event-page-from-device-api`, D6): every `/api/v1` request
-  // — what builds older than 0.4 still speak — is answered `426`, the version gate's own refusal, and never a
-  // `404`. Those builds read a `404` on the event read as a DELETED event, one of the two witnesses of their
-  // self-leave, so a retirement answered `404` would look like deletion; a `426` is a failure they retry, and
-  // touches nothing on the phone. The first gate, so no later gate or route sees a v1 path at all.
-  app.use("*", async (c, next) => {
-    if (!isRetiredVersion(new URL(c.req.url).pathname)) return await next();
-    c.header("Cache-Control", NO_CACHE);
-    return c.json({ error: "app too old", minAppVersion: config.minAppVersion }, 426);
-  });
-
   app.use("*", async (c, next) => {
     const { version, path } = splitVersion(new URL(c.req.url).pathname);
     if (version !== 2) return await next();

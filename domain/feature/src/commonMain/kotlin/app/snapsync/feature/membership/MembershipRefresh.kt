@@ -97,19 +97,6 @@ class MembershipRefresh(
                 // value. It is the only path by which that could ever happen. An unchanged name saves
                 // nothing.
                 if (current.name != fetched.name) next = next.copy(name = fetched.name)
-                // Event-window backfill (capability `photo-sharing`): a membership
-                // persisted before the event window existed carries a `null` `endsAt`; fill it from the
-                // freshly fetched details, so a legacy member gains the event's declared end.
-                //
-                // The membership's own **ceiling** is NOT backfilled here any more: it is required on
-                // every persisted membership (capability `join-event`), so a config that decoded at all
-                // already has one and there is nothing absent to fill. A config lacking it does not reach
-                // this rule — it failed to decode and read as no config.
-                if (current.endsAt == null) next = next.copy(endsAt = fetched.endsAt)
-                // Retention backfill: until this lands the membership's deadline reads as "never
-                // reached" and the self-leave cannot fire — the safe direction, mirroring the unbounded
-                // ceiling above.
-                if (current.deletesAt == null) next = next.copy(deletesAt = fetched.deletesAt)
                 // The completion state (capability `event-lifetime`). Closing is final, so a stale answer can never
                 // reopen a membership's closed event; the counts are the waiting line's and simply follow the server.
                 if (fetched.completion.closed && !current.closed) next = next.copy(closed = true)

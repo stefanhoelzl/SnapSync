@@ -20,11 +20,9 @@ import kotlin.uuid.Uuid
  * manifest key, and the identity every backend call is made under — kept in the [SecureStore]'s shared device-id
  * slot, so the app and the upload extension read **one** item.
  *
- * The order is normative, and unchanged from the adapter it replaced (`resolveOrMint`): the shared slot → the
- * unscoped legacy slot (an older build may have filed the id there; adopted verbatim) → mint → persist. A mint
- * is the platform's own stable id where it offers one ([PlatformDeviceId]), else a random UUID. "Could not look"
- * on either read never mints, and a refused persisting write fails the resolution — an id is never handed out
- * unsaved.
+ * The order is normative (`resolveOrMint`): the shared slot → mint → persist. A mint is the platform's own stable
+ * id where it offers one ([PlatformDeviceId]), else a random UUID. "Could not look" never mints, and a refused
+ * persisting write fails the resolution — an id is never handed out unsaved.
  *
  * **Two roles, and only one may create an identity** ([DeviceIdentityRole]): the extension reads the shared slot
  * and nothing else; absence there is [DeviceIdResult.AbsentNotMintable].
@@ -68,12 +66,12 @@ class PersistedDeviceIdentity(
     /**
      * The id this install already has, **never minting or writing one** — for a reader that must not create an
      * identity as a side effect: a bug report (capability `privacy-security`). This process's resolution when it has
-     * one; otherwise the shared slot as it stands, the legacy slot left unread (adopting from it is a write) and no protection migrated.
+     * one; otherwise the shared slot as it stands.
      * [DeviceIdResult.AbsentNotMintable] here means only "none stored yet", whatever this process's role.
      */
     fun current(): DeviceIdResult {
         if (resolution.isInitialized()) return resolution.value
-        // The store's raw read, not `readExisting`: that one upgrades an item's protection in place, which is a write.
+        // The store's raw read: an unreadable slot answers Unavailable here rather than throwing.
         return when (val read = store.read(SecureSlots.DEVICE_ID)) {
             is SecureStoreRead.Found -> DeviceIdResult.Id(read.value, DeviceIdResult.Via.READ)
             SecureStoreRead.Absent -> DeviceIdResult.AbsentNotMintable
@@ -85,9 +83,7 @@ class PersistedDeviceIdentity(
         var resolution: SecureStoreResolution? = null
         val result = try {
             when (role) {
-                // Asks the shared slot and accepts its answer — no legacy read, because adopting from an unscoped
-                // search here would find this process's OWN stale item and re-create the very split this exists
-                // to close.
+                // Asks the shared slot and accepts its answer; absence is never minted over here.
                 DeviceIdentityRole.READ_ONLY ->
                     readExisting(store, SecureSlots.DEVICE_ID, onResolution = { resolution = it })
                         ?.let { DeviceIdResult.Id(it, DeviceIdResult.Via.READ) }
@@ -97,7 +93,6 @@ class PersistedDeviceIdentity(
                     store,
                     SecureSlots.DEVICE_ID,
                     onResolution = { resolution = it },
-                    legacy = SecureSlots.DEVICE_ID_LEGACY,
                     generate = ::mint,
                 ).let { DeviceIdResult.Id(it, via(resolution)) }
             }
@@ -128,14 +123,12 @@ class PersistedDeviceIdentity(
     private fun mint(): String = platformDeviceId.stableId() ?: Uuid.random().toString().uppercase()
 
     private fun via(resolution: SecureStoreResolution?): DeviceIdResult.Via = when (resolution) {
-        SecureStoreResolution.Adopted -> DeviceIdResult.Via.ADOPTED
         SecureStoreResolution.Minted -> DeviceIdResult.Via.MINTED
         is SecureStoreResolution.Found, null -> DeviceIdResult.Via.READ
     }
 
     private fun SecureStoreResolution?.describe(): String = when (this) {
-        is SecureStoreResolution.Found -> "read(protection=$protection${if (migrated) ", migrated" else ""})"
-        SecureStoreResolution.Adopted -> "adopted(from an out-of-group item)"
+        is SecureStoreResolution.Found -> "read(protection=$protection)"
         SecureStoreResolution.Minted -> "minted"
         null -> "unreported"
     }

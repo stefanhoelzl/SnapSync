@@ -40,7 +40,6 @@ import app.snapsync.background.IosWake
 import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.iosBootLines
 import app.snapsync.config.bakedUploadBase
-import app.snapsync.services.preferences.removeOrphanedJoinMarker
 import app.snapsync.model.PlatformEntry
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.appLogDestination
@@ -310,13 +309,6 @@ object SnapSyncRoot {
      * `SnapSyncKit` ObjC header.
      */
     internal val process: ProcessServices get() = composed.process
-
-    init {
-        // The retired join marker's orphaned App-Group key goes on every start — it is what keeps a revert
-        // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping. On this
-        // launch's preferences — the adapter choice's, where it mocks them.
-        removeOrphanedJoinMarker(ports.preferences)
-    }
 
     // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
     // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an

@@ -55,9 +55,6 @@ internal class RecordingKeychainApi(private val real: KeychainApi, private val r
         return status
     }
 
-    override fun update(query: CFDictionaryRef?, attributes: CFDictionaryRef?): Int =
-        real.update(query, attributes).also { recorder.record(call("SecItemUpdate", query, attributes), "$it") }
-
     override fun delete(query: CFDictionaryRef?): Int =
         real.delete(query).also { recorder.record(call("SecItemDelete", query), "$it") }
 }
@@ -75,9 +72,6 @@ internal class ReplayingKeychainApi(private val replayer: Replayer) : KeychainAp
         result?.pointed?.value = CFBridgingRetain(parseAttributes(answer.substring(space + 1)))
         return answer.substring(0, space).toInt()
     }
-
-    override fun update(query: CFDictionaryRef?, attributes: CFDictionaryRef?): Int =
-        replayer.answer(call("SecItemUpdate", query, attributes)).toInt()
 
     override fun delete(query: CFDictionaryRef?): Int = replayer.answer(call("SecItemDelete", query)).toInt()
 }

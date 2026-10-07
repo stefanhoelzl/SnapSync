@@ -7,10 +7,10 @@
 // `/api/v3`, or ships with a deliberate `MIN_APP_VERSION` bump (`src/config.ts`) that sends 0.4 to the
 // update notice. See `docs/architecture.md`.
 //
-// Fixtures here are deliberately LITERAL and local rather than shared with `v1.test.ts`, even where the
-// two versions would spell them identically today. v1 is a frozen contract; if it imported a fixture
-// builder this file also used, a change made for v2 could silently move what v1 asserts. Only machinery
-// is shared (`support/harness.ts`). The duplication is the point.
+// Fixtures here are deliberately LITERAL and local rather than shared with another version's tests, even
+// where two versions would spell them identically. A frozen contract that imported a fixture builder a
+// newer version also used could silently move what it asserts. Only machinery is shared
+// (`support/harness.ts`). The duplication is the point.
 
 import { assert, assertEquals } from "@std/assert";
 import { insertEvent } from "../src/db.ts";
@@ -71,7 +71,7 @@ function v2(deps: Parameters<typeof createApp>[0]) {
 
 const manifest = (
   assets: { assetId: string; creationDate: string; resources: Record<string, unknown>[] }[],
-) => JSON.stringify({ deviceId: D, assets });
+) => JSON.stringify({ deviceId: D, version: 0, final: false, assets });
 
 const RES = (key: string, role = "primary") => ({
   role,
@@ -159,9 +159,9 @@ Deno.test("version gate → decided BEFORE the token, so an old build is not tol
   db.close();
 });
 
-Deno.test("retired v1 → every path answers 426 with the minimum, never 404 — uncached, touching nothing", async () => {
-  // Decision record `changes/separate-event-page-from-device-api`, D6: a pre-0.4 build reads a 404 on the
-  // event read as a deleted event (a witness of its self-leave), so retirement must never look like one.
+Deno.test("v1 is gone → no path is routed, nothing is touched", async () => {
+  // Builds below 0.4 spoke v1; every device runs 0.4 or later, so no shim answers it any more. Which refusal a
+  // path meets (the token gate's 401, the router's 404) is incidental: none reaches a route or the store.
   const db = await storeWithEvent();
   const { calls, fetchImpl } = recorder();
   const app = createApp({ config: CONFIG, db, fetch: fetchImpl });
@@ -176,9 +176,7 @@ Deno.test("retired v1 → every path answers 426 with the minimum, never 404 —
     ] as [string, RequestInit][]
   ) {
     const res = await app.request(path, init);
-    assertEquals(res.status, 426, `${init.method ?? "GET"} ${path}`);
-    assertEquals(await res.json(), { error: "app too old", minAppVersion: CONFIG.minAppVersion });
-    assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
+    assert([401, 404].includes(res.status), `${init.method ?? "GET"} ${path} → ${res.status}`);
   }
   assertEquals(calls.length, 0);
   db.close();
@@ -548,7 +546,7 @@ Deno.test("manifest → does not reactivate a departed membership", async () => 
 const versioned = (
   version: unknown,
   assets: { assetId: string; creationDate: string; resources: Record<string, unknown>[] }[],
-) => JSON.stringify({ deviceId: D, version, assets });
+) => JSON.stringify({ deviceId: D, version, final: false, assets });
 
 const ONE = (
   id: string,
@@ -648,16 +646,17 @@ Deno.test("manifest version → a refused publish wakes nobody, even when it wou
   db.close();
 });
 
-Deno.test("manifest version → a versionless publish applies and clears the version", async () => {
-  // A v2 build that predates the field: today's behaviour, and the next versioned publish always wins.
+Deno.test("manifest version → a publish missing its version or its final is 400 and writes nothing", async () => {
+  // Every admitted build (0.4 and later) stamps both, so an absent one is malformed rather than old.
   const db = await storeWithEvent();
   const { put } = await joined(db);
   await put(versioned(9, ONE("A")));
-  assertEquals((await put(manifest(ONE("B")))).status, 200);
-  assertEquals(await heldAssets(db), ["B"]);
-  assertEquals(await storedVersion(db), null);
-  assertEquals((await put(versioned(1, ONE("C")))).status, 200);
-  assertEquals(await heldAssets(db), ["C"]);
+  const bare = (fields: Record<string, unknown>) =>
+    JSON.stringify({ deviceId: D, assets: ONE("B"), ...fields });
+  assertEquals((await put(bare({ final: false }))).status, 400, "no version");
+  assertEquals((await put(bare({ version: 10 }))).status, 400, "no final");
+  assertEquals(await heldAssets(db), ["A"]);
+  assertEquals(await storedVersion(db), 9);
   db.close();
 });
 

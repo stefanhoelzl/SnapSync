@@ -40,12 +40,13 @@ enum class StoredProtection {
 
     /**
      * Stored under *some other* protection — deliberately a "not the required one" answer, not a
-     * claim about which. The item is upgraded in place; if a device log needs to know which class an
-     * item was actually filed under, the adapter that read it is where that is recorded.
+     * claim about which. Reported, never repaired: every build since v0.1 writes [BACKGROUND_READABLE],
+     * so this is a diagnostic. If a device log needs to know which class an item was actually filed
+     * under, the adapter that read it is where that is recorded.
      */
     RESTRICTED,
 
-    /** The store did not report how the item is protected. Treated as [RESTRICTED] for the upgrade. */
+    /** The store did not report how the item is protected. A different fact from [RESTRICTED], logged as such. */
     UNREPORTED,
 }
 
@@ -63,24 +64,13 @@ enum class StoredProtection {
  * That is not hypothetical: on 2026-07-20 an SE2 ran for nine hours with the app on one id and the
  * upload extension on another, and **nothing anywhere logged either one** — the symptom reached the
  * screen as an indefinite "pending" and reached the library as duplicated photos. [Found] carries the
- * item's protection because a legacy protection is the leading suspect for a read that reports
+ * item's protection because an unexpected protection is the leading suspect for a read that reports
  * *absent* against an item that does exist.
  */
 sealed interface SecureStoreResolution {
 
-    /** An existing item was read. [migrated] = its protection was upgraded in place. */
-    data class Found(val protection: StoredProtection, val migrated: Boolean) : SecureStoreResolution
-
-    /**
-     * The addressed item was absent, but a value was found by the legacy read and adopted verbatim.
-     *
-     * This is the repair branch for an item an older build placed elsewhere. Placement is a property
-     * of the *build that wrote the item* wherever the platform is allowed to choose it at write time
-     * from the signing entitlements then in force — so two processes of one app can end up holding
-     * **different items** while both reads report success. That is not a hypothetical either: it is
-     * the 2026-07-20 split identity, and the adapter's own KDoc records the mechanism.
-     */
-    data object Adopted : SecureStoreResolution
+    /** An existing item was read, and the [protection] the store reported for it (a diagnostic). */
+    data class Found(val protection: StoredProtection) : SecureStoreResolution
 
     /** No item existed anywhere, so one was generated and persisted. The only new-identity branch. */
     data object Minted : SecureStoreResolution

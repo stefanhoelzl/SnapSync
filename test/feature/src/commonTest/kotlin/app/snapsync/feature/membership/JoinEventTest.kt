@@ -147,7 +147,14 @@ fun `an enrollment refused for this phone's credential is unverified and commits
 fun `re-joining the current event is a no-op that skips enrollment`() = runTest {
     val provisioned = mutableListOf<EventConfig>()
     val enroller = FakeEnroller(result = JoinResult.JOINED)
-    val outcome = joinEvent(config = EventConfig(EVENT_A, "Anna's Wedding", CUTOFF, maxPhotoDate = FIXTURE_CEILING), enroller = enroller, provisioned = provisioned)
+    val outcome = joinEvent(config = EventConfig(
+        EVENT_A,
+        "Anna's Wedding",
+        CUTOFF,
+        maxPhotoDate = FIXTURE_CEILING,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    ), enroller = enroller, provisioned = provisioned)
         .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
 
     assertEquals(JoinOutcome.AlreadyJoined, outcome)
@@ -158,7 +165,7 @@ fun `re-joining the current event is a no-op that skips enrollment`() = runTest 
 @Test
 fun `switching to a different event enrolls`() = runTest {
     val enroller = FakeEnroller(result = JoinResult.JOINED)
-    val outcome = joinEvent(config = EventConfig(EVENT_A, "Old", CUTOFF, maxPhotoDate = FIXTURE_CEILING), enroller = enroller)
+    val outcome = joinEvent(config = EventConfig(EVENT_A, "Old", CUTOFF, maxPhotoDate = FIXTURE_CEILING, endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z")), enroller = enroller)
         .join(JoinChoice(EVENT_B, "New", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
 
     assertEquals(JoinOutcome.Committed, outcome)

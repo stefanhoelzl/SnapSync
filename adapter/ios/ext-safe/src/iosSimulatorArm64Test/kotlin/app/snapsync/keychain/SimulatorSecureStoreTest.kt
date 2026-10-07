@@ -8,13 +8,11 @@ import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.SecureStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The simulator target's slot routing (capability `photo-sharing`): the device id in the App-Group file store,
- * its legacy slot answered as absent — no older build ever wrote a device id on a simulator, and a store that
- * failed there would block minting forever — and every other slot in the Keychain.
+ * The simulator target's slot routing (capability `photo-sharing`): every shared slot (the device id, the event
+ * key) in the App-Group file store, and every other slot in the Keychain.
  */
 class SimulatorSecureStoreTest {
 
@@ -34,8 +32,6 @@ class SimulatorSecureStoreTest {
             items[slot] = value
             return WriteOutcome.Ok
         }
-
-        override fun migrateProtection(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok.also { touched += slot }
 
         override fun delete(slot: SecureSlot): WriteOutcome {
             touched += slot
@@ -59,15 +55,6 @@ class SimulatorSecureStoreTest {
     }
 
     @Test
-    fun `the legacy device-id slot is absent and cannot be written`() {
-        assertEquals(SecureStoreRead.Absent, store.read(SecureSlots.DEVICE_ID_LEGACY))
-        assertIs<WriteOutcome.Failed>(store.write(SecureSlots.DEVICE_ID_LEGACY, "an-id"))
-
-        assertTrue(keychain.touched.isEmpty(), "no store is asked about the legacy slot")
-        assertTrue(files.touched.isEmpty())
-    }
-
-    @Test
     fun `every other slot goes to the keychain`() {
         store.write(SecureSlots.ATTEST_TOKEN, "bearer-abc")
 
@@ -75,8 +62,8 @@ class SimulatorSecureStoreTest {
             SecureStoreRead.Found("bearer-abc", StoredProtection.BACKGROUND_READABLE),
             store.read(SecureSlots.ATTEST_TOKEN),
         )
-        store.read(SecureSlots.ALBUM_MAP_LEGACY)
-        assertEquals(listOf(SecureSlots.ATTEST_TOKEN, SecureSlots.ALBUM_MAP_LEGACY), keychain.touched.distinct())
+        store.read(SecureSlots.ATTEST_KEY_ID)
+        assertEquals(listOf(SecureSlots.ATTEST_TOKEN, SecureSlots.ATTEST_KEY_ID), keychain.touched.distinct())
         assertTrue(files.touched.isEmpty())
     }
 }

@@ -136,7 +136,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         if (collection == null) {
             emptySet()
         } else {
-            val options = since?.let { Iso8601.parseTolerant(it.at.iso) }?.let { bound ->
+            val options = since?.let { Iso8601.parse(it.at.iso) }?.let { bound ->
                 PHFetchOptions().apply {
                     predicate = NSPredicate.predicateWithFormat("creationDate >= %@", argumentArray = listOf(bound))
                 }

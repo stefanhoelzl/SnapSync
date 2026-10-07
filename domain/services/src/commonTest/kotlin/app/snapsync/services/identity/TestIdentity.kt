@@ -30,6 +30,5 @@ internal class MapSecureStore(private val unavailable: Boolean = false) : Secure
     override fun write(slot: SecureSlot, value: String): WriteOutcome =
         if (unavailable) WriteOutcome.Failed("locked") else WriteOutcome.Ok.also { items[slot] = value }
 
-    override fun migrateProtection(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok
     override fun delete(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok.also { items.remove(slot) }
 }

@@ -45,7 +45,7 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     // covers, and a read from that position serves only what the union gained after it.
     clause("UNION_A_READ_FROM_ITS_POSITION_SERVES_ONLY_WHAT_WAS_GAINED_SINCE", BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS) { s ->
         val (event, device) = s.seeded.eventId to s.seeded.deviceId
-        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry()))))
+        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry()), version = 0)))
         val position = assertOk(s.union()).cursor
         assertEquals(emptyList(), assertOk(s.union(position)).assets, "nothing was gained since")
         assertOk(
@@ -53,7 +53,7 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
                 s.token,
                 event,
                 device,
-                DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry(), BackendContract.SECOND.manifestEntry())),
+                DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry(), BackendContract.SECOND.manifestEntry()), version = 0),
             ),
         )
         val delta = assertOk(s.union(position))
@@ -64,8 +64,8 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     clause("UNION_AN_ASSET_WITHDRAWN_AFTER_ITS_GAIN_IS_NOT_SERVED_FROM_BEFORE_IT", BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS) { s ->
         val (event, device) = s.seeded.eventId to s.seeded.deviceId
         val position = assertOk(s.union()).cursor
-        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry()))))
-        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, emptyList())))
+        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry()), version = 0)))
+        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, emptyList(), version = 0)))
         assertEquals(emptyList(), assertOk(s.union(position)).assets, "a delta serves only what the union still holds")
     }
 

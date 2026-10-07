@@ -226,8 +226,7 @@ private class KeychainDto(val slots: List<SlotDto>) {
 
     companion object {
         private val KNOWN_SLOTS = listOf(
-            SecureSlots.DEVICE_ID, SecureSlots.DEVICE_ID_LEGACY, SecureSlots.ATTEST_TOKEN, SecureSlots.ATTEST_KEY_ID,
-            SecureSlots.ALBUM_MAP_LEGACY,
+            SecureSlots.DEVICE_ID, SecureSlots.ATTEST_TOKEN, SecureSlots.ATTEST_KEY_ID,
         )
 
         fun of(items: Map<SecureSlot, SecureStoreRead.Found>) = KeychainDto(

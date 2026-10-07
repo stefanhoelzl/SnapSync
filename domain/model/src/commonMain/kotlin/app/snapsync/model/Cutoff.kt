@@ -94,16 +94,10 @@ fun clampToCeiling(chosen: CaptureCeiling, endsAt: EventEnd): CaptureCeiling =
  * that still holds a membership can only ever be observing a **deadline** deletion, which is precisely
  * what this tests.
  *
- * A **null** [deletesAt] is **never reached**: a membership persisted before the field existed, or one
- * whose reconcile backfill has not landed yet, can never satisfy the witness. Every error mode of this
- * rule therefore resolves toward *keeping* the membership — held too long is recoverable, destroyed
- * wrongly is not.
- *
  * As with the clamps above, the plain string compare is correct **only because** both operands are the
  * canonical fixed-width UTC shape, so lexicographic order IS chronological order.
  */
-fun confirmedGone(deletesAt: DeletesAt?, now: CaptureDate): Boolean =
-    deletesAt != null && now > deletesAt.at
+fun confirmedGone(deletesAt: DeletesAt, now: CaptureDate): Boolean = now > deletesAt.at
 
 private fun buildCutoff(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): String {
     fun p(n: Int, width: Int) = n.toString().padStart(width, '0')

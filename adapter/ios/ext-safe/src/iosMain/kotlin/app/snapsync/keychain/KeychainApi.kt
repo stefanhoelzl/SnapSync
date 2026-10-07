@@ -9,10 +9,9 @@ import platform.CoreFoundation.CFTypeRefVar
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
-import platform.Security.SecItemUpdate
 
 /**
- * **The operating-system boundary of [IosSecureStore]**: the four `SecItem*` calls it makes, and nothing else
+ * **The operating-system boundary of [IosSecureStore]**: the three `SecItem*` calls it makes, and nothing else
  * (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and
  * replayed on every build").
  *
@@ -31,8 +30,6 @@ internal interface KeychainApi {
     /** [result] receives a +1 reference the caller releases, exactly as `SecItemCopyMatching` hands it out. */
     fun copyMatching(query: CFDictionaryRef?, result: CPointer<CFTypeRefVar>?): Int
 
-    fun update(query: CFDictionaryRef?, attributes: CFDictionaryRef?): Int
-
     fun delete(query: CFDictionaryRef?): Int
 }
 
@@ -42,8 +39,6 @@ internal object SystemKeychainApi : KeychainApi {
 
     override fun copyMatching(query: CFDictionaryRef?, result: CPointer<CFTypeRefVar>?): Int =
         SecItemCopyMatching(query, result)
-
-    override fun update(query: CFDictionaryRef?, attributes: CFDictionaryRef?): Int = SecItemUpdate(query, attributes)
 
     override fun delete(query: CFDictionaryRef?): Int = SecItemDelete(query)
 }

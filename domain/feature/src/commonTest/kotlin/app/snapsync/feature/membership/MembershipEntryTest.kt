@@ -1,5 +1,9 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
@@ -19,6 +23,8 @@ class MembershipEntryTest {
         maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-08T00:00:00Z")),
         direction = Direction.Both,
         saveToAlbum = false,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     private fun entry(order: MutableList<String>) = MembershipEntry(

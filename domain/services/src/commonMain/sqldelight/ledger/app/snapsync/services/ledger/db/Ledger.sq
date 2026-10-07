@@ -3,14 +3,18 @@ import app.snapsync.model.LedgerState;
 
 -- THE "MUST MATCH <n>.sqm EXACTLY" NOTES BELOW ARE NOW ENFORCED, and were not always. They cite
 -- `verifyCommonMainLedgerDatabaseMigration`, which applies every migration to the committed schema
--- snapshot (`databases/9.db`) and diffs the result against these CREATE statements. Before that snapshot
+-- snapshot (`databases/12.db`) and diffs the result against these CREATE statements. Before that snapshot
 -- existed the task had nothing to compare and passed on anything — measured: a migration adding a column
 -- absent from this file was green. It cost a build gate to say nothing, and it hid a real divergence for
 -- as long as it existed (see the `destinationPath` index below). The snapshot and the contract that keeps
 -- it honest live in `adapter/generic/app/build.gradle.kts`; read that before touching either.
 --
 -- WHAT IT STILL DOES NOT COVER: schema only. A data-only change changes no schema and is invisible to
--- it, which is why the row rewrites of 8.sqm and 10.sqm are asserted by `LedgerServiceTest` instead.
+-- it, which is why a migration's row rewrites are asserted by `LedgerServiceTest` instead.
+--
+-- 1.sqm–11.sqm ARE SQUASHED: every device has run 0.4, whose ledger is v12, so the chain starts at 12.sqm and the
+-- snapshot `databases/12.db` is 0.4's schema. A "must match <n>.sqm" note below about a squashed file now means
+-- "must match that snapshot", which is still enforced the same way.
 
 -- The row carries no attempt count and no absence mark: 10.sqm dropped both, because nothing read them (decision
 -- record `changes/shrink-the-ledger-row`).

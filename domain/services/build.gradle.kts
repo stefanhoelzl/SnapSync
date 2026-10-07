@@ -63,7 +63,7 @@ kotlin {
 // comparison, so it verifies more of the chain than a newer one. Regenerate a snapshot when you want a later
 // starting point checked, never out of hygiene.
 //
-// WHAT IT DOES NOT COVER: schema only. A data-only migration (ledger 8.sqm) changes no schema, so this task
+// WHAT IT DOES NOT COVER: schema only. A data-only migration changes no schema, so this task
 // cannot tell a right rewrite from a wrong one — the store tests assert those.
 sqldelight {
     databases {
@@ -71,7 +71,7 @@ sqldelight {
             packageName.set("app.snapsync.services.ledger.db")
             srcDirs.setFrom("src/commonMain/sqldelight/ledger")
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/ledger/databases"))
-            // The sqlite-3-35 dialect: the default rejects ALTER TABLE … DROP COLUMN (2.sqm needs it), and the
+            // The sqlite-3-35 dialect: the default rejects ALTER TABLE … DROP COLUMN (migrations use it), and the
             // record write's upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
             dialect(libs.sqldelight.dialect.sqlite)
         }

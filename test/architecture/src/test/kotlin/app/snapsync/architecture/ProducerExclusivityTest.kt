@@ -1,5 +1,9 @@
 package app.snapsync.architecture
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -217,4 +221,4 @@ class ProducerExclusivityTest {
 
 /** The membership a join persists. */
 private val MEMBERSHIP =
-    EventConfig("E", "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
+    EventConfig("E", "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"), endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z"))

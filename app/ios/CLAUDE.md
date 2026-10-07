@@ -180,9 +180,9 @@ family, a transport's guarded terminal write, and the membership reset family. O
   dev-signed build (whose profile grants the wildcard `<TEAM>.*`) writes into each process's own
   `application-identifier` group instead. On 2026-07-20 the app and the extension therefore held two
   different device ids — both reads succeeding — and the app re-imported every photo it had uploaded
-  as if a stranger had sent it. The attest pair and the album map remain unscoped deliberately (the
-  token is demonstrably read cross-process; the map is a self-healing cache); the config reader was a
-  third until Stage 2 deleted it, and its entry left the inventory with it. That inventory
+  as if a stranger had sent it. The attest pair remains unscoped deliberately (the token is
+  demonstrably read cross-process); the config reader and the album map were unscoped seats too, until
+  their readers were deleted, and their entries left the inventory with them. That inventory
   is pinned in `:test:architecture` — a *new* unscoped seat fails the build, including a
   reconstructed config one.
 - **Associated domain `applinks:snapsync.stho.net`** (app entitlements only, via

@@ -548,9 +548,8 @@ retries forever, so an outage delays uploads but loses none.
 > documents `no-cache`).
 
 **The HTTP API is not a user contract.** It is bounded by the minimum app version (`426`, below),
-and each version is frozen only while builds that speak it are served. `/api/v1` is retired: every request
-to it is answered `426` with the minimum, never `404` — a pre-0.4 build reads a `404` on the event read as a
-deleted event (`changes/separate-event-page-from-device-api` D6).
+and each version is frozen only while builds that speak it are served. `/api/v1`, what builds below 0.4
+spoke, is no longer served: every device runs 0.4 or later.
 `/api/v2` is frozen for **compatible changes only** since 0.4, its first App Store build: an addition 0.4
 ignores (a new route, a new optional response field) is fine, and anything 0.4 would misread is breaking.
 A breaking change goes to `/api/v3`, or ships with a deliberate `MIN_APP_VERSION` bump that sends 0.4 to
@@ -665,8 +664,7 @@ Top-level Hono middleware in `src/app.ts`, in this order:
    authentication. The other root routes keep serving.
 2. **Version gate** (v2 only). The `x-snapsync-app-version` header must be at least `minAppVersion`
    (in source, `src/config.ts`, pinned by `min-app-version-floor.test.ts`, deliberately not config).
-   Absent, unparseable and too old all get `426 {error, minAppVersion}`. Ahead of it, every `/api/v1` path
-   gets the same `426` (`isRetiredVersion`): v1 is retired.
+   Absent, unparseable and too old all get `426 {error, minAppVersion}`.
 3. **Token gate.** Every route requires a device token: a backend-minted, HMAC-signed bearer that can
    only be obtained through App Attest. **Verifying touches nothing** (one HMAC compare, no store read,
    no Apple call), because it sits on the streaming upload hot path. A route that needs the device record
@@ -825,7 +823,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `PATCH` | `/events/<eventId>` `{name}` | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` closed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` closed · `502` |
 | `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; after `endsAt` the leave that leaves no member `sharing` closes the event and wakes the rest; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
-| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled`, honoured only after `endsAt` and only for a present membership; the publish leaving no member `sharing` closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), honoured only after `endsAt` and only for a present membership; the publish leaving no member `sharing` closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
 | `PUT` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` (the download redirect's path; the PUT is gated) | accepted only from a **present** member (`sharing`/`settled` — a closed event still takes its members' bytes, a completed one has none); streams bytes to `files/<eventId>/<sha256 of event/device/asset/role>` (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed the asset, wakes the event's other members. **An encrypted event takes only encrypted files** (`routes/encrypted-upload.ts`, read in the same statement as the membership): a body whose 9-byte prefix names the event's key id passes untouched; with the iOS extension's `x-snapsync-file-key` + `x-snapsync-file-head` (ONE file's key and opening bytes, never the event key; never logged) the edge seals the plaintext itself, byte for byte as a device would; anything else is refused before a byte is stored. A plain event refuses those headers | `201` · `400` bad role / missing filename / file-key headers on a plain event or malformed · `403` not a present member, or a file head of another key · `422` an encrypted event's body that is not a file of its key · `502` (`OPTIONS` → `204`) |
 | `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | the **event-less** upload of builds before `per-event-storage-layout`: the same write, filed under the device's one present membership — and the same encrypted-event rule, so a build that predates encryption cannot put plaintext into one | as above, `409` with no present membership |
 | `GET` | `/events/<eventId>/files/devices/<deviceId>` | what the backend holds for me **in this event**, from the DB — never another event's | `200 [{assetId, role, filename}]` · `502` |
@@ -1116,7 +1114,6 @@ class (readable after first unlock; see `DataProtectionEntitlementTest`):
 | `ext-debug.log` (+ `.1`) | the extension's verbatim log (the app's is `Documents/debug.log` in its own container) | log writers; read by `LogTailService` |
 | defaults `app.snapsync.album.map` | event album map | `AlbumMapService` over `IosPreferences` |
 | defaults `app.snapsync.album.filled` | the events whose album has held a photo — what tells an Android folder album the member emptied from a fresh one | `AlbumMapService` over `IosPreferences` (`AndroidPreferences` on Android) |
-| defaults `rejoin.joinedEventId` | **retired**: pinned only at its start-up removal site | `removeOrphanedJoinMarker`, called by the app shell |
 
 Keychain (only in `:adapter:ios:ext-safe`, as `IosSecureStore`; every item is readable after first unlock). Every item is a `SecureSlot` in `model/SecureSlots`; `shared = true` names the access group, `false` searches unscoped:
 
@@ -1124,7 +1121,6 @@ Keychain (only in `:adapter:ios:ext-safe`, as `IosSecureStore`; every item is re
 |---|---|---|
 | (`app.snapsync.deviceid`, `deviceid`) | the per-install device id | shared group `<TEAM_ID>.<group>`, cross-checked against both signing entitlements |
 | (`app.snapsync.attest`, `token`), (`app.snapsync.attest`, `keyid`) | device token, App Attest key id | unscoped (pinned set) |
-| (`app.snapsync.album`, `albummap`) | album map cache | unscoped (pinned set) |
 
 `simulator.entitlements` carries the App Group only and **must not** declare `keychain-access-groups`,
 because that makes an ad-hoc simulator build unlaunchable.

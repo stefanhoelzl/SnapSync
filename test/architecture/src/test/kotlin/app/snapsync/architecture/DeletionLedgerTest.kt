@@ -103,6 +103,29 @@ class DeletionLedgerTest {
             if (enrollments.size > 1) {
                 add("Enrollment ×${enrollments.size} (exactly one uploader serves all): ${enrollments.sorted()}")
             }
+            // The pre-v0.1 Keychain relics: the unscoped device-id slot the app adopted from before minting, the
+            // pre-App-Group album-map slot, and the in-place protection upgrade. Every device has run a build that
+            // writes the shared slot background-readable, so each was a branch no installed device can reach.
+            declared(files, """\bDEVICE_ID_""" + "LEGACY\\b").forEach {
+                add("the legacy device-id slot in $it (every device holds its id in the shared slot)")
+            }
+            declared(files, """\bALBUM_MAP_""" + "LEGACY\\b").forEach {
+                add("the legacy album-map slot in $it (its one-shot migration is retired)")
+            }
+            declared(files, """\bmigrate""" + "Protection\\b").forEach {
+                add("the in-place Keychain protection upgrade in $it (every item is written background-readable)")
+            }
+            // The other shims for state no ≥0.4 device holds: the start-up removal of the join marker a ≤0.3 build
+            // wrote, the album map's Keychain-to-App-Group migration, and the millisecond-tolerant bound parse.
+            declared(files, """fun remove""" + "OrphanedJoinMarker\\b").forEach {
+                add("the orphaned join-marker removal in $it (no ≥0.4 device holds the key)")
+            }
+            declared(files, """\b(fun album""" + "MapSource|AlbumMap" + "Source)\\b").forEach {
+                add("the album map's Keychain migration in $it (no ≥0.4 device holds a Keychain map)")
+            }
+            declared(files, """fun parse""" + "Tolerant\\b").forEach {
+                add("the millisecond-tolerant bound parse in $it (every stored bound is second precision)")
+            }
         }
         assertTrue(
             resurrections.isEmpty(),

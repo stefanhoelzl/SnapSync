@@ -71,14 +71,14 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.completionClauses() 
         assertTrue("\"closed\"" in refused.body, "the refusal names the close: ${refused.body}")
         // The set it already declared is answered, and changes nothing.
         assertOk(
-            s.port.publishManifest(s.token, s.seeded.eventId, s.seeded.deviceId, DeviceManifest(s.seeded.deviceId, emptyList()).withFinal(true)),
+            s.port.publishManifest(s.token, s.seeded.eventId, s.seeded.deviceId, DeviceManifest(s.seeded.deviceId, emptyList(), version = 0).withFinal(true)),
         )
     }
 }
 
 /** The seeded member declares an EMPTY share settled — the one member, so it closes the ended event. */
 private suspend fun settle(s: EdgeSubject<Backend>) {
-    assertOk(s.port.publishManifest(s.token, s.seeded.eventId, s.seeded.deviceId, DeviceManifest(s.seeded.deviceId, emptyList()).withFinal(true)))
+    assertOk(s.port.publishManifest(s.token, s.seeded.eventId, s.seeded.deviceId, DeviceManifest(s.seeded.deviceId, emptyList(), version = 0).withFinal(true)))
 }
 
 internal const val GONE = 410

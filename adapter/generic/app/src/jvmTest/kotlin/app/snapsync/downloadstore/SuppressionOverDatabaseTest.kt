@@ -44,7 +44,7 @@ class SuppressionOverDatabaseTest {
 
     @Test
     fun `an unmigrated store pauses the extension until the app migrates it, keeping every handle`() = runTest {
-        seedVersionOneStore(File(dir, DOWNLOADS_DB_NAME))
+        seedVersionSixStore(File(dir, DOWNLOADS_DB_NAME))
         val extension = SuppressionService(JdbcDatabases(dir))
 
         assertEquals(SuppressionReadiness.OldSchema, extension.readiness())
@@ -56,17 +56,19 @@ class SuppressionOverDatabaseTest {
         assertEquals(setOf(AssetId("LOCAL-OLD")), extension.suppressedLocalIds(), "the old suppression row survived")
     }
 
-    /** The store as the first shipped schema wrote it — no `creationDate`, version 1 — with one imported asset. */
-    private fun seedVersionOneStore(file: File) {
+    /** The store as 0.5 wrote it (version 6, what 5.sqm leaves) with one imported asset — the oldest a device holds. */
+    private fun seedVersionSixStore(file: File) {
         val driver: SqlDriver = JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
         listOf(
             "CREATE TABLE downloadAsset (sourceDeviceId TEXT NOT NULL, sourceAssetId TEXT NOT NULL, state TEXT NOT NULL, " +
-                "createdLocalId TEXT, PRIMARY KEY (sourceDeviceId, sourceAssetId))",
+                "creationDate TEXT NOT NULL, createdLocalId TEXT, eventId TEXT, PRIMARY KEY (sourceDeviceId, sourceAssetId))",
+            "CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId)",
             "CREATE TABLE downloadResource (sourceDeviceId TEXT NOT NULL, sourceAssetId TEXT NOT NULL, resourceKey TEXT NOT NULL, " +
                 "url TEXT NOT NULL, role TEXT NOT NULL, contentType TEXT NOT NULL, originalFilename TEXT NOT NULL, stagedPath TEXT, " +
-                "PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey))",
-            "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'IMPORTED', 'LOCAL-OLD')",
-            "PRAGMA user_version = 1",
+                "enqueued INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey))",
+            "CREATE TABLE unionCursor (eventId TEXT NOT NULL PRIMARY KEY, cursor INTEGER NOT NULL)",
+            "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'IMPORTED', '2026-08-08T12:00:00Z', 'LOCAL-OLD', 'E1')",
+            "PRAGMA user_version = 6",
         ).forEach { driver.execute(null, it, 0) }
         driver.close()
     }

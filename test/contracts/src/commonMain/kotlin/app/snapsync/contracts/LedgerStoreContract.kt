@@ -84,9 +84,8 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
 
         clause("a row recorded without a destination is never matched and stays usable", LedgerStoreState.EMPTY) { backend ->
 
-            // A row written before the ledger kept a destination — the state every device carries after an
-            // upgrade. It must read back normally and simply not answer a destination lookup, because the
-            // tier that reads it falls back to the older recovery for exactly these rows.
+            // A row recorded with no destination (none of its uploads addressed yet). It must read back normally
+            // and simply not answer a destination lookup.
             backend.recordUnlessSettled(entry())
 
             assertNull(backend.entryForDestination("/api/v2/files/devices/D/cloud-1/primary"))

@@ -46,8 +46,6 @@ private val DOCUMENTED_INVENTORY: Set<String> = setOf(
     "app.snapsync.attest",
     "token",
     "keyid",
-    "app.snapsync.album",
-    "albummap",
     // Retired identities, recorded so a revert or reuse is recognisable (not pinned: they appear in
     // production Kotlin nowhere; the retired BGTask id is kept out of every plist listing by
     // `BGTaskSchedulerPermittedIdentifiers lists exactly the pinned BGTask set`).
@@ -56,6 +54,8 @@ private val DOCUMENTED_INVENTORY: Set<String> = setOf(
     "app.snapsync.config",
     "eventconfig",
     "app.snapsync.download.backstop",
+    "app.snapsync.album",
+    "albummap",
 )
 
 /** The wake adapter, whose `listen` registers the `BGTask` launch handlers (phase 11f). */
@@ -125,10 +125,6 @@ class RuntimeIdentityTest {
         "group.app.snapsync",
         // NB `discovery.changeToken` was pinned here until the discovery cursor was removed: every walk is a full enumeration now, so the key appears in production
         // Kotlin nowhere and an exactly-once pin would fail forever. A stale value in the App Group is inert.
-        // The retired join marker's key: pinned as a REMOVAL TARGET, not an identity anything reads. Its one
-        // production occurrence is the start-up removal (`removeOrphanedJoinMarker`), which keeps a revert of
-        // `join-loads-leave-clears` clean — and which a drifted literal would turn into a silent no-op.
-        "rejoin.joinedEventId",
         "app.snapsync.album.map",
         // The folder album's filled marks (`android-event-album` D4): a drifted key reads every album unfilled, so an
         // emptied Android album would silently keep being filled instead of reading as deleted.
@@ -161,11 +157,9 @@ class RuntimeIdentityTest {
      * inventory.
      *
      * Seats are `SecureSlot(service = …, account = …, shared = …)` constructions; `shared = false` is unscoped.
-     * The device id's legacy slot is its shared slot's `copy(shared = false)`, so the pair stays single-sited.
      *
-     * Unscoped search is not forbidden — it is *bounded*. The attest pair and album map are left
-     * unscoped deliberately: the attest token demonstrably works cross-process today, and the album
-     * map is a self-healing cache. What must not happen is a *new* unscoped seat appearing by
+     * Unscoped search is not forbidden — it is *bounded*. The attest pair is left unscoped
+     * deliberately: the attest token demonstrably works cross-process today. What must not happen is a *new* unscoped seat appearing by
      * default, which is how implicit placement spread in the first place.
      *
      * The config seat (`app.snapsync.config`/`eventconfig`) left this set with `KeychainConfigReader`
@@ -182,7 +176,8 @@ class RuntimeIdentityTest {
     private val unscopedKeychainSeats = setOf(
         "app.snapsync.attest" to "token",
         "app.snapsync.attest" to "keyid",
-        "app.snapsync.album" to "albummap",
+        // NB the pre-App-Group album map (app.snapsync.album, albummap) was a seat here until its one-shot
+        // migration was retired: every device has run a build that migrated and deleted it.
     )
 
     /**
@@ -199,7 +194,8 @@ class RuntimeIdentityTest {
         // caught by the unscoped inventory (capability `photo-sharing`).
         "app.snapsync.attest" to "token",
         "app.snapsync.attest" to "keyid",
-        "app.snapsync.album" to "albummap",
+        // NB the legacy album-map pair (app.snapsync.album, albummap) was pinned here until its one-shot
+        // migration was retired; like the config pair it now appears in production Kotlin nowhere.
     )
 
     private val bgTaskIds = listOf("app.snapsync.upload.heartbeat", "app.snapsync.heartbeat.idle")

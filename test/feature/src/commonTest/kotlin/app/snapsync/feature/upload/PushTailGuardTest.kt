@@ -1,5 +1,9 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.membershipUnreadable
@@ -54,5 +58,12 @@ class PushTailGuardTest {
     private fun membership(eventId: String?): ConfigService = configService(eventId?.let(::config))
 
     private fun config(eventId: String) =
-        EventConfig(eventId, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
+        EventConfig(
+            eventId,
+            "E",
+            captureCutoff("2026-01-01T00:00:00Z"),
+            maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
+            endsAt = eventEnd("2099-12-31T00:00:00Z"),
+            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        )
 }

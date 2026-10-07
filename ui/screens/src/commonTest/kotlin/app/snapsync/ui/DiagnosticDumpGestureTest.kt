@@ -2,6 +2,8 @@
 
 package app.snapsync.ui
 
+import app.snapsync.model.deletesAt
+
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.Layer
 import app.snapsync.model.Overlays
@@ -255,6 +257,7 @@ private val SWITCH_MEMBERSHIP = EventConfig(
     startsAt = eventStart("2026-07-06T12:00:00Z"),
     endsAt = eventEnd("2026-07-10T12:00:00Z"),
     maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
+    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
 )
 
 private fun joinedWith(health: SyncHealth, pendingSwitch: PendingSwitch? = null, name: String = "Anna's Birthday") =

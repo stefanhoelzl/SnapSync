@@ -1,5 +1,9 @@
 package app.snapsync.diagnostics
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
@@ -199,6 +203,8 @@ class CollectDiagnosticDumpTest {
                 maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-08T00:00:00Z")),
                 direction = Direction.Both,
                 saveToAlbum = true,
+                endsAt = eventEnd("2099-12-31T00:00:00Z"),
+                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             ),
             permission = GalleryAccess.LIMITED,
             environment = DiagnosticEnvironment(
@@ -341,6 +347,8 @@ class CollectDiagnosticDumpTest {
                 maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-08T00:00:00Z")),
                 direction = Direction.Both,
                 saveToAlbum = true,
+                endsAt = eventEnd("2099-12-31T00:00:00Z"),
+                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             ),
             conditions = conditions,
             appFacts = { AppFacts(failed, failed, failed, failed) },

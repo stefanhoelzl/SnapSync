@@ -46,7 +46,7 @@ private class FakeAlbumManager(
 }
 
 /** The REAL album map, over in-memory user defaults. */
-private fun albumMap() = AlbumMapService(inMemoryPreferences(), inMemorySecureStore())
+private fun albumMap() = AlbumMapService(inMemoryPreferences())
 
 class AlbumCoordinatorTest {
 

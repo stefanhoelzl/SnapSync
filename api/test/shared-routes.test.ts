@@ -313,6 +313,8 @@ async function publish(
     headers: h,
     body: JSON.stringify({
       deviceId,
+      version: 0,
+      final: false,
       assets: assets.map((a) => ({
         assetId: a.assetId,
         creationDate: a.creationDate,

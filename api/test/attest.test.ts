@@ -727,13 +727,13 @@ Deno.test("leave: the departing device's record + attestation are RETAINED (no l
 /** Another genuine install: a valid token, minted for a device that is not {@link D}. */
 const INTRUDER = "99999999-0000-4000-8000-000000000009";
 
-/** Every route that names a device in its path, under both served versions — v1 is not exempt. */
+/** Every route that names a device in its path. */
 const DEVICE_ROUTES: [string, RequestInit][] = [
   [`/api/v2/events/${E}/devices/${D}`, { method: "PUT", headers: V2 }],
   [`/api/v2/events/${E}/devices/${D}`, { method: "DELETE", headers: V2 }],
   [
     `/api/v2/events/${E}/devices/${D}/manifest`,
-    { method: "PUT", body: JSON.stringify({ assets: [] }), headers: V2 },
+    { method: "PUT", body: JSON.stringify({ version: 0, final: false, assets: [] }), headers: V2 },
   ],
   [`/api/v2/files/devices/${D}`, { headers: V2 }],
   [`/api/v2/events/${E}/files/devices/${D}`, { headers: V2 }],

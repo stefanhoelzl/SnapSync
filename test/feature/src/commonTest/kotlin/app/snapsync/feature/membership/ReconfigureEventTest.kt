@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.deletesAt
+
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.Direction
 import app.snapsync.model.CaptureCutoff
@@ -40,6 +42,8 @@ class ReconfigureEventTest {
         maxPhotoDate = FIXTURE_CEILING,
         direction = direction,
         saveToAlbum = saveToAlbum,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     private fun make(

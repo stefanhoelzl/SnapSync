@@ -162,7 +162,7 @@ async function member(
         filename: `${id}.heic`,
       }],
     })),
-    { version: null },
+    { version: 1 },
   ));
   // The resource rows the byte upload would write — under v2 the byte route is that table's sole writer, so
   // the fixture writes them directly. A departed member's publish leaves it departed (only a PRESENT

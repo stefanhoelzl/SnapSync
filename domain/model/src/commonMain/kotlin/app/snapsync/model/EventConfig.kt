@@ -49,12 +49,8 @@ class EventLinkPayload(
     @Transient val key: String? = null,
 )
 
-/**
- * Whether the event's range has ended at [now] (capability `event-lifetime`): strictly after its end. An end not yet
- * learned ([EventConfig.endsAt] `null`) has not passed — the safe reading, since an ended range is what lets a device
- * settle its share and an event close.
- */
-fun EventConfig.hasEnded(now: CaptureDate): Boolean = endsAt?.let { now > it.at } == true
+/** Whether the event's range has ended at [now] (capability `event-lifetime`): strictly after its end. */
+fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
 
 /**
  * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined
@@ -163,9 +159,9 @@ data class EventConfig(
     val name: String,
     val minPhotoDate: CaptureCutoff,
     val startsAt: EventStart = EventStart(minPhotoDate.at),
-    val endsAt: EventEnd? = null,
+    val endsAt: EventEnd,
     val maxPhotoDate: CaptureCeiling,
-    val deletesAt: DeletesAt? = null,
+    val deletesAt: DeletesAt,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
     /**

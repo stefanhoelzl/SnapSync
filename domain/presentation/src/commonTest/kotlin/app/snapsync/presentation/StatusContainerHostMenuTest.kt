@@ -1,5 +1,7 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.deletesAt
+
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.AppLink
@@ -44,6 +46,7 @@ private val MEMBERSHIP = EventConfig(
     startsAt = eventStart("2026-07-06T14:32:11Z"),
     endsAt = eventEnd("2026-07-13T14:32:11Z"),
     maxPhotoDate = captureCeiling("2026-07-13T14:32:11Z"),
+    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
 )
 
 private class MenuTestSync : SyncStatusSource {

@@ -1,4 +1,0 @@
--- v4 -> v5: every row learns which event's union it was last seen in, so the joined screen's received count
--- is this membership's and not every foreign photo the device ever imported (capability `sync-status`). Rows
--- start untagged; the next reconcile of the current event tags its union's rows, settled ones included.
-ALTER TABLE downloadAsset ADD COLUMN eventId TEXT;

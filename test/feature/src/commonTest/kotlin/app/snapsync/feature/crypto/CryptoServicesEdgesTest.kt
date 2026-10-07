@@ -1,5 +1,9 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
@@ -46,6 +50,8 @@ class CryptoServicesEdgesTest {
         eventId = EVENT, name = "Secret",
         minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
         keyId = keyId,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     @Test

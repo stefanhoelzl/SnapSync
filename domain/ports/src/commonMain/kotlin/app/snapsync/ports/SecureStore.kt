@@ -7,7 +7,7 @@ import app.snapsync.model.WriteOutcome
 /**
  * **The platform's protected small-value store** — one external system (on iOS the Keychain), and nothing decided
  * here. Each call addresses one [SecureSlot]; which items exist, and what their absence means, are the services'
- * (`PersistedDeviceIdentity`, `AttestState`, the album-map migration in `:domain:services`).
+ * (`PersistedDeviceIdentity`, `AttestState`, `EventKeys` in `:domain:services`).
  *
  * It keeps a value confidential at rest, **outlives the app install**, and stays readable while the device is
  * locked after its first unlock. On iOS it is the only module permitted to touch `SecItem*` (`docs/architecture.md`).
@@ -33,16 +33,6 @@ interface SecureStore : Port {
 
     /** Persist [value], replacing any existing item, under the protection this store requires. */
     fun write(slot: SecureSlot, value: String): WriteOutcome
-
-    /**
-     * Upgrade the *existing* item to the required protection in place, **preserving its value byte for byte**.
-     * Never deletes-and-re-adds and never mints: a changed device id would orphan this device's partition.
-     *
-     * Best-effort by contract: a store that cannot upgrade right now keeps the item it has, answers the failure,
-     * and the upgrade is retried on the next read. Failing the read instead would turn a healthy legacy device into
-     * a broken one.
-     */
-    fun migrateProtection(slot: SecureSlot): WriteOutcome
 
     /** Delete the item. Deleting an absent item is [WriteOutcome.Ok]. */
     fun delete(slot: SecureSlot): WriteOutcome

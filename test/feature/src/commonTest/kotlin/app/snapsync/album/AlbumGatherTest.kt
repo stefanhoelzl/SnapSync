@@ -2,6 +2,10 @@
 
 package app.snapsync.album
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.model.EntryScope
 import app.snapsync.model.AssetId
@@ -81,6 +85,8 @@ class AlbumGatherTest {
         minPhotoDate = captureCutoff(from),
         maxPhotoDate = captureCeiling("2026-09-30T00:00:00Z"),
         saveToAlbum = saveToAlbum,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     private class Rig(
@@ -103,7 +109,7 @@ class AlbumGatherTest {
             photoAccess = galleryAccess(grant),
             coordinator = AlbumCoordinator(
                 GalleryAlbums(manager),
-                AlbumMapService(inMemoryPreferences(), inMemorySecureStore()).apply { put("E2", "ALBUM-2") },
+                AlbumMapService(inMemoryPreferences()).apply { put("E2", "ALBUM-2") },
                 kind = kind,
             ),
             scope = scope,

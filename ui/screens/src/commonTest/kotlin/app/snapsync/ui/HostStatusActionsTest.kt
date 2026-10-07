@@ -135,6 +135,7 @@ private val MEMBERSHIP = EventConfig(
     startsAt = eventStart("2026-07-04T18:00:00Z"),
     endsAt = eventEnd("2026-07-20T18:00:00Z"),
     maxPhotoDate = captureCeiling("2026-07-20T18:00:00Z"),
+    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
 )
 
 /** What the details load answers for [OTHER_ID]: an event that has started and runs past "now". */

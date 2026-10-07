@@ -47,7 +47,6 @@ private class LockableSecureStore(private val inner: SecureStore = inMemorySecur
     override fun read(slot: SecureSlot): SecureStoreRead = if (locked) SecureStoreRead.Unavailable("locked") else inner.read(slot)
     override fun write(slot: SecureSlot, value: String): WriteOutcome =
         if (locked) WriteOutcome.Failed("locked") else inner.write(slot, value)
-    override fun migrateProtection(slot: SecureSlot): WriteOutcome = inner.migrateProtection(slot)
     override fun delete(slot: SecureSlot): WriteOutcome = inner.delete(slot)
 }
 

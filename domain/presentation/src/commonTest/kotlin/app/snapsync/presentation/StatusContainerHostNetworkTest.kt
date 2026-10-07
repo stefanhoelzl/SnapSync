@@ -269,10 +269,19 @@ class StatusContainerHostNetworkTest {
     private companion object {
         const val EVENT = "11111111-1111-4111-8111-111111111111"
         val NOW: Instant = Instant.parse("2026-07-09T12:00:00Z")
-        val STARTED = EventConfig(EVENT, "Party", captureCutoff("2026-07-06T00:00:00Z"), maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"))
+        val STARTED = EventConfig(
+            EVENT,
+            "Party",
+            captureCutoff("2026-07-06T00:00:00Z"),
+            maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+            endsAt = eventEnd("2099-12-31T00:00:00Z"),
+            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        )
         val NOT_STARTED = EventConfig(
             EVENT, "Party", captureCutoff("2026-07-10T00:00:00Z"),
             startsAt = EventStart(captureCutoff("2026-07-10T00:00:00Z").at), maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+            endsAt = eventEnd("2099-12-31T00:00:00Z"),
+            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
         )
         val FOUND = JoinLoad.Found("Party", eventStart("2026-07-06T00:00:00Z"), eventEnd("2026-07-13T00:00:00Z"), deletesAt("2026-08-05T00:00:00Z"))
     }

@@ -157,7 +157,7 @@ private fun extensionServices(
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(
             albums,
-            AlbumMapService(ports.preferences, ports.secureStore),
+            AlbumMapService(ports.preferences),
             kind = ports.gallery.albumKind,
         ),
         token = token,

@@ -63,7 +63,7 @@ class EventCompletionTest {
         joined.name,
         joined.startsAt,
         ends,
-        joined.deletesAt!!,
+        joined.deletesAt,
         EventCompletionState(closed, completed),
     )
 
