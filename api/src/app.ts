@@ -150,6 +150,13 @@ import { sharedRoutes } from "./routes/shared.ts";
 import { siteRoutes } from "./routes/site.ts";
 import { WEB_PHOTOS_PATH, webRoutes } from "./routes/web.ts";
 import { NO_CACHE, type RouteDeps } from "./routes/support.ts";
+import {
+  errorHandler,
+  type LogSink,
+  type ReportError,
+  requestLogMiddleware,
+  type RequestLogOptions,
+} from "./request-log.ts";
 import { v2Routes } from "./routes/v2.ts";
 
 // Re-exported so existing importers (tests, callers) keep their `from "./app.ts"` imports working.
@@ -188,6 +195,18 @@ export type Deps = {
    * happened to hold. Defaults to the value resolved into this bundle.
    */
   buildSha?: string;
+  /**
+   * Where the request log's lines go (`request-log.ts`): the console by default — the edge script's one
+   * write — and a collector in a test that asserts what a request logged.
+   */
+  logSink?: LogSink;
+  /** What runs each request inside its error-tracking isolation (`error-report.ts`); none by default. */
+  around?: RequestLogOptions["around"];
+  /**
+   * Where an exception no route caught is reported (`error-report.ts`). Only the deployed service has one
+   * (`main.ts`, when the bundle carries a DSN); without it the exception is recorded on the request's line.
+   */
+  reportError?: ReportError;
 };
 
 // What a maintenance `503` suggests waiting (`docs/deployment.md`). HTTP pairs `Retry-After`
@@ -224,6 +243,9 @@ export function createApp(
     now = Date.now,
     buildSha = BUILD_SHA,
     revocationFetch = (url, init) => fetch(url, init),
+    logSink,
+    around,
+    reportError,
   }: Deps,
 ): Hono {
   // The S3 signer used ONLY to presign download URLs (`docs/architecture.md`). Access Key ID =
@@ -243,6 +265,14 @@ export function createApp(
   const deps: RouteDeps = { fetchImpl, revocationFetch, config, db, now, aws, pushSender };
 
   const app = new Hono();
+
+  // ── THE REQUEST LOG (`request-log.ts`) ─────────────────────────────────────────────────────────────
+  //
+  // REGISTERED FIRST, ahead of every gate, so every request writes its one line — a maintenance `503`, a
+  // version `426` and a token `401` included — and every route can record onto it through `c.var.log`.
+  app.use("*", requestLogMiddleware({ sink: logSink, around }));
+
+  app.onError(errorHandler(reportError));
 
   // ── THE MAINTENANCE GATE (`docs/deployment.md`) ──────────────────────────────────────
   //
@@ -311,7 +341,7 @@ export function createApp(
   // — what builds older than 0.4 still speak — is answered `426`, the version gate's own refusal, and never a
   // `404`. Those builds read a `404` on the event read as a DELETED event, one of the two witnesses of their
   // self-leave, so a retirement answered `404` would look like deletion; a `426` is a failure they retry, and
-  // touches nothing on the phone. Registered first, so no later gate or route sees a v1 path at all.
+  // touches nothing on the phone. The first gate, so no later gate or route sees a v1 path at all.
   app.use("*", async (c, next) => {
     if (!isRetiredVersion(new URL(c.req.url).pathname)) return await next();
     c.header("Cache-Control", NO_CACHE);

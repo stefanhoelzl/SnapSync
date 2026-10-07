@@ -176,7 +176,7 @@ Deno.test("fan-out → the unsent summary names why, never a token", async () =>
     { token: "secret-token-2", status: "skipped", reason: "kind web" },
     { token: "secret-token-3", status: "failed", code: 403 },
   ]);
-  assertEquals(summary, "; skipped: kind web ×2, failed: 403 ×1");
+  assertEquals(summary, "skipped: kind web ×2, failed: 403 ×1");
   assert(
     !summary.includes("secret-token"),
     "a push token addresses a device and never reaches the log",

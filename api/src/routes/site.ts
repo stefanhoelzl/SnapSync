@@ -9,6 +9,7 @@
 
 import { Hono } from "hono";
 import type { Config } from "../config.ts";
+import { refuse } from "../refusal.ts";
 import { type FetchLike, storageReachable } from "../storage.ts";
 import { NO_CACHE, type RouteDeps } from "./support.ts";
 import { memberCounts, readEvent } from "../db.ts";
@@ -65,8 +66,7 @@ async function serveSiteObject(
   try {
     upstream = await fetchImpl(url, { method: "GET", headers: { AccessKey: config.accessKey } });
   } catch (e) {
-    console.error(`site: upstream GET errored for site/${sitePath}: ${e}`);
-    return new Response("upstream error", { status: 502 });
+    refuse(502, "upstream error", { err: `site: upstream GET errored for site/${sitePath}: ${e}` });
   }
   if (upstream.status === 404) {
     await upstream.body?.cancel();
@@ -74,8 +74,9 @@ async function serveSiteObject(
   }
   if (!upstream.ok) {
     await upstream.body?.cancel();
-    console.error(`site: bunny returned ${upstream.status} for site/${sitePath}`);
-    return new Response("upstream error", { status: 502 });
+    refuse(502, "upstream error", {
+      err: `site: bunny returned ${upstream.status} for site/${sitePath}`,
+    });
   }
   const headers = new Headers({
     "Content-Type": siteContentType(sitePath),
@@ -110,14 +111,16 @@ async function serveEventPage(
   try {
     upstream = await fetchImpl(url, { method: "GET", headers: { AccessKey: config.accessKey } });
   } catch (e) {
-    console.error(`site: upstream GET errored for site/join/index.html: ${e}`);
-    return new Response("upstream error", { status: 502 });
+    refuse(502, "upstream error", {
+      err: `site: upstream GET errored for site/join/index.html: ${e}`,
+    });
   }
   if (!upstream.ok) {
     await upstream.body?.cancel();
     if (upstream.status === 404) return new Response("not found", { status: 404 });
-    console.error(`site: bunny returned ${upstream.status} for site/join/index.html`);
-    return new Response("upstream error", { status: 502 });
+    refuse(502, "upstream error", {
+      err: `site: bunny returned ${upstream.status} for site/join/index.html`,
+    });
   }
   const headers = new Headers({
     "Content-Type": "text/html; charset=utf-8",
@@ -264,7 +267,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
       const event = await readEvent(db, eventId);
       read = { event, members: event ? await memberCounts(db, eventId) : { active: 0, final: 0 } };
     } catch (e) {
-      console.error(`site: event page read failed for ${eventId}: ${e}`);
+      c.var.log.error(`site: event page read failed for ${eventId}: ${e}`);
       return new Response("upstream error", {
         status: 502,
         headers: { "Cache-Control": NO_CACHE },
@@ -338,11 +341,11 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     c.header("Content-Type", "application/json");
     const [store, zone] = await Promise.all([
       db.execute("SELECT 1").then(() => true).catch((e) => {
-        console.error(`health: relational store unreachable: ${e}`);
+        c.var.log.error(`health: relational store unreachable: ${e}`);
         return false;
       }),
       storageReachable(fetchImpl, config).then((ok) => {
-        if (!ok) console.error(`health: storage zone '${config.zone}' unreachable`);
+        if (!ok) c.var.log.error(`health: storage zone '${config.zone}' unreachable`);
         return ok;
       }),
     ]);

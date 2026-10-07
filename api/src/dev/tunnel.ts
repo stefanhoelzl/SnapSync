@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // DEV-ONLY. A cloudflared quick tunnel, so a physical iPhone can reach the local rig.
 //
 // WHY A TUNNEL AT ALL. Default ATS is HTTPS-only and `Config.xcconfig` documents that no

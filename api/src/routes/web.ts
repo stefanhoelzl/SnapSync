@@ -47,10 +47,10 @@ export function webRoutes(deps: RouteDeps): Hono {
     const eventId = c.req.param("eventId");
     c.header("Cache-Control", NO_CACHE); // the answer carries time-limited links
     if (!validateUUID(eventId)) return c.text("event not found", 404);
-    const event = await gateEvent(db, c, eventId, "web photos");
-    if (event instanceof Response) return event;
+    // A refusal is answered through `c`, so it keeps the header set above.
+    await gateEvent(db, eventId, "web photos");
 
-    return await orUpstream502(c, `web photos: assembly failed for event ${eventId}`, async () => {
+    return await orUpstream502(`web photos: assembly failed for event ${eventId}`, async () => {
       // The position first, as the union reads it: what the log records as this read's extent.
       const position = await unionPosition(db, eventId);
       const photos: WebPhoto[] = [];
@@ -79,8 +79,9 @@ export function webRoutes(deps: RouteDeps): Hono {
           at: new Date(now()).toISOString(),
         });
       } catch (e) {
-        console.error(`web photos: could not log the read of ${eventId} (best-effort): ${e}`);
+        c.var.log.error(`web photos: could not log the read of ${eventId} (best-effort): ${e}`);
       }
+      c.var.log.field("served", photos.length);
       return c.req.method === "HEAD" ? c.body(null) : c.json(photos);
     });
   });

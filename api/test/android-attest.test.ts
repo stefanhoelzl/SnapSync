@@ -376,10 +376,12 @@ Deno.test("route: an Android row renews by its SIGNATURE, and the row says what 
     "t0",
     "e0",
   );
+  const lines: string[] = [];
   const app = createApp({
     config: CONFIG,
     db,
     fetch: () => Promise.reject(new Error("no network here")),
+    logSink: (l) => lines.push(l),
   });
   const challenge = await mintChallenge(CONFIG, NOW);
   const res = await app.request("/api/v2/attest/renew", {
@@ -392,6 +394,7 @@ Deno.test("route: an Android row renews by its SIGNATURE, and the row says what 
     }),
   });
   assertEquals(res.status, 201);
+  assert(!lines.join("\n").includes("rejected="), "a valid renewal records no refusal");
   assert((await res.json()).token);
   assertEquals((await readAttestation(db, D))?.platform, "android");
 });

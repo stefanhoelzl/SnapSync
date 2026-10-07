@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // THE MIGRATION REHEARSAL'S COPY (`docs/deployment.md`, "Gates"): the deployed store, PSEUDONYMISED, into a
 // local libSQL server, so ci.yml's `migration-rehearsal` job can run the platform runner's real
 // `bunny db migrations apply` over real rows before a migration change merges.

@@ -33,8 +33,8 @@
     // against a bunny deployment throws rather than writing into a real zone.
     "dev:local": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run --allow-env=FCM_SERVICE_ACCOUNT_KEY src/dev/serve.ts",
     "dev:tunnel": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run --allow-env=FCM_SERVICE_ACCOUNT_KEY src/dev/serve.ts --tunnel",
-    "bundle": "deno task config && deno bundle src/main.ts -o dist/main.js",
-    "bundle:maintenance": "deno task config:maintenance && deno bundle src/main.ts -o dist/main.js",
+    "bundle": "deno task config && deno bundle --sourcemap=external src/main.ts -o dist/main.js",
+    "bundle:maintenance": "deno task config:maintenance && deno bundle --sourcemap=external src/main.ts -o dist/main.js",
     "lint": "deno lint",
     "fmt": "deno fmt"
   },
@@ -42,6 +42,7 @@
     "@bunny.net/edgescript-sdk": "npm:@bunny.net/edgescript-sdk@^0.13.0",
     "@libsql/client/web": "npm:@libsql/client@^0.18.0/web",
     "hono": "npm:hono@^4.13.10",
+    "@sentry/deno": "npm:@sentry/deno@^10.76.0",
     "aws4fetch": "npm:aws4fetch@^1.0.20",
     "jose": "npm:jose@^6.2.12",
     "@std/assert": "jsr:@std/assert@^1.0.19",
@@ -58,7 +59,12 @@
   // and a developer's local `deno lint` run the SAME rule set (`docs/deployment.md`).
   // `complexity.ts` carries this backend's cyclomatic ceiling — the TypeScript half of capability
   // `docs/architecture.md`. It needs no new CI step: ci.yml's `api-test` already gates on `deno lint`.
+  //
+  // `no-console` holds the edge script to ONE write — the request log's line (`src/request-log.ts`, its one
+  // `deno-lint-ignore`). The command-line tools under `src/scripts/` and `src/dev/` print by design and opt
+  // out per file, each saying so at its top.
   "lint": {
-    "plugins": ["./src/lint/complexity.ts"]
+    "plugins": ["./src/lint/complexity.ts"],
+    "rules": { "include": ["no-console"] }
   }
 }

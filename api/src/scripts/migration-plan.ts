@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // DOES THIS DEPLOY TOUCH THE SCHEMA? (capabilities `docs/architecture.md`, `docs/deployment.md`)
 //
 // deploy.yml's `api` job branches a MAINTENANCE WINDOW on this answer, so it is the most consequential thing

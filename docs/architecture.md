@@ -658,6 +658,8 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
 
 Top-level Hono middleware in `src/app.ts`, in this order:
 
+0. **Request log** (`src/request-log.ts`, below). First, so every request writes its line, a gate's
+   refusal included.
 1. **Maintenance gate.** While the bundle carries the maintenance flag, everything under the `/api/`
    and `/web/` **prefixes** answers `503` with `Retry-After` and no-cache, touching no store. It runs before
    authentication. The other root routes keep serving.
@@ -692,6 +694,78 @@ What the binding does not close: `/attest/token` mints for whatever `deviceId` i
 install can still attest AS a known id (overwriting that device's key) and then hold a token bound to it.
 Refusing a re-attestation for a known id would also refuse the legitimate one after a reinstall, which
 keeps the Keychain device id but loses the App Attest key.
+
+### The request log
+
+Every request writes **exactly one line**, when its response body has finished, and that line is the
+only thing the edge script writes (decision record `changes/api-request-log`). The line goes to bunny's
+Edge Scripting log in production, and to the console under `deno task dev:local` and the ephemeral test
+backend:
+
+```
+<ISO> [<reqid>] <METHOD> <url> <status> <ms>ms v=<declared app version|-> in=<bytes|-> out=<bytes> <fields…>
+```
+
+- `url` is whole, query included (`?filename=`). The line never carries the caller's address or
+  User-Agent (capability `privacy-security`).
+- `ms` runs until the body finishes, so it includes the transfer. `out=` counts the bytes actually sent.
+  `in=` counts the bytes a route read, or is the declared `Content-Length` (or `-`) when none was read.
+  A body abandoned or broken mid-stream adds `cut=true` (and `err=` when it broke).
+- A field value is bare when it is one plain token (`[A-Za-z0-9._:/-]+`), otherwise JSON-quoted.
+- `reqid` is six random hex characters per request: the key that ties a line to the same request's
+  error report.
+
+**Routes record; nothing else writes.** A handler adds `key=value` with `c.var.log.field(k, v)` and a
+server fault with `c.var.log.error(msg)`, which becomes `err="…"`. Both only buffer. Only the handler
+touches the context:
+- a helper takes the values it needs (path params, the token's device, the declared version, the body);
+- a helper whose outcome is a failure reply **throws a `Refusal`** (`src/refusal.ts`: status, the reply
+  body byte-identical to before, an optional `err`, optional fields), which `onError` answers and records;
+- a best-effort helper **returns** its outcome or failure for the handler to record (`notifyMembers` →
+  `{recipients, pushed, unsent, errors}`).
+
+`deno lint`'s `no-console` holds this. The request log's write is its one exception, and the
+command-line tools in `src/scripts/` and `src/dev/` opt out per file.
+
+The fields today:
+
+| Where | Fields |
+|---|---|
+| a wake (byte landing, publish, leave) | `recipients= pushed= [unsent=<why ×n, …>]` |
+| byte upload (v2) | `completed=<n>` + one wake's per completed event; `aborted=true` when the phone's body broke off |
+| manifest (v2) | `closed=true` · `refused=older-version version=<n>` |
+| leave | `closed=true` + the wake's |
+| union read | `served=<n> trigger=<why\|->` |
+| event page read (`/web/events/<id>/photos`) | `served=<n>` |
+| push registration | `refused=not-attested` |
+| attest | `attested=<platform>/<environment>` · `rejected="<format> (<reason> (<detail>)): <error>"` |
+| renew | `refused=not-attested\|vanished` · `rejected="<platform> assertion: <error>"` |
+| any 5xx or best-effort failure | `err="<what>: <error>"` |
+| an exception no route caught | `bugsink=<event id>` where the service reports (below), else `err="<Name>: <message>"`; answered `500 Internal Server Error` |
+
+### Failure reports
+
+An exception no route caught is reported to the operator's Bugsink, project 1, the one the apps report
+to (`src/error-report.ts`, over `@sentry/deno`, tagged `platform=api`). It is answered `500` as before, and
+its line carries only `bugsink=<event id>` (capability `privacy-security`, "The service reports its own
+failures to the operator"). A `Refusal` is an answer, never a report. Caught upstream and best-effort
+failures stay `err=` on the line.
+
+- **Only the deployed service reports.** `main.ts` starts the SDK only when the bundle carries a DSN,
+  which the resolver renders for `prod` and `maintenance` (`docs/deployment.md`). `createApp` takes the
+  reporter as a dependency, so a dev rig, the ephemeral backend and the tests run without one.
+- **What a report carries:** the stack, the request as it arrived (URL with query, all headers: the
+  browser or app, `cdn-requestcountrycode`, `cdn-ja4`) and the request's outbound calls as `fetch`
+  breadcrumbs. It is tagged `reqid`, `route` (the Hono pattern) and `v`. It never carries the
+  requester's address: `beforeSend` drops `user.ip_address` and every address-bearing header.
+- **Per request.** The request-log middleware runs each request in `Sentry.withIsolationScope`, because
+  bunny serves through `Bunny.v1.serve`, which the SDK does not instrument. `onError` captures, then
+  awaits `Sentry.flush(2000)` before answering, since the isolate may freeze once the response is out.
+- **Default integrations, no tracing.** A floating promise rejection is captured too. On bunny the
+  script keeps serving after one (measured; under a local `deno run` the SDK re-throws and Deno exits).
+- **Readable stacks.** A frame names the bundle (`/mod.ts:<line>:<col>`). `bundle-<sha>` holds
+  `main.js.map`, and the `/bugsink` skill maps frames back to `api/src` through the map of the event's
+  `release`.
 
 ### HTTP API (v2, current)
 

@@ -12,7 +12,7 @@
 // failure the file split exists to prevent. Duplication between the two files is the point.
 
 import { assert, assertEquals } from "@std/assert";
-import { createApp as createRealApp, type Deps, type FetchLike } from "../../src/app.ts";
+import { createApp as createAppUnquiet, type Deps, type FetchLike } from "../../src/app.ts";
 import { mintToken } from "../../src/attest.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
 import { type Db, enroll, insertEvent } from "../../src/db.ts";
@@ -133,8 +133,13 @@ export function createApp(deps: Omit<Deps, "now">) {
   });
 }
 
-/** The real app with NOTHING attached — for the routes that must be reachable without a token. */
-export { createRealApp };
+/**
+ * The real app with NOTHING attached — for the routes that must be reachable without a token. Its request
+ * log is silent unless the test hands it a sink: a test that asserts a line collects them itself.
+ */
+export function createRealApp(deps: Deps) {
+  return createAppUnquiet({ logSink: () => {}, ...deps });
+}
 
 /** Give a device the attestation row every device-scoped write now requires (`docs/architecture.md`). */
 export { enrolDevice } from "./db.ts";

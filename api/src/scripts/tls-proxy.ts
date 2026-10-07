@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // A LOOPBACK TLS FRONT for the migration rehearsal's local libSQL server (`docs/deployment.md`, "Gates").
 //
 // `bunny db migrations apply` refuses any URL that is not encrypted — it accepts `libsql://`, `https://` and

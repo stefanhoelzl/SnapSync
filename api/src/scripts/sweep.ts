@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // The nightly cleanup sweep (capability `event-lifetime`). Runs OUT of the Edge Script — Bunny has no
 // scheduler and caps a request at 50 subrequests / 30 s CPU, so a whole-storage sweep cannot run there.
 // This is a Deno program a scheduled GitHub Actions job runs on an Ubuntu runner: it talks to the

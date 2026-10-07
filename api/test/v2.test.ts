@@ -348,29 +348,15 @@ Deno.test("byte PUT → a database failure FAILS the request (nothing repairs it
   assertEquals(res.status, 502);
 });
 
-/** What `run` logged, by level — console.log and console.error swapped out for its duration. */
-async function logsOf(run: () => Promise<unknown>) {
-  const logged = { info: [] as string[], error: [] as string[] };
-  const { log, error } = console;
-  console.log = (...a: unknown[]) => logged.info.push(a.join(" "));
-  console.error = (...a: unknown[]) => logged.error.push(a.join(" "));
-  try {
-    await run();
-  } finally {
-    Object.assign(console, { log, error });
-  }
-  return logged;
-}
-
 // A storage fake that consumes the body as a real PUT would, so a broken body surfaces where it does live.
 const draining: Parameters<typeof v2>[0]["fetch"] = async (_url, init) => {
   await new Response(init?.body).arrayBuffer();
   return new Response(null, { status: 201 });
 };
 
-Deno.test("byte PUT → a client whose body breaks off is logged as aborting, at info, not as a storage error", async () => {
+Deno.test("byte PUT → a client whose body breaks off is logged as aborting, not as a storage error", async () => {
   // A weak mobile uplink: the phone's upload dies mid-body. That is the network the device's retry
-  // absorbs, so it must not read as storage failing, nor fill the script's log ring at error level.
+  // absorbs, so it must not read as storage failing: the request's line says `aborted=true`, with no `err=`.
   const db = await memberStore();
   const body = new ReadableStream<Uint8Array>({
     start(c) {
@@ -378,28 +364,30 @@ Deno.test("byte PUT → a client whose body breaks off is logged as aborting, at
       c.error(new Error("error reading a body from connection"));
     },
   });
-  let status = 0;
-  const logged = await logsOf(async () => {
-    const res = await v2({ config: CONFIG, db, fetch: draining })
-      .request(BYTE_PATH, { method: "PUT", body, duplex: "half" } as RequestInit);
-    status = res.status;
-  });
-  assertEquals(status, 502);
-  assertEquals(logged.error, []);
-  assertEquals(logged.info.length, 1);
-  assert(logged.info[0].startsWith("v2 upload: client aborted the upload of "), logged.info[0]);
+  const lines: string[] = [];
+  const res = await v2({ config: CONFIG, db, fetch: draining, logSink: (l) => lines.push(l) })
+    .request(BYTE_PATH, { method: "PUT", body, duplex: "half" } as RequestInit);
+  assertEquals(res.status, 502);
+  await res.text();
+  assertEquals(lines.length, 1);
+  assert(lines[0].endsWith(" aborted=true"), lines[0]);
+  assert(!lines[0].includes("err="), lines[0]);
   assertEquals((await rows(db, `SELECT * FROM resources`)).length, 0);
   db.close();
 });
 
 Deno.test("byte PUT → storage erroring on an intact body is still an error", async () => {
   const db = await memberStore();
-  const logged = await logsOf(async () => {
-    await v2({ config: CONFIG, db, fetch: recorder({ throws: true }).fetchImpl })
-      .request(BYTE_PATH, { method: "PUT", body: "bytes" });
-  });
-  assertEquals(logged.error.length, 1);
-  assert(logged.error[0].startsWith("v2 upload: upstream PUT errored for "), logged.error[0]);
+  const lines: string[] = [];
+  const res = await v2({
+    config: CONFIG,
+    db,
+    fetch: recorder({ throws: true }).fetchImpl,
+    logSink: (l) => lines.push(l),
+  }).request(BYTE_PATH, { method: "PUT", body: "bytes" });
+  await res.text();
+  assertEquals(lines.length, 1);
+  assert(lines[0].includes(' err="v2 upload: upstream PUT errored for '), lines[0]);
   db.close();
 });
 
@@ -585,10 +573,16 @@ async function storedVersion(db: Awaited<ReturnType<typeof storeWithEvent>>) {
 }
 
 async function joined(db: Awaited<ReturnType<typeof storeWithEvent>>) {
-  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const lines: string[] = [];
+  const app = v2({
+    config: CONFIG,
+    db,
+    fetch: recorder().fetchImpl,
+    logSink: (l) => lines.push(l),
+  });
   await app.request(JOIN_PATH, { method: "PUT" });
   const put = (body: string) => app.request(MANIFEST_PATH, { method: "PUT", body });
-  return { app, put };
+  return { app, put, lines };
 }
 
 Deno.test("manifest version → a newer publish replaces the set and records its version", async () => {
@@ -616,10 +610,11 @@ Deno.test("manifest version → an older publish is refused as 200 and changes n
   // The crossed pair this exists for: the app's and the extension's publishes cross in the network, and
   // the older one lands last. It must not overwrite the newer snapshot.
   const db = await storeWithEvent();
-  const { put } = await joined(db);
+  const { put, lines } = await joined(db);
   await put(versioned(9, ONE("B")));
   const late = await put(versioned(7, ONE("A")));
   assertEquals(late.status, 200, "an ordinary outcome, which the device treats as published");
+  assert(lines.at(-1)!.endsWith(" refused=older-version version=7"), lines.at(-1));
   assertEquals(await heldAssets(db), ["B"]);
   assertEquals(await storedVersion(db), 9);
   db.close();

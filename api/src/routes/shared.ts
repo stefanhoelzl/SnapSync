@@ -1,7 +1,7 @@
 // The SHARED device API: routes whose contract is identical under every version, mounted into each
 // version's router, so there is one implementation and no possibility of the two drifting apart.
 
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import { verifyToken } from "../attest.ts";
 import {
   completeAssets,
@@ -17,7 +17,8 @@ import {
   unionRows,
 } from "../db.ts";
 import { RESOURCE_ROLES } from "../object-names.ts";
-import { splitVersion } from "../version.ts";
+import { APP_VERSION_HEADER, splitVersion } from "../version.ts";
+import { refuse } from "../refusal.ts";
 import {
   canonicalPlusSeconds,
   validateEndsAt,
@@ -30,6 +31,7 @@ import {
 } from "../validators.ts";
 import {
   closedRefusal,
+  declaredAppVersion,
   deviceOrigin,
   downloadPath,
   eventAndOwnDeviceParams,
@@ -43,6 +45,7 @@ import {
   presignDownloadUrl,
   publicEvent,
   readJson,
+  recordNotify,
   type RouteDeps,
   tryUpstream,
 } from "./support.ts";
@@ -89,15 +92,15 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   const { config, db, now, aws } = deps;
 
   /**
-   * The device a PUBLIC read's optional bearer token names: `null` when none is sent, the `401` to answer when
-   * one is sent and does not verify — so the app reads that `401` as a verdict on its token and re-attests.
+   * The device a PUBLIC read's optional bearer token names: `null` when none is sent, refused `401` when one is
+   * sent and does not verify — so the app reads that `401` as a verdict on its token and re-attests.
    */
-  const optionalReader = async (c: Context): Promise<string | null | Response> => {
-    const auth = c.req.header("authorization") ?? "";
+  const optionalReader = async (authorization: string | undefined): Promise<string | null> => {
+    const auth = authorization ?? "";
     if (auth === "") return null;
     const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
     const reader = token ? await verifyToken(config, token, now()) : null;
-    return reader ?? c.text("unattested", 401);
+    return reader ?? refuse(401, "unattested");
   };
   // SHARED: routes whose contract is identical under every version. Mounted into each version's router,
   // so there is one implementation and no possibility of the two drifting apart.
@@ -108,9 +111,7 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // possession-is-capability model. Validates the name, mints a server-side UUID, and INSERTs the row.
   // Faithful outcome: 201 only after the store confirms the write; any failure → 502.
   deviceApi.post("/events", async (c) => {
-    const json = await readJson(c);
-    if (json instanceof Response) return json;
-    const body = json.body;
+    const body = await readJson(c.req);
     const name = validateEventName((body as { name?: unknown } | null)?.name);
     if (name === null) {
       return c.text("invalid name", 400); // missing/empty/whitespace/too long
@@ -160,12 +161,10 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       keyId,
     };
 
-    const inserted = await tryUpstream(
-      c,
+    await tryUpstream(
       `create: event insert failed for ${event.eventId}`,
       () => insertEvent(db, event),
     );
-    if (inserted instanceof Response) return inserted;
     // The row exists — only now is the event created.
     return c.json(publicEvent(event), 201);
   });
@@ -186,16 +185,12 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // send none, and are served until a minimum app version retires them
   // (decision record `changes/separate-event-page-from-device-api`, D7).
   deviceApi.get("/events/:eventId", async (c) => {
-    const eventId = eventParam(c);
-    if (eventId instanceof Response) return eventId;
-    const reader = await optionalReader(c);
-    if (reader instanceof Response) return reader;
-    const event = await gateEvent(db, c, eventId, "metadata");
-    if (event instanceof Response) return event;
+    const eventId = eventParam(c.req.param("eventId"));
+    await optionalReader(c.req.header("authorization"));
+    const event = await gateEvent(db, eventId, "metadata");
     // `members` feeds the ended event's waiting line (capability `sync-status`): how many of the active
     // members have settled what they share. A completed event has none left.
     return await orUpstream502(
-      c,
       `metadata: event read failed for ${eventId}`,
       async () => c.json({ ...publicEvent(event), members: await memberCounts(db, eventId) }),
     );
@@ -220,12 +215,10 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // Concurrent renames are last-write-wins: bunny has no compare-and-set (the same constraint the
   // device-manifest capacity gate reads and writes under). No ordering guarantee is available or claimed.
   deviceApi.patch("/events/:eventId", async (c) => {
-    const eventId = eventParam(c);
-    if (eventId instanceof Response) return eventId;
-    const json = await readJson(c);
-    if (json instanceof Response) return json;
+    const eventId = eventParam(c.req.param("eventId"));
+    const body = await readJson(c.req);
     // The SAME validator the create route uses — one rule for what an event may be called.
-    const name = validateEventName((json.body as { name?: unknown } | null)?.name);
+    const name = validateEventName((body as { name?: unknown } | null)?.name);
     if (name === null) {
       return c.text("invalid name", 400); // missing/empty/whitespace/too long
     }
@@ -233,19 +226,16 @@ export function sharedRoutes(deps: RouteDeps): Hono {
     // The same existence gate the metadata route serves from: absent → 404 (never a partial
     // rewrite of a row the sweep is about to delete); a transport failure → 502, so a
     // transient fault is never mistaken for absence.
-    const current = await gateEvent(db, c, eventId, "rename");
-    if (current instanceof Response) return current;
+    const current = await gateEvent(db, eventId, "rename");
     // A closed event does not change any more, its name included (capability `event-lifetime`).
-    if (current.closedAt) return closedRefusal(c);
+    if (current.closedAt) closedRefusal();
 
     // ONE column. `renameEvent` is a `SET name = ?` and nothing else — see `db.ts`, where the statement
     // is spelled out in one place precisely because widening it is now a one-word edit.
     const written = await tryUpstream(
-      c,
       `rename: update failed for ${eventId}`,
       () => renameEvent(db, eventId, name),
     );
-    if (written instanceof Response) return written;
     // Zero rows means the event was deleted between the gate and the write. Report the absence rather
     // than a success that renamed nothing.
     if (written.rowsAffected === 0) return c.text("event not found", 404);
@@ -265,16 +255,17 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // event (capability `event-lifetime`, "A finished event closes": every member still in it has settled), and
   // wakes the members still in it once, as the publish that closes does.
   deviceApi.delete("/events/:eventId/devices/:deviceId", async (c) => {
-    const ids = eventAndOwnDeviceParams(c, "invalid key");
-    if (ids instanceof Response) return ids;
-    const { eventId, deviceId } = ids;
+    const { eventId, deviceId } = eventAndOwnDeviceParams(
+      c.req.param(),
+      c.get("tokenDeviceId"),
+      "invalid key",
+    );
     const received = c.req.query("received") === "true";
 
     // The lifecycle gate (capability `event-lifetime`): an absent event 404s, which the client already
     // treats as "nothing to leave". A leave DURING grace proceeds: members may still
     // depart an over-but-not-yet-swept event.
-    const event = await gateEvent(db, c, eventId, "leave");
-    if (event instanceof Response) return event;
+    const event = await gateEvent(db, eventId, "leave");
 
     const nowMs = now();
     // A closed event cannot close again, and before the end nothing closes.
@@ -282,7 +273,6 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       ? new Date(nowMs).toISOString()
       : null;
     const closed = await tryUpstream(
-      c,
       `leave: depart failed for ${eventId}/${deviceId}`,
       async () => {
         // ONE column, one batch. Membership is a `state`, so leaving cannot leave a half-applied pair behind
@@ -291,11 +281,10 @@ export function sharedRoutes(deps: RouteDeps): Hono {
         return closeAt !== null && results[results.length - 1].rowsAffected > 0;
       },
     );
-    if (closed instanceof Response) return closed;
     // AFTER the commit, and best-effort: the members still in it must learn the close to finish and leave.
     if (closed) {
-      console.info(`leave: event ${eventId} closed by ${deviceId} leaving`);
-      await notifyMembers(deps, eventId, deviceId, "close");
+      c.var.log.field("closed", true);
+      recordNotify(c.var.log, await notifyMembers(deps, eventId, deviceId, "close"));
     }
     // Always succeed: the event persists (rejoinable while open) regardless of how many members remain,
     // and a leave naming a membership that never existed changes nothing rather than failing.
@@ -326,8 +315,7 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   //     names the reading device in the log; absent, the read is anonymous and nothing about the reader
   //     is kept (capability `privacy-security`, "A web visitor leaves no trace in the event").
   deviceApi.get("/events/:eventId/files", async (c) => {
-    const eventId = eventParam(c);
-    if (eventId instanceof Response) return eventId;
+    const eventId = eventParam(c.req.param("eventId"));
 
     const query = new URL(c.req.url).searchParams;
     const rawCursor = query.get("cursor");
@@ -335,18 +323,16 @@ export function sharedRoutes(deps: RouteDeps): Hono {
     const after = rawCursor === null ? undefined : Number(rawCursor);
     const withUrls = query.get("urls") !== "false";
 
-    const reader = await optionalReader(c);
-    if (reader instanceof Response) return reader;
+    const reader = await optionalReader(c.req.header("authorization"));
     const said = c.req.header(TRIGGER_HEADER) ?? "";
     const trigger = (UNION_TRIGGERS as readonly string[]).includes(said) ? said : null;
 
     // Gate on the event row (`docs/architecture.md`): absent → 404; a store failure → 502. An event past
     // its window still serves its union — the window closes nothing.
-    const event = await gateEvent(db, c, eventId, "union");
-    if (event instanceof Response) return event;
+    await gateEvent(db, eventId, "union");
 
     const version = splitVersion(new URL(c.req.url).pathname).version;
-    return await orUpstream502(c, `union: assembly failed for event ${eventId}`, async () => {
+    return await orUpstream502(`union: assembly failed for event ${eventId}`, async () => {
       // The position FIRST, then the rows (`unionPosition`): a gain that commits in between is served
       // again by the next delta — a duplicate the client dedups — never skipped.
       const position = await unionPosition(db, eventId);
@@ -392,9 +378,15 @@ export function sharedRoutes(deps: RouteDeps): Hono {
           at: new Date(now()).toISOString(),
         });
       } catch (e) {
-        console.error(`union: could not log the read of ${eventId} (best-effort): ${e}`);
+        c.var.log.error(`union: could not log the read of ${eventId} (best-effort): ${e}`);
       }
-      if (reader !== null) await noteAppVersion(c, db, reader, "union");
+      c.var.log.field("served", assets.length);
+      c.var.log.field("trigger", trigger ?? "-");
+      if (reader !== null) {
+        const declared = declaredAppVersion(c.req.url, c.req.header(APP_VERSION_HEADER));
+        const failed = await noteAppVersion(db, reader, declared, "union");
+        if (failed) c.var.log.error(failed);
+      }
 
       c.header("Cache-Control", NO_CACHE); // a `url` may be a time-limited presign; a cursor is a moment
       c.header(CURSOR_HEADER, String(position));
@@ -414,15 +406,14 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // redirect TARGET and never revisits this route (measured), so a shorter one turns a resume after an
   // outage into a restart.
   deviceApi.get("/events/:eventId/files/devices/:deviceId/:assetId/:role", async (c) => {
-    const eventId = eventParam(c);
-    if (eventId instanceof Response) return eventId;
+    const eventId = eventParam(c.req.param("eventId"));
     const deviceId = c.req.param("deviceId");
     const assetId = c.req.param("assetId");
     const role = c.req.param("role");
     if (!validateUUID(deviceId) || !validateFilename(assetId) || !RESOURCE_ROLES.includes(role)) {
       return c.text("not found", 404);
     }
-    return await orUpstream502(c, `download: lookup failed for ${eventId}`, async () => {
+    return await orUpstream502(`download: lookup failed for ${eventId}`, async () => {
       const path = await downloadStoragePath(db, eventId, deviceId, assetId, role);
       c.header("Cache-Control", NO_CACHE);
       if (path === null) return c.text("not found", 404);
@@ -435,13 +426,15 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // device (`docs/architecture.md`); last-write-wins, and it is not a resource, so it never appears in the
   // per-device listing or the union.
   deviceApi.put("/devices/:deviceId", async (c) => {
-    const deviceId = ownDeviceParam(c, "invalid device");
-    if (deviceId instanceof Response) return deviceId;
-    const json = await readJson(c);
-    if (json instanceof Response) return json;
+    const deviceId = ownDeviceParam(
+      c.req.param("deviceId"),
+      c.get("tokenDeviceId"),
+      "invalid device",
+    );
+    const body = await readJson(c.req);
     // A JSON `null` body is no document at all — `invalid body`, like one that is not JSON.
-    if (json.body === null) return c.text("invalid body", 400);
-    const pt = (json.body as { pushToken?: Record<string, unknown> }).pushToken;
+    if (body === null) return c.text("invalid body", 400);
+    const pt = (body as { pushToken?: Record<string, unknown> }).pushToken;
     let push: { kind: string; token: string; env: string } | null;
     if (pt === undefined || pt === null) {
       // An explicit absence: the device is telling us it has no registration. Distinct from a
@@ -457,11 +450,9 @@ export function sharedRoutes(deps: RouteDeps): Hono {
     // An UPDATE, never an insert: a `devices` row exists only where the device has attested, and this
     // route cannot attest on its behalf (capability `privacy-security`).
     const written = await tryUpstream(
-      c,
       `config: device record write failed for ${deviceId}`,
       () => putDeviceRecord(db, deviceId, push, new Date(now()).toISOString()),
     );
-    if (written instanceof Response) return written;
     if (written.rowsAffected === 0) {
       // The token verified — it is ours and unexpired — but we hold no attestation for this device.
       // `401` is the answer because the remedy is the same one a rejected token has, and the shipped
@@ -469,7 +460,7 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       // this registration when a new token arrives. A `201` here would be a silent absence — the device
       // would believe it is reachable while no push could ever reach it, and it writes its registration
       // once per OS-delivered token, so nothing would retry.
-      console.info(`config: no attestation on file for ${deviceId} — refusing the registration`);
+      c.var.log.field("refused", "not-attested");
       return c.text("unattested", 401);
     }
     return c.body(null, 201);

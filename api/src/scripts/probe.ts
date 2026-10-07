@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // The post-deploy BOOT PROBE (`docs/deployment.md`). Runs OUT of the Edge Script — a Deno
 // program deploy.yml's `api` job invokes after `POST /publish`, exactly as `nightly-cleanup.yml` invokes the
 // sweep beside it.

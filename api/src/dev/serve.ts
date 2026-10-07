@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // DEV-ONLY ENTRY POINT for the local backend rig. `deno task dev:local` / `deno task dev:tunnel`.
 //
 // This is a SECOND top-level alongside `src/main.ts`, not a mode of it. `main.ts` is the Edge Scripting
@@ -163,27 +164,10 @@ async function handler(request: Request): Promise<Response> {
   return await app.fetch(request);
 }
 
-// One line per request served (method, path, status, duration), so a client-side timeout can be placed on one side
-// of the wire: `journeys (ios)` keeps this output as evidence. Not in ephemeral mode, whose stdout belongs to the test
-// JVM that launched it and is read only up to the readiness line, so every further line would fill a pipe no one
-// drains.
-async function logged(request: Request): Promise<Response> {
-  const started = performance.now();
-  const { pathname } = new URL(request.url);
-  let status = 0;
-  try {
-    const response = await handler(request);
-    status = response.status;
-    return response;
-  } finally {
-    const ms = Math.round(performance.now() - started);
-    console.log(
-      `${new Date().toISOString()} ${request.method} ${pathname} ${status || "threw"} ${ms}ms`,
-    );
-  }
-}
-
-serveRequest = options.ephemeral ? handler : logged;
+// No logger here: the api writes its own line per request (`request-log.ts`), in this rig exactly as on the
+// edge — the evidence `journeys (ios)` keeps. Ephemeral mode logs too: the test JVM that launched it drains
+// its stdout to the end (`LiveEdge.kt`), so the lines fill no pipe.
+serveRequest = handler;
 
 if (options.ephemeral) {
   // NO host file: `.localdev/host` is how a developer's running rig publishes its origin, and a test run
