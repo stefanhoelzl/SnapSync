@@ -7,6 +7,7 @@ import app.snapsync.android.buildinfo.AndroidBuildInfo
 import app.snapsync.android.download.AndroidDownload
 import app.snapsync.android.gallery.AndroidGallery
 import app.snapsync.android.link.AndroidLinks
+import app.snapsync.android.logging.FileLogSink
 import app.snapsync.android.logging.LogcatSink
 import app.snapsync.android.network.AndroidNetworkMonitor
 import app.snapsync.android.device.AndroidDeviceConditions
@@ -147,7 +148,7 @@ class SnapSyncRoot(internal val application: Application) {
         ProcessPorts(
             crashReporter = ports.crashReporter,
             processMetrics = NoProcessMetrics,
-            logSinks = listOf(LogcatSink()),
+            logSinks = listOf(LogcatSink(), FileLogSink.forApp(application)),
             files = ports.files,
             clock = ports.clock,
             crypto = ports.crypto,

@@ -34,7 +34,7 @@ import java.nio.file.Files as Nio
 class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) : Files {
 
     /** Production: the two areas under the app's `filesDir` (a secondary constructor, not defaults). */
-    constructor(context: Context) : this(File(context.filesDir, "shared"), File(context.filesDir, "private"))
+    constructor(context: Context) : this(File(context.filesDir, "shared"), privateArea(context))
 
     private fun resolve(area: FileArea, path: String): Path =
         File(
@@ -153,5 +153,10 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
         is NoSuchFileException -> FileResult.NotFound
         is AccessDeniedException -> FileResult.Denied("${this::class.simpleName}: $message")
         else -> FileResult.Failed("${this::class.simpleName}: $message")
+    }
+
+    companion object {
+        /** The [FileArea.PRIVATE] directory — also where the process's own log file is written, so the dump can read it. */
+        fun privateArea(context: Context): File = File(context.filesDir, "private")
     }
 }
