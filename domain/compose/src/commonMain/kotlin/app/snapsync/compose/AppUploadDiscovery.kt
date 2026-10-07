@@ -1,10 +1,10 @@
 package app.snapsync.compose
 
-import app.snapsync.services.gallery.WalkMemo
-import app.snapsync.services.gallery.WalkMemoUse
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.gallery.WalkMemo
+import app.snapsync.services.gallery.WalkMemoUse
 import co.touchlab.kermit.Logger
 
 /**

@@ -2,8 +2,8 @@
 
 package app.snapsync.download
 
-import app.snapsync.ios.urlsession.SessionCompletion
 import app.snapsync.ios.upload.applyTransferNetwork
+import app.snapsync.ios.urlsession.SessionCompletion
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry

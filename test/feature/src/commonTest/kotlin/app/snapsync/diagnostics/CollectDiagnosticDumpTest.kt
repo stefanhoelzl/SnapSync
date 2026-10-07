@@ -1,46 +1,43 @@
 package app.snapsync.diagnostics
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
+import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.support.LEDGER_EVENT
-import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.mock.inMemoryFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
-import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.EXTENSION_LOG_FILE_NAME
-import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.ledger.LedgerService
-import app.snapsync.feature.diagnostics.CollectDiagnosticDump
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureDate
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.Direction
-import app.snapsync.model.DiagnosticEnvironment
-import app.snapsync.model.EventConfig
-import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
-import app.snapsync.model.GalleryAccess
-import app.snapsync.services.logs.LogTailService
 import app.snapsync.mock.DeviceConditionsMock
+import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryNetworkMonitor
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.services.settings.MobileDataSetting
+import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.AppFacts
+import app.snapsync.model.AssetId
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DeviceConditionsReading
+import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.DiagnosticKeys
+import app.snapsync.model.Direction
+import app.snapsync.model.EXTENSION_LOG_FILE_NAME
+import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.StandbyBucket
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.services.device.DeviceConditionsReadings
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.network.NetworkReadings
+import app.snapsync.services.settings.MobileDataSetting
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -91,8 +88,12 @@ class CollectDiagnosticDumpTest {
         // The REAL log tail over the two log files: the app's in its private area, the extension's in the shared one.
         logs = LogTailService(
             inMemoryFiles(
-                shared = listOfNotNull(extLog?.let { EXTENSION_LOG_FILE_NAME to it.encodeToByteArray() }).toMap(mutableMapOf()),
-                private = listOfNotNull(appLog?.let { APP_LOG_FILE_NAME to it.encodeToByteArray() }).toMap(mutableMapOf()),
+                shared = listOfNotNull(
+                    extLog?.let { EXTENSION_LOG_FILE_NAME to it.encodeToByteArray() },
+                ).toMap(mutableMapOf()),
+                private = listOfNotNull(
+                    appLog?.let { APP_LOG_FILE_NAME to it.encodeToByteArray() },
+                ).toMap(mutableMapOf()),
             ),
         ),
         ledger = ledger,
@@ -118,8 +119,20 @@ class CollectDiagnosticDumpTest {
         detail = "certificate",
         chain = app.snapsync.model.AttestationChain(
             listOf(
-                app.snapsync.model.CertificateFacts("CN=Intermediate,O=OnePlus", "CN=Root,O=OnePlus", "2019-03-01T00:00:00Z", "2029-03-01T00:00:00Z", "EC 256"),
-                app.snapsync.model.CertificateFacts("CN=Root,O=OnePlus", "CN=Root,O=OnePlus", "2016-01-01T00:00:00Z", "2036-01-01T00:00:00Z", "RSA 4096"),
+                app.snapsync.model.CertificateFacts(
+                    "CN=Intermediate,O=OnePlus",
+                    "CN=Root,O=OnePlus",
+                    "2019-03-01T00:00:00Z",
+                    "2029-03-01T00:00:00Z",
+                    "EC 256",
+                ),
+                app.snapsync.model.CertificateFacts(
+                    "CN=Root,O=OnePlus",
+                    "CN=Root,O=OnePlus",
+                    "2016-01-01T00:00:00Z",
+                    "2036-01-01T00:00:00Z",
+                    "RSA 4096",
+                ),
             ),
             rootKeySha256 = "3c7a00ff",
         ),
@@ -245,7 +258,10 @@ class CollectDiagnosticDumpTest {
     fun `the device's state is written under the report's keys`() = runTest {
         val conditions = DeviceConditionsMock()
         conditions.operator.reading = DeviceConditionsMock.TYPICAL.copy(powerSaving = Fact.Known(true))
-        val dump = collector(network = NetworkAccess.Online(restricted = true), conditions = conditions).collect(NOTE, SCREEN)
+        val dump = collector(
+            network = NetworkAccess.Online(restricted = true),
+            conditions = conditions,
+        ).collect(NOTE, SCREEN)
 
         assertEquals("online_restricted", dump.state[DiagnosticKeys.NETWORK])
         assertEquals("true", dump.state[DiagnosticKeys.POWER_SAVING])
@@ -353,9 +369,13 @@ class CollectDiagnosticDumpTest {
             conditions = conditions,
             appFacts = { AppFacts(failed, failed, failed, failed) },
             environment = DiagnosticEnvironment(
-                appVersion = "10.20", buildNumber = "99999", osVersion = "iOS 26.6.2 (Build 23G100)",
-                deviceModel = "iPhone17,2", uploadTier = "app+extension",
-                uploadBase = "https://snapsync.stho.net/api/v2", reporterEnvironment = "production",
+                appVersion = "10.20",
+                buildNumber = "99999",
+                osVersion = "iOS 26.6.2 (Build 23G100)",
+                deviceModel = "iPhone17,2",
+                uploadTier = "app+extension",
+                uploadBase = "https://snapsync.stho.net/api/v2",
+                reporterEnvironment = "production",
             ),
         ).collect("z".repeat(200), ReportContext("Joined", mapOf(DiagnosticKeys.SHOWN_SHARED to "99999/99999")))
 
@@ -382,8 +402,11 @@ class CollectDiagnosticDumpTest {
 
         assertEquals(
             setOf(
-                "photos_pending", "photos_completed",
-                "downloads_imported", "downloads_assets", "downloads_in_flight",
+                "photos_pending",
+                "photos_completed",
+                "downloads_imported",
+                "downloads_assets",
+                "downloads_in_flight",
             ),
             dump.ledger.keys,
             "the ledger section grew beyond the five existing counts — row lists are unbounded on the " +

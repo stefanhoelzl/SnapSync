@@ -9,8 +9,8 @@ import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.model.EntryScope
 import app.snapsync.model.Handoff
 import app.snapsync.model.invocation
-import app.snapsync.ports.SystemUi
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.SystemUi
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,7 +42,10 @@ class AndroidSystemUi(
         start("openUrl", Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
 
     override fun openSettings() = log.invocation(EntryScope.None, "systemUi.openSettings") {
-        val settings = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", appContext.packageName, null))
+        val settings = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", appContext.packageName, null),
+        )
         runCatchingCancellable { launch(settings) }.onFailure { log.w(it) { "openSettings: the platform refused" } }
         Unit
     }
@@ -60,6 +63,12 @@ class AndroidSystemUi(
 
     private fun launch(intent: Intent) {
         val activity = foreground.current
-        if (activity != null) activity.startActivity(intent) else appContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        if (activity != null) {
+            activity.startActivity(
+                intent,
+            )
+        } else {
+            appContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
     }
 }

@@ -1,7 +1,5 @@
 package app.snapsync.services.backend
 
-import app.snapsync.services.identity.MapSecureStore
-import app.snapsync.services.identity.identityOf
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceFile
@@ -18,11 +16,13 @@ import app.snapsync.model.StoredResource
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
+import app.snapsync.services.identity.MapSecureStore
+import app.snapsync.services.identity.identityOf
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * What each backend answer MEANS to the app — the need-shaped services' mappings, which used to live in one HTTP
@@ -53,13 +53,22 @@ class BackendServicesTest {
 
     @Test
     fun a_legacy_events_millisecond_start_is_normalized_toward_the_earlier_second() = runTest {
-        val found = assertIs<EventLookup.Found>(servicesAnswering(meta(startsAt = "2026-07-01T00:00:00.182Z")).directory.fetch("E"))
+        val found = assertIs<EventLookup.Found>(
+            servicesAnswering(meta(startsAt = "2026-07-01T00:00:00.182Z")).directory.fetch("E"),
+        )
         assertEquals("2026-07-01T00:00:00Z", found.startsAt.at.iso)
     }
 
     @Test
     fun a_served_read_missing_or_blanking_any_field_is_failed_never_an_invented_one() = runTest {
-        for (reply in listOf(meta(name = null), meta(name = "  "), meta(startsAt = null), meta(endsAt = null), meta(deletesAt = null), meta(startsAt = "garbage"))) {
+        for (reply in listOf(
+            meta(name = null),
+            meta(name = "  "),
+            meta(startsAt = null),
+            meta(endsAt = null),
+            meta(deletesAt = null),
+            meta(startsAt = "garbage"),
+        )) {
             assertEquals(EventLookup.Failed, servicesAnswering(reply).directory.fetch("E"), "$reply")
         }
     }
@@ -100,14 +109,26 @@ class BackendServicesTest {
 
     @Test
     fun a_400_is_the_name_unless_it_names_a_date_field() = runTest {
-        assertEquals(CreateOutcome.InvalidName, servicesAnswering(Reply.Refused(400, "invalid name")).creation.create("", "s", null))
-        assertEquals(CreateOutcome.InvalidWindow, servicesAnswering(Reply.Refused(400, "invalid endsAt")).creation.create("n", "s", "e"))
-        assertEquals(CreateOutcome.InvalidWindow, servicesAnswering(Reply.Refused(400, "invalid startsAt")).creation.create("n", "s", "e"))
+        assertEquals(
+            CreateOutcome.InvalidName,
+            servicesAnswering(Reply.Refused(400, "invalid name")).creation.create("", "s", null),
+        )
+        assertEquals(
+            CreateOutcome.InvalidWindow,
+            servicesAnswering(Reply.Refused(400, "invalid endsAt")).creation.create("n", "s", "e"),
+        )
+        assertEquals(
+            CreateOutcome.InvalidWindow,
+            servicesAnswering(Reply.Refused(400, "invalid startsAt")).creation.create("n", "s", "e"),
+        )
     }
 
     @Test
     fun a_create_still_refused_for_its_credential_is_unverified_not_transient() = runTest {
-        assertEquals(CreateOutcome.Unverified, servicesAnswering(Reply.Refused(401, "unattested")).creation.create("n", "s", null))
+        assertEquals(
+            CreateOutcome.Unverified,
+            servicesAnswering(Reply.Refused(401, "unattested")).creation.create("n", "s", null),
+        )
     }
 
     @Test
@@ -119,14 +140,21 @@ class BackendServicesTest {
 
     @Test
     fun a_rename_answers_the_echoed_name_not_the_submitted_one() = runTest {
-        assertEquals(RenameOutcome.Renamed("Echoed"), servicesAnswering(Reply.Ok(EventRenamed("Echoed"))).rename.rename("E", "Asked"))
+        assertEquals(
+            RenameOutcome.Renamed("Echoed"),
+            servicesAnswering(Reply.Ok(EventRenamed("Echoed"))).rename.rename("E", "Asked"),
+        )
     }
 
     @Test
     fun a_rename_400_is_the_name_and_a_404_is_transient_never_event_gone() = runTest {
         assertEquals(RenameOutcome.InvalidName, servicesAnswering(Reply.Refused(400, "")).rename.rename("E", " "))
         assertEquals(RenameOutcome.Transient, servicesAnswering(Reply.Refused(404, "")).rename.rename("E", "n"))
-        assertEquals(RenameOutcome.Transient, servicesAnswering(Reply.Ok(EventRenamed(null))).rename.rename("E", "n"), "no echo is malformed")
+        assertEquals(
+            RenameOutcome.Transient,
+            servicesAnswering(Reply.Ok(EventRenamed(null))).rename.rename("E", "n"),
+            "no echo is malformed",
+        )
         assertEquals(RenameOutcome.Transient, servicesAnswering(offline).rename.rename("E", "n"))
     }
 
@@ -139,7 +167,11 @@ class BackendServicesTest {
         assertEquals(JoinResult.EVENT_NOT_FOUND, servicesAnswering(Reply.Refused(404, "")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(Reply.Refused(500, "")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(offline).join.join("E", "D"))
-        assertEquals(JoinResult.UNVERIFIED, servicesAnswering(Reply.Refused(401, "unattested")).join.join("E", "D"), "a credential refusal")
+        assertEquals(
+            JoinResult.UNVERIFIED,
+            servicesAnswering(Reply.Refused(401, "unattested")).join.join("E", "D"),
+            "a credential refusal",
+        )
     }
 
     @Test
@@ -183,13 +215,17 @@ class BackendServicesTest {
 
     @Test
     fun the_device_listing_recomposes_each_storage_key() = runTest {
-        val listed = servicesAnswering(Reply.Ok(listOf(DeviceFile(AssetId("A"), ResourceRole.PRIMARY, "IMG_1.HEIC")))).deviceFiles.list("E", "D")
+        val listed = servicesAnswering(
+            Reply.Ok(listOf(DeviceFile(AssetId("A"), ResourceRole.PRIMARY, "IMG_1.HEIC"))),
+        ).deviceFiles.list("E", "D")
         assertEquals(listOf(StoredResource("A-primary.heic", AssetId("A"))), listed.getOrThrow())
     }
 
     @Test
     fun a_listing_that_does_not_decode_is_a_permanent_shape_failure_apart_from_a_transient_one() = runTest {
-        assertIs<DeviceListingShapeException>(servicesAnswering(Reply.Malformed("no assetId")).deviceFiles.list("E", "D").exceptionOrNull())
+        assertIs<DeviceListingShapeException>(
+            servicesAnswering(Reply.Malformed("no assetId")).deviceFiles.list("E", "D").exceptionOrNull(),
+        )
         val transient = servicesAnswering(offline).deviceFiles.list("E", "D").exceptionOrNull()
         assertTrue(transient != null && transient !is DeviceListingShapeException)
         val refused = servicesAnswering(Reply.Refused(502, "")).deviceFiles.list("E", "D").exceptionOrNull()

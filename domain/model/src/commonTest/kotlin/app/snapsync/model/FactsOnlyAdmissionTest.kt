@@ -1,8 +1,8 @@
 package app.snapsync.model
 
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.test.runTest
 
 /**
  * **A cheap admission and an expensive one give the same answer** (capability `photo-sharing`).

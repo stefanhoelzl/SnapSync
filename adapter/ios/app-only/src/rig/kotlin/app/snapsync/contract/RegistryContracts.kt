@@ -3,10 +3,10 @@ package app.snapsync.contract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.ExtensionRegistryState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
-import app.snapsync.contracts.ExtensionRegistryState
 import app.snapsync.ios.registry.ExtensionRegistrationApi
 import app.snapsync.ios.registry.PhotoKitExtensionRegistry
 import app.snapsync.ios.registry.PlatformWriteAnswer

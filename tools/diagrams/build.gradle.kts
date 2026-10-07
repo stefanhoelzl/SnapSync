@@ -19,7 +19,6 @@ kover {
     }
 }
 
-
 // Derived architecture diagrams (`docs/architecture.md`): the source-scan generators
 // (zones, ports, flows, DI) and the Mermaid renderer for the module graph. The module graph's
 // MODEL comes from the root project's `architectureModulesDiagram` task (only Gradle can see the

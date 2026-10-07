@@ -41,7 +41,9 @@ internal sealed interface RigBackend {
     fun operator(mocks: JvmMocks): BackendOperator?
 
     /** Why [operation] is unavailable on this backend. */
-    fun unavailable(operation: String): String = "$operation is unavailable on this backend ($name): $UNAVAILABLE_BECAUSE"
+    fun unavailable(
+        operation: String,
+    ): String = "$operation is unavailable on this backend ($name): $UNAVAILABLE_BECAUSE"
 
     companion object {
         fun named(name: String): RigBackend = when (name) {

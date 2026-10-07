@@ -68,20 +68,31 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
                 subject.gallery.albumsById(setOf(album)),
                 "an empty folder is no album, so the core cannot read a fresh one as present",
             )
-            assertEquals(WriteOutcome.Ok, subject.gallery.addToAlbum(album, subject.seeded), "an empty album takes photos")
+            assertEquals(
+                WriteOutcome.Ok,
+                subject.gallery.addToAlbum(album, subject.seeded),
+                "an empty album takes photos",
+            )
             val byId = assertIs<GalleryRead.Read<List<AlbumRecord>>>(subject.gallery.albumsById(setOf(album)))
             assertEquals(listOf(album), byId.value.map { it.id })
             assertEquals(GalleryRead.Read(subject.seeded), subject.gallery.albumMembers(album, start(clauseId)))
         }
 
-        clause("A_MOVED_PHOTO_KEEPS_ITS_ID_AND_IS_NO_CANDIDATE", FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED) { subject ->
+        clause(
+            "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_IS_NO_CANDIDATE",
+            FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
+        ) { subject ->
             val clauseId = "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_IS_NO_CANDIDATE"
             val policy = PhotoLibrary.policy(name, clauseId)
             val before = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(policy))
             assertEquals(subject.seeded, before.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded)
             val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
             val missing = absentAssetId(clauseId)
-            assertEquals(WriteOutcome.Ok, subject.gallery.addToAlbum(album, subject.seeded + missing), "a missing id is skipped")
+            assertEquals(
+                WriteOutcome.Ok,
+                subject.gallery.addToAlbum(album, subject.seeded + missing),
+                "a missing id is skipped",
+            )
             assertEquals(WriteOutcome.Ok, subject.gallery.addToAlbum(album, subject.seeded), "a second move is a no-op")
             val byId = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assetsById(subject.seeded))
             assertEquals(subject.seeded, byId.value.mapTo(mutableSetOf()) { it.assetId }, "each photo keeps its id")

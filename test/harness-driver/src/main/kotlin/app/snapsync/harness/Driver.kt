@@ -8,6 +8,7 @@ import androidx.compose.ui.test.DesktopComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -17,12 +18,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
+import app.snapsync.desktop.MirrorHarnessRoot
 import app.snapsync.desktop.PHONE_TAG
 import app.snapsync.desktop.WORLD_HEIGHT
-import app.snapsync.desktop.MirrorHarnessRoot
 import app.snapsync.desktop.WORLD_WIDTH
 import app.snapsync.desktop.WorldHarnessRoot
 import com.sun.net.httpserver.HttpExchange
@@ -211,7 +211,9 @@ fun main() {
         setContent {
             when (name) {
                 // The world harness attached to a remote control-channel host (`-Psnapsync.attach=<url>`).
-                "mirror" -> MirrorHarnessRoot(requireNotNull(System.getProperty("snapsync.attach")) { "mirror needs -Psnapsync.attach=<url>" })
+                "mirror" -> MirrorHarnessRoot(
+                    requireNotNull(System.getProperty("snapsync.attach")) { "mirror needs -Psnapsync.attach=<url>" },
+                )
                 else -> WorldHarnessRoot()
             }
         }

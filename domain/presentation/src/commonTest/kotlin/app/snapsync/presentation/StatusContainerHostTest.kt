@@ -2,88 +2,84 @@
 
 package app.snapsync.presentation
 
-import app.snapsync.model.ScreenMessage
-import kotlinx.coroutines.test.runCurrent
-import kotlin.time.Duration.Companion.minutes
-import app.snapsync.model.CreateDraftSession
+import app.snapsync.feature.creation.readmodel.CreationFailureReason
+import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
-import app.snapsync.model.step
-import app.snapsync.model.eventStart
-import app.snapsync.model.eventEnd
-import app.snapsync.model.deletesAt
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.EventStart
-import app.snapsync.model.EventEnd
-import app.snapsync.model.DeletesAt
-import app.snapsync.model.CaptureDate
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureCeiling
+import app.snapsync.feature.download.readmodel.DownloadProgress
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.Arrow
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigDecodeResult
+import app.snapsync.model.CreateDraftSession
+import app.snapsync.model.DeletesAt
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Direction
+import app.snapsync.model.DirectionCount
+import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
+import app.snapsync.model.EventCreator
+import app.snapsync.model.EventDetails
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventTiming
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
-import app.snapsync.feature.membership.readmodel.RenameStatus
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.InviteLinkHints
-import app.snapsync.model.decodeEventUrl
-import app.snapsync.model.encodeEventUrl
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.model.DeviceRefusal
-import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.model.EventCreator
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.EventCompletionState
-import app.snapsync.model.UserCommands
-import app.snapsync.model.GalleryAccess
-import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.model.SyncStatus
-import app.snapsync.model.SyncProgress
-import app.snapsync.feature.status.readmodel.SyncStatusSource
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.channels.Channel
-import kotlin.time.Clock
-import kotlin.time.Instant
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
-import org.orbitmvi.orbit.test.testWithInternalState
-import app.snapsync.model.EventDetails
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RenameState
-import app.snapsync.model.SyncHealth
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.SyncCounts
-import app.snapsync.model.DirectionCount
-import app.snapsync.model.EventTiming
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.SyncProgress
+import app.snapsync.model.SyncStatus
 import app.snapsync.model.TimeLeft
-import app.snapsync.model.eventTiming
 import app.snapsync.model.UiState
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.decodeEventUrl
+import app.snapsync.model.deletesAt
+import app.snapsync.model.encodeEventUrl
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
+import app.snapsync.model.eventTiming
+import app.snapsync.model.step
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import org.orbitmvi.orbit.test.testWithInternalState
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 
@@ -97,6 +93,7 @@ private val CEILING = captureCeiling("2026-07-13T14:32:11Z")
 /** The event's end and deletion as these tests save a membership: far away, so neither is ever reached. */
 private val FAR_END = eventEnd("2099-12-31T00:00:00Z")
 private val FAR_DELETION = deletesAt("2099-12-31T00:00:00Z")
+
 // Config seam + store as one fake: save writes the cell, which is exactly how the real Keychain
 // adapter behaves. Defaults to present so the sync-state tests reach the joined layer.
 private val SAMPLE_CONFIG = EventConfig(
@@ -142,7 +139,14 @@ private fun progress(p: Pair<Int, Int>) = DirectionCount.Progress(p.first, p.sec
 
 /** The membership a commit provisions: the cutoff the member confirmed, under the loaded name. */
 private fun committed(cutoff: String, name: String = "Anna's Birthday") =
-    EventConfig(EVENT_ID, name, captureCutoff(cutoff), maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION)
+    EventConfig(
+        EVENT_ID,
+        name,
+        captureCutoff(cutoff),
+        maxPhotoDate = CEILING,
+        endsAt = FAR_END,
+        deletesAt = FAR_DELETION,
+    )
 
 /** The screen showing [layer] with no overlays — what every expectation in this file means. */
 private fun screen(layer: Layer) = UiState(layer)
@@ -192,6 +196,7 @@ private fun syncing(
 
 /** The direction-masking tests' membership: SAMPLE_CONFIG's window, receive-only. */
 private val downloadOnly = SAMPLE_CONFIG.copy(direction = Direction.DownloadOnly)
+
 /** Settled with [shared] of the member's photos shared and nothing to receive. */
 private fun inSync(shared: Int = 0) = joined(SyncHealth.InSync, counts = counts(shared to shared))
 private val joinedLoading get() = joined(SyncHealth.Loading)
@@ -217,7 +222,6 @@ private class FakePermissionSource(
 ) {
     val permission = MutableStateFlow(initial)
 }
-
 
 private class FakeConfig(initial: EventConfig? = SAMPLE_CONFIG) {
     private val flow = MutableStateFlow(initial)
@@ -268,7 +272,6 @@ private fun snapshot(
 /** What the fixed clock below yields as a cutoff — the seed when `createdAt` is absent or unparseable. */
 private val NOW_CUTOFF = CaptureDate("2026-07-09T12:00:00Z")
 
-
 /**
  * The event's window ceiling (`endsAt` / the join `until`), a plausible week-long window after every
  * `startsAt` used below (CUTOFF, and the `2026-07-0x…` literals). Threaded through `JoinLoad.Found`,
@@ -318,8 +321,10 @@ private fun host(
     scope,
     queries = joinDetails(loadJoinDetails),
     commands = testCommands(
-        leave = leave, commitJoin = commitJoin,
-        requestAccess = requester::request, openSettings = requester::openSettings,
+        leave = leave,
+        commitJoin = commitJoin,
+        requestAccess = requester::request,
+        openSettings = requester::openSettings,
     ),
     cutoffFormatter = fixedCutoffFormatter(),
     diagnostics = testDiagnostics(onIntentError = onIntentError),
@@ -336,7 +341,8 @@ private fun TestScope.firstJoinGate(
     onLoad: () -> Unit = {},
     leave: suspend () -> Unit = {},
 ) = host(
-    FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+    FakeSyncStatusSource(SyncStatus.Loading),
+    backgroundScope,
     permission = FakePermissionSource(permission),
     requester = requester,
     configFake = configFake,
@@ -361,17 +367,19 @@ class StatusContainerHostTest {
         val config = FakeConfig(null)
         return StatusContainerHost(
             StatusSources(
-                FakeSyncStatusSource(), permission.permission, config.config,
+                FakeSyncStatusSource(),
+                permission.permission,
+                config.config,
                 creation = MutableStateFlow(creation),
                 foreground = foreground,
-            ), scope,
+            ),
+            scope,
             commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
         )
     }
-
 
     // ── the not-started clock line (capability `sync-status`) ──────────────────────────────
 
@@ -382,7 +390,8 @@ class StatusContainerHostTest {
         eventId = EVENT_ID,
         name = "Anna's Birthday",
         // The floor guarantees this shape: `minPhotoDate == max(chosen, startsAt) == startsAt` pre-start.
-        minPhotoDate = CaptureCutoff(startsAt.at), maxPhotoDate = CEILING,
+        minPhotoDate = CaptureCutoff(startsAt.at),
+        maxPhotoDate = CEILING,
         startsAt = startsAt,
         endsAt = FAR_END,
         deletesAt = FAR_DELETION,
@@ -393,7 +402,8 @@ class StatusContainerHostTest {
         // The snapshot says there is work to do; the clock says the event has not begun. The clock wins,
         // because nothing of this member's CAN be syncing — the floor makes it impossible.
         val host = host(
-            FakeSyncStatusSource(snapshot(pending = 3, total = 5)), backgroundScope,
+            FakeSyncStatusSource(snapshot(pending = 3, total = 5)),
+            backgroundScope,
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(notStartedConfig()),
         )
@@ -406,7 +416,8 @@ class StatusContainerHostTest {
         // member misses the start. Burying it behind the clock line would ambush them with a permission
         // prompt at the very moment the party starts.
         val host = host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
             permission = FakePermissionSource(GalleryAccess.DENIED),
             configFake = FakeConfig(notStartedConfig()),
         )
@@ -419,7 +430,8 @@ class StatusContainerHostTest {
     @Test
     fun `a past event start reduces from the snapshot exactly as before`() = runTest {
         val host = host(
-            FakeSyncStatusSource(snapshot(completed = 5, total = 5)), backgroundScope,
+            FakeSyncStatusSource(snapshot(completed = 5, total = 5)),
+            backgroundScope,
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(SAMPLE_CONFIG), // startsAt defaults to CUTOFF, which precedes now
         )
@@ -431,7 +443,8 @@ class StatusContainerHostTest {
         // The boundary: the comparison is `startsAt > now`, so the start instant itself is NOT "not
         // started" — consistent with the cutoff's own at-or-after (`creationDate >= cutoff`) inclusivity.
         val host = host(
-            FakeSyncStatusSource(snapshot(completed = 0, total = 0)), backgroundScope,
+            FakeSyncStatusSource(snapshot(completed = 0, total = 0)),
+            backgroundScope,
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(notStartedConfig(startsAt = EventStart(NOW_CUTOFF))),
         )
@@ -452,7 +465,8 @@ class StatusContainerHostTest {
         val host = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(snapshot(completed = 0, total = 0)),
-                FakePermissionSource(GalleryAccess.GRANTED).permission, config.config,
+                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                config.config,
             ),
             backgroundScope,
             cutoffFormatter = movableCutoffFormatter(clock),
@@ -476,7 +490,9 @@ class StatusContainerHostTest {
             advanceTimeBy(61_000)
             assertEquals(
                 joined(
-                    SyncHealth.InSync, config = notStartedConfig(), counts = counts(0 to 0),
+                    SyncHealth.InSync,
+                    config = notStartedConfig(),
+                    counts = counts(0 to 0),
                     timing = eventTiming(futureStart, FAR_END, CaptureDate("2026-07-09T18:00:01Z")),
                 ),
                 containerHost.container.stateFlow.value,
@@ -515,12 +531,26 @@ class StatusContainerHostTest {
         direction: Direction,
         download: DownloadProgress = DownloadProgress(0, 0),
     ): StatusContainerHost {
-        val cfg = FakeConfig(EventConfig(EVENT_ID, "Anna's Birthday", CUTOFF, maxPhotoDate = CEILING, direction = direction, endsAt = FAR_END, deletesAt = FAR_DELETION))
+        val cfg =
+            FakeConfig(
+                EventConfig(
+                    EVENT_ID,
+                    "Anna's Birthday",
+                    CUTOFF,
+                    maxPhotoDate = CEILING,
+                    direction = direction,
+                    endsAt = FAR_END,
+                    deletesAt = FAR_DELETION,
+                ),
+            )
         return StatusContainerHost(
             StatusSources(
-                source, FakePermissionSource(GalleryAccess.GRANTED).permission, cfg.config,
+                source,
+                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                cfg.config,
                 download = MutableStateFlow(download),
-            ), scope,
+            ),
+            scope,
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             commands = testCommands(),
@@ -554,7 +584,9 @@ class StatusContainerHostTest {
                 source.value = snapshot(completed = 0, total = 0)
                 expectInternalState(
                     syncing(
-                        up = Arrow.HIDDEN, down = Arrow.PULSING, config = downloadOnly,
+                        up = Arrow.HIDDEN,
+                        down = Arrow.PULSING,
+                        config = downloadOnly,
                         counts = SyncCounts(DirectionCount.Off, progress(2 to 5)),
                     ),
                 )
@@ -571,7 +603,8 @@ class StatusContainerHostTest {
                 source.value = snapshot(completed = 0, total = 0) // contributes nothing → nothing outstanding
                 expectInternalState(
                     joined(
-                        SyncHealth.InSync, config = downloadOnly,
+                        SyncHealth.InSync,
+                        config = downloadOnly,
                         counts = SyncCounts(DirectionCount.Off, progress(5 to 5)),
                     ),
                 )
@@ -604,7 +637,9 @@ class StatusContainerHostTest {
                 // Counted too, not shown as "not sharing": the counts line obeys the same rule as the arrow.
                 expectInternalState(
                     syncing(
-                        up = Arrow.PULSING, down = Arrow.HIDDEN, config = downloadOnly,
+                        up = Arrow.PULSING,
+                        down = Arrow.HIDDEN,
+                        config = downloadOnly,
                         counts = counts(1 to 5, received = 5 to 5),
                     ),
                 )
@@ -623,7 +658,11 @@ class StatusContainerHostTest {
         // Capability `create-event`, "A long absence starts a fresh draft".
         val foreground = MutableStateFlow(ForegroundReturn.NONE)
         val failed = ScreenMessage.CREATE_FAILED
-        createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope, foreground = foreground)
+        createHost(
+            CreationStatus.Failed(CreationFailureReason.SERVER),
+            scope = backgroundScope,
+            foreground = foreground,
+        )
             .testWithInternalState(this) {
                 runOnCreate()
                 foreground.value = ForegroundReturn(1, awayFor = null)
@@ -702,16 +741,36 @@ class StatusContainerHostTest {
         val config = FakeConfig(null)
         val host = StatusContainerHost(
             StatusSources(
-                FakeSyncStatusSource(), FakePermissionSource(GalleryAccess.GRANTED).permission, config.config,
-            ), backgroundScope,
+                FakeSyncStatusSource(),
+                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                config.config,
+            ),
+            backgroundScope,
             commands = testCommands(
                 commitJoin = { join ->
-                    config.save(EventConfig(join.eventId, join.name, minPhotoDate = join.minPhotoDate, maxPhotoDate = CEILING, startsAt = join.startsAt,
-                        direction = join.direction, endsAt = FAR_END, deletesAt = FAR_DELETION))
+                    config.save(
+                        EventConfig(
+                            join.eventId,
+                            join.name,
+                            minPhotoDate = join.minPhotoDate,
+                            maxPhotoDate = CEILING,
+                            startsAt = join.startsAt,
+                            direction = join.direction,
+                            endsAt = FAR_END,
+                            deletesAt = FAR_DELETION,
+                        ),
+                    )
                     JoinCommit.Committed
                 },
             ),
-            queries = joinDetails { JoinLoad.Found("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT) },
+            queries = joinDetails {
+                JoinLoad.Found(
+                    "My Party",
+                    eventStart("2026-07-06T00:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                )
+            },
             cutoffFormatter = fixedCutoffFormatter(),
             diagnostics = testDiagnostics(),
         )
@@ -720,12 +779,26 @@ class StatusContainerHostTest {
             // The create use-case's `onMinted` hook fires exactly this (non-auto-confirmed).
             containerHost.onEventCreated(EVENT_ID)
             // minted → routed into the gate → loaded, offering Join with the event's start as the default.
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "My Party",
+                    eventStart("2026-07-06T00:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             containerHost.confirmJoinAs()
             // Confirm provisions → config present + granted + snapshot total 0 → settled. The state now
             // carries the membership the commit persisted, so the expectation names it.
             expectInternalState(
-                joined(SyncHealth.InSync, config = committed("2026-07-06T00:00:00Z", "My Party"), counts = counts(0 to 0)),
+                joined(
+                    SyncHealth.InSync,
+                    config = committed("2026-07-06T00:00:00Z", "My Party"),
+                    counts = counts(0 to 0),
+                ),
             )
             cancelAndIgnoreRemainingItems()
         }
@@ -738,9 +811,12 @@ class StatusContainerHostTest {
         val creationStatus = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         val host = StatusContainerHost(
             StatusSources(
-                FakeSyncStatusSource(), FakePermissionSource(GalleryAccess.GRANTED).permission,
-                config.config, creation = creationStatus,
-            ), backgroundScope,
+                FakeSyncStatusSource(),
+                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                config.config,
+                creation = creationStatus,
+            ),
+            backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             commands = testCommands(),
@@ -763,7 +839,9 @@ class StatusContainerHostTest {
         host(source, backgroundScope).testWithInternalState(this) {
             runOnCreate()
             source.value = snapshot(completed = 12, total = 47)
-            expectInternalState(syncing(up = Arrow.STATIC, counts = counts(12 to 47))) // rising synced count, no join screen
+            expectInternalState(
+                syncing(up = Arrow.STATIC, counts = counts(12 to 47)),
+            ) // rising synced count, no join screen
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -932,13 +1010,32 @@ class StatusContainerHostTest {
         // A `createdAt` already at second precision round-trips through normalization unchanged
         // (capability `photo-sharing`).
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", eventStart("2026-07-06T14:32:11Z"), ENDS_AT, DELETES_AT) },
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
+            loadJoinDetails = {
+                JoinLoad.Found(
+                    "Anna's Birthday",
+                    eventStart("2026-07-06T14:32:11Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                )
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", eventStart("2026-07-06T14:32:11Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "Anna's Birthday",
+                    eventStart("2026-07-06T14:32:11Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -950,14 +1047,33 @@ class StatusContainerHostTest {
         // fails the load rather than invent one — so the default is simply the event's start. Normalizing
         // a millisecond-bearing value is that source's job now, and is tested there.
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", eventStart("2026-07-04T18:00:00Z"), ENDS_AT, DELETES_AT) },
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
+            loadJoinDetails = {
+                JoinLoad.Found(
+                    "Anna's Birthday",
+                    eventStart("2026-07-04T18:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                )
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             // Note it is NOT NOW_CUTOFF (2026-07-09): the event's own start wins.
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", eventStart("2026-07-04T18:00:00Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "Anna's Birthday",
+                    eventStart("2026-07-04T18:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -969,12 +1085,25 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var committedCutoff: CaptureCutoff? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
-                committedCutoff = join.minPhotoDate; configFake.save(EventConfig(join.eventId, join.name, join.minPhotoDate, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION)); JoinCommit.Committed
+                committedCutoff = join.minPhotoDate
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        join.minPhotoDate,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
+                JoinCommit.Committed
             },
         ).testWithInternalState(this) {
             runOnCreate()
@@ -996,14 +1125,25 @@ class StatusContainerHostTest {
         var seenStartsAt: EventStart? = null
         var seenCutoff: CaptureCutoff? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
                 seenStartsAt = join.startsAt
                 seenCutoff = join.minPhotoDate
-                configFake.save(EventConfig(join.eventId, join.name, join.minPhotoDate, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION))
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        join.minPhotoDate,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
                 JoinCommit.Committed
             },
         ).testWithInternalState(this) {
@@ -1016,7 +1156,11 @@ class StatusContainerHostTest {
             expectInternalState(joined(SyncHealth.Loading, config = committed("2001-01-01T00:00:00Z")))
             cancelAndIgnoreRemainingItems()
         }
-        assertEquals(captureCutoff("2001-01-01T00:00:00Z"), seenCutoff, "the hostile value is passed through, not swallowed")
+        assertEquals(
+            captureCutoff("2001-01-01T00:00:00Z"),
+            seenCutoff,
+            "the hostile value is passed through, not swallowed",
+        )
         assertEquals(EventStart(CUTOFF.at), seenStartsAt, "...alongside the floor that will defeat it")
     }
 
@@ -1025,12 +1169,32 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var committedCutoff: CaptureCutoff? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             inviteLinkHints = InviteLinkHints.Honoured,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", eventStart("2026-07-06T14:32:11Z"), ENDS_AT, DELETES_AT) },
+            loadJoinDetails = {
+                JoinLoad.Found(
+                    "Anna's Birthday",
+                    eventStart("2026-07-06T14:32:11Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                )
+            },
             commitJoin = { join ->
-                committedCutoff = join.minPhotoDate; configFake.save(EventConfig(join.eventId, join.name, join.minPhotoDate, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION)); JoinCommit.Committed
+                committedCutoff = join.minPhotoDate
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        join.minPhotoDate,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
+                JoinCommit.Committed
             },
         ).testWithInternalState(this) {
             runOnCreate()
@@ -1048,14 +1212,33 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         val enrolled = mutableListOf<String>()
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { join -> enrolled += join.eventId; configFake.save(EventConfig(join.eventId, join.name, CUTOFF, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION)); JoinCommit.Committed },
+            commitJoin = { join ->
+                enrolled += join.eventId
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        CUTOFF,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
+                JoinCommit.Committed
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
+            )
             containerHost.confirmJoinAs()
             expectInternalState(joinedLoading) // commit saved config -> present + granted + Loading snapshot
             cancelAndIgnoreRemainingItems()
@@ -1067,10 +1250,15 @@ class StatusContainerHostTest {
     fun `a 404 on details blocks the join with no commit`() = runTest {
         var commits = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.NotFound },
-            commitJoin = { _ -> commits++; JoinCommit.Committed },
+            commitJoin = { _ ->
+                commits++
+                JoinCommit.Committed
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -1087,15 +1275,32 @@ class StatusContainerHostTest {
     fun `a load failure is retryable`() = runTest {
         var attempt = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { if (attempt++ == 0) JoinLoad.Failed else JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
+            loadJoinDetails = {
+                if (attempt++ == 0) {
+                    JoinLoad.Failed
+                } else {
+                    JoinLoad.Found(
+                        "Anna's Birthday",
+                        EventStart(CUTOFF.at),
+                        ENDS_AT,
+                        DELETES_AT,
+                    )
+                }
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             assertJoining(awaitInternalState(), EVENT_ID, JoinPhase.LoadFailed)
             containerHost.onRetryLoad()
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1106,16 +1311,32 @@ class StatusContainerHostTest {
         // retryable one pins a Retry, this one offers only Cancel (capability `join-event`). Collapsed
         // into one step, a member at a full event could press Retry forever with nothing saying why.
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ -> JoinCommit.Full },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
+            )
             containerHost.confirmJoinAs()
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.EventFull, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.EventFull,
+                    "Anna's Birthday",
+                    EventStart(CUTOFF.at),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1123,16 +1344,32 @@ class StatusContainerHostTest {
     @Test
     fun `a failed enrollment leaves a retryable commit-failed state and does not join`() = runTest {
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ -> JoinCommit.Failed },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
+            )
             containerHost.confirmJoinAs()
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.CommitFailed, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.CommitFailed,
+                    "Anna's Birthday",
+                    EventStart(CUTOFF.at),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1141,9 +1378,14 @@ class StatusContainerHostTest {
     fun `re-scanning the already-joined event is a no-op`() = runTest {
         var loads = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(SAMPLE_CONFIG),
-            loadJoinDetails = { loads++; JoinLoad.Found("x", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(SAMPLE_CONFIG),
+            loadJoinDetails = {
+                loads++
+                JoinLoad.Found("x", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -1168,10 +1410,14 @@ class StatusContainerHostTest {
         var loads = 0
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(SAMPLE_CONFIG),
-            loadJoinDetails = { loads++; JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            loadJoinDetails = {
+                loads++
+                JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             val link = encodeEventUrl(EventLinkPayload(other))
@@ -1193,7 +1439,8 @@ class StatusContainerHostTest {
         val third = "33333333-3333-4333-8333-333333333333"
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(SAMPLE_CONFIG),
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
@@ -1218,10 +1465,14 @@ class StatusContainerHostTest {
         var loads = 0
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(SAMPLE_CONFIG),
-            loadJoinDetails = { loads++; JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            loadJoinDetails = {
+                loads++
+                JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             val link = encodeEventUrl(EventLinkPayload(other))
@@ -1245,13 +1496,24 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var joins = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
                 joins++
-                configFake.save(EventConfig(join.eventId, join.name, CUTOFF, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION))
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        CUTOFF,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
                 JoinCommit.Committed
             },
         ).testWithInternalState(this) {
@@ -1277,11 +1539,29 @@ class StatusContainerHostTest {
         val order = mutableListOf<String>()
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { join -> order += "join"; configFake.save(EventConfig(join.eventId, join.name, CUTOFF, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION)); JoinCommit.Committed },
-            leave = { order += "leave"; configFake.clear() },
+            commitJoin = { join ->
+                order += "join"
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        CUTOFF,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
+                JoinCommit.Committed
+            },
+            leave = {
+                order += "leave"
+                configFake.clear()
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
@@ -1307,13 +1587,24 @@ class StatusContainerHostTest {
         var joinedDirection: Direction? = null
         var joinedAlbum: Boolean? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
                 joinedDirection = join.direction
                 joinedAlbum = join.saveToAlbum
-                configFake.save(EventConfig(join.eventId, join.name, CUTOFF, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION))
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        CUTOFF,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
                 JoinCommit.Committed
             },
             leave = { configFake.clear() },
@@ -1325,7 +1616,9 @@ class StatusContainerHostTest {
             skipItems(1)
             // On the join surface the leave revealed: receive-only, album on — unreachable before.
             containerHost.confirmJoinAs(Direction.DownloadOnly, saveToAlbum = true)
-            expectInternalState(joined(SyncHealth.Loading, config = SAMPLE_CONFIG.copy(eventId = other, name = "New Event")))
+            expectInternalState(
+                joined(SyncHealth.Loading, config = SAMPLE_CONFIG.copy(eventId = other, name = "New Event")),
+            )
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(Direction.DownloadOnly, joinedDirection)
@@ -1342,10 +1635,15 @@ class StatusContainerHostTest {
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         var commits = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(SAMPLE_CONFIG),
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(SAMPLE_CONFIG),
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _ -> commits++; JoinCommit.Committed },
+            commitJoin = { _ ->
+                commits++
+                JoinCommit.Committed
+            },
             leave = { /* the clear failed: config stays present, as LeaveEvent's swallow leaves it */ },
         ).testWithInternalState(this) {
             runOnCreate()
@@ -1366,10 +1664,15 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         var commits = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _ -> commits++; JoinCommit.Committed },
+            commitJoin = { _ ->
+                commits++
+                JoinCommit.Committed
+            },
             leave = { configFake.clear() },
         ).testWithInternalState(this) {
             runOnCreate()
@@ -1390,11 +1693,26 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var committed: String? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { join -> committed = join.eventId; configFake.save(EventConfig(join.eventId, join.name, CUTOFF, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION)); JoinCommit.Committed },
+            commitJoin = { join ->
+                committed = join.eventId
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        CUTOFF,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
+                JoinCommit.Committed
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -1414,8 +1732,10 @@ class StatusContainerHostTest {
         val containerHost = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(SyncStatus.Loading),
-                FakePermissionSource(GalleryAccess.GRANTED).permission, FakeConfig(null).config,
-            ), backgroundScope,
+                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakeConfig(null).config,
+            ),
+            backgroundScope,
             queries = joinDetails { JoinLoad.NotFound },
             cutoffFormatter = fixedCutoffFormatter(),
             diagnostics = testDiagnostics(log = { logged.trySend(it) }),
@@ -1442,8 +1762,10 @@ class StatusContainerHostTest {
         val containerHost = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(SyncStatus.Loading),
-                FakePermissionSource(GalleryAccess.GRANTED).permission, FakeConfig(null).config,
-            ), backgroundScope,
+                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakeConfig(null).config,
+            ),
+            backgroundScope,
             queries = joinDetails { JoinLoad.NotFound },
             cutoffFormatter = fixedCutoffFormatter(),
             diagnostics = testDiagnostics(log = { logged.trySend(it) }),
@@ -1465,18 +1787,34 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var committedDirection: Direction? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
                 committedDirection = join.direction
-                configFake.save(EventConfig(join.eventId, join.name, CUTOFF, maxPhotoDate = CEILING, direction = join.direction, endsAt = FAR_END, deletesAt = FAR_DELETION))
+                configFake.save(
+                    EventConfig(
+                        join.eventId,
+                        join.name,
+                        CUTOFF,
+                        maxPhotoDate = CEILING,
+                        direction = join.direction,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
+                )
                 JoinCommit.Committed
             },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
+            )
             containerHost.confirmJoinAs(Direction.DownloadOnly)
             expectInternalState(joined(SyncHealth.Loading, config = downloadOnly))
             cancelAndIgnoreRemainingItems()
@@ -1490,14 +1828,23 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var committedDirection: Direction? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
                 committedDirection = join.direction
                 configFake.save(
-                    EventConfig(EVENT_ID, name = "Anna's Birthday", minPhotoDate = CUTOFF, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION),
+                    EventConfig(
+                        EVENT_ID,
+                        name = "Anna's Birthday",
+                        minPhotoDate = CUTOFF,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
                 )
                 JoinCommit.Committed
             },
@@ -1515,14 +1862,23 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var committedDirection: Direction? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = configFake,
             inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
                 committedDirection = join.direction
                 configFake.save(
-                    EventConfig(EVENT_ID, name = "Anna's Birthday", minPhotoDate = CUTOFF, maxPhotoDate = CEILING, endsAt = FAR_END, deletesAt = FAR_DELETION),
+                    EventConfig(
+                        EVENT_ID,
+                        name = "Anna's Birthday",
+                        minPhotoDate = CUTOFF,
+                        maxPhotoDate = CEILING,
+                        endsAt = FAR_END,
+                        deletesAt = FAR_DELETION,
+                    ),
                 )
                 JoinCommit.Committed
             },
@@ -1591,7 +1947,8 @@ class StatusContainerHostTest {
         val configFake = FakeConfig()
         val containerHost = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, commands = testCommands(leave = { leaves++ }),
+            backgroundScope,
+            commands = testCommands(leave = { leaves++ }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
@@ -1617,7 +1974,8 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val host = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
+            backgroundScope,
+            cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
@@ -1634,7 +1992,8 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         val host = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
+            backgroundScope,
+            cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
@@ -1651,7 +2010,8 @@ class StatusContainerHostTest {
         // bad QR while already joined used to get nothing: the message was set and the joined layer had
         // nowhere to render it. "Nothing happened" and "that code wasn't valid" are different answers.
         val h = host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(SAMPLE_CONFIG),
         )
@@ -1676,7 +2036,8 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val host = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
+            backgroundScope,
+            cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
@@ -1692,7 +2053,8 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val containerHost = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, commands = testCommands(share = { url, title -> shared += url to title }),
+            backgroundScope,
+            commands = testCommands(share = { url, title -> shared += url to title }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
@@ -1711,7 +2073,8 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         val containerHost = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, commands = testCommands(share = { url, title -> shared += url to title }),
+            backgroundScope,
+            commands = testCommands(share = { url, title -> shared += url to title }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
@@ -1755,7 +2118,17 @@ class StatusContainerHostTest {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             val state = awaitInternalState()
-            assertJoining(state, EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                state,
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "My Party",
+                    eventStart("2026-07-06T00:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             assertTrue(state.asksAccessOnJoin(), "a never-asked first join must say its confirm asks for access")
             cancelAndIgnoreRemainingItems()
         }
@@ -1768,8 +2141,12 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         var commits = 0
         firstJoinGate(
-            GalleryAccess.NOT_DETERMINED, requester,
-            commitJoin = { _ -> commits++; JoinCommit.Failed },
+            GalleryAccess.NOT_DETERMINED,
+            requester,
+            commitJoin = { _ ->
+                commits++
+                JoinCommit.Failed
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -1797,13 +2174,27 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         var commits = 0
         firstJoinGate(
-            answered, requester,
-            commitJoin = { _ -> commits++; JoinCommit.Failed },
+            answered,
+            requester,
+            commitJoin = { _ ->
+                commits++
+                JoinCommit.Failed
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             val state = awaitInternalState()
-            assertJoining(state, EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                state,
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "My Party",
+                    eventStart("2026-07-06T00:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             assertFalse(state.asksAccessOnJoin(), "$answered must not announce a dialog")
             containerHost.onConfirmJoin()
             do { val s = awaitInternalState() } while (s.joinStep() != JoinPhase.Detailed.Step.CommitFailed)
@@ -1822,7 +2213,8 @@ class StatusContainerHostTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val requester = SpyRequester()
         firstJoinGate(
-            GalleryAccess.NOT_DETERMINED, requester,
+            GalleryAccess.NOT_DETERMINED,
+            requester,
             configFake = FakeConfig(SAMPLE_CONFIG),
         ).testWithInternalState(this) {
             runOnCreate()
@@ -1830,7 +2222,16 @@ class StatusContainerHostTest {
             expectInternalState(
                 joined(
                     SyncHealth.NeedsAccess(GalleryAccess.NOT_DETERMINED),
-                    PendingSwitch(other, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT)),
+                    PendingSwitch(
+                        other,
+                        phaseAt(
+                            JoinPhase.Detailed.Step.Ready,
+                            "My Party",
+                            eventStart("2026-07-06T00:00:00Z"),
+                            ENDS_AT,
+                            DELETES_AT,
+                        ),
+                    ),
                 ),
             )
             cancelAndIgnoreRemainingItems()
@@ -1849,7 +2250,8 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         var loads = 0
         firstJoinGate(
-            GalleryAccess.NOT_DETERMINED, requester,
+            GalleryAccess.NOT_DETERMINED,
+            requester,
             configFake = configFake,
             onLoad = { loads++ },
             leave = { configFake.clear() },
@@ -1859,7 +2261,17 @@ class StatusContainerHostTest {
             skipItems(1)
             containerHost.onConfirmSwitch()
             val state = awaitInternalState()
-            assertJoining(state, other, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                state,
+                other,
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "My Party",
+                    eventStart("2026-07-06T00:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             assertTrue(state.asksAccessOnJoin())
             cancelAndIgnoreRemainingItems()
         }
@@ -1874,8 +2286,13 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var commits = 0
         firstJoinGate(
-            GalleryAccess.NOT_DETERMINED, requester, configFake = configFake,
-            commitJoin = { _ -> commits++; JoinCommit.Committed },
+            GalleryAccess.NOT_DETERMINED,
+            requester,
+            configFake = configFake,
+            commitJoin = { _ ->
+                commits++
+                JoinCommit.Committed
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -1932,7 +2349,12 @@ class StatusContainerHostTest {
         // problem — and two attention states at once would just be confusing.
         val source = FakeSyncStatusSource()
         val permission = FakePermissionSource(GalleryAccess.GRANTED)
-        host(source, backgroundScope, permission = permission, verification = DeviceVerification(MutableStateFlow(false)))
+        host(
+            source,
+            backgroundScope,
+            permission = permission,
+            verification = DeviceVerification(MutableStateFlow(false)),
+        )
             .testWithInternalState(this) {
                 // Starts Unattested (no token, granted permission); revoking access must OUTRANK it.
                 runOnCreate()
@@ -1942,9 +2364,8 @@ class StatusContainerHostTest {
 
                 expectInternalState(needsAccess(GalleryAccess.DENIED))
                 cancelAndIgnoreRemainingItems()
-}
+            }
     }
-
 }
 
 /**
@@ -1958,8 +2379,12 @@ class StatusContainerHostJoinGateTest {
     fun `a confirm with both switches off joins nothing`() = runTest {
         var commits = 0
         firstJoinGate(
-            GalleryAccess.GRANTED, SpyRequester(),
-            commitJoin = { _ -> commits++; JoinCommit.Failed },
+            GalleryAccess.GRANTED,
+            SpyRequester(),
+            commitJoin = { _ ->
+                commits++
+                JoinCommit.Failed
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -1981,14 +2406,30 @@ class StatusContainerHostJoinGateTest {
         // Capability `join-event`: the message shows on WHATEVER screen the user is on — the open join
         // screen included — and a damaged link changes nothing, so the pending join stays exactly as it was.
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", eventStart("2026-07-04T18:00:00Z"), ENDS_AT, DELETES_AT) },
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
+            loadJoinDetails = {
+                JoinLoad.Found(
+                    "Anna's Birthday",
+                    eventStart("2026-07-04T18:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                )
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))).join()
             runCurrent()
-            val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", eventStart("2026-07-04T18:00:00Z"), ENDS_AT, DELETES_AT)
+            val ready =
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "Anna's Birthday",
+                    eventStart("2026-07-04T18:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                )
             assertJoining(containerHost.container.stateFlow.value, EVENT_ID, ready)
 
             containerHost.onOpenUrl("not a config link").join()
@@ -2025,7 +2466,9 @@ class StatusContainerHostJoinGateTest {
     fun `a commit that throws after the membership was persisted lands on the joined screen`() = runTest {
         val configFake = FakeConfig(null)
         firstJoinGate(
-            GalleryAccess.GRANTED, SpyRequester(), configFake = configFake,
+            GalleryAccess.GRANTED,
+            SpyRequester(),
+            configFake = configFake,
             // Exactly what `Provision` does: persist at step 2, then fail in one of the steps that follow.
             commitJoin = { _ ->
                 configFake.save(SAMPLE_CONFIG)
@@ -2034,7 +2477,17 @@ class StatusContainerHostJoinGateTest {
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "My Party",
+                    eventStart("2026-07-06T00:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             containerHost.confirmJoinAs()
             // The pending join is discarded, so the persisted config alone decides the state: the joined
             // layer, with no overlay and no spinner. `Committing` conflates away — nothing here suspends.
@@ -2046,15 +2499,37 @@ class StatusContainerHostJoinGateTest {
     @Test
     fun `a commit that throws before the membership was persisted stays retryable`() = runTest {
         firstJoinGate(
-            GalleryAccess.GRANTED, SpyRequester(), configFake = FakeConfig(null),
+            GalleryAccess.GRANTED,
+            SpyRequester(),
+            configFake = FakeConfig(null),
             commitJoin = { _ -> throw IllegalStateException("enroll blew up") },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "My Party",
+                    eventStart("2026-07-06T00:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             containerHost.confirmJoinAs()
             // The retryable phase, not a parked `Committing` spinner with no button on it.
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.CommitFailed, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.CommitFailed,
+                    "My Party",
+                    eventStart("2026-07-06T00:00:00Z"),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -2067,7 +2542,8 @@ class StatusContainerHostJoinGateTest {
     @Test
     fun `a details load that throws is retryable rather than a parked spinner`() = runTest {
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
             configFake = FakeConfig(null),
             loadJoinDetails = { throw IllegalStateException("the details client threw") },
         ).testWithInternalState(this) {
@@ -2111,8 +2587,11 @@ class StatusContainerHostJoinGateTest {
             try {
                 val host = StatusContainerHost(
                     StatusSources(
-                        FakeSyncStatusSource(), FakePermissionSource().permission, FakeConfig().config,
-                    ), scope,
+                        FakeSyncStatusSource(),
+                        FakePermissionSource().permission,
+                        FakeConfig().config,
+                    ),
+                    scope,
                     commands = testCommands(
                         leave = { throw boom },
                         requestAccess = { laterCommandRan.complete(Unit) },
@@ -2164,15 +2643,23 @@ class ClosedEventJoinTest {
     fun `a closed event is refused at load with no commit`() = runTest {
         var commits = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
             loadJoinDetails = {
                 JoinLoad.Found(
-                    "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT,
+                    "Anna's Birthday",
+                    EventStart(CUTOFF.at),
+                    ENDS_AT,
+                    DELETES_AT,
                     EventCompletionState(closed = true, completed = false),
                 )
             },
-            commitJoin = { _ -> commits++; JoinCommit.Committed },
+            commitJoin = { _ ->
+                commits++
+                JoinCommit.Committed
+            },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -2186,14 +2673,20 @@ class ClosedEventJoinTest {
     @Test
     fun `an event that closes before the confirm lands on the closed phase`() = runTest {
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ -> JoinCommit.Closed },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
+            )
             containerHost.confirmJoinAs()
             assertJoining(awaitInternalState(), EVENT_ID, JoinPhase.Closed)
             cancelAndIgnoreRemainingItems()
@@ -2217,7 +2710,8 @@ class StatusContainerHostJoinedFactsTest {
         val host = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(snapshot(completed = 3, total = 3)),
-                FakePermissionSource(GalleryAccess.GRANTED).permission, FakeConfig(running).config,
+                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakeConfig(running).config,
             ),
             backgroundScope,
             cutoffFormatter = movableCutoffFormatter(clock),
@@ -2248,7 +2742,9 @@ class StatusContainerHostJoinedFactsTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         StatusContainerHost(
             StatusSources(
-                source, FakePermissionSource(GalleryAccess.GRANTED).permission, FakeConfig().config,
+                source,
+                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakeConfig().config,
                 download = MutableStateFlow(DownloadProgress(40, 52, inFlight = 1)),
             ),
             backgroundScope,
@@ -2257,16 +2753,17 @@ class StatusContainerHostJoinedFactsTest {
             commands = testCommands(),
             diagnostics = testDiagnostics(),
         ).testWithInternalState(this) {
-                runOnCreate()
-                source.value = snapshot(completed = 12, total = 15)
-                expectInternalState(
-                    syncing(
-                        up = Arrow.STATIC, down = Arrow.PULSING,
-                        counts = counts(12 to 15, received = 40 to 52),
-                    ),
-                )
-                cancelAndIgnoreRemainingItems()
-            }
+            runOnCreate()
+            source.value = snapshot(completed = 12, total = 15)
+            expectInternalState(
+                syncing(
+                    up = Arrow.STATIC,
+                    down = Arrow.PULSING,
+                    counts = counts(12 to 15, received = 40 to 52),
+                ),
+            )
+            cancelAndIgnoreRemainingItems()
+        }
     }
 }
 
@@ -2288,18 +2785,20 @@ class StatusContainerHostRefusalTest {
         val config = FakeConfig(null)
         return StatusContainerHost(
             StatusSources(
-                FakeSyncStatusSource(), permission.permission, config.config,
+                FakeSyncStatusSource(),
+                permission.permission,
+                config.config,
                 creation = MutableStateFlow(creation),
                 foreground = foreground,
                 verification = DeviceVerification(refusal = refusal),
-            ), scope,
+            ),
+            scope,
             commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
         )
     }
-
 
     // ---- a refused phone (capability `create-event`, "The front screen tells a refused phone before it tries") ----
 
@@ -2325,10 +2824,14 @@ class StatusContainerHostRefusalTest {
     @Test
     fun `a create refused for this phone says why - and without a verdict that the server could not be reached`() = runTest {
         val unverified = CreationStatus.Failed(CreationFailureReason.UNVERIFIED)
-        val told = createHost(unverified, scope = backgroundScope, refusal = MutableStateFlow(DeviceRefusal.APP_NOT_GENUINE))
+        val told =
+            createHost(unverified, scope = backgroundScope, refusal = MutableStateFlow(DeviceRefusal.APP_NOT_GENUINE))
         assertEquals(screen(Layer.CreateEvent(error = ScreenMessage.APP_NOT_GENUINE)), told.container.stateFlow.value)
         val noVerdict = createHost(unverified, scope = backgroundScope)
-        assertEquals(screen(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)), noVerdict.container.stateFlow.value)
+        assertEquals(
+            screen(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)),
+            noVerdict.container.stateFlow.value,
+        )
     }
 
     @Test
@@ -2336,8 +2839,10 @@ class StatusContainerHostRefusalTest {
         // Capability `join-event`, "A refused phone is told why it cannot join".
         var joins = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             // Refused, then — the service having stopped refusing — accepted on the Retry.
             commitJoin = { _ -> if (joins++ == 0) JoinCommit.Unverified else JoinCommit.Committed },
@@ -2345,9 +2850,19 @@ class StatusContainerHostRefusalTest {
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
+            )
             containerHost.confirmJoinAs()
-            val refused = phaseAt(JoinPhase.Detailed.Step.DeviceRefused, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+            val refused = phaseAt(
+                JoinPhase.Detailed.Step.DeviceRefused,
+                "Anna's Birthday",
+                EventStart(CUTOFF.at),
+                ENDS_AT,
+                DELETES_AT,
+            )
                 .copy(refusal = ScreenMessage.DEVICE_MODIFIED)
             assertJoining(awaitInternalState(), EVENT_ID, refused)
             containerHost.onRetryJoin()
@@ -2363,16 +2878,32 @@ class StatusContainerHostRefusalTest {
     @Test
     fun `a join refused for this phone with no verdict is the ordinary retryable failure`() = runTest {
         host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            FakeSyncStatusSource(SyncStatus.Loading),
+            backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ -> JoinCommit.Unverified },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
+            )
             containerHost.confirmJoinAs()
-            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.CommitFailed, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            assertJoining(
+                awaitInternalState(),
+                EVENT_ID,
+                phaseAt(
+                    JoinPhase.Detailed.Step.CommitFailed,
+                    "Anna's Birthday",
+                    EventStart(CUTOFF.at),
+                    ENDS_AT,
+                    DELETES_AT,
+                ),
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -2383,7 +2914,11 @@ class StatusContainerHostRefusalTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val attested = MutableStateFlow(true)
         val refusal = MutableStateFlow<DeviceRefusal?>(null)
-        host(source, backgroundScope, verification = DeviceVerification(attested, refusal)).testWithInternalState(this) {
+        host(
+            source,
+            backgroundScope,
+            verification = DeviceVerification(attested, refusal),
+        ).testWithInternalState(this) {
             runOnCreate()
             source.value = snapshot(pending = 5, completed = 0, total = 5)
             expectInternalState(syncing(up = Arrow.PULSING, counts = counts(0 to 5)))
@@ -2394,5 +2929,4 @@ class StatusContainerHostRefusalTest {
             cancelAndIgnoreRemainingItems()
         }
     }
-
 }

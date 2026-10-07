@@ -1,10 +1,10 @@
 package app.snapsync.model
 
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.Json
 
 /** The counts line's value (capability `sync-status`): complete when every photo went through. */
 class SyncCountsTest {

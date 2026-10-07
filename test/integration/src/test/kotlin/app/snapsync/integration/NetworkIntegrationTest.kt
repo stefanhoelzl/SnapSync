@@ -106,11 +106,15 @@ class NetworkIntegrationTest {
         awaitCreateNotice(NetworkNotice.OFFLINE)
 
         openLink(inviteLink(event))
-        val waiting = awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.LoadFailed }.ui.layer as Layer.JoiningEvent
+        val waiting = awaitState {
+            (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.LoadFailed
+        }.ui.layer as Layer.JoiningEvent
         assertEquals(NetworkNotice.OFFLINE, waiting.network)
 
         network("online")
-        val loaded = awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }.ui.layer as Layer.JoiningEvent
+        val loaded = awaitState {
+            (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed
+        }.ui.layer as Layer.JoiningEvent
         assertEquals(null, loaded.network)
     }
 

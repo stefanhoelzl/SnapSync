@@ -22,8 +22,12 @@ class InviteLinkHintsIntegrationTest {
     /** Every hint the decoder accepts, set to its most damaging value. */
     private fun craftedLink(eventId: String) = encodeEventUrl(
         EventLinkPayload(
-            eventId, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z",
-            maxPhotoDate = "2099-01-01T00:00:00Z", direction = "upload", saveToAlbum = true,
+            eventId,
+            autoJoin = true,
+            minPhotoDate = "2001-01-01T00:00:00Z",
+            maxPhotoDate = "2099-01-01T00:00:00Z",
+            direction = "upload",
+            saveToAlbum = true,
         ),
     )
 
@@ -54,7 +58,11 @@ class InviteLinkHintsIntegrationTest {
         openLink(craftedLink(invited))
 
         val joined = awaitState { it.joined?.pendingSwitch != null }.joined!!
-        assertEquals(invited, joined.pendingSwitch?.eventId, "the switch confirmation, exactly as for an unhinted invite")
+        assertEquals(
+            invited,
+            joined.pendingSwitch?.eventId,
+            "the switch confirmation, exactly as for an unhinted invite",
+        )
         assertEquals(current, joined.membership.eventId, "the current event was not left")
         assertFalse(state().ready.eventId == invited)
         assertNull(manifest(invited), "no enrolment without a tap")

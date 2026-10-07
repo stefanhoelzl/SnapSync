@@ -1,10 +1,10 @@
 package app.snapsync.android.process
 
-import app.snapsync.model.runCatchingCancellable
 import android.content.Context
 import android.os.UserManager
 import app.snapsync.model.Availability
 import app.snapsync.model.MemoryFootprint
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.ProcessInfo
 
 /**

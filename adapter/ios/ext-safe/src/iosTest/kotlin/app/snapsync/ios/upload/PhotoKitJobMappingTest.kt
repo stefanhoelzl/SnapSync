@@ -39,7 +39,9 @@ class PhotoKitJobMappingTest {
     private fun request(url: String): NSURLRequest = NSURLRequest.requestWithURL(NSURL.URLWithString(url)!!)
 
     private fun request(url: String, contentType: String): NSURLRequest =
-        NSMutableURLRequest(uRL = NSURL.URLWithString(url)!!).apply { setValue(contentType, forHTTPHeaderField = "Content-Type") }
+        NSMutableURLRequest(
+            uRL = NSURL.URLWithString(url)!!,
+        ).apply { setValue(contentType, forHTTPHeaderField = "Content-Type") }
 
     private fun nsError(domain: String, code: Long): NSError = NSError.errorWithDomain(domain, code, userInfo = null)
 
@@ -63,7 +65,9 @@ class PhotoKitJobMappingTest {
         // Under the v2 route the last segment is the ROLE; nothing is read out of it.
         assertEquals(
             "/api/v2/files/devices/D/ABC-123/primary",
-            photoKitDestinationPath(request("https://edge.example/api/v2/files/devices/D/ABC-123/primary?filename=IMG_1.HEIC")),
+            photoKitDestinationPath(
+                request("https://edge.example/api/v2/files/devices/D/ABC-123/primary?filename=IMG_1.HEIC"),
+            ),
         )
     }
 

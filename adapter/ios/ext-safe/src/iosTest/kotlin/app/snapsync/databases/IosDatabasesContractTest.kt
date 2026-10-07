@@ -27,7 +27,12 @@ class IosDatabasesContractTest {
     private val binding = object : Binding<DatabasesState, Databases> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
-        override val reaches = setOf(DatabasesState.ABSENT, DatabasesState.CURRENT, DatabasesState.OLD, DatabasesState.UNOPENABLE)
+        override val reaches = setOf(
+            DatabasesState.ABSENT,
+            DatabasesState.CURRENT,
+            DatabasesState.OLD,
+            DatabasesState.UNOPENABLE,
+        )
         override fun create(state: DatabasesState, clauseId: String): Entered<Databases> {
             val dir = newTempDirectory()
             val databases = IosDatabases(dir)
@@ -36,7 +41,10 @@ class IosDatabasesContractTest {
                 DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)
                 DatabasesState.UNOPENABLE ->
-                    writeTextFile("$dir/${DatabasesContract.NAME}", "this is not a database, and it is long enough to have a header\n".repeat(8))
+                    writeTextFile(
+                        "$dir/${DatabasesContract.NAME}",
+                        "this is not a database, and it is long enough to have a header\n".repeat(8),
+                    )
             }
             return Entered.Ready(databases) { removeDirectory(dir) }
         }
@@ -56,14 +64,21 @@ class IosDatabasesContractTest {
         withTempDirectory { dir ->
             val opened = IosDatabases(dir).open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = false)
             assertIs<DbOpen.Opened>(opened).driver.close()
-            assertTrue(fileExists("$dir/${DatabasesContract.NAME}"), "a driver that ignored the base path shares nothing")
+            assertTrue(
+                fileExists("$dir/${DatabasesContract.NAME}"),
+                "a driver that ignored the base path shares nothing",
+            )
         }
     }
 
     /** A build without the App-Group entitlement fails every open, naming it — never a private database. */
     @Test
     fun `no container fails every open`() {
-        assertIs<DbOpen.Failed>(IosDatabases(null).open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = false))
-        assertIs<DbOpen.Failed>(IosDatabases(null).open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = true))
+        assertIs<DbOpen.Failed>(
+            IosDatabases(null).open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = false),
+        )
+        assertIs<DbOpen.Failed>(
+            IosDatabases(null).open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = true),
+        )
     }
 }

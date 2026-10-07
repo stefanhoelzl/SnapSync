@@ -32,7 +32,12 @@ internal actual fun newInMemoryDriver(): SqlDriver = NativeSqliteDriver(
 // (`PRAGMA user_version`, as for the in-memory ones), so SQLiter is told not to check it.
 @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 internal actual fun newFileDriver(directory: String, name: String): SqlDriver {
-    NSFileManager.defaultManager.createDirectoryAtPath(directory, withIntermediateDirectories = true, attributes = null, error = null)
+    NSFileManager.defaultManager.createDirectoryAtPath(
+        directory,
+        withIntermediateDirectories = true,
+        attributes = null,
+        error = null,
+    )
     return NativeSqliteDriver(
         createDatabaseManager(
             DatabaseConfiguration(

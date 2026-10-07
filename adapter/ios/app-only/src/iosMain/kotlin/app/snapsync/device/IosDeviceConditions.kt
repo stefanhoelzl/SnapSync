@@ -7,7 +7,6 @@ import app.snapsync.model.Fact
 import app.snapsync.model.Thermal
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceConditions
-import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSProcessInfo
@@ -18,6 +17,7 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIBackgroundRefreshStatus
 import platform.UIKit.UIDevice
 import platform.UIKit.UIDeviceBatteryState
+import kotlin.math.roundToInt
 
 /**
  * The iOS [DeviceConditions] of the app process (capability `privacy-security`): Low Power Mode and the thermal state
@@ -73,7 +73,11 @@ private class MainThreadFacts(
 }
 
 private inline fun <T> fact(read: () -> T): Fact<T> =
-    runCatchingCancellable { Fact.Known(read()) }.getOrElse { Fact.Failed(it.message ?: it::class.simpleName.orEmpty()) }
+    runCatchingCancellable {
+        Fact.Known(
+            read(),
+        )
+    }.getOrElse { Fact.Failed(it.message ?: it::class.simpleName.orEmpty()) }
 
 // Each table names every case the SDK declares. Tables rather than `when`: the metadata compile sees these as `expect`
 // enums and demands an `else`, which each target's compile then rejects as redundant — and a case Apple adds later

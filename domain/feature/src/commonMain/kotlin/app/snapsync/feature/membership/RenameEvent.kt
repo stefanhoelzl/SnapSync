@@ -1,13 +1,12 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.services.config.ConfigService
-import app.snapsync.services.backend.EventRename
-import app.snapsync.model.RenameOutcome
-
-import co.touchlab.kermit.Logger
-import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.model.RenameOutcome
+import app.snapsync.services.backend.EventRename
+import app.snapsync.services.config.ConfigService
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * The **rename** use-case (capability `manage-membership`): change the event's name for **every** member,

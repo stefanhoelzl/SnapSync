@@ -2,8 +2,8 @@ package app.snapsync.contracts
 
 import app.snapsync.model.MintRequest
 import app.snapsync.model.ProofFormat
-import app.snapsync.model.Reply
 import app.snapsync.model.RenewRequest
+import app.snapsync.model.Reply
 import app.snapsync.ports.Backend
 import kotlin.test.assertIs
 import kotlin.test.assertIsNot
@@ -23,7 +23,6 @@ import kotlin.test.assertTrue
  * for any bytes — or over any challenge — fails here rather than passing by accident.
  */
 internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
-
     clause("ATTEST_A_CHALLENGE_IS_ISSUED", BackendState.SERVING) { s ->
         assertTrue(assertOk(s.port.challenge(), "the ungated challenge route answers").isNotBlank())
     }
@@ -31,7 +30,10 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
     clause("ATTEST_A_FORGED_ATTESTATION_IS_REFUSED", BackendState.SERVING) { s ->
         val challenge = assertOk(s.port.challenge())
         val forged = "not an attestation".encodeToByteArray()
-        assertIs<Reply.Refused>(s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, ProofFormat.APP_ATTEST, forged, challenge)), "no token for a forgery")
+        assertIs<Reply.Refused>(
+            s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, ProofFormat.APP_ATTEST, forged, challenge)),
+            "no token for a forgery",
+        )
     }
 
     clause("ATTEST_A_FORGED_ANDROID_KEY_ATTESTATION_IS_REFUSED", BackendState.SERVING) { s ->
@@ -56,7 +58,10 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
     clause("ATTEST_AN_UNATTESTED_DEVICE_CANNOT_RENEW", BackendState.SERVING) { s ->
         val challenge = assertOk(s.port.challenge())
         val assertion = "assertion:$KEY_ID:$challenge".encodeToByteArray()
-        assertIsNot<Reply.Ok<*>>(s.port.renewToken(RenewRequest(s.seeded.deviceId, assertion, challenge)), "renewal needs an enrolment")
+        assertIsNot<Reply.Ok<*>>(
+            s.port.renewToken(RenewRequest(s.seeded.deviceId, assertion, challenge)),
+            "renewal needs an enrolment",
+        )
     }
 }
 

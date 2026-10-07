@@ -22,11 +22,16 @@ class ZoneFeatureBlindnessTest {
                 when (ZoneGates.zoneOf(ref)) {
                     "model", "ports", "services" -> null
                     "feature" ->
-                        if (ZoneGates.featureOfRef(ref) == own) null
-                        else ZoneGates.violation(
-                            file, line, ref,
-                            "feature/$own must not reference sibling feature/${ZoneGates.featureOfRef(ref)}",
-                        )
+                        if (ZoneGates.featureOfRef(ref) == own) {
+                            null
+                        } else {
+                            ZoneGates.violation(
+                                file,
+                                line,
+                                ref,
+                                "feature/$own must not reference sibling feature/${ZoneGates.featureOfRef(ref)}",
+                            )
+                        }
                     else -> ZoneGates.violation(file, line, ref, "features reference only model/, ports/ and services/")
                 }
             }

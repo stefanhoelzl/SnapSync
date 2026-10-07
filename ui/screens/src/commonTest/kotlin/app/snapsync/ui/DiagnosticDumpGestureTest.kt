@@ -2,46 +2,39 @@
 
 package app.snapsync.ui
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.Layer
-import app.snapsync.model.Overlays
-import app.snapsync.model.PendingSwitch
-
-import app.snapsync.model.eventEnd
-
-import app.snapsync.model.eventStart
-
-import app.snapsync.model.captureCeiling
-
-import app.snapsync.model.captureCutoff
-
-import app.snapsync.model.EventConfig
-
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.v2.runComposeUiTest
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.doubleClick
-import app.snapsync.presentation.CutoffFormatter
+import androidx.compose.ui.test.v2.runComposeUiTest
+import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.Overlays
+import app.snapsync.model.PendingSwitch
+import app.snapsync.model.ReportDestination
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlinx.datetime.TimeZone
-import kotlin.time.Instant
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.save
+import kotlinx.datetime.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.time.Instant
 
 /**
  * The hidden bug-report affordance (capability `privacy-security`).
@@ -76,7 +69,10 @@ class DiagnosticDumpGestureTest {
             TestStatusScreen(
                 UiState(Layer.CreateEvent()),
                 cutoff = fixedCutoff(),
-                actions = testActions(onSendDiagnostics = { _, _ -> }, surfaces = testSurfaceActions(onReportBugOpen = { opened++ })),
+                actions = testActions(
+                    onSendDiagnostics = { _, _ -> },
+                    surfaces = testSurfaceActions(onReportBugOpen = { opened++ }),
+                ),
             )
         }
 
@@ -100,7 +96,10 @@ class DiagnosticDumpGestureTest {
         var sent = 0
         setContent {
             TestStatusScreen(
-                reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = { _, _ -> sent++ }))
+                reporting(Layer.CreateEvent()),
+                cutoff = fixedCutoff(),
+                actions = testActions(onSendDiagnostics = { _, _ -> sent++ }),
+            )
         }
 
         onNodeWithText(str(Res.string.report_send)).assertIsNotEnabled()
@@ -115,7 +114,10 @@ class DiagnosticDumpGestureTest {
         var sent = 0
         setContent {
             TestStatusScreen(
-                reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = { _, _ -> sent++ }))
+                reporting(Layer.CreateEvent()),
+                cutoff = fixedCutoff(),
+                actions = testActions(onSendDiagnostics = { _, _ -> sent++ }),
+            )
         }
 
         onNodeWithText(placeholder).performTextInput("   ")
@@ -135,7 +137,7 @@ class DiagnosticDumpGestureTest {
                 actions = testActions(
                     onSendDiagnostics = { note, screen -> sent += note to screen },
                     surfaces = testSurfaceActions(onReportBugDismiss = { dismissed++ }),
-                )
+                ),
             )
         }
 
@@ -204,7 +206,7 @@ class DiagnosticDumpGestureTest {
                 cutoff = fixedCutoff(),
                 actions = testActions(
                     onSendDiagnostics = { _, screen -> sent += screen },
-                )
+                ),
             )
         }
 
@@ -221,7 +223,10 @@ class DiagnosticDumpGestureTest {
         // control, and would put the hidden affordance into the accessibility tree.
         setContent {
             TestStatusScreen(
-                UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = { _, _ -> }))
+                UiState(Layer.CreateEvent()),
+                cutoff = fixedCutoff(),
+                actions = testActions(onSendDiagnostics = { _, _ -> }),
+            )
         }
 
         onNodeWithText(navLabel).assert(
@@ -239,10 +244,9 @@ class DiagnosticDumpGestureTest {
                 cutoff = fixedCutoff(),
                 actions = testActions(
                     onSendDiagnostics = { _, _ -> },
-                )
+                ),
             )
         }
-
 
         onNodeWithText(sheetTitle).assertExists()
     }

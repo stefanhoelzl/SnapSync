@@ -1,17 +1,17 @@
 package app.snapsync.ui.components
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performFirstLinkClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
+import org.junit.Rule
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import org.junit.Rule
 
 /**
  * The joined screen's explanation row and the invite's QR sheet (capabilities `sync-status`,

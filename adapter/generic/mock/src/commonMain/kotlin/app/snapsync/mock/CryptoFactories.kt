@@ -15,7 +15,10 @@ private class FakeCrypto : Crypto {
 
     override fun randomBytes(count: Int): ByteArray = stream(longArrayOf(++draws, 0x5eed), count)
 
-    override fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray = stream(mix(key) + mix(message), HASH_LENGTH)
+    override fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray = stream(
+        mix(key) + mix(message),
+        HASH_LENGTH,
+    )
 
     override fun aesGcmSeal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray {
         val pad = stream(mix(key) + mix(nonce), plaintext.size)

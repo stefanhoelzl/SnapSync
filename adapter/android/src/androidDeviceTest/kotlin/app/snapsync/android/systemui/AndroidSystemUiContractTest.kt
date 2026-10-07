@@ -16,9 +16,9 @@ import app.snapsync.contracts.verify
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
 import app.snapsync.ports.SystemUi
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.test.runTest
 
 /**
  * The system-UI contracts against [AndroidSystemUi] — started as a new task, as with no activity in front — and the

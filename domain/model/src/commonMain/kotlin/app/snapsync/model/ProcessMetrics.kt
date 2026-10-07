@@ -139,7 +139,11 @@ fun processMetricEmissions(report: ProcessMetricReport): List<ProcessMetricEmiss
         message = "process metrics: ${describe(report)}",
     )
     val crossings = (exitReasons(report) + hangReasons(report)).sorted().map { reason ->
-        ProcessMetricEmission(severity = Severity.Error, message = PROCESS_METRIC_CROSSED_PREFIX + reason, reason = reason)
+        ProcessMetricEmission(
+            severity = Severity.Error,
+            message = PROCESS_METRIC_CROSSED_PREFIX + reason,
+            reason = reason,
+        )
     }
     if (crossings.isEmpty()) return listOf(line)
     return listOf(line, ProcessMetricEmission(severity = Severity.Info, message = PROCESS_METRIC_DELIVERY_NOTE)) + crossings

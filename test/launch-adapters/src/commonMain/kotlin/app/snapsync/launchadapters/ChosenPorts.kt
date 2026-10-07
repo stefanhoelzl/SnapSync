@@ -12,7 +12,12 @@ import app.snapsync.mock.MockedSystem
  * A launch read from the adapters file composes through this ([LaunchAdapters.Chosen.ports]); so does a build whose
  * choice is fixed rather than read — the Android rig build, whose platform has no real adapter for most systems yet.
  */
-fun chosenPorts(real: DevicePorts.Lazies, choice: AdapterChoice, device: MockDevice, root: AdapterProcess): DevicePorts {
+fun chosenPorts(
+    real: DevicePorts.Lazies,
+    choice: AdapterChoice,
+    device: MockDevice,
+    root: AdapterProcess,
+): DevicePorts {
     val app = root == AdapterProcess.APP
     fun <T> pick(system: MockedSystem, real: Lazy<T>, mock: () -> T): Lazy<T> =
         if (choice.isMocked(system)) lazy(mock) else real
@@ -35,11 +40,17 @@ fun chosenPorts(real: DevicePorts.Lazies, choice: AdapterChoice, device: MockDev
         integrity = pick(MockedSystem.INTEGRITY, real.integrity) { device.enclave.port(available = app) },
         processInfo = pick(MockedSystem.PROCESS_INFO, real.processInfo) { device.processInfo.port() },
         network = pick(MockedSystem.NETWORK, real.network) { device.connectivity.port() },
-        deviceConditions = pick(MockedSystem.DEVICE_CONDITIONS, real.deviceConditions) { device.deviceConditions.port() },
+        deviceConditions = pick(
+            MockedSystem.DEVICE_CONDITIONS,
+            real.deviceConditions,
+        ) { device.deviceConditions.port() },
         backend = pick(MockedSystem.BACKEND, real.backend) { device.backend.port(device.declaredVersion) },
         backgroundTime = pick(MockedSystem.BACKGROUND_TIME, real.backgroundTime) { device.backgroundTime.port() },
         wake = pick(MockedSystem.WAKE, real.wake) { device.wakes.port() },
-        extensionRegistry = pick(MockedSystem.EXTENSION_REGISTRY, real.extensionRegistry) { device.extensionRegistry.port() },
+        extensionRegistry = pick(
+            MockedSystem.EXTENSION_REGISTRY,
+            real.extensionRegistry,
+        ) { device.extensionRegistry.port() },
         gallery = pick(MockedSystem.LIBRARY, real.gallery) { device.library.port() },
         galleryReader = pick(MockedSystem.LIBRARY, real.galleryReader) { device.library.port() },
         photoAccess = pick(MockedSystem.LIBRARY, real.photoAccess) { device.library.photoAccess() },

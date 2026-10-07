@@ -1,29 +1,22 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.feature.support.LEDGER_EVENT
-import app.snapsync.mock.fakeCrypto
-import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.services.crypto.EventKeys
-import kotlin.time.Duration.Companion.minutes
-import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.services.wake.EventChecks
-import app.snapsync.services.wake.EventCheck
 import app.snapsync.feature.support.ConfigWrites
+import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.inertPendingLeaves
-import app.snapsync.mock.inMemoryFiles
-import app.snapsync.model.EventLookup
-import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
-import app.snapsync.services.backend.EventDirectory
-import app.snapsync.services.leave.PendingLeaves
-import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
+import app.snapsync.model.EventLookup
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.captureCeiling
@@ -32,12 +25,19 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.services.backend.EventDirectory
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.leave.PendingLeaves
+import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.services.wake.EventCheck
+import app.snapsync.services.wake.EventChecks
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 /**
@@ -91,18 +91,27 @@ class EventCompletionTest {
         var fetches = 0
         var finalPublishes = 0
         val leavesSent = mutableListOf<String>()
-        val pendingLeaves = PendingLeaves(inMemoryFiles(), { id, _ -> leavesSent += id; Result.success(Unit) })
+        val pendingLeaves = PendingLeaves(inMemoryFiles(), { id, _ ->
+            leavesSent += id
+            Result.success(Unit)
+        })
         var clock: Instant = Instant.parse(now)
         val checks = EventChecks(inMemoryPreferences(), now = { clock })
 
         suspend fun pending(asset: AssetId) =
-            ledger.resetTo(LEDGER_EVENT, listOf(LedgerEntry("${asset.value}-primary.heic", asset, LedgerState.REQUESTED)))
+            ledger.resetTo(
+                LEDGER_EVENT,
+                listOf(LedgerEntry("${asset.value}-primary.heic", asset, LedgerState.REQUESTED)),
+            )
 
         fun TestScope.completion() = EventCompletion(
             config = config,
             refresh = MembershipRefresh(config, leave()),
             leaveEvent = leave(),
-            directory = EventDirectory { fetches++; answer },
+            directory = EventDirectory {
+                fetches++
+                answer
+            },
             manifestRecord = manifestRecord,
             ledger = ledger,
             pendingLeaves = pendingLeaves,

@@ -22,7 +22,10 @@ class AndroidPreferences(private val prefs: SharedPreferences) : Preferences {
         PrefRead.Unavailable("${e::class.simpleName}: ${e.message}")
     }
 
-    override fun set(key: String, value: String): WriteOutcome = prefs.edit().putString(key, value).committed("set $key")
+    override fun set(key: String, value: String): WriteOutcome = prefs.edit().putString(
+        key,
+        value,
+    ).committed("set $key")
 
     override fun remove(key: String): WriteOutcome = prefs.edit().remove(key).committed("remove $key")
 

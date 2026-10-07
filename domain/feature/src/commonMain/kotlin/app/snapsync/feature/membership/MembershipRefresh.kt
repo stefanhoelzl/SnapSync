@@ -1,6 +1,5 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.confirmedGone
 import app.snapsync.services.config.ConfigService
@@ -106,7 +105,6 @@ class MembershipRefresh(
             }
         }
     }
-
 }
 
 /**

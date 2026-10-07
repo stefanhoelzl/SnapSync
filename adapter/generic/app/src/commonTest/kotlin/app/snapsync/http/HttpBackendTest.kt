@@ -1,10 +1,6 @@
 package app.snapsync.http
 
-import app.snapsync.model.UnionTrigger
-import app.snapsync.model.UNION_TRIGGER_HEADER
-import app.snapsync.model.UNION_CURSOR_HEADER
 import app.snapsync.model.APP_VERSION_HEADER
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -12,9 +8,13 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.MintRequest
 import app.snapsync.model.ProofFormat
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.UNION_CURSOR_HEADER
+import app.snapsync.model.UNION_TRIGGER_HEADER
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.encodeToJson
 import app.snapsync.ports.Backend
 import io.ktor.client.HttpClient
@@ -24,6 +24,11 @@ import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
@@ -31,11 +36,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * [HttpBackend]'s wire — each route's method, path, headers and body, and how an answer is read — over a
@@ -103,7 +103,10 @@ class HttpBackendTest {
         backend.joinEvent("T1", "E", "D")
         backend.joinEvent(null, "E", "D")
         assertEquals(listOf("Bearer T1"), sent[0].headers[HttpHeaders.Authorization])
-        assertNull(sent[1].headers[HttpHeaders.Authorization], "a missing token still sends the request, unauthenticated")
+        assertNull(
+            sent[1].headers[HttpHeaders.Authorization],
+            "a missing token still sends the request, unauthenticated",
+        )
     }
 
     /**
@@ -133,8 +136,12 @@ class HttpBackendTest {
         )
         gated.forEach { it() }
         ungated.forEach { it() }
-        sent.take(gated.size).forEach { assertTrue(verifiesToken(it.method, it.path), "${it.method} ${it.path} verifies a token") }
-        sent.drop(gated.size).forEach { assertTrue(!verifiesToken(it.method, it.path), "${it.method} ${it.path} verifies none") }
+        sent.take(gated.size).forEach {
+            assertTrue(verifiesToken(it.method, it.path), "${it.method} ${it.path} verifies a token")
+        }
+        sent.drop(gated.size).forEach {
+            assertTrue(!verifiesToken(it.method, it.path), "${it.method} ${it.path} verifies none")
+        }
     }
 
     // ── each route's address and body ──────────────────────────────────────────────────────────────
@@ -152,7 +159,9 @@ class HttpBackendTest {
     fun an_android_key_attestation_goes_out_as_its_chain_one_certificate_per_entry() = runTest {
         val leaf = byteArrayOf(0x30, 0x01, 0x01)
         val root = byteArrayOf(0x30, 0x02, 0x02, 0x02)
-        backend(body = """{"token":"D.1.sig"}""").mintToken(MintRequest("D", "alias", ProofFormat.ANDROID_KEY, leaf + root, "c"))
+        backend(
+            body = """{"token":"D.1.sig"}""",
+        ).mintToken(MintRequest("D", "alias", ProofFormat.ANDROID_KEY, leaf + root, "c"))
         val proof = Json.parseToJsonElement(sent.single().body).jsonObject.getValue("proof").jsonObject
         assertEquals("android-key", proof.getValue("format").jsonPrimitive.content)
         assertEquals(
@@ -166,9 +175,21 @@ class HttpBackendTest {
     fun the_attest_routes_send_their_proofs_base64_and_read_the_minted_token() = runTest {
         val backend = backend(body = """{"token":"D.1.sig","challenge":"chal"}""")
         assertEquals(Reply.Ok("chal"), backend.challenge())
-        assertEquals(Reply.Ok("D.1.sig"), backend.mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1, 2), "c")))
+        assertEquals(
+            Reply.Ok("D.1.sig"),
+            backend.mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1, 2), "c")),
+        )
         assertEquals(Reply.Ok("D.1.sig"), backend.renewToken(RenewRequest("D", byteArrayOf(3), "c")))
-        assertEquals(listOf("GET /api/v2/attest/challenge", "POST /api/v2/attest/token", "POST /api/v2/attest/renew"), sent.map { "${it.method} ${it.path}" })
+        assertEquals(
+            listOf(
+                "GET /api/v2/attest/challenge",
+                "POST /api/v2/attest/token",
+                "POST /api/v2/attest/renew",
+            ),
+            sent.map {
+                "${it.method} ${it.path}"
+            },
+        )
         val mint = Json.parseToJsonElement(sent[1].body).jsonObject
         assertEquals("c", mint.getValue("challenge").jsonPrimitive.content)
         val proof = mint.getValue("proof").jsonObject
@@ -182,7 +203,9 @@ class HttpBackendTest {
 
     @Test
     fun a_success_that_names_no_token_is_malformed_rather_than_an_empty_credential() = runTest {
-        assertIs<Reply.Malformed>(backend(body = "{}").mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1), "c")))
+        assertIs<Reply.Malformed>(
+            backend(body = "{}").mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1), "c")),
+        )
         assertIs<Reply.Malformed>(backend(body = "{}").challenge())
     }
 
@@ -209,7 +232,9 @@ class HttpBackendTest {
 
     @Test
     fun the_event_read_carries_every_field_as_sent_and_absent_where_it_sent_none() = runTest {
-        val meta = backend(body = """{"eventId":"E","name":"N","createdAt":1700000000000,"startsAt":"s","endsAt":"e"}""")
+        val meta = backend(
+            body = """{"eventId":"E","name":"N","createdAt":1700000000000,"startsAt":"s","endsAt":"e"}""",
+        )
             .getEvent(null, "E")
         val value = (meta as Reply.Ok).value
         assertEquals("N", value.name)
@@ -234,7 +259,11 @@ class HttpBackendTest {
         assertNull(older.members)
         val partial = (backend(body = """{"name":"N","members":{"active":5}}""").getEvent(null, "E") as Reply.Ok).value
         assertNull(partial.members)
-        val wrongShape = (backend(body = """{"name":"N","members":{"active":"x","final":1}}""").getEvent(null, "E") as Reply.Ok).value
+        val wrongShape = (
+            backend(
+                body = """{"name":"N","members":{"active":"x","final":1}}""",
+            ).getEvent(null, "E") as Reply.Ok
+            ).value
         assertNull(wrongShape.members)
     }
 
@@ -280,10 +309,18 @@ class HttpBackendTest {
         // build, so the backend sends none.
         val body = """[{"deviceId":"D","assetId":"A.b-c_d~e","creationDate":"c","resources":[
             {"key":"A-primary.jpg","role":"primary","contentType":"image/jpeg","filename":"IMG.JPG"}]}]"""
-        val page = (backend(body = body, cursor = "17").eventFiles("T", "E", null, UnionTrigger.FOREGROUND) as Reply.Ok).value
+        val page = (
+            backend(
+                body = body,
+                cursor = "17",
+            ).eventFiles("T", "E", null, UnionTrigger.FOREGROUND) as Reply.Ok
+            ).value
         val union = page.assets.single()
         assertEquals("D", union.deviceId)
-        assertEquals("https://edge.test/api/v2/events/E/files/devices/D/A.b-c_d~e/primary", union.resources.single().url)
+        assertEquals(
+            "https://edge.test/api/v2/events/E/files/devices/D/A.b-c_d~e/primary",
+            union.resources.single().url,
+        )
         assertEquals("IMG.JPG", union.resources.single().originalFilename)
         assertEquals(17, page.cursor)
         assertEquals("GET /api/v2/events/E/files", "${sent[0].method} ${sent[0].path}")
@@ -325,21 +362,32 @@ class HttpBackendTest {
 
     @Test
     fun the_frozen_v1_listing_shape_is_malformed_rather_than_read_as_capture_names() = runTest {
-        assertIs<Reply.Malformed>(backend(body = """[{"filename":"A-primary.jpg","url":"x"}]""").deviceFiles("T", "E", "D"))
+        assertIs<Reply.Malformed>(
+            backend(body = """[{"filename":"A-primary.jpg","url":"x"}]""").deviceFiles("T", "E", "D"),
+        )
     }
 
     @Test
     fun an_unknown_role_is_malformed_rather_than_defaulted() = runTest {
-        assertIs<Reply.Malformed>(backend(body = """[{"assetId":"A","role":"mystery","filename":"x.jpg"}]""").deviceFiles("T", "E", "D"))
+        assertIs<Reply.Malformed>(
+            backend(body = """[{"assetId":"A","role":"mystery","filename":"x.jpg"}]""").deviceFiles("T", "E", "D"),
+        )
     }
 
     // ── answers that are not success ───────────────────────────────────────────────────────────────
 
     @Test
     fun a_refusal_carries_its_status_and_body_verbatim() = runTest {
-        assertEquals(Reply.Refused(409, "event full"), backend(HttpStatusCode.Conflict, "event full").joinEvent("T", "E", "D"))
+        assertEquals(
+            Reply.Refused(409, "event full"),
+            backend(HttpStatusCode.Conflict, "event full").joinEvent("T", "E", "D"),
+        )
         val refused = backend(HttpStatusCode.UpgradeRequired, """{"minAppVersion":"0.4"}""").getEvent(null, "E")
-        assertEquals(Reply.Refused(426, """{"minAppVersion":"0.4"}"""), refused, "the 426 body is the minimum's only carrier")
+        assertEquals(
+            Reply.Refused(426, """{"minAppVersion":"0.4"}"""),
+            refused,
+            "the 426 body is the minimum's only carrier",
+        )
     }
 
     @Test
@@ -353,7 +401,9 @@ class HttpBackendTest {
     @Test
     fun a_success_whose_body_does_not_decode_is_malformed() = runTest {
         assertIs<Reply.Malformed>(backend(body = "not json").getEvent(null, "E"))
-        assertIs<Reply.Malformed>(backend(HttpStatusCode.Created, "{}").createEvent("T", CreateEventRequest("n", "s", null)))
+        assertIs<Reply.Malformed>(
+            backend(HttpStatusCode.Created, "{}").createEvent("T", CreateEventRequest("n", "s", null)),
+        )
         assertIs<Reply.Malformed>(backend(body = "{").eventFiles(null, "E", null, UnionTrigger.FOREGROUND))
     }
 }

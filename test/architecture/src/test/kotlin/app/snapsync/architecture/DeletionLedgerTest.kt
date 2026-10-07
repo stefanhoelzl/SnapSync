@@ -42,7 +42,13 @@ class DeletionLedgerTest {
         val resurrections = buildList {
             if ("zxing" in toml) add("zxing catalog entries (QR is the OS camera's job — delete-dead-weight)")
             if ("kotlincrypto" in toml) add("kotlincrypto catalog entries (no client-side crypto — delete-dead-weight)")
-            if (File(repoRoot, "capability").exists()) add("a capability/ tree (the zone died with the migration — features are :domain packages)")
+            if (File(
+                    repoRoot,
+                    "capability",
+                ).exists()
+            ) {
+                add("a capability/ tree (the zone died with the migration — features are :domain packages)")
+            }
             // RETIRED ROWS — `LedgerReader`, `LoggingPushReceiver`, `EventMetadataSource`.
             //
             // All three retired a declaration for being **single-implementation interface ceremony**.
@@ -82,15 +88,33 @@ class DeletionLedgerTest {
             // second backend, beside the real `api/` and the backend mock — each one more answer to keep in step with
             // the first, and the world's operator faces reached past the protocol into the composed core. The JVM root
             // (`:app:jvm`) over the mocks is the one off-device composition; its tests are rig tests (11g2b).
-            if (File(repoRoot, "test/world/build.gradle.kts").exists()) add("a :test:world module (the JVM root over the mocks replaced it — 11g2b)")
+            if (File(
+                    repoRoot,
+                    "test/world/build.gradle.kts",
+                ).exists()
+            ) {
+                add("a :test:world module (the JVM root over the mocks replaced it — 11g2b)")
+            }
             declared(files, """(class|object) (MiniEdge|BackendStore)\b""").forEach {
                 add("the mini-edge in $it (the backend mock and the real api/ are the two backends — 11g2b)")
             }
             // The forge: a status screen over canned inputs, as a binary for the marketing screenshots and a desktop
             // harness for review. It could show a frame the app never reached, and it rotted between dispatches. The
             // raws come from the real app over launch adapters, and review is the world harness's (12).
-            if (File(repoRoot, "app/ios/forge").exists()) add("an :app:ios:forge module (the raws come from the real app — 12)")
-            if (File(repoRoot, "iosApp/SnapSyncForge").exists()) add("a SnapSyncForge Xcode target (the raws come from the real app — 12)")
+            if (File(
+                    repoRoot,
+                    "app/ios/forge",
+                ).exists()
+            ) {
+                add("an :app:ios:forge module (the raws come from the real app — 12)")
+            }
+            if (File(
+                    repoRoot,
+                    "iosApp/SnapSyncForge",
+                ).exists()
+            ) {
+                add("a SnapSyncForge Xcode target (the raws come from the real app — 12)")
+            }
             declared(files, """fun (forgeStatusHost|ForgeHarnessRoot)\b""").forEach {
                 add("a forged status host in $it (every UI state is reached through the world harness's levers — 12)")
             }

@@ -1,16 +1,15 @@
 package app.snapsync.feature.album
 
-import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.model.AssetId
-import app.snapsync.model.grantsPhotoAccess
+import app.snapsync.model.EntryScope
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
+import app.snapsync.model.invocation
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
-import app.snapsync.model.EntryScope
-import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch

@@ -6,8 +6,8 @@ import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.model.withFinal
 import app.snapsync.model.withVersion
-import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.backend.ManifestPublisher
+import app.snapsync.services.manifest.DeviceManifestService
 
 /**
  * Writes the per-event device manifest each cycle (capability `photo-sharing`). The **sole** writer of

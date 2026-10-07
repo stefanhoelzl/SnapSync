@@ -96,3 +96,42 @@ snapsync:
     active: true
     includes:
       - '**/adapter/android/src/androidMain/**'
+
+# ktlint's formatting rules (`detekt-formatting`), the shape every Kotlin file is written in. A finding is fixed by
+# the tool, not by hand: `./gradlew <tier> -Psnapsync.detektAutoCorrect` rewrites what it flags. Imports follow the
+# IDE's own order (java, javax, kotlin last), so "Optimize Imports" and the gate never disagree.
+formatting:
+  TrailingCommaOnCallSite:
+    # The tree's dialect: a multi-line argument list ends in a comma, so adding an argument is a one-line diff.
+    active: true
+    useTrailingCommaOnCallSite: true
+  TrailingCommaOnDeclarationSite:
+    # The same, for parameter lists, enum entries and `when` branches.
+    active: true
+    useTrailingCommaOnDeclarationSite: true
+  Filename:
+    # A file is named for its TOPIC (`Time.kt` holds the clock and its zone; `Wakes.kt` the wake wiring), and the
+    # architecture docs and decision records cite files by those names. ktlint's reading — name it for its one
+    # class — would rename files to satisfy a count, not a reader.
+    active: false
+  MaximumLineLength:
+    # Line length has ONE owner: `style.MaxLineLength`, a size measure each tier sets. ktlint's copy counts what that
+    # one deliberately does not, and two measures of one thing that disagree make neither the contract.
+    active: false
+
+# Compose's own rules (`compose-rules`), over every `@Composable`. Two of its readings are a LIBRARY's, and this is an
+# app whose every composable has exactly the callers in this tree:
+Compose:
+  ModifierMissing:
+    # A `modifier` parameter is how a library lets strangers place its component. The design system's callers are the
+    # app's own screens, which place components through the layout they emit into; a parameter nobody passes is
+    # surface with no caller — and each would count against `LongParameterList` for nothing.
+    active: false
+  MultipleEmitters:
+    # The tree's idiom is a composable that emits SEVERAL children into its caller's Column (`RangeEditor`, the world
+    # inspector's sections): the caller owns the layout, and wrapping each in a Column of its own would only nest one.
+    active: false
+  CompositionLocalAllowlist:
+    # The design system's ambient facts, each provided once by `AppTheme` (or the harness preview) and read by
+    # components that would otherwise thread them through every signature.
+    allowedCompositionLocals: LocalDarkThemeOverride,LocalReduceMotion,LocalDateFormats

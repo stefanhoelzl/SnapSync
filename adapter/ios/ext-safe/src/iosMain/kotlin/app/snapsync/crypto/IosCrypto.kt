@@ -44,7 +44,14 @@ class IosCrypto : Crypto {
         k.usePinned { kp ->
             m.usePinned { mp ->
                 out.usePinned { op ->
-                    CCHmac(kCCHmacAlgSHA256, kp.addressOf(0), key.size.convert(), mp.addressOf(0), message.size.convert(), op.addressOf(0))
+                    CCHmac(
+                        kCCHmacAlgSHA256,
+                        kp.addressOf(0),
+                        key.size.convert(),
+                        mp.addressOf(0),
+                        message.size.convert(),
+                        op.addressOf(0),
+                    )
                 }
             }
         }

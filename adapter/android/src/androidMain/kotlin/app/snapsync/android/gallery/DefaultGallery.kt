@@ -30,5 +30,7 @@ internal object DefaultGallery {
     const val CANDIDATE_SQL: String = "$SQL AND relative_path NOT LIKE '$ALBUM_ROOT%'"
 
     /** Whether [relativePath] lies in [ALBUM_ROOT] — an event album's folder, or the root itself. */
-    fun isAlbumFolder(relativePath: String?): Boolean = relativePath != null && relativePath.startsWith(ALBUM_ROOT, ignoreCase = true)
+    fun isAlbumFolder(
+        relativePath: String?,
+    ): Boolean = relativePath != null && relativePath.startsWith(ALBUM_ROOT, ignoreCase = true)
 }

@@ -1,9 +1,6 @@
 package app.snapsync.launchadapters
 
-import kotlinx.coroutines.flow.first
-import app.snapsync.model.NetworkAccess
 import app.snapsync.compose.DevicePorts
-
 import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.MockDevice
@@ -11,8 +8,10 @@ import app.snapsync.mock.MockedSystem
 import app.snapsync.model.CycleResult
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
+import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.Files
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,9 +68,15 @@ class LaunchAdaptersTest {
 
     @Test
     fun without_every_real_adapter_a_choice_within_them_is_chosen() {
-        val choice = AdapterChoice(MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE, MockedSystem.FILES))
+        val choice =
+            AdapterChoice(
+                MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE, MockedSystem.FILES),
+            )
         write(AdapterFiles.CHOICE, choice.render())
-        assertEquals(choice, assertIs<LaunchAdapters.Chosen>(LaunchAdapters.read(files, AdapterProcess.APP, partial)).choice)
+        assertEquals(
+            choice,
+            assertIs<LaunchAdapters.Chosen>(LaunchAdapters.read(files, AdapterProcess.APP, partial)).choice,
+        )
     }
 
     @Test
@@ -79,7 +84,9 @@ class LaunchAdaptersTest {
         // "upload-queue=mock needs backend=mock" is about mocked PhotoKit jobs; a platform without that queue has none.
         val choice = AdapterChoice(setOf(MockedSystem.UPLOAD_QUEUE, MockedSystem.EXTENSION_REGISTRY))
         assertTrue(choice.incoherence().any { it.startsWith("upload-queue=mock") })
-        assertTrue(choice.incoherence(absent = setOf(MockedSystem.UPLOAD_QUEUE)).none { it.startsWith("upload-queue=mock") })
+        assertTrue(
+            choice.incoherence(absent = setOf(MockedSystem.UPLOAD_QUEUE)).none { it.startsWith("upload-queue=mock") },
+        )
     }
 
     @Test
@@ -101,7 +108,10 @@ class LaunchAdaptersTest {
         write(AdapterFiles.CHOICE, "clock=mock\n")
         write(AdapterFiles.state(MockedSystem.CLOCK), "{not json")
         val refused = assertIs<LaunchAdapters.Refused>(launch())
-        assertTrue(refused.reasons.single().contains(AdapterFiles.state(MockedSystem.CLOCK)), refused.reasons.toString())
+        assertTrue(
+            refused.reasons.single().contains(AdapterFiles.state(MockedSystem.CLOCK)),
+            refused.reasons.toString(),
+        )
     }
 
     @Test
@@ -113,9 +123,18 @@ class LaunchAdaptersTest {
         val ports = chosen.ports(
             root = AdapterProcess.APP,
             real = DevicePorts(
-                clock = lazy { built += "clock"; real.clock.port() },
-                ui = lazy { built += "ui"; real.screen.port() },
-                systemUi = lazy { built += "systemUi"; real.systemUi.port() },
+                clock = lazy {
+                    built += "clock"
+                    real.clock.port()
+                },
+                ui = lazy {
+                    built += "ui"
+                    real.screen.port()
+                },
+                systemUi = lazy {
+                    built += "systemUi"
+                    real.systemUi.port()
+                },
             ),
         )
         chosen.device.clock.operator.now = Instant.parse("2026-01-01T00:00:00Z")
@@ -133,16 +152,29 @@ class LaunchAdaptersTest {
         write(AdapterFiles.CHOICE, "network=mock\n")
         val mocked = assertIs<LaunchAdapters.Chosen>(launch())
         val real = MockDevice().also { it.connectivity.operator.access = NetworkAccess.Online(restricted = false) }
-        val ports = mocked.ports(root = AdapterProcess.APP, real = DevicePorts(network = lazy { real.connectivity.port() }))
+        val ports = mocked.ports(
+            root = AdapterProcess.APP,
+            real = DevicePorts(network = lazy { real.connectivity.port() }),
+        )
         mocked.device.connectivity.operator.access = NetworkAccess.Blocked
         assertEquals(NetworkAccess.Blocked, ports.network.watch().first(), "a mocked network answers the mock's lever")
         assertEquals(listOf(MockedSystem.NETWORK), mocked.save(), "the lever's value is kept for the next launch")
-        assertEquals(NetworkAccess.Blocked, assertIs<LaunchAdapters.Chosen>(launch()).device.connectivity.operator.access)
+        assertEquals(
+            NetworkAccess.Blocked,
+            assertIs<LaunchAdapters.Chosen>(launch()).device.connectivity.operator.access,
+        )
 
         write(AdapterFiles.CHOICE, "clock=mock\n")
         val unmocked = assertIs<LaunchAdapters.Chosen>(launch())
-        val realPorts = unmocked.ports(root = AdapterProcess.APP, real = DevicePorts(network = lazy { real.connectivity.port() }))
-        assertEquals(NetworkAccess.Online(restricted = false), realPorts.network.watch().first(), "a real network reaches the real adapter")
+        val realPorts = unmocked.ports(
+            root = AdapterProcess.APP,
+            real = DevicePorts(network = lazy { real.connectivity.port() }),
+        )
+        assertEquals(
+            NetworkAccess.Online(restricted = false),
+            realPorts.network.watch().first(),
+            "a real network reaches the real adapter",
+        )
     }
 
     @Test
@@ -164,11 +196,18 @@ class LaunchAdaptersTest {
 
     @Test
     fun the_extension_gets_its_own_faces() {
-        write(AdapterFiles.CHOICE, "files=mock\nintegrity=mock\nbackend=mock\nupload-queue=mock\nupload-session=mock\n" +
-            "downloads=mock\nlibrary=mock\npush=mock\nextension-registry=mock\n")
+        write(
+            AdapterFiles.CHOICE,
+            "files=mock\nintegrity=mock\nbackend=mock\nupload-queue=mock\nupload-session=mock\n" +
+                "downloads=mock\nlibrary=mock\npush=mock\nextension-registry=mock\n",
+        )
         val chosen = assertIs<LaunchAdapters.Chosen>(launch(AdapterProcess.EXTENSION))
         val ports = chosen.ports(DevicePorts(), AdapterProcess.EXTENSION)
-        assertEquals(FileResult.AreaUnavailable, ports.files.read(FileArea.PRIVATE, "x"), "the extension reaches only the shared area")
+        assertEquals(
+            FileResult.AreaUnavailable,
+            ports.files.read(FileArea.PRIVATE, "x"),
+            "the extension reaches only the shared area",
+        )
         assertEquals(false, ports.integrity.isAvailable(), "App Attest does not exist in the extension")
     }
 
@@ -184,7 +223,10 @@ class LaunchAdaptersTest {
         val host = ExtensionHostMock()
         var composed = false
         chosenExtensionHost(host.port(), launch(AdapterProcess.APP)).listen(
-            ExtensionHandlers(onProcess = { composed = true; CycleResult.COMPLETED }, onTerminate = {}),
+            ExtensionHandlers(onProcess = {
+                composed = true
+                CycleResult.COMPLETED
+            }, onTerminate = {}),
         )
         host.operator.process()
         assertTrue(composed)

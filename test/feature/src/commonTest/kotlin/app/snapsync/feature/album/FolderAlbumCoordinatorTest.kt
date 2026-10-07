@@ -2,7 +2,6 @@ package app.snapsync.feature.album
 
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
@@ -36,20 +35,29 @@ class FolderAlbumCoordinatorTest {
 
     private val event = "e1"
     private val library = PhotoLibraryMock().apply { operator.albumKind = AlbumKind.FOLDER }
-    private val gallery: Gallery = library.port().apply { listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> })) }
+    private val gallery: Gallery = library.port().apply {
+        listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
+    }
     private val store = AlbumMapService(inMemoryPreferences())
     private val coordinator = AlbumCoordinator(GalleryAlbums(gallery), store, kind = AlbumKind.FOLDER)
 
     /** A received photo, imported the way the download controller imports it: into [album], then settled. */
     private suspend fun receive(name: String, album: AlbumId?): AssetId {
         val staged = StagedResource("k-$name", ResourceRole.PRIMARY.wire, "image/jpeg", "$name.JPG", "staged:/$name")
-        val result = gallery.import(ImportRequest(AssetRef("other", AssetId(name)), listOf(staged), "2026-09-30T10:00:00Z", album))
+        val result = gallery.import(
+            ImportRequest(AssetRef("other", AssetId(name)), listOf(staged), "2026-09-30T10:00:00Z", album),
+        )
         val id = assertIs<ImportResult.Imported>(result).createdLocalId
         album?.let { coordinator.onImportedInto(event, it) }
         return id
     }
 
-    private suspend fun ensure(optIn: Boolean = true) = coordinator.ensureAlbum(event, "Party", saveToAlbum = true, optIn = optIn)
+    private suspend fun ensure(optIn: Boolean = true) = coordinator.ensureAlbum(
+        event,
+        "Party",
+        saveToAlbum = true,
+        optIn = optIn,
+    )
 
     @Test
     fun `a fresh album is used although an empty folder does not resolve`() = runTest {
@@ -90,14 +98,23 @@ class FolderAlbumCoordinatorTest {
         receive("R1", coordinator.albumIdFor(event, saveToAlbum = true))
         library.operator.rename(album, "Party 2026")
 
-        assertNull(coordinator.albumIdFor(event, saveToAlbum = true), "the renamed folder is not followed, nor recreated")
+        assertNull(
+            coordinator.albumIdFor(event, saveToAlbum = true),
+            "the renamed folder is not followed, nor recreated",
+        )
     }
 
     @Test
     fun `own photos are never placed — and received ones are moved in`() = runTest {
         val album = assertNotNull(ensure())
         val own = AssetId("camera-1")
-        library.operator.add(RawAsset(own, "2026-09-30T10:00:00Z", listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_1.JPG", Unit))))
+        library.operator.add(
+            RawAsset(
+                own,
+                "2026-09-30T10:00:00Z",
+                listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_1.JPG", Unit)),
+            ),
+        )
         val received = receive("R1", album = null)
 
         coordinator.place(event, listOf(own))

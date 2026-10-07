@@ -3,7 +3,6 @@ package app.snapsync.mock
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.CrashOptions
@@ -12,6 +11,7 @@ import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.Reply
 import app.snapsync.model.SecureSlots
@@ -23,6 +23,8 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.CrashHandlers
+import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -30,8 +32,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
-import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.TimeZone
 
 /**
  * Every mocked system's durable state survives its text (`docs/testing.md`, "Launch-time adapters"): a device
@@ -45,7 +45,12 @@ class MockStateTest {
 
     private fun copyOf(device: MockDevice): MockDevice {
         val fresh = MockDevice(ownDeviceId = device.ownDeviceId, osDrivenUpload = true)
-        MockedSystem.entries.forEach { system -> MockState.encode(device, system)?.let { MockState.restore(fresh, system, it) } }
+        MockedSystem.entries.forEach { system ->
+            MockState.encode(
+                device,
+                system,
+            )?.let { MockState.restore(fresh, system, it) }
+        }
         return fresh
     }
 
@@ -60,7 +65,13 @@ class MockStateTest {
     fun the_restored_backend_answers_as_the_original_did() = runTest {
         val device = drive()
         val copy = copyOf(device)
-        val event = device.backend.operator.let { op -> device.backend.state.events.keys.single().also { assertTrue(op.isRegistered(it)) } }
+        val event = device.backend.operator.let { op ->
+            device.backend.state.events.keys.single().also {
+                assertTrue(
+                    op.isRegistered(it),
+                )
+            }
+        }
         assertEquals("Party", copy.backend.operator.eventNameOf(event))
         assertTrue(device.backend.operator.objectsOf(DEVICE).isNotEmpty())
         assertEquals(device.backend.operator.objectsOf(DEVICE), copy.backend.operator.objectsOf(DEVICE))
@@ -84,9 +95,23 @@ class MockStateTest {
         val backend = copy.backend.port()
         val challenge = (backend.challenge() as Reply.Ok).value
         val proof = "attestation:k:$challenge".encodeToByteArray()
-        val mint = backend.mintToken(app.snapsync.model.MintRequest(DEVICE, "k", app.snapsync.model.ProofFormat.APP_ATTEST, proof, challenge))
-        assertEquals(Reply.Refused(401, "attestation rejected: device-modified"), mint, "even a genuine proof, as v2 names it")
-        assertEquals(401, (backend.createEvent(null, CreateEventRequest("Party", "2026-06-01T00:00:00Z", null)) as Reply.Refused).status)
+        val mint = backend.mintToken(
+            app.snapsync.model.MintRequest(DEVICE, "k", app.snapsync.model.ProofFormat.APP_ATTEST, proof, challenge),
+        )
+        assertEquals(
+            Reply.Refused(401, "attestation rejected: device-modified"),
+            mint,
+            "even a genuine proof, as v2 names it",
+        )
+        assertEquals(
+            401,
+            (
+                backend.createEvent(
+                    null,
+                    CreateEventRequest("Party", "2026-06-01T00:00:00Z", null),
+                ) as Reply.Refused
+                ).status,
+        )
 
         copy.backend.operator.refuseAttestation = null
         assertIs<Reply.Ok<*>>(backend.createEvent(null, CreateEventRequest("Party", "2026-06-01T00:00:00Z", null)))
@@ -111,7 +136,10 @@ class MockStateTest {
         assertTrue(copy.disk.operator.isDenied(FileArea.PRIVATE, "secret"))
         assertEquals(Instant.parse("2026-07-01T12:00:00Z"), copy.clock.operator.now)
         assertEquals(TimeZone.of("Europe/Berlin"), copy.clock.port().timeZone())
-        assertEquals(mapOf(WakeId.Heartbeat to WakeTrigger.After(1.hours, network = WakeNetwork.ANY)), copy.wakes.operator.pendingWakes)
+        assertEquals(
+            mapOf(WakeId.Heartbeat to WakeTrigger.After(1.hours, network = WakeNetwork.ANY)),
+            copy.wakes.operator.pendingWakes,
+        )
         assertEquals(listOf("A1-primary.jpg"), copy.uploadQueue.operator.liveJobKeys())
         assertEquals(1, copy.uploadQueue.operator.created.size)
         assertEquals(true, copy.extensionRegistry.operator.registered)
@@ -137,14 +165,24 @@ class MockStateTest {
     private suspend fun drive(): MockDevice {
         val device = MockDevice(ownDeviceId = DEVICE, osDrivenUpload = true)
         val backend = device.backend.port()
-        val event = (backend.createEvent(null, CreateEventRequest("Party", "2026-06-01T00:00:00Z", null)) as Reply.Ok).value.eventId
+        val event = (
+            backend.createEvent(
+                null,
+                CreateEventRequest("Party", "2026-06-01T00:00:00Z", null),
+            ) as Reply.Ok
+            ).value.eventId
         backend.joinEvent(null, event, DEVICE)
         backend.joinEvent(null, event, OTHER)
         backend.putDeviceConfig(null, DEVICE, PushEndpoint("apns", "tok", "sandbox"))
         backend.putDeviceConfig(null, OTHER, PushEndpoint("apns", "other-token", "sandbox"))
         val asset = foreignAsset("A1")
         backend.publishManifest(null, event, DEVICE, DeviceManifest(DEVICE, listOf(asset), version = 3))
-        device.backend.operator.deposit(DEVICE, AssetId("A1"), app.snapsync.model.ResourceRole.PRIMARY, "A1-primary.jpg")
+        device.backend.operator.deposit(
+            DEVICE,
+            AssetId("A1"),
+            app.snapsync.model.ResourceRole.PRIMARY,
+            "A1-primary.jpg",
+        )
         device.backend.operator.minAppVersion = "0.5"
 
         device.library.operator.add(LibraryAssets.photo("A1"))
@@ -165,7 +203,13 @@ class MockStateTest {
         device.crashReporter.port().apply {
             listen(CrashHandlers(onEvent = { it }, onBreadcrumb = { it }))
             start(CrashOptions("dsn"))
-            sendDump(CrashEvent(message = "dump", breadcrumbs = listOf(Crumb(CrashLevel.INFO, "c")), contexts = mapOf("note" to mapOf("text" to "t"))))
+            sendDump(
+                CrashEvent(
+                    message = "dump",
+                    breadcrumbs = listOf(Crumb(CrashLevel.INFO, "c")),
+                    contexts = mapOf("note" to mapOf("text" to "t")),
+                ),
+            )
         }
         device.processInfo.operator.protectedData = Availability.UNAVAILABLE
         device.connectivity.operator.access = NetworkAccess.Blocked
@@ -196,12 +240,20 @@ class MockStateTest {
     private fun foreignAsset(id: String) = app.snapsync.model.DeviceManifestAsset(
         AssetId(id),
         LibraryAssets.DEFAULT_DATE,
-        listOf(app.snapsync.model.ManifestResource(app.snapsync.model.ResourceRole.PRIMARY, "image/jpeg", "$id-primary.jpg", "$id-primary.jpg")),
+        listOf(
+            app.snapsync.model.ManifestResource(
+                app.snapsync.model.ResourceRole.PRIMARY,
+                "image/jpeg",
+                "$id-primary.jpg",
+                "$id-primary.jpg",
+            ),
+        ),
     )
 
     private companion object {
         const val DEVICE = "00000000-0000-4000-9000-00000000000d"
         const val OTHER = "00000000-0000-4000-9000-00000000000e"
+
         /** One of the app's own Keychain slots — a restore puts an item back only at a slot the app addresses. */
         val SLOT = SecureSlots.ATTEST_TOKEN
     }

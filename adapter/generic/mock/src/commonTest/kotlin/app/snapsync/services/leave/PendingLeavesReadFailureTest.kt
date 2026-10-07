@@ -45,7 +45,10 @@ class PendingLeavesReadFailureTest {
     @Test
     fun `a leave recorded while the record is unreadable is still sent`() = runTest {
         val sent = mutableListOf<String>()
-        val leaves = PendingLeaves(files, { eventId, _ -> sent += eventId; Result.success(Unit) })
+        val leaves = PendingLeaves(files, { eventId, _ ->
+            sent += eventId
+            Result.success(Unit)
+        })
         files.failReads = true
 
         leaves.record("C")
@@ -59,7 +62,11 @@ class PendingLeavesReadFailureTest {
     @Test
     fun `a delivery whose second read fails keeps the leaves the backend did not confirm`() = runTest {
         // The backend confirms nothing; between deliverAll's two reads the record becomes unreadable.
-        val notifier = LeaveNotifier { _, _ -> files.failReads = true; Result.failure(IllegalStateException("offline")) }
+        val notifier =
+            LeaveNotifier { _, _ ->
+                files.failReads = true
+                Result.failure(IllegalStateException("offline"))
+            }
         val leaves = PendingLeaves(files, notifier)
         leaves.record("A")
         leaves.record("B")

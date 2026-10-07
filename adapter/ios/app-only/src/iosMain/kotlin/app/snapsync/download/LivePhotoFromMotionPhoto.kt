@@ -1,16 +1,16 @@
 package app.snapsync.download
 
-import app.snapsync.model.StagedResource
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ReceivedPhotoName
+import app.snapsync.model.StagedResource
 import app.snapsync.model.locateMotionVideo
 import app.snapsync.model.motionPresentationTimestampUs
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.model.withExtension
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
-import app.snapsync.model.withExtension
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -61,15 +61,14 @@ import platform.CoreMedia.kCMMetadataFormatType_Boxed
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
-import platform.Foundation.NSDictionary
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSMutableDictionary
 import platform.Foundation.NSNumber
 import platform.Foundation.NSString
-import platform.Foundation.addEntriesFromDictionary
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
+import platform.Foundation.addEntriesFromDictionary
 import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
@@ -93,7 +92,6 @@ import platform.ImageIO.kCGImagePropertyMakerAppleDictionary
 import platform.darwin.NSObjectProtocol
 import platform.posix.memcpy
 import platform.posix.usleep
-import kotlin.coroutines.resume
 
 /**
  * **A received Android motion photo, taken apart into a Live Photo** (capability `receiving-photos`, "An Android
@@ -144,7 +142,9 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         val dir = NSTemporaryDirectory() + "motion-photo/"
         checkedObjC("createDirectoryAtPath") {
             NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = it)
-        }.onFailure { log.w(it) { "$assetId: no scratch directory — imported as it is" } }.getOrNull() ?: return@withContext null
+        }.onFailure {
+            log.w(it) { "$assetId: no scratch directory — imported as it is" }
+        }.getOrNull() ?: return@withContext null
         val name = ReceivedPhotoName.mark(primary.originalFilename, primary.resourceKey, ref)
         val stillIn = "$dir$identifier-in.${extensionOf(name)}"
         val stillOut = "$dir$identifier.${extensionOf(name)}"
@@ -157,7 +157,9 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
             val route = tagStill(stillIn, stillOut, identifier) ?: return@runCatchingCancellable null
             val keyFrameUs = motionPresentationTimestampUs(xmp) ?: 0L
             if (!rewrapVideo(mp4, mov, identifier, keyFrameUs)) return@runCatchingCancellable null
-            log.i { "$assetId: a motion photo taken apart into a Live Photo (still $route, video ${video.count()} B passed through)" }
+            log.i {
+                "$assetId: a motion photo taken apart into a Live Photo (still $route, video ${video.count()} B passed through)"
+            }
             pair
         }.getOrElse {
             log.w(it) { "$assetId: the motion photo could not be taken apart — imported as its still" }
@@ -177,7 +179,15 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
             CFRelease(metadata)
             data ?: return null
             val bytes = ByteArray(CFDataGetLength(data).toInt())
-            if (bytes.isNotEmpty()) bytes.usePinned { memcpy(it.addressOf(0), CFDataGetBytePtr(data), bytes.size.toULong()) }
+            if (bytes.isNotEmpty()) {
+                bytes.usePinned {
+                    memcpy(
+                        it.addressOf(0),
+                        CFDataGetBytePtr(data),
+                        bytes.size.toULong(),
+                    )
+                }
+            }
             CFRelease(data)
             return bytes.decodeToString()
         } finally {
@@ -209,7 +219,12 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         try {
             val set = bridged(identifier) { value ->
                 bridged(MAKER_NOTE_IDENTIFIER_KEY) { name ->
-                    CGImageMetadataSetValueMatchingImageProperty(metadata, kCGImagePropertyMakerAppleDictionary, name?.reinterpret(), value)
+                    CGImageMetadataSetValueMatchingImageProperty(
+                        metadata,
+                        kCGImagePropertyMakerAppleDictionary,
+                        name?.reinterpret(),
+                        value,
+                    )
                 }
             }
             if (!set) return false
@@ -218,7 +233,8 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
                 setObject(metadataObject(metadata) ?: return false, forKey = ns(key(kCGImageDestinationMetadata)))
                 setObject(NSNumber(bool = true), forKey = ns(key(kCGImageDestinationMergeMetadata)))
             }
-            val copied = bridged(options) { CGImageDestinationCopyImageSource(destination, source, it?.reinterpret(), null) }
+            val copied =
+                bridged(options) { CGImageDestinationCopyImageSource(destination, source, it?.reinterpret(), null) }
             CFRelease(destination)
             return copied
         } finally {
@@ -229,7 +245,10 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
     private fun reencode(source: CGImageSourceRef, output: String, identifier: String): Boolean {
         val copied = CGImageSourceCopyPropertiesAtIndex(source, 0u, null)
         val properties = NSMutableDictionary()
-        copied?.let { @Suppress("UNCHECKED_CAST") properties.addEntriesFromDictionary(CFBridgingRelease(it) as Map<Any?, *>) }
+        copied?.let {
+            @Suppress("UNCHECKED_CAST")
+            properties.addEntriesFromDictionary(CFBridgingRelease(it) as Map<Any?, *>)
+        }
         val makerKey = key(kCGImagePropertyMakerAppleDictionary)
         val maker = NSMutableDictionary()
         @Suppress("UNCHECKED_CAST")
@@ -248,7 +267,11 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
     private fun makerNoteIdentifier(path: String): String? {
         val source = imageSource(path) ?: return null
         try {
-            val properties = CGImageSourceCopyPropertiesAtIndex(source, 0u, null)?.let { CFBridgingRelease(it) as? Map<*, *> }
+            val properties = CGImageSourceCopyPropertiesAtIndex(
+                source,
+                0u,
+                null,
+            )?.let { CFBridgingRelease(it) as? Map<*, *> }
             val maker = properties?.get(key(kCGImagePropertyMakerAppleDictionary)) as? Map<*, *>
             return maker?.get(MAKER_NOTE_IDENTIFIER_KEY) as? String
         } finally {
@@ -305,23 +328,39 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
             }
             input.markAsFinished()
         }
-        objcCallback(log, "finishWriting") { done -> writer.finishWritingWithCompletionHandler { objcBoundary(done) { } } }
+        objcCallback(
+            log,
+            "finishWriting",
+        ) { done -> writer.finishWritingWithCompletionHandler { objcBoundary(done) { } } }
         return reader.status == AVAssetReaderStatusCompleted && writer.status == AVAssetWriterStatusCompleted
     }
 
     /** The writer input for the timed `still-image-time` marker Photos reads a Live Photo's key frame from. */
     private fun stillImageTimeInput(): AVAssetWriterInput? = memScoped {
         val spec = NSMutableDictionary().apply {
-            setObject(ns("mdta/$STILL_IMAGE_TIME"), forKey = ns(key(kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier)))
-            setObject(ns(DATA_TYPE_INT8), forKey = ns(key(kCMMetadataFormatDescriptionMetadataSpecificationKey_DataType)))
+            setObject(
+                ns("mdta/$STILL_IMAGE_TIME"),
+                forKey = ns(key(kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier)),
+            )
+            setObject(
+                ns(DATA_TYPE_INT8),
+                forKey = ns(key(kCMMetadataFormatDescriptionMetadataSpecificationKey_DataType)),
+            )
         }
         val description = alloc<CMFormatDescriptionRefVar>()
         val status = bridged(listOf(spec)) { specs ->
-            CMMetadataFormatDescriptionCreateWithMetadataSpecifications(null, kCMMetadataFormatType_Boxed, specs?.reinterpret(), description.ptr)
+            CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
+                null,
+                kCMMetadataFormatType_Boxed,
+                specs?.reinterpret(),
+                description.ptr,
+            )
         }
         val format = description.value
         if (status != 0 || format == null) return@memScoped null
-        AVAssetWriterInput(mediaType = AVMediaTypeMetadata, outputSettings = null, sourceFormatHint = format).also { CFRelease(format) }
+        AVAssetWriterInput(mediaType = AVMediaTypeMetadata, outputSettings = null, sourceFormatHint = format).also {
+            CFRelease(format)
+        }
     }
 
     private fun quickTimeItem(key: String, value: NSObjectProtocol, dataType: String) = AVMutableMetadataItem().apply {
@@ -335,7 +374,9 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         bridged(NSURL.fileURLWithPath(path)) { CGImageSourceCreateWithURL(it?.reinterpret(), null) }
 
     private fun createDestination(source: CGImageSourceRef, path: String) =
-        bridged(NSURL.fileURLWithPath(path)) { CGImageDestinationCreateWithURL(it?.reinterpret(), CGImageSourceGetType(source), 1u, null) }
+        bridged(NSURL.fileURLWithPath(path)) {
+            CGImageDestinationCreateWithURL(it?.reinterpret(), CGImageSourceGetType(source), 1u, null)
+        }
 
     private fun write(bytes: ByteArray, path: String) {
         val data = bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) }

@@ -4,13 +4,13 @@ package app.snapsync.rig
 
 import app.snapsync.compose.DevicePorts
 import app.snapsync.config.bakedUploadBase
-import app.snapsync.logging.appMarketingVersion
-import app.snapsync.mock.MockDevice
-import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterProcess
+import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.randomDeviceId
+import app.snapsync.logging.appMarketingVersion
+import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
@@ -18,6 +18,7 @@ import app.snapsync.model.WakeId
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -27,7 +28,6 @@ import kotlinx.serialization.json.putJsonArray
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
-import kotlinx.cinterop.cValue
 
 private val log = Logger.withTag("rig")
 
@@ -59,13 +59,13 @@ class RigLaunch internal constructor(
     val description: String = chosen?.choice?.toString() ?: "all real"
 
     /** The line this launch adds to the app's boot banner. */
-    val bootLines: List<String> = listOf("[boot] adapters = ${uncomposed?.let { "REFUSED, nothing composed: $it" } ?: description}")
+    val bootLines: List<String> =
+        listOf("[boot] adapters = ${uncomposed?.let { "REFUSED, nothing composed: $it" } ?: description}")
 
     /** Compose at launch — unless the adapter choice was refused, when nothing is composed and the channel says why. */
     fun launch(compose: () -> Unit) {
         if (uncomposed == null) compose() else log.e { "the adapter choice was refused — nothing is composed: $uncomposed" }
     }
-
 
     /** Write every mocked system's changed state now — before an exit. */
     internal fun flush() {
@@ -82,7 +82,11 @@ class RigLaunch internal constructor(
  * operating system stops waking a run whose wakes the channel plays.
  */
 fun rigLaunch(real: DevicePorts): RigLaunch {
-    val launch = LaunchAdapters.load(real.files, AdapterProcess.APP, AdapterFacts(osCarriesUploadExtension(), appMarketingVersion(), ::randomDeviceId))
+    val launch = LaunchAdapters.load(
+        real.files,
+        AdapterProcess.APP,
+        AdapterFacts(osCarriesUploadExtension(), appMarketingVersion(), ::randomDeviceId),
+    )
     val chosen = launch as? LaunchAdapters.Chosen
     val mocked = chosen?.choice?.mocked.orEmpty()
     if (launch is LaunchAdapters.Refused || MockedSystem.WAKE in mocked) {
@@ -108,7 +112,9 @@ fun adapterCommands(launch: RigLaunch): Map<String, RigCommand> = launchAdapterC
         world = launch.world,
         launchLine = launch.uncomposed?.let { "refused" } ?: launch.description,
         current = {
-            putJsonArray("refusedBecause") { (launch.launch as? LaunchAdapters.Refused)?.reasons.orEmpty().forEach { add(JsonPrimitive(it)) } }
+            putJsonArray(
+                "refusedBecause",
+            ) { (launch.launch as? LaunchAdapters.Refused)?.reasons.orEmpty().forEach { add(JsonPrimitive(it)) } }
         },
         refusal = { choice ->
             val incoherence = choice.incoherence()
@@ -119,7 +125,9 @@ fun adapterCommands(launch: RigLaunch): Map<String, RigCommand> = launchAdapterC
         clear = {
             val folder = (launch.files.locate(FileArea.SHARED, AdapterFiles.FOLDER) as? FileResult.Ok)?.value
             if (folder == null) {
-                Cleared.Failed(CommandResult.refused("the App Group has no location, so there is no adapter choice to clear"))
+                Cleared.Failed(
+                    CommandResult.refused("the App Group has no location, so there is no adapter choice to clear"),
+                )
             } else {
                 NSFileManager.defaultManager.removeItemAtPath(folder, error = null)
                 Cleared.Done(folder)
@@ -151,14 +159,23 @@ fun iosRefusals(launch: RigLaunch): Map<String, String> = buildMap {
             "`simctl uninstall`, then install)",
     )
     if (world.isMocked(MockedSystem.LIBRARY)) {
-        put("device/gallery/wipe", "the photo library is mocked on this launch; a mocked library is never PhotoKit's to wipe")
+        put(
+            "device/gallery/wipe",
+            "the photo library is mocked on this launch; a mocked library is never PhotoKit's to wipe",
+        )
     }
     putAll(uploadJobRefusals())
     if (world.isMocked(MockedSystem.UPLOAD_QUEUE)) {
-        put("device/upload-jobs/perform", "the upload-job queue is mocked on this launch — its jobs verbs (POST /device/jobs/…) play it")
+        put(
+            "device/upload-jobs/perform",
+            "the upload-job queue is mocked on this launch — its jobs verbs (POST /device/jobs/…) play it",
+        )
     }
     if (world.isMocked(MockedSystem.EXTENSION_REGISTRY)) {
-        put("device/upload-extension/record", "the extension's registration is mocked on this launch; its record is the mock's")
+        put(
+            "device/upload-extension/record",
+            "the extension's registration is mocked on this launch; its record is the mock's",
+        )
     }
 }
 

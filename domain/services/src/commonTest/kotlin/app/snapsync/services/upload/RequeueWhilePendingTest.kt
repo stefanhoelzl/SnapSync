@@ -1,11 +1,11 @@
 package app.snapsync.services.upload
 
+import app.snapsync.model.CycleResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import app.snapsync.model.CycleResult
 
 /**
  * The OS-driven tier's pending→re-invocation rule (`requeueWhilePending`, capability
@@ -38,7 +38,10 @@ class RequeueWhilePendingTest {
         var read: Boolean? = null
         for (result in listOf(CycleResult.SKIPPED, CycleResult.FAILED, CycleResult.PROCESSING)) {
             read = null
-            val out = result.requeueWhilePending(pending = { read = true; 5 })
+            val out = result.requeueWhilePending(pending = {
+                read = true
+                5
+            })
             assertEquals(result, out)
             assertNull(read, "$result must not read the ledger")
         }

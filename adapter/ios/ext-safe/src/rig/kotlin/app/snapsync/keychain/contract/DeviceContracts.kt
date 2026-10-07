@@ -2,16 +2,16 @@ package app.snapsync.keychain.contract
 
 import app.snapsync.attest.SystemAppAttestApi
 import app.snapsync.attest.contract.RecordingAppAttestApi
-import app.snapsync.attest.contract.integrityInState
 import app.snapsync.attest.contract.attestStoreInState
-import app.snapsync.contracts.DeviceIntegrityContract
-import app.snapsync.contracts.DeviceIntegrityState
+import app.snapsync.attest.contract.integrityInState
 import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
-import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.Contract
+import app.snapsync.contracts.DeviceIntegrityContract
+import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.InAppContract
@@ -22,12 +22,12 @@ import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.keychain.SystemKeychainApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
-import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.AttestStore
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.SecureStore
 import platform.Foundation.NSDate
-import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSISO8601DateFormatter
+import platform.Foundation.NSProcessInfo
 
 /**
  * The real [app.snapsync.keychain.IosSecureStore] in the entitled app, recording every `SecItem*` call and

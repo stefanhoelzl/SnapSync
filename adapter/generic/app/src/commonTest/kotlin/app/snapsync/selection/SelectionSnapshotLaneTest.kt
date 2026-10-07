@@ -34,7 +34,9 @@ import kotlin.test.assertTrue
 class SelectionSnapshotLaneTest {
 
     /** A selection is a list of ids; a change appends one. The baseline can be held open by a test. */
-    private class FakePlatform(private val initial: List<String>) : SelectionPlatform<List<String>, String, List<Resource>> {
+    private class FakePlatform(
+        private val initial: List<String>,
+    ) : SelectionPlatform<List<String>, String, List<Resource>> {
         var onChange: ((String) -> Unit)? = null
         var stops = 0
         var baselineGate: CompletableDeferred<Unit>? = null
@@ -71,7 +73,15 @@ class SelectionSnapshotLaneTest {
         }
 
         private fun render(of: List<String>): List<Resource> =
-            of.map { Resource(filename = "$it.heic", assetId = AssetId(it), contentType = "image/heic", metadata = emptyMap(), data = it) }
+            of.map {
+                Resource(
+                    filename = "$it.heic",
+                    assetId = AssetId(it),
+                    contentType = "image/heic",
+                    metadata = emptyMap(),
+                    data = it,
+                )
+            }
 
         fun change(id: String) = checkNotNull(onChange) { "not observing" }(id)
     }
@@ -113,7 +123,9 @@ class SelectionSnapshotLaneTest {
         val lane = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(lane + Job())
         val platform = FakePlatform(listOf("base")).apply { baselineGate = CompletableDeferred() }
-        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform).apply { observe(true) }
+        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform).apply {
+            observe(true)
+        }
         val latest = MutableStateFlow<List<String>>(emptyList())
         scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { latest.value = it.ids() } }
         advanceUntilIdle() // observing, and the baseline read is in progress
@@ -172,7 +184,9 @@ class SelectionSnapshotLaneTest {
         val lane = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(lane + Job())
         val platform = FakePlatform(listOf("base"))
-        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform).apply { observe(true) }
+        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform).apply {
+            observe(true)
+        }
         val emitted = mutableListOf<List<String>>()
         scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
         advanceUntilIdle() // the baseline is read and emitted
@@ -191,7 +205,11 @@ class SelectionSnapshotLaneTest {
             platform.enumerations,
             "at most one enumeration in flight, and ONE more for the latest of the changes queued behind it",
         )
-        assertEquals(listOf("base", "a", "b", "c", "d"), emitted.last(), "the final snapshot is the one per-change emission ends on")
+        assertEquals(
+            listOf("base", "a", "b", "c", "d"),
+            emitted.last(),
+            "the final snapshot is the one per-change emission ends on",
+        )
         scope.cancel()
     }
 
@@ -218,7 +236,11 @@ class SelectionSnapshotLaneTest {
         running.complete(Unit)
         advanceUntilIdle()
 
-        assertEquals(listOf(listOf("base")), emitted, "nothing built under the limited grant is emitted once it is full")
+        assertEquals(
+            listOf(listOf("base")),
+            emitted,
+            "nothing built under the limited grant is emitted once it is full",
+        )
         assertEquals(listOf(listOf("base"), listOf("base", "a")), platform.enumerations, "b is not enumerated")
         assertEquals(1, platform.stops, "the end the fold stopped at is still handled")
         scope.cancel()

@@ -1,16 +1,16 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.localToCutoff
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Instant
+import app.snapsync.model.runCatchingCancellable
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.periodUntil
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /**
  * Bridges the join screen's **local** date-time picker and the UTC `…Z` capture-date cutoff string

@@ -40,20 +40,24 @@ open class MockDevice(
     val enclave = DeviceIntegrityMock()
     val crashReporter = CrashReporterMock()
     val processInfo = ProcessInfoMock()
+
     /** The device's network as the operating system reports it to the app — not [network], an upload's byte route. */
     val connectivity = NetworkMock()
+
     /** The device's power saving, battery, thermal state and background allowance, read for a bug report. */
     val deviceConditions = DeviceConditionsMock()
     val clock = ClockMock()
     val wakes = WakeMock()
     val backgroundTime = BackgroundTimeMock()
     val extensionRegistry = ExtensionRegistryMock(supported = osDrivenUpload)
+
     /** Where an OS-performed upload lands: the backend mock's byte route, unless the caller routes it elsewhere. */
     private val uploadNetwork = network ?: UploadNetwork { url, headers, _ -> backend.operator.receive(url, headers) }
     private val onRestrictedNetwork: () -> Boolean = { connectivity.cell.value == NetworkAccess.Online(restricted = true) }
     private val holdsUnrestrictedOnly: (TransferNetwork) -> Boolean =
         { rule -> rule == TransferNetwork.UNRESTRICTED_ONLY && onRestrictedNetwork() }
-    val uploadQueue = UploadQueueMock(uploadNetwork, acceptsAnyHandle = acceptsAnyUploadHandle, restricted = onRestrictedNetwork)
+    val uploadQueue =
+        UploadQueueMock(uploadNetwork, acceptsAnyHandle = acceptsAnyUploadHandle, restricted = onRestrictedNetwork)
     val uploadSession = UploadSessionMock(uploadNetwork, held = holdsUnrestrictedOnly)
     val downloads = DownloadSessionMock(temporaryFiles ?: TemporaryFiles.on(disk.port()), held = holdsUnrestrictedOnly)
     val lifecycle = LifecycleMock()

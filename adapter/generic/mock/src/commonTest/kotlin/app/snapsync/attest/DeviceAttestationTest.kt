@@ -2,46 +2,45 @@
 
 package app.snapsync.attest
 
-import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.UnionTrigger
-import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.UnionPage
-import app.snapsync.model.DeviceIdentityRole
-import app.snapsync.ports.PlatformDeviceId
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.mock.InMemoryAttestStore
-import app.snapsync.model.PushEndpoint
+import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
+import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventCreated
 import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
 import app.snapsync.model.MintRequest
 import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
-import app.snapsync.mock.fixedClock
 import app.snapsync.model.TokenOutcome
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.trust.tokenExpirySeconds
-
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.test.runTest
 
 private const val DEVICE = "11111111-0000-4000-8000-000000000002"
 private const val DAY_SECONDS = 24 * 60 * 60L
@@ -116,7 +115,10 @@ private class FakeClient(
         TokenOutcome.ChallengeStale -> Reply.Refused(409, "stale challenge")
         TokenOutcome.NotAttested -> Reply.Refused(401, "not attested")
         is TokenOutcome.Refused ->
-            Reply.Refused(401, "attestation rejected: ${outcome.reason.wireName}" + (outcome.detail?.let { " ($it)" } ?: ""))
+            Reply.Refused(
+                401,
+                "attestation rejected: ${outcome.reason.wireName}" + (outcome.detail?.let { " ($it)" } ?: ""),
+            )
         TokenOutcome.ProofFailed -> error("a local proof failure is the device's, never the backend's answer")
         TokenOutcome.Unreachable -> Reply.Unreachable(IllegalStateException("offline"))
     }
@@ -125,12 +127,31 @@ private class FakeClient(
     override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = unused()
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = unused()
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
-    override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =
+    override suspend fun publishManifest(
+        token: String?,
+        eventId: String,
+        deviceId: String,
+        manifest: DeviceManifest,
+    ): Reply<Unit> =
         unused()
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> = unused()
-    override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
+    override suspend fun leaveEvent(
+        token: String?,
+        eventId: String,
+        deviceId: String,
+        received: Boolean,
+    ): Reply<Unit> = unused()
+    override suspend fun eventFiles(
+        token: String?,
+        eventId: String,
+        cursor: Long?,
+        trigger: UnionTrigger,
+    ): Reply<UnionPage> =
         unused()
-    override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> = unused()
+    override suspend fun deviceFiles(
+        token: String?,
+        eventId: String,
+        deviceId: String,
+    ): Reply<List<DeviceFile>> = unused()
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = unused()
 
     private fun unused(): Nothing = error("attestation reaches only the /attest/… routes")
@@ -141,7 +162,13 @@ private fun attestation(
     client: FakeClient = FakeClient(),
     store: AttestStore = InMemoryAttestStore(),
 ) = Triple(
-    DeviceAttestation(key, client, store, identityOf(DEVICE), clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS))),
+    DeviceAttestation(
+        key,
+        client,
+        store,
+        identityOf(DEVICE),
+        clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
+    ),
     client,
     store,
 )
@@ -306,13 +333,25 @@ class DeviceAttestationTest {
 
         gate.complete(Unit)
         running.join()
-        assertEquals(DeviceRefusal.APP_NOT_GENUINE, attestation.refusal.value, "and this attempt's own answer replaces it")
+        assertEquals(
+            DeviceRefusal.APP_NOT_GENUINE,
+            attestation.refusal.value,
+            "and this attempt's own answer replaces it",
+        )
     }
 
     @Test
     fun `a refusal keeps the service's answer and the chain the phone presented - until a success`() = runTest {
         val chain = app.snapsync.model.AttestationChain(
-            listOf(app.snapsync.model.CertificateFacts("CN=Intermediate", "CN=Root", "2020-01-01T00:00:00Z", "2030-01-01T00:00:00Z", "EC 256")),
+            listOf(
+                app.snapsync.model.CertificateFacts(
+                    "CN=Intermediate",
+                    "CN=Root",
+                    "2020-01-01T00:00:00Z",
+                    "2030-01-01T00:00:00Z",
+                    "EC 256",
+                ),
+            ),
             rootKeySha256 = "ab12",
         )
         val (attestation, client, _) = attestation(FakeKey(chain = chain))
@@ -704,7 +743,11 @@ class DeviceAttestationTest {
 
         val retries = List(3) { async { attest.rejected(token(29)) } }.awaitAll()
 
-        assertEquals(List(3) { token(30) }, retries, "only the first clears it, but all retry — not only the one that cleared")
+        assertEquals(
+            List(3) { token(30) },
+            retries,
+            "only the first clears it, but all retry — not only the one that cleared",
+        )
         assertEquals(1, client.renewCalls, "the refresh is a no-op on the fresh token the first one obtained")
     }
 
@@ -725,13 +768,21 @@ class DeviceAttestationTest {
             override suspend fun challenge(): Reply<String> = Reply.Refused(426, """{"minAppVersion":"0.7"}""")
         }
         val attest = DeviceAttestation(
-            FakeKey(), refusing, InMemoryAttestStore(), identityOf(DEVICE),
-            clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)), versionGate = gate,
+            FakeKey(),
+            refusing,
+            InMemoryAttestStore(),
+            identityOf(DEVICE),
+            clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
+            versionGate = gate,
         )
 
         attest.refresh()
 
-        assertEquals(app.snapsync.model.VersionRefusal("0.7"), gate.refusal.value, "an obsolete build learns it before it holds a token")
+        assertEquals(
+            app.snapsync.model.VersionRefusal("0.7"),
+            gate.refusal.value,
+            "an obsolete build learns it before it holds a token",
+        )
     }
 
     // ---- the failure paths a wake must survive ----
@@ -755,7 +806,10 @@ class DeviceAttestationTest {
         val client = FakeClient()
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
-            key, client, store, unreadableIdentity(),
+            key,
+            client,
+            store,
+            unreadableIdentity(),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
         )
 
@@ -773,7 +827,10 @@ class DeviceAttestationTest {
         }
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
-            FakeKey(), client, store, identityOf(DEVICE),
+            FakeKey(),
+            client,
+            store,
+            identityOf(DEVICE),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
         )
 
@@ -809,4 +866,8 @@ private fun identityOf(id: String) =
 
 /** A device identity behind a locked secure store. */
 private fun unreadableIdentity() =
-    PersistedDeviceIdentity(DeviceIdentityRole.MINTING, inMemorySecureStore(unavailable = true), PlatformDeviceId { null })
+    PersistedDeviceIdentity(
+        DeviceIdentityRole.MINTING,
+        inMemorySecureStore(unavailable = true),
+        PlatformDeviceId { null },
+    )

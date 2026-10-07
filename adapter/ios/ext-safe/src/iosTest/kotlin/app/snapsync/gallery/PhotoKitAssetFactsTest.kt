@@ -1,13 +1,13 @@
 package app.snapsync.gallery
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import platform.Photos.PHAssetMediaSubtypePhotoHDR
 import platform.Photos.PHAssetMediaSubtypePhotoLive
 import platform.Photos.PHAssetMediaSubtypePhotoPanorama
 import platform.Photos.PHAssetMediaSubtypePhotoScreenshot
 import platform.Photos.PHAssetMediaSubtypeVideoScreenRecording
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The PhotoKit → neutral-facts interpretation (capability `sync-status`).

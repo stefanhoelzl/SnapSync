@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.UiState
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.RangeChoiceActions
 import kotlinx.datetime.LocalDateTime
 
@@ -38,7 +38,15 @@ internal fun testMenuActions(
     onOpenLink: (app.snapsync.model.AppLink) -> Unit = {},
     onReportNoticeDismiss: () -> Unit = {},
     onMobileData: (Boolean) -> Unit = {},
-) = MenuActions(onSendDiagnostics, onMenuOpen, onMenuDismiss, onReportBug, onOpenLink, onReportNoticeDismiss, onMobileData)
+) = MenuActions(
+    onSendDiagnostics,
+    onMenuOpen,
+    onMenuDismiss,
+    onReportBug,
+    onOpenLink,
+    onReportNoticeDismiss,
+    onMobileData,
+)
 
 internal fun testJoinGateActions(
     onConfirmJoin: () -> Unit = {},
@@ -57,7 +65,12 @@ internal fun testJoinedActions(
     onRenameEvent: (String, String) -> Unit = { _, _ -> },
     onRenameStatusConsumed: () -> Unit = {},
 ) = JoinedActions(
-    onLeaveEvent, onShareInvite, onQrOpen, onQrDismiss, WithdrawalActions(onStopSharing, onKeepSharing), onRenameEvent,
+    onLeaveEvent,
+    onShareInvite,
+    onQrOpen,
+    onQrDismiss,
+    WithdrawalActions(onStopSharing, onKeepSharing),
+    onRenameEvent,
     onRenameStatusConsumed,
 )
 

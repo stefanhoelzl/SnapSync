@@ -23,7 +23,9 @@ enum class DeviceRefusal(val wireName: String) {
 
     companion object {
         /** The reason [name] names on the wire; anything else — absent or unknown — is [DEVICE_UNVERIFIABLE]. */
-        fun fromWire(name: String?): DeviceRefusal = entries.firstOrNull { it.wireName == name?.trim() } ?: DEVICE_UNVERIFIABLE
+        fun fromWire(
+            name: String?,
+        ): DeviceRefusal = entries.firstOrNull { it.wireName == name?.trim() } ?: DEVICE_UNVERIFIABLE
     }
 }
 

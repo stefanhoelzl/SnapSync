@@ -1,7 +1,6 @@
 package app.snapsync.launchadapters
 
 import app.snapsync.mock.MockedSystem
-
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -12,7 +11,9 @@ class AdapterChoiceTest {
 
     private fun parsed(text: String): AdapterChoice = assertIs<AdapterParse.Parsed>(AdapterChoice.parse(text)).choice
 
-    private fun problems(text: String): List<String> = assertIs<AdapterParse.Invalid>(AdapterChoice.parse(text)).problems
+    private fun problems(text: String): List<String> = assertIs<AdapterParse.Invalid>(
+        AdapterChoice.parse(text),
+    ).problems
 
     @Test
     fun a_missing_system_is_real_and_comments_and_blank_lines_are_ignored() {
@@ -70,30 +71,52 @@ class AdapterChoiceTest {
     fun real_photos_with_a_mocked_backend_is_a_coherent_choice() {
         val choice = AdapterChoice(
             setOf(
-                MockedSystem.BACKEND, MockedSystem.UPLOAD_QUEUE, MockedSystem.UPLOAD_SESSION, MockedSystem.DOWNLOADS,
-                MockedSystem.PUSH, MockedSystem.INTEGRITY, MockedSystem.EXTENSION_REGISTRY,
+                MockedSystem.BACKEND,
+                MockedSystem.UPLOAD_QUEUE,
+                MockedSystem.UPLOAD_SESSION,
+                MockedSystem.DOWNLOADS,
+                MockedSystem.PUSH,
+                MockedSystem.INTEGRITY,
+                MockedSystem.EXTENSION_REGISTRY,
             ),
         )
-        assertEquals(emptyList(), choice.incoherence(), "the rejected alternative to per-port choice forbade exactly this")
+        assertEquals(
+            emptyList(),
+            choice.incoherence(),
+            "the rejected alternative to per-port choice forbade exactly this",
+        )
     }
 
     @Test
     fun mocked_photos_never_reach_a_real_transfer_or_a_real_backend() {
-        val text = AdapterChoice(setOf(MockedSystem.LIBRARY, MockedSystem.EXTENSION_REGISTRY)).incoherence().joinToString("\n")
+        val text = AdapterChoice(
+            setOf(MockedSystem.LIBRARY, MockedSystem.EXTENSION_REGISTRY),
+        ).incoherence().joinToString("\n")
         assertTrue("library=mock needs upload-queue=mock, upload-session=mock" in text, text)
-        val queue = AdapterChoice(setOf(MockedSystem.UPLOAD_QUEUE, MockedSystem.EXTENSION_REGISTRY)).incoherence().joinToString("\n")
+        val queue = AdapterChoice(
+            setOf(MockedSystem.UPLOAD_QUEUE, MockedSystem.EXTENSION_REGISTRY),
+        ).incoherence().joinToString("\n")
         assertTrue("upload-queue=mock needs backend=mock" in queue, queue)
     }
 
     @Test
     fun a_mocked_download_may_land_in_a_real_library() {
-        assertEquals(emptyList(), AdapterChoice(setOf(MockedSystem.DOWNLOADS)).incoherence(), "it stages real image bytes")
+        assertEquals(
+            emptyList(),
+            AdapterChoice(setOf(MockedSystem.DOWNLOADS)).incoherence(),
+            "it stages real image bytes",
+        )
     }
 
     @Test
     fun a_real_registration_keeps_every_system_the_extension_writes_real() {
         val text = AdapterChoice(setOf(MockedSystem.FILES, MockedSystem.DATABASES)).incoherence().joinToString("\n")
         assertTrue("extension-registry=real needs files=real, databases=real" in text, text)
-        assertEquals(emptyList(), AdapterChoice(setOf(MockedSystem.FILES, MockedSystem.DATABASES, MockedSystem.EXTENSION_REGISTRY)).incoherence())
+        assertEquals(
+            emptyList(),
+            AdapterChoice(
+                setOf(MockedSystem.FILES, MockedSystem.DATABASES, MockedSystem.EXTENSION_REGISTRY),
+            ).incoherence(),
+        )
     }
 }

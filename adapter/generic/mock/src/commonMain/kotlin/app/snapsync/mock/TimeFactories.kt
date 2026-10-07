@@ -1,8 +1,8 @@
 package app.snapsync.mock
 
 import app.snapsync.ports.Clock
-import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
+import kotlin.time.Instant
 
 /** A [Clock] stopped at [now], in [zone] — the time port's double. Its own file because `Factories.kt` is full. */
 fun fixedClock(now: Instant, zone: TimeZone = TimeZone.UTC): Clock = object : Clock {

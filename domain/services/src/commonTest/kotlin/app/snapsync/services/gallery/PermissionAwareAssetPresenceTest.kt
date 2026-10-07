@@ -4,12 +4,11 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
-import app.snapsync.services.gallery.ImportedAssetPresence
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.runTest
 
 /**
  * The grant decides **which source may answer**, and only a source that sees the whole library may say
@@ -87,7 +86,11 @@ class PermissionAwareAssetPresenceTest {
             // A snapshot is present and still may not be trusted: without a usable grant a query returns
             // nothing for assets that exist, and an import cannot succeed anyway.
             val (library, source) = source(status, snapshot = snapshotOf("S1"))
-            assertEquals(mapOf(AssetId("S1") to AssetPresence.UNKNOWN), source.presence(setOf(AssetId("S1"))), "$status")
+            assertEquals(
+                mapOf(AssetId("S1") to AssetPresence.UNKNOWN),
+                source.presence(setOf(AssetId("S1"))),
+                "$status",
+            )
             assertEquals(0, library.queries, "$status never queries")
         }
     }

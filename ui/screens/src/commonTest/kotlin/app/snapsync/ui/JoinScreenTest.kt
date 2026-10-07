@@ -2,21 +2,6 @@
 
 package app.snapsync.ui
 
-import app.snapsync.model.NetworkNotice
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.ShareCount
-import app.snapsync.model.captureCeiling
-
-import app.snapsync.model.EventConfig
-
-import app.snapsync.model.EventStart
-import app.snapsync.model.EventEnd
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.eventStart
-import app.snapsync.model.eventEnd
-import app.snapsync.model.deletesAt
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureCeiling
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -25,53 +10,56 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.test.isSelectable
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.v2.runComposeUiTest
+import app.snapsync.model.AlbumKind
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.DeletesAt
 import app.snapsync.model.Direction
-import app.snapsync.ui.components.LocalReduceMotion
+import app.snapsync.model.EventConfig
+import app.snapsync.model.EventDetails
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventStart
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.PendingSwitch
+import app.snapsync.model.RangeChoice
 import app.snapsync.model.RangeForm
 import app.snapsync.model.ResolvedRange
-import app.snapsync.model.details
-import app.snapsync.model.CaptureDate
-import kotlinx.datetime.LocalDateTime
-import app.snapsync.model.RangeChoice
-import app.snapsync.ui.components.RangeChoiceActions
-import app.snapsync.model.Layer
-import app.snapsync.model.EventDetails
-import app.snapsync.model.DeletesAt
-import app.snapsync.model.JoinPhase
 import app.snapsync.model.ScreenMessage
-import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.model.PendingSwitch
+import app.snapsync.model.ShareCount
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
-import kotlin.time.Instant
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlinx.datetime.TimeZone
-import app.snapsync.ui.JoinGateActions
-import app.snapsync.ui.SwitchActions
-import app.snapsync.ui.resources.Res
-import app.snapsync.ui.components.resources.Res as ComponentRes
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.details
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
+import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.ui.components.LocalReduceMotion
+import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
 import app.snapsync.ui.components.resources.share_range_change
 import app.snapsync.ui.components.resources.share_range_title
+import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.access_choose_title
 import app.snapsync.ui.resources.access_library_title
 import app.snapsync.ui.resources.access_range_title
@@ -85,10 +73,6 @@ import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.event_closed_body
 import app.snapsync.ui.resources.event_closed_title
 import app.snapsync.ui.resources.event_full_title
-import app.snapsync.ui.resources.join_failed_body
-import app.snapsync.ui.resources.message_report_this
-import app.snapsync.ui.resources.message_device_modified
-import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.event_not_found_body
 import app.snapsync.ui.resources.event_not_found_title
 import app.snapsync.ui.resources.join_access_dismiss
@@ -97,8 +81,12 @@ import app.snapsync.ui.resources.join_access_notice
 import app.snapsync.ui.resources.join_access_sheet_title
 import app.snapsync.ui.resources.join_button
 import app.snapsync.ui.resources.join_button_allow
+import app.snapsync.ui.resources.join_failed_body
 import app.snapsync.ui.resources.join_failed_title
 import app.snapsync.ui.resources.loading_event
+import app.snapsync.ui.resources.message_device_modified
+import app.snapsync.ui.resources.message_device_unverifiable
+import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.ok
 import app.snapsync.ui.resources.range_custom
@@ -116,6 +104,12 @@ import app.snapsync.ui.resources.switch_body
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.switch_title
 import app.snapsync.ui.resources.waiting_network_title
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.time.Instant
+import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /**
  * The **redesigned join gate** with a capture-date RANGE (capabilities `join-event`,
@@ -269,7 +263,19 @@ class JoinScreenTest {
     @Test
     fun `load-failed phase offers Retry`() = runComposeUiTest {
         var retried = 0
-        setScreen { TestStatusScreen(joining(JoinPhase.LoadFailed), cutoff = fixedCutoff(), actions = testActions(join = testJoinGateActions(onRetryLoad = { retried++ }))) }
+        setScreen {
+            TestStatusScreen(
+                joining(
+                    JoinPhase.LoadFailed,
+                ),
+                cutoff = fixedCutoff(),
+                actions = testActions(
+                    join = testJoinGateActions(onRetryLoad = {
+                        retried++
+                    }),
+                ),
+            )
+        }
         onNodeWithText(str(Res.string.retry)).assertExists()
         onNodeWithText(str(Res.string.retry)).performClick()
         assertEquals(1, retried)
@@ -282,7 +288,12 @@ class JoinScreenTest {
 
     @Test
     fun `offline a failed load waits for the network with Cancel only`() = runComposeUiTest {
-        setScreen { TestStatusScreen(joining(JoinPhase.LoadFailed).withNetwork(NetworkNotice.OFFLINE), cutoff = fixedCutoff()) }
+        setScreen {
+            TestStatusScreen(
+                joining(JoinPhase.LoadFailed).withNetwork(NetworkNotice.OFFLINE),
+                cutoff = fixedCutoff(),
+            )
+        }
         onNodeWithText(str(ComponentRes.string.network_offline)).assertExists()
         onNodeWithText(str(Res.string.waiting_network_title)).assertExists()
         onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
@@ -323,7 +334,15 @@ class JoinScreenTest {
     fun `without a network a failed commit offers no Retry`() = runComposeUiTest {
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.CommitFailed, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES))
+                joining(
+                    phaseAt(
+                        JoinPhase.Detailed.Step.CommitFailed,
+                        "Anna's Wedding",
+                        EVENT_START,
+                        EVENT_END,
+                        EVENT_DELETES,
+                    ),
+                )
                     .withNetwork(NetworkNotice.OFFLINE),
                 cutoff = fixedCutoff(),
             )
@@ -337,7 +356,8 @@ class JoinScreenTest {
         // Capability `join-event`, "A refused phone is told why it cannot join".
         var retried = 0
         var reported: ScreenMessage? = null
-        val refused = phaseAt(JoinPhase.Detailed.Step.DeviceRefused, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)
+        val refused =
+            phaseAt(JoinPhase.Detailed.Step.DeviceRefused, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)
         val state = mutableStateOf(joining(refused.copy(refusal = ScreenMessage.DEVICE_UNVERIFIABLE)))
         setScreen {
             TestStatusScreen(
@@ -369,13 +389,21 @@ class JoinScreenTest {
         var retried = 0
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.CommitFailed, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                joining(
+                    phaseAt(
+                        JoinPhase.Detailed.Step.CommitFailed,
+                        "Anna's Wedding",
+                        EVENT_START,
+                        EVENT_END,
+                        EVENT_DELETES,
+                    ),
+                ),
                 cutoff = fixedCutoff(),
                 actions = testActions(
                     join = testJoinGateActions(
                         onRetryJoin = { retried++ },
                     ),
-                )
+                ),
             )
         }
         onNodeWithText(str(Res.string.join_failed_title)).assertExists()
@@ -391,7 +419,9 @@ class JoinScreenTest {
         var retried = 0
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.EventFull, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                joining(
+                    phaseAt(JoinPhase.Detailed.Step.EventFull, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                ),
                 cutoff = fixedCutoff(),
                 actions = testActions(join = testJoinGateActions(onRetryJoin = { retried++ })),
             )
@@ -434,7 +464,17 @@ class JoinScreenTest {
     fun `both switches start on so Join is offered`() = runComposeUiTest {
         var confirmed = 0
         setScreen {
-            TestStatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = testActions(join = testJoinGateActions(onConfirmJoin = { confirmed++ })))
+            TestStatusScreen(
+                joining(
+                    ready(),
+                ),
+                cutoff = fixedCutoff(),
+                actions = testActions(
+                    join = testJoinGateActions(onConfirmJoin = {
+                        confirmed++
+                    }),
+                ),
+            )
         }
         onNodeWithText(str(Res.string.share_toggle)).assertToggle(ToggleableState.On)
         onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().assertToggle(ToggleableState.On)
@@ -602,7 +642,14 @@ class JoinScreenTest {
 
     @Test
     fun `the join surface does not state the deletion date`() = runComposeUiTest {
-        setScreen { TestStatusScreen(joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)), cutoff = fixedCutoff()) }
+        setScreen {
+            TestStatusScreen(
+                joining(
+                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                ),
+                cutoff = fixedCutoff(),
+            )
+        }
         onNodeWithText("deleted on", substring = true).assertDoesNotExist()
         onNodeWithText(plural(Res.plurals.duration_days, 30, 30), substring = true).assertDoesNotExist()
     }
@@ -613,7 +660,10 @@ class JoinScreenTest {
     fun `the share section shows how many photos will be shared`() = runComposeUiTest {
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Ready(34)),
+                joining(
+                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    count = ShareCount.Ready(34),
+                ),
                 cutoff = fixedCutoff(),
             )
         }
@@ -624,7 +674,10 @@ class JoinScreenTest {
     fun `a zero count carries the forward gloss`() = runComposeUiTest {
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Ready(0)),
+                joining(
+                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    count = ShareCount.Ready(0),
+                ),
                 cutoff = fixedCutoff(),
             )
         }
@@ -637,7 +690,10 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 // Unavailable = DENIED / unresolved grant → the row is omitted (no spinner that can't resolve).
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Unavailable),
+                joining(
+                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    count = ShareCount.Unavailable,
+                ),
                 cutoff = fixedCutoff(),
             )
         }
@@ -650,7 +706,10 @@ class JoinScreenTest {
     fun `a count still being computed says so`() = runComposeUiTest {
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Counting),
+                joining(
+                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    count = ShareCount.Counting,
+                ),
                 cutoff = fixedCutoff(),
             )
         }
@@ -680,7 +739,10 @@ class JoinScreenTest {
         // renders whatever count the reduction carries.
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Ready(5)),
+                joining(
+                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    count = ShareCount.Ready(5),
+                ),
                 cutoff = fixedCutoff(),
             )
         }
@@ -900,7 +962,15 @@ class JoinScreenTest {
         var retried = 0
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.CommitFailed, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                joining(
+                    phaseAt(
+                        JoinPhase.Detailed.Step.CommitFailed,
+                        "Anna's Wedding",
+                        EVENT_START,
+                        EVENT_END,
+                        EVENT_DELETES,
+                    ),
+                ),
                 cutoff = fixedCutoff(),
                 actions = testActions(join = testJoinGateActions(onRetryJoin = { retried++ })),
             )
@@ -933,7 +1003,7 @@ class JoinScreenTest {
                     switch = testSwitchActions(
                         onConfirmSwitch = { confirms++ },
                     ),
-                )
+                ),
             )
         }
         onNodeWithText(str(Res.string.switch_title)).assertExists()
@@ -963,7 +1033,7 @@ class JoinScreenTest {
                     switch = testSwitchActions(
                         onCancelSwitch = { cancelled++ },
                     ),
-                )
+                ),
             )
         }
         onNodeWithText(str(Res.string.cancel)).performClick()
@@ -984,7 +1054,7 @@ class JoinScreenTest {
                     switch = testSwitchActions(
                         onCancelSwitch = { cancelled++ },
                     ),
-                )
+                ),
             )
         }
         onNodeWithText(str(Res.string.event_not_found_body)).assertExists()

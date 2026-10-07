@@ -1,12 +1,16 @@
 package app.snapsync.compose
 
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SelectionScope
+import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.Backend
 import app.snapsync.ports.Databases
+import app.snapsync.ports.EntryContext
+import app.snapsync.ports.ExtensionHandlers
+import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.PlatformDeviceId
@@ -14,26 +18,22 @@ import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Upload
-import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.album.AlbumMapService
+import app.snapsync.services.backend.BackendServices
+import app.snapsync.services.backend.CredentialedBackend
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.SuppressionService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.identity.AttestState
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
-import app.snapsync.ports.Backend
-import app.snapsync.services.identity.PersistedDeviceIdentity
-import app.snapsync.ports.ExtensionHandlers
-import app.snapsync.ports.ExtensionHost
-import app.snapsync.ports.EntryContext
-import app.snapsync.model.invocation
-import app.snapsync.services.upload.runProcessCycle
-import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.backend.CredentialedBackend
+import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.services.trust.ExtensionCredential
+import app.snapsync.services.upload.runProcessCycle
 
 /**
  * **The upload extension's ports** — everything its composition consumes, and nothing but ports ([Port]; spec

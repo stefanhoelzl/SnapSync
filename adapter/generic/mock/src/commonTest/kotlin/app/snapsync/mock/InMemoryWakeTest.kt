@@ -7,11 +7,11 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.WakeHandlers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.runTest
 
 /**
  * The in-memory wake and registration doubles' own vocabulary, beyond their contracts: a platform without a kind of wake,
@@ -25,8 +25,14 @@ class InMemoryWakeTest {
         val wake = inMemoryWake(pending, supported = setOf(WakeId.Heartbeat))
         var woken = 0
         wake.listen(WakeHandlers(onWake = { _, _ -> woken++ }))
-        assertEquals(ScheduleResult.Unsupported, wake.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(60.seconds)))
-        assertEquals(ScheduleResult.Scheduled, wake.schedule(WakeId.Heartbeat, WakeTrigger.After(60.seconds, WakeNetwork.ANY)))
+        assertEquals(
+            ScheduleResult.Unsupported,
+            wake.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(60.seconds)),
+        )
+        assertEquals(
+            ScheduleResult.Scheduled,
+            wake.schedule(WakeId.Heartbeat, WakeTrigger.After(60.seconds, WakeNetwork.ANY)),
+        )
         assertEquals(setOf(WakeId.Heartbeat), pending.value.keys)
         assertEquals(0, woken, "nothing in memory fires a wake on its own")
     }

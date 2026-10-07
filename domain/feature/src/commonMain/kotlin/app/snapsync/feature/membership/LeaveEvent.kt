@@ -3,9 +3,9 @@ package app.snapsync.feature.membership
 import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.leave.PendingLeaves
 import co.touchlab.kermit.Logger
-import app.snapsync.services.crypto.EventKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -98,5 +98,4 @@ class LeaveEvent(
             }
         }
     }
-
 }

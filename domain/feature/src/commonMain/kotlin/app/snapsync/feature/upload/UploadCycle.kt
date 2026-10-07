@@ -1,31 +1,26 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.CycleResult
-import app.snapsync.model.PauseReason
-import app.snapsync.services.gallery.Discovery
-import app.snapsync.model.PlatformUploadJob
-import app.snapsync.services.upload.BackgroundTransfer
-import app.snapsync.services.gallery.UploadDiscovery
-
+import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.model.isDone
-import app.snapsync.feature.upload.LedgerWriter
+import app.snapsync.model.PauseReason
+import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.Resource
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SyncDecision
-import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.model.SyncEvent
+import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.resourcesOf
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.isDone
+import app.snapsync.model.resourcesOf
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.upload.BackgroundTransfer
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -810,7 +805,6 @@ class UploadCycle(
         return UploadRequest(url = "", headers = emptyMap(), resource = resource)
     }
 
-
     /**
      * Publish the device manifest for [eventId] under [policy], carrying the [manifestVersion] the gate read
      * first (capability `photo-sharing`).
@@ -914,5 +908,4 @@ class UploadCycle(
         }
         return capHit
     }
-
 }

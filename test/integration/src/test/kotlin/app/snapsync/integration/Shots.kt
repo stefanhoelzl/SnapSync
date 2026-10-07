@@ -27,7 +27,9 @@ enum class Shot(val id: String, val settled: (RigState) -> Boolean) {
     }),
 
     /** Joined and settled: every own photo shared, every other member's received. */
-    IN_SYNC("in_sync", { it.health == SyncHealth.InSync && it.download.let { d -> d.total > 0 && d.downloaded == d.total } }),
+    IN_SYNC("in_sync", {
+        it.health == SyncHealth.InSync && it.download.let { d -> d.total > 0 && d.downloaded == d.total }
+    }),
     ;
 
     companion object {

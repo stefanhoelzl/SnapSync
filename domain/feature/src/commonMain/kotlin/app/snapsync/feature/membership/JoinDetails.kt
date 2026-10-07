@@ -1,7 +1,7 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.EventLookup
+import app.snapsync.model.JoinLoad
 
 /**
  * Adapt the `EventDirectory` port's [EventLookup] to the join gate's [JoinLoad]. Lives here — not in

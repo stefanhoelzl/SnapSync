@@ -1,6 +1,5 @@
 package app.snapsync.model
 
-
 /**
  * The production [UploadRequestProvider] (specs: sync-engine, bunny-upload-endpoint, device-attestation):
  * a thin **local URL builder** for the bunny edge proxy. It maps a [Resource] to a plain `PUT` against

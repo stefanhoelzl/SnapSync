@@ -40,7 +40,12 @@ class AndroidBuildInfo(
     /** The environment the build's crash reports are filed under (`production`, `development`). */
     private val reporterEnvironment: String,
 ) : BuildInfo {
-    override val store: StoreLink? = playStoreUrl.takeIf { it.isNotEmpty() }?.let { StoreLink(it, StoreKind.GOOGLE_PLAY) }
+    override val store: StoreLink? = playStoreUrl.takeIf { it.isNotEmpty() }?.let {
+        StoreLink(
+            it,
+            StoreKind.GOOGLE_PLAY,
+        )
+    }
 
     override val platform: Platform = Platform.ANDROID
 

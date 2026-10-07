@@ -1,7 +1,5 @@
 package app.snapsync.desktop
 
-import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.NetworkAccess
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,12 +23,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.UploadError
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.NetworkAccess
+import app.snapsync.model.UploadError
 
 /**
  * The world-inspector control panel (`docs/testing.md`): raw Material 3, **never** App*
@@ -76,7 +76,9 @@ fun WorldInspector(
         Header("Membership")
         Text("Permission")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { controller.setPermission(GalleryAccess.NOT_DETERMINED) }) { Text("Not determined") }
+            OutlinedButton(
+                onClick = { controller.setPermission(GalleryAccess.NOT_DETERMINED) },
+            ) { Text("Not determined") }
             OutlinedButton(onClick = { controller.setPermission(GalleryAccess.DENIED) }) { Text("Denied") }
             OutlinedButton(onClick = { controller.setPermission(GalleryAccess.LIMITED) }) { Text("Limited") }
             OutlinedButton(onClick = { controller.setPermission(GalleryAccess.GRANTED) }) { Text("Granted") }
@@ -101,7 +103,10 @@ fun WorldInspector(
             OutlinedButton(onClick = { controller.createEvent("Future event", FUTURE_START, FUTURE_END) }) {
                 Text("Create event (not started)")
             }
-            OutlinedButton(enabled = snap.joinedEventId != null, onClick = { controller.leaveEvent() }) { Text("Leave") }
+            OutlinedButton(
+                enabled = snap.joinedEventId != null,
+                onClick = { controller.leaveEvent() },
+            ) { Text("Leave") }
         }
 
         // ---- Gallery | Backend ------------------------------------------------------------------
@@ -131,7 +136,8 @@ fun WorldInspector(
                                 if (row.imported) append("  ⬇ imported (never uploads)")
                                 if (row.policyExcluded) append("  🚫 policy-excluded")
                             },
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -160,9 +166,13 @@ fun WorldInspector(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Button(onClick = { controller.completeJob(job.key) }) { Text("✓") }
                         OutlinedButton(onClick = { controller.failJob(job.key, UploadError.Network) }) { Text("Net") }
-                        OutlinedButton(onClick = { controller.failJob(job.key, UploadError.Http(500)) }) { Text("Http") }
+                        OutlinedButton(
+                            onClick = { controller.failJob(job.key, UploadError.Http(500)) },
+                        ) { Text("Http") }
                         OutlinedButton(onClick = { controller.failJob(job.key, UploadError.Cancelled) }) { Text("Cxl") }
-                        OutlinedButton(onClick = { controller.failJob(job.key, UploadError.Unknown("forced")) }) { Text("Unk") }
+                        OutlinedButton(
+                            onClick = { controller.failJob(job.key, UploadError.Unknown("forced")) },
+                        ) { Text("Unk") }
                     }
                 }
                 AppUploads(controller, snap)
@@ -179,7 +189,10 @@ fun WorldInspector(
                     Text(if (snap.backendOffline) "backend OFFLINE (502)" else "backend online")
                 }
                 RefuseAttestationLever(controller, snap)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     // The membership read's THIRD state (capability `background-upload`). Not a mood: an
                     // unreadable read must skip — touching no ledger, no manifest, no job — where an
                     // absent one reads as not joined. It is a switch because it is otherwise unreachable by a
@@ -245,7 +258,9 @@ private fun AppUploads(controller: WorldInspectorController, snap: InspectorSnap
 /** The download session's in-flight transfers, and the three ways the operator lets them finish. */
 @Composable
 private fun Downloads(controller: WorldInspectorController, snap: InspectorSnapshot) {
-    Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloads() }) { Text("Stage all pending") }
+    Button(enabled = snap.downloads.isNotEmpty(), onClick = {
+        controller.stageAllDownloads()
+    }) { Text("Stage all pending") }
     Button(
         enabled = snap.downloads.isNotEmpty(),
         onClick = { controller.stageAllDownloads(WorldInspectorController.BAD_GATEWAY) },
@@ -300,7 +315,11 @@ private fun Holds(held: Set<String>, onChange: (String, Boolean) -> Unit) {
     Text("Hold (the app waits)")
     HOLDS.forEach { hold ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Switch(modifier = Modifier.testTag("hold-$hold"), checked = hold in held, onCheckedChange = { onChange(hold, it) })
+            Switch(
+                modifier = Modifier.testTag("hold-$hold"),
+                checked = hold in held,
+                onCheckedChange = { onChange(hold, it) },
+            )
             Text(if (hold in held) "$hold HELD" else hold)
         }
     }
@@ -313,7 +332,9 @@ private fun NetworkLevers(controller: WorldInspectorController) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = false)) }) { Text("Wi-Fi") }
         // Capability `mobile-data`: mobile data, a hotspot or Low Data Mode — where photos kept off mobile data wait.
-        OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = true)) }) { Text("Mobile data") }
+        OutlinedButton(
+            onClick = { controller.setNetwork(NetworkAccess.Online(restricted = true)) },
+        ) { Text("Mobile data") }
         OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Offline) }) { Text("Offline") }
         OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Blocked) }) { Text("Blocked") }
     }

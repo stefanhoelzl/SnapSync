@@ -57,7 +57,8 @@ class SelectionScopeTest {
         for (status in GalleryAccess.entries - GalleryAccess.LIMITED) {
             for (snapshot in listOf(null, emptyList(), snapshotOf("S1"))) {
                 assertSame(
-                    SelectionScope.Unrestricted, selectionScope(status, snapshot),
+                    SelectionScope.Unrestricted,
+                    selectionScope(status, snapshot),
                     "$status must not scope discovery",
                 )
             }

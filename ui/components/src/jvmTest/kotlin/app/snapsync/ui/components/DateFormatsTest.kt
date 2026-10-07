@@ -1,8 +1,8 @@
 package app.snapsync.ui.components
 
+import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.datetime.LocalDateTime
 
 /**
  * The JVM's [DateFormats] (`docs/architecture.md`, "Localization"): a skeleton reads as each locale writes it,
@@ -24,9 +24,15 @@ class DateFormatsTest {
 
     @Test
     fun `a bare language keeps the device's region, and the device's own language keeps the device locale`() {
-        assertEquals(DateLocale.Explicit("en", "DE"), resolveDateLocale("en", deviceLanguage = "de", deviceRegion = "DE"))
+        assertEquals(
+            DateLocale.Explicit("en", "DE"),
+            resolveDateLocale("en", deviceLanguage = "de", deviceRegion = "DE"),
+        )
         assertEquals(DateLocale.Device, resolveDateLocale("en", deviceLanguage = "en", deviceRegion = "US"))
-        assertEquals(DateLocale.Explicit("en", "US"), resolveDateLocale("en-US", deviceLanguage = "de", deviceRegion = "DE"))
+        assertEquals(
+            DateLocale.Explicit("en", "US"),
+            resolveDateLocale("en-US", deviceLanguage = "de", deviceRegion = "DE"),
+        )
         assertEquals(DateLocale.Device, resolveDateLocale(null, deviceLanguage = "de", deviceRegion = "DE"))
         assertEquals(DateLocale.Explicit("en", null), resolveDateLocale("en", deviceLanguage = "de", deviceRegion = ""))
     }

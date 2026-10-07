@@ -43,7 +43,9 @@ internal object EmulatorNetwork {
             it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                 it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         }
-        check(online) { "the emulator has no validated network after ${INTERNET_MILLIS}ms, and $need (networks: ${describe()})" }
+        check(
+            online,
+        ) { "the emulator has no validated network after ${INTERNET_MILLIS}ms, and $need (networks: ${describe()})" }
     }
 
     /** Every network the emulator has, with the transport and capabilities the device tests turn on. */

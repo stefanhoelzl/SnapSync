@@ -28,7 +28,11 @@ class ExtensionCredential(
 
     override suspend fun rejected(sent: String): String? {
         runCatchingCancellable { store.clearTokenIf(sent) }
-            .onFailure { log.w(it) { "the rejected token could not be compared and cleared — the app's next wake retries" } }
+            .onFailure {
+                log.w(
+                    it,
+                ) { "the rejected token could not be compared and cleared — the app's next wake retries" }
+            }
         return null
     }
 }

@@ -20,7 +20,12 @@ import platform.darwin.dispatch_queue_create
  * One path a monitor reported: `nw_path_get_status`, `nw_path_get_unsatisfied_reason`, `nw_path_is_expensive` and
  * `nw_path_is_constrained`, as Network.framework spells them.
  */
-internal data class PathReading(val status: UInt, val reason: UInt, val expensive: Boolean = false, val constrained: Boolean = false)
+internal data class PathReading(
+    val status: UInt,
+    val reason: UInt,
+    val expensive: Boolean = false,
+    val constrained: Boolean = false,
+)
 
 /**
  * **The operating-system boundary of [IosNetworkMonitor]**: the `nw_path_monitor` it runs, reduced to the two values

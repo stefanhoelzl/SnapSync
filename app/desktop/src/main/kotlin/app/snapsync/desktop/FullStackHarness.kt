@@ -12,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
@@ -82,7 +81,10 @@ fun WorldHarnessRoot() {
 
     // Engine console tap: funnel the real stack's Kermit output into the inspector footer. Installed
     // once; a pure read of existing log output (no change to the app).
-    remember { Logger.setLogWriters(ConsoleLogWriter(controller::appendConsole)); Unit }
+    remember {
+        Logger.setLogWriters(ConsoleLogWriter(controller::appendConsole))
+        Unit
+    }
 
     MaterialTheme {
         Surface {

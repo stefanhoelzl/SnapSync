@@ -1,15 +1,13 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.membershipUnreadable
 import app.snapsync.model.EventConfig
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.services.config.ConfigService
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

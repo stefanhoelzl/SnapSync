@@ -7,6 +7,7 @@ import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DevControls
+import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Download
 import app.snapsync.ports.ExtensionHost
@@ -16,10 +17,9 @@ import app.snapsync.ports.Gallery
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.LogSink
+import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.Preferences
-import app.snapsync.ports.NetworkMonitor
-import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.SecureStore

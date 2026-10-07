@@ -3,10 +3,9 @@
 package app.snapsync.launchadapters
 
 import app.snapsync.compose.DevicePorts
-import app.snapsync.mock.MockedSystem
-import app.snapsync.mock.MockState
-
 import app.snapsync.mock.MockDevice
+import app.snapsync.mock.MockState
+import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.TemporaryFiles
 import app.snapsync.model.CycleResult
 import app.snapsync.model.FileArea
@@ -146,7 +145,9 @@ sealed interface LaunchAdapters {
             when (val text = files.read(FileArea.SHARED, AdapterFiles.CHOICE)) {
                 is FileResult.Ok -> when (val parsed = AdapterChoice.parse(text.value.decodeToString())) {
                     is AdapterParse.Invalid -> Refused(parsed.problems.map { "${AdapterFiles.CHOICE}: $it" })
-                    is AdapterParse.Parsed -> (parsed.choice.incoherence(facts.absentSystems) + parsed.choice.unwritten(facts)).takeIf { it.isNotEmpty() }
+                    is AdapterParse.Parsed -> (parsed.choice.incoherence(facts.absentSystems) + parsed.choice.unwritten(facts)).takeIf {
+                        it.isNotEmpty()
+                    }
                         ?.let(::Refused)
                         ?: restore(parsed.choice, files, process, facts)
                 }
@@ -192,7 +193,13 @@ sealed interface LaunchAdapters {
             device.declaredVersion.value = facts.appVersion
             val problems = choice.mocked.filter { persisted }.mapNotNull { system ->
                 when (val state = files.read(FileArea.SHARED, AdapterFiles.state(system))) {
-                    is FileResult.Ok -> runCatchingCancellable { MockState.restore(device, system, state.value.decodeToString()) }
+                    is FileResult.Ok -> runCatchingCancellable {
+                        MockState.restore(
+                            device,
+                            system,
+                            state.value.decodeToString(),
+                        )
+                    }
                         .exceptionOrNull()?.let { "${AdapterFiles.state(system)} does not restore: ${it.message}" }
                     FileResult.NotFound -> null
                     else -> "${AdapterFiles.state(system)} could not be read: $state"

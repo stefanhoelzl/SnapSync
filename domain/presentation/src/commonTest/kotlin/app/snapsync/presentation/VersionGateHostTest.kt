@@ -1,18 +1,17 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.Layer
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
+import app.snapsync.model.VersionRefusal
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,8 +24,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
-import app.snapsync.model.Layer
-import app.snapsync.model.VersionRefusal
 
 /**
  * The version gate on the SCREEN (capability `app-update-required`): a backend refusal of this build
@@ -67,8 +64,16 @@ class VersionGateHostTest {
         // the member on an update screen after they had already updated.
         val refusal = MutableStateFlow<VersionRefusal?>(null)
         gateHost(
-            backgroundScope, refusal,
-            config = EventConfig(GATE_EVENT_ID, "Anna's Birthday", GATE_CUTOFF, maxPhotoDate = GATE_CEILING, endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z")),
+            backgroundScope,
+            refusal,
+            config = EventConfig(
+                GATE_EVENT_ID,
+                "Anna's Birthday",
+                GATE_CUTOFF,
+                maxPhotoDate = GATE_CEILING,
+                endsAt = eventEnd("2099-12-31T00:00:00Z"),
+                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            ),
         ).testWithInternalState(this) {
             runOnCreate() // the initial state is the joined layer
 

@@ -5,8 +5,8 @@ import app.snapsync.model.CycleResult
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.LinkDelivery
-import app.snapsync.model.PlatformError
 import app.snapsync.model.PUSH_KIND_APNS
+import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
 import app.snapsync.model.UiIntent
@@ -37,6 +37,7 @@ import kotlin.concurrent.Volatile
 /** The app's foreground life. */
 class LifecycleMock {
     internal val handlers = HandlerSlot<LifecycleHandlers>("Lifecycle", BeforeListen.Thrown)
+
     @Volatile internal var everActive = false
 
     fun port(): Lifecycle = object : Lifecycle {
@@ -96,11 +97,14 @@ class LinksOperator internal constructor(private val mock: LinksMock) {
  */
 class PushServiceMock {
     internal val handlers = HandlerSlot<PushHandlers>("PushNotifications", BeforeListen.Thrown)
+
     @Volatile internal var registrations = 0
+
     @Volatile internal var kind = PUSH_KIND_APNS
 
     /** The token this device was issued, and which process's handlers have been told it. */
     @Volatile internal var issued: String? = null
+
     @Volatile internal var toldTo: PushHandlers? = null
 
     fun port(): PushNotifications = object : PushNotifications {
@@ -194,7 +198,9 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) {
  */
 class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Ignored) {
     internal val handlers = HandlerSlot<DevHandlers>("DevControls", BeforeListen.Thrown)
+
     @Volatile internal var pin: UploaderPin? = null
+
     @Volatile internal var encrypts: Boolean = false
 
     fun port(): DevControls = object : DevControls {

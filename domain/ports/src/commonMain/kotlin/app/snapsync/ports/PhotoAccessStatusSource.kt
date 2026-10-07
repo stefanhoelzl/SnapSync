@@ -1,7 +1,6 @@
 package app.snapsync.ports
 
 import app.snapsync.model.GalleryAccess
-
 import kotlinx.coroutines.flow.StateFlow
 
 /**

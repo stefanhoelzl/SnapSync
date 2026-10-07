@@ -4,25 +4,25 @@ import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.DeviceConditionsContract
+import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
-import app.snapsync.contracts.DeviceConditionsContract
-import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
-import app.snapsync.services.trust.CachedAttestStore
-import app.snapsync.ports.AttestStore
-import app.snapsync.ports.DeviceIntegrity
-import app.snapsync.ports.ProcessInfo
 import app.snapsync.model.Availability
 import app.snapsync.model.NetworkAccess
-import app.snapsync.ports.NetworkMonitor
+import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DeviceConditions
+import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.NetworkMonitor
+import app.snapsync.ports.ProcessInfo
+import app.snapsync.services.trust.CachedAttestStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
@@ -99,7 +99,8 @@ class AttestContractBindingsTest {
     private val network = object : Binding<NetworkState, NetworkMonitor> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(NetworkState.ONLINE, NetworkState.RESTRICTED, NetworkState.OFFLINE, NetworkState.BLOCKED)
+        override val reaches =
+            setOf(NetworkState.ONLINE, NetworkState.RESTRICTED, NetworkState.OFFLINE, NetworkState.BLOCKED)
 
         override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
             Entered.Ready(inMemoryNetworkMonitor(MutableStateFlow(accessIn(state))))
@@ -119,6 +120,7 @@ class AttestContractBindingsTest {
     private val deviceConditions = object : Binding<DeviceConditionsState, DeviceConditions> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+
         // At its defaults the double is an iPhone; Android's facts would need a knob turned, which a binding may not.
         override val reaches = setOf(DeviceConditionsState.IPHONE)
 

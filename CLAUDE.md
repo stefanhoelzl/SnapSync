@@ -206,6 +206,9 @@ Two harness facts that are invisible until they bite, and that no amount of loca
   the REAL `api/`, launched as `src/dev/serve.ts --ephemeral` (loopback-only network, filesystem store, no
   zone reachable). Without Deno those tests FAIL naming it; they never skip. `api/src` is an input of that
   task, so a backend-only change re-runs them.
+- `build` also runs **ktlint formatting and Compose's rules** inside the detekt tiers (fix formatting with
+  `./gradlew <tier task> -Psnapsync.detektAutoCorrect`) and **Android Lint** on the release app, any warning
+  failing (`docs/architecture.md`, "Format, Compose and platform lint").
 - `./gradlew compileIosMainKotlinMetadata` — the **Linux-runnable proxy** for the iOS source
   sets: it compiles `iosMain`/`commonMain` (and cinterop) without a Mac, so you can catch
   iOS-only breakage here.

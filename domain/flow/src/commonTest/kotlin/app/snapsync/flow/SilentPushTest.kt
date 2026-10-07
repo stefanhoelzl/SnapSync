@@ -21,7 +21,10 @@ class SilentPushTest {
 
     private fun flow(
         recorder: Recorder,
-        download: suspend (String, Long?) -> Unit = { id, seq -> recorder.seen += "down:$id" + (seq?.let { "@$it" } ?: "") },
+        download: suspend (
+            String,
+            Long?,
+        ) -> Unit = { id, seq -> recorder.seen += "down:$id" + (seq?.let { "@$it" } ?: "") },
     ) =
         SilentPush(
             reloadConfig = { recorder.reloads++ },
@@ -53,7 +56,10 @@ class SilentPushTest {
         // The push's handler must still be released, and its tail still joined: the imports it drains are staged
         // already, and a union read that threw has nothing to say about them.
         val r = Recorder()
-        flow(r, download = { _, _ -> error("the union read blew up") }).run(mapOf<Any?, Any?>("eventId" to "E")) // must not throw
+        flow(
+            r,
+            download = { _, _ -> error("the union read blew up") },
+        ).run(mapOf<Any?, Any?>("eventId" to "E")) // must not throw
         assertEquals(1, r.reloads)
     }
 

@@ -1,10 +1,10 @@
 package app.snapsync.services.trust
 
 import app.snapsync.ports.AttestStore
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlinx.coroutines.test.runTest
 
 /**
  * The upload extension's credential (capability `privacy-security`): it sends whatever the app stored, and on a

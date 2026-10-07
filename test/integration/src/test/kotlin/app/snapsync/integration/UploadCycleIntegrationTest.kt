@@ -57,7 +57,10 @@ class UploadCycleIntegrationTest {
 
         assertEquals("skipped", cycle(), "no usable access: the cycle is withheld")
         assertTrue(primaryKey("B") !in jobs().live, "nothing created without a grant")
-        assertTrue("A" in union(), "a temporary grant state publishes nothing — never the empty manifest that blanks the union")
+        assertTrue(
+            "A" in union(),
+            "a temporary grant state publishes nothing — never the empty manifest that blanks the union",
+        )
     }
 
     @Test
@@ -89,7 +92,10 @@ class UploadCycleIntegrationTest {
 
         assertEquals("skipped", cycle())
 
-        assertTrue("downloads.db" !in osRecord().databasesOpened.drop(opened), "admission is decided before the store is opened")
+        assertTrue(
+            "downloads.db" !in osRecord().databasesOpened.drop(opened),
+            "admission is decided before the store is opened",
+        )
     }
 
     // ---- the capture-date cutoff (capability `photo-sharing`) -----------------------------------------------------
@@ -145,7 +151,11 @@ class UploadCycleIntegrationTest {
         assertEquals(setOf("A"), manifest(event)?.keys, "an empty answer that is not authoritative is no evidence")
 
         cycle()
-        assertEquals(emptySet(), manifest(event)?.keys, "the next readable walk is the evidence — no removal signal needed")
+        assertEquals(
+            emptySet(),
+            manifest(event)?.keys,
+            "the next readable walk is the evidence — no removal signal needed",
+        )
     }
 
     // ---- a storage reset ------------------------------------------------------------------------------------------

@@ -1,11 +1,11 @@
 package app.snapsync.mock
 
-import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.DownloadStoreContract
 import app.snapsync.contracts.DownloadStoreState
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.LedgerStoreContract
 import app.snapsync.contracts.LedgerStoreState
 import app.snapsync.contracts.currentHost
@@ -24,18 +24,29 @@ class StoreContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(LedgerStoreState.EMPTY)
-        override fun create(state: LedgerStoreState, clauseId: String) = Entered.Ready(LedgerService(inMemoryDatabases()) { LEDGER_CONTRACT_EVENT })
+        override fun create(state: LedgerStoreState, clauseId: String) = Entered.Ready(
+            LedgerService(
+                inMemoryDatabases(),
+            ) {
+                LEDGER_CONTRACT_EVENT
+            },
+        )
     }
 
     private val download = object : Binding<DownloadStoreState, DownloadService> {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(DownloadStoreState.EMPTY)
-        override fun create(state: DownloadStoreState, clauseId: String) = Entered.Ready(DownloadService(inMemoryDatabases()))
+        override fun create(state: DownloadStoreState, clauseId: String) = Entered.Ready(
+            DownloadService(inMemoryDatabases()),
+        )
     }
 
     @Test
-    fun `the ledger service over in-memory databases satisfies the LedgerStore contract`() = verify(LedgerStoreContract, ledger)
+    fun `the ledger service over in-memory databases satisfies the LedgerStore contract`() = verify(
+        LedgerStoreContract,
+        ledger,
+    )
 
     @Test
     fun `the download service over in-memory databases satisfies the DownloadStore contract`() =

@@ -2,42 +2,39 @@
 
 package app.snapsync.album
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
+import app.snapsync.feature.album.AlbumCoordinator
+import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.support.LEDGER_EVENT
-import app.snapsync.model.EntryScope
-import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
+import app.snapsync.feature.support.configService
+import app.snapsync.feature.support.galleryAccess
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.feature.support.configService
-import app.snapsync.feature.support.galleryAccess
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.GalleryRead
-import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.GalleryReader
-import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.ledger.LedgerService
-import app.snapsync.feature.album.AlbumCoordinator
-import app.snapsync.feature.album.AlbumGather
+import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
+import app.snapsync.model.EntryScope
 import app.snapsync.model.EventConfig
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.GalleryRead
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.selectionPolicyFor
-import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.model.AssetRef
-import app.snapsync.services.config.ConfigService
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
+import app.snapsync.model.WriteOutcome
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import app.snapsync.model.selectionPolicyFor
+import app.snapsync.ports.GalleryReader
+import app.snapsync.services.album.AlbumMapService
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.ledger.LedgerService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -61,6 +58,7 @@ class AlbumGatherTest {
         private val failingCall: Int? = null,
     ) : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
         val calls = mutableListOf<List<AssetId>>()
+
         /** When set, every add waits for it — a gather holding its lock. */
         var gate: CompletableDeferred<Unit>? = null
         val added: Set<AssetId> get() = calls.flatten().toSet()
@@ -104,7 +102,13 @@ class AlbumGatherTest {
         val gather = AlbumGather(
             configSource = config,
             ledger = ledger,
-            policyFor = { c -> selectionPolicyFor(c, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }) },
+            policyFor = { c ->
+                selectionPolicyFor(
+                    c,
+                    suppressedAssetIds = { emptySet() },
+                    albumExcludedAssetIds = { emptySet() },
+                )
+            },
             downloads = downloads,
             photoAccess = galleryAccess(grant),
             coordinator = AlbumCoordinator(
@@ -127,7 +131,11 @@ class AlbumGatherTest {
         suspend fun imported(device: String, assetId: String, localId: String, eventId: String? = "E2") {
             val ref = AssetRef(device, AssetId(assetId))
             val resources = listOf(PlannedResource("$assetId.heic", "u", "primary", "image/heic", "a.heic"))
-            downloads.planAll(listOf(PlannedAsset(ref, "2026-09-10T00:00:00Z", resources)), eventId, members = listOf(ref))
+            downloads.planAll(
+                listOf(PlannedAsset(ref, "2026-09-10T00:00:00Z", resources)),
+                eventId,
+                members = listOf(ref),
+            )
             downloads.markImported(ref, AssetId(localId))
         }
     }
@@ -144,7 +152,11 @@ class AlbumGatherTest {
         val r = rig()
         r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z", eventId = "E1")
         r.gather.gather("E2")
-        assertEquals(setOf(AssetId("OWN_1_L0_001")), r.manager.added, "own and foreign photos reach the album in one id form: the gallery's")
+        assertEquals(
+            setOf(AssetId("OWN_1_L0_001")),
+            r.manager.added,
+            "own and foreign photos reach the album in one id form: the gallery's",
+        )
     }
 
     @Test

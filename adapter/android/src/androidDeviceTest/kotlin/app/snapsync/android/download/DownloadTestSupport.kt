@@ -10,7 +10,11 @@ internal val downloadManager: DownloadManager get() = context.getSystemService(D
 /** Remove every row this app holds, so no test is handed another's leftovers. */
 internal fun removeAllDownloads() {
     downloadManager.query(DownloadManager.Query())?.use { cursor ->
-        val ids = buildList { while (cursor.moveToNext()) add(cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID))) }
+        val ids = buildList {
+            while (cursor.moveToNext()) add(
+                cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)),
+            )
+        }
         ids.forEach { downloadManager.remove(it) }
     }
 }
@@ -23,5 +27,7 @@ internal fun removeAllDownloads() {
  */
 internal fun awaitBroadcastsIdle() {
     val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-    ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("am wait-for-broadcast-idle")).use { it.readBytes() }
+    ParcelFileDescriptor.AutoCloseInputStream(
+        automation.executeShellCommand("am wait-for-broadcast-idle"),
+    ).use { it.readBytes() }
 }

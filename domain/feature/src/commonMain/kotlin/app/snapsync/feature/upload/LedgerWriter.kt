@@ -1,9 +1,9 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.toLedgerRow
-import app.snapsync.model.LedgerState
 import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 

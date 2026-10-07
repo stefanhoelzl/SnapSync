@@ -85,6 +85,9 @@ class PortsHoldInterfacesOnlyTest {
             RegexOption.MULTILINE,
         )
 
-        val NESTED_OBJECT = Regex("""^\s+(?:data |private |internal )?(?:companion )?object\s*(\w*)""", RegexOption.MULTILINE)
+        val NESTED_OBJECT = Regex(
+            """^\s+(?:data |private |internal )?(?:companion )?object\s*(\w*)""",
+            RegexOption.MULTILINE,
+        )
     }
 }

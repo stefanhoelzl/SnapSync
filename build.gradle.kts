@@ -172,6 +172,8 @@ tasks.named("detekt") { enabled = false }
 // root's `detektPlugins` to each. Which files a rule reads is its `includes` in `config/detekt/_base.yml`.
 dependencies {
     detektPlugins(project(":tools:detekt-rules"))
+    detektPlugins(libs.detekt.formatting)
+    detektPlugins(libs.compose.rules.detekt)
 }
 
 tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
@@ -236,8 +238,14 @@ tasks.named("check") { dependsOn(gradle.includedBuild("build-logic").task(":test
 
 /** Kotlin source-set directory names that hold TESTS. Everything else under `src/` is production. */
 val testSourceSetDirs = listOf(
-    "commonTest", "iosTest", "iosSimulatorArm64Test", "jvmTest", "appleTest",
-    "nativeTest", "androidDeviceTest", "test",
+    "commonTest",
+    "iosTest",
+    "iosSimulatorArm64Test",
+    "jvmTest",
+    "appleTest",
+    "nativeTest",
+    "androidDeviceTest",
+    "test",
 )
 
 /**
@@ -331,6 +339,8 @@ fun registerDetektTier(
         config.setFrom(files("config/detekt/_base.yml") + if (tierConfig.exists()) files(tierConfig) else files())
         buildUponDefaultConfig = true
         ignoreFailures = false
+        // `-Psnapsync.detektAutoCorrect` lets the formatting rules rewrite what they flag, instead of failing on it.
+        autoCorrect = providers.gradleProperty("snapsync.detektAutoCorrect").isPresent
         reports {
             xml.required.set(true)
             // Named per task. The plugin's default is `detekt.xml` for every task, so nine tasks would

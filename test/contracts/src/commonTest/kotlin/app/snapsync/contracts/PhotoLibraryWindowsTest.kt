@@ -16,7 +16,11 @@ class PhotoLibraryWindowsTest {
     @Test
     fun `no two photo clauses share a capture window`() {
         val byDay = photoContracts
-            .flatMap { contract -> contract.clauses.map { "${contract.name}/${it.id}" to PhotoLibrary.window(contract.name, it.id).epochDay } }
+            .flatMap { contract ->
+                contract.clauses.map {
+                    "${contract.name}/${it.id}" to PhotoLibrary.window(contract.name, it.id).epochDay
+                }
+            }
             .groupBy({ it.second }, { it.first })
             .filterValues { it.size > 1 }
         assertTrue(byDay.isEmpty(), "clauses sharing a window: $byDay")

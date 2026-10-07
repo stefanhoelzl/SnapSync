@@ -43,7 +43,12 @@ object DeviceIntegrityContract : Contract<DeviceIntegrityState, DeviceIntegrity>
         }
 
         clause("AN_UNAVAILABLE_SERVICE_REFUSES_A_FRESH_PROOF", DeviceIntegrityState.UNAVAILABLE) { integrity ->
-            val failure = assertFailsWith<Exception> { integrity.prove(challenge("AN_UNAVAILABLE_SERVICE_REFUSES_A_FRESH_PROOF")) }
+            val failure =
+                assertFailsWith<Exception> {
+                    integrity.prove(
+                        challenge("AN_UNAVAILABLE_SERVICE_REFUSES_A_FRESH_PROOF"),
+                    )
+                }
             assertTrue(!failure.message.isNullOrBlank(), "a refusal carries a diagnosis")
         }
 

@@ -1,12 +1,12 @@
 package app.snapsync.model
 
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
 
 class CutoffTest {
 
@@ -57,8 +57,14 @@ class CutoffTest {
 
     @Test
     fun `a cutoff below the event start is clamped up to it`() {
-        assertEquals(CaptureCutoff(startsAt.at), clampToFloor(chosen = captureCutoff("2026-07-14T12:00:00Z"), startsAt = startsAt))
-        assertEquals(CaptureCutoff(startsAt.at), clampToFloor(chosen = captureCutoff("2001-01-01T00:00:00Z"), startsAt = startsAt))
+        assertEquals(
+            CaptureCutoff(startsAt.at),
+            clampToFloor(chosen = captureCutoff("2026-07-14T12:00:00Z"), startsAt = startsAt),
+        )
+        assertEquals(
+            CaptureCutoff(startsAt.at),
+            clampToFloor(chosen = captureCutoff("2001-01-01T00:00:00Z"), startsAt = startsAt),
+        )
     }
 
     @Test
@@ -76,7 +82,13 @@ class CutoffTest {
         // The whole safety argument in one assertion: whatever the member (or a hostile deeplink) picks,
         // the persisted cutoff is never EARLIER than the event's start — so no photo taken before the
         // event began can be uploaded to it.
-        val picks = listOf(captureCutoff(""), captureCutoff("2001-01-01T00:00:00Z"), CaptureCutoff(startsAt.at), captureCutoff("2099-12-31T23:59:59Z"))
+        val picks =
+            listOf(
+                captureCutoff(""),
+                captureCutoff("2001-01-01T00:00:00Z"),
+                CaptureCutoff(startsAt.at),
+                captureCutoff("2099-12-31T23:59:59Z"),
+            )
         for (chosen in picks) {
             assertTrue(
                 clampToFloor(chosen, startsAt).at >= startsAt.at,
@@ -97,7 +109,10 @@ class CutoffTest {
         // This is what makes "nothing syncs before the event starts" a theorem rather than a gate: a
         // photo's creationDate cannot be in the future, so a future cutoff admits nothing.
         val future = eventStart("2099-12-31T23:59:59Z")
-        assertEquals(CaptureCutoff(future.at), clampToFloor(chosen = captureCutoff("2026-07-14T12:00:00Z"), startsAt = future))
+        assertEquals(
+            CaptureCutoff(future.at),
+            clampToFloor(chosen = captureCutoff("2026-07-14T12:00:00Z"), startsAt = future),
+        )
         assertTrue(CaptureDate("2026-07-14T12:00:00Z") < future.at, "no photo of today satisfies a 2099 cutoff")
     }
 
@@ -105,8 +120,14 @@ class CutoffTest {
 
     @Test
     fun `an upper bound above the event end is clamped down to it`() {
-        assertEquals(CaptureCeiling(endsAt.at), clampToCeiling(chosen = captureCeiling("2026-07-31T00:00:00Z"), endsAt = endsAt))
-        assertEquals(CaptureCeiling(endsAt.at), clampToCeiling(chosen = captureCeiling("2099-01-01T00:00:00Z"), endsAt = endsAt))
+        assertEquals(
+            CaptureCeiling(endsAt.at),
+            clampToCeiling(chosen = captureCeiling("2026-07-31T00:00:00Z"), endsAt = endsAt),
+        )
+        assertEquals(
+            CaptureCeiling(endsAt.at),
+            clampToCeiling(chosen = captureCeiling("2099-01-01T00:00:00Z"), endsAt = endsAt),
+        )
     }
 
     @Test
@@ -122,7 +143,11 @@ class CutoffTest {
     fun `the ceiling only ever narrows scope`() {
         // Mirror of the floor property: the persisted upper bound is never ABOVE the event end, whatever
         // the member picked — so the event can only narrow a membership's window, never widen it.
-        for (chosen in listOf(captureCeiling("2026-07-14T00:00:00Z"), CaptureCeiling(endsAt.at), captureCeiling("2030-01-01T00:00:00Z"))) {
+        for (chosen in listOf(
+            captureCeiling("2026-07-14T00:00:00Z"),
+            CaptureCeiling(endsAt.at),
+            captureCeiling("2030-01-01T00:00:00Z"),
+        )) {
             assertTrue(clampToCeiling(chosen, endsAt).at <= endsAt.at, "clampToCeiling($chosen) must be <= endsAt")
         }
     }

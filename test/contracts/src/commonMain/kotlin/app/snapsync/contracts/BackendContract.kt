@@ -77,7 +77,10 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
 
     /** Enters [state] on the backend [setup] drives. Bindings call exactly this. */
     suspend fun seed(state: BackendState, clauseId: String, setup: BackendSetup): Seeded = when (state) {
-        BackendState.SERVING, BackendState.NO_SUCH_EVENT -> Seeded(eventId = setup.freshId(), deviceId = setup.freshId())
+        BackendState.SERVING, BackendState.NO_SUCH_EVENT -> Seeded(
+            eventId = setup.freshId(),
+            deviceId = setup.freshId(),
+        )
         else -> seedEvent(state, clauseId, setup)
     }
 

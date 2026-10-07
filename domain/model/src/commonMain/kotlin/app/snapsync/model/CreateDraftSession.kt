@@ -1,8 +1,8 @@
 package app.snapsync.model
 
+import kotlinx.serialization.Serializable
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
-import kotlinx.serialization.Serializable
 
 /**
  * How long the app may stay in the background before the create screen starts a fresh draft (capability

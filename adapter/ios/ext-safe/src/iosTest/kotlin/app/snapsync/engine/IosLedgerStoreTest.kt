@@ -1,19 +1,18 @@
 package app.snapsync.engine
 
+import app.snapsync.databases.IosDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
-
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import app.snapsync.services.ledger.LedgerService
-import app.snapsync.databases.IosDatabases
 
 /**
  * The iOS ledger's **placement** — that the native SQLite driver really opens its database where the

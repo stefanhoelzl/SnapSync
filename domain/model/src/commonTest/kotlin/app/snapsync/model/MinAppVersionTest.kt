@@ -29,15 +29,15 @@ class MinAppVersionTest {
     @Test
     fun every_unreadable_body_collapses_to_no_version() {
         for (body in listOf(
-            "",                                   // empty
-            "not json at all",                    // not JSON
-            "[]",                                 // JSON, but not an object
-            "\"0.4\"",                            // JSON, but a bare string
-            "{}",                                 // an object with no such key
-            """{"minAppVersion":null}""",         // the key, explicitly null
-            """{"minAppVersion":""}""",           // present but blank — a version nobody could install
-            """{"minAppVersion":"   "}""",        // whitespace only
-            """{"minAppVersion":4}""",            // the right key, the wrong type
+            "", // empty
+            "not json at all", // not JSON
+            "[]", // JSON, but not an object
+            "\"0.4\"", // JSON, but a bare string
+            "{}", // an object with no such key
+            """{"minAppVersion":null}""", // the key, explicitly null
+            """{"minAppVersion":""}""", // present but blank — a version nobody could install
+            """{"minAppVersion":"   "}""", // whitespace only
+            """{"minAppVersion":4}""", // the right key, the wrong type
         )) {
             assertNull(minAppVersionFromRefusal(body), "body was: $body")
         }

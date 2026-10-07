@@ -127,9 +127,12 @@ fun savedDiagnosticReport(dump: DiagnosticDump): String = kotlinx.serialization.
     kotlinx.serialization.json.JsonObject.serializer(),
     kotlinx.serialization.json.buildJsonObject {
         diagnosticDumpEvent(dump).contexts.forEach { (name, fields) ->
-            put(name, kotlinx.serialization.json.buildJsonObject {
-                fields.forEach { (key, value) -> put(key, kotlinx.serialization.json.JsonPrimitive(value)) }
-            })
+            put(
+                name,
+                kotlinx.serialization.json.buildJsonObject {
+                    fields.forEach { (key, value) -> put(key, kotlinx.serialization.json.JsonPrimitive(value)) }
+                },
+            )
         }
     },
 )
@@ -244,8 +247,11 @@ fun loggedCrash(severity: Severity, message: String, tag: String, throwable: Thr
     val tags = if (entry != null) mapOf("entry_point" to entry) else emptyMap()
     val event = when (level) {
         CrashLevel.ERROR ->
-            if (throwable != null) CrashEvent(throwable = throwable, tags = tags)
-            else CrashEvent(message = redactEventKeys(redactUuids(message)), tags = tags)
+            if (throwable != null) {
+                CrashEvent(throwable = throwable, tags = tags)
+            } else {
+                CrashEvent(message = redactEventKeys(redactUuids(message)), tags = tags)
+            }
         else -> null
     }
     return LoggedCrash(Crumb(level = level, message = text, category = tag), event)

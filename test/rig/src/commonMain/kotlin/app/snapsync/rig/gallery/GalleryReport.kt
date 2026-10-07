@@ -1,21 +1,19 @@
 package app.snapsync.rig.gallery
 
-import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
-
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionPolicyFor
-import app.snapsync.model.SelectionRule
-import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.SELECTION_CALIBRATION
+import app.snapsync.model.SelectionRule
+import app.snapsync.model.selectionPolicyFor
 import app.snapsync.rig.AssetView
 import app.snapsync.rig.CalibrationView
 import app.snapsync.rig.CensusView
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.PolicyView
 import app.snapsync.rig.ResourceView
+import app.snapsync.services.gallery.CandidateSource
 import kotlin.time.TimeSource
 
 /**
@@ -64,16 +62,16 @@ class GalleryReport(
         if (cutoff == null) return GalleryView(census = census, grant = grant(), policy = null)
 
         val policy = selectionPolicyFor(
-                // A non-contributing membership is a policy this route must be able to READ, not just one
-                // the app can hold. Without it the deny-everything narrowing — the one that keeps a
-                // download-only member off a whole-library walk — is unobservable on a device.
-                includesUpload = includesUpload,
-                cutoff = CaptureCutoff(CaptureDate(cutoff)),
-                ceiling = null,
-                // The operator reads the POLICY here, not the device's echo/album state — this route
-                // answers "what would this cutoff admit", so the two port-read exclusions are out of scope.
-                suppressedAssetIds = { emptySet() },
-                albumExcludedAssetIds = { emptySet() },
+            // A non-contributing membership is a policy this route must be able to READ, not just one
+            // the app can hold. Without it the deny-everything narrowing — the one that keeps a
+            // download-only member off a whole-library walk — is unobservable on a device.
+            includesUpload = includesUpload,
+            cutoff = CaptureCutoff(CaptureDate(cutoff)),
+            ceiling = null,
+            // The operator reads the POLICY here, not the device's echo/album state — this route
+            // answers "what would this cutoff admit", so the two port-read exclusions are out of scope.
+            suppressedAssetIds = { emptySet() },
+            albumExcludedAssetIds = { emptySet() },
         )
         val mark = TimeSource.Monotonic.markNow()
         // This route asks the app's OWN seam, so it reports what the app would see — including "there is
@@ -149,5 +147,4 @@ class GalleryReport(
         is SelectionRule.NotEcho -> "NotEcho"
         is SelectionRule.NotInDenylistedAlbum -> "NotInDenylistedAlbum"
     }
-
 }

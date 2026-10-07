@@ -94,15 +94,24 @@ class SentryCrashReporter : CrashReporter {
     override fun capture(event: CrashEvent) {
         if (!processStarted) return
         val throwable = event.throwable
-        if (throwable != null) Sentry.captureException(throwable) { scope -> scope.carry(event) }
-        else Sentry.captureMessage(event.message.orEmpty()) { scope -> scope.carry(event) }
+        if (throwable != null) {
+            Sentry.captureException(throwable) { scope -> scope.carry(event) }
+        } else {
+            Sentry.captureMessage(event.message.orEmpty()) { scope -> scope.carry(event) }
+        }
     }
 
     override fun breadcrumb(crumb: Crumb) {
         if (!processStarted) return
-        Sentry.addBreadcrumb(Breadcrumb(level = crumb.level.toSentryLevel(), message = crumb.message, category = crumb.category).also { b ->
-            crumb.data.forEach { (key, value) -> b.setData(key, value) }
-        })
+        Sentry.addBreadcrumb(
+            Breadcrumb(
+                level = crumb.level.toSentryLevel(),
+                message = crumb.message,
+                category = crumb.category,
+            ).also { b ->
+                crumb.data.forEach { (key, value) -> b.setData(key, value) }
+            },
+        )
     }
 
     /**

@@ -2,14 +2,14 @@ package app.snapsync.rig
 
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosEntryContext
-import app.snapsync.services.logs.SinkLogWriter
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.extensionLogDestination
+import app.snapsync.services.logs.SinkLogWriter
 import co.touchlab.kermit.Logger
-import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.newSingleThreadContext
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Driving the **upload extension's** composition root from the control channel — the `/os/photokit-ext/…`

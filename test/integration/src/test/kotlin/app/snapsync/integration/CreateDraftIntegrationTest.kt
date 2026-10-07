@@ -22,12 +22,20 @@ class CreateDraftIntegrationTest {
         os("app", "onBackground")
         device("clock/advance", "to" to T0_PLUS_14_MIN)
         os("app", "onForeground")
-        assertEquals(CreateDraftSession(first.activation + 1, first.epoch), awaitDraft { it.activation > first.activation })
+        assertEquals(
+            CreateDraftSession(first.activation + 1, first.epoch),
+            awaitDraft { it.activation > first.activation },
+        )
 
         os("app", "onBackground")
         device("clock/advance", "to" to T0_PLUS_29_MIN)
         os("app", "onForeground")
-        assertEquals(CreateDraftSession(first.activation + 2, first.epoch + 1), awaitDraft { it.activation > first.activation + 1 })
+        assertEquals(
+            CreateDraftSession(first.activation + 2, first.epoch + 1),
+            awaitDraft {
+                it.activation > first.activation + 1
+            },
+        )
     }
 
     private suspend fun Rig.awaitDraft(until: (CreateDraftSession) -> Boolean): CreateDraftSession =

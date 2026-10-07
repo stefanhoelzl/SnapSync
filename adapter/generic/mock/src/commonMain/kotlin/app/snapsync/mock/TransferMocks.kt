@@ -3,8 +3,11 @@ package app.snapsync.mock
 import app.snapsync.model.AssetId
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadError
@@ -13,12 +16,9 @@ import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
-import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
@@ -83,7 +83,9 @@ class UploadQueueMock(
 
     internal val jobs = mutableListOf<Job>()
     internal val created = mutableListOf<CreatedUpload>()
+
     @Volatile internal var jobLimit = Int.MAX_VALUE
+
     @Volatile internal var failCreate = false
 
     private val face: Upload = object : Upload {
@@ -239,6 +241,7 @@ class UploadSessionMock(
     internal fun <T> locked(block: () -> T): T = lock.locked(block)
 
     internal val handlers = HandlerSlot<UploadHandlers>("Upload", BeforeListen.Thrown)
+
     @Volatile internal var handbacks = 0
     internal val live = mutableListOf<Transfer>()
     internal val created = mutableListOf<String>()
@@ -379,6 +382,7 @@ class DownloadSessionMock(
     /** A transfer the session holds, until it finishes or is cancelled; [network] is the rule it was started under. */
     class Started(val url: String, val description: String, val network: TransferNetwork = TransferNetwork.ANY) {
         @Volatile var cancelled: Boolean = false
+
         @Volatile var finished: Boolean = false
     }
 
@@ -390,6 +394,7 @@ class DownloadSessionMock(
 
     internal val started = mutableListOf<Started>()
     internal val handlers = HandlerSlot<DownloadHandlers>("Download", BeforeListen.Thrown)
+
     @Volatile internal var current: Face? = null
 
     internal inner class Face : Download {

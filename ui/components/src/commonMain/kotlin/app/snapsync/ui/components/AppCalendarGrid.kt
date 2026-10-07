@@ -1,8 +1,6 @@
 package app.snapsync.ui.components
 
 import androidx.compose.foundation.background
-import kotlinx.datetime.LocalTime
-import kotlinx.datetime.LocalDateTime
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,17 +38,18 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupPositionProvider
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.daysUntil
-import kotlinx.datetime.plus
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.calendar_day_today
 import app.snapsync.ui.components.resources.calendar_next_month
 import app.snapsync.ui.components.resources.calendar_previous_month
 import app.snapsync.ui.components.resources.calendar_weekdays
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.plus
 import org.jetbrains.compose.resources.stringResource
-
 
 // `internal` rather than `private` throughout: Kotlin's top-level `private` is FILE-private, and this
 // widget was split out of an 887-line file. Everything another split file reaches is widened to module

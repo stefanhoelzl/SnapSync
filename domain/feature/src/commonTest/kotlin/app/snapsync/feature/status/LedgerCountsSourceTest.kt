@@ -1,25 +1,40 @@
 package app.snapsync.feature.status
 
 import app.snapsync.model.AssetId
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 class LedgerCountsSourceTest {
 
     @Test
     fun refresh_publishes_the_read_counts() = runTest {
-        var next = LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4")), pending = setOf(AssetId("p1"), AssetId("p2"), AssetId("p3")))
+        var next = LedgerCounts(
+            done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4")),
+            pending = setOf(AssetId("p1"), AssetId("p2"), AssetId("p3")),
+        )
         val source = ReadingLedgerCountsSource { next }
         assertEquals(LedgerCounts.UNREAD, source.counts.value) // seeded UN-READ before any refresh
         source.refresh()
-        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4")), pending = setOf(AssetId("p1"), AssetId("p2"), AssetId("p3"))), source.counts.value)
+        assertEquals(
+            LedgerCounts(
+                done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4")),
+                pending = setOf(AssetId("p1"), AssetId("p2"), AssetId("p3")),
+            ),
+            source.counts.value,
+        )
         next = LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5"), AssetId("d6")), pending = emptySet())
         source.refresh()
-        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5"), AssetId("d6")), pending = emptySet()), source.counts.value)
+        assertEquals(
+            LedgerCounts(
+                done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5"), AssetId("d6")),
+                pending = emptySet(),
+            ),
+            source.counts.value,
+        )
     }
 
     @Test
@@ -54,13 +69,34 @@ class LedgerCountsSourceTest {
     fun a_failed_read_after_a_good_value_retains_the_last_good() = runTest {
         var fail = false
         val source = ReadingLedgerCountsSource {
-            if (fail) error("gone") else LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")), pending = setOf(AssetId("p1"), AssetId("p2")))
+            if (fail) {
+                error(
+                    "gone",
+                )
+            } else {
+                LedgerCounts(
+                    done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")),
+                    pending = setOf(AssetId("p1"), AssetId("p2")),
+                )
+            }
         }
         source.refresh()
-        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")), pending = setOf(AssetId("p1"), AssetId("p2"))), source.counts.value)
+        assertEquals(
+            LedgerCounts(
+                done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")),
+                pending = setOf(AssetId("p1"), AssetId("p2")),
+            ),
+            source.counts.value,
+        )
         fail = true
         source.refresh()
         // A transient read error must NOT drop the done set to empty and flip the screen out of "In sync".
-        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")), pending = setOf(AssetId("p1"), AssetId("p2"))), source.counts.value)
+        assertEquals(
+            LedgerCounts(
+                done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")),
+                pending = setOf(AssetId("p1"), AssetId("p2")),
+            ),
+            source.counts.value,
+        )
     }
 }

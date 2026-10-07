@@ -33,7 +33,11 @@ class ConfigStoreContractBindingTest {
 
         override fun create(state: ConfigStoreState, clauseId: String): Entered<ConfigService> {
             val clock = fixedClock(Instant.fromEpochSeconds(0))
-            if (state == ConfigStoreState.INACCESSIBLE) return Entered.Ready(ConfigService(inMemoryFiles(shared = null), clock))
+            if (state == ConfigStoreState.INACCESSIBLE) {
+                return Entered.Ready(
+                    ConfigService(inMemoryFiles(shared = null), clock),
+                )
+            }
             val record = when (state) {
                 ConfigStoreState.JOINED, ConfigStoreState.FILE_UNREADABLE -> ConfigStoreContract.seedFile(clauseId)
                 ConfigStoreState.FOREIGN -> ConfigStoreContract.FOREIGN_FILE
@@ -42,11 +46,20 @@ class ConfigStoreContractBindingTest {
             }
             val shared = mutableMapOf<String, ByteArray>()
             record?.let { shared[CONFIG_FILE_NAME] = it.encodeToByteArray() }
-            val denied = if (state == ConfigStoreState.FILE_UNREADABLE) setOf(FileArea.SHARED to CONFIG_FILE_NAME) else emptySet()
+            val denied = if (state == ConfigStoreState.FILE_UNREADABLE) {
+                setOf(
+                    FileArea.SHARED to CONFIG_FILE_NAME,
+                )
+            } else {
+                emptySet()
+            }
             return Entered.Ready(ConfigService(inMemoryFiles(shared = shared, denied = denied), clock))
         }
     }
 
     @Test
-    fun `the config service over in-memory files satisfies the ConfigStore contract`() = verify(ConfigStoreContract, binding)
+    fun `the config service over in-memory files satisfies the ConfigStore contract`() = verify(
+        ConfigStoreContract,
+        binding,
+    )
 }

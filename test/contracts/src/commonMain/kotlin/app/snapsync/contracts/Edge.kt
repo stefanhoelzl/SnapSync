@@ -1,11 +1,7 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.AssetId
-import kotlinx.serialization.json.jsonArray
-
-import io.ktor.client.request.get
-
 import app.snapsync.model.APP_VERSION_HEADER
+import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
@@ -13,6 +9,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
 import io.ktor.client.HttpClient
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.put
@@ -23,13 +20,14 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 // ---- The Backend contract's shared vocabulary (`docs/testing.md`) ------------------------------------
 //
@@ -108,6 +106,7 @@ interface BackendSetup {
 
     /** Joins fresh devices until the backend answers `409` — capacity without restating the backend's configured one. */
     suspend fun fillToCapacity(eventId: String)
+
     /** Publish [deviceId]'s manifest — declaring its share settled when [final]. */
     suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean = false)
 
@@ -205,7 +204,9 @@ class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
     }
 
     private fun checked(step: String, response: HttpResponse): HttpResponse {
-        check(response.status.isSuccess()) { "setup step '$step' was refused by the edge: HTTP ${response.status.value}" }
+        check(
+            response.status.isSuccess(),
+        ) { "setup step '$step' was refused by the edge: HTTP ${response.status.value}" }
         return response
     }
 }

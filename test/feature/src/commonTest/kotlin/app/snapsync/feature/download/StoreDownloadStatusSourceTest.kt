@@ -1,15 +1,15 @@
 package app.snapsync.feature.download
 
-import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.feature.download.readmodel.DownloadProgress
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.services.downloads.DownloadService
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.test.runTest
 
 class StoreDownloadStatusSourceTest {
 
@@ -36,7 +36,10 @@ class StoreDownloadStatusSourceTest {
         val x = AssetRef("A", AssetId("X"))
         val y = AssetRef("A", AssetId("Y"))
         store.planAll(
-            listOf(PlannedAsset(x, "2026-06-30T10:00:00Z", planned("X")), PlannedAsset(y, "2026-06-30T10:00:00Z", planned("Y"))),
+            listOf(
+                PlannedAsset(x, "2026-06-30T10:00:00Z", planned("X")),
+                PlannedAsset(y, "2026-06-30T10:00:00Z", planned("Y")),
+            ),
             eventId = "E1",
             members = listOf(x, y),
         )
@@ -57,7 +60,11 @@ class StoreDownloadStatusSourceTest {
         // device had imported for earlier events, kept as suppression handles after each leave.
         val store = DownloadService(inMemoryDatabases())
         val old = AssetRef("B", AssetId("OLD"))
-        store.planAll(listOf(PlannedAsset(old, "2026-06-01T10:00:00Z", planned("OLD"))), eventId = "EARLIER", members = listOf(old))
+        store.planAll(
+            listOf(PlannedAsset(old, "2026-06-01T10:00:00Z", planned("OLD"))),
+            eventId = "EARLIER",
+            members = listOf(old),
+        )
         store.markStaged(old, "OLD-primary.jpg", "/old")
         store.markImported(old, AssetId("LOCAL-OLD"))
 

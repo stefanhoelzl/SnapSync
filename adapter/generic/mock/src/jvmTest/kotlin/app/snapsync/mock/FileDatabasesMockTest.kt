@@ -26,9 +26,16 @@ class FileDatabasesMockTest {
     private val binding = object : Binding<DatabasesState, Databases> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(DatabasesState.ABSENT, DatabasesState.CURRENT, DatabasesState.OLD, DatabasesState.UNOPENABLE)
+        override val reaches =
+            setOf(DatabasesState.ABSENT, DatabasesState.CURRENT, DatabasesState.OLD, DatabasesState.UNOPENABLE)
         override fun create(state: DatabasesState, clauseId: String): Entered<Databases> {
-            val refusals = if (state == DatabasesState.UNOPENABLE) mapOf(DatabasesContract.NAME to DbOpen.Failed("unopenable")) else emptyMap()
+            val refusals = if (state == DatabasesState.UNOPENABLE) {
+                mapOf(
+                    DatabasesContract.NAME to DbOpen.Failed("unopenable"),
+                )
+            } else {
+                emptyMap()
+            }
             val databases = DatabasesMock(refusals, directory()).port()
             when (state) {
                 DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
@@ -47,7 +54,8 @@ class FileDatabasesMockTest {
         val dir = directory()
         DatabasesContract.enterCurrent(DatabasesMock(directory = dir).port())
         val next = DatabasesMock(directory = dir).port()
-        val opened = assertIs<DbOpen.Opened>(next.open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = true))
+        val opened =
+            assertIs<DbOpen.Opened>(next.open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = true))
         val kept = opened.driver.executeQuery(null, "SELECT v FROM probe WHERE id = 1", { c ->
             app.cash.sqldelight.db.QueryResult.Value(if (c.next().value) c.getString(0) else null)
         }, 0).value

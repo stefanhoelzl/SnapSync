@@ -34,11 +34,11 @@ import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * The upload service over the thin `Upload` port (capability `background-upload`): the settling, recording and
@@ -119,12 +119,20 @@ class UploadTransferServiceTest {
     private class Library(val exportable: Set<String> = emptySet()) : GalleryReader {
         val exports = mutableListOf<Pair<String, String>>()
         override fun access() = GalleryAccess.GRANTED
-        override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
-        override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
-        override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
+        override suspend fun assets(
+            policy: SelectionPolicy,
+        ): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
+        override suspend fun libraryAssets(
+            policy: SelectionPolicy,
+        ): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
+        override suspend fun assetsById(
+            ids: Set<AssetId>,
+        ): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
         override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = GalleryRead.Read(emptyList())
         override suspend fun albums(): GalleryRead<List<AlbumRecord>> = GalleryRead.Read(emptyList())
-        override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = GalleryRead.Read(emptyList())
+        override suspend fun albumsById(
+            ids: Set<AlbumId>,
+        ): GalleryRead<List<AlbumRecord>> = GalleryRead.Read(emptyList())
         override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> =
             GalleryRead.Read(emptySet())
         override val albumKind: AlbumKind = AlbumKind.COLLECTION
@@ -142,7 +150,12 @@ class UploadTransferServiceTest {
         val files = mutableSetOf<String>()
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.NotFound
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = FileResult.NotFound
-        override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> = FileResult.NotFound
+        override fun readRange(
+            area: FileArea,
+            path: String,
+            offset: Long,
+            maxBytes: Int,
+        ): FileResult<ByteArray> = FileResult.NotFound
         override fun append(area: FileArea, path: String, bytes: ByteArray) = FileResult.Ok(Unit).also { files += path }
         override fun write(area: FileArea, path: String, bytes: ByteArray) = FileResult.Ok(Unit).also { files += path }
         override fun delete(area: FileArea, path: String): FileResult<Unit> = when {
@@ -156,14 +169,28 @@ class UploadTransferServiceTest {
         override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = FileResult.NotFound
         override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = FileResult.NotFound
         override fun list(area: FileArea, directory: String): FileResult<List<String>> =
-            if (reachable) FileResult.Ok(files.filter { it.startsWith("$directory/") }.sorted()) else FileResult.AreaUnavailable
+            if (reachable) {
+                FileResult.Ok(
+                    files.filter { it.startsWith("$directory/") }.sorted(),
+                )
+            } else {
+                FileResult.AreaUnavailable
+            }
     }
 
     private fun row(key: String, state: LedgerState = LedgerState.REQUESTED) =
         LedgerEntry(key = key, assetId = AssetId("A"), state = state, destinationPath = destination)
 
     private fun job(state: UploadJobState, path: String? = destination, source: UploadSource? = null, tag: String? = null) =
-        UploadJob(handle = "job", tag = tag, destinationPath = path, contentType = "image/jpeg", state = state, error = null, source = source)
+        UploadJob(
+            handle = "job",
+            tag = tag,
+            destinationPath = path,
+            contentType = "image/jpeg",
+            state = state,
+            error = null,
+            source = source,
+        )
 
     private fun service(
         upload: Upload,
@@ -213,7 +240,10 @@ class UploadTransferServiceTest {
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val transfer = service(upload, record)
         val offered = transfer.fetchRetryJobs().single()
-        transfer.retryJob(offered, UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), Unit)))
+        transfer.retryJob(
+            offered,
+            UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), Unit)),
+        )
         assertEquals(listOf("retry($destination -> $url)"), upload.calls)
     }
 
@@ -234,7 +264,11 @@ class UploadTransferServiceTest {
         val upload = ScriptedUpload(accepts = UploadSourceKind.FILE, createAnswer = UploadCreateOutcome.LIMIT_EXCEEDED)
         val library = Library(exportable = setOf("A-primary.jpg"))
         val files = SharedArea()
-        val outcome = service(upload, library = library, files = files).createJob(UploadRequest(url, emptyMap(), resource), resource)
+        val outcome = service(
+            upload,
+            library = library,
+            files = files,
+        ).createJob(UploadRequest(url, emptyMap(), resource), resource)
         assertEquals(UploadCreateOutcome.LIMIT_EXCEEDED, outcome)
         assertEquals(listOf("A-primary.jpg" to "/shared/upload-staging/A-primary.jpg"), library.exports)
         assertEquals(UploadSource.File("/shared/upload-staging/A-primary.jpg"), upload.created.single().first)
@@ -245,7 +279,11 @@ class UploadTransferServiceTest {
     fun `a staged upload file no in-flight job uploads from is released and an in-flight one is kept`() = runTest {
         // What an export leaves when no job outlived it — the process died before the job existed, or the job ended
         // unreported — and nothing else ever reaches.
-        val upload = ScriptedUpload(accepts = UploadSourceKind.FILE, inFlight = listOf(job(UploadJobState.PENDING, tag = "A-primary.jpg")))
+        val upload =
+            ScriptedUpload(
+                accepts = UploadSourceKind.FILE,
+                inFlight = listOf(job(UploadJobState.PENDING, tag = "A-primary.jpg")),
+            )
         val files = SharedArea().apply {
             this.files += listOf("upload-staging/A-primary.jpg", "upload-staging/B-primary.jpg", "elsewhere/C.bin")
         }
@@ -267,8 +305,13 @@ class UploadTransferServiceTest {
 
     @Test
     fun `an unclaimed staged upload file that cannot be deleted stays and the sweep goes on`() = runTest {
-        val files = SharedArea(deletable = false).apply { this.files += listOf("upload-staging/B-primary.jpg", "upload-staging/C-primary.jpg") }
-        service(ScriptedUpload(accepts = UploadSourceKind.FILE), files = files).releaseUnclaimedStaging() // must not throw
+        val files = SharedArea(deletable = false).apply {
+            this.files += listOf("upload-staging/B-primary.jpg", "upload-staging/C-primary.jpg")
+        }
+        service(
+            ScriptedUpload(accepts = UploadSourceKind.FILE),
+            files = files,
+        ).releaseUnclaimedStaging() // must not throw
         assertEquals(setOf("upload-staging/B-primary.jpg", "upload-staging/C-primary.jpg"), files.files)
     }
 
@@ -297,7 +340,10 @@ class UploadTransferServiceTest {
         assertEquals(listOf("A-primary.jpg" to TerminalOutcome.COMPLETED), record.terminals)
         assertTrue(files.files.isEmpty())
         val failed = job(UploadJobState.FAILED, tag = "A-primary.jpg")
-        assertFalse(transfer.recordFinished(failed), "a row no longer REQUESTED takes nothing: the guard is the store's")
+        assertFalse(
+            transfer.recordFinished(failed),
+            "a row no longer REQUESTED takes nothing: the guard is the store's",
+        )
     }
 
     @Test
@@ -329,7 +375,8 @@ class UploadTransferServiceTest {
 
     @Test
     fun `a failure the platform still holds the resource of is re-created from it`() = runTest {
-        val upload = ScriptedUpload(terminal = listOf(job(UploadJobState.UNKNOWN, source = UploadSource.Resource("own"))))
+        val upload =
+            ScriptedUpload(terminal = listOf(job(UploadJobState.UNKNOWN, source = UploadSource.Resource("own"))))
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val handedUp = service(upload, record).drainTerminals()
         assertEquals("own", handedUp.single().data, "an untaught state is adjudicated as a failure")
@@ -347,11 +394,19 @@ class UploadTransferServiceTest {
     @Test
     fun `a refused acknowledgement or retry is reported and changes nothing else`() = runTest {
         val refused = ChangeOutcome.Refused(3202, "refused")
-        val upload = ScriptedUpload(terminal = listOf(job(UploadJobState.SUCCEEDED)), offered = listOf(job(UploadJobState.FAILED)), changeAnswer = refused)
+        val upload =
+            ScriptedUpload(
+                terminal = listOf(job(UploadJobState.SUCCEEDED)),
+                offered = listOf(job(UploadJobState.FAILED)),
+                changeAnswer = refused,
+            )
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val transfer = service(upload, record)
         transfer.drainTerminals()
-        transfer.retryJob(transfer.fetchRetryJobs().single(), UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)))
+        transfer.retryJob(
+            transfer.fetchRetryJobs().single(),
+            UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)),
+        )
         assertEquals(1, upload.calls.count { it.startsWith("retry") })
     }
 
@@ -361,9 +416,15 @@ class UploadTransferServiceTest {
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val gone = app.snapsync.model.PlatformUploadJob("A-primary.jpg", "image/jpeg", null, null)
         val transfer = service(upload, record)
-        transfer.retryJob(gone, UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)))
+        transfer.retryJob(
+            gone,
+            UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)),
+        )
         upload.offered = listOf(job(UploadJobState.FAILED))
-        transfer.retryJob(gone, UploadRequest("", emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)))
+        transfer.retryJob(
+            gone,
+            UploadRequest("", emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)),
+        )
         assertTrue(upload.calls.none { it.startsWith("retry") })
     }
 

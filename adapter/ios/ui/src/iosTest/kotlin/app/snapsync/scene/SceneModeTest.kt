@@ -114,9 +114,9 @@ class SceneModeTest {
     @Test
     fun `the signal never falls back once a placeholder has been retired`() {
         var g = SCENE_GENERATION_INITIAL
-        g = sceneGenerationAfter(g, SceneMode.Deferred)   // placeholder installed
+        g = sceneGenerationAfter(g, SceneMode.Deferred) // placeholder installed
         assertEquals(1, g)
-        g = sceneGenerationAfter(g, SceneMode.Live)       // the rebuild that retires it
+        g = sceneGenerationAfter(g, SceneMode.Live) // the rebuild that retires it
         assertEquals(1, g, "retiring the placeholder must not drop the signal — that IS a rebuild")
         repeat(5) { g = sceneGenerationAfter(g, SceneMode.Live) }
         assertEquals(1, g, "later activations must leave it alone")

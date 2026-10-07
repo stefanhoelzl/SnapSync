@@ -10,14 +10,14 @@ import app.snapsync.objc.checkedObjCValue
 import app.snapsync.ports.Files
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.BooleanVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.value
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 import platform.Foundation.NSData
 import platform.Foundation.NSDataWritingAtomic
 import platform.Foundation.NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication
@@ -80,7 +80,8 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
 
     override fun read(area: FileArea, path: String): FileResult<ByteArray> {
         val file = resolve(area, path) ?: return FileResult.AreaUnavailable
-        val read = checkedObjCValue("dataWithContentsOfFile") { NSData.dataWithContentsOfFile(file, options = 0u, error = it) }
+        val read =
+            checkedObjCValue("dataWithContentsOfFile") { NSData.dataWithContentsOfFile(file, options = 0u, error = it) }
         read.getOrNull()?.let { return FileResult.Ok(it.toByteArray()) }
         return (read.exceptionOrNull() as ObjCFailure).toResult()
     }
@@ -138,7 +139,12 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
     override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> {
         val file = resolve(area, path) ?: return FileResult.AreaUnavailable
         checkedObjC("createDirectoryAtPath") {
-            fm.createDirectoryAtPath(file.substringBeforeLast('/'), withIntermediateDirectories = true, attributes = null, error = it)
+            fm.createDirectoryAtPath(
+                file.substringBeforeLast('/'),
+                withIntermediateDirectories = true,
+                attributes = null,
+                error = it,
+            )
         }.onFailure { return (it as ObjCFailure).toResult() }
         val fd = open(file, O_WRONLY or O_CREAT or O_APPEND, FILE_MODE)
         if (fd < 0) return posixFailure("open")
@@ -160,7 +166,12 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
     override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> {
         val file = resolve(area, path) ?: return FileResult.AreaUnavailable
         checkedObjC("createDirectoryAtPath") {
-            fm.createDirectoryAtPath(file.substringBeforeLast('/'), withIntermediateDirectories = true, attributes = null, error = it)
+            fm.createDirectoryAtPath(
+                file.substringBeforeLast('/'),
+                withIntermediateDirectories = true,
+                attributes = null,
+                error = it,
+            )
         }.onFailure { return (it as ObjCFailure).toResult() }
         return checkedObjC("writeToFile") {
             bytes.toNSData().writeToFile(
@@ -215,7 +226,12 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
     private fun moveReplacing(source: String, destination: String): FileResult<Unit> {
         if (!fm.fileExistsAtPath(source)) return FileResult.NotFound
         checkedObjC("createDirectoryAtPath") {
-            fm.createDirectoryAtPath(destination.substringBeforeLast('/'), withIntermediateDirectories = true, attributes = null, error = it)
+            fm.createDirectoryAtPath(
+                destination.substringBeforeLast('/'),
+                withIntermediateDirectories = true,
+                attributes = null,
+                error = it,
+            )
         }.onFailure { return (it as ObjCFailure).toResult() }
         checkedObjC("removeItemAtPath") { fm.removeItemAtPath(destination, error = it) }
             .onFailure { failure ->

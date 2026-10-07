@@ -62,7 +62,10 @@ class NetworkReplayContractTest {
     }
 
     @Test
-    fun `the recorded restricted device satisfies the NetworkMonitor contract`() = verify(NetworkMonitorContract, restricted)
+    fun `the recorded restricted device satisfies the NetworkMonitor contract`() = verify(
+        NetworkMonitorContract,
+        restricted,
+    )
 
     @Test
     fun `the recorded online device satisfies the NetworkMonitor contract`() = verify(NetworkMonitorContract, online)

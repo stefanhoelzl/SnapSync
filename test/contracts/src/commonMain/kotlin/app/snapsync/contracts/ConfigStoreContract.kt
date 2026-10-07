@@ -1,15 +1,13 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.EventConfig
-import app.snapsync.model.encodeConfigFile
 import app.snapsync.model.ConfigRead
+import app.snapsync.model.EventConfig
+import app.snapsync.model.deletesAt
+import app.snapsync.model.encodeConfigFile
+import app.snapsync.model.eventEnd
 import app.snapsync.services.config.ConfigService
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
@@ -41,7 +39,6 @@ enum class ConfigStoreState {
     /** A record is present, but reading it fails with an error that is not "it does not exist". */
     FILE_UNREADABLE,
 }
-
 
 /**
  * What the persisted membership promises (`docs/architecture.md` — this list IS the specification of

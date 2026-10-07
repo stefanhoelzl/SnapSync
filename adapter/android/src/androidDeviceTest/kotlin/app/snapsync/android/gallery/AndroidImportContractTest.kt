@@ -36,6 +36,11 @@ import app.snapsync.model.jpegXmp
 import app.snapsync.model.locateMotionVideo
 import app.snapsync.model.motionPhotoStill
 import app.snapsync.ports.GalleryHandlers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -48,11 +53,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
 
 /**
  * The MediaStore import (capability `receiving-photos`) against the [GalleryImportContract] on the emulator, and the
@@ -102,7 +102,14 @@ class AndroidImportContractTest {
     fun cleanUp() {
         created.forEach { runCatching { context.contentResolver.delete(it, null, null) } }
         staging.deleteRecursively()
-        albums.forEach { File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DCIM).parentFile, it).delete() }
+        albums.forEach {
+            File(
+                android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DCIM,
+                ).parentFile,
+                it,
+            ).delete()
+        }
         scope.cancel()
     }
 
@@ -128,8 +135,12 @@ class AndroidImportContractTest {
                 override suspend fun captureDate(id: AssetId): String? =
                     (dateTaken(id) ?: modified(id)?.times(MILLIS_PER_SECOND))?.let(::iso)
                 override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+
                 // The column the gallery reader reports as the primary resource's original filename.
-                override suspend fun primaryFilename(id: AssetId): String? = column(id, MediaStore.MediaColumns.DISPLAY_NAME)
+                override suspend fun primaryFilename(id: AssetId): String? = column(
+                    id,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                )
             }
             return Entered.Ready(StagedImport(gallery, stage, library))
         }
@@ -142,7 +153,9 @@ class AndroidImportContractTest {
     fun `each original lands once in the camera folder at its capture time`(): Unit = runBlocking {
         for ((fixture, type) in FIXTURES) {
             val ref = ref(fixture)
-            val result = gallery.import(ImportRequest(ref, listOf(stagedResource(fixture, type, fixture(fixture))), iso(CAPTURED), null))
+            val result = gallery.import(
+                ImportRequest(ref, listOf(stagedResource(fixture, type, fixture(fixture))), iso(CAPTURED), null),
+            )
             val id = assertIs<ImportResult.Imported>(result, "$fixture imports").createdLocalId
             assertEquals(MarkerState.CONFIRMED, markers[ref])
             assertEquals(MediaStoreImport.CAMERA_FOLDER, column(id, MediaStore.MediaColumns.RELATIVE_PATH), fixture)
@@ -173,16 +186,30 @@ class AndroidImportContractTest {
             stagedResource("$stem.HEIC", "image/heic", fixture("iphone-live.heic")),
             stagedResource("$stem.MOV", "video/quicktime", mov, ResourceRole.LIVE),
         )
-        val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
+        val id = assertIs<ImportResult.Imported>(
+            gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null)),
+        ).createdLocalId
         assertEquals(MarkerState.CONFIRMED, markers[ref])
-        assertEquals("image/jpeg", column(id, MediaStore.MediaColumns.MIME_TYPE), "re-encoded: Google Photos plays no HEIC motion photo")
+        assertEquals(
+            "image/jpeg",
+            column(id, MediaStore.MediaColumns.MIME_TYPE),
+            "re-encoded: Google Photos plays no HEIC motion photo",
+        )
         assertEquals(
             ReceivedPhotoName.mark("$stem.jpg", "key-$stem.jpg", ref),
             column(id, MediaStore.MediaColumns.DISPLAY_NAME),
             "the sender's name with SnapSync's mark, and the new extension",
         )
-        assertEquals(0, countNamed(ReceivedPhotoName.mark("$stem.MOV", "key-$stem.MOV", ref)), "the movie travels inside the photo, not beside it")
-        assertEquals(0, countNamed(ReceivedPhotoName.mark("$stem.HEIC", "key-$stem.HEIC", ref)), "one item, never the still as well")
+        assertEquals(
+            0,
+            countNamed(ReceivedPhotoName.mark("$stem.MOV", "key-$stem.MOV", ref)),
+            "the movie travels inside the photo, not beside it",
+        )
+        assertEquals(
+            0,
+            countNamed(ReceivedPhotoName.mark("$stem.HEIC", "key-$stem.HEIC", ref)),
+            "one item, never the still as well",
+        )
 
         val file = bytesOf(id)
         val xmp = assertNotNull(jpegXmp(file), "the JPEG carries XMP")
@@ -192,7 +219,11 @@ class AndroidImportContractTest {
 
         assertEquals(CAPTURED, dateTaken(id), "the capture date and its offset were carried over")
         val exif = ExifInterface(ByteArrayInputStream(file))
-        assertEquals(ExifInterface.ORIENTATION_NORMAL, exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, -1), "the decoder applied it")
+        assertEquals(
+            ExifInterface.ORIENTATION_NORMAL,
+            exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, -1),
+            "the decoder applied it",
+        )
         assertEquals("iPhone 15", exif.getAttribute(ExifInterface.TAG_MODEL))
         val latLong = FloatArray(2)
         assertTrue(exif.getLatLong(latLong), "the location travels with the photo")
@@ -213,9 +244,18 @@ class AndroidImportContractTest {
             stagedResource("$stem.MOV", "video/quicktime", mov, ResourceRole.LIVE),
         )
         val ref = ref("jpeg-live")
-        val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
-        assertEquals(ReceivedPhotoName.mark("$stem.JPG", "key-$stem.JPG", ref), column(id, MediaStore.MediaColumns.DISPLAY_NAME))
-        assertContentEquals(assertNotNull(motionPhotoStill(still, mov.size.toLong())) + mov, bytesOf(id), "only the XMP segment is new")
+        val id = assertIs<ImportResult.Imported>(
+            gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null)),
+        ).createdLocalId
+        assertEquals(
+            ReceivedPhotoName.mark("$stem.JPG", "key-$stem.JPG", ref),
+            column(id, MediaStore.MediaColumns.DISPLAY_NAME),
+        )
+        assertContentEquals(
+            assertNotNull(motionPhotoStill(still, mov.size.toLong())) + mov,
+            bytesOf(id),
+            "only the XMP segment is new",
+        )
     }
 
     @Test
@@ -229,7 +269,9 @@ class AndroidImportContractTest {
             stagedResource("$stem.MOV", "video/quicktime", fixture("iphone.mov"), ResourceRole.LIVE),
         )
         val ref = ref("fallback")
-        val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
+        val id = assertIs<ImportResult.Imported>(
+            gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null)),
+        ).createdLocalId
         assertContentEquals(still, bytesOf(id), "the still, unchanged")
         assertEquals(1, countNamed(ReceivedPhotoName.mark("$stem.JPG", "key-$stem.JPG", ref)), "once")
         assertEquals(MarkerState.CONFIRMED, markers[ref])
@@ -244,7 +286,14 @@ class AndroidImportContractTest {
         assertTrue(read.value.isEmpty(), "a pending item reads as absent, so the startup sweep imports again")
 
         val ref = ref("after-kill")
-        gallery.import(ImportRequest(ref, listOf(stagedResource("next.jpg", "image/jpeg", PhotoLibrary.jpeg)), iso(CAPTURED), null))
+        gallery.import(
+            ImportRequest(
+                ref,
+                listOf(stagedResource("next.jpg", "image/jpeg", PhotoLibrary.jpeg)),
+                iso(CAPTURED),
+                null,
+            ),
+        )
         assertEquals(0, pendingCount(), "the leftover pending item is deleted before the next import")
     }
 
@@ -253,7 +302,14 @@ class AndroidImportContractTest {
         val album = checkNotNull(gallery.createAlbum("import-contract-${System.nanoTime()}"))
         albums += album
         val ref = ref("into-album")
-        val result = gallery.import(ImportRequest(ref, listOf(stagedResource("IMG_7.JPG", "image/jpeg", PhotoLibrary.jpeg)), iso(CAPTURED), album))
+        val result = gallery.import(
+            ImportRequest(
+                ref,
+                listOf(stagedResource("IMG_7.JPG", "image/jpeg", PhotoLibrary.jpeg)),
+                iso(CAPTURED),
+                album,
+            ),
+        )
         val id = assertIs<ImportResult.Imported>(result).createdLocalId
         assertEquals(album, column(id, MediaStore.MediaColumns.RELATIVE_PATH), "saved straight into the album's folder")
         assertEquals(0, countNamed("IMG_7.JPG"), "not loose in the camera folder first")
@@ -264,20 +320,41 @@ class AndroidImportContractTest {
         val album = checkNotNull(gallery.createAlbum("import-contract-${System.nanoTime()}"))
         albums += album
         insertPending("killed-album.jpg", folder = album)
-        gallery.import(ImportRequest(ref("after-album-kill"), listOf(stagedResource("next.jpg", "image/jpeg", PhotoLibrary.jpeg)), iso(CAPTURED), album))
-        assertEquals(0, pendingCount(album), "the album folder's leftover pending item is deleted before the next import")
+        gallery.import(
+            ImportRequest(
+                ref("after-album-kill"),
+                listOf(stagedResource("next.jpg", "image/jpeg", PhotoLibrary.jpeg)),
+                iso(CAPTURED),
+                album,
+            ),
+        )
+        assertEquals(
+            0,
+            pendingCount(album),
+            "the album folder's leftover pending item is deleted before the next import",
+        )
     }
 
     @Test
     fun `a content type that is neither photo nor video is refused for good`(): Unit = runBlocking {
         val ref = ref("pdf")
-        val result = gallery.import(ImportRequest(ref, listOf(stagedResource("doc.pdf", "application/pdf", PhotoLibrary.notAnImage)), iso(CAPTURED), null))
+        val result = gallery.import(
+            ImportRequest(
+                ref,
+                listOf(stagedResource("doc.pdf", "application/pdf", PhotoLibrary.notAnImage)),
+                iso(CAPTURED),
+                null,
+            ),
+        )
         val failed = assertIs<ImportResult.Failed>(result)
         assertTrue(failed.consumedResources, "settled, never retried")
         assertEquals(MarkerState.CLEARED, markers[ref])
     }
 
-    private fun ref(name: String) = AssetRef(sourceDeviceId = "import-contract", sourceAssetId = AssetId("$name-${System.nanoTime()}"))
+    private fun ref(name: String) = AssetRef(
+        sourceDeviceId = "import-contract",
+        sourceAssetId = AssetId("$name-${System.nanoTime()}"),
+    )
 
     private fun stagedResource(name: String, type: String, bytes: ByteArray, role: ResourceRole = ResourceRole.PRIMARY): StagedResource {
         val file = File(staging, "${System.nanoTime()}-$name").apply { writeBytes(bytes) }
@@ -285,12 +362,22 @@ class AndroidImportContractTest {
     }
 
     private fun fixture(name: String): ByteArray =
-        checkNotNull(javaClass.classLoader?.getResourceAsStream("import/$name")) { "no fixture $name" }.use { it.readBytes() }
+        checkNotNull(
+            javaClass.classLoader?.getResourceAsStream("import/$name"),
+        ) { "no fixture $name" }.use { it.readBytes() }
 
-    private fun uriOf(id: AssetId): Uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY, id.value.toLong())
+    private fun uriOf(id: AssetId): Uri = MediaStore.Files.getContentUri(
+        MediaStore.VOLUME_EXTERNAL_PRIMARY,
+        id.value.toLong(),
+    )
 
     private fun column(id: AssetId, name: String): String? =
-        context.contentResolver.query(uriOf(id), arrayOf(name), null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
+        context.contentResolver.query(
+            uriOf(id),
+            arrayOf(name),
+            null,
+            null,
+        )?.use { if (it.moveToFirst()) it.getString(0) else null }
 
     private fun modified(id: AssetId): Long? = column(id, MediaStore.MediaColumns.DATE_MODIFIED)?.toLongOrNull()
 

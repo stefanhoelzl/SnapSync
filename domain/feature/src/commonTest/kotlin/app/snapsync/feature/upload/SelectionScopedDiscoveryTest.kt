@@ -1,22 +1,34 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.Resource
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /** An admitting policy over [cutoff] — the shape the cycle hands the discovery. */
 private suspend fun admitting(cutoff: String): SelectionPolicy =
-    SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
+    SelectionPolicy(
+        selectionRulesFor(
+            includesUpload = true,
+            cutoff = captureCutoff(
+                cutoff,
+            ),
+            ceiling = null,
+            suppressedAssetIds = {
+                emptySet()
+            },
+            albumExcludedAssetIds = { emptySet() },
+        ),
+    )
 
 /**
  * The read-discipline gate (capability `photo-access`): under a [SelectionScope.Scoped],
@@ -40,7 +52,13 @@ class SelectionScopedDiscoveryTest {
     }
 
     private fun resource(name: String) =
-        Resource(filename = name, assetId = AssetId(name), contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
+        Resource(
+            filename = name,
+            assetId = AssetId(name),
+            contentType = "image/jpeg",
+            metadata = emptyMap(),
+            data = Unit,
+        )
 
     @Test
     fun unrestricted_delegates_to_the_platform_walk() = runTest {

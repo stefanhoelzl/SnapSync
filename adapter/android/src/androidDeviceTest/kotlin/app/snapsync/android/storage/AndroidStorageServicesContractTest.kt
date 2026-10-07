@@ -1,7 +1,5 @@
 package app.snapsync.android.storage
 
-import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
-import app.snapsync.services.config.ConfigService
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.ConfigStoreContract
@@ -10,20 +8,22 @@ import app.snapsync.contracts.DownloadStoreContract
 import app.snapsync.contracts.DownloadStoreState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.LedgerStoreContract
 import app.snapsync.contracts.LedgerStoreState
 import app.snapsync.contracts.StagedBytesContract
 import app.snapsync.contracts.StagedBytesState
 import app.snapsync.contracts.verify
-import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Clock
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.staging.StagingService
+import kotlinx.datetime.TimeZone
 import java.io.File
 import kotlin.test.Test
 import kotlin.time.Instant
-import kotlinx.datetime.TimeZone
 
 /**
  * The storage services' contracts through the services over the real Android adapters on ART — what the iOS
@@ -58,7 +58,9 @@ class AndroidStorageServicesContractTest {
                 }
                 ConfigStoreState.ABSENT, ConfigStoreState.INACCESSIBLE -> Unit
             }
-            return Entered.Ready(ConfigService(AndroidFiles(sharedRoot = dir, privateRoot = newTempDirectory()), CLOCK)) {
+            return Entered.Ready(
+                ConfigService(AndroidFiles(sharedRoot = dir, privateRoot = newTempDirectory()), CLOCK),
+            ) {
                 restoreOwnerAccess(file)
                 dir.deleteRecursively()
             }
@@ -94,7 +96,11 @@ class AndroidStorageServicesContractTest {
         override val reaches = setOf(LedgerStoreState.EMPTY)
         override fun create(state: LedgerStoreState, clauseId: String): Entered<LedgerService> {
             val dir = newTempDirectory()
-            return Entered.Ready(LedgerService(AndroidDatabases(context, dir)) { LEDGER_CONTRACT_EVENT }) { dir.deleteRecursively() }
+            return Entered.Ready(
+                LedgerService(AndroidDatabases(context, dir)) {
+                    LEDGER_CONTRACT_EVENT
+                },
+            ) { dir.deleteRecursively() }
         }
     }
 

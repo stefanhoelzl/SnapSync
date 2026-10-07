@@ -1,11 +1,10 @@
 package app.snapsync.flow
 
-import app.snapsync.model.UnionTrigger
-import app.snapsync.model.JoinLoad
-
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.ForegroundWatches
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.UnionTrigger
 
 /**
  * The **foreground** OS-callback trigger flow (`docs/architecture.md`, "Rules in features, order

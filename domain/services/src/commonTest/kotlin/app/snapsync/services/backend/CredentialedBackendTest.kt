@@ -5,11 +5,11 @@ import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.VersionRefusal
 import app.snapsync.services.version.AppVersionGate
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlinx.coroutines.test.runTest
 
 /**
  * The decisions the HTTP interceptor used to make, now in the authenticated backend (capability `privacy-security`,
@@ -30,7 +30,11 @@ class CredentialedBackendTest {
         credential.current = "T2"
         authenticated.joinEvent("E", "D")
 
-        assertEquals(listOf("join T1", "join T2"), backend.calls, "a renewal in the background is picked up by the next call")
+        assertEquals(
+            listOf("join T1", "join T2"),
+            backend.calls,
+            "a renewal in the background is picked up by the next call",
+        )
     }
 
     @Test
@@ -64,7 +68,11 @@ class CredentialedBackendTest {
         val credential = ScriptedCredential(null, obtained = "T1")
         val backend = ScriptedBackend { _, _ -> unauthorized }
 
-        CredentialedBackend(backend, credential, versionGate = null).putDeviceConfig("D", app.snapsync.model.PushEndpoint("apns", "t", "e"))
+        CredentialedBackend(
+            backend,
+            credential,
+            versionGate = null,
+        ).putDeviceConfig("D", app.snapsync.model.PushEndpoint("apns", "t", "e"))
 
         assertEquals(listOf("config null"), backend.calls)
         assertEquals(0, credential.obtains)
@@ -75,7 +83,11 @@ class CredentialedBackendTest {
         val credential = ScriptedCredential(null) // the extension's answer, or a refused phone
         val backend = ScriptedBackend { _, _ -> unauthorized }
 
-        val reply = CredentialedBackend(backend, credential, versionGate = null).createEvent(app.snapsync.model.CreateEventRequest("n", "s", null))
+        val reply = CredentialedBackend(
+            backend,
+            credential,
+            versionGate = null,
+        ).createEvent(app.snapsync.model.CreateEventRequest("n", "s", null))
 
         assertEquals(unauthorized, reply, "its 401 is the call's answer")
         assertEquals(listOf("create null"), backend.calls)
@@ -92,7 +104,11 @@ class CredentialedBackendTest {
         val credential = ScriptedCredential("T1", recovered = "T2")
         val backend = ScriptedBackend { _, token -> if (token == "T1") unauthorized else Reply.Ok(Unit) }
 
-        val reply = CredentialedBackend(backend, credential, versionGate = null).putDeviceConfig("D", app.snapsync.model.PushEndpoint("apns", "t", "e"))
+        val reply = CredentialedBackend(
+            backend,
+            credential,
+            versionGate = null,
+        ).putDeviceConfig("D", app.snapsync.model.PushEndpoint("apns", "t", "e"))
 
         assertEquals(Reply.Ok(Unit), reply)
         assertEquals(listOf("T1"), credential.rejections, "the rejection names the token the call CARRIED")
@@ -104,7 +120,11 @@ class CredentialedBackendTest {
         val credential = ScriptedCredential("T1", recovered = "T2")
         val backend = ScriptedBackend { _, _ -> unauthorized }
 
-        val reply = CredentialedBackend(backend, credential, versionGate = null).createEvent(app.snapsync.model.CreateEventRequest("n", "s", null))
+        val reply = CredentialedBackend(
+            backend,
+            credential,
+            versionGate = null,
+        ).createEvent(app.snapsync.model.CreateEventRequest("n", "s", null))
 
         assertEquals(unauthorized, reply)
         assertEquals(listOf("create T1", "create T2"), backend.calls, "one retry, never a loop")
@@ -116,7 +136,14 @@ class CredentialedBackendTest {
         // The extension's credential: it drops the rejected token and offers none.
         val dropsOnly = ScriptedCredential("T1", recovered = null)
         val backend = ScriptedBackend { _, _ -> unauthorized }
-        assertEquals(unauthorized, CredentialedBackend(backend, dropsOnly, versionGate = null).publishManifest("E", "D", app.snapsync.model.DeviceManifest("D", emptyList())))
+        assertEquals(
+            unauthorized,
+            CredentialedBackend(
+                backend,
+                dropsOnly,
+                versionGate = null,
+            ).publishManifest("E", "D", app.snapsync.model.DeviceManifest("D", emptyList())),
+        )
         assertEquals(listOf("manifest T1"), backend.calls)
 
         // A recovery that answers the very token that was rejected is no reason to send it again.
@@ -131,8 +158,16 @@ class CredentialedBackendTest {
         val credential = ScriptedCredential("T1", recovered = "T2")
         val offline = Reply.Unreachable(IllegalStateException("offline"))
         CredentialedBackend(ScriptedBackend { _, _ -> offline }, credential, versionGate = null).deviceFiles("E", "D")
-        CredentialedBackend(ScriptedBackend { _, _ -> Reply.Refused(403, "no") }, credential, versionGate = null).renameEvent("E", "n")
-        assertEquals(emptyList(), credential.rejections, "dropping a good credential on a blip costs a throttled re-attestation")
+        CredentialedBackend(
+            ScriptedBackend { _, _ -> Reply.Refused(403, "no") },
+            credential,
+            versionGate = null,
+        ).renameEvent("E", "n")
+        assertEquals(
+            emptyList(),
+            credential.rejections,
+            "dropping a good credential on a blip costs a throttled re-attestation",
+        )
     }
 
     @Test
@@ -154,9 +189,14 @@ class CredentialedBackendTest {
         // Public, but the backend verifies a token it is sent (decision record `changes/incremental-union`, D5): its
         // 401 is a verdict on that token, recovered like a gated route's.
         val credential = ScriptedCredential("T1", recovered = "T2")
-        val backend = ScriptedBackend { _, token -> if (token == "T1") unauthorized else Reply.Ok(UnionPage(emptyList(), 0)) }
+        val backend =
+            ScriptedBackend { _, token -> if (token == "T1") unauthorized else Reply.Ok(UnionPage(emptyList(), 0)) }
 
-        val reply = CredentialedBackend(backend, credential, versionGate = null).eventFiles("E", null, UnionTrigger.FOREGROUND)
+        val reply = CredentialedBackend(
+            backend,
+            credential,
+            versionGate = null,
+        ).eventFiles("E", null, UnionTrigger.FOREGROUND)
 
         assertIs<Reply.Ok<UnionPage>>(reply)
         assertEquals(listOf("union T1", "union T2"), backend.calls)
@@ -170,11 +210,19 @@ class CredentialedBackendTest {
         val authenticated = CredentialedBackend(ScriptedBackend { _, _ -> reply }, ScriptedCredential("T1"), gate)
 
         authenticated.getEvent("E")
-        assertEquals(VersionRefusal("0.5"), gate.refusal.value, "the public read learns it too — the gate precedes every route")
+        assertEquals(
+            VersionRefusal("0.5"),
+            gate.refusal.value,
+            "the public read learns it too — the gate precedes every route",
+        )
 
         reply = Reply.Refused(404, "not found")
         authenticated.joinEvent("E", "D")
-        assertEquals(VersionRefusal("0.5"), gate.refusal.value, "an answer that is not success says nothing about this build")
+        assertEquals(
+            VersionRefusal("0.5"),
+            gate.refusal.value,
+            "an answer that is not success says nothing about this build",
+        )
 
         reply = Reply.Ok(Unit)
         authenticated.joinEvent("E", "D")

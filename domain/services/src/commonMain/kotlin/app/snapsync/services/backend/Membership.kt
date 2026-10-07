@@ -85,8 +85,9 @@ class BackendManifestPublisher(private val backend: AuthenticatedBackend) : Mani
             // A CLOSED event's asset sets are fixed and a COMPLETED one holds none (capability `photo-sharing`): the
             // refusal is final, so it is recorded like a publish — re-sending the same snapshot every cycle could
             // never change the answer.
-            is Reply.Refused -> reply.status == HttpStatus.GONE ||
-                (reply.status == HttpStatus.CONFLICT && CLOSED_MARK in reply.body)
+            is Reply.Refused ->
+                reply.status == HttpStatus.GONE ||
+                    (reply.status == HttpStatus.CONFLICT && CLOSED_MARK in reply.body)
             is Reply.Malformed, is Reply.Unreachable -> false
         }
 

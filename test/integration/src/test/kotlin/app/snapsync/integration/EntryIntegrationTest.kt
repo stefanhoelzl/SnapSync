@@ -51,7 +51,10 @@ class EntryIntegrationTest {
 
         val after = osRecord()
         assertTrue(after.screenShown, "the foreground handler assembles the host first")
-        assertTrue(after.downloadsStarted > before.downloadsStarted, "the foreground reconcile starts the photo's transfer")
+        assertTrue(
+            after.downloadsStarted > before.downloadsStarted,
+            "the foreground reconcile starts the photo's transfer",
+        )
         assertTrue(after.heartbeatsScheduled > before.heartbeatsScheduled, "foreground entry re-arms the heartbeat")
     }
 
@@ -62,7 +65,11 @@ class EntryIntegrationTest {
 
         foreground()
         foreground()
-        assertEquals(launched + 2, osRecord().pushRegistrations, "every activation asks again, to learn a rotated token")
+        assertEquals(
+            launched + 2,
+            osRecord().pushRegistrations,
+            "every activation asks again, to learn a rotated token",
+        )
 
         device("relaunch", "scene" to "false")
         assertEquals(launched + 3, osRecord().pushRegistrations, "a cold start asks, a background one included")
@@ -233,7 +240,11 @@ class EntryIntegrationTest {
  * something does NOT happen. The record, not `/device/state`: reading the screen would assemble the host a background
  * launch never built.
  */
-suspend fun Rig.osNeverWithin(what: String, window: kotlin.time.Duration = 500.milliseconds, condition: (OsRecord) -> Boolean) {
+suspend fun Rig.osNeverWithin(
+    what: String,
+    window: kotlin.time.Duration = 500.milliseconds,
+    condition: (OsRecord) -> Boolean,
+) {
     val deadline = kotlin.time.TimeSource.Monotonic.markNow() + window
     while (deadline.hasNotPassedNow()) {
         val r = osRecord()

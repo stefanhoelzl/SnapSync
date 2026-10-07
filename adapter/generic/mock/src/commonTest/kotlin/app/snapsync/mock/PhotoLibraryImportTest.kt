@@ -4,13 +4,13 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
+import app.snapsync.model.StagedResource
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
-import app.snapsync.model.StagedResource
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * The photo-library mock's import properties — the ones every download test silently depends on.
@@ -56,7 +56,8 @@ class PhotoLibraryImportTest {
         val second = importer.importOnce() as ImportResult.Imported
 
         assertNotEquals(
-            first.createdLocalId, second.createdLocalId,
+            first.createdLocalId,
+            second.createdLocalId,
             "a second asset must be distinguishable from the first, or no test can observe a duplicate",
         )
     }
@@ -77,7 +78,8 @@ class PhotoLibraryImportTest {
 
         val fresh = importer().importOnce() as ImportResult.Imported
         assertNotEquals(
-            fresh.createdLocalId, afterFailure.createdLocalId,
+            fresh.createdLocalId,
+            afterFailure.createdLocalId,
             "an import that follows a failure must not mint the identifier a first import would",
         )
     }

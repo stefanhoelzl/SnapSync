@@ -1,9 +1,5 @@
 package app.snapsync.files
 
-import app.snapsync.contracts.PushRegistrationRecordContract
-import app.snapsync.contracts.PushRegistrationRecordState
-import app.snapsync.services.push.PushRegistrationRecord
-import app.snapsync.time.SystemClock
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.ConfigStoreContract
@@ -16,21 +12,25 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FilesContract
 import app.snapsync.contracts.FilesState
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.PushRegistrationRecordContract
+import app.snapsync.contracts.PushRegistrationRecordState
 import app.snapsync.contracts.StagedBytesContract
 import app.snapsync.contracts.StagedBytesState
 import app.snapsync.contracts.verify
 import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.FileArea
-import app.snapsync.services.logs.LogTailService
-import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.ports.Files
-import app.snapsync.services.staging.StagingService
 import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.logs.LogTailService
+import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.services.push.PushRegistrationRecord
+import app.snapsync.services.staging.StagingService
+import app.snapsync.time.SystemClock
 import java.io.File
-import java.nio.file.Files as Nio
 import kotlin.test.Test
+import java.nio.file.Files as Nio
 
 /**
  * The `Files` contract against the real [JvmFiles], and the file-backed storage services' contracts through the
@@ -111,10 +111,18 @@ class JvmFileServicesContractsTest {
             DeviceManifestStoreState.HOLDING,
         )
         override fun create(state: DeviceManifestStoreState, clauseId: String): Entered<DeviceManifestService> {
-            if (state == DeviceManifestStoreState.UNAVAILABLE) return Entered.Ready(DeviceManifestService(unavailable()))
+            if (state == DeviceManifestStoreState.UNAVAILABLE) {
+                return Entered.Ready(
+                    DeviceManifestService(unavailable()),
+                )
+            }
             val areas = Areas()
             val service = DeviceManifestService(areas.files)
-            if (state == DeviceManifestStoreState.HOLDING) service.saveLastUploaded(DeviceManifestStoreContract.seedJson(clauseId))
+            if (state == DeviceManifestStoreState.HOLDING) {
+                service.saveLastUploaded(
+                    DeviceManifestStoreContract.seedJson(clauseId),
+                )
+            }
             return Entered.Ready(service, areas::dispose)
         }
     }
@@ -128,10 +136,18 @@ class JvmFileServicesContractsTest {
             PushRegistrationRecordState.HOLDING,
         )
         override fun create(state: PushRegistrationRecordState, clauseId: String): Entered<PushRegistrationRecord> {
-            if (state == PushRegistrationRecordState.UNAVAILABLE) return Entered.Ready(PushRegistrationRecord(unavailable()))
+            if (state == PushRegistrationRecordState.UNAVAILABLE) {
+                return Entered.Ready(
+                    PushRegistrationRecord(unavailable()),
+                )
+            }
             val areas = Areas()
             val record = PushRegistrationRecord(areas.files)
-            if (state == PushRegistrationRecordState.HOLDING) record.saveLastRegistered(PushRegistrationRecordContract.seed(clauseId))
+            if (state == PushRegistrationRecordState.HOLDING) {
+                record.saveLastRegistered(
+                    PushRegistrationRecordContract.seed(clauseId),
+                )
+            }
             return Entered.Ready(record, areas::dispose)
         }
     }
@@ -201,4 +217,3 @@ class JvmFileServicesContractsTest {
     @Test
     fun `the log-tail service over it satisfies the LogTailService contract`() = verify(DeviceLogSourceContract, logs)
 }
-

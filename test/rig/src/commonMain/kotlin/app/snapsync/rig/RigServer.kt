@@ -8,8 +8,8 @@ import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.currentHost
-import app.snapsync.services.logs.LogTailService
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -30,14 +30,14 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.withContext
@@ -67,7 +67,10 @@ const val DEFAULT_RIG_PORT: Int = 18099
 /** The path of the rig build's loopback upload base, under which the upload receiver answers. */
 const val UPLOAD_BASE_PATH: String = "/api/v2"
 
-private val json = Json { encodeDefaults = true; prettyPrint = true }
+private val json = Json {
+    encodeDefaults = true
+    prettyPrint = true
+}
 
 /**
  * The dev/test **control channel**: an HTTP server running inside the app so an agent can force
@@ -260,8 +263,10 @@ class RigServer(
     private suspend fun ApplicationCall.respondIfUncomposed(): Boolean {
         val why = hooks.uncomposed ?: return false
         respondText(
-            "{\"refused\":${jsonString("this launch composed nothing — its adapter choice was refused: $why. Write a coherent one " +
-                "(POST /device/adapters) or clear it (POST /device/adapters/clear); either exits the app for its next start")}}\n",
+            "{\"refused\":${jsonString(
+                "this launch composed nothing — its adapter choice was refused: $why. Write a coherent one " +
+                    "(POST /device/adapters) or clear it (POST /device/adapters/clear); either exits the app for its next start",
+            )}}\n",
             status = HttpStatusCode.Conflict,
         )
         return true
@@ -270,7 +275,13 @@ class RigServer(
     /** `409` with the host's reason when it refuses [verb], or `false` to let the route proceed. */
     private suspend fun ApplicationCall.respondIfRefused(verb: String, marker: String = ""): Boolean {
         val reason = hooks.refusals[verb] ?: return false
-        val body = if (marker.isEmpty()) "{\"refused\":${jsonString(reason)},\"verb\":\"$verb\"}\n" else "$marker$reason\n"
+        val body = if (marker.isEmpty()) {
+            "{\"refused\":${jsonString(
+                reason,
+            )},\"verb\":\"$verb\"}\n"
+        } else {
+            "$marker$reason\n"
+        }
         respondText(body, status = HttpStatusCode.Conflict)
         return true
     }
@@ -285,12 +296,20 @@ class RigServer(
             FixtureAnswer.Hold -> awaitCancellation()
             is FixtureAnswer.Respond -> {
                 val contentType = request.headers["Content-Type"]
-                if (request.httpMethod.value == "PUT" && answer.status in 200..299) hooks.recordLanded(route, contentType)
+                if (request.httpMethod.value == "PUT" && answer.status in 200..299) {
+                    hooks.recordLanded(
+                        route,
+                        contentType,
+                    )
+                }
                 respondText("", status = HttpStatusCode.fromValue(answer.status))
             }
             // No upload clause redirects; answered as the grammar says, so the receiver never misreads a route.
             is FixtureAnswer.Redirect -> {
-                response.headers.append(HttpHeaders.Location, UPLOAD_BASE_PATH + TransferFixture.redirectTarget(route, answer))
+                response.headers.append(
+                    HttpHeaders.Location,
+                    UPLOAD_BASE_PATH + TransferFixture.redirectTarget(route, answer),
+                )
                 respondText("", status = HttpStatusCode.fromValue(answer.status))
             }
             null -> respondText("not a fixture route: $route\n", status = HttpStatusCode.NotFound)

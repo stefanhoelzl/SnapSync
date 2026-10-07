@@ -1,11 +1,10 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromResources
-import app.snapsync.model.GalleryAccess
-import app.snapsync.services.gallery.CandidateSource
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -66,9 +65,10 @@ class PermissionAwareCandidateSource(
     override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
         when (permission.value) {
             GalleryAccess.GRANTED -> walk.candidates(policy)
-            GalleryAccess.LIMITED -> selection.value
-                ?.let { CandidateRead.Readable(candidatesFromResources(it)) }
-                ?: CandidateRead.NotReadable
+            GalleryAccess.LIMITED ->
+                selection.value
+                    ?.let { CandidateRead.Readable(candidatesFromResources(it)) }
+                    ?: CandidateRead.NotReadable
             GalleryAccess.DENIED, GalleryAccess.NOT_DETERMINED -> CandidateRead.NotReadable
         }
 }

@@ -36,12 +36,6 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
-import java.io.File
-import java.io.IOException
-import java.io.InputStream
-import java.net.URI
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +45,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * The Android app uploader (capability `background-upload`): each job is an HTTP PUT of a photo's original, streamed
@@ -94,6 +94,7 @@ class AndroidUpload(
     private val journal = appContext.getSharedPreferences(journalName, Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val live = ConcurrentHashMap<String, Transfer>()
+
     /**
      * A connection per transfer, never a pooled one: a streamed body is sent once, so a pooled connection the server
      * has meanwhile closed fails it outright ("unexpected end of stream" — measured against the loopback fixture) where
@@ -124,14 +125,21 @@ class AndroidUpload(
     }
 
     override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
-        log.invocation(EntryScope.None, "upload.create", params = "tag=$tag", result = { "$it" }) { start(source, target, tag) }
+        log.invocation(
+            EntryScope.None,
+            "upload.create",
+            params = "tag=$tag",
+            result = { "$it" },
+        ) { start(source, target, tag) }
 
     private fun start(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
         val body = when (source) {
             is UploadSource.Resource -> (source.handle as? Uri)?.let(Body::MediaItem)
             // A file that is not there is no job: refused now, never a transfer that fails later.
             is UploadSource.File -> File(source.path).takeIf { it.isFile }?.let(Body::LocalFile)
-        } ?: return UploadCreateOutcome.FAILED.also { log.w { "$tag: the source is neither a MediaStore item nor a file here" } }
+        } ?: return UploadCreateOutcome.FAILED.also {
+            log.w { "$tag: the source is neither a MediaStore item nor a file here" }
+        }
         val path = runCatchingCancellable { URI(target.url).rawPath }.getOrNull()
             ?: return UploadCreateOutcome.FAILED.also { log.w { "$tag: the destination is not a URL" } }
         synchronized(live) {
@@ -169,7 +177,12 @@ class AndroidUpload(
 
     /** Report [tag]'s end once: persisted by the core inline, then dropped from the journal and the live set. */
     private fun finish(tag: String, job: UploadJob) {
-        log.invocation(EntryScope.None, "upload.didComplete", params = "tag=$tag state=${job.state}", severity = Severity.Debug) {
+        log.invocation(
+            EntryScope.None,
+            "upload.didComplete",
+            params = "tag=$tag state=${job.state}",
+            severity = Severity.Debug,
+        ) {
             handlers.orNull("$tag's end")?.onFinished?.invoke(job)
         }
         journal.edit().remove(tag).commit()
@@ -183,7 +196,15 @@ class AndroidUpload(
     }
 
     private fun job(tag: String, path: String, state: UploadJobState, error: UploadError?) =
-        UploadJob(handle = null, tag = tag, destinationPath = path, contentType = null, state = state, error = error, source = null)
+        UploadJob(
+            handle = null,
+            tag = tag,
+            destinationPath = path,
+            contentType = null,
+            state = state,
+            error = error,
+            source = null,
+        )
 
     private inner class Transfer(val tag: String, val path: String) {
         var job: Job? = null
@@ -237,7 +258,13 @@ class AndroidUpload(
                     target.headers.filterKeys { !it.equals(CONTENT_TYPE, true) && !it.equals(CONTENT_LENGTH, true) }
                         .forEach { (name, value) -> append(name, value) }
                 }
-                setBody(Stream(open, length, target.headers.entries.firstOrNull { it.key.equals(CONTENT_TYPE, true) }?.value))
+                setBody(
+                    Stream(
+                        open,
+                        length,
+                        target.headers.entries.firstOrNull { it.key.equals(CONTENT_TYPE, true) }?.value,
+                    ),
+                )
             }
             return response.status.value.also { if (!response.status.isSuccess()) log.w { "$tag: the server answered $it" } }
         }
@@ -250,9 +277,19 @@ class AndroidUpload(
     }
 
     /** The source's bytes as a request body, read as they are sent. */
-    private class Stream(private val open: () -> InputStream, length: Long?, type: String?) : OutgoingContent.WriteChannelContent() {
+    private class Stream(
+        private val open: () -> InputStream,
+        length: Long?,
+        type: String?,
+    ) : OutgoingContent.WriteChannelContent() {
         override val contentLength: Long? = length
-        override val contentType: ContentType? = type?.let { runCatchingCancellable { ContentType.parse(it) }.getOrNull() }
+        override val contentType: ContentType? = type?.let {
+            runCatchingCancellable {
+                ContentType.parse(
+                    it,
+                )
+            }.getOrNull()
+        }
 
         override suspend fun writeTo(channel: ByteWriteChannel) {
             open().use {

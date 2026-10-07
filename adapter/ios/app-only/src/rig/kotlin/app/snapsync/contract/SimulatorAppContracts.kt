@@ -2,24 +2,22 @@
 
 package app.snapsync.contract
 
-import app.snapsync.contracts.GalleryChange
-import app.snapsync.contracts.GalleryContract
-import app.snapsync.contracts.GalleryReaderContract
-import app.snapsync.contracts.GalleryReaderState
-import app.snapsync.contracts.GalleryState
-import app.snapsync.gallery.IosGallery
-import app.snapsync.gallery.IosGalleryReader
-import app.snapsync.gallery.PhotoKitAssetIds
-import app.snapsync.model.AssetId
-import app.snapsync.ports.GalleryReader
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
-import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.Binding
-import app.snapsync.contracts.DownloadContract
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.DeviceConditionsContract
+import app.snapsync.contracts.DeviceConditionsState
+import app.snapsync.contracts.DownloadContract
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.GalleryChange
+import app.snapsync.contracts.GalleryContract
+import app.snapsync.contracts.GalleryImportContract
+import app.snapsync.contracts.GalleryImportState
+import app.snapsync.contracts.GalleryReaderContract
+import app.snapsync.contracts.GalleryReaderState
+import app.snapsync.contracts.GalleryState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.InAppContract
@@ -27,41 +25,41 @@ import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.LivePhotoImportContract
 import app.snapsync.contracts.LivePhotoImportState
 import app.snapsync.contracts.LivePhotoLibrary
-import app.snapsync.contracts.StagedLiveImport
 import app.snapsync.contracts.MarkerState
+import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
-import app.snapsync.contracts.GalleryImportContract
-import app.snapsync.contracts.GalleryImportState
-import app.snapsync.contracts.DeviceConditionsContract
-import app.snapsync.contracts.DeviceConditionsState
-import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
 import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.StagedImport
+import app.snapsync.contracts.StagedLiveImport
+import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.simulatorAppContract
-import app.snapsync.model.ImportResult
-import app.snapsync.ports.GalleryHandlers
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import app.snapsync.device.IosDeviceConditions
+import app.snapsync.gallery.IosGallery
+import app.snapsync.gallery.IosGalleryReader
+import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
+import app.snapsync.model.ImportResult
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.StagedResource
 import app.snapsync.permission.PhotoLibraryPermission
-import app.snapsync.model.AssetRef
 import app.snapsync.ports.BackgroundTime
+import app.snapsync.ports.DeviceConditions
+import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.protection.IosProcessInfo
-import app.snapsync.device.IosDeviceConditions
-import app.snapsync.ports.DeviceConditions
-import app.snapsync.model.StagedResource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -72,6 +70,8 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSISO8601DateFormatter
@@ -143,7 +143,11 @@ private fun seedPhotos(seedDate: String): List<String> = memScoped {
         changeBlock = {
             repeat(SEED_COUNT) {
                 val request = PHAssetCreationRequest.creationRequestForAsset()
-                request.addResourceWithType(PHAssetResourceTypePhoto, data = PhotoLibrary.jpeg.toNSData(), options = null)
+                request.addResourceWithType(
+                    PHAssetResourceTypePhoto,
+                    data = PhotoLibrary.jpeg.toNSData(),
+                    options = null,
+                )
                 request.setCreationDate(date)
                 request.placeholderForCreatedAsset?.localIdentifier?.let(created::add)
             }
@@ -157,7 +161,11 @@ private fun seedPhotos(seedDate: String): List<String> = memScoped {
 
 /** The app's real gallery, as a contract run builds it: its own scope, never the app's. */
 private fun contractGallery(): IosGallery =
-    IosGallery(IosGalleryReader(Logger.withTag("contract")), PhotoLibraryPermission(), CoroutineScope(Dispatchers.Default))
+    IosGallery(
+        IosGalleryReader(Logger.withTag("contract")),
+        PhotoLibraryPermission(),
+        CoroutineScope(Dispatchers.Default),
+    )
 
 private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.addressOf(0), length = size.toULong()) }
 
@@ -180,7 +188,9 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
                 return Entered.Unreachable("iOS has no folders: the library is the member's default gallery")
         }
         // Minted through the adapter's own mapping, so the clauses check that mapping end to end.
-        val ids = seeded.mapTo(linkedSetOf()) { checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" } }
+        val ids = seeded.mapTo(
+            linkedSetOf(),
+        ) { checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" } }
         return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")), ids))
     }
 }
@@ -339,7 +349,10 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
             }
 
             private fun asset(id: AssetId): PHAsset? =
-                PHAsset.fetchAssetsWithLocalIdentifiers(listOf(PhotoKitAssetIds.localIdentifierOf(id)), null).firstObject() as? PHAsset
+                PHAsset.fetchAssetsWithLocalIdentifiers(
+                    listOf(PhotoKitAssetIds.localIdentifierOf(id)),
+                    null,
+                ).firstObject() as? PHAsset
         }
         return Entered.Ready(StagedLiveImport(importer, stage, library))
     }

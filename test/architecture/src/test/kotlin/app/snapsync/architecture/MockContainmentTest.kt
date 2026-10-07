@@ -43,7 +43,10 @@ class MockContainmentTest {
             val file = buildFileOf(root)
             assertTrue(file.isFile, "$root's build file is missing — the shipped roots moved")
             val naming = codeLines(file).filter { line -> RIG_ONLY.any { "\"$it\"" in line } }
-            assertTrue(naming.isNotEmpty(), "$root names no rig-only module at all — re-point this gate at where the rig build links them")
+            assertTrue(
+                naming.isNotEmpty(),
+                "$root names no rig-only module at all — re-point this gate at where the rig build links them",
+            )
             val unswitched = naming.filterNot { "if (rigEnabled)" in it }
             assertEquals(
                 emptyList(),
@@ -64,8 +67,15 @@ class MockContainmentTest {
             if (!file.isFile) continue
             mainProjectDependencies(file).forEach { queue.addLast(it) }
         }
-        assertTrue(reached.size >= 10, "the shipped closure has only ${reached.size} modules — the scan is broken: $reached")
-        assertEquals(emptySet(), RIG_ONLY.toSet() intersect reached, "a shipped root links a rig-only module through its main dependencies")
+        assertTrue(
+            reached.size >= 10,
+            "the shipped closure has only ${reached.size} modules — the scan is broken: $reached",
+        )
+        assertEquals(
+            emptySet(),
+            RIG_ONLY.toSet() intersect reached,
+            "a shipped root links a rig-only module through its main dependencies",
+        )
     }
 
     @Test
@@ -83,7 +93,11 @@ class MockContainmentTest {
     }
 
     /** A line that declares a main dependency: not a test configuration, not rig-switched, not coverage crediting. */
-    private fun isMainDependency(line: String): Boolean = listOf("testImplementation", RIG, "kover(").none { it in line }
+    private fun isMainDependency(line: String): Boolean = listOf(
+        "testImplementation",
+        RIG,
+        "kover(",
+    ).none { it in line }
 
     /**
      * The `project(":…")` dependencies [file] declares for MAIN code: not inside a test source set's block or a

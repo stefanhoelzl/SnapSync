@@ -13,4 +13,3 @@ package app.snapsync.model
 interface EventCreator {
     suspend fun create(name: String, startsAt: String, endsAt: String)
 }
-

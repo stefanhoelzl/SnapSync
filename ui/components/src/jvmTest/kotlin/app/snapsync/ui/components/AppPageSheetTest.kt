@@ -1,16 +1,16 @@
 package app.snapsync.ui.components
 
 import androidx.compose.material3.Text
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import org.junit.Rule
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import org.junit.Rule
 
 /**
  * The page sheet ([AppPageSheet]) the event's settings open in (capability `manage-membership`): its content shows,

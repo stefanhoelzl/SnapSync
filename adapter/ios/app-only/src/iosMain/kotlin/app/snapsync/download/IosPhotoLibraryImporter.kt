@@ -3,14 +3,14 @@ package app.snapsync.download
 import app.snapsync.gallery.Iso8601
 import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.ios.qos.qosLabel
-import app.snapsync.objc.objcBoundary
-import app.snapsync.objc.objcCallback
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.ImportResult
 import app.snapsync.model.ImportRequest
+import app.snapsync.model.ImportResult
+import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
+import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.objcCallback
 import app.snapsync.ports.GalleryHandlers
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -23,10 +23,10 @@ import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetCollectionChangeRequest
 import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHAssetResourceCreationOptions
+import platform.Photos.PHPhotoLibrary
 import platform.Photos.PHPhotosErrorDomain
 import platform.Photos.PHPhotosErrorInvalidResource
 import platform.Photos.PHPhotosErrorMissingResource
-import platform.Photos.PHPhotoLibrary
 
 /**
  * The PhotoKit import behind [app.snapsync.gallery.IosGallery] (capability `receiving-photos`): rebuilds one foreign asset from its
@@ -115,11 +115,20 @@ internal class IosPhotoLibraryImporter(
         val album = request.album
         // The shared default formatter (second precision only, exactly as before) — see [Iso8601].
         val captureDate = Iso8601.parse(creationDate)
-        if (captureDate == null) log.w { "unparseable creationDate '$creationDate' for ${ref.sourceAssetId} — will default to import time" }
+        if (captureDate == null) {
+            log.w {
+                "unparseable creationDate '$creationDate' for ${ref.sourceAssetId} — will default to import time"
+            }
+        }
 
         // Resolved before the transaction: an album the member deleted files nothing and fails nothing.
         val collection = album?.let { id ->
-            (PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(id), null).firstObject() as? PHAssetCollection)
+            (
+                PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(
+                    listOf(id),
+                    null,
+                ).firstObject() as? PHAssetCollection
+                )
                 .also { if (it == null) log.w { "event album $id no longer resolves — camera roll only" } }
         }
         val created = CreatedAsset()
@@ -163,7 +172,10 @@ internal class IosPhotoLibraryImporter(
                         objcBoundary(
                             log,
                             "import.settle",
-                            ImportResult.Failed("the import's completion threw (logged above)", consumedResources = success),
+                            ImportResult.Failed(
+                                "the import's completion threw (logged above)",
+                                consumedResources = success,
+                            ),
                         ) {
                             settle(ref, success, error, created).also { handlers.onImportSettled(ref, it) }
                         }
@@ -174,30 +186,30 @@ internal class IosPhotoLibraryImporter(
     }
 
 /**
- * Did this failure leave the staged files behind, or has the library already taken them?
- *
- * **Measured, not inferred** (iOS 26.2, 2026-08-26, resources staged in the App Group and added with
- * `shouldMoveFile = true`): the library takes a resource's file when it INGESTS it, which happens before it
- * validates the content and before the commit. So the boundary is *what was rejected*, not *when*:
- *
- *  - `InvalidResource` (3302) — the file's CONTENT was rejected, and it was already gone, with no asset
- *    created. Nothing remains to retry from.
- *  - `MissingResource` (3303) — the file was not there to begin with. Also nothing to retry from, and the
- *    shape a process death between ingest and the marker write leaves behind.
- *  - `ChangeNotSupported` (3300) — the REQUEST was rejected before any resource was ingested; every file
- *    survived. Retrying is correct.
- *
- * Everything else answers `false`, deliberately: retrying a recoverable failure costs one library
- * transaction, while settling an unconsumed one costs the photo permanently. The asymmetry decides the
- * default, and an error this table does not know is an error whose ingest behaviour nobody has measured.
- *
- * Measured on TWO hosts, agreeing case for case: a simulator (iOS 26.2) and the SE2 (iOS 26.6), both on
- * 2026-08-26. ⏰ Re-measure at the next iOS major.
- */
-private fun consumedResources(error: NSError?): Boolean {
-    if (error == null || error.domain != PHPhotosErrorDomain) return false
-    return error.code == PHPhotosErrorInvalidResource || error.code == PHPhotosErrorMissingResource
-}
+     * Did this failure leave the staged files behind, or has the library already taken them?
+     *
+     * **Measured, not inferred** (iOS 26.2, 2026-08-26, resources staged in the App Group and added with
+     * `shouldMoveFile = true`): the library takes a resource's file when it INGESTS it, which happens before it
+     * validates the content and before the commit. So the boundary is *what was rejected*, not *when*:
+     *
+     *  - `InvalidResource` (3302) — the file's CONTENT was rejected, and it was already gone, with no asset
+     *    created. Nothing remains to retry from.
+     *  - `MissingResource` (3303) — the file was not there to begin with. Also nothing to retry from, and the
+     *    shape a process death between ingest and the marker write leaves behind.
+     *  - `ChangeNotSupported` (3300) — the REQUEST was rejected before any resource was ingested; every file
+     *    survived. Retrying is correct.
+     *
+     * Everything else answers `false`, deliberately: retrying a recoverable failure costs one library
+     * transaction, while settling an unconsumed one costs the photo permanently. The asymmetry decides the
+     * default, and an error this table does not know is an error whose ingest behaviour nobody has measured.
+     *
+     * Measured on TWO hosts, agreeing case for case: a simulator (iOS 26.2) and the SE2 (iOS 26.6), both on
+     * 2026-08-26. ⏰ Re-measure at the next iOS major.
+     */
+    private fun consumedResources(error: NSError?): Boolean {
+        if (error == null || error.domain != PHPhotosErrorDomain) return false
+        return error.code == PHPhotosErrorInvalidResource || error.code == PHPhotosErrorMissingResource
+    }
 
     /** What the change block learned about the asset it asked for, read by the completion. */
     private class CreatedAsset {

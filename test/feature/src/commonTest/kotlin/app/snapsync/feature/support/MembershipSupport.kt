@@ -1,10 +1,10 @@
 package app.snapsync.feature.support
 
-import app.snapsync.services.leave.PendingLeaves
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.EventConfig
-import app.snapsync.services.config.ConfigService
 import app.snapsync.ports.Clock
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.leave.PendingLeaves
 
 /**
  * What a membership feature wrote, read at the port: the membership file's saves and clears, over [files]. [saved] is

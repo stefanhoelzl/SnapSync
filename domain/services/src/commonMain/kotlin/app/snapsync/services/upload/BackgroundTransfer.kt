@@ -1,10 +1,9 @@
 package app.snapsync.services.upload
 
-import app.snapsync.model.Resource
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadRequest
-import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.PlatformUploadJob
+import app.snapsync.model.Resource
+import app.snapsync.model.UploadCreateOutcome
+import app.snapsync.model.UploadRequest
 
 /**
  * The transfer lifecycle of one background-upload cycle — creating, retrying and settling upload jobs. The

@@ -59,14 +59,14 @@ class ExtensionSafetyTest {
      * needs it; adding one is a deliberate act with a reason, which is the whole point of an allowlist.
      */
     private val permitted = setOf(
-        "Foundation",             // NSData/NSError/NSFileManager — the appex's whole I/O vocabulary
-        "Photos",                 // PhotoKit: the upload-job subsystem the extension exists to serve
-        "Security",              // Keychain: the attestation token the appex sends
-        "posix",                  // errno and low-level file primitives behind the App-Group store
-        "CoreFoundation",         // CF bridging under the Foundation calls
-        "CoreCrypto",             // digest for the upload keys
+        "Foundation", // NSData/NSError/NSFileManager — the appex's whole I/O vocabulary
+        "Photos", // PhotoKit: the upload-job subsystem the extension exists to serve
+        "Security", // Keychain: the attestation token the appex sends
+        "posix", // errno and low-level file primitives behind the App-Group store
+        "CoreFoundation", // CF bridging under the Foundation calls
+        "CoreCrypto", // digest for the upload keys
         "UniformTypeIdentifiers", // MIME/UTI for the resources it uploads
-        "DeviceCheck",            // App Attest key material
+        "DeviceCheck", // App Attest key material
     )
 
     private fun moduleDir(path: String): File = File(repoRoot, path.removePrefix(":").replace(':', '/'))

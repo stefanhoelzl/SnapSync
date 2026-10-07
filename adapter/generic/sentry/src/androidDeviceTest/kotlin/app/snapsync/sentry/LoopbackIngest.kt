@@ -1,5 +1,6 @@
 package app.snapsync.sentry
 
+import kotlinx.serialization.json.JsonObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.InetAddress
@@ -8,7 +9,6 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.zip.GZIPInputStream
 import kotlin.concurrent.thread
-import kotlinx.serialization.json.JsonObject
 
 /**
  * A receiving endpoint for the reporting SDK, inside the instrumented test process — the Android twin of the iOS
@@ -74,8 +74,10 @@ internal class LoopbackIngest {
         val payload = "{}"
         client.getOutputStream().apply {
             write(
-                ("HTTP/1.1 $status\r\nContent-Type: application/json\r\n" +
-                    "Content-Length: ${payload.length}\r\nConnection: close\r\n\r\n$payload").encodeToByteArray(),
+                (
+                    "HTTP/1.1 $status\r\nContent-Type: application/json\r\n" +
+                        "Content-Length: ${payload.length}\r\nConnection: close\r\n\r\n$payload"
+                    ).encodeToByteArray(),
             )
             flush()
         }

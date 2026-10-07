@@ -32,7 +32,12 @@ import kotlin.test.assertTrue
  */
 class PortBundleTest {
 
-    private val bundles = listOf(AppPorts::class.java, ExtensionPorts::class.java, ProcessPorts::class.java, DevicePorts::class.java)
+    private val bundles = listOf(
+        AppPorts::class.java,
+        ExtensionPorts::class.java,
+        ProcessPorts::class.java,
+        DevicePorts::class.java,
+    )
 
     /** Interfaces in `:domain:ports` that are NOT ports — each a handle or a value a port hands over. */
     private val notPorts = mapOf(
@@ -60,17 +65,28 @@ class PortBundleTest {
 
     @Test
     fun `the gate parsed every bundle (non-vacuity floor)`() {
-        val floors = mapOf(AppPorts::class.java to 20, ExtensionPorts::class.java to 9, ProcessPorts::class.java to 7, DevicePorts::class.java to 20)
+        val floors = mapOf(
+            AppPorts::class.java to 20,
+            ExtensionPorts::class.java to 9,
+            ProcessPorts::class.java to 7,
+            DevicePorts::class.java to 20,
+        )
         floors.forEach { (bundle, floor) ->
             val count = primaryConstructor(bundle).parameterCount
-            assertTrue(count >= floor, "port-bundle gate: ${bundle.simpleName} read with only $count parameters (expected $floor+)")
+            assertTrue(
+                count >= floor,
+                "port-bundle gate: ${bundle.simpleName} read with only $count parameters (expected $floor+)",
+            )
         }
     }
 
     @Test
     fun `every interface in the ports zone extends Port`() {
         val declared = portInterfaces()
-        assertTrue(declared.size >= 30, "port-bundle gate: found only ${declared.size} interfaces in :domain:ports — the scan is broken")
+        assertTrue(
+            declared.size >= 30,
+            "port-bundle gate: found only ${declared.size} interfaces in :domain:ports — the scan is broken",
+        )
         val offenders = (declared - notPorts.keys).filterNot { Port::class.java.isAssignableFrom(portsClass(it)) }
         assertTrue(
             offenders.isEmpty(),
@@ -85,7 +101,12 @@ class PortBundleTest {
 
     @Test
     fun `the shape check refuses what is not a port`() {
-        class Sample(val lane: kotlin.coroutines.CoroutineContext, val name: String, val call: () -> Unit, val many: List<String>)
+        class Sample(
+            val lane: kotlin.coroutines.CoroutineContext,
+            val name: String,
+            val call: () -> Unit,
+            val many: List<String>,
+        )
         val types = primaryConstructor(Sample::class.java).genericParameterTypes
         assertTrue(types.none(::isPortShaped), "the shape check admitted a non-port: ${types.map { it.typeName }}")
     }
@@ -107,7 +128,10 @@ class PortBundleTest {
         val dir = File(SourceScan.repoRoot, "domain/ports/src/commonMain/kotlin/app/snapsync/ports")
         assertTrue(dir.isDirectory, "port-bundle gate: $dir is gone — re-point the scan")
         return dir.walk().filter { it.extension == "kt" }.flatMap { file ->
-            Regex("""^(?:sealed |fun )?interface\s+(\w+)""", RegexOption.MULTILINE).findAll(file.readText()).map { it.groupValues[1] }
+            Regex(
+                """^(?:sealed |fun )?interface\s+(\w+)""",
+                RegexOption.MULTILINE,
+            ).findAll(file.readText()).map { it.groupValues[1] }
         }.toSet()
     }
 

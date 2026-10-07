@@ -1,6 +1,5 @@
 package app.snapsync.rig
 
-import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.InAppContract
 import app.snapsync.services.logs.LogTailService
 import kotlin.coroutines.CoroutineContext
@@ -385,7 +384,6 @@ class CommandResult(val status: Int, val body: String) {
  * request rather than as a failure to start.
  */
 fun rigPort(raw: Any?): Int = (raw as? String)?.toIntOrNull() ?: DEFAULT_RIG_PORT
-
 
 /**
  * Where the bound port is published, given this process's documents directory — `null` when the OS

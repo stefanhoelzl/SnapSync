@@ -1,17 +1,17 @@
 package app.snapsync.mock
 
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.APP_VERSION_HEADER
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.withFinal
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.isCanonicalAssetId
+import app.snapsync.model.withFinal
 import app.snapsync.ports.Backend
 import kotlin.concurrent.Volatile
 import kotlin.time.Instant
@@ -116,7 +116,9 @@ class BackendOperator internal constructor(private val state: BackendState) {
 
     /** The event's union — every member's complete assets, departed members included; `null` for an unknown event. */
     fun unionOf(eventId: String): List<UnionAsset>? = state.locked {
-        state.union(eventId)?.map { (deviceId, asset) -> UnionAsset(deviceId, asset.assetId, asset.creationDate, emptyList()) }
+        state.union(
+            eventId,
+        )?.map { (deviceId, asset) -> UnionAsset(deviceId, asset.assetId, asset.creationDate, emptyList()) }
     }
 
     /** Whether the backend holds [eventId]. */
@@ -148,7 +150,10 @@ class BackendOperator internal constructor(private val state: BackendState) {
     val eventReads: Map<String, Int> get() = state.locked { state.eventReads.toMap() }
 
     /** Whether [deviceId] has left [eventId]. */
-    fun isDeparted(eventId: String, deviceId: String): Boolean = state.locked { state.memberships[eventId to deviceId]?.departed == true }
+    fun isDeparted(
+        eventId: String,
+        deviceId: String,
+    ): Boolean = state.locked { state.memberships[eventId to deviceId]?.departed == true }
 
     /** The push registration [deviceId] stored, or null. */
     fun deviceConfigOf(deviceId: String): PushEndpoint? = state.locked { state.deviceConfigs[deviceId] }
@@ -316,12 +321,18 @@ internal class BackendState(
     val minted = mutableSetOf<String>()
 
     @Volatile var offline = false
+
     @Volatile var failDeviceListing = false
+
     @Volatile var refuseNextCredential = false
+
     @Volatile var refuseAttestation: DeviceRefusal? = null
+
     @Volatile var refuseAttestationDetail: String? = null
     val holds = mutableMapOf<BackendCall, OperatorHold>()
+
     @Volatile var nextEventId: String? = null
+
     @Volatile var minAppVersion: String? = null
     internal var legacyCounter = 0L
 
@@ -442,7 +453,12 @@ internal class BackendState(
      * The union from [after] — only the assets gained past it, still through the union's own filter — and the position
      * it covers; `null` for an unknown event. Logs the read under [reader] (capability `privacy-security`).
      */
-    fun unionPage(eventId: String, after: Long?, reader: String?, trigger: String?): Pair<List<Pair<String, DeviceManifestAsset>>, Long>? {
+    fun unionPage(
+        eventId: String,
+        after: Long?,
+        reader: String?,
+        trigger: String?,
+    ): Pair<List<Pair<String, DeviceManifestAsset>>, Long>? {
         val all = union(eventId) ?: return null
         val position = position(eventId)
         val page = if (after == null) {

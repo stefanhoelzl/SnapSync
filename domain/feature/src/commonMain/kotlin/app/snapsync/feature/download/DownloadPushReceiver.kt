@@ -1,8 +1,8 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.MembershipRead
 import app.snapsync.model.UnionTrigger
 import app.snapsync.services.config.ConfigService
-import app.snapsync.model.MembershipRead
 import co.touchlab.kermit.Logger
 
 /**

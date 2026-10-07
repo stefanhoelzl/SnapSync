@@ -2,9 +2,9 @@ package app.snapsync.contracts
 
 import app.snapsync.model.GalleryAccess
 import kotlin.test.Test
-import kotlin.test.assertNull
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RecordingTest {

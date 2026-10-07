@@ -4,9 +4,9 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
-import platform.Foundation.distantPast
 import platform.Foundation.NSPredicate
 import platform.Foundation.dateByAddingTimeInterval
+import platform.Foundation.distantPast
 
 /**
  * Translate a [SelectionPolicy] into a `PHFetchOptions` predicate, or `null` for no narrowing.

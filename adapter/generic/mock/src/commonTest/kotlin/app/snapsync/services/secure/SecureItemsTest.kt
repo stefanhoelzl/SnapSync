@@ -3,9 +3,9 @@ package app.snapsync.services.secure
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreResolution
+import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.StoredProtection
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.SecureStoreUnavailable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -56,7 +56,10 @@ class SecureItemsTest {
         var generated = false
 
         val failure = assertFailsWith<SecureStoreUnavailable> {
-            resolveOrMint(store, ITEM) { generated = true; "minted-id" }
+            resolveOrMint(store, ITEM) {
+                generated = true
+                "minted-id"
+            }
         }
 
         assertEquals(LOCKED, failure.detail, "the adapter's diagnostic must survive to the device log")
@@ -72,7 +75,11 @@ class SecureItemsTest {
         val resolved = resolveOrMint(store, ITEM, onResolution = { outcome = it }) { "minted-id" }
 
         assertEquals("stored-id", resolved)
-        assertEquals(SecureStoreResolution.Found(StoredProtection.RESTRICTED), outcome, "the protection is reported as read")
+        assertEquals(
+            SecureStoreResolution.Found(StoredProtection.RESTRICTED),
+            outcome,
+            "the protection is reported as read",
+        )
         assertTrue(store.untouched(), "a read never writes")
     }
 

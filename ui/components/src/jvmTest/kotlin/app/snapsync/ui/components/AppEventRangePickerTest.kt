@@ -23,19 +23,19 @@ import androidx.compose.ui.test.onParent
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.plus
-import org.junit.Rule
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.range_end_pick_time
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
 import app.snapsync.ui.components.resources.wheel_start_hour
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.plus
+import org.junit.Rule
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * The inline [AppEventRangePicker] (capability `create-event`): the calendar's tap cycle, an end time that
@@ -47,7 +47,12 @@ import app.snapsync.ui.components.resources.wheel_start_hour
 class AppEventRangePickerTest {
 
     private companion object {
-        val TEN_DAYS = RangeBounds.lastingAtMost { from -> LocalDateTime(from.date.plus(10, DateTimeUnit.DAY), from.time) }
+        val TEN_DAYS = RangeBounds.lastingAtMost { from ->
+            LocalDateTime(
+                from.date.plus(10, DateTimeUnit.DAY),
+                from.time,
+            )
+        }
 
         /** The clock's hour as the screen hands it over: a blank end hour fills with it. */
         const val CLOCK_HOUR = 15
@@ -83,7 +88,10 @@ class AppEventRangePickerTest {
         setPicker()
         rule.onNodeWithContentDescription("Thursday, 12 March 2026").performClick()
         // The blank wheel sits over the start's 09, so 10 is the row just below the reading line.
-        rule.onNode(hasText("10") and hasAnyAncestor(hasContentDescription(str(Res.string.wheel_end_hour))), useUnmergedTree = true)
+        rule.onNode(
+            hasText("10") and hasAnyAncestor(hasContentDescription(str(Res.string.wheel_end_hour))),
+            useUnmergedTree = true,
+        )
             .performClick()
         rule.waitForIdle()
         assertEquals(10, range.untilHour)
@@ -132,14 +140,17 @@ class AppEventRangePickerTest {
     @Test
     fun `while the last day is pending, days past the window are disabled`() {
         setPicker()
-        rule.onNodeWithContentDescription("Friday, 20 March 2026").assertIsEnabled()     // exactly the limit
+        rule.onNodeWithContentDescription("Friday, 20 March 2026").assertIsEnabled() // exactly the limit
         rule.onNodeWithContentDescription("Saturday, 21 March 2026").assertIsNotEnabled() // one day past it
     }
 
     @Test
     fun `a same-day end before the start cannot be tapped`() {
         setPicker()
-        rule.onNode(hasText("08") and hasAnyAncestor(hasContentDescription(str(Res.string.wheel_end_hour))), useUnmergedTree = true)
+        rule.onNode(
+            hasText("08") and hasAnyAncestor(hasContentDescription(str(Res.string.wheel_end_hour))),
+            useUnmergedTree = true,
+        )
             .onParent().assertIsNotEnabled()
     }
 

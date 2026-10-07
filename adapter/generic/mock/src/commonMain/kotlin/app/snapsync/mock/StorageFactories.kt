@@ -4,8 +4,8 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.Files
-import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.SecureStore
 
 // The thin storage ports' mocks: port-typed factories over `internal` classes, as every fake here
 // (`docs/testing.md`). Their own file because `Factories.kt` is at its function ceiling.

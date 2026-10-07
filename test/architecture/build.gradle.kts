@@ -19,7 +19,6 @@ kover {
     }
 }
 
-
 // Test-only ARCHITECTURE GUARDS (`docs/architecture.md`): structural invariants the compiler
 // cannot express, enforced as ordinary tests so they run under `./gradlew build` — the canonical check.
 //

@@ -3,8 +3,8 @@ package app.snapsync.integration
 import app.snapsync.model.Arrow
 import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventTiming
-import app.snapsync.model.SyncCounts
 import app.snapsync.model.Layer
+import app.snapsync.model.SyncCounts
 import app.snapsync.model.SyncHealth
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonPrimitive
@@ -356,7 +356,11 @@ class FullStackIntegrationTest {
         completeJobs() // a no-op once the gate holds: no such job exists
         cycle()
 
-        assertEquals(0, jobs().created, "download-only must create no upload job — the member was promised they would share nothing")
+        assertEquals(
+            0,
+            jobs().created,
+            "download-only must create no upload job — the member was promised they would share nothing",
+        )
         assertTrue(objects().isEmpty(), "download-only must upload no bytes")
         // The union leak, distinct from the bytes: a manifest listing the member's assets offers them to every
         // other member (capability `photo-sharing`, "One policy gates both byte upload and manifest listing").

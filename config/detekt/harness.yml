@@ -58,7 +58,8 @@ complexity:
     threshold: 49
   LongMethod:
     active: true
-    threshold: 162
+    # RAISED by the ktlint reformat (detekt-formatting's adoption): layout only, no decision added; 162 -> 171.
+    threshold: 171
   LongParameterList:
     active: true
     # 24, not the 17 a first pass read off detekt's finding message: that message truncates and its
@@ -85,7 +86,8 @@ complexity:
     # Default, consistent with `core`: this tier is documented as regression-detection only, so
     # inventing a size claim here would contradict its own framing.
     active: true
-    threshold: 600
+    # RAISED by the ktlint reformat (detekt-formatting's adoption): layout only, no decision added; 600 -> 620.
+    threshold: 620
 style:
   ReturnCount:
     active: true

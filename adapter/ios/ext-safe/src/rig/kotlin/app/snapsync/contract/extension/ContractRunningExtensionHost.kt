@@ -68,7 +68,12 @@ private fun landedFile(route: String): String? =
 /** Keeps that a `PUT` to [route] landed with [contentType]. Called by the app's upload receiver. */
 fun recordLanded(route: String, contentType: String?) {
     val dir = contractRunFile(LANDED_DIRECTORY) ?: return
-    NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = null)
+    NSFileManager.defaultManager.createDirectoryAtPath(
+        dir,
+        withIntermediateDirectories = true,
+        attributes = null,
+        error = null,
+    )
     landedFile(route)?.let { writeContractRunFile(it, contentType.orEmpty()) }
 }
 
@@ -122,7 +127,11 @@ class ContractRunningExtensionHost(private val inner: ExtensionHost) : Extension
         val step = if (request.substringBefore(' ') == UploadContract.name) {
             transferRunStep(request.substringAfter(' '), call, tape)
         } else {
-            Step.Done("${CONTRACT_REFUSED}no contract named '${request.substringBefore(' ')}' records inside the upload extension\n")
+            Step.Done(
+                "${CONTRACT_REFUSED}no contract named '${request.substringBefore(
+                    ' ',
+                )}' records inside the upload extension\n",
+            )
         }
         return when (step) {
             is Step.Continue -> {

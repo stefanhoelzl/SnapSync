@@ -62,8 +62,14 @@ class DownloadLeaveIntegrationTest {
 
         leave()
 
-        assertTrue(deviceJson("backend/departed", "event" to event).getValue("departed").jsonPrimitive.boolean, "this device is departed")
-        assertTrue(deviceJson("backend/event", "event" to event).getValue("registered").jsonPrimitive.boolean, "the event lives on")
+        assertTrue(
+            deviceJson("backend/departed", "event" to event).getValue("departed").jsonPrimitive.boolean,
+            "this device is departed",
+        )
+        assertTrue(
+            deviceJson("backend/event", "event" to event).getValue("registered").jsonPrimitive.boolean,
+            "the event lives on",
+        )
         assertTrue(primaryKey("A") in objects(event = event), "its bytes are kept")
         assertEquals(setOf("A", "FQ"), union(event).keys, "the union still serves the departed member's photos")
     }

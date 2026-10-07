@@ -1,13 +1,11 @@
 package app.snapsync.compose
 
-import app.snapsync.services.crypto.EventKeys
-import app.snapsync.services.crypto.FileCipher
-import app.snapsync.services.settings.MobileDataSetting
-import app.snapsync.services.wake.EventChecks
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.AttestStore
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.identity.AttestState
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -16,7 +14,9 @@ import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.push.PushTokenSource
+import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.staging.StagingService
+import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 
 /**

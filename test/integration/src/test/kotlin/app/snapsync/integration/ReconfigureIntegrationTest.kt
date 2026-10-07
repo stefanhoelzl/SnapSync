@@ -2,10 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.model.Direction
 import app.snapsync.model.SyncHealth
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

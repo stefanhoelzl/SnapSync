@@ -3,8 +3,8 @@ package app.snapsync.feature.album
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.album.AlbumMapService
+import app.snapsync.services.gallery.GalleryAlbums
 import co.touchlab.kermit.Logger
 
 /**

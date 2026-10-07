@@ -1,7 +1,6 @@
 package app.snapsync.http
 
 import app.snapsync.model.APP_VERSION_HEADER
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -12,6 +11,7 @@ import app.snapsync.model.EventRenamed
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.MintRequest
 import app.snapsync.model.ProofFormat
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.ResourceRole
@@ -34,19 +34,19 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import kotlin.coroutines.cancellation.CancellationException
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.time.TimeSource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.TimeSource
 
 private val httpLog = Logger.withTag("Http")
 
@@ -84,6 +84,7 @@ class HttpBackend(
 ) : Backend {
 
     private val base = base.trimEnd('/')
+
     // `explicitNulls = false`: a nullable field the body leaves out decodes as `null` — the union's `url`, which an
     // `urls=false` read omits — so no DTO needs a default, whose generated half no test could reach.
     private val json = Json {
@@ -193,7 +194,12 @@ class HttpBackend(
         deviceId: String,
         manifest: DeviceManifest,
     ): Reply<Unit> =
-        exchange(HttpMethod.Put, "/events/$eventId/devices/$deviceId/manifest", token, body = manifest.encodeToJson()) { }
+        exchange(
+            HttpMethod.Put,
+            "/events/$eventId/devices/$deviceId/manifest",
+            token,
+            body = manifest.encodeToJson(),
+        ) { }
 
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
         exchange(HttpMethod.Delete, "/events/$eventId/devices/$deviceId?received=$received", token) { }
@@ -210,7 +216,9 @@ class HttpBackend(
         token,
         headers = mapOf(UNION_TRIGGER_HEADER to trigger.wire),
     ) { text, headers ->
-        val position = requireNotNull(headers[UNION_CURSOR_HEADER]?.toLongOrNull()) { "no `$UNION_CURSOR_HEADER` in the answer" }
+        val position = requireNotNull(headers[UNION_CURSOR_HEADER]?.toLongOrNull()) {
+            "no `$UNION_CURSOR_HEADER` in the answer"
+        }
         val assets = json.decodeFromString(ListSerializer(AssetDto.serializer()), text).map { dto ->
             // A non-canonical id fails the constructor, and the exchange answers that as Malformed.
             val assetId = AssetId(dto.assetId)
@@ -230,7 +238,9 @@ class HttpBackend(
 
     override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
         exchange(HttpMethod.Get, "/events/$eventId/files/devices/$deviceId", token) { text ->
-            json.decodeFromString(ListSerializer(StoredDto.serializer()), text).map { DeviceFile(AssetId(it.assetId), it.role, it.filename) }
+            json.decodeFromString(ListSerializer(StoredDto.serializer()), text).map {
+                DeviceFile(AssetId(it.assetId), it.role, it.filename)
+            }
         }
 
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
@@ -276,7 +286,13 @@ class HttpBackend(
                 "${method.value} $url → ${response.status.value} " +
                     "(${start.elapsedNow().inWholeMilliseconds}ms, req=${body?.length ?: 0}, resp=${text.length})"
             }
-            if (response.status.isSuccess()) decoded(text) { read(it, response.headers) } else Reply.Refused(response.status.value, text)
+            if (response.status.isSuccess()) {
+                decoded(text) {
+                    read(it, response.headers)
+                }
+            } else {
+                Reply.Refused(response.status.value, text)
+            }
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
@@ -306,13 +322,26 @@ class HttpBackend(
     private fun optional(text: String, name: String): String? = objectOf(text).optional(name)
 
     /** A required string [name] of the JSON object [text]. */
-    private fun field(text: String, name: String): String = requireNotNull(optional(text, name)) { "no `$name` in the body" }
+    private fun field(text: String, name: String): String = requireNotNull(optional(text, name)) {
+        "no `$name` in the body"
+    }
 
     @Serializable
-    private class AssetDto(val deviceId: String, val assetId: String, val creationDate: String, val resources: List<ResourceDto>)
+    private class AssetDto(
+        val deviceId: String,
+        val assetId: String,
+        val creationDate: String,
+        val resources: List<ResourceDto>,
+    )
 
     @Serializable
-    private class ResourceDto(val key: String, val url: String?, val role: String, val contentType: String, val filename: String)
+    private class ResourceDto(
+        val key: String,
+        val url: String?,
+        val role: String,
+        val contentType: String,
+        val filename: String,
+    )
 
     /** One stored resource, in the terms the backend addresses resources by. Every field required — see the class doc. */
     @Serializable

@@ -33,7 +33,11 @@ class FootprintTrail(
     fun record(moment: String, footprint: MemoryFootprint) {
         val sample = FootprintSample(clock.now(), moment, footprint)
         log.i { "memory: ${sample.describe()}" }
-        val written = files.write(FileArea.PRIVATE, PATH, encodeFootprintTrail(appendedFootprint(load(), sample)).encodeToByteArray())
+        val written = files.write(
+            FileArea.PRIVATE,
+            PATH,
+            encodeFootprintTrail(appendedFootprint(load(), sample)).encodeToByteArray(),
+        )
         if (written !is FileResult.Ok) log.w { "the footprint reading was not kept ($written)" }
     }
 

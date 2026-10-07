@@ -1,19 +1,18 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.services.identity.PersistedDeviceIdentity
-import app.snapsync.model.EventLookup
-import app.snapsync.services.backend.EventDirectory
-import app.snapsync.model.JoinResult
-
-import app.snapsync.services.config.ConfigService
 import app.snapsync.model.EventConfig
+import app.snapsync.model.EventLookup
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.JoinResult
 import app.snapsync.model.clampToCeiling
 import app.snapsync.model.clampToFloor
-import app.snapsync.model.JoinLoad
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.services.backend.EventDirectory
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import co.touchlab.kermit.Logger
 
 /**
@@ -69,7 +68,10 @@ class JoinEvent(
      * The confirmation gate's read: the event's details, and [JoinLoad.WrongLink] when the link's key ([linkKey]) does
      * not open it — so a link cut short in sharing is told before the member chooses anything, not after.
      */
-    suspend fun loadJoin(eventId: String, linkKey: String?): JoinLoad = when (val load = loadDetails(eventId).toJoinLoad()) {
+    suspend fun loadJoin(
+        eventId: String,
+        linkKey: String?,
+    ): JoinLoad = when (val load = loadDetails(eventId).toJoinLoad()) {
         is JoinLoad.Found -> if (keys.opens(linkKey, load.keyId)) load else JoinLoad.WrongLink
         else -> load
     }

@@ -26,5 +26,8 @@ class NoPlatformDeviceIdContractTest {
     }
 
     @Test
-    fun `it satisfies the PlatformDeviceId contract as a platform that offers no id`() = verify(PlatformDeviceIdContract, binding)
+    fun `it satisfies the PlatformDeviceId contract as a platform that offers no id`() = verify(
+        PlatformDeviceIdContract,
+        binding,
+    )
 }

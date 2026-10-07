@@ -8,14 +8,13 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.captureCutoff
-import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.model.selectionRulesFor
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.runTest
 
 /**
  * The grant decides **where candidates come from**, and no consumer branches on it

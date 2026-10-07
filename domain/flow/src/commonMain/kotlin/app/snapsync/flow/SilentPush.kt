@@ -1,8 +1,8 @@
 package app.snapsync.flow
 
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.pushEventId
 import app.snapsync.model.pushSeq
+import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
 
 /**

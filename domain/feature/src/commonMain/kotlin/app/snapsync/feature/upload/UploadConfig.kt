@@ -1,13 +1,12 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.PauseReason
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.PauseReason
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.grantsPhotoAccess
-
 
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
 class UploadConfig(

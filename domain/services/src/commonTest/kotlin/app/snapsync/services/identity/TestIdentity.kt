@@ -1,12 +1,12 @@
 package app.snapsync.services.identity
 
+import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
-import app.snapsync.model.DeviceIdentityRole
 
 /**
  * A real [PersistedDeviceIdentity] resolving to [id]: over an empty [store] it mints the platform's stable id, which is

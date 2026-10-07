@@ -1,10 +1,9 @@
 package app.snapsync.gallery
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SELECTION_CALIBRATION
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -79,7 +78,10 @@ class PhotoKitPredicateTest {
             admitting(SelectionRule.ExcludeScreenshots, SelectionRule.ExcludeScreenRecordings),
         )!!
         assertTrue(predicate.predicateFormat.contains("NOT"), "the == 0 form returns zero rows on device")
-        assertTrue(predicate.predicateFormat.contains("mediaSubtypes"), "plural key — the singular one empties the library")
+        assertTrue(
+            predicate.predicateFormat.contains("mediaSubtypes"),
+            "plural key — the singular one empties the library",
+        )
     }
 
     @Test

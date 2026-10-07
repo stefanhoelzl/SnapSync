@@ -234,8 +234,13 @@ class RuntimeIdentityTest {
         assertTrue(
             found.size == 1,
             "$what must appear exactly once; found ${found.size}:" +
-                (if (found.isEmpty()) " (nowhere — a move dropped or re-valued it)"
-                 else "\n  ${found.joinToString("\n  ")}") +
+                (
+                    if (found.isEmpty()) {
+                        " (nowhere — a move dropped or re-valued it)"
+                    } else {
+                        "\n  ${found.joinToString("\n  ")}"
+                    }
+                    ) +
                 "\nThis literal is runtime identity the installed base depends on. If the change is " +
                 "intentional, it is a deliberate change to DOCUMENTED_INVENTORY and the pin lists, not a casual edit.",
         )
@@ -265,8 +270,14 @@ class RuntimeIdentityTest {
             addAll(kotlinLiterals)
             addAll(bgTaskIds)
             addAll(baseNames)
-            keychainPairs.forEach { (service, account) -> add(service); add(account) }
-            unscopedKeychainSeats.forEach { (service, account) -> add(service); add(account) }
+            keychainPairs.forEach { (service, account) ->
+                add(service)
+                add(account)
+            }
+            unscopedKeychainSeats.forEach { (service, account) ->
+                add(service)
+                add(account)
+            }
         }
         // The shared Keychain access group is documented as a concept but not as a value, and
         // deliberately: the value composes the Apple TEAM_ID, which is declared in `Config.xcconfig`.
@@ -325,7 +336,10 @@ class RuntimeIdentityTest {
         )
         val teamId = Regex("""^\s*TEAM_ID\s*=\s*(\S+)\s*$""", RegexOption.MULTILINE)
             .find(xcconfig.readText())?.groupValues?.get(1)
-        assertTrue(teamId != null, "TEAM_ID not found in Deployment.xcconfig — run the resolver, or the signing surface moved")
+        assertTrue(
+            teamId != null,
+            "TEAM_ID not found in Deployment.xcconfig — run the resolver, or the signing surface moved",
+        )
 
         val declared = signingEntitlementsFiles.map { path ->
             val file = File(repoRoot, path)
@@ -507,7 +521,10 @@ class RuntimeIdentityTest {
     @Test
     fun `every pinned BGTask id is registered by the wake adapter and the Swift shell registers none`() {
         val swift = iosAppFiles { it.extension == "swift" }
-        assertTrue(swift.size >= 2, "found only ${swift.size} Swift shell files — iosApp/ moved and this pin proves nothing")
+        assertTrue(
+            swift.size >= 2,
+            "found only ${swift.size} Swift shell files — iosApp/ moved and this pin proves nothing",
+        )
         val inSwift = swift.flatMap { file -> registeredTaskIds(file.readText()) }
         assertTrue(inSwift.isEmpty(), "the Swift shell registers a BGTask ($inSwift) — the wake adapter's listen does")
         val adapter = File(repoRoot, WAKE_ADAPTER)
@@ -576,7 +593,9 @@ class RuntimeIdentityTest {
             """<key>BGTaskSchedulerPermittedIdentifiers</key>\s*<array>(.*?)</array>""",
             RegexOption.DOT_MATCHES_ALL,
         ).find(text) ?: return null
-        return Regex("""<string>\s*([^<]*?)\s*</string>""").findAll(array.groupValues[1]).map { it.groupValues[1] }.toList()
+        return Regex(
+            """<string>\s*([^<]*?)\s*</string>""",
+        ).findAll(array.groupValues[1]).map { it.groupValues[1] }.toList()
     }
 
     /**

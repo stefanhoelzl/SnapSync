@@ -1,13 +1,16 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.ReportContext
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.JoinLoad
+import app.snapsync.model.ReportContext
 import app.snapsync.model.UserQueries
 
 /** A query bundle that answers nothing: every details load fails and no count is available. */
-internal val noQueries: UserQueries = UserQueries(loadJoinDetails = { _, _ -> JoinLoad.Failed }, shareableCount = { _, _ -> null })
+internal val noQueries: UserQueries = UserQueries(
+    loadJoinDetails = { _, _ -> JoinLoad.Failed },
+    shareableCount = { _, _ -> null },
+)
 
 /** A query bundle whose join-details read is [load]; no count is available. */
 internal fun joinDetails(load: suspend (String) -> JoinLoad): UserQueries =
@@ -20,8 +23,14 @@ internal fun counting(count: suspend (CaptureCutoff, CaptureCeiling?) -> Int?): 
 /** The user-command bundle with the inert defaults the production type no longer carries. */
 internal fun testCommands(
     leave: suspend () -> Unit = {},
-    create: (name: String, startsAt: app.snapsync.model.EventStart, endsAt: app.snapsync.model.EventEnd) -> Unit = { _, _, _ -> },
-    commitJoin: suspend (app.snapsync.model.JoinChoice) -> app.snapsync.model.JoinCommit = { _ -> app.snapsync.model.JoinCommit.Failed },
+    create: (
+        name: String,
+        startsAt: app.snapsync.model.EventStart,
+        endsAt: app.snapsync.model.EventEnd,
+    ) -> Unit = { _, _, _ -> },
+    commitJoin: suspend (
+        app.snapsync.model.JoinChoice,
+    ) -> app.snapsync.model.JoinCommit = { _ -> app.snapsync.model.JoinCommit.Failed },
     share: (url: String, title: String) -> Unit = { _, _ -> },
     requestAccess: () -> Unit = {},
     openSettings: () -> Unit = {},
@@ -35,7 +44,10 @@ internal fun testCommands(
     ) -> app.snapsync.model.ReconfigureOutcome = { _, _, _, _, _ -> app.snapsync.model.ReconfigureOutcome.Saved },
     rename: (eventId: String, name: String) -> Unit = { _, _ -> },
     resetRename: suspend () -> Unit = {},
-    sendDiagnostics: suspend (note: String, context: ReportContext) -> app.snapsync.model.ReportOutcome = { _, _ -> app.snapsync.model.ReportOutcome.SENT },
+    sendDiagnostics: suspend (
+        note: String,
+        context: ReportContext,
+    ) -> app.snapsync.model.ReportOutcome = { _, _ -> app.snapsync.model.ReportOutcome.SENT },
 ) = app.snapsync.model.UserCommands(
     leave, create, commitJoin, share, requestAccess, openSettings, openLink,
     choosePhotos = {}, // no presentation test is about the picker; its binding is the shells' and compose/'s

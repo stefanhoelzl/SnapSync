@@ -49,7 +49,10 @@ class CommandLaneTest {
             .toList()
 
     /** Where each bundle is built — one file in `compose/`. */
-    private val builtIn = mapOf("UserCommands" to "UserCommandsComposition.kt", "UserQueries" to "UserCommandsComposition.kt")
+    private val builtIn = mapOf(
+        "UserCommands" to "UserCommandsComposition.kt",
+        "UserQueries" to "UserCommandsComposition.kt",
+    )
 
     /** The `<type>(...)` argument block in the one place the bundle is built. */
     private fun built(type: String): String {

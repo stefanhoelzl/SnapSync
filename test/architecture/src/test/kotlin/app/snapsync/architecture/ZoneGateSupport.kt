@@ -127,27 +127,66 @@ internal object ZoneGates {
             val c = source[i]
             when {
                 blockDepth > 0 -> when {
-                    source.startsWith("/*", i) -> { blockDepth++; blank(' '); blank(' '); i += 2 }
-                    source.startsWith("*/", i) -> { blockDepth--; blank(' '); blank(' '); i += 2 }
-                    else -> { blank(c); i++ }
+                    source.startsWith("/*", i) -> {
+                        blockDepth++
+                        blank(' ')
+                        blank(' ')
+                        i += 2
+                    }
+                    source.startsWith("*/", i) -> {
+                        blockDepth--
+                        blank(' ')
+                        blank(' ')
+                        i += 2
+                    }
+                    else -> {
+                        blank(c)
+                        i++
+                    }
                 }
-                source.startsWith("/*", i) -> { blockDepth = 1; blank(' '); blank(' '); i += 2 }
-                source.startsWith("//", i) -> while (i < source.length && source[i] != '\n') { blank(' '); i++ }
+                source.startsWith("/*", i) -> {
+                    blockDepth = 1
+                    blank(' ')
+                    blank(' ')
+                    i += 2
+                }
+                source.startsWith("//", i) -> while (i < source.length && source[i] != '\n') {
+                    blank(' ')
+                    i++
+                }
                 source.startsWith("\"\"\"", i) -> {
-                    out.append("\"\"\""); i += 3
-                    while (i < source.length && !source.startsWith("\"\"\"", i)) { out.append(source[i]); i++ }
-                    if (i < source.length) { out.append("\"\"\""); i += 3 }
+                    out.append("\"\"\"")
+                    i += 3
+                    while (i < source.length && !source.startsWith("\"\"\"", i)) {
+                        out.append(source[i])
+                        i++
+                    }
+                    if (i < source.length) {
+                        out.append("\"\"\"")
+                        i += 3
+                    }
                 }
                 // A string or a character literal — `'"'` opens no string, which reading it as one would.
                 c in "\"'" -> {
-                    out.append(c); i++
+                    out.append(c)
+                    i++
                     while (i < source.length && source[i] != c) {
-                        if (source[i] == '\\' && i + 1 < source.length) { out.append(source[i]); i++ }
-                        out.append(source[i]); i++
+                        if (source[i] == '\\' && i + 1 < source.length) {
+                            out.append(source[i])
+                            i++
+                        }
+                        out.append(source[i])
+                        i++
                     }
-                    if (i < source.length) { out.append(c); i++ }
+                    if (i < source.length) {
+                        out.append(c)
+                        i++
+                    }
                 }
-                else -> { out.append(c); i++ }
+                else -> {
+                    out.append(c)
+                    i++
+                }
             }
         }
         return out.toString()

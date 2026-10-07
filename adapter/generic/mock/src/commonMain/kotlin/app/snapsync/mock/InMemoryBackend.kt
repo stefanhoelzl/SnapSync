@@ -1,7 +1,5 @@
 package app.snapsync.mock
 
-import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -9,6 +7,7 @@ import app.snapsync.model.EventCreated
 import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
 import app.snapsync.model.MintRequest
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.UnionAsset
@@ -129,10 +128,17 @@ internal class InMemoryBackend(
         )
     }
 
-    override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = gated(token) {
+    override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = gated(
+        token,
+    ) {
         if (state.offline) return@gated offline()
         val trimmed = name.trim()
-        if (trimmed.isEmpty() || trimmed.length > MAX_NAME_LENGTH) return@gated Reply.Refused(BAD_REQUEST, "invalid name")
+        if (trimmed.isEmpty() || trimmed.length > MAX_NAME_LENGTH) {
+            return@gated Reply.Refused(
+                BAD_REQUEST,
+                "invalid name",
+            )
+        }
         val event = state.events[eventId] ?: return@gated notFound()
         if (event.closed) return@gated closed()
         event.name = trimmed
@@ -176,7 +182,12 @@ internal class InMemoryBackend(
 
     // Public, but a token it is sent is verified — a rejected one is `401`, as on the real route — and names the reader
     // in the log (decision record `changes/incremental-union`, D5). Each resource's url is its download handle.
-    override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
+    override suspend fun eventFiles(
+        token: String?,
+        eventId: String,
+        cursor: Long?,
+        trigger: UnionTrigger,
+    ): Reply<UnionPage> =
         state.locked {
             refusal<UnionPage>(token, gated = true, online = true)?.let { return@locked it }
             state.unionReads[eventId] = (state.unionReads[eventId] ?: 0) + 1
@@ -190,7 +201,13 @@ internal class InMemoryBackend(
                             assetId = asset.assetId,
                             creationDate = asset.creationDate,
                             resources = asset.resources.map {
-                                UnionResource(it.key, BackendState.syntheticUrl(deviceId, it.key), it.role.wire, it.contentType, it.filename)
+                                UnionResource(
+                                    it.key,
+                                    BackendState.syntheticUrl(deviceId, it.key),
+                                    it.role.wire,
+                                    it.contentType,
+                                    it.filename,
+                                )
                             },
                         )
                     },
@@ -236,7 +253,12 @@ internal class InMemoryBackend(
         crossinline arrived: () -> Unit = {},
         crossinline answer: () -> Reply<T>,
     ): Reply<T> {
-        state.locked { refusal<T>(token, gated, online, checksSentToken) ?: run { arrived(); null } }?.let { return it }
+        state.locked {
+            refusal<T>(token, gated, online, checksSentToken) ?: run {
+                arrived()
+                null
+            }
+        }?.let { return it }
         state.awaitRelease(call)
         return state.locked { answer() }
     }
@@ -291,6 +313,7 @@ internal class InMemoryBackend(
         const val UPGRADE_REQUIRED = 426
         const val BAD_GATEWAY = 502
         const val WINDOW_DAYS = 30
+
         /** The shape of an encrypted event's key id, as the real `POST /events` validates it. */
         val KEY_ID = Regex("^[0-9a-f]{16}$")
 

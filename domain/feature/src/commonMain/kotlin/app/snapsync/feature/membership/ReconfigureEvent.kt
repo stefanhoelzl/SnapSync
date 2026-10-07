@@ -1,10 +1,10 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.clampToCeiling
 import app.snapsync.model.clampToFloor
 import app.snapsync.services.config.ConfigService
@@ -132,5 +132,4 @@ class ReconfigureEvent(
         }
         return ReconfigureOutcome.Saved
     }
-
 }

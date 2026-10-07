@@ -1,22 +1,22 @@
 package app.snapsync.attest
 
 import app.snapsync.attest.contract.ReplayingAppAttestApi
-import app.snapsync.attest.contract.integrityInState
 import app.snapsync.attest.contract.attestStoreInState
-import app.snapsync.contracts.DeviceIntegrityContract
-import app.snapsync.contracts.DeviceIntegrityState
+import app.snapsync.attest.contract.integrityInState
 import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.DeviceIntegrityContract
+import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.contract.RECORDINGS
 import app.snapsync.keychain.contract.ReplayingKeychainApi
-import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.AttestStore
+import app.snapsync.ports.DeviceIntegrity
 import kotlin.test.Test
 
 /**
@@ -58,7 +58,12 @@ class AttestReplayContractTest {
         override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> {
             if (state !in reaches) return Entered.Unreachable("the entitled app runs unlocked")
             return replayerFor(RECORDINGS, STORE, clauseId) { replayer ->
-                attestStoreInState(ReplayingKeychainApi(replayer), state, clauseId, afterDispose = replayer::assertExhausted)
+                attestStoreInState(
+                    ReplayingKeychainApi(replayer),
+                    state,
+                    clauseId,
+                    afterDispose = replayer::assertExhausted,
+                )
             }
         }
     }

@@ -45,7 +45,9 @@ class IosNetworkMonitor internal constructor(private val paths: NetworkPathApi) 
  * read the same thing.
  */
 internal fun networkAccessOf(path: PathReading): NetworkAccess = when (path.status) {
-    nw_path_status_satisfied, nw_path_status_satisfiable -> NetworkAccess.Online(restricted = path.expensive || path.constrained)
+    nw_path_status_satisfied, nw_path_status_satisfiable -> NetworkAccess.Online(
+        restricted = path.expensive || path.constrained,
+    )
     nw_path_status_unsatisfied -> when (path.reason) {
         nw_path_unsatisfied_reason_cellular_denied, nw_path_unsatisfied_reason_wifi_denied -> NetworkAccess.Blocked
         else -> NetworkAccess.Offline

@@ -1,5 +1,7 @@
 package app.snapsync.services.downloads
 
+import app.cash.sqldelight.EnumColumnAdapter
+import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -10,11 +12,8 @@ import app.snapsync.model.PendingDownload
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.StagedResource
-import app.snapsync.model.UnconfirmedImport
-
-import app.cash.sqldelight.EnumColumnAdapter
-import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.model.SuppressionReadiness
+import app.snapsync.model.UnconfirmedImport
 import app.snapsync.ports.Databases
 import app.snapsync.services.databases.AssetIdColumnAdapter
 import app.snapsync.services.databases.openOwned
@@ -36,7 +35,11 @@ const val DOWNLOADS_DB_NAME: String = "downloads.db"
  */
 class DownloadService(databases: Databases) : SuppressionSource {
 
-    private val q by lazy { DownloadDatabase(databases.openOwned(DOWNLOADS_DB_NAME, DownloadDatabase.Schema)).downloadStoreQueries }
+    private val q by lazy {
+        DownloadDatabase(
+            databases.openOwned(DOWNLOADS_DB_NAME, DownloadDatabase.Schema),
+        ).downloadStoreQueries
+    }
 
     /** The store's bookkeeping of the event union's reads — the position, and what a full read found withdrawn. */
     val union: UnionTracking = UnionTracking { q }
@@ -111,12 +114,26 @@ class DownloadService(databases: Databases) : SuppressionSource {
                 q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate)
                 resources.forEach { r ->
                     q.upsertResource(
-                        ref.sourceDeviceId, ref.sourceAssetId, r.resourceKey,
-                        r.url, r.role, r.contentType, r.originalFilename, eventId ?: "",
+                        ref.sourceDeviceId,
+                        ref.sourceAssetId,
+                        r.resourceKey,
+                        r.url,
+                        r.role,
+                        r.contentType,
+                        r.originalFilename,
+                        eventId ?: "",
                     )
                 }
             }
-            if (eventId != null) members.forEach { q.insertEventRef(eventId, it.sourceDeviceId, it.sourceAssetId.value) }
+            if (eventId != null) {
+                members.forEach {
+                    q.insertEventRef(
+                        eventId,
+                        it.sourceDeviceId,
+                        it.sourceAssetId.value,
+                    )
+                }
+            }
             if (eventId != null && cursor != null) q.upsertUnionCursor(eventId, cursor)
         }
     }
@@ -157,7 +174,13 @@ class DownloadService(databases: Databases) : SuppressionSource {
     suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
         if (downloads.isEmpty()) return
         q.transaction {
-            downloads.forEach { q.markResourceEnqueued(it.ref.sourceDeviceId, it.ref.sourceAssetId, it.resource.resourceKey) }
+            downloads.forEach {
+                q.markResourceEnqueued(
+                    it.ref.sourceDeviceId,
+                    it.ref.sourceAssetId,
+                    it.resource.resourceKey,
+                )
+            }
         }
     }
 
@@ -191,7 +214,10 @@ class DownloadService(databases: Databases) : SuppressionSource {
 
     /** The staged resources of an asset, to feed one PHAssetCreationRequest. */
     suspend fun stagedResources(ref: AssetRef): List<StagedResource> =
-        q.selectResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId) { key, _, role, contentType, original, staged ->
+        q.selectResourcesForAsset(
+            ref.sourceDeviceId,
+            ref.sourceAssetId,
+        ) { key, _, role, contentType, original, staged ->
             StagedResource(key, role, contentType, original, staged ?: "")
         }.executeAsList().filter { it.stagedPath.isNotEmpty() }
 
@@ -265,9 +291,15 @@ class DownloadService(databases: Databases) : SuppressionSource {
         val row = if (eventId == null) {
             q.projectionCounts().executeAsOne().let { Triple(it.imported, it.stillArriving, it.inFlight) }
         } else {
-            q.projectionCountsForEvent(eventId).executeAsOne().let { Triple(it.imported, it.stillArriving, it.inFlight) }
+            q.projectionCountsForEvent(
+                eventId,
+            ).executeAsOne().let { Triple(it.imported, it.stillArriving, it.inFlight) }
         }
-        return DownloadCounts(imported = row.first.toInt(), stillArriving = row.second.toInt(), inFlight = row.third.toInt())
+        return DownloadCounts(
+            imported = row.first.toInt(),
+            stillArriving = row.second.toInt(),
+            inFlight = row.third.toInt(),
+        )
     }
 
     /**
@@ -344,7 +376,11 @@ class StagingClaims internal constructor(private val queries: () -> DownloadStor
             val ref = AssetRef(row.sourceDeviceId, row.sourceAssetId)
             // Its event's folder, and the event-less path a transfer started before transfers named their event
             // still lands at.
-            listOfNotNull(row.stagedPath, stagingPath(root, row.eventId, ref, row.resourceKey), stagingPath(root, "", ref, row.resourceKey))
+            listOfNotNull(
+                row.stagedPath,
+                stagingPath(root, row.eventId, ref, row.resourceKey),
+                stagingPath(root, "", ref, row.resourceKey),
+            )
         }
 }
 

@@ -70,7 +70,9 @@ class AndroidDeviceIntegrity : DeviceIntegrity {
         }.sign()
     }
 
-    private fun sha256(challenge: String): ByteArray = MessageDigest.getInstance("SHA-256").digest(challenge.encodeToByteArray())
+    private fun sha256(challenge: String): ByteArray = MessageDigest.getInstance(
+        "SHA-256",
+    ).digest(challenge.encodeToByteArray())
 
     companion object {
         /** Every attested key's alias starts so — runtime identity, beside the secure store's own key. */

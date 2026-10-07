@@ -5,10 +5,10 @@ import app.snapsync.model.Handoff
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.outcome
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.invocation
+import app.snapsync.model.outcome
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

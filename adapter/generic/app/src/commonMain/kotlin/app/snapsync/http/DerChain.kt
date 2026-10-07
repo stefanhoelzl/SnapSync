@@ -11,7 +11,9 @@ internal fun derElements(bytes: ByteArray): List<ByteArray> {
     var i = 0
     while (i < bytes.size) {
         val start = i
-        require(bytes[i++].toInt() and TAG_NUMBER_MASK != TAG_NUMBER_MASK) { "DER: a high tag number starts no certificate" }
+        require(
+            bytes[i++].toInt() and TAG_NUMBER_MASK != TAG_NUMBER_MASK,
+        ) { "DER: a high tag number starts no certificate" }
         require(i < bytes.size) { "DER: truncated length at byte $i" }
         var length = bytes[i++].toInt() and BYTE
         if (length and LONG_FORM != 0) {

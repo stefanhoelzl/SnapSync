@@ -69,7 +69,11 @@ class AndroidDownloadRescheduleTest {
         assertTrue(outcomes.isNotEmpty(), "no run finished at all")
         outcomes.filterIsInstance<DownloadEvent.Finished>().forEach { finished ->
             val read = assertNotNull(finished.body, "${finished.tag}: the file is readable")
-            assertEquals(read.size.toLong(), finished.facts.receivedBytes, "${finished.tag}: the bytes received are the file's")
+            assertEquals(
+                read.size.toLong(),
+                finished.facts.receivedBytes,
+                "${finished.tag}: the bytes received are the file's",
+            )
             assertTrue(
                 read.contentEquals(body) || finished.facts.receivedBytes < finished.facts.expectedBytes,
                 "${finished.tag}: a short file is reported short, so the owner refuses it: ${finished.facts}",
@@ -86,7 +90,9 @@ class AndroidDownloadRescheduleTest {
         val download = AndroidDownload(context)
         download.listen(ClauseDownloadHandlers { null }.handlers)
         download.start("http://127.0.0.1:${server.localPort}/reschedule-$run", "d-reschedule-$run", TransferNetwork.ANY)
-        val first = checkNotNull(arrivals.poll(ARRIVAL_SECONDS, TimeUnit.SECONDS)) { "run $run: the download never asked" }
+        val first = checkNotNull(
+            arrivals.poll(ARRIVAL_SECONDS, TimeUnit.SECONDS),
+        ) { "run $run: the download never asked" }
         reschedule(onlyRowId())
         val second = arrivals.poll(ARRIVAL_SECONDS, TimeUnit.SECONDS)
         // The successor answered first: its file is claimed second-to-last, which is what lets the two cross.
@@ -150,7 +156,9 @@ class AndroidDownloadRescheduleTest {
 
     private fun Socket.answer() = runCatching {
         getOutputStream().apply {
-            write("HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ${body.size}\r\n\r\n".toByteArray())
+            write(
+                "HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ${body.size}\r\n\r\n".toByteArray(),
+            )
             write(body)
             flush()
         }

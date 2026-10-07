@@ -1,5 +1,6 @@
 package app.snapsync.feature.support
 
+import app.cash.sqldelight.db.QueryResult
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
@@ -27,7 +28,6 @@ import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.ledger.db.LedgerDatabase
-import app.cash.sqldelight.db.QueryResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.time.Instant
 
@@ -69,10 +69,18 @@ class RecordingFiles(
     fun deleted(path: String): Boolean = "delete $path" in operations
 
     override fun read(area: FileArea, path: String): FileResult<ByteArray> = inner.read(area, path)
-    override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = inner.readTail(area, path, maxBytes)
+    override fun readTail(
+        area: FileArea,
+        path: String,
+        maxBytes: Int,
+    ): FileResult<FileTail> = inner.readTail(area, path, maxBytes)
     override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> =
         inner.readRange(area, path, offset, maxBytes)
-    override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = inner.append(area, path, bytes)
+    override fun append(
+        area: FileArea,
+        path: String,
+        bytes: ByteArray,
+    ): FileResult<Unit> = inner.append(area, path, bytes)
     override fun exists(area: FileArea, path: String): FileResult<Boolean> = inner.exists(area, path)
     override fun locate(area: FileArea, path: String): FileResult<String> = inner.locate(area, path)
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = inner.move(area, from, to)
@@ -98,7 +106,13 @@ class RecordingFiles(
 
 /** The membership file, persisted — what the config service seeds from at construction. */
 fun RecordingFiles.persist(config: EventConfig?) {
-    if (config == null) shared.remove(CONFIG_FILE_NAME) else shared[CONFIG_FILE_NAME] = encodeConfigFile(config).encodeToByteArray()
+    if (config == null) {
+        shared.remove(
+            CONFIG_FILE_NAME,
+        )
+    } else {
+        shared[CONFIG_FILE_NAME] = encodeConfigFile(config).encodeToByteArray()
+    }
 }
 
 /** What the membership file holds now, or `null` when there is none. */
@@ -132,10 +146,16 @@ fun testIdentity(id: String): PersistedDeviceIdentity =
 
 /** A device identity that cannot be read — the secure store answers as a locked device's does. */
 fun unreadableIdentity(): PersistedDeviceIdentity =
-    PersistedDeviceIdentity(DeviceIdentityRole.MINTING, inMemorySecureStore(unavailable = true), PlatformDeviceId { "unread" })
+    PersistedDeviceIdentity(
+        DeviceIdentityRole.MINTING,
+        inMemorySecureStore(unavailable = true),
+        PlatformDeviceId { "unread" },
+    )
 
 /** What the photo-library grant means, over the permission port's in-memory mock and the test's own [grant] cell. */
-fun galleryAccess(grant: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED)): GalleryAccessState =
+fun galleryAccess(
+    grant: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED),
+): GalleryAccessState =
     GalleryAccessState(inMemoryPhotoAccess(grant))
 
 /** The event a [TestLedger] is joined to unless a test says otherwise. */
@@ -149,7 +169,11 @@ class TestLedger(val databases: Databases = inMemoryDatabases(), var joined: Str
     val service: LedgerService = LedgerService(databases) { joined }
 
     /** Every row the joined event holds, by key. */
-    suspend fun rows(): Map<String, LedgerEntry> = keys().mapNotNull { key -> service.get(key)?.let { key to it } }.toMap()
+    suspend fun rows(): Map<String, LedgerEntry> = keys().mapNotNull { key ->
+        service.get(
+            key,
+        )?.let { key to it }
+    }.toMap()
 
     /** Every event that holds at least one row, joined or not. */
     fun eventsHeld(): Set<String> = column("SELECT DISTINCT eventId FROM ledgerRow").toSet()

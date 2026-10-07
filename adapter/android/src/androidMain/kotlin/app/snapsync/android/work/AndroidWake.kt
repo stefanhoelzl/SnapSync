@@ -25,16 +25,16 @@ import app.snapsync.ports.Completion
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
-import kotlin.time.toJavaDuration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.toJavaDuration
 
 /**
  * The Android [Wake] over WorkManager (capability `background-upload`): one unique one-time work per [WakeId].
@@ -99,7 +99,9 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
                 setInitialDelay(trigger.earliest.toJavaDuration())
                 when (trigger.network) {
                     WakeNetwork.NONE -> Unit
-                    WakeNetwork.ANY -> setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    WakeNetwork.ANY -> setConstraints(
+                        Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
+                    )
                     // Capability `mobile-data`: WorkManager's own unmetered constraint, which stays unsatisfied on
                     // cellular and a metered Wi-Fi (measured on the API 36 emulator, 2026-10-03).
                     WakeNetwork.UNRESTRICTED ->

@@ -43,7 +43,10 @@ class DeviceIdentityRetryTest {
     @Test
     fun `a lazy memoizes the first success and stops re-running`() {
         var attempts = 0
-        val value: String by lazy { attempts++; "device-abc" }
+        val value: String by lazy {
+            attempts++
+            "device-abc"
+        }
 
         repeat(5) { assertEquals("device-abc", value) }
 

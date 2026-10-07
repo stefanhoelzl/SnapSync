@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
-import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
+import kotlin.time.Instant
 
 /**
  * Wall-clock time and the device's local zone — ONE external system, the device's clock settings

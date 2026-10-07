@@ -35,7 +35,19 @@ class NarrowingRetractionTest {
     )
 
     private suspend fun policyWithFloor(floor: String): SelectionPolicy =
-        SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(floor), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
+        SelectionPolicy(
+            selectionRulesFor(
+                includesUpload = true,
+                cutoff = captureCutoff(
+                    floor,
+                ),
+                ceiling = null,
+                suppressedAssetIds = {
+                    emptySet()
+                },
+                albumExcludedAssetIds = { emptySet() },
+            ),
+        )
 
     @Test
     fun `raising the cutoff past a shared photo stops listing it`() = runTest {
@@ -59,10 +71,15 @@ class NarrowingRetractionTest {
         val after = projectDeviceManifest(
             "D",
             listOf(uploaded),
-            SelectionPolicy(selectionRulesFor(
-                includesUpload = false,
-                cutoff = captureCutoff("2026-01-01T00:00:00Z"),
-                ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() })),
+            SelectionPolicy(
+                selectionRulesFor(
+                    includesUpload = false,
+                    cutoff = captureCutoff("2026-01-01T00:00:00Z"),
+                    ceiling = null,
+                    suppressedAssetIds = { emptySet() },
+                    albumExcludedAssetIds = { emptySet() },
+                ),
+            ),
         )
 
         assertTrue(after.assets.isEmpty(), "a membership that shares nothing publishes an empty manifest")
@@ -79,7 +96,8 @@ class NarrowingRetractionTest {
         val widened = projectDeviceManifest("D", listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
 
         assertEquals(
-            listOf(AssetId("A")), widened.assets.map { it.assetId },
+            listOf(AssetId("A")),
+            widened.assets.map { it.assetId },
             "the ledger row survived the narrowing, so widening re-lists it with no re-upload",
         )
     }

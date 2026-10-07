@@ -1,7 +1,7 @@
 package app.snapsync.compose
 
-import app.snapsync.model.PushEndpoint
 import app.snapsync.feature.push.PushRegistration
+import app.snapsync.model.PushEndpoint
 import app.snapsync.services.backend.PushTokenPublisher
 
 /**

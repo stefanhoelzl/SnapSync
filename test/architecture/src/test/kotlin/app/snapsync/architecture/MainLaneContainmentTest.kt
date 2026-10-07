@@ -2,8 +2,8 @@ package app.snapsync.architecture
 
 import java.io.File
 import kotlin.test.Test
-import kotlin.test.assertTrue as assertTrueKt
 import kotlin.test.fail
+import kotlin.test.assertTrue as assertTrueKt
 
 /**
  * **The main lane is contained to platform UI** (`docs/architecture.md`; law:
@@ -143,6 +143,7 @@ class MainLaneContainmentTest {
                 "placed on:\n  " + offenders.sorted().joinToString("\n  "),
         )
     }
+
     /**
      * The Swift half — and it did not exist until it was measured.
      *
@@ -173,8 +174,11 @@ class MainLaneContainmentTest {
         val offenders = swift.flatMap { file ->
             file.readLines().withIndex().mapNotNull { (i, line) ->
                 val code = line.substringBefore("//")
-                if (SWIFT_MAIN_LANE !in code) null
-                else "${file.toRelativeString(repoRoot)}:${i + 1} names $SWIFT_MAIN_LANE"
+                if (SWIFT_MAIN_LANE !in code) {
+                    null
+                } else {
+                    "${file.toRelativeString(repoRoot)}:${i + 1} names $SWIFT_MAIN_LANE"
+                }
             }
         }
         assertTrueKt(
@@ -189,5 +193,4 @@ class MainLaneContainmentTest {
         /** Swift's form of the main lane. The Kotlin forms are in [mainLaneForms]. */
         const val SWIFT_MAIN_LANE = "DispatchQueue.main"
     }
-
 }

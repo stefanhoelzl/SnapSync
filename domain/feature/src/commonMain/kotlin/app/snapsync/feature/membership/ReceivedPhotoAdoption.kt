@@ -1,20 +1,20 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.UnionTrigger
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReceivedPhotoName
+import app.snapsync.model.UnionTrigger
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.MarkedPhotoLookup
 import app.snapsync.services.identity.PersistedDeviceIdentity
-import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Upper bound on the join-time union read — the join surface is waiting, as for [ShareSetLoad]'s listing. */
 private const val UNION_TIMEOUT_MS = 15_000L
@@ -101,7 +101,9 @@ class ReceivedPhotoAdoption(
     private suspend fun adoptOrFail(cfg: EventConfig, trigger: UnionTrigger): Boolean {
         // Always the WHOLE union (decision record `changes/incremental-union`, D6): a mark is recognised only against
         // every ref the event serves.
-        val assets = withTimeoutOrNull(UNION_TIMEOUT_MS) { union.union(cfg.eventId, null, trigger) }?.getOrNull()?.assets
+        val assets = withTimeoutOrNull(
+            UNION_TIMEOUT_MS,
+        ) { union.union(cfg.eventId, null, trigger) }?.getOrNull()?.assets
         if (assets == null) {
             log.w { "union unavailable — no photos adopted; photos received before a reinstall may arrive again" }
             return true
@@ -112,7 +114,9 @@ class ReceivedPhotoAdoption(
         val open = foreign.filterKeys { it !in settled }
         if (open.isEmpty()) return true
         // A token two refs share is ambiguous; neither is adopted, and each downloads as it would have.
-        val byToken = open.keys.groupBy(ReceivedPhotoName::token).filterValues { it.size == 1 }.mapValues { it.value.single() }
+        val byToken = open.keys.groupBy(
+            ReceivedPhotoName::token,
+        ).filterValues { it.size == 1 }.mapValues { it.value.single() }
         val marked = library.markedIn(cfg.startsAt, cfg.endsAt, known = store.suppressedLocalIds())
         if (marked == null) {
             log.i { "library not readable yet — adoption waits for a usable grant (${open.size} open foreign ref(s))" }
@@ -122,7 +126,9 @@ class ReceivedPhotoAdoption(
             byToken[token]?.let { ref -> AdoptedAsset(ref, localId, foreign.getValue(ref).creationDate) }
         }
         val recorded = record(adopted, cfg.eventId)
-        log.i { "adopted ${recorded.size} received photo(s) of ${open.size} open foreign ref(s); ${marked.size} marked in window" }
+        log.i {
+            "adopted ${recorded.size} received photo(s) of ${open.size} open foreign ref(s); ${marked.size} marked in window"
+        }
         return true
     }
 }

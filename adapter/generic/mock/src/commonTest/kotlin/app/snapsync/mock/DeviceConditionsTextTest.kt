@@ -17,12 +17,18 @@ class DeviceConditionsTextTest {
             standbyBucket = Fact.Known(StandbyBucket.RARE),
             thermal = Fact.Failed("thermal service: gone"),
         )
-        assertEquals(reading, DeviceConditionsText.apply(DeviceConditionsMock.TYPICAL, DeviceConditionsText.encode(reading)))
+        assertEquals(
+            reading,
+            DeviceConditionsText.apply(DeviceConditionsMock.TYPICAL, DeviceConditionsText.encode(reading)),
+        )
     }
 
     @Test
     fun `a field not named keeps its value`() {
-        val applied = DeviceConditionsText.apply(DeviceConditionsMock.TYPICAL, mapOf(DiagnosticKeys.THERMAL to "serious"))
+        val applied = DeviceConditionsText.apply(
+            DeviceConditionsMock.TYPICAL,
+            mapOf(DiagnosticKeys.THERMAL to "serious"),
+        )
         assertEquals(DeviceConditionsMock.TYPICAL.copy(thermal = Fact.Known(Thermal.SERIOUS)), applied)
     }
 

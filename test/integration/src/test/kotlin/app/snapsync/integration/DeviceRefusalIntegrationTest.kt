@@ -5,13 +5,13 @@ import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.SyncHealth
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * A phone the service refuses as not genuine is told why, end to end (capability `privacy-security`, "A refused phone
@@ -32,7 +32,7 @@ class DeviceRefusalIntegrationTest {
             tokenless()
             // The refused phone holds no token, so opening the app tries to verify it — and is refused — before any tap.
             device("relaunch")
-        foreground()
+            foreground()
             foreground() // the launch comes to the foreground: the wake that tries to verify the phone
             awaitState { (it.ui.layer as? Layer.CreateEvent)?.error == ScreenMessage.of(reason) }
         }
@@ -86,7 +86,9 @@ class DeviceRefusalIntegrationTest {
         refuse(DeviceRefusal.DEVICE_MODIFIED)
         // A gated call is refused for its token; recovering, the app re-attests and is refused as not genuine.
         reconcile()
-        awaitState { ((it.ui.layer as? Layer.Joined)?.health as? SyncHealth.Unattested)?.refusal == DeviceRefusal.DEVICE_MODIFIED }
+        awaitState {
+            ((it.ui.layer as? Layer.Joined)?.health as? SyncHealth.Unattested)?.refusal == DeviceRefusal.DEVICE_MODIFIED
+        }
     }
 
     @Test

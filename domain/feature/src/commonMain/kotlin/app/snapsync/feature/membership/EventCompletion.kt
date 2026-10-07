@@ -1,7 +1,5 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.services.wake.EventChecks
-import app.snapsync.services.wake.EventCheck
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventDirectory
@@ -9,6 +7,8 @@ import app.snapsync.services.config.ConfigService
 import app.snapsync.services.leave.PendingLeaves
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.services.wake.EventCheck
+import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 
 /**
@@ -71,7 +71,11 @@ class EventCompletion(
         val eventId = current.eventId
 
         if (published(eventId)?.final != true) {
-            runCatchingCancellable { publishFinal() }.onFailure { log.w(it) { "settling the share failed; next wake retries" } }
+            runCatchingCancellable { publishFinal() }.onFailure {
+                log.w(
+                    it,
+                ) { "settling the share failed; next wake retries" }
+            }
         }
 
         if (bounded && !checks.due(EventCheck.CLOSE, eventId)) {

@@ -1,9 +1,5 @@
 package app.snapsync.services.backend
 
-import app.snapsync.services.identity.MapSecureStore
-import app.snapsync.ports.SecureStore
-import app.snapsync.services.identity.identityOf
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -11,18 +7,28 @@ import app.snapsync.model.EventCreated
 import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
 import app.snapsync.model.MintRequest
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.Backend
+import app.snapsync.ports.SecureStore
+import app.snapsync.services.identity.MapSecureStore
+import app.snapsync.services.identity.identityOf
 
 /**
  * A [Backend] whose every route answers from [answer], recording each call as `"<route> <token>"` — enough to
  * assert which token a call carried and how many times it was sent. Hand-written here because a `:domain:*` build
  * file names no module (the in-memory backend lives beside the fakes).
  */
-internal class ScriptedBackend(var answer: (route: String, token: String?) -> Reply<*> = { _, _ -> Reply.Ok(Unit) }) : Backend {
+internal class ScriptedBackend(
+    var answer: (route: String, token: String?) -> Reply<*> = { _, _ ->
+        Reply.Ok(
+            Unit,
+        )
+    },
+) : Backend {
     val calls = mutableListOf<String>()
 
     @Suppress("UNCHECKED_CAST")
@@ -34,6 +40,7 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
     override suspend fun challenge(): Reply<String> = call("challenge", null)
     override suspend fun mintToken(req: MintRequest): Reply<String> = call("mint", null)
     override suspend fun renewToken(req: RenewRequest): Reply<String> = call("renew", null)
+
     /** The last create's request, as the service built it. */
     var lastCreate: CreateEventRequest? = null
 
@@ -42,17 +49,33 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
         return call("create", token)
     }
     override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = call("get", token)
-    override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = call("rename", token)
+    override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = call(
+        "rename",
+        token,
+    )
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = call("join", token)
-    override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =
+    override suspend fun publishManifest(
+        token: String?,
+        eventId: String,
+        deviceId: String,
+        manifest: DeviceManifest,
+    ): Reply<Unit> =
         call("manifest", token)
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
         call("leave", token)
-    override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
+    override suspend fun eventFiles(
+        token: String?,
+        eventId: String,
+        cursor: Long?,
+        trigger: UnionTrigger,
+    ): Reply<UnionPage> =
         call("union", token)
     override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
         call("files", token)
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = call("config", token)
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = call(
+        "config",
+        token,
+    )
 }
 
 /** A [Credential] holding [current], which a rejection replaces with [recovered] (or keeps, for `null`). */

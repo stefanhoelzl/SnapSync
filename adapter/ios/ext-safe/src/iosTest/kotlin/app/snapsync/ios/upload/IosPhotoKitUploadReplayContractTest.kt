@@ -31,13 +31,23 @@ class IosPhotoKitUploadReplayContractTest {
     private val binding = object : Binding<UploadState, UploadUnderTest> {
         override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
         override val kind = BindingKind.Replay
-        override val reaches = setOf(UploadState.PRESENTED_SUCCEEDED, UploadState.PRESENTED_REFUSED_ONCE, UploadState.PRESENTED_RETRY_SPENT)
+        override val reaches = setOf(
+            UploadState.PRESENTED_SUCCEEDED,
+            UploadState.PRESENTED_REFUSED_ONCE,
+            UploadState.PRESENTED_RETRY_SPENT,
+        )
 
         override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
             if (state !in reaches) return Entered.Unreachable(EXTENSION_ONLY_PRESENTED)
             return replayerFor(RECORDINGS, name, clauseId, recordedWhere = "inside the extension") { replayer ->
                 // The preparation the device made across operating-system calls, made again here in one go, in order.
-                for (call in 1 until callsFor(state)) prepareCall(state, clauseId, call, ReplayingUploadJobApi(replayer), ReplayPhoto)
+                for (call in 1 until callsFor(state)) prepareCall(
+                    state,
+                    clauseId,
+                    call,
+                    ReplayingUploadJobApi(replayer),
+                    ReplayPhoto,
+                )
                 photoKitUploadInState(
                     state = state,
                     api = ReplayingUploadJobApi(replayer),

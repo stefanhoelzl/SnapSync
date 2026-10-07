@@ -1,19 +1,18 @@
 package app.snapsync.downloadstore
 
+import app.snapsync.databases.IosDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.downloads.SuppressionService
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
-
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.downloads.SuppressionService
-import app.snapsync.databases.IosDatabases
 
 /**
  * The download store's **placement**, and the one view the upload extension is given of it

@@ -7,7 +7,13 @@ import kotlin.test.assertEquals
 class ReportFactsTest {
 
     private fun resource(asset: String, file: String) =
-        Resource(filename = file, assetId = AssetId(asset), contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
+        Resource(
+            filename = file,
+            assetId = AssetId(asset),
+            contentType = "image/jpeg",
+            metadata = emptyMap(),
+            data = Unit,
+        )
 
     @Test
     fun `a resolved id is known and every reason there is none is failed`() {

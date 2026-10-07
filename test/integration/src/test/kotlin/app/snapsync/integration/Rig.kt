@@ -4,23 +4,16 @@ import app.snapsync.control.Reply
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.model.AssetId
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.SyncHealth
-import app.snapsync.rig.AssetView
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration
@@ -57,7 +50,10 @@ class Rig(val client: RigClient) {
         client.awaitState(timeout, until)
 
     /** A user command, which must be accepted. */
-    suspend fun user(name: String, vararg params: Pair<String, String>): String = client.user(name, mapOf(*params)).done()
+    suspend fun user(name: String, vararg params: Pair<String, String>): String = client.user(
+        name,
+        mapOf(*params),
+    ).done()
 
     /** A user command, answered however the host answers it. */
     suspend fun userReply(name: String, vararg params: Pair<String, String>): Reply = client.user(name, mapOf(*params))

@@ -1,10 +1,10 @@
 package app.snapsync.services.upload
 
+import app.snapsync.model.EntryScope
 import app.snapsync.model.RegistrationState
+import app.snapsync.model.invocation
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
-import app.snapsync.model.EntryScope
-import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 
 /**

@@ -15,14 +15,14 @@ import app.snapsync.contracts.StagedBytesContract
 import app.snapsync.contracts.StagedBytesState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
+import app.snapsync.model.APP_LOG_FILE_NAME
+import app.snapsync.model.EXTENSION_LOG_FILE_NAME
+import app.snapsync.model.FileArea
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.staging.StagingService
-import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.EXTENSION_LOG_FILE_NAME
-import app.snapsync.model.FileArea
 import kotlin.test.Test
 
 /**
@@ -45,9 +45,17 @@ class AppGroupStoreContractBindingsTest {
         )
 
         override fun create(state: DeviceManifestStoreState, clauseId: String): Entered<DeviceManifestService> {
-            if (state == DeviceManifestStoreState.UNAVAILABLE) return Entered.Ready(DeviceManifestService(inMemoryFiles(shared = null)))
+            if (state == DeviceManifestStoreState.UNAVAILABLE) {
+                return Entered.Ready(
+                    DeviceManifestService(inMemoryFiles(shared = null)),
+                )
+            }
             val service = DeviceManifestService(inMemoryFiles())
-            if (state == DeviceManifestStoreState.HOLDING) service.saveLastUploaded(DeviceManifestStoreContract.seedJson(clauseId))
+            if (state == DeviceManifestStoreState.HOLDING) {
+                service.saveLastUploaded(
+                    DeviceManifestStoreContract.seedJson(clauseId),
+                )
+            }
             return Entered.Ready(service)
         }
     }
@@ -62,9 +70,17 @@ class AppGroupStoreContractBindingsTest {
         )
 
         override fun create(state: PushRegistrationRecordState, clauseId: String): Entered<PushRegistrationRecord> {
-            if (state == PushRegistrationRecordState.UNAVAILABLE) return Entered.Ready(PushRegistrationRecord(inMemoryFiles(shared = null)))
+            if (state == PushRegistrationRecordState.UNAVAILABLE) {
+                return Entered.Ready(
+                    PushRegistrationRecord(inMemoryFiles(shared = null)),
+                )
+            }
             val record = PushRegistrationRecord(inMemoryFiles())
-            if (state == PushRegistrationRecordState.HOLDING) record.saveLastRegistered(PushRegistrationRecordContract.seed(clauseId))
+            if (state == PushRegistrationRecordState.HOLDING) {
+                record.saveLastRegistered(
+                    PushRegistrationRecordContract.seed(clauseId),
+                )
+            }
             return Entered.Ready(record)
         }
     }
@@ -75,7 +91,11 @@ class AppGroupStoreContractBindingsTest {
         override val reaches = setOf(StagedBytesState.UNAVAILABLE, StagedBytesState.EMPTY, StagedBytesState.STAGED)
 
         override fun create(state: StagedBytesState, clauseId: String): Entered<StagingService> {
-            if (state == StagedBytesState.UNAVAILABLE) return Entered.Ready(StagingService(inMemoryFiles(shared = null)))
+            if (state == StagedBytesState.UNAVAILABLE) {
+                return Entered.Ready(
+                    StagingService(inMemoryFiles(shared = null)),
+                )
+            }
             val files = inMemoryFiles()
             val service = StagingService(files)
             if (state == StagedBytesState.STAGED) {
@@ -90,17 +110,25 @@ class AppGroupStoreContractBindingsTest {
     private val logs = object : Binding<DeviceLogSourceState, LogTailService> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(DeviceLogSourceState.NO_LOG, DeviceLogSourceState.EMPTY_LOG, DeviceLogSourceState.HOLDING)
+        override val reaches = setOf(
+            DeviceLogSourceState.NO_LOG,
+            DeviceLogSourceState.EMPTY_LOG,
+            DeviceLogSourceState.HOLDING,
+        )
 
         override fun create(state: DeviceLogSourceState, clauseId: String): Entered<LogTailService> {
             val text: (LogTailService.Process) -> String = when (state) {
                 DeviceLogSourceState.NO_LOG -> return Entered.Ready(LogTailService(inMemoryFiles()))
-                DeviceLogSourceState.ROLLED_ONLY -> return Entered.Unreachable("the in-memory areas hold no rolled sibling")
+                DeviceLogSourceState.ROLLED_ONLY -> return Entered.Unreachable(
+                    "the in-memory areas hold no rolled sibling",
+                )
                 DeviceLogSourceState.EMPTY_LOG -> { _ -> "" }
                 DeviceLogSourceState.HOLDING -> { p -> DeviceLogSourceContract.seedLog(p, clauseId) }
             }
             val files = inMemoryFiles(
-                shared = mutableMapOf(EXTENSION_LOG_FILE_NAME to text(LogTailService.Process.EXTENSION).encodeToByteArray()),
+                shared = mutableMapOf(
+                    EXTENSION_LOG_FILE_NAME to text(LogTailService.Process.EXTENSION).encodeToByteArray(),
+                ),
                 private = mutableMapOf(APP_LOG_FILE_NAME to text(LogTailService.Process.APP).encodeToByteArray()),
             )
             return Entered.Ready(LogTailService(files))
@@ -117,9 +145,16 @@ class AppGroupStoreContractBindingsTest {
             return when (state) {
                 AlbumMapStoreState.EMPTY -> Entered.Ready(service)
                 AlbumMapStoreState.HOLDING -> Entered.Ready(
-                    service.apply { put(AlbumMapStoreContract.seedEvent(clauseId), AlbumMapStoreContract.seedAlbum(clauseId)) },
+                    service.apply {
+                        put(
+                            AlbumMapStoreContract.seedEvent(clauseId),
+                            AlbumMapStoreContract.seedAlbum(clauseId),
+                        )
+                    },
                 )
-                AlbumMapStoreState.CORRUPT -> Entered.Unreachable("reached by the platform bindings, over a real encoding")
+                AlbumMapStoreState.CORRUPT -> Entered.Unreachable(
+                    "reached by the platform bindings, over a real encoding",
+                )
             }
         }
     }
@@ -133,11 +168,20 @@ class AppGroupStoreContractBindingsTest {
         verify(PushRegistrationRecordContract, pushRecord)
 
     @Test
-    fun `the staging service over in-memory files satisfies the StagedBytes contract`() = verify(StagedBytesContract, staged)
+    fun `the staging service over in-memory files satisfies the StagedBytes contract`() = verify(
+        StagedBytesContract,
+        staged,
+    )
 
     @Test
-    fun `the log-tail service over in-memory files satisfies the DeviceLogSource contract`() = verify(DeviceLogSourceContract, logs)
+    fun `the log-tail service over in-memory files satisfies the DeviceLogSource contract`() = verify(
+        DeviceLogSourceContract,
+        logs,
+    )
 
     @Test
-    fun `the album map over in-memory preferences satisfies the AlbumMapStore contract`() = verify(AlbumMapStoreContract, albums)
+    fun `the album map over in-memory preferences satisfies the AlbumMapStore contract`() = verify(
+        AlbumMapStoreContract,
+        albums,
+    )
 }

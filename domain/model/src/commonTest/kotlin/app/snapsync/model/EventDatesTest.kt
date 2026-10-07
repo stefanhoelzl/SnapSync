@@ -1,9 +1,9 @@
 package app.snapsync.model
 
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.Json
 
 /**
  * The date vocabulary (capability `photo-sharing`). Two properties carry the whole design:

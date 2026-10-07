@@ -33,17 +33,35 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
      */
     fun sealedElsewhere(eventKey: ByteArray, associatedData: ByteArray): ElsewhereSeal {
         val head = freshHead(eventKey)
-        return ElsewhereSeal(EncryptedFileFormat.encodeHead(head), EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac))
+        return ElsewhereSeal(
+            EncryptedFileFormat.encodeHead(head),
+            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac),
+        )
     }
 
     /** Encrypt [from] into [to], both in [area], under [eventKey], bound to [associatedData]. [from] is left as it was. */
-    fun encrypt(eventKey: ByteArray, associatedData: ByteArray, area: FileArea, from: String, to: String): FileResult<Unit> {
+    fun encrypt(
+        eventKey: ByteArray,
+        associatedData: ByteArray,
+        area: FileArea,
+        from: String,
+        to: String,
+    ): FileResult<Unit> {
         val head = freshHead(eventKey)
         val key = EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac)
         return building(area, to) { part ->
             files.append(area, part, EncryptedFileFormat.encodeHead(head)).failure()?.let { return@building it }
-            segments(area, from, start = 0L, length = EncryptedFileFormat::plaintextSegmentLength) { segment, plain, last ->
-                files.append(area, part, crypto.aesGcmSeal(key, EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last), plain))
+            segments(
+                area,
+                from,
+                start = 0L,
+                length = EncryptedFileFormat::plaintextSegmentLength,
+            ) { segment, plain, last ->
+                files.append(
+                    area,
+                    part,
+                    crypto.aesGcmSeal(key, EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last), plain),
+                )
             }
         }
     }
@@ -65,8 +83,17 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
         val key = EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac)
         var damage: String? = null
         val written = building(area, to) { part ->
-            segments(area, from, start = HEAD_LENGTH.toLong(), length = EncryptedFileFormat::ciphertextSegmentLength) { segment, sealed, last ->
-                val plain = crypto.aesGcmOpen(key, EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last), sealed)
+            segments(
+                area,
+                from,
+                start = HEAD_LENGTH.toLong(),
+                length = EncryptedFileFormat::ciphertextSegmentLength,
+            ) { segment, sealed, last ->
+                val plain = crypto.aesGcmOpen(
+                    key,
+                    EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last),
+                    sealed,
+                )
                 if (plain == null) {
                     damage = "segment $segment failed to authenticate"
                     FileResult.Failed("segment $segment failed to authenticate")
@@ -115,7 +142,11 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
     )
 
     /** Run [build] into `<to>.part`, then move it to [to]; on any failure the part is removed and [to] untouched. */
-    private inline fun building(area: FileArea, to: String, build: (part: String) -> FileResult<Unit>): FileResult<Unit> {
+    private inline fun building(
+        area: FileArea,
+        to: String,
+        build: (part: String) -> FileResult<Unit>,
+    ): FileResult<Unit> {
         val part = "$to.part"
         files.delete(area, part)
         val built = build(part)

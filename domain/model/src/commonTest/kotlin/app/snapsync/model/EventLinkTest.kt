@@ -203,7 +203,9 @@ class EventLinkTest {
             "upload" to Direction.UploadOnly,
             "download" to Direction.DownloadOnly,
         )) {
-            val payload = success("$LINK_ORIGIN/join#v=3&d=${absent("""{"eventId":"$eventId","direction":"$token"}""")}")
+            val payload = success(
+                "$LINK_ORIGIN/join#v=3&d=${absent("""{"eventId":"$eventId","direction":"$token"}""")}",
+            )
             assertEquals(expected, Direction.fromWire(payload.direction!!))
         }
     }

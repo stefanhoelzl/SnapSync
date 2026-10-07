@@ -1,6 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.Resource
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
@@ -13,6 +12,7 @@ import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.RawAsset
+import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.WriteOutcome

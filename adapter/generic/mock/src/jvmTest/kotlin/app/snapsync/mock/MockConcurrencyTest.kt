@@ -87,7 +87,11 @@ class MockConcurrencyTest {
             thread(name = "writer-$w") { repeat(PER_WRITER) { library.operator.add(LibraryAssets.photo("W$w-$it")) } }
         }
         writers.forEach { it.join() }
-        assertEquals(2 * PER_WRITER, library.operator.current().size, "a change landed between another's read and write")
+        assertEquals(
+            2 * PER_WRITER,
+            library.operator.current().size,
+            "a change landed between another's read and write",
+        )
     }
 
     @Test
@@ -99,7 +103,11 @@ class MockConcurrencyTest {
             tears(
                 write = { round ->
                     runBlocking {
-                        port.create(UploadSource.Resource(Unit), UploadTarget("https://in-memory/$round", emptyMap(), TransferNetwork.ANY), "k$round")
+                        port.create(
+                            UploadSource.Resource(Unit),
+                            UploadTarget("https://in-memory/$round", emptyMap(), TransferNetwork.ANY),
+                            "k$round",
+                        )
                         if (round % BATCH == BATCH - 1) port.jobs(UploadJobSet.IN_FLIGHT).forEach { port.cancel(it) }
                     }
                 },
@@ -119,7 +127,15 @@ class MockConcurrencyTest {
         val port = downloads.port()
         assertWhole(
             tears(
-                write = { round -> if (round < CAP) port.start("https://in-memory/$round", "t$round", TransferNetwork.ANY) },
+                write = { round ->
+                    if (round < CAP) {
+                        port.start(
+                            "https://in-memory/$round",
+                            "t$round",
+                            TransferNetwork.ANY,
+                        )
+                    }
+                },
                 read = {
                     downloads.operator.inFlight().whole()
                     MockState.encode(device, MockedSystem.DOWNLOADS)
@@ -187,7 +203,12 @@ class MockConcurrencyTest {
     private object Schema : SqlSchema<QueryResult.Value<Unit>> {
         override val version: Long = 1
         override fun create(driver: SqlDriver) = QueryResult.Unit
-        override fun migrate(driver: SqlDriver, oldVersion: Long, newVersion: Long, vararg callbacks: AfterVersion) = QueryResult.Unit
+        override fun migrate(
+            driver: SqlDriver,
+            oldVersion: Long,
+            newVersion: Long,
+            vararg callbacks: AfterVersion,
+        ) = QueryResult.Unit
     }
 
     private companion object {

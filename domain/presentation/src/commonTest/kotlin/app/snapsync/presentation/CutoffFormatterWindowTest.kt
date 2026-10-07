@@ -1,14 +1,14 @@
 package app.snapsync.presentation
 
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
 
 /**
  * The create screen's range limit (capability `create-event`: no range longer than 30 days). The bound

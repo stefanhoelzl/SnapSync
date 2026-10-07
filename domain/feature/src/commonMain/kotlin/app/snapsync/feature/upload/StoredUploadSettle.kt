@@ -1,9 +1,9 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeoutOrNull
@@ -58,7 +58,10 @@ class StoredUploadSettle(
                 log.w { "device listing timed out — nothing settled this foreground" }
                 return
             }
-            val stored = listing.getOrElse { reportFailure(it); return }
+            val stored = listing.getOrElse {
+                reportFailure(it)
+                return
+            }
             val settled = stored.map { it.key }.filter { it in pending }
                 .count { ledger.markTerminal(it, TerminalOutcome.COMPLETED) }
             if (settled > 0) log.i { "settled $settled in-flight row(s) whose bytes the backend already stores" }

@@ -1,18 +1,17 @@
 package app.snapsync.ui.components
 
 import androidx.compose.runtime.Composable
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.LocalTime
-import kotlinx.datetime.minus
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.date_range_one_day
 import app.snapsync.ui.components.resources.date_range_open
 import app.snapsync.ui.components.resources.date_range_today
 import app.snapsync.ui.components.resources.date_span
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.minus
 import org.jetbrains.compose.resources.stringResource
-
 
 /**
  * The design system's human rendering of a DAY, with no time of day — `14 Jul 2026`, in the user's locale.

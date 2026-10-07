@@ -49,15 +49,21 @@ private fun UploadJobFacts.render(): String =
 
 private fun factsCall(set: JobSet) = "fetch(${set.name})"
 private fun ackCall(job: UploadJobFacts) = "acknowledge(path=${job.destinationPath.orNone()})"
-private fun retryCall(job: UploadJobFacts, to: NSURLRequest) = "retry(path=${job.destinationPath.orNone()} ${to.render()})"
+private fun retryCall(
+    job: UploadJobFacts,
+    to: NSURLRequest,
+) = "retry(path=${job.destinationPath.orNone()} ${to.render()})"
 private fun createCall(to: NSURLRequest, resource: Any) = "create(${to.render()} resource=${resourceKind(resource)})"
 private fun landedCall(route: String) = "landed($route)"
+
 /** The answer's description is LAST, so it may hold spaces. */
 private fun ChangeAnswer.render() = "ok=$ok code=${code?.toString().orNone()} desc=${description.orNone()}"
 
 private fun parseChange(rendered: String): ChangeAnswer {
     val desc = rendered.substringAfter(" desc=")
-    val head = rendered.substringBefore(" desc=").split(' ').associate { it.substringBefore('=') to it.substringAfter('=') }
+    val head = rendered.substringBefore(
+        " desc=",
+    ).split(' ').associate { it.substringBefore('=') to it.substringAfter('=') }
     return ChangeAnswer(
         ok = head.getValue("ok").toBooleanStrict(),
         code = head.getValue("code").noneAsNull()?.toLong(),
@@ -92,7 +98,9 @@ private val JOB = Regex("""\[([^\]]*)]""")
 /** Passes every call to [real] and records it, with iOS's answer, in the clause block [recorder] has open. */
 internal class RecordingUploadJobApi(private val real: UploadJobApi, private val recorder: Recorder) : UploadJobApi {
     override fun fetch(set: JobSet) = real.fetch(set).also { recorder.record(factsCall(set), it.render()) }
-    override fun acknowledge(job: UploadJobFacts) = real.acknowledge(job).also { recorder.record(ackCall(job), it.render()) }
+    override fun acknowledge(
+        job: UploadJobFacts,
+    ) = real.acknowledge(job).also { recorder.record(ackCall(job), it.render()) }
     override fun retry(job: UploadJobFacts, destination: NSURLRequest) =
         real.retry(job, destination).also { recorder.record(retryCall(job, destination), it.render()) }
     override fun create(destination: NSURLRequest, resource: Any) =
@@ -103,8 +111,14 @@ internal class RecordingUploadJobApi(private val real: UploadJobApi, private val
 internal class ReplayingUploadJobApi(private val replayer: Replayer) : UploadJobApi {
     override fun fetch(set: JobSet) = parseFacts(replayer.answer(factsCall(set)))
     override fun acknowledge(job: UploadJobFacts) = parseChange(replayer.answer(ackCall(job)))
-    override fun retry(job: UploadJobFacts, destination: NSURLRequest) = parseChange(replayer.answer(retryCall(job, destination)))
-    override fun create(destination: NSURLRequest, resource: Any) = parseChange(replayer.answer(createCall(destination, resource)))
+    override fun retry(
+        job: UploadJobFacts,
+        destination: NSURLRequest,
+    ) = parseChange(replayer.answer(retryCall(job, destination)))
+    override fun create(
+        destination: NSURLRequest,
+        resource: Any,
+    ) = parseChange(replayer.answer(createCall(destination, resource)))
 }
 
 private fun Landed?.render() = if (this == null) "none" else "ct=${contentType.orNone()}"

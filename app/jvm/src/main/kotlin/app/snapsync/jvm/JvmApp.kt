@@ -9,6 +9,7 @@ import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncExtension
+import app.snapsync.crypto.JcaCrypto
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.identity.NoPlatformDeviceId
@@ -20,7 +21,6 @@ import app.snapsync.presentation.StatusContainerHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlin.time.Clock
-import app.snapsync.crypto.JcaCrypto
 
 /**
  * **The JVM root** (`docs/testing.md`, "The JVM root"): the app composed on the JVM exactly as `SnapSyncRoot` composes

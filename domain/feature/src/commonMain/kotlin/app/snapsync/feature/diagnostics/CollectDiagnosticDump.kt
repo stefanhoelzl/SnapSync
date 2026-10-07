@@ -1,7 +1,5 @@
 package app.snapsync.feature.diagnostics
 
-import app.snapsync.model.RefusalFacts
-import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
@@ -13,21 +11,23 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
+import app.snapsync.model.RefusalFacts
 import app.snapsync.model.ReportContext
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.device.DeviceConditionsReadings
-import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.network.NetworkReadings
 import app.snapsync.services.settings.MobileDataSetting
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Assemble one operator-initiated diagnostic dump (capability `privacy-security`).
@@ -213,7 +213,9 @@ class CollectDiagnosticDump(
             putConditions(
                 when (val read = reading.await()) {
                     is Fact.Known -> read.value
-                    is Fact.Failed -> DeviceConditionsReading.failed(read.reason) // one read: its failure is every fact's
+                    is Fact.Failed -> DeviceConditionsReading.failed(
+                        read.reason,
+                    ) // one read: its failure is every fact's
                     Fact.Unsupported -> DeviceConditionsReading.failed("unsupported")
                 },
             )

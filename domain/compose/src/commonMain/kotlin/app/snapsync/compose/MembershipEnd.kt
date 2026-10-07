@@ -1,9 +1,9 @@
 package app.snapsync.compose
 
+import app.snapsync.feature.membership.EventCompletion
+import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.feature.upload.TailTrigger
-import app.snapsync.feature.membership.EventCompletion
 import app.snapsync.services.leave.PendingLeaves
 
 /**

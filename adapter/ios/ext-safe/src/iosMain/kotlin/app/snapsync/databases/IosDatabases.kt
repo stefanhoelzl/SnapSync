@@ -64,7 +64,17 @@ class IosDatabases(private val basePath: String?) : Databases {
                     "missing or unprovisioned",
             )
         if (readOnly && !NSFileManager.defaultManager.fileExistsAtPath("$base/$name")) return DbOpen.Missing
-        return runCatchingCancellable { if (readOnly) openReadOnly(base, name, schema) else openReadWrite(base, name, schema) }
+        return runCatchingCancellable {
+            if (readOnly) {
+                openReadOnly(
+                    base,
+                    name,
+                    schema,
+                )
+            } else {
+                openReadWrite(base, name, schema)
+            }
+        }
             .getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
     }
 
@@ -101,7 +111,9 @@ class IosDatabases(private val basePath: String?) : Databases {
         val version = manager.withConnection { it.getVersion() }.toLong()
         return when {
             version < schema.version -> DbOpen.OldSchema
-            version > schema.version -> DbOpen.Failed("schema version $version is newer than this build's ${schema.version}")
+            version > schema.version -> DbOpen.Failed(
+                "schema version $version is newer than this build's ${schema.version}",
+            )
             else -> DbOpen.Opened(NativeSqliteDriver(manager))
         }
     }

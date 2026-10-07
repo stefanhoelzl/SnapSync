@@ -101,4 +101,3 @@ fun roleFromUploadKey(filename: String): ResourceRole {
  */
 fun assetIdFromUploadKey(filename: String): AssetId =
     AssetId(filename.substringBeforeLast('.').substringBeforeLast('-'))
-

@@ -41,7 +41,13 @@ object EncryptedFileFormat {
     const val FILE_HEAD_HEADER = "x-snapsync-file-head"
 
     /** The key id an event row holds for [eventKey]. */
-    fun keyIdOf(eventKey: ByteArray, hmac: Hmac): ByteArray = Hkdf.derive(hmac, eventKey, ByteArray(0), KEY_ID_INFO, KEY_ID_LENGTH)
+    fun keyIdOf(eventKey: ByteArray, hmac: Hmac): ByteArray = Hkdf.derive(
+        hmac,
+        eventKey,
+        ByteArray(0),
+        KEY_ID_INFO,
+        KEY_ID_LENGTH,
+    )
 
     /** The key one file's segments are sealed with. */
     fun fileKeyOf(eventKey: ByteArray, salt: ByteArray, associatedData: ByteArray, hmac: Hmac): ByteArray =
@@ -96,7 +102,9 @@ class FileHead(val keyId: ByteArray, val salt: ByteArray, val noncePrefix: ByteA
     init {
         require(keyId.size == EncryptedFileFormat.KEY_ID_LENGTH) { "key id length ${keyId.size}" }
         require(salt.size == EncryptedFileFormat.SALT_LENGTH) { "salt length ${salt.size}" }
-        require(noncePrefix.size == EncryptedFileFormat.NONCE_PREFIX_LENGTH) { "nonce prefix length ${noncePrefix.size}" }
+        require(
+            noncePrefix.size == EncryptedFileFormat.NONCE_PREFIX_LENGTH,
+        ) { "nonce prefix length ${noncePrefix.size}" }
     }
 
     override fun equals(other: Any?): Boolean =

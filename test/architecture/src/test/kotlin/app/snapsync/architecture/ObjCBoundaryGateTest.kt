@@ -127,7 +127,12 @@ class ObjCBoundaryGateTest {
         return Regex("""\b(${errorSelectors.joinToString("|")})\s*\(""").findAll(code)
             .filter { m -> !Regex("""fun\s+$""").containsMatchIn(code.take(m.range.first)) }
             .filter { m -> checked.none { m.range.first in it } }
-            .map { "${line(code, it.range.first)}: ${it.groupValues[1]} reports failure through NSError** — call it inside checkedObjC" }
+            .map {
+                "${line(
+                    code,
+                    it.range.first,
+                )}: ${it.groupValues[1]} reports failure through NSError** — call it inside checkedObjC"
+            }
             .toList()
     }
 
@@ -157,7 +162,10 @@ class ObjCBoundaryGateTest {
             when (code[i]) {
                 '(' -> parens++
                 ')' -> parens--
-                '{' -> { if (parens == 0) out += i; i = closing(code, i) }
+                '{' -> {
+                    if (parens == 0) out += i
+                    i = closing(code, i)
+                }
             }
             i++
         }
@@ -181,7 +189,10 @@ class ObjCBoundaryGateTest {
                     when {
                         template == 0 && !triple && code[j] == '\\' -> j++
                         template == 0 && code.startsWith(quote, j) -> break
-                        code.startsWith("\${", j) -> { template++; j++ }
+                        code.startsWith("\${", j) -> {
+                            template++
+                            j++
+                        }
                         template > 0 && code[j] == '}' -> template--
                     }
                     j++

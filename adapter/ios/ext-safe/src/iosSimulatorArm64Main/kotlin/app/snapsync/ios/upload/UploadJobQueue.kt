@@ -2,19 +2,19 @@
 
 package app.snapsync.ios.upload
 
-import app.snapsync.model.UploadError
-import app.snapsync.model.destinationPathOf
+import app.snapsync.logging.invocation
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.UploadCreateOutcome
+import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
+import app.snapsync.model.destinationPathOf
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
-import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.sync.Mutex
@@ -140,7 +140,9 @@ open class SimulatorJobSets {
         mutex.withLock { finished.filter { it.action == action } }
 
     /** The job at [destination] leaves every set — acknowledged, or re-pointed. */
-    internal suspend fun remove(destination: String) = mutex.withLock { finished.removeAll { it.destination == destination } }
+    internal suspend fun remove(
+        destination: String,
+    ) = mutex.withLock { finished.removeAll { it.destination == destination } }
 
     internal suspend fun record(job: CreatedUploadJob): UploadCreateOutcome = mutex.withLock {
         if (created.size >= limit) {

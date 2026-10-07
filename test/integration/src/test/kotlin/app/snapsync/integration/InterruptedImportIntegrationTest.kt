@@ -32,6 +32,7 @@ class InterruptedImportIntegrationTest {
 
     private val foreignDevice = "DEV-F"
     private val foreignAsset = "FQ"
+
     @Test
     fun an_interrupted_import_is_not_repeated_on_the_next_pass() = rigTest {
         val before = stageWithAbandonedImport()
@@ -50,6 +51,7 @@ class InterruptedImportIntegrationTest {
         awaitDownloadSettled() // the row settles against the asset that exists
         assertEquals(before + 1, libraryTotal(), "exactly one asset created for this photo — no second copy")
     }
+
     @Test
     fun the_first_copy_is_never_uploaded_back_into_the_event() = rigTest {
         extensionUploadsOnly()
@@ -169,7 +171,8 @@ class InterruptedImportIntegrationTest {
         os("app", "onBackgroundTask", HEARTBEAT)
 
         assertEquals(
-            galleryBefore, libraryTotal(),
+            galleryBefore,
+            libraryTotal(),
             "no second asset was created while the first transaction was still open",
         )
 
@@ -248,7 +251,9 @@ class InterruptedImportIntegrationTest {
         // The observer emits, and the created asset is in the member's hand-picked selection.
         device("selection/change", "assets" to created)
 
-        eventually(read = { stagedFiles() }) { files -> files.none { it in staged } } // once the snapshot exists, the sweep settles
+        eventually(read = {
+            stagedFiles()
+        }) { files -> files.none { it in staged } } // once the snapshot exists, the sweep settles
         awaitDownloadSettled()
     }
 

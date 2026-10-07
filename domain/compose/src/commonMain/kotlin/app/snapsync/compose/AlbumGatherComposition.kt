@@ -1,12 +1,12 @@
 package app.snapsync.compose
 
-import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.ports.EntryContext
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.grantsPhotoAccess
+import app.snapsync.ports.EntryContext
+import app.snapsync.services.gallery.GalleryAccessState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch

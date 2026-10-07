@@ -1,122 +1,119 @@
 package app.snapsync.compose
 
-import app.snapsync.services.crypto.EventKeyMinting
-import kotlinx.coroutines.flow.map
-import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.UnionTrigger
-import app.snapsync.services.gallery.PermissionAwareCandidateSource
-
-import app.snapsync.services.gallery.PermissionAwareAssetPresence
-
-import app.snapsync.model.AssetId
-import app.snapsync.model.VersionRefusal
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
-import app.snapsync.model.EventCreator
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
-import app.snapsync.model.Fact
-import app.snapsync.model.selectionPhotos
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
-import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.feature.download.StoreDownloadStatusSource
-import app.snapsync.feature.membership.MembershipRefresh
-import app.snapsync.feature.membership.toJoinLoad
-import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.LeaveEvent
-import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.membership.ManifestDeviceEnroller
-import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.membership.ReconfigureEvent
 import app.snapsync.feature.membership.RenameEvent
 import app.snapsync.feature.membership.ResetDeviceState
+import app.snapsync.feature.membership.ShareSetLoad
+import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.feature.membership.toJoinLoad
+import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
-import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.ShareableCountSource
+import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.services.trust.DeviceAttestation
-import app.snapsync.services.version.AppVersionGate
 import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.TailTrigger
-import app.snapsync.services.upload.ExtensionRegistration
-import app.snapsync.services.upload.OsDrivenRegistration
-import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
-import app.snapsync.model.extensionRegistrable
 import app.snapsync.flow.Background
 import app.snapsync.flow.Foreground
 import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionPolicyFor
-import app.snapsync.model.SelectionSnapshot
-import app.snapsync.model.resourcesFrom
-import kotlinx.coroutines.channels.Channel
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
-import app.snapsync.model.JoinLoad
+import app.snapsync.model.EventCreator
+import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.JoinLoad
 import app.snapsync.model.Resource
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.grantsPhotoAccess
+import app.snapsync.model.SelectionSnapshot
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
+import app.snapsync.model.VersionRefusal
+import app.snapsync.model.extensionRegistrable
+import app.snapsync.model.grantsPhotoAccess
+import app.snapsync.model.invocation
+import app.snapsync.model.resourcesFrom
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.model.selectionPhotos
+import app.snapsync.model.selectionPolicyFor
+import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
-import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.gallery.GalleryImporter
-import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.ports.BuildInfo
+import app.snapsync.ports.Databases
+import app.snapsync.ports.DevControls
+import app.snapsync.ports.DeviceConditions
+import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.Download
+import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
-import app.snapsync.services.gallery.ImportedAssetPresence
-import app.snapsync.services.gallery.GalleryAssetPresence
-import app.snapsync.services.gallery.GalleryCandidateSource
-import app.snapsync.ports.Backend
-import app.snapsync.ports.DeviceIntegrity
-import app.snapsync.services.backend.BackendServices
-import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.ports.SystemUi
-import app.snapsync.model.invocation
-import app.snapsync.ports.ProcessInfo
-import app.snapsync.ports.DeviceConditions
-import app.snapsync.ports.Wake
-import app.snapsync.ports.DevControls
-import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
-import app.snapsync.ports.Ui
-import app.snapsync.ports.Download
-import app.snapsync.ports.Upload
-import app.snapsync.ports.BuildInfo
-import app.snapsync.ports.Databases
+import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
-import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.ports.ProcessInfo
+import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.SecureStore
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.ContinuationInterceptor
+import app.snapsync.ports.SystemUi
+import app.snapsync.ports.Ui
+import app.snapsync.ports.Upload
+import app.snapsync.ports.Wake
+import app.snapsync.services.backend.BackendServices
+import app.snapsync.services.crypto.DownloadOpening
+import app.snapsync.services.crypto.EventKeyMinting
+import app.snapsync.services.downloads.DownloadJobs
+import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.services.gallery.GalleryAccessState
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.GalleryAssetPresence
+import app.snapsync.services.gallery.GalleryCandidateSource
+import app.snapsync.services.gallery.GalleryImporter
+import app.snapsync.services.gallery.ImportedAssetPresence
+import app.snapsync.services.gallery.PermissionAwareAssetPresence
+import app.snapsync.services.gallery.PermissionAwareCandidateSource
+import app.snapsync.services.trust.DeviceAttestation
+import app.snapsync.services.upload.ExtensionRegistration
+import app.snapsync.services.upload.OsDrivenRegistration
+import app.snapsync.services.version.AppVersionGate
 import kotlinx.coroutines.CoroutineScope
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.coroutines.CoroutineContext
 
 /**
  * **The app process's ports** — everything the app-graph composition consumes, and nothing but ports ([Port]; spec
@@ -396,7 +393,6 @@ class AppCore internal constructor(
         )
     }
 
-
     // The download orchestrator: union → foreign selection → download → import → suppression.
     val downloadController: DownloadController by lazy {
         DownloadController(
@@ -446,7 +442,11 @@ class AppCore internal constructor(
     // construction. Started, never awaited, by the act that triggered it.
     val albumGather: AlbumGather by lazy {
         albumGather(
-            services, process.entryContext, galleryAccess, albumCoordinator, scope,
+            services,
+            process.entryContext,
+            galleryAccess,
+            albumCoordinator,
+            scope,
             ::selectionPolicyForMembership,
         )
     }
@@ -709,7 +709,10 @@ class AppCore internal constructor(
     private suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<AssetId> =
         // The app tier admits on doubt: a failed lookup must never drop a real photo from the total.
         denylistedAlbumMembers(
-            albumManager, cutoff, ports.photoAccess.permission.value, AlbumLookupFailure.AdmitOnDoubt,
+            albumManager,
+            cutoff,
+            ports.photoAccess.permission.value,
+            AlbumLookupFailure.AdmitOnDoubt,
             services.log,
         )
 
@@ -994,7 +997,6 @@ class AppCore internal constructor(
 
     /** The device's push registration (capability `receiving-photos`) — see [pushRegistrationFor]. */
     val pushRegistration: PushRegistration by lazy { pushRegistrationFor(services, backend.pushTokens) }
-
 }
 
 /**

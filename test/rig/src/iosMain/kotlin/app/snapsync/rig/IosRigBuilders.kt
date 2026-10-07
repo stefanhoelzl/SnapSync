@@ -1,31 +1,22 @@
 package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
-import app.snapsync.model.ProcessMetricReport
-import app.snapsync.mock.MockedSystem
 import app.snapsync.contracts.EntryDriver
-import app.snapsync.model.processMetricEmissions
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
-import app.snapsync.model.Direction
-import app.snapsync.permission.PhotoLibraryPermission
-import app.snapsync.model.RegistrationState
-import app.snapsync.ports.ExtensionRegistry
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
-import kotlin.time.Instant
+import app.snapsync.mock.MockedSystem
 import app.snapsync.model.Layer
+import app.snapsync.model.ProcessMetricReport
+import app.snapsync.model.RegistrationState
+import app.snapsync.model.processMetricEmissions
+import app.snapsync.permission.PhotoLibraryPermission
+import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReport
-import app.snapsync.rig.gallery.photoKitCensus
-import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.WipeScope
 import app.snapsync.rig.gallery.WipeWindow
+import app.snapsync.rig.gallery.photoKitCensus
 import app.snapsync.rig.gallery.seedPhotos
 import app.snapsync.rig.gallery.wipeGallery
 import co.touchlab.kermit.Logger
-import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -40,7 +31,10 @@ import kotlinx.serialization.json.JsonPrimitive
  * command maps just make it carry more.
  */
 
-private val json = Json { encodeDefaults = true; prettyPrint = true }
+private val json = Json {
+    encodeDefaults = true
+    prettyPrint = true
+}
 private val log = Logger.withTag("rig")
 
 /**
@@ -58,43 +52,43 @@ fun deviceCommands(
     handleReport: (ProcessMetricReport) -> Unit,
 ): Map<String, RigCommand> = uploadJobDeviceCommands() + photoKitCommands(launch, photoAccess) +
     launch.world.honouredLevers() + adapterCommands(launch) + mapOf(
-    // The development switch per uploader (capability `background-upload`). Reports the switch AND the
-    // registration fact it produces, because the extension is never registrable below 26.1 or without a full
-    // grant, whatever the switch says. The grant is the app's own — the mocked library's, where the adapter choice mocks it.
-    "uploaders" to uploadersCommand(
-        pin = { launch.controls.pin },
-        setPin = { launch.controls.pin = it },
-        osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
-        permission = { core().photoPermission.value },
-        reconcile = { core().uploadTransitions.onOverrideChanged() },
-    ),
-    "reset" to resetCommand(reset = launch.controls::reset),
-    // What the app's files take on the real disk, per container — the App Group is not pullable over USB.
-    "disk" to diskCommand(),
-    // Drive a synthetic process-metric report through the app's OWN handler (capability
-    // `privacy-security`). Real reports arrive on the OS's cadence — roughly daily, and only after a
-    // period has closed — so without this the only way to exercise the three channels is to wait a
-    // day. The report is an open key/value bag by design, so a synthetic one needs no MetricKit types
-    // and this route stays honest: it feeds the same rule and the same channels the OS feeds.
-    "process-metrics" to RigCommand { _, body ->
-        val fields = parseFields(body)
-        when (fields) {
-            null -> CommandResult.badRequest(
-                "body must be a JSON object of string keys to scalar values, e.g. " +
-                    """{"applicationExitMetrics.backgroundExitData.cumulativeAppWatchdogExitCount":"1"}""",
-            )
-            else -> {
-                val report = ProcessMetricReport(fields)
-                handleReport(report)
-                val reasons = processMetricEmissions(report).mapNotNull { it.reason }
-                CommandResult.ok(
-                    """{"fields":${fields.size},"crossed":${reasons.isNotEmpty()},""" +
-                        """"reasons":${jsonArray(reasons)}}""",
+        // The development switch per uploader (capability `background-upload`). Reports the switch AND the
+        // registration fact it produces, because the extension is never registrable below 26.1 or without a full
+        // grant, whatever the switch says. The grant is the app's own — the mocked library's, where the adapter choice mocks it.
+        "uploaders" to uploadersCommand(
+            pin = { launch.controls.pin },
+            setPin = { launch.controls.pin = it },
+            osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
+            permission = { core().photoPermission.value },
+            reconcile = { core().uploadTransitions.onOverrideChanged() },
+        ),
+        "reset" to resetCommand(reset = launch.controls::reset),
+        // What the app's files take on the real disk, per container — the App Group is not pullable over USB.
+        "disk" to diskCommand(),
+        // Drive a synthetic process-metric report through the app's OWN handler (capability
+        // `privacy-security`). Real reports arrive on the OS's cadence — roughly daily, and only after a
+        // period has closed — so without this the only way to exercise the three channels is to wait a
+        // day. The report is an open key/value bag by design, so a synthetic one needs no MetricKit types
+        // and this route stays honest: it feeds the same rule and the same channels the OS feeds.
+        "process-metrics" to RigCommand { _, body ->
+            val fields = parseFields(body)
+            when (fields) {
+                null -> CommandResult.badRequest(
+                    "body must be a JSON object of string keys to scalar values, e.g. " +
+                        """{"applicationExitMetrics.backgroundExitData.cumulativeAppWatchdogExitCount":"1"}""",
                 )
+                else -> {
+                    val report = ProcessMetricReport(fields)
+                    handleReport(report)
+                    val reasons = processMetricEmissions(report).mapNotNull { it.reason }
+                    CommandResult.ok(
+                        """{"fields":${fields.size},"crossed":${reasons.isNotEmpty()},""" +
+                            """"reasons":${jsonArray(reasons)}}""",
+                    )
+                }
             }
-        }
-    },
-)
+        },
+    )
 
 /**
  * The photo library's seed and wipe: PhotoKit's where the library is real, the mocked library's seed where the launch
@@ -170,13 +164,13 @@ fun galleryReader(launch: RigLaunch, core: () -> AppCore): suspend (String?, Boo
 
 private fun photoKitGalleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> String =
     { cutoff, resources, includesUpload ->
-    val reader = GalleryReport(
-        candidates = core().candidates,
-        grant = { core().photoPermission.value.name },
-        census = ::photoKitCensus,
-    )
-    json.encodeToString(GalleryView.serializer(), reader.read(cutoff, resources, includesUpload))
-}
+        val reader = GalleryReport(
+            candidates = core().candidates,
+            grant = { core().photoPermission.value.name },
+            census = ::photoKitCensus,
+        )
+        json.encodeToString(GalleryView.serializer(), reader.read(cutoff, resources, includesUpload))
+    }
 
 /**
  * The OS's view of the extension registration — `null` anywhere it cannot be asked.
@@ -223,7 +217,6 @@ fun noMembershipRefusal(host: () -> StatusContainerHost): () -> String? = {
     }
 }
 
-
 /**
  * The app root's `/os` group for this launch: each delivery through the system that makes it — the mock's operator face
  * where the adapter choice mocks it, the platform's own adapter ([real]) otherwise — and the played operating system's
@@ -241,4 +234,6 @@ fun appTriggerGroup(launch: RigLaunch, real: EntryDriver, excluded: Map<String, 
 }
 
 /** What the operating system recorded of the app, where this launch plays any of it — `null` where it plays none. */
-fun osRecord(launch: RigLaunch): (() -> String)? = launch.world.takeIf { it.mocked.isNotEmpty() }?.os?.let { os -> os::record }
+fun osRecord(
+    launch: RigLaunch,
+): (() -> String)? = launch.world.takeIf { it.mocked.isNotEmpty() }?.os?.let { os -> os::record }

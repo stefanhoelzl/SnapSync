@@ -50,7 +50,13 @@ class EncryptedEventLinkTest {
         assertTrue(text !in scrubbed && REDACTED_KEY in scrubbed, scrubbed)
         assertEquals("no key here", redactEventKeys("no key here"))
         val dump = diagnosticDumpEvent(
-            DiagnosticDump(note = "k=$text? #k=$text", state = mapOf("invite" to "#k=$text"), ledger = emptyMap(), appLog = line, extensionLog = ""),
+            DiagnosticDump(
+                note = "k=$text? #k=$text",
+                state = mapOf("invite" to "#k=$text"),
+                ledger = emptyMap(),
+                appLog = line,
+                extensionLog = "",
+            ),
         )
         val everything = dump.message + dump.contexts.values.flatMap { it.values }.joinToString()
         assertTrue(text !in everything, "the dump keeps ids, never keys")

@@ -59,7 +59,11 @@ class EventNameLimitTest {
             .filter { it.isFile && it.extension == "kt" && "/build/" !in it.path }
             .flatMap { file ->
                 file.readLines().withIndex()
-                    .filter { (_, line) -> Regex("""maxLength\s*=\s*\d+""").containsMatchIn(line.substringBefore("//")) }
+                    .filter { (_, line) ->
+                        Regex(
+                            """maxLength\s*=\s*\d+""",
+                        ).containsMatchIn(line.substringBefore("//"))
+                    }
                     .map { (n, line) -> "${file.name}:${n + 1}  ${line.trim()}" }
             }
             .filterNot { "maxLength = 200" in it } // the bug-report note's own bound, unrelated to a name

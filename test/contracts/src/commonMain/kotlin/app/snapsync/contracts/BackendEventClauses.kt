@@ -16,39 +16,68 @@ import kotlin.time.Instant
  * [BackendContract]'s clause list, a split for size only.
  */
 internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
-
     clause("CREATE_A_VALID_EVENT_IS_CREATED", BackendState.SERVING) { s ->
-        val created = assertOk(s.port.createEvent(s.token, CreateEventRequest("Anna's Birthday", SEEDED_STARTS_AT, SEEDED_ENDS_AT)))
+        val created =
+            assertOk(
+                s.port.createEvent(s.token, CreateEventRequest("Anna's Birthday", SEEDED_STARTS_AT, SEEDED_ENDS_AT)),
+            )
         assertTrue(UUID.matches(created.eventId), "the backend mints a UUID event id: ${created.eventId}")
         assertEquals("Anna's Birthday", created.name, "the backend echoes the name it stored")
     }
 
     clause("CREATE_AN_ABSENT_END_IS_ACCEPTED", BackendState.SERVING) { s ->
-        assertOk(s.port.createEvent(s.token, CreateEventRequest("No end", SEEDED_STARTS_AT, null)), "the backend supplies the end")
+        assertOk(
+            s.port.createEvent(s.token, CreateEventRequest("No end", SEEDED_STARTS_AT, null)),
+            "the backend supplies the end",
+        )
     }
 
     clause("CREATE_WITH_A_KEY_ID_IS_AN_ENCRYPTED_EVENT_AND_ONLY_THEN", BackendState.SERVING) { s ->
         // The encrypted file format (`docs/architecture.md`): the backend keeps the key's id, never the key.
         val keyId = "de30249b854310c8"
-        val encrypted = assertOk(s.port.createEvent(s.token, CreateEventRequest("Secret", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = keyId)))
-        assertEquals(keyId, assertOk(s.port.getEvent(null, encrypted.eventId)).keyId, "an encrypted event names its key id")
+        val encrypted =
+            assertOk(
+                s.port.createEvent(
+                    s.token,
+                    CreateEventRequest("Secret", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = keyId),
+                ),
+            )
+        assertEquals(
+            keyId,
+            assertOk(s.port.getEvent(null, encrypted.eventId)).keyId,
+            "an encrypted event names its key id",
+        )
         val plain = assertOk(s.port.createEvent(s.token, CreateEventRequest("Open", SEEDED_STARTS_AT, SEEDED_ENDS_AT)))
         assertEquals(null, assertOk(s.port.getEvent(null, plain.eventId)).keyId, "a plain event names none")
         assertRefused(
             BAD_REQUEST,
-            s.port.createEvent(s.token, CreateEventRequest("Bad", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = "DE30249B854310C8")),
+            s.port.createEvent(
+                s.token,
+                CreateEventRequest("Bad", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = "DE30249B854310C8"),
+            ),
             "a malformed key id is refused, never created as a plain event",
         )
     }
 
     clause("CREATE_A_BLANK_NAME_IS_REFUSED_AS_THE_NAME", BackendState.SERVING) { s ->
-        val refused = assertRefused(BAD_REQUEST, s.port.createEvent(s.token, CreateEventRequest("   ", SEEDED_STARTS_AT, SEEDED_ENDS_AT)))
+        val refused =
+            assertRefused(
+                BAD_REQUEST,
+                s.port.createEvent(s.token, CreateEventRequest("   ", SEEDED_STARTS_AT, SEEDED_ENDS_AT)),
+            )
         assertFalse(WINDOW_FIELDS.any { it in refused.body }, "a refused name names no date field: ${refused.body}")
     }
 
     clause("CREATE_AN_END_BEFORE_THE_START_IS_REFUSED_AS_THE_WINDOW", BackendState.SERVING) { s ->
-        val refused = assertRefused(BAD_REQUEST, s.port.createEvent(s.token, CreateEventRequest("Backwards", SEEDED_ENDS_AT, SEEDED_STARTS_AT)))
-        assertTrue(WINDOW_FIELDS.any { it in refused.body }, "a refused window names the date it refused: ${refused.body}")
+        val refused =
+            assertRefused(
+                BAD_REQUEST,
+                s.port.createEvent(s.token, CreateEventRequest("Backwards", SEEDED_ENDS_AT, SEEDED_STARTS_AT)),
+            )
+        assertTrue(
+            WINDOW_FIELDS.any { it in refused.body },
+            "a refused window names the date it refused: ${refused.body}",
+        )
     }
 
     clause("CREATE_A_WINDOW_LONGER_THAN_30_DAYS_IS_REFUSED_AS_THE_WINDOW", BackendState.SERVING) { s ->
@@ -56,7 +85,10 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
             BAD_REQUEST,
             s.port.createEvent(s.token, CreateEventRequest("Too long", SEEDED_STARTS_AT, "2030-02-15T00:00:00Z")),
         )
-        assertTrue(WINDOW_FIELDS.any { it in refused.body }, "a refused window names the date it refused: ${refused.body}")
+        assertTrue(
+            WINDOW_FIELDS.any { it in refused.body },
+            "a refused window names the date it refused: ${refused.body}",
+        )
     }
 
     clause("GET_AN_EXISTING_EVENT_IS_SERVED_WITH_ITS_WINDOW", BackendState.EVENT_EXISTS) { s ->
@@ -83,8 +115,14 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
     }
 
     clause("A_REFUSED_BUILD_IS_TOLD_THE_MINIMUM", BackendState.VERSION_REFUSED) { s ->
-        val refused = assertRefused(UPGRADE_REQUIRED, s.port.getEvent(null, s.seeded.eventId), "a refused build is served nothing")
-        val minimum = assertNotNull(minAppVersionFromRefusal(refused.body), "the backend names the minimum: ${refused.body}")
+        val refused =
+            assertRefused(
+                UPGRADE_REQUIRED,
+                s.port.getEvent(null, s.seeded.eventId),
+                "a refused build is served nothing",
+            )
+        val minimum =
+            assertNotNull(minAppVersionFromRefusal(refused.body), "the backend names the minimum: ${refused.body}")
         assertTrue(Regex("""\d+\.\d+""").matches(minimum), "the minimum is an X.Y marketing version: $minimum")
     }
 

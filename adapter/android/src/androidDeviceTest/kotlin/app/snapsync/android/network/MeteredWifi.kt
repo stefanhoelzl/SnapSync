@@ -52,6 +52,8 @@ internal object MeteredWifi {
 
     private fun shell(command: String): String {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        return ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).use { it.readBytes().decodeToString() }
+        return ParcelFileDescriptor.AutoCloseInputStream(
+            automation.executeShellCommand(command),
+        ).use { it.readBytes().decodeToString() }
     }
 }

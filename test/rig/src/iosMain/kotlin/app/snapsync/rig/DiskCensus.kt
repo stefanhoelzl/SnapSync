@@ -61,7 +61,10 @@ private fun kotlinx.serialization.json.JsonObjectBuilder.census(root: String?, d
         val parts = relative.split('/')
         // Every enclosing directory down to `depth` — a file at the top level counts toward the total only.
         for (n in 1..minOf(depth, parts.size - 1)) {
-            dirs.getOrPut(parts.take(n).joinToString("/")) { Tally() }.let { it.bytes += size; it.files++ }
+            dirs.getOrPut(parts.take(n).joinToString("/")) { Tally() }.let {
+                it.bytes += size
+                it.files++
+            }
         }
         files += relative to size
     }
@@ -69,12 +72,23 @@ private fun kotlinx.serialization.json.JsonObjectBuilder.census(root: String?, d
     put("files", total.files)
     putJsonArray("dirs") {
         dirs.entries.sortedByDescending { it.value.bytes }.forEach { (path, tally) ->
-            add(buildJsonObject { put("path", path); put("bytes", tally.bytes); put("files", tally.files) })
+            add(
+                buildJsonObject {
+                    put("path", path)
+                    put("bytes", tally.bytes)
+                    put("files", tally.files)
+                },
+            )
         }
     }
     putJsonArray("largest") {
         files.sortedByDescending { it.second }.take(largest).forEach { (path, size) ->
-            add(buildJsonObject { put("path", JsonPrimitive(path)); put("bytes", size) })
+            add(
+                buildJsonObject {
+                    put("path", JsonPrimitive(path))
+                    put("bytes", size)
+                },
+            )
         }
     }
 }

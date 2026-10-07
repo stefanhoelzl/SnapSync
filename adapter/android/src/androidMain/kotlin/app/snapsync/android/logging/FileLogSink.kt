@@ -77,7 +77,12 @@ class FileLogSink internal constructor(
 
     private fun openLocked(): Boolean = try {
         file.parentFile?.let { Nio.createDirectories(it.toPath()) }
-        val opened = FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)
+        val opened = FileChannel.open(
+            file.toPath(),
+            StandardOpenOption.CREATE,
+            StandardOpenOption.WRITE,
+            StandardOpenOption.APPEND,
+        )
         channel = opened
         size = opened.size()
         true
@@ -113,6 +118,8 @@ class FileLogSink internal constructor(
         internal const val RECHECK_INTERVAL_MS = 1_000L
 
         /** The app's log: [APP_LOG_FILE_NAME] in the private area, where the dump's log-tail read looks for it. */
-        fun forApp(context: Context): FileLogSink = FileLogSink(File(AndroidFiles.privateArea(context), APP_LOG_FILE_NAME))
+        fun forApp(context: Context): FileLogSink = FileLogSink(
+            File(AndroidFiles.privateArea(context), APP_LOG_FILE_NAME),
+        )
     }
 }

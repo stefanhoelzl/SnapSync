@@ -65,6 +65,7 @@ class UnreadStatusIntegrationTest {
 
         assertEquals(SyncHealth.InSync, awaitInSync())
     }
+
     @Test
     fun `a failed enumeration leaves the total unknown and does not take its siblings down`() = rigTest {
         createAndJoin()
@@ -148,5 +149,7 @@ class UnreadStatusIntegrationTest {
      * follows it with a positive transition proving the projection was alive.
      */
     private suspend fun Rig.neverSettles() =
-        neverWithin(what = "the screen claimed \"In sync\" before any count was read") { it.health == SyncHealth.InSync }
+        neverWithin(
+            what = "the screen claimed \"In sync\" before any count was read",
+        ) { it.health == SyncHealth.InSync }
 }

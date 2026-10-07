@@ -16,13 +16,13 @@ import app.snapsync.contracts.verify
 import app.snapsync.model.CrashOptions
 import app.snapsync.ports.CrashReporter
 import co.touchlab.kermit.Logger
-import io.sentry.Sentry as SentryJava
 import io.sentry.kotlin.multiplatform.Sentry
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import io.sentry.Sentry as SentryJava
 
 /**
  * The Sentry seat of `CrashReporter`, live on the Android emulator, over the REAL SDK (sentry-android, through the KMP
@@ -41,7 +41,10 @@ import kotlin.time.Duration.Companion.seconds
  */
 class SentryCrashReporterContractTest {
 
-    private val cacheDir: File get() = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, SDK_CACHE)
+    private val cacheDir: File get() = File(
+        InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
+        SDK_CACHE,
+    )
 
     private val binding = object : Binding<CrashReporterState, CrashReporterSubject> {
         override val host = Host.ANDROID_EMU

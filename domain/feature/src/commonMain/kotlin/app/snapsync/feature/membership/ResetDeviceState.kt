@@ -1,8 +1,8 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.settings.MobileDataSetting
@@ -103,5 +103,4 @@ class ResetDeviceState(
                 "(${keptImported ?: "?"} imported row(s) kept)"
         }
     }
-
 }

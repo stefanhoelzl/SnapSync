@@ -1,19 +1,12 @@
 package app.snapsync.model
 
-import app.snapsync.model.EventStart
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
-import kotlin.test.Test
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.Json
-
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
 private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
@@ -124,7 +117,8 @@ class EventConfigTest {
             val config = EventConfig(
                 eventId = "11111111-1111-4111-8111-111111111111",
                 name = "Birthday",
-                minPhotoDate = cutoff, maxPhotoDate = FIXTURE_CEILING,
+                minPhotoDate = cutoff,
+                maxPhotoDate = FIXTURE_CEILING,
                 direction = direction,
                 endsAt = eventEnd("2099-12-31T00:00:00Z"),
                 deletesAt = deletesAt("2099-12-31T00:00:00Z"),
@@ -183,14 +177,20 @@ class EventConfigTest {
             endsAt = eventEnd("2099-12-31T00:00:00Z"),
             deletesAt = deletesAt("2099-12-31T00:00:00Z"),
         )
-        assertEquals(listOf<SelectionRule>(SelectionRule.DenyAll), selectionRulesFor(config, { emptySet() }, { emptySet() }))
+        assertEquals(
+            listOf<SelectionRule>(SelectionRule.DenyAll),
+            selectionRulesFor(config, { emptySet() }, { emptySet() }),
+        )
     }
 
     @Test
     fun `no link token reaches the neither direction`() {
         // Neither is reached only from the event's settings: a join always carries a direction.
         assertEquals(null, Direction.fromWire(Direction.Neither.wire))
-        for (direction in Direction.entries - Direction.Neither) assertEquals(direction, Direction.fromWire(direction.wire))
+        for (direction in Direction.entries - Direction.Neither) assertEquals(
+            direction,
+            Direction.fromWire(direction.wire),
+        )
     }
 
     @Test
@@ -213,7 +213,8 @@ class EventConfigTest {
             val config = EventConfig(
                 eventId = "11111111-1111-4111-8111-111111111111",
                 name = "Birthday",
-                minPhotoDate = cutoff, maxPhotoDate = FIXTURE_CEILING,
+                minPhotoDate = cutoff,
+                maxPhotoDate = FIXTURE_CEILING,
                 saveToAlbum = flag,
                 endsAt = eventEnd("2099-12-31T00:00:00Z"),
                 deletesAt = deletesAt("2099-12-31T00:00:00Z"),
@@ -258,7 +259,9 @@ class EventConfigTest {
             endsAt = eventEnd("2099-12-31T00:00:00Z"),
             deletesAt = deletesAt("2099-12-31T00:00:00Z"),
         )
-        val stale = encodeConfigFile(config).replace("\"name\":\"Birthday\"", "\"name\":\"Birthday\",\"mobileData\":false")
+        val stale = encodeConfigFile(
+            config,
+        ).replace("\"name\":\"Birthday\"", "\"name\":\"Birthday\",\"mobileData\":false")
         assertTrue("mobileData" in stale, "the fixture carries the retired key")
         assertEquals(ConfigFileDecode.Valid(config), decodeConfigFile(stale))
     }
@@ -308,7 +311,8 @@ class EventConfigTest {
         val config = EventConfig(
             eventId = "11111111-1111-4111-8111-111111111111",
             name = "Birthday",
-            minPhotoDate = captureCutoff("2026-07-14T21:00:00Z"), maxPhotoDate = FIXTURE_CEILING,
+            minPhotoDate = captureCutoff("2026-07-14T21:00:00Z"),
+            maxPhotoDate = FIXTURE_CEILING,
             startsAt = eventStart("2026-07-14T18:00:00Z"),
             endsAt = eventEnd("2099-12-31T00:00:00Z"),
             deletesAt = deletesAt("2099-12-31T00:00:00Z"),

@@ -1,8 +1,8 @@
 package app.snapsync.services.trust
 
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.RefusalFacts
 import app.snapsync.model.MintRequest
+import app.snapsync.model.RefusalFacts
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.TokenOutcome
@@ -11,11 +11,10 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.Backend
 import app.snapsync.ports.Clock
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.services.backend.Credential
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.version.AppVersionGate
-
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -308,7 +307,9 @@ class DeviceAttestation(
         _refusal.value = null
         // A refresh that reports `false` still leaves a *working* device fine if the stored token is usable — it was
         // merely due for renewal, or a concurrent path already fixed it. [isUnusable], never [isStale]: `SNAPSYNC-20`.
-        val attempt = runCatchingCancellable { refreshing.withLock { refreshLocked() } }.getOrDefault(Attempt(fresh = false))
+        val attempt = runCatchingCancellable { refreshing.withLock { refreshLocked() } }.getOrDefault(
+            Attempt(fresh = false),
+        )
         _attested.value = attempt.fresh || !isUnusable(token())
         _refusal.value = attempt.refusal
     }
@@ -404,7 +405,9 @@ class DeviceAttestation(
     private suspend fun mint(deviceId: String): TokenOutcome = withFreshChallenge { challenge ->
         runCatchingCancellable {
             val proof = integrity.prove(challenge)
-            val outcome = tokenOutcome(backend.mintToken(MintRequest(deviceId, proof.handle, proof.format, proof.bytes, challenge)))
+            val outcome = tokenOutcome(
+                backend.mintToken(MintRequest(deviceId, proof.handle, proof.format, proof.bytes, challenge)),
+            )
             if (outcome is TokenOutcome.Minted) store.setKeyId(proof.handle)
             if (outcome is TokenOutcome.Refused) facts = RefusalFacts(outcome.reason, outcome.detail, proof.chain)
             outcome
@@ -472,4 +475,3 @@ private fun refused(named: String): TokenOutcome.Refused {
     val detail = named.substringAfter("(", "").substringBefore(")").trim().takeIf { it.isNotEmpty() }
     return TokenOutcome.Refused(DeviceRefusal.fromWire(named.substringBefore("(")), detail)
 }
-

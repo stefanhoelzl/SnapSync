@@ -149,7 +149,10 @@ class KotlinShellGuardTest {
         // The detekt gate silently passes on an empty source set; a stale `appShellSources` list
         // after a module rename is exactly how the flip would go vacuous. This floor fails first.
         shellSourceRoots.forEach { root ->
-            assertTrue(File(repoRoot, root).isDirectory, "shell source root $root has moved — update appShellSources AND this guard")
+            assertTrue(
+                File(repoRoot, root).isDirectory,
+                "shell source root $root has moved — update appShellSources AND this guard",
+            )
         }
         assertTrue(
             shellSources().isNotEmpty(),

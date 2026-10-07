@@ -1,8 +1,7 @@
 package app.snapsync.desktop
 
-import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.NetworkAccess
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.snapsync.jvm.JvmApp
@@ -12,16 +11,18 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
-import app.snapsync.model.RawAsset
 import app.snapsync.model.AssetId
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Layer
 import app.snapsync.model.ManifestResource
+import app.snapsync.model.NetworkAccess
+import app.snapsync.model.RawAsset
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.StoreKind
@@ -32,9 +33,9 @@ import app.snapsync.model.UiState
 import app.snapsync.model.UploadError
 import app.snapsync.model.WakeId
 import app.snapsync.model.noContribution
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
 import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
@@ -73,7 +74,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     private val mocks: JvmMocks get() = app.durable
 
     /** Bumped only when [app] is replaced (presets); the phone pane is keyed on this. */
-    var generation: Int by mutableStateOf(0)
+    var generation: Int by mutableIntStateOf(0)
         private set
 
     /** The inspector's render state, recomputed after every mutation. */
@@ -162,7 +163,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      * the event-start floor are drivable through the real stack.
      */
     fun createEvent(name: String, startsAt: String, endsAt: String) = launchMutation {
-        mocks.screen.operator.tap(UiIntent.CreateEvent(name, LocalDateTime.parse(startsAt), LocalDateTime.parse(endsAt)))
+        mocks.screen.operator.tap(
+            UiIntent.CreateEvent(name, LocalDateTime.parse(startsAt), LocalDateTime.parse(endsAt)),
+        )
     }
 
     /** The inspector's Leave button — the phone's Leave, confirmed. */
@@ -234,7 +237,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      * The backend refuses this phone as not genuine for [reason], or stops (`null`) — capability `privacy-security`, "A
      * refused phone is told why". The app learns of it at its next attestation: a wake, or a tap on Create or Join.
      */
-    fun setRefusedAttestation(reason: DeviceRefusal?) = launchMutation { mocks.backend.operator.refuseAttestation = reason }
+    fun setRefusedAttestation(
+        reason: DeviceRefusal?,
+    ) = launchMutation { mocks.backend.operator.refuseAttestation = reason }
 
     /**
      * The membership made **unreadable** (capability `background-upload`) — the state a real device is in before its
@@ -357,7 +362,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      * app never reached it.
      */
     private suspend fun joinNewEvent(): String? {
-        mocks.screen.operator.tap(UiIntent.CreateEvent(PRESET_EVENT, LocalDateTime.parse(PAST_START), LocalDateTime.parse(PAST_END)))
+        mocks.screen.operator.tap(
+            UiIntent.CreateEvent(PRESET_EVENT, LocalDateTime.parse(PAST_START), LocalDateTime.parse(PAST_END)),
+        )
         withTimeoutOrNull(AWAIT) { shown.first { (it?.layer as? Layer.JoiningEvent)?.range != null } }
             ?: return null.also { appendConsole("preset: the join gate never opened") }
         mocks.screen.operator.tap(UiIntent.ConfirmJoin)
@@ -434,13 +441,22 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             )
         }
         val backend = (listOf(mocks.ownDeviceId) + injectedDeviceIds).map { id ->
-            DeviceObjects(deviceId = id, own = id == mocks.ownDeviceId, objects = mocks.backend.operator.objectsOf(id).sorted())
+            DeviceObjects(
+                deviceId = id,
+                own = id == mocks.ownDeviceId,
+                objects = mocks.backend.operator.objectsOf(id).sorted(),
+            )
         }
         val queue = mocks.uploadQueue.operator
         val jobs = queue.liveJobKeys().map { key -> JobRow(key, attempts = queue.created.count { it.filename == key }) }
         val session = mocks.uploadSession.operator
         val appUploads = session.liveKeys().map { key -> JobRow(key, attempts = session.created.count { it == key }) }
-        val downloads = mocks.downloads.operator.inFlight().map { DownloadRow(url = it.url, description = it.description) }
+        val downloads = mocks.downloads.operator.inFlight().map {
+            DownloadRow(
+                url = it.url,
+                description = it.description,
+            )
+        }
         return InspectorSnapshot(
             joinedEventId = joined?.eventId,
             galleryRows = galleryRows,
@@ -469,7 +485,11 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         val BAD_GATEWAY: TransferOutcome = TransferOutcome(statusCode = 502, expectedBytes = -1L, receivedBytes = 137L)
 
         /** A body short of its declared length. */
-        val SHORT_READ: TransferOutcome = TransferOutcome(statusCode = 200, expectedBytes = 5_000L, receivedBytes = 1_200L)
+        val SHORT_READ: TransferOutcome = TransferOutcome(
+            statusCode = 200,
+            expectedBytes = 5_000L,
+            receivedBytes = 1_200L,
+        )
 
         private const val CONSOLE_CAP = 200
         private val AWAIT = 10.seconds

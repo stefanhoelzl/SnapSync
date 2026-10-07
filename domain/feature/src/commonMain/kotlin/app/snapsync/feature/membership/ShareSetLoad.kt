@@ -1,14 +1,14 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Upper bound on the join-time listing. The join surface is waiting on it, and uploads are bounded by an

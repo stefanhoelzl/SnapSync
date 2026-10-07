@@ -1,17 +1,16 @@
 package app.snapsync.services.config
 
+import app.snapsync.model.ConfigRead
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
+import app.snapsync.model.MembershipRead
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
-import app.snapsync.model.Direction
-import app.snapsync.model.EventConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import app.snapsync.model.ConfigRead
-import app.snapsync.model.MembershipRead
 
 /**
  * The trigger-time reload's merge rule (migration step 12): a conclusive read replaces the config
@@ -29,7 +28,8 @@ class ConfigAfterReloadTest {
     private val config = EventConfig(
         eventId = "e1",
         name = "Party",
-        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"), maxPhotoDate = FIXTURE_CEILING,
+        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+        maxPhotoDate = FIXTURE_CEILING,
         direction = Direction.Both,
         saveToAlbum = true,
         endsAt = eventEnd("2099-12-31T00:00:00Z"),
@@ -61,7 +61,10 @@ class ConfigAfterReloadTest {
 
     @Test
     fun `a conclusive read replaces the membership`() {
-        assertEquals(MembershipRead.Member(config), membershipAfterReload(ConfigRead.Joined(config), MembershipRead.Unreadable))
+        assertEquals(
+            MembershipRead.Member(config),
+            membershipAfterReload(ConfigRead.Joined(config), MembershipRead.Unreadable),
+        )
         assertEquals(MembershipRead.NotMember, membershipAfterReload(ConfigRead.None, MembershipRead.Member(config)))
     }
 

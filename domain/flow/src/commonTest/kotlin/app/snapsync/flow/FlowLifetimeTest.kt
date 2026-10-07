@@ -67,5 +67,4 @@ class FlowLifetimeTest {
 
         assertTrue(order == listOf("reload", "attest", "fanout"), "unexpected order: $order")
     }
-
 }

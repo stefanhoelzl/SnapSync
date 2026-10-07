@@ -1,11 +1,11 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.SecureStore
+import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.StoredProtection
-import app.snapsync.model.SecureSlot
 import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureStore
 import app.snapsync.services.secure.resolveOrMint
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -74,7 +74,10 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
                 store.write(slot("INACCESSIBLE_WRITE_REFUSES"), written("INACCESSIBLE_WRITE_REFUSES")),
                 "a refused write answers so — the old store threw",
             )
-            assertIs<SecureStoreRead.Unavailable>(store.read(slot("INACCESSIBLE_WRITE_REFUSES")), "a refused write changes nothing")
+            assertIs<SecureStoreRead.Unavailable>(
+                store.read(slot("INACCESSIBLE_WRITE_REFUSES")),
+                "a refused write changes nothing",
+            )
         }
 
         clause("INACCESSIBLE_RESOLVE_NEVER_MINTS", SecureStoreState.INACCESSIBLE) { store ->
@@ -95,11 +98,18 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
         clause("EMPTY_WRITE_THEN_READ", SecureStoreState.EMPTY) { store ->
             val value = written("EMPTY_WRITE_THEN_READ")
             assertEquals(WriteOutcome.Ok, store.write(slot("EMPTY_WRITE_THEN_READ"), value))
-            assertEquals(SecureStoreRead.Found(value, StoredProtection.BACKGROUND_READABLE), store.read(slot("EMPTY_WRITE_THEN_READ")))
+            assertEquals(
+                SecureStoreRead.Found(value, StoredProtection.BACKGROUND_READABLE),
+                store.read(slot("EMPTY_WRITE_THEN_READ")),
+            )
         }
 
         clause("EMPTY_DELETE_IS_A_NOOP", SecureStoreState.EMPTY) { store ->
-            assertEquals(WriteOutcome.Ok, store.delete(slot("EMPTY_DELETE_IS_A_NOOP")), "deleting nothing is not an error")
+            assertEquals(
+                WriteOutcome.Ok,
+                store.delete(slot("EMPTY_DELETE_IS_A_NOOP")),
+                "deleting nothing is not an error",
+            )
             assertEquals(SecureStoreRead.Absent, store.read(slot("EMPTY_DELETE_IS_A_NOOP")))
         }
 
@@ -113,7 +123,10 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
             val second = resolveOrMint(store, slot("EMPTY_RESOLVE_MINTS_EXACTLY_ONCE"), generate = mint)
             assertEquals(1, generations, "the second resolve reads the minted value back")
             assertEquals(first, second)
-            assertEquals(SecureStoreRead.Found(first, StoredProtection.BACKGROUND_READABLE), store.read(slot("EMPTY_RESOLVE_MINTS_EXACTLY_ONCE")))
+            assertEquals(
+                SecureStoreRead.Found(first, StoredProtection.BACKGROUND_READABLE),
+                store.read(slot("EMPTY_RESOLVE_MINTS_EXACTLY_ONCE")),
+            )
         }
 
         clause("HOLDING_READS_BACK", SecureStoreState.HOLDING_BACKGROUND_READABLE) { store ->
@@ -126,7 +139,10 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
         clause("HOLDING_WRITE_REPLACES", SecureStoreState.HOLDING_BACKGROUND_READABLE) { store ->
             val value = written("HOLDING_WRITE_REPLACES")
             store.write(slot("HOLDING_WRITE_REPLACES"), value)
-            assertEquals(SecureStoreRead.Found(value, StoredProtection.BACKGROUND_READABLE), store.read(slot("HOLDING_WRITE_REPLACES")))
+            assertEquals(
+                SecureStoreRead.Found(value, StoredProtection.BACKGROUND_READABLE),
+                store.read(slot("HOLDING_WRITE_REPLACES")),
+            )
         }
 
         clause("HOLDING_DELETE_REMOVES", SecureStoreState.HOLDING_BACKGROUND_READABLE) { store ->
@@ -142,7 +158,10 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
         }
 
         clause("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK", SecureStoreState.HOLDING_UNDER_A_LOST_KEY) { store ->
-            val resolved = resolveOrMint(store, slot("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK")) { minted("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK") }
+            val resolved = resolveOrMint(
+                store,
+                slot("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK"),
+            ) { minted("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK") }
             assertEquals(minted("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK"), resolved)
             assertEquals(
                 SecureStoreRead.Found(resolved, StoredProtection.BACKGROUND_READABLE),

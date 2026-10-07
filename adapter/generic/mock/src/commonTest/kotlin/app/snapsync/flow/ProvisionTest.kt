@@ -1,28 +1,25 @@
 package app.snapsync.flow
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
+import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
+import app.snapsync.model.AssetId
+import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.GalleryReader
-import app.snapsync.services.album.AlbumMapService
-import kotlinx.coroutines.flow.MutableStateFlow
-import app.snapsync.model.AssetId
-import app.snapsync.feature.album.AlbumCoordinator
-import app.snapsync.model.EventConfig
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import app.snapsync.ports.GalleryReader
+import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -103,7 +100,10 @@ class ProvisionTest {
         assertTrue(order.none { it.startsWith("leave:") }, "a re-scan left its own event: $order")
         assertTrue("load" !in order, "a re-scan reset the live membership's ledger: $order")
         assertEquals("save:$eventA", order.first())
-        assertTrue("arm" !in order, "a re-scan must not reach the upload arm — its registration would wipe jobs: $order")
+        assertTrue(
+            "arm" !in order,
+            "a re-scan must not reach the upload arm — its registration would wipe jobs: $order",
+        )
     }
 
     @Test

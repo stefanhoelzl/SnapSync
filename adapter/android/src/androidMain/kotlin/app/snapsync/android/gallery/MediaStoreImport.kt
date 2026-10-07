@@ -1,6 +1,5 @@
 package app.snapsync.android.gallery
 
-import app.snapsync.model.runCatchingCancellable
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
@@ -12,11 +11,12 @@ import android.os.Bundle
 import android.provider.MediaStore
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
+import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
+import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
 import java.io.File
 import java.io.IOException
@@ -66,7 +66,13 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
             ?: return refused("no original to import among ${request.resources.map { it.role }}")
         val collection = collectionFor(original.contentType)
             ?: return refused("'${original.contentType}' is neither a photo nor a video")
-        if (!decodes(original, collection)) return refused("the original '${original.originalFilename}' does not decode")
+        if (!decodes(
+                original,
+                collection,
+            )
+        ) {
+            return refused("the original '${original.originalFilename}' does not decode")
+        }
         val folder = request.album?.takeIf { DefaultGallery.isAlbumFolder(it) } ?: CAMERA_FOLDER
         val motion = motionPhotoOf(request, original, collection)
         try {
@@ -160,13 +166,18 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     }.getOrDefault(false)
 
     private fun discard(uri: Uri) {
-        runCatchingCancellable { resolver.delete(uri, null) }.onFailure { log.w(it) { "the unfinished item $uri stays pending" } }
+        runCatchingCancellable {
+            resolver.delete(uri, null)
+        }.onFailure { log.w(it) { "the unfinished item $uri stays pending" } }
     }
 
     private fun pendingValues(resource: StagedResource, folder: String, ref: AssetRef) = ContentValues().apply {
         // The sender's name with SnapSync's mark (`ReceivedPhotoName`): what a reinstalled app reads back to know the
         // photo was received. A collision makes MediaStore append " (1)", which the mark's reader tolerates.
-        put(MediaStore.MediaColumns.DISPLAY_NAME, ReceivedPhotoName.mark(resource.originalFilename, resource.resourceKey, ref))
+        put(
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            ReceivedPhotoName.mark(resource.originalFilename, resource.resourceKey, ref),
+        )
         put(MediaStore.MediaColumns.MIME_TYPE, resource.contentType)
         put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
         put(MediaStore.MediaColumns.IS_PENDING, 1)

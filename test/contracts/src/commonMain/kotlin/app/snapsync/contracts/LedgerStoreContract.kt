@@ -2,28 +2,25 @@
 
 package app.snapsync.contracts
 
+import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.model.AssetId
-import app.snapsync.model.toLedgerRow
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.Resource
-import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
-import app.snapsync.model.RESOURCE_META_MIME
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.LedgerAggregates
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.model.PendingResource
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
+import app.snapsync.model.Resource
+import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
-
+import app.snapsync.model.toLedgerRow
+import app.snapsync.services.ledger.LedgerService
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.assertFalse
 
 /** The ledger contract's state vocabulary. Its clauses have no state distinction yet: every one starts from an empty store. */
-enum class LedgerStoreState { EMPTY }
+enum class LedgerStoreState { EMPTY, }
 
 /**
  * The event every binding's [LedgerService] is joined to. Every ledger read and write is scoped to the joined event
@@ -58,7 +55,10 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(entry, backend.get(entry.key))
         }
 
-        clause("a row is resolvable by the destination its upload was addressed to", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "a row is resolvable by the destination its upload was addressed to",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             val path = "/api/v2/files/devices/D/cloud-1/primary"
 
             backend.recordUnlessSettled(entry(destinationPath = path))
@@ -69,7 +69,10 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
         // An update that changes the upload route (change `per-event-storage-layout`) leaves jobs an earlier build
         // created addressed to the OLD destination. Each row answers the destination ITS request carried, so such a
         // job still completes its row while newer rows answer the new route.
-        clause("a row keeps the destination its own request carried across a route change", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "a row keeps the destination its own request carried across a route change",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             val before = "/api/v2/files/devices/D/old-1/primary"
             val after = "/api/v2/events/E/files/devices/D/new-1/primary"
             val old = entry(key = "old-1-primary.heic", destinationPath = before)
@@ -82,7 +85,10 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(new.key, backend.entryForDestination(after)?.key)
         }
 
-        clause("a row recorded without a destination is never matched and stays usable", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "a row recorded without a destination is never matched and stays usable",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
 
             // A row recorded with no destination (none of its uploads addressed yet). It must read back normally
             // and simply not answer a destination lookup.
@@ -129,7 +135,10 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(LedgerAggregates(pending = 1, completed = 1), backend.aggregates())
         }
 
-        clause("assetProgress answers a photo done only when all its resources are", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "assetProgress answers a photo done only when all its resources are",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
             backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
             backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED))
@@ -153,14 +162,20 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(aggregates.pending, progress.count { !it.value })
         }
 
-        clause("assetProgress sees a photo done as soon as its last upload is recorded", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "assetProgress sees a photo done as soon as its last upload is recorded",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             LedgerWriter(backend).recordRequested(res("a.heic", "A"), destinationPath = "/a.heic")
             backend.markTerminal("a.heic", TerminalOutcome.COMPLETED)
 
             assertEquals(mapOf(AssetId("A") to true), backend.assetProgress())
         }
 
-        clause("pendingResources returns only non-COMPLETED rows paired with their asset", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "pendingResources returns only non-COMPLETED rows paired with their asset",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
             backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
             backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.REQUESTED))
@@ -185,7 +200,11 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(entry("k", "A", LedgerState.REQUESTED), writer.entry("k"))
 
             writer.recordFailed(res("k", "A"))
-            assertEquals(entry("k", "A", LedgerState.DISCOVERED), writer.entry("k"), "a failure returns the row to the work")
+            assertEquals(
+                entry("k", "A", LedgerState.DISCOVERED),
+                writer.entry("k"),
+                "a failure returns the row to the work",
+            )
         }
 
         clause("resetTo replaces every row with the baseline verbatim", LedgerStoreState.EMPTY) { backend ->
@@ -215,8 +234,14 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(LedgerAggregates(0, 0), backend.aggregates())
         }
 
-        clause("rows of an event this ledger is not joined to are invisible to every read and write", LedgerStoreState.EMPTY) { backend ->
-            backend.resetTo(OTHER_EVENT, listOf(entry(key = "k", assetId = "A", state = LedgerState.REQUESTED, destinationPath = "/p")))
+        clause(
+            "rows of an event this ledger is not joined to are invisible to every read and write",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
+            backend.resetTo(
+                OTHER_EVENT,
+                listOf(entry(key = "k", assetId = "A", state = LedgerState.REQUESTED, destinationPath = "/p")),
+            )
 
             assertNull(backend.get("k"))
             assertNull(backend.entryForDestination("/p"))
@@ -286,7 +311,10 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals("IMG_0001.HEIC", row.originalFilename)
         }
 
-        clause("the manifest projection is not state-scoped because it lists intent", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "the manifest projection is not state-scoped because it lists intent",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             val writer = LedgerWriter(backend)
             backend.seedCompleted(res("done.heic", "A"))
             writer.recordRequested(res("inflight.heic", "B"))
@@ -342,7 +370,10 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertNull(backend.get("ghost.heic"), "a guarded write never resurrects a pruned row")
         }
 
-        clause("a completion recorded by the platform settles the photo everywhere at once", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "a completion recorded by the platform settles the photo everywhere at once",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             // No state sits between "the bytes are stored" and "settled" any more: the moment the platform's
             // callback records the outcome, the photo counts completed and nothing is outstanding for it —
             // without waiting for any cycle.
@@ -356,18 +387,27 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
         }
 
         clause("the backfill fills a bare row and leaves an enriched one alone", LedgerStoreState.EMPTY) { backend ->
-            backend.recordUnlessSettled(LedgerEntry("seeded.heic", AssetId("C"), LedgerState.COMPLETED, destinationPath = "/s"))
+            backend.recordUnlessSettled(
+                LedgerEntry("seeded.heic", AssetId("C"), LedgerState.COMPLETED, destinationPath = "/s"),
+            )
 
             backend.backfillManifestDetail(res("seeded.heic", "C").toLedgerRow(LedgerState.DISCOVERED))
             val filled = backend.get("seeded.heic")!!
             assertEquals(CREATION_DATE, filled.creationDate)
-            assertEquals(LedgerState.COMPLETED, filled.state, "the sweep touches the detail only — state is not its business")
+            assertEquals(
+                LedgerState.COMPLETED,
+                filled.state,
+                "the sweep touches the detail only — state is not its business",
+            )
             assertEquals("/s", filled.destinationPath)
 
             // Idempotent: a second sweep with a DIFFERENT value must not overwrite what is already there.
             val other = Resource(
-                "seeded.heic", AssetId("C"), "image/heic",
-                mapOf(RESOURCE_META_CREATION_DATE to "2099-01-01T00:00:00Z"), Unit,
+                "seeded.heic",
+                AssetId("C"),
+                "image/heic",
+                mapOf(RESOURCE_META_CREATION_DATE to "2099-01-01T00:00:00Z"),
+                Unit,
             )
             backend.backfillManifestDetail(other.toLedgerRow(LedgerState.COMPLETED))
             assertEquals(CREATION_DATE, backend.get("seeded.heic")!!.creationDate)
@@ -387,7 +427,10 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             )
         }
 
-        clause("rowsNeedingJob returns every needing row unbounded in a stable key order", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "rowsNeedingJob returns every needing row unbounded in a stable key order",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             for (k in listOf("c.heic", "a.heic", "d.heic", "b.heic")) {
                 backend.recordUnlessSettled(entry(key = k, assetId = k, state = LedgerState.DISCOVERED))
             }
@@ -403,7 +446,10 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             )
         }
 
-        clause("a DISCOVERED row is backlog and declared but no stranding candidate", LedgerStoreState.EMPTY) { backend ->
+        clause(
+            "a DISCOVERED row is backlog and declared but no stranding candidate",
+            LedgerStoreState.EMPTY,
+        ) { backend ->
             backend.recordUnlessSettled(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
 
             // Counted as outstanding everywhere...
@@ -426,31 +472,9 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
 
     // ── The per-asset progress read (capability `photo-sharing`, "Per-asset progress read") ────────────
 
-
-
-
-
-
-
-
-
-
-
-
-
     // ── manifest detail (capability `photo-sharing`) ────────────────────────────────────────────────
 
-
-
-
     // ── The guarded terminal write and the narrow reads ─────────────────────────────────────────────
-
-
-
-
-
-
-
 
     // --- the work-source read (capability `photo-sharing`) --------------------------------------------
 }

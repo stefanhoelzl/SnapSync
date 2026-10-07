@@ -76,7 +76,10 @@ class LambdaSeamShapeTest {
             val text = code(source)
             KotlinDecls.varDecls(text).filter { HANDLERS_TYPE.matches(it.type.trim()) }.map { Triple(source, text, it) }
         }
-        assertTrue(found.isNotEmpty(), "no adapter stores its handlers — the scan is broken, and this gate passes on nothing")
+        assertTrue(
+            found.isNotEmpty(),
+            "no adapter stores its handlers — the scan is broken, and this gate passes on nothing",
+        )
         val slots = found.filterNot { (_, text, _) -> "override fun listen(" in text }
             .map { (source, _, decl) -> "  ${source.path}:${decl.line} :: var ${decl.name}: ${decl.type}" }
         assertTrue(

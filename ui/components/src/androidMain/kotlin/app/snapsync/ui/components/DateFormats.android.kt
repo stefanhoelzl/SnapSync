@@ -3,10 +3,10 @@ package app.snapsync.ui.components
 import android.icu.text.DateFormat
 import android.icu.util.TimeZone
 import android.icu.util.ULocale
-import java.util.Date
-import java.util.Locale
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.toInstant
+import java.util.Date
+import java.util.Locale
 
 /**
  * Android's [DateFormats]: ICU's pattern for a skeleton. ICU formats an instant, so the wall-clock value is read

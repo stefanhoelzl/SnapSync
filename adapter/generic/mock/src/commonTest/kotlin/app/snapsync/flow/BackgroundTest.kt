@@ -1,13 +1,13 @@
 package app.snapsync.flow
 
-import app.snapsync.services.network.NetworkReadings
-import app.snapsync.mock.NetworkMock
 import app.snapsync.feature.status.ForegroundWatches
-import app.snapsync.model.NetworkAccess
-import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.feature.status.LedgerCountsSource
+import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.feature.status.StatusCountsPoller
+import app.snapsync.mock.NetworkMock
+import app.snapsync.model.NetworkAccess
+import app.snapsync.services.network.NetworkReadings
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,7 +57,9 @@ class BackgroundTest {
         val whileForegrounded = counts.refreshes
         assertTrue(whileForegrounded > 0, "the poll never ticked, so this test proves nothing")
 
-        Background(ForegroundWatches(poller, NetworkWatch(backgroundScope, NetworkReadings(NetworkMock().port())))).run()
+        Background(
+            ForegroundWatches(poller, NetworkWatch(backgroundScope, NetworkReadings(NetworkMock().port()))),
+        ).run()
 
         advanceTimeBy(30.seconds)
         runCurrent()
@@ -71,13 +73,21 @@ class BackgroundTest {
         val watch = NetworkWatch(backgroundScope, NetworkReadings(network.port()))
         watch.start()
         advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
-        assertEquals(NetworkAccess.Offline, watch.access.value, "the watch never published, so this test proves nothing")
+        assertEquals(
+            NetworkAccess.Offline,
+            watch.access.value,
+            "the watch never published, so this test proves nothing",
+        )
 
         Background(ForegroundWatches(StatusCountsPoller(backgroundScope, {}), watch)).run()
 
         assertEquals(NetworkAccess.Online(restricted = false), watch.access.value)
         network.operator.access = NetworkAccess.Blocked
         advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
-        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value, "the watch followed the network after the flow stopped it")
+        assertEquals(
+            NetworkAccess.Online(restricted = false),
+            watch.access.value,
+            "the watch followed the network after the flow stopped it",
+        )
     }
 }

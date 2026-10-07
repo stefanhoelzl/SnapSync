@@ -85,7 +85,8 @@ class EventPhotoSetSourceTest {
     /** The seam itself must still take the policy, or the guard above is checking a shape that is gone. */
     @Test
     fun `the candidate seam still takes the policy`() {
-        val file = File(ZoneGates.domainSrc, "services/src/commonMain/kotlin/app/snapsync/services/gallery/CandidateSource.kt")
+        val file =
+            File(ZoneGates.domainSrc, "services/src/commonMain/kotlin/app/snapsync/services/gallery/CandidateSource.kt")
         assertTrue(file.isFile, "services/gallery/CandidateSource.kt not found — has the read seam moved?")
         assertTrue(
             file.readText().contains("candidates(policy: SelectionPolicy)"),

@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.services.config.ConfigService
 import app.snapsync.model.MembershipRead
+import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
 
 /**
@@ -41,8 +41,11 @@ class PushTailGuard(
         }
         val joins = eventId == active
         log.i {
-            if (joins) "silent push for active event $eventId — its wake joins the tail"
-            else "silent push for $eventId joins no tail (active event = $active)"
+            if (joins) {
+                "silent push for active event $eventId — its wake joins the tail"
+            } else {
+                "silent push for $eventId joins no tail (active event = $active)"
+            }
         }
         return joins
     }

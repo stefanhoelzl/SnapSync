@@ -12,9 +12,9 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import org.junit.Rule
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import org.junit.Rule
 
 /**
  * The **switch-section** idiom of the join gate ([AppToggleSection]): the whole header row is ONE
@@ -47,7 +47,11 @@ class AppToggleSectionTest {
     fun `clicking the row toggles the section both ways`() {
         var checked by mutableStateOf(true)
         rule.setContent {
-            AppToggleSection(title = "Receive everyone's photos", checked = checked, onCheckedChange = { checked = it }) {}
+            AppToggleSection(
+                title = "Receive everyone's photos",
+                checked = checked,
+                onCheckedChange = { checked = it },
+            ) {}
         }
         rule.onNodeWithText("Receive everyone's photos").performClick()
         assertEquals(false, checked)

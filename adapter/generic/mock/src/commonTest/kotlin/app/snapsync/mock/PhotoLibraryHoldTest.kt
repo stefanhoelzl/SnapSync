@@ -2,14 +2,14 @@ package app.snapsync.mock
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.SelectionPolicy
-import kotlin.test.Test
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import kotlin.test.Test
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /** A hold lever pulled twice, then released once, answers every caller it held — as BackendMock's hold does. */
 @OptIn(ExperimentalCoroutinesApi::class)

@@ -89,10 +89,27 @@ object DeviceConditionsText {
                 StandbyBucket.entries.firstOrNull { it.label == v }
             },
             batteryOptimizationExempt =
-                fact(values, DiagnosticKeys.BATTERY_OPTIMIZATION_EXEMPT, batteryOptimizationExempt, String::toBooleanStrictOrNull),
-            batteryPercent = fact(values, DiagnosticKeys.BATTERY_PERCENT, batteryPercent) { v -> v.toIntOrNull()?.takeIf { it in 0..100 } },
-            charging = fact(values, DiagnosticKeys.BATTERY_CHARGING, charging) { v -> Charging.entries.firstOrNull { it.label == v } },
-            thermal = fact(values, DiagnosticKeys.THERMAL, thermal) { v -> Thermal.entries.firstOrNull { it.label == v } },
+            fact(
+                values,
+                DiagnosticKeys.BATTERY_OPTIMIZATION_EXEMPT,
+                batteryOptimizationExempt,
+                String::toBooleanStrictOrNull,
+            ),
+            batteryPercent = fact(
+                values,
+                DiagnosticKeys.BATTERY_PERCENT,
+                batteryPercent,
+            ) { v -> v.toIntOrNull()?.takeIf { it in 0..100 } },
+            charging = fact(
+                values,
+                DiagnosticKeys.BATTERY_CHARGING,
+                charging,
+            ) { v -> Charging.entries.firstOrNull { it.label == v } },
+            thermal = fact(
+                values,
+                DiagnosticKeys.THERMAL,
+                thermal,
+            ) { v -> Thermal.entries.firstOrNull { it.label == v } },
         )
     }
 
@@ -110,7 +127,9 @@ object DeviceConditionsText {
         return when {
             raw == UNSUPPORTED -> Fact.Unsupported
             raw.startsWith(FAILED) -> Fact.Failed(raw.removePrefix(FAILED))
-            else -> Fact.Known(requireNotNull(parse(raw)) { "$key: '$raw' is not a value, '$UNSUPPORTED' or '$FAILED<reason>'" })
+            else -> Fact.Known(
+                requireNotNull(parse(raw)) { "$key: '$raw' is not a value, '$UNSUPPORTED' or '$FAILED<reason>'" },
+            )
         }
     }
 }

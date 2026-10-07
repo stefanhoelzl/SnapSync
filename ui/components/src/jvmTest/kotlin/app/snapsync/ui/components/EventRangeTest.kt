@@ -1,15 +1,15 @@
 package app.snapsync.ui.components
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.plus
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * The create screen's range rules (capability `create-event`): the end is chosen in two steps and neither
@@ -23,11 +23,17 @@ class EventRangeTest {
         val SUNDAY = LocalDate(2026, 7, 8)
 
         /** The event window's length: 30 days from the start, as the app's formatter answers it. */
-        val THIRTY_DAYS = RangeBounds.lastingAtMost { from -> LocalDateTime(from.date.plus(30, DateTimeUnit.DAY), from.time) }
+        val THIRTY_DAYS = RangeBounds.lastingAtMost { from ->
+            LocalDateTime(
+                from.date.plus(30, DateTimeUnit.DAY),
+                from.time,
+            )
+        }
 
         /** A join's window: the event, 20 Jul 18:00 – 25 Jul 18:00, its end time always set. */
         val EVENT = RangeBounds.within(LocalDateTime(2026, 7, 20, 18, 0), LocalDateTime(2026, 7, 25, 18, 0))
-        val WHOLE_EVENT = EventRange(LocalDateTime(2026, 7, 20, 18, 0), LocalDate(2026, 7, 25), LocalTime(18, 0), endPending = false)
+        val WHOLE_EVENT =
+            EventRange(LocalDateTime(2026, 7, 20, 18, 0), LocalDate(2026, 7, 25), LocalTime(18, 0), endPending = false)
 
         /** The clock's hour, as the create screen hands it to a minute settle that has no hour yet. */
         const val NOW_HOUR = 18
@@ -167,7 +173,10 @@ class EventRangeTest {
     @Test
     fun `while the last day is picked the calendar stops at 30 days`() {
         assertEquals(LocalDate(2026, 8, 5), fresh.lastPickableDay(THIRTY_DAYS))
-        assertNull(fresh.pickDay(SUNDAY, THIRTY_DAYS).lastPickableDay(THIRTY_DAYS), "the next tap starts over, anywhere")
+        assertNull(
+            fresh.pickDay(SUNDAY, THIRTY_DAYS).lastPickableDay(THIRTY_DAYS),
+            "the next tap starts over, anywhere",
+        )
     }
 
     @Test
@@ -238,8 +247,15 @@ class EventRangeTest {
     @Test
     fun `on join every settle keeps the end complete`() {
         assertEquals(LocalDateTime(2026, 7, 25, 17, 0), WHOLE_EVENT.settleUntilHour(17, EVENT).until)
-        assertEquals(LocalDateTime(2026, 7, 25, 17, 30), WHOLE_EVENT.settleUntilHour(17, EVENT).settleUntilMinute(30, EVENT, NOW_HOUR).until)
-        assertEquals(LocalDateTime(2026, 7, 25, 18, 0), WHOLE_EVENT.settleUntilMinute(30, EVENT, NOW_HOUR).until, "18:30 is past the event")
+        assertEquals(
+            LocalDateTime(2026, 7, 25, 17, 30),
+            WHOLE_EVENT.settleUntilHour(17, EVENT).settleUntilMinute(30, EVENT, NOW_HOUR).until,
+        )
+        assertEquals(
+            LocalDateTime(2026, 7, 25, 18, 0),
+            WHOLE_EVENT.settleUntilMinute(30, EVENT, NOW_HOUR).until,
+            "18:30 is past the event",
+        )
         assertTrue(WHOLE_EVENT.settleUntilHour(17, EVENT).isValid(EVENT))
     }
 
@@ -247,7 +263,10 @@ class EventRangeTest {
     fun `an end hour chosen alone stays while one of its minutes is still a valid end`() {
         val hourOnly = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilHour(10, THIRTY_DAYS)
         assertEquals(10, hourOnly.dragEndTo(LocalDate(2026, 7, 9), THIRTY_DAYS).untilHour)
-        assertNull(hourOnly.dragStartTo(LocalDate(2026, 7, 8), THIRTY_DAYS).untilHour, "10 on the start's day is before 18:04")
+        assertNull(
+            hourOnly.dragStartTo(LocalDate(2026, 7, 8), THIRTY_DAYS).untilHour,
+            "10 on the start's day is before 18:04",
+        )
         assertFalse(hourOnly.dragEndTo(LocalDate(2026, 7, 6), THIRTY_DAYS).untilHour != null)
     }
 }

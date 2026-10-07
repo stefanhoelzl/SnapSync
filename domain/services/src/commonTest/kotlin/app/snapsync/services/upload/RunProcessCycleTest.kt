@@ -1,11 +1,11 @@
 package app.snapsync.services.upload
 
+import app.snapsync.model.CycleResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
-import app.snapsync.model.CycleResult
 
 /**
  * One OS-driven `process()` invocation (`runProcessCycle`, capability `background-upload`) never

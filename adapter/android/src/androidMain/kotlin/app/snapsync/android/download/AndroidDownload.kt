@@ -14,14 +14,11 @@ import app.snapsync.model.TransferNetwork
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
-import co.touchlab.kermit.Severity
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import co.touchlab.kermit.Logger
-import java.io.File
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
+import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +28,9 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The Android [Download] (capability `receiving-photos`): Android's `DownloadManager`, which owns each transfer — it
@@ -109,15 +109,21 @@ class AndroidDownload(
             .setAllowedOverMetered(network == TransferNetwork.ANY)
             .setAllowedOverRoaming(network == TransferNetwork.ANY)
             .setDescription(tag)
-            .setTitle("$RESTARTS_TITLE$restarts" + if (network == TransferNetwork.UNRESTRICTED_ONLY) UNMETERED_TITLE else "")
+            .setTitle(
+                "$RESTARTS_TITLE$restarts" + if (network == TransferNetwork.UNRESTRICTED_ONLY) UNMETERED_TITLE else "",
+            )
 
     override suspend fun cancelAll() {
-        log.invocation(EntryScope.None, "download.cancelAll", result = { cancelled: Int -> "$cancelled transfer(s)" }) { cancel() }
+        log.invocation(EntryScope.None, "download.cancelAll", result = { cancelled: Int -> "$cancelled transfer(s)" }) {
+            cancel()
+        }
     }
 
     private fun cancel(): Int {
         val cancelled = synchronized(lock) {
-            rows(null) { cursor -> cursor.long(DownloadManager.COLUMN_ID) to cursor.string(DownloadManager.COLUMN_DESCRIPTION) }
+            rows(
+                null,
+            ) { cursor -> cursor.long(DownloadManager.COLUMN_ID) to cursor.string(DownloadManager.COLUMN_DESCRIPTION) }
                 .onEach { (id, _) -> manager.remove(id) }
         }
         // DownloadManager says nothing about a removal, so every cancelled transfer is reported here, as the port promises.
@@ -130,7 +136,12 @@ class AndroidDownload(
      * delivered (the broadcast's own, and any other a missed broadcast left), then the drain report.
      */
     internal fun deliverBroadcast(id: Long, completion: Completion) =
-        log.invocation(EntryScope.None, "download.handleEvents", params = "id=$id", result = { "$it finished transfer(s)" }) {
+        log.invocation(
+            EntryScope.None,
+            "download.handleEvents",
+            params = "id=$id",
+            result = { "$it finished transfer(s)" },
+        ) {
             val current = handlers.orNull("a completion broadcast") ?: return@invocation 0.also { completion.complete() }
             current.onBackgroundEvents(completion)
             deliverFinished(null).also { current.onEventsDrained() }
@@ -142,7 +153,12 @@ class AndroidDownload(
         val finished = rows(id) { it.finishedRow() }.filterNotNull()
         for (row in finished) {
             runCatchingCancellable {
-                log.invocation(EntryScope.None, "download.didComplete", params = "tag=${row.tag}", severity = Severity.Debug) {
+                log.invocation(
+                    EntryScope.None,
+                    "download.didComplete",
+                    params = "tag=${row.tag}",
+                    severity = Severity.Debug,
+                ) {
                     row.deliverTo(current)
                 }
             }

@@ -9,7 +9,11 @@ import kotlin.time.Instant
 class FootprintTest {
 
     private fun sample(second: Long, moment: String = "after onSilentPush", bytes: Long = 83_574_000) =
-        FootprintSample(Instant.fromEpochSeconds(second), moment, MemoryFootprint(bytes, peakBytes = 120_000_000, headroomBytes = 1_200_000_000))
+        FootprintSample(
+            Instant.fromEpochSeconds(second),
+            moment,
+            MemoryFootprint(bytes, peakBytes = 120_000_000, headroomBytes = 1_200_000_000),
+        )
 
     @Test
     fun `a reading reads in kB - the unit the platform's report states its memory in`() {
@@ -27,7 +31,9 @@ class FootprintTest {
 
     @Test
     fun `the trail keeps the newest readings and drops the oldest`() {
-        val trail = (1L..12L).fold(emptyList<FootprintSample>()) { kept, second -> appendedFootprint(kept, sample(second)) }
+        val trail = (1L..12L).fold(
+            emptyList<FootprintSample>(),
+        ) { kept, second -> appendedFootprint(kept, sample(second)) }
         assertEquals(FOOTPRINT_TRAIL_LENGTH, trail.size)
         assertEquals((5L..12L).map { it * 1_000 }, trail.map { it.atEpochMillis })
     }
@@ -36,7 +42,10 @@ class FootprintTest {
     fun `the report's context names the newest reading first`() {
         val fields = footprintFields(listOf(sample(1, "entering background"), sample(2, "after onSilentPush")))
         assertEquals(setOf("$FOOTPRINT_FIELD_PREFIX.0", "$FOOTPRINT_FIELD_PREFIX.1"), fields.keys)
-        assertTrue("after onSilentPush" in fields.getValue("$FOOTPRINT_FIELD_PREFIX.0"), "the last reading taken: $fields")
+        assertTrue(
+            "after onSilentPush" in fields.getValue("$FOOTPRINT_FIELD_PREFIX.0"),
+            "the last reading taken: $fields",
+        )
         assertTrue("entering background" in fields.getValue("$FOOTPRINT_FIELD_PREFIX.1"), fields.toString())
     }
 

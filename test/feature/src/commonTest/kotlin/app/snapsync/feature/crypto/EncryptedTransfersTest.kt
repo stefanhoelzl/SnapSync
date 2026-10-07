@@ -1,15 +1,5 @@
 package app.snapsync.feature.crypto
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
-import app.snapsync.services.crypto.EventKeyMinting
-import app.snapsync.services.upload.TransferRecord
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.LedgerState
-import app.snapsync.model.LedgerEntry
 import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
@@ -25,12 +15,17 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.HeadRead
 import app.snapsync.model.Hmac
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
+import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
@@ -39,11 +34,14 @@ import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.decodeEventKey
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
 import app.snapsync.services.crypto.DownloadOpening
+import app.snapsync.services.crypto.EventKeyMinting
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
@@ -52,9 +50,9 @@ import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.staging.StagingService
+import app.snapsync.services.upload.TransferRecord
 import app.snapsync.services.upload.UploadTransferService
 import app.snapsync.services.upload.uploadStagingPath
-import app.snapsync.model.SelectionPolicy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -106,7 +104,9 @@ class EncryptedTransfersTest {
             created += source to target
             return UploadCreateOutcome.CREATED
         }
-        override suspend fun jobs(set: UploadJobSet): List<UploadJob> = if (set == UploadJobSet.RETRY_OFFERED) offered else emptyList()
+        override suspend fun jobs(
+            set: UploadJobSet,
+        ): List<UploadJob> = if (set == UploadJobSet.RETRY_OFFERED) offered else emptyList()
         override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome {
             retried += target
             return ChangeOutcome.Applied
@@ -132,7 +132,12 @@ class EncryptedTransfersTest {
     /** The one row a retry resolves its offered job to — by destination, as the ledger does. */
     private val record = object : TransferRecord {
         override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
-            LedgerEntry(key = KEY, assetId = AssetId(ASSET), state = LedgerState.REQUESTED, destinationPath = destinationPath)
+            LedgerEntry(
+                key = KEY,
+                assetId = AssetId(ASSET),
+                state = LedgerState.REQUESTED,
+                destinationPath = destinationPath,
+            )
         override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean = true
     }
 
@@ -147,7 +152,11 @@ class EncryptedTransfersTest {
     )
 
     private val resource = Resource(KEY, AssetId(ASSET), "public.heic", emptyMap(), Unit)
-    private val request = UploadRequest("https://edge.example/api/v2/events/$EVENT/files/devices/$DEVICE_A/$ASSET/primary?filename=IMG.HEIC", mapOf("Content-Type" to "image/heic"), resource)
+    private val request = UploadRequest(
+        "https://edge.example/api/v2/events/$EVENT/files/devices/$DEVICE_A/$ASSET/primary?filename=IMG.HEIC",
+        mapOf("Content-Type" to "image/heic"),
+        resource,
+    )
 
     private fun adFor(device: String) = EncryptedFileFormat.associatedData(EVENT, device, ASSET, "primary")
 
@@ -160,8 +169,13 @@ class EncryptedTransfersTest {
         assertEquals(UploadCreateOutcome.CREATED, transfer(sharer, platform).createJob(request, resource))
         val (source, target) = platform.created.single()
         assertEquals("mem:/shared/${uploadStagingPath(KEY)}", (source as UploadSource.File).path)
-        assertTrue(target.headers.keys.none { it.startsWith("x-snapsync-file") }, "a file sealed here needs no edge seal")
-        val sealed = assertIs<FileResult.Ok<ByteArray>>(sharer.files.read(FileArea.SHARED, uploadStagingPath(KEY))).value
+        assertTrue(
+            target.headers.keys.none { it.startsWith("x-snapsync-file") },
+            "a file sealed here needs no edge seal",
+        )
+        val sealed = assertIs<FileResult.Ok<ByteArray>>(
+            sharer.files.read(FileArea.SHARED, uploadStagingPath(KEY)),
+        ).value
         assertEquals(FileResult.Ok(false), sharer.files.exists(FileArea.SHARED, "${uploadStagingPath(KEY)}.plain"))
 
         // Another member downloads those bytes and stages them opened.
@@ -221,7 +235,10 @@ class EncryptedTransfersTest {
         val device = Device(DEVICE_A, null, null)
         val platform = Platform(UploadSourceKind.FILE)
         transfer(device, platform).createJob(request, resource)
-        assertContentEquals(photo, assertIs<FileResult.Ok<ByteArray>>(device.files.read(FileArea.SHARED, uploadStagingPath(KEY))).value)
+        assertContentEquals(
+            photo,
+            assertIs<FileResult.Ok<ByteArray>>(device.files.read(FileArea.SHARED, uploadStagingPath(KEY))).value,
+        )
     }
 
     @Test
@@ -244,7 +261,11 @@ class EncryptedTransfersTest {
         }
         advanceUntilIdle()
         assertTrue(staged.isEmpty())
-        assertTrue(receiver.files.operations.none { it.startsWith("write") && !it.contains("os-tmp") && !it.contains("eventconfig") })
+        assertTrue(
+            receiver.files.operations.none {
+                it.startsWith("write") && !it.contains("os-tmp") && !it.contains("eventconfig")
+            },
+        )
     }
 
     @Test
@@ -270,10 +291,14 @@ class EncryptedTransfersTest {
         val HEALTHY = TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1L)
     }
 
-
     private fun offeredJob() = UploadJob(
-        handle = "job", tag = null, destinationPath = "/api/v2/events/$EVENT/files/devices/$DEVICE_A/$ASSET/primary",
-        contentType = "image/heic", state = UploadJobState.FAILED, error = null, source = null,
+        handle = "job",
+        tag = null,
+        destinationPath = "/api/v2/events/$EVENT/files/devices/$DEVICE_A/$ASSET/primary",
+        contentType = "image/heic",
+        state = UploadJobState.FAILED,
+        error = null,
+        source = null,
     )
 
     @Test
@@ -282,7 +307,10 @@ class EncryptedTransfersTest {
         val sealed = Platform(UploadSourceKind.RESOURCE).apply { offered = listOf(offeredJob()) }
         val transfer = transfer(Device(DEVICE_A, minted.linkKey, minted.keyId), sealed)
         transfer.retryJob(transfer.fetchRetryJobs().single(), request)
-        assertTrue(EncryptedFileFormat.FILE_KEY_HEADER in sealed.retried.single().headers, "a retry carries a fresh one-file key")
+        assertTrue(
+            EncryptedFileFormat.FILE_KEY_HEADER in sealed.retried.single().headers,
+            "a retry carries a fresh one-file key",
+        )
 
         val withheld = Platform(UploadSourceKind.RESOURCE).apply { offered = listOf(offeredJob()) }
         val keyless = transfer(Device(DEVICE_A, null, minted.keyId), withheld)

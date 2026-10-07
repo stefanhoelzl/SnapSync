@@ -1,11 +1,11 @@
 package app.snapsync.model
 
+import kotlinx.serialization.Serializable
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
-import kotlinx.serialization.Serializable
 
 /**
  * Where the joined event is in its life, as the joined screen's dates line says it (capability `sync-status`,

@@ -8,14 +8,13 @@ import app.snapsync.model.RegistrationState
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.ports.ExtensionRegistry
-import kotlinx.cinterop.cValue
-import platform.Foundation.NSOperatingSystemVersion
-import platform.Foundation.NSProcessInfo
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.Foundation.NSError
+import kotlinx.cinterop.cValue
+import platform.Foundation.NSOperatingSystemVersion
+import platform.Foundation.NSProcessInfo
 import platform.Photos.PHPhotoLibrary
 
 /**

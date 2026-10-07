@@ -1,9 +1,9 @@
 package app.snapsync.ui.components
 
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.toJavaLocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * The JVM's [DateFormats]: `java.time`'s CLDR patterns for a skeleton (JDK 19+). Its matcher does not widen a lone

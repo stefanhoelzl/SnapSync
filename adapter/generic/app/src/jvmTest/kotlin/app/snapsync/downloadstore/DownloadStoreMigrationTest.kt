@@ -1,15 +1,14 @@
 package app.snapsync.downloadstore
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.AssetRef
-
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.snapsync.databases.opened
+import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.downloads.db.DownloadDatabase
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.test.runTest
 
 /**
  * The download store's migrations since 0.4's v5 (the older ones are squashed: every device runs 0.4 or later). Each

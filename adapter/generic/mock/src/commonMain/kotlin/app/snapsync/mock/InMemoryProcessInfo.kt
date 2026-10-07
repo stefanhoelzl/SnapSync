@@ -20,4 +20,5 @@ internal class InMemoryProcessInfo(
 }
 
 /** A plausible small app: what a mock process reads until an operator sets otherwise. */
-internal val DEFAULT_FOOTPRINT = MemoryFootprint(footprintBytes = 40_000_000, peakBytes = 60_000_000, headroomBytes = 1_400_000_000)
+internal val DEFAULT_FOOTPRINT =
+    MemoryFootprint(footprintBytes = 40_000_000, peakBytes = 60_000_000, headroomBytes = 1_400_000_000)

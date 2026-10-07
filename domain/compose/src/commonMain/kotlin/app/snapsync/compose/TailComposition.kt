@@ -13,11 +13,11 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EntryContext
 import app.snapsync.services.wake.Heartbeat
 import app.snapsync.services.wake.OsCompletions
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * The app process's **opportunistic tail** as composed, and everything that reaches it without an OS handler of its

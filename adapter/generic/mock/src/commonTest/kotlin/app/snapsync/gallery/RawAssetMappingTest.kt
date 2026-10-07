@@ -1,33 +1,31 @@
 package app.snapsync.gallery
 
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AssetId
-import app.snapsync.services.gallery.CandidateSource
-import app.snapsync.services.gallery.GalleryCandidateSource
-import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
+import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_IS_EDITED
 import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
 import app.snapsync.model.RESOURCE_META_IS_SCREEN_RECORDING
 import app.snapsync.model.RESOURCE_META_IS_VIDEO
-import app.snapsync.model.RESOURCE_META_PIXEL_AREA
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
+import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
-import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionRulesFor
-import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.candidatesFromResources
+import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesFrom
-
+import app.snapsync.model.selectionRulesFor
+import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.services.gallery.GalleryCandidateSource
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,11 +33,25 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** The library read over an in-memory gallery holding [assets] — the service the app composes over the gallery. */
-private fun librarySource(assets: List<RawAsset>): CandidateSource = GalleryCandidateSource(inMemoryGallery(MutableStateFlow(assets)))
+private fun librarySource(
+    assets: List<RawAsset>,
+): CandidateSource = GalleryCandidateSource(inMemoryGallery(MutableStateFlow(assets)))
 
 /** An admitting policy bounded below by [cutoff] — what the fake narrows its walk by. */
 private suspend fun admitting(cutoff: String) =
-    SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
+    SelectionPolicy(
+        selectionRulesFor(
+            includesUpload = true,
+            cutoff = captureCutoff(
+                cutoff,
+            ),
+            ceiling = null,
+            suppressedAssetIds = {
+                emptySet()
+            },
+            albumExcludedAssetIds = { emptySet() },
+        ),
+    )
 
 /** The resources a source yields for [cutoff] — walk composed with the per-candidate mapping. */
 private suspend fun CandidateSource.resourcesFor(cutoff: String) =
@@ -161,14 +173,18 @@ class RawAssetMappingTest {
     @Test
     fun opaque_handle_rides_into_resource_data_uninterpreted() {
         val marker = Any()
-        val resources = resourcesFrom(listOf(RawAsset(AssetId("A"), "", listOf(raw(ResourceRole.PRIMARY, handle = marker)))))
+        val resources =
+            resourcesFrom(listOf(RawAsset(AssetId("A"), "", listOf(raw(ResourceRole.PRIMARY, handle = marker)))))
         assertEquals(marker, resources.single().data, "the PHAssetResource handle crosses uninterpreted")
     }
 
     @Test
     fun mapped_filename_round_trips_to_the_assetid() {
         // The discovery->key->parse identity echo-suppression + reconstruct rely on (change 1's parser).
-        val resources = resourcesFrom(listOf(RawAsset(AssetId("ABC_L0_001"), "", listOf(raw(ResourceRole.PRIMARY, name = "x.JPG")))))
+        val resources =
+            resourcesFrom(
+                listOf(RawAsset(AssetId("ABC_L0_001"), "", listOf(raw(ResourceRole.PRIMARY, name = "x.JPG")))),
+            )
         assertEquals(AssetId("ABC_L0_001"), assetIdFromUploadKey(resources.single().filename))
     }
 
@@ -217,7 +233,8 @@ class RawAssetMappingTest {
     @Test
     fun an_undated_asset_is_before_every_bound() = runTest {
         // An empty `creationDate` sorts before any non-empty cutoff, so an undated asset is never in scope.
-        val source = librarySource(listOf(RawAsset(AssetId("U"), "", listOf(raw(ResourceRole.PRIMARY, name = "u.JPG")))))
+        val source =
+            librarySource(listOf(RawAsset(AssetId("U"), "", listOf(raw(ResourceRole.PRIMARY, name = "u.JPG")))))
 
         assertEquals(emptyList(), source.resourcesFor(CUTOFF))
     }

@@ -15,7 +15,13 @@ import kotlin.test.assertTrue
  */
 class HeartbeatCadenceTest {
 
-    private val open = CadenceFacts(joined = true, ended = false, shares = true, fullGrant = true, osUploaderConfirmed = false)
+    private val open = CadenceFacts(
+        joined = true,
+        ended = false,
+        shares = true,
+        fullGrant = true,
+        osUploaderConfirmed = false,
+    )
 
     private fun cadence(
         facts: CadenceFacts = open,
@@ -32,9 +38,18 @@ class HeartbeatCadenceTest {
 
     @Test
     fun `work left keeps the heartbeat busy for every kind of member`() {
-        for (facts in listOf(open, open.copy(fullGrant = false), open.copy(ended = true), open.copy(osUploaderConfirmed = true))) {
+        for (facts in listOf(
+            open,
+            open.copy(fullGrant = false),
+            open.copy(ended = true),
+            open.copy(osUploaderConfirmed = true),
+        )) {
             assertEquals(WakeCadence.BUSY, cadence(facts = facts, leftWork = true), "uploads left, $facts")
-            assertEquals(WakeCadence.BUSY, cadence(facts = facts, importsRemain = true, contributes = false), "imports left, $facts")
+            assertEquals(
+                WakeCadence.BUSY,
+                cadence(facts = facts, importsRemain = true, contributes = false),
+                "imports left, $facts",
+            )
         }
     }
 
@@ -53,14 +68,26 @@ class HeartbeatCadenceTest {
     @Test
     fun `receive-only held back and partial-grant members idle`() {
         assertEquals(WakeCadence.IDLE, cadence(contributes = false), "receive-only or held back: the cycle declined")
-        assertEquals(WakeCadence.IDLE, cadence(facts = open.copy(shares = false)), "receive-only, whatever the cycle said")
-        assertEquals(WakeCadence.IDLE, cadence(facts = open.copy(fullGrant = false)), "a camera photo never joins a selection")
+        assertEquals(
+            WakeCadence.IDLE,
+            cadence(facts = open.copy(shares = false)),
+            "receive-only, whatever the cycle said",
+        )
+        assertEquals(
+            WakeCadence.IDLE,
+            cadence(facts = open.copy(fullGrant = false)),
+            "a camera photo never joins a selection",
+        )
     }
 
     @Test
     fun `only processing and a pause leave work`() {
         assertTrue(CycleResult.PROCESSING.leftWork)
-        for (result in listOf(CycleResult.COMPLETED, CycleResult.FAILED, CycleResult.SKIPPED)) assertFalse(result.leftWork)
+        for (result in listOf(
+            CycleResult.COMPLETED,
+            CycleResult.FAILED,
+            CycleResult.SKIPPED,
+        )) assertFalse(result.leftWork)
         for (result in CycleResult.all.filterIsInstance<CycleResult.Paused>()) assertTrue(result.leftWork)
     }
 }

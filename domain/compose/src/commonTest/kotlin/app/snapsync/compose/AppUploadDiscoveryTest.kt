@@ -1,19 +1,19 @@
 package app.snapsync.compose
 
-import app.snapsync.services.gallery.WalkMemoUse
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.noContribution
-import app.snapsync.services.gallery.Discovery
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.gallery.WalkMemoUse
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.test.runTest
 
 /**
  * The app process's discovery binding (decision record `changes/own-work-per-wake`, D9) serves an unchanged
@@ -40,7 +40,12 @@ class AppUploadDiscoveryTest {
         val tokens = object : LibraryChangeTokenRead {
             override suspend fun changeToken(): LibraryChangeToken = unchanged
         }
-        val discovery = appUploadDiscovery(walk, tokens, PhotoGrantRead { GalleryAccess.GRANTED }, Logger.withTag("test"))
+        val discovery = appUploadDiscovery(
+            walk,
+            tokens,
+            PhotoGrantRead { GalleryAccess.GRANTED },
+            Logger.withTag("test"),
+        )
 
         discovery.discover(noContribution())
         discovery.discover(noContribution())

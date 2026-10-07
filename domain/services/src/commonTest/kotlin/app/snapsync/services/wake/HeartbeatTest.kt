@@ -10,13 +10,13 @@ import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.CapturingLogWriter
 import co.touchlab.kermit.Severity
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.test.runTest
 
 /**
  * The heartbeat over the `Wake` port (capability `background-upload`): what it asks for, that it asks for every wake
@@ -96,7 +96,12 @@ class HeartbeatTest {
     fun `watching the library asks for a library-change wake and answers that one stands`() = runTest {
         val wake = RecordingWake()
         assertTrue(Heartbeat(wake, ANY_NETWORK).watchLibrary())
-        assertEquals(listOf<Pair<WakeId, WakeTrigger>>(WakeId.LibraryChanged to WakeTrigger.LibraryChange(maxDelay = 60.seconds)), wake.scheduled)
+        assertEquals(
+            listOf<Pair<WakeId, WakeTrigger>>(
+                WakeId.LibraryChanged to WakeTrigger.LibraryChange(maxDelay = 60.seconds),
+            ),
+            wake.scheduled,
+        )
     }
 
     @Test

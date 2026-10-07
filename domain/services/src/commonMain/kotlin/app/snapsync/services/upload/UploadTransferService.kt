@@ -1,10 +1,13 @@
 package app.snapsync.services.upload
 
 import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.EntryScope
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
+import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.Resource
 import app.snapsync.model.TerminalOutcome
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
@@ -12,19 +15,16 @@ import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
-import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.model.EntryScope
+import app.snapsync.model.invocation
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
-import app.snapsync.model.PlatformUploadJob
 import app.snapsync.ports.Upload
 import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.gallery.UploadDiscovery
-import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -87,7 +87,10 @@ class UploadTransferService(
             for (job in upload.jobs(UploadJobSet.RETRY_OFFERED)) {
                 when (val classified = classifyFetchedJob(job.destinationPath, job.state, job.error)) {
                     // EVERY presented job must be acknowledged, an unmappable one included (error 50008).
-                    FetchedJob.AcknowledgeToDrain -> { report.unrecoverable++; acknowledge(job) }
+                    FetchedJob.AcknowledgeToDrain -> {
+                        report.unrecoverable++
+                        acknowledge(job)
+                    }
                     is FetchedJob.Emit -> when (val row = rowFor(classified)) {
                         is JobRow.Found -> out += PlatformUploadJob(
                             key = row.key,
@@ -97,8 +100,14 @@ class UploadTransferService(
                         )
                         // Never handed to the cycle, which would decline to retry it and leave it un-acknowledged:
                         // a job for a photo that left is answered HERE.
-                        JobRow.Pruned -> { report.pruned++; acknowledge(job) }
-                        JobRow.Unmappable -> { report.unrecoverable++; acknowledge(job) }
+                        JobRow.Pruned -> {
+                            report.pruned++
+                            acknowledge(job)
+                        }
+                        JobRow.Unmappable -> {
+                            report.unrecoverable++
+                            acknowledge(job)
+                        }
                     }
                 }
             }
@@ -202,7 +211,11 @@ class UploadTransferService(
             val target = UploadTarget(request.url, request.headers, network())
             when (val seal = sealing?.sealFor(resource) ?: UploadSeal.Plain) {
                 UploadSeal.Plain -> when (upload.accepts) {
-                    UploadSourceKind.RESOURCE -> upload.create(UploadSource.Resource(resource.data), target, resource.filename)
+                    UploadSourceKind.RESOURCE -> upload.create(
+                        UploadSource.Resource(resource.data),
+                        target,
+                        resource.filename,
+                    )
                     UploadSourceKind.FILE -> createFromFile(resource, target, seal = null)
                 }
                 // Sealed on this device wherever the platform takes a file; only PhotoKit's queue, which sends the
@@ -322,7 +335,9 @@ class UploadTransferService(
                     return@withLock
                 }
             }
-            val claimed = upload.jobs(UploadJobSet.IN_FLIGHT).mapNotNullTo(HashSet()) { job -> job.tag?.let(::uploadStagingPath) }
+            val claimed = upload.jobs(
+                UploadJobSet.IN_FLIGHT,
+            ).mapNotNullTo(HashSet()) { job -> job.tag?.let(::uploadStagingPath) }
             val unclaimed = listed - claimed
             if (unclaimed.isEmpty()) return@withLock
             log.i { "releasing ${unclaimed.size} staged upload file(s) no in-flight job uploads from" }

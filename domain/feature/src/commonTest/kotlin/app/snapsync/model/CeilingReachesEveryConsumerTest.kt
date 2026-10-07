@@ -2,10 +2,10 @@ package app.snapsync.model
 
 import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.services.gallery.CandidateSource
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * **The regression fixture the old suite could not express** (capability `photo-sharing`).
@@ -103,7 +103,11 @@ class CeilingReachesEveryConsumerTest {
             override suspend fun candidates(policy: SelectionPolicy) =
                 CandidateRead.Readable(candidatesFromFacts(facts))
         }
-        val count = ShareableCountSource(source, suppressedLocalIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }).count(
+        val count = ShareableCountSource(
+            source,
+            suppressedLocalIds = { emptySet() },
+            albumExcludedAssetIds = { emptySet() },
+        ).count(
             includesUpload = true,
             cutoff = cutoff,
             ceiling = ceiling,

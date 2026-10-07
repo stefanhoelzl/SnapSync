@@ -2,21 +2,20 @@
 
 package app.snapsync.feature.push
 
-import app.snapsync.model.PushEndpoint
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
-import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.backend.PushTokenPublisher
+import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.push.PushTokenSource
-
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -44,7 +43,9 @@ private class FakePushTokenPublisher(private val result: Result<Unit> = Result.s
 /** A secure store the test can lock (a device locked since boot) and unlock, at the port. */
 private class LockableSecureStore(private val inner: SecureStore = inMemorySecureStore()) : SecureStore {
     var locked = false
-    override fun read(slot: SecureSlot): SecureStoreRead = if (locked) SecureStoreRead.Unavailable("locked") else inner.read(slot)
+    override fun read(
+        slot: SecureSlot,
+    ): SecureStoreRead = if (locked) SecureStoreRead.Unavailable("locked") else inner.read(slot)
     override fun write(slot: SecureSlot, value: String): WriteOutcome =
         if (locked) WriteOutcome.Failed("locked") else inner.write(slot, value)
     override fun delete(slot: SecureSlot): WriteOutcome = inner.delete(slot)
@@ -221,7 +222,11 @@ class PushRegistrationTest {
         source.deliver("TOKEN1")
         job.cancel()
 
-        assertEquals(listOf(PushEndpoint("apns", "TOKEN1", "sandbox")), client.calls, "the backend never saw this device")
+        assertEquals(
+            listOf(PushEndpoint("apns", "TOKEN1", "sandbox")),
+            client.calls,
+            "the backend never saw this device",
+        )
     }
 
     @Test

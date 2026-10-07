@@ -1,9 +1,5 @@
 package app.snapsync.feature.crypto
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
@@ -19,6 +15,8 @@ import app.snapsync.model.Resource
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
@@ -47,8 +45,10 @@ class CryptoServicesEdgesTest {
     private val ref = AssetRef(DEVICE, AssetId("ASSET1"))
 
     private fun config(keyId: String?) = EventConfig(
-        eventId = EVENT, name = "Secret",
-        minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
+        eventId = EVENT,
+        name = "Secret",
+        minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"),
+        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
         keyId = keyId,
         endsAt = eventEnd("2099-12-31T00:00:00Z"),
         deletesAt = deletesAt("2099-12-31T00:00:00Z"),
@@ -59,14 +59,24 @@ class CryptoServicesEdgesTest {
         val minted = EventKeys(crypto, inMemorySecureStore()).mint()
         val files = RecordingFiles()
         val locked = EventKeys(crypto, inMemorySecureStore(unavailable = true))
-        val sealing = UploadSealing(locked, FileCipher(crypto, files), configService(config(minted.keyId), files), testIdentity(DEVICE))
+        val sealing = UploadSealing(
+            locked,
+            FileCipher(crypto, files),
+            configService(config(minted.keyId), files),
+            testIdentity(DEVICE),
+        )
         assertIs<UploadSeal.Withheld>(sealing.sealFor(resource))
 
         val notJoined = UploadSealing(locked, FileCipher(crypto, files), configService(null), testIdentity(DEVICE))
         assertEquals(UploadSeal.Plain, notJoined.sealFor(resource))
 
         val kept = EventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
-        val sealed = UploadSealing(kept, FileCipher(crypto, files), configService(config(minted.keyId), files), testIdentity(DEVICE))
+        val sealed = UploadSealing(
+            kept,
+            FileCipher(crypto, files),
+            configService(config(minted.keyId), files),
+            testIdentity(DEVICE),
+        )
             .sealFor(resource)
         assertEquals("Sealed", sealed.toString(), "a seal never prints its key")
     }
@@ -94,7 +104,12 @@ class CryptoServicesEdgesTest {
         val minted = EventKeys(crypto, inMemorySecureStore()).mint()
         val keys = EventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
         val files = RecordingFiles()
-        val opening = DownloadOpening(keys, FileCipher(crypto, files), configService(config(minted.keyId), files), files)
+        val opening = DownloadOpening(
+            keys,
+            FileCipher(crypto, files),
+            configService(config(minted.keyId), files),
+            files,
+        )
         repeat(6) {
             files.write(FileArea.SHARED, "in", ByteArray(100))
             assertFalse(opening.open(ref, "ASSET1-primary.heic", EVENT, "in", "out"))
@@ -102,7 +117,11 @@ class CryptoServicesEdgesTest {
         // A file that does open resets the count.
         val plain = RecordingFiles().also { it.write(FileArea.SHARED, "p", ByteArray(10)) }
         FileCipher(crypto, plain).encrypt(
-            keys.current()!!, EncryptedFileFormat.associatedData(EVENT, DEVICE, "ASSET1", "primary"), FileArea.SHARED, "p", "s",
+            keys.current()!!,
+            EncryptedFileFormat.associatedData(EVENT, DEVICE, "ASSET1", "primary"),
+            FileArea.SHARED,
+            "p",
+            "s",
         )
         files.write(FileArea.SHARED, "in", (plain.read(FileArea.SHARED, "s") as FileResult.Ok).value)
         files.write(FileArea.SHARED, "again", (plain.read(FileArea.SHARED, "s") as FileResult.Ok).value)
@@ -127,7 +146,10 @@ class CryptoServicesEdgesTest {
         assertIs<Opened.Unreadable>(cipher.decrypt(key, ad, FileArea.SHARED, "s", "o"))
         files.denied += FileArea.SHARED to "t.part"
         assertIs<FileResult.Denied>(cipher.encrypt(key, ad, FileArea.SHARED, "p", "t"))
-        assertEquals(FileResult.NotFound, FileCipher(crypto, RecordingFiles()).encrypt(key, ad, FileArea.SHARED, "missing", "t"))
+        assertEquals(
+            FileResult.NotFound,
+            FileCipher(crypto, RecordingFiles()).encrypt(key, ad, FileArea.SHARED, "missing", "t"),
+        )
     }
 
     @Test

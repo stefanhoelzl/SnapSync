@@ -17,10 +17,13 @@ class DatabasesMockContractBindingTest {
     private val binding = object : Binding<DatabasesState, Databases> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(DatabasesState.ABSENT, DatabasesState.CURRENT, DatabasesState.OLD, DatabasesState.UNOPENABLE)
+        override val reaches =
+            setOf(DatabasesState.ABSENT, DatabasesState.CURRENT, DatabasesState.OLD, DatabasesState.UNOPENABLE)
         override fun create(state: DatabasesState, clauseId: String): Entered<Databases> {
             val databases = when (state) {
-                DatabasesState.UNOPENABLE -> inMemoryDatabases(mapOf(DatabasesContract.NAME to DbOpen.Failed("unopenable")))
+                DatabasesState.UNOPENABLE -> inMemoryDatabases(
+                    mapOf(DatabasesContract.NAME to DbOpen.Failed("unopenable")),
+                )
                 else -> inMemoryDatabases()
             }
             when (state) {

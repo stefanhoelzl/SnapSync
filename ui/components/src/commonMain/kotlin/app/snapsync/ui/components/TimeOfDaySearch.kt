@@ -1,7 +1,7 @@
 package app.snapsync.ui.components
 
-import kotlin.math.abs
 import kotlinx.datetime.LocalTime
+import kotlin.math.abs
 
 // Searching a day's times for an allowed one — what turns a wheel's settle on a disallowed row into the
 // nearest valid value (capability `create-event`: a bad range is unreachable, never refused).

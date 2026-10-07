@@ -6,12 +6,12 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Seeded
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import kotlinx.coroutines.runBlocking
 
 /**
  * The REAL backend, served locally for the backend port contracts' `Live` bindings (capability
@@ -63,7 +63,10 @@ object LiveEdge {
         // The setup client stays open for the clause: a clause may read another route through it.
         Entered.Ready(
             EdgeSubject(port(client, base, seeded), seeded, setup),
-            dispose = { client.close(); setupClient.close() },
+            dispose = {
+                client.close()
+                setupClient.close()
+            },
         )
     }
 

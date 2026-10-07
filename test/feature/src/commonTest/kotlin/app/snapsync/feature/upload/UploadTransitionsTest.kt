@@ -1,9 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
@@ -13,6 +9,8 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.upload.ExtensionRegistration

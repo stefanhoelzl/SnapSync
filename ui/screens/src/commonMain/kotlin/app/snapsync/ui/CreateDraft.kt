@@ -7,10 +7,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.model.ScreenMessage
 import app.snapsync.model.CreateDraftSession
 import app.snapsync.model.Layer
+import app.snapsync.model.ScreenMessage
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.EventRange
 import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDateTime

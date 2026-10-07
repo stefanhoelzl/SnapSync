@@ -2,11 +2,11 @@ package app.snapsync.contracts
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.ImportResult
 import app.snapsync.model.ImportRequest
+import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.ports.GalleryImport
 import app.snapsync.model.StagedResource
+import app.snapsync.ports.GalleryImport
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -76,7 +76,9 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
         clause("IMPORT_LANDS_AT_ITS_CAPTURE_DATE", GalleryImportState.GRANTED_VALID_STAGED) { subject ->
             val clauseId = "IMPORT_LANDS_AT_ITS_CAPTURE_DATE"
             val window = PhotoLibrary.window(name, clauseId)
-            val result = subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), window.seedDate, album = null))
+            val result = subject.importer.import(
+                ImportRequest(ref(clauseId), subject.stage(), window.seedDate, album = null),
+            )
             val id = assertIs<ImportResult.Imported>(result, "an ordinary photo imports").createdLocalId
             assertEquals(
                 window.seedDate,
@@ -103,8 +105,14 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
         clause("A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET", GalleryImportState.GRANTED_VALID_STAGED) { subject ->
             val clauseId = "A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET"
             val date = PhotoLibrary.window(name, clauseId).seedDate
-            val first = assertIs<ImportResult.Imported>(subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)))
-            val second = assertIs<ImportResult.Imported>(subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)))
+            val first =
+                assertIs<ImportResult.Imported>(
+                    subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)),
+                )
+            val second =
+                assertIs<ImportResult.Imported>(
+                    subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)),
+                )
             assertNotEquals(
                 first.createdLocalId,
                 second.createdLocalId,
@@ -117,7 +125,10 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
         clause("AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED", GalleryImportState.GRANTED_INVALID_STAGED) { subject ->
             val clauseId = "AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED"
             val date = PhotoLibrary.window(name, clauseId).seedDate
-            val failed = assertIs<ImportResult.Failed>(subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)))
+            val failed =
+                assertIs<ImportResult.Failed>(
+                    subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)),
+                )
             assertTrue(
                 failed.consumedResources,
                 "the library takes a file when it ingests it, before validating it; retrying reads a file that is gone",

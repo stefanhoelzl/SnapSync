@@ -63,7 +63,9 @@ class Recording(val header: List<Pair<String, String>>, val blocks: Map<String, 
                         current = mutableListOf<Exchange>().also { blocks[id] = it }
                     }
                     else -> {
-                        val block = requireNotNull(current) { "recording line ${i + 1}: exchange outside a block — $line" }
+                        val block = requireNotNull(
+                            current,
+                        ) { "recording line ${i + 1}: exchange outside a block — $line" }
                         val at = line.lastIndexOf(ARROW)
                         require(at > 0) { "recording line ${i + 1}: exchange without '$ARROW' — $line" }
                         block += Exchange(line.substring(0, at), line.substring(at + ARROW.length))
@@ -105,7 +107,9 @@ class Recorder(from: Recording? = null) {
     }
 
     fun record(call: String, answer: String) {
-        checkNotNull(current) { "an operating-system call was made outside any clause: $call" }.add(Exchange(call, answer))
+        checkNotNull(
+            current,
+        ) { "an operating-system call was made outside any clause: $call" }.add(Exchange(call, answer))
     }
 
     fun recording(header: List<Pair<String, String>>): Recording = Recording(header, blocks)
@@ -123,7 +127,9 @@ class Replayer(private val clauseId: String, private val exchanges: List<Exchang
         val expected = exchanges.getOrNull(next)
             ?: throw Divergence("[$clauseId] call #${next + 1} was not recorded (the recording ends at ${exchanges.size}): $call")
         if (expected.call != call) {
-            throw Divergence("[$clauseId] call #${next + 1} differs from the recording\n  recorded: ${expected.call}\n  made:     $call")
+            throw Divergence(
+                "[$clauseId] call #${next + 1} differs from the recording\n  recorded: ${expected.call}\n  made:     $call",
+            )
         }
         next++
         return expected.answer
@@ -132,7 +138,9 @@ class Replayer(private val clauseId: String, private val exchanges: List<Exchang
     /** Every recorded call was made. Called when the clause's subject is disposed. */
     fun assertExhausted() {
         if (next < exchanges.size) {
-            throw Divergence("[$clauseId] ${exchanges.size - next} recorded call(s) were never made, first: ${exchanges[next].call}")
+            throw Divergence(
+                "[$clauseId] ${exchanges.size - next} recorded call(s) were never made, first: ${exchanges[next].call}",
+            )
         }
     }
 }

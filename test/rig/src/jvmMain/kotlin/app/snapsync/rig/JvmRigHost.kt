@@ -76,7 +76,9 @@ class JvmRigHost private constructor(
                 core = { rig.app.core },
                 // Read per request, never captured: a relaunch replaces the app, and its host with it.
                 host = { rig.app.host },
-                hooks = jvmHooks(rig, publishBoundPort = { bound.complete(it) }, reportBindFailure = { bound.completeExceptionally(BindFailed(port, it)) }),
+                hooks = jvmHooks(rig, publishBoundPort = {
+                    bound.complete(it)
+                }, reportBindFailure = { bound.completeExceptionally(BindFailed(port, it)) }),
                 port = port,
             )
             server.start()
@@ -120,11 +122,21 @@ class JvmRigHost private constructor(
                 apnsEnvironment = "sandbox",
             )
             val app = JvmApp(scope, mocks) { device ->
-                device.adapters(build, attests = backend.attests, backend = backend.port(device, version), logSinks = listOf(log))
+                device.adapters(
+                    build,
+                    attests = backend.attests,
+                    backend = backend.port(device, version),
+                    logSinks = listOf(log),
+                )
             }
             val network = backend.network ?: UploadNetwork { url, headers, _ -> mocks.backend.operator.receive(url, headers) }
             val rig = JvmRig(
-                app, backend, version, log, lane, scope,
+                app,
+                backend,
+                version,
+                log,
+                lane,
+                scope,
                 BackendReach(backend.base, backend.name, backend.port(mocks, version), network, version),
                 PlayedOs(mocks),
             )
@@ -186,8 +198,8 @@ class JvmRigHost private constructor(
                 refusals = jvmRefusals(rig),
                 osRecord = rig.os::record,
                 osExtensionNotApplicable =
-                    "the JVM root composes an operating system without the OS-driven upload mechanism, so there is " +
-                        "no extension registration to report",
+                "the JVM root composes an operating system without the OS-driven upload mechanism, so there is " +
+                    "no extension registration to report",
             )
         }
 

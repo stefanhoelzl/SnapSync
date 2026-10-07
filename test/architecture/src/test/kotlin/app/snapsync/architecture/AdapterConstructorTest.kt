@@ -46,7 +46,9 @@ class AdapterConstructorTest {
     private fun portImplementations(code: String): Set<String> = CLASS_HEADER.findAll(code).mapNotNull { m ->
         val afterName = m.range.last + 1
         val supertypes = supertypeClause(code, afterName)
-        val names = supertypes.split(',').map { it.trim().substringBefore(' ').substringBefore('(').substringBefore('<') }
+        val names = supertypes.split(
+            ',',
+        ).map { it.trim().substringBefore(' ').substringBefore('(').substringBefore('<') }
         m.groupValues[1].takeIf { names.any { it.substringAfterLast('.') in ports } }
     }.toSet()
 
@@ -63,7 +65,9 @@ class AdapterConstructorTest {
 
     /** Whether the text between a class name and a `(` is only type parameters, a visibility and `constructor`. */
     private fun String.isBlankHeaderTail(): Boolean =
-        Regex("""^\s*(?:<[^>{(]*>)?\s*(?:(?:private|internal|public|protected)\s+)?(?:constructor\s*)?$""").matches(this)
+        Regex(
+            """^\s*(?:<[^>{(]*>)?\s*(?:(?:private|internal|public|protected)\s+)?(?:constructor\s*)?$""",
+        ).matches(this)
 
     private fun functionParameters(): Map<String, String> = adapterSources.flatMap { src ->
         val code = ZoneGates.stripComments(src.text)
@@ -94,7 +98,10 @@ class AdapterConstructorTest {
     @Test
     fun `the scan is real (non-vacuity floor)`() {
         val implementations = adapterSources.sumOf { portImplementations(ZoneGates.stripComments(it.text)).size }
-        assertTrue(implementations >= 40, "found only $implementations port implementations in the adapters — the scan is broken")
+        assertTrue(
+            implementations >= 40,
+            "found only $implementations port implementations in the adapters — the scan is broken",
+        )
         assertTrue(adapterSources.any { "/src/rig/" in it.path }, "the rig source sets are in scope")
         val sample = "internal class Probe(private val f: () -> Unit, val n: Int) : Backend, Other {\n}"
         assertEquals(setOf("Probe"), portImplementations(sample), "a class naming a port among its supertypes is one")

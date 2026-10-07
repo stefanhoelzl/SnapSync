@@ -19,15 +19,15 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
 import app.snapsync.model.StartResult
 import app.snapsync.model.TransferNetwork
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 
 /**
  * `DownloadManager` against the [DownloadContract] on the emulator, and the Android fact no shared contract states: a
@@ -105,7 +105,11 @@ class AndroidDownloadContractTest {
         assertEquals(MISSED_LENGTH, delivered.body?.size, "the body is handed over, inline")
         assertEquals(DownloadEvent.Completed("d-missed", null), relaunched.events.last())
         assertTrue(downloadManager.query(DownloadManager.Query())?.use { it.count } == 0, "a delivered row is removed")
-        context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
+        context.registerReceiver(
+            receiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            Context.RECEIVER_EXPORTED,
+        )
     }
 
     private fun finished(): Boolean = downloadManager.query(DownloadManager.Query()).use { cursor ->

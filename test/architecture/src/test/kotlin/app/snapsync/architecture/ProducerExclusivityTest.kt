@@ -1,33 +1,31 @@
 package app.snapsync.architecture
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
-import kotlinx.coroutines.flow.MutableStateFlow
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.EventConfig
-import app.snapsync.mock.fixedClock
-import app.snapsync.mock.inMemoryFiles
-import app.snapsync.mock.inMemoryPhotoAccess
-import app.snapsync.services.gallery.GalleryAccessState
-import kotlin.time.Instant
-import app.snapsync.services.config.ConfigService
 import app.snapsync.feature.upload.AppUploadEngine
-import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
 import app.snapsync.feature.upload.extensionAdmission
+import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryPhotoAccess
+import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploaderPin
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.model.selectionScope
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.gallery.GalleryAccessState
+import app.snapsync.services.upload.ExtensionRegistration
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The upload transitions stop in-flight work only at a leave (`docs/architecture.md`, "The upload
@@ -96,6 +94,7 @@ class ProducerExclusivityTest {
             get() = grantCell.value
             set(value) { grantCell.value = value }
         var joined = false
+
         /** The REAL membership, over an in-memory shared area. */
         val config = ConfigService(inMemoryFiles(), fixedClock(Instant.parse("2026-01-02T00:00:00Z")))
         var pin: UploaderPin? = null
@@ -116,28 +115,51 @@ class ProducerExclusivityTest {
         data object Reconfigure : Step
         data object Leave : Step
         data class Permission(val grant: GalleryAccess) : Step
+
         /** A relaunch with its UI; the grant may have changed while dead, and the switch dies with the process. */
         data class Launch(val grant: GalleryAccess) : Step
         data class Override(val pin: UploaderPin?) : Step
     }
 
     private val steps: List<Step> = buildList {
-        add(Step.Join); add(Step.Reconfigure); add(Step.Leave)
-        for (g in GalleryAccess.entries) { add(Step.Permission(g)); add(Step.Launch(g)) }
+        add(Step.Join)
+        add(Step.Reconfigure)
+        add(Step.Leave)
+        for (g in GalleryAccess.entries) {
+            add(Step.Permission(g))
+            add(Step.Launch(g))
+        }
         for (pin in listOf(null, UploaderPin(app = false), UploaderPin(extension = false))) add(Step.Override(pin))
     }
 
     private suspend fun Device.apply(step: Step) {
         when (step) {
-            Step.Join -> { joined = true; config.save(MEMBERSHIP); transitions.onJoin() }
+            Step.Join -> {
+                joined = true
+                config.save(MEMBERSHIP)
+                transitions.onJoin()
+            }
             Step.Reconfigure -> { if (joined) transitions.onReconfigure() }
-            Step.Leave -> { joined = false; config.clear(); transitions.onLeave() }
-            is Step.Permission -> { grant = step.grant; registration.grant = grant; transitions.onPermissionChanged() }
+            Step.Leave -> {
+                joined = false
+                config.clear()
+                transitions.onLeave()
+            }
+            is Step.Permission -> {
+                grant = step.grant
+                registration.grant = grant
+                transitions.onPermissionChanged()
+            }
             is Step.Launch -> {
-                grant = step.grant; registration.grant = grant; pin = null
+                grant = step.grant
+                registration.grant = grant
+                pin = null
                 transitions.onLaunch()
             }
-            is Step.Override -> { pin = step.pin; transitions.onOverrideChanged() }
+            is Step.Override -> {
+                pin = step.pin
+                transitions.onOverrideChanged()
+            }
         }
     }
 
@@ -214,11 +236,21 @@ class ProducerExclusivityTest {
             assertTrue(!device.registration.registered, "switching the extension off left it registered — $where")
         }
         if (step == Step.Join && extensionRegistrable(device.osSupported, device.grant, device.pin)) {
-            assertTrue(device.registration.registered, "a join where registrable left the extension unregistered — $where")
+            assertTrue(
+                device.registration.registered,
+                "a join where registrable left the extension unregistered — $where",
+            )
         }
     }
 }
 
 /** The membership a join persists. */
 private val MEMBERSHIP =
-    EventConfig("E", "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"), endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z"))
+    EventConfig(
+        "E",
+        "E",
+        captureCutoff("2026-01-01T00:00:00Z"),
+        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    )

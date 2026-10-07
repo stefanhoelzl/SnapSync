@@ -2,55 +2,53 @@
 
 package app.snapsync.feature.upload
 
-import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.CapturingLogWriter
+import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.model.AssetId
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.CycleResult
-import app.snapsync.services.gallery.Discovery
-import app.snapsync.model.PlatformUploadJob
-import app.snapsync.services.ledger.LedgerService
-import app.snapsync.services.upload.BackgroundTransfer
-import app.snapsync.services.gallery.UploadDiscovery
-import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.Candidate
+import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.model.Resource
-import app.snapsync.model.projectDeviceManifest
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadRequest
-import app.snapsync.model.UploadRequestProvider
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.SelectionScope
-import app.snapsync.model.selectionRulesFor
-import app.snapsync.model.SelectionRule
-import app.snapsync.model.captureCutoff
+import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_IS_EDITED
 import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
 import app.snapsync.model.RESOURCE_META_IS_SCREEN_RECORDING
 import app.snapsync.model.RESOURCE_META_IS_VIDEO
-import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.RESOURCE_META_MIME
+import app.snapsync.model.RESOURCE_META_PIXEL_AREA
+import app.snapsync.model.Resource
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.SelectionRule
+import app.snapsync.model.SelectionScope
 import app.snapsync.model.TerminalOutcome
+import app.snapsync.model.UploadCreateOutcome
+import app.snapsync.model.UploadError
+import app.snapsync.model.UploadRequest
+import app.snapsync.model.UploadRequestProvider
+import app.snapsync.model.candidatesFromResources
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.projectDeviceManifest
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.toLedgerRow
+import app.snapsync.services.gallery.Discovery
+import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.upload.BackgroundTransfer
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
-import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 class UploadCycleTest {
 
@@ -83,10 +81,23 @@ class UploadCycleTest {
 
         /** An admitting policy over [cutoff], unbounded above — the shape every cycle fixture wants. */
         suspend fun admitting(cutoff: String): SelectionPolicy =
-            SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
+            SelectionPolicy(
+                selectionRulesFor(
+                    includesUpload = true,
+                    cutoff = captureCutoff(
+                        cutoff,
+                    ),
+                    ceiling = null,
+                    suppressedAssetIds = {
+                        emptySet()
+                    },
+                    albumExcludedAssetIds = { emptySet() },
+                ),
+            )
         const val IN_SCOPE_DATE = "2026-06-01T10:00:00Z"
         const val TEST_HOST = "https://edge.example"
         const val TEST_EVENT = "event-1"
+
         /** The manifest version the fixture gate reads — distinctive, so a test can see it reach the publish. */
         const val TEST_MANIFEST_VERSION = 4242L
     }
@@ -119,13 +130,17 @@ class UploadCycleTest {
     ) : BackgroundTransfer, UploadDiscovery {
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
+
         /** Whether the cycle settled with the platform — the obligation a declined cycle still owes. */
         var drained = false
         var discoverPolicyArg: SelectionPolicy? = null
+
         /** Keys the cycle asked to resolve — how a test asserts it enqueued from the ledger, not a walk. */
         val resolvedKeys = mutableSetOf<String>()
+
         /** How many resolve round-trips the cycle made, counted with repeats — what reusing the walk saves. */
         var resolveCalls = 0
+
         /** Assets whose resources the cycle read off a walk's candidates — the per-asset round-trip a skip saves. */
         val readAssets = mutableListOf<AssetId>()
 
@@ -189,8 +204,11 @@ class UploadCycleTest {
     // with no `creationDate` sorts before any cutoff, so an undated resource is always out of scope.
     private fun resource(name: String, assetId: String = name) =
         Resource(
-            filename = name, assetId = AssetId(assetId), contentType = "image/jpeg",
-            metadata = mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE), data = Unit,
+            filename = name,
+            assetId = AssetId(assetId),
+            contentType = "image/jpeg",
+            metadata = mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE),
+            data = Unit,
         )
 
     /** A retry-spent failure — the only kind of job that still crosses the seam. */
@@ -279,7 +297,10 @@ class UploadCycleTest {
         cycle(
             TestLedger().service,
             FakePlatform(discovered = listOf(resource("A-primary.heic")), fullEnumeration = true),
-            onDiscovery = { _, _, version -> seen += version; true },
+            onDiscovery = { _, _, version ->
+                seen += version
+                true
+            },
         ).run()
         assertEquals(listOf(TEST_MANIFEST_VERSION), seen)
     }
@@ -296,9 +317,13 @@ class UploadCycleTest {
         )
 
         val result = cycle(
-            backend, platform,
+            backend,
+            platform,
             readGate = { CycleGate.Skip("config status=-25308, deviceId readable=false") },
-            onDiscovery = { _, _, _ -> touched += "discovery"; true },
+            onDiscovery = { _, _, _ ->
+                touched += "discovery"
+                true
+            },
         ).run()
 
         assertEquals(CycleResult.COMPLETED, result, "an unreadable read is a clean no-op, never a failure")
@@ -354,20 +379,29 @@ class UploadCycleTest {
         )
 
         val result = cycle(
-            backend, platform,
+            backend,
+            platform,
             readGate = { CycleGate.Withheld(UploadConfig(TEST_HOST, TEST_EVENT)) },
-            onDiscovery = { _, _, _ -> touched += "manifest"; true },
+            onDiscovery = { _, _, _ ->
+                touched += "manifest"
+                true
+            },
         ).run()
 
         assertEquals(CycleResult.SKIPPED, result)
         assertTrue(platform.drained, "the presented jobs are acknowledged — 50008 otherwise")
         assertEquals(LedgerState.COMPLETED, backend.get("done-primary.heic")?.state, "a presented success is recorded")
         assertEquals(
-            LedgerState.DISCOVERED, backend.get("spent-primary.heic")?.state,
+            LedgerState.DISCOVERED,
+            backend.get("spent-primary.heic")?.state,
             "a retry-spent failure is adjudicated back to the work read — but not re-created here",
         )
         assertTrue(platform.created.isEmpty(), "no job is created, retries included")
-        assertEquals(LedgerState.REQUESTED, backend.get("lost-primary.heic")?.state, "an in-flight row is left to its completion")
+        assertEquals(
+            LedgerState.REQUESTED,
+            backend.get("lost-primary.heic")?.state,
+            "an in-flight row is left to its completion",
+        )
         assertEquals(emptyList<String>(), touched, "a temporary grant state publishes no manifest")
         assertNull(platform.discoverPolicyArg, "the library is not walked")
     }
@@ -396,12 +430,18 @@ class UploadCycleTest {
         var joined = true
 
         val c = cycle(
-            backend, platform,
+            backend,
+            platform,
             readGate = {
                 if (joined) {
                     CycleGate.Run(
                         UploadConfig(TEST_HOST, TEST_EVENT),
-                        JoinedMembership(TEST_EVENT, { admitting(TEST_CUTOFF) }, saveToAlbum = false, manifestVersion = 0L),
+                        JoinedMembership(
+                            TEST_EVENT,
+                            { admitting(TEST_CUTOFF) },
+                            saveToAlbum = false,
+                            manifestVersion = 0L,
+                        ),
                     )
                 } else {
                     CycleGate.NotJoined
@@ -431,9 +471,13 @@ class UploadCycleTest {
         platform: FakePlatform,
         order: MutableList<String> = mutableListOf(),
     ): UploadCycle = cycle(
-        backend, platform,
+        backend,
+        platform,
         policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
-        onDiscovery = { _, _, _ -> order += "discovery"; true },
+        onDiscovery = { _, _, _ ->
+            order += "discovery"
+            true
+        },
     )
 
     @Test
@@ -494,7 +538,8 @@ class UploadCycleTest {
         val platform = FakePlatform(discovered = listOf(resource("a")))
 
         val result = cycle(
-            TestLedger().service, platform,
+            TestLedger().service,
+            platform,
             policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
             log = recorder.logger("UploadCycleTest"),
         ).run()
@@ -537,7 +582,8 @@ class UploadCycleTest {
                 "the system 50008 and the OS discards the outstanding jobs",
         )
         assertEquals(
-            LedgerState.COMPLETED, backend.get(presented)?.state,
+            LedgerState.COMPLETED,
+            backend.get(presented)?.state,
             "recorded where the OS reported it — settled, whatever the membership now contributes",
         )
         // And it took nothing the gate withholds: the walk and job creation.
@@ -617,7 +663,8 @@ class UploadCycleTest {
 
         assertEquals(listOf("MINE-primary.heic"), platform.created.map { it.filename }) // FOREIGN suppressed
         assertEquals(
-            LedgerState.COMPLETED, backend.get("FOREIGN-primary.heic")?.state,
+            LedgerState.COMPLETED,
+            backend.get("FOREIGN-primary.heic")?.state,
             "the stale row survives — it is a true statement about bytes on the backend",
         )
         // The read is not state-scoped, so BOTH rows are present — MINE only REQUESTED, FOREIGN stale and
@@ -626,13 +673,15 @@ class UploadCycleTest {
         // the whole point: the ledger states what exists, the policy states what is shared.
         val rows = backend.manifestRows()
         assertEquals(
-            listOf(AssetId("FOREIGN"), AssetId("MINE")), rows.map { it.assetId }.sorted(),
+            listOf(AssetId("FOREIGN"), AssetId("MINE")),
+            rows.map { it.assetId }.sorted(),
             "both rows are present to be filtered — the read filters no row",
         )
         val listed = projectDeviceManifest("D", rows, admittingWith(echo = setOf(AssetId("FOREIGN"))))
             .assets.map { it.assetId }
         assertEquals(
-            listOf(AssetId("MINE")), listed,
+            listOf(AssetId("MINE")),
+            listed,
             "the echo suppression keeps FOREIGN out, and MINE is DECLARED though its bytes are in flight",
         )
     }
@@ -650,7 +699,6 @@ class UploadCycleTest {
 
         assertTrue(platform.created.isEmpty(), "a downloaded asset must be suppressed on its id")
     }
-
 
     @Test
     fun a_succeeded_upload_is_recorded_completed_where_the_platform_reports_it() = runTest {
@@ -767,12 +815,22 @@ class UploadCycleTest {
         LedgerWriter(backend).recordRequested(resource("a", "a"))
         val job = PlatformUploadJob(key = "a", contentType = "image/jpeg", error = UploadError.Network, data = null)
         // The platform is full, so the enqueue pass cannot re-create it from the ledger either.
-        val platform = FakePlatform(discovered = listOf(resource("a", "a")), ackJobs = listOf(job), ledger = backend, limitAfter = 0)
+        val platform =
+            FakePlatform(
+                discovered = listOf(resource("a", "a")),
+                ackJobs = listOf(job),
+                ledger = backend,
+                limitAfter = 0,
+            )
 
         cycleOver(backend, platform).run()
 
         assertTrue(platform.created.isEmpty(), "no resource to re-create from")
-        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "the failure is adjudicated back to the work read")
+        assertEquals(
+            LedgerState.DISCOVERED,
+            backend.get("a")?.state,
+            "the failure is adjudicated back to the work read",
+        )
     }
 
     @Test
@@ -831,8 +889,13 @@ class UploadCycleTest {
         backend.recordUnlessSettled(LedgerEntry("seeded-b", AssetId("seeded-b"), LedgerState.COMPLETED))
         val platform = FakePlatform(
             // New work FIRST, so creation stops before the walk reaches the seeded rows in the old order.
-            discovered = listOf(resource("new-1"), resource("new-2"), resource("new-3"),
-                                resource("seeded-a"), resource("seeded-b")),
+            discovered = listOf(
+                resource("new-1"),
+                resource("new-2"),
+                resource("new-3"),
+                resource("seeded-a"),
+                resource("seeded-b"),
+            ),
             limitAfter = 1,
         )
 
@@ -905,7 +968,8 @@ class UploadCycleTest {
 
         assertEquals(2, platform.created.size, "creation stops at the refusal")
         assertEquals(
-            setOf("r01", "r02", "r03"), platform.resolvedKeys,
+            setOf("r01", "r02", "r03"),
+            platform.resolvedKeys,
             "the two created rows and the refused one — nothing past the refusal is resolved",
         )
         assertEquals(CycleResult.PROCESSING, result, "the platform refused, so work remains")
@@ -923,7 +987,11 @@ class UploadCycleTest {
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(listOf("a", "b", "c"), platform.created.map { it.filename }, "every discovered row got a job")
-        assertEquals(listOf(AssetId("a"), AssetId("b"), AssetId("c")), platform.readAssets, "the walk read each asset once")
+        assertEquals(
+            listOf(AssetId("a"), AssetId("b"), AssetId("c")),
+            platform.readAssets,
+            "the walk read each asset once",
+        )
         assertEquals(0, platform.resolveCalls, "no row the walk just read was resolved a second time")
         assertTrue(platform.resolvedKeys.isEmpty())
     }
@@ -1000,7 +1068,8 @@ class UploadCycleTest {
         assertEquals(setOf("X-live.mov"), platform.resolvedKeys, "the row was offered")
         assertNull(backend.get("X-live.mov"), "the unresolvable row is deleted, by its key")
         assertEquals(
-            LedgerState.COMPLETED, backend.get("X-primary.heic")?.state,
+            LedgerState.COMPLETED,
+            backend.get("X-primary.heic")?.state,
             "its sibling is not this pass's evidence: an asset-scoped write would have reached it",
         )
         assertTrue(platform.created.isEmpty())
@@ -1101,7 +1170,8 @@ class UploadCycleTest {
         // Before this rule, the engine's failure record — guarded only against a SETTLED row — recreated the row
         // bare: never admitted, never deleted, pending forever.
         val backend = TestLedger().service
-        val platform = FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)), ledger = backend)
+        val platform =
+            FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)), ledger = backend)
 
         cycle(backend, platform, readGate = { CycleGate.Withheld(UploadConfig(TEST_HOST, TEST_EVENT)) }).run()
 
@@ -1113,7 +1183,8 @@ class UploadCycleTest {
     @Test
     fun a_retry_spent_failure_for_a_deleted_row_is_not_re_created() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)), ledger = backend)
+        val platform =
+            FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)), ledger = backend)
 
         cycleOver(backend, platform).run()
 
@@ -1157,7 +1228,8 @@ class UploadCycleTest {
         val published = mutableListOf<List<AssetId>>()
 
         cycle(
-            backend, platform,
+            backend,
+            platform,
             library = SelectionScopedDiscovery(platform) { SelectionScope.Scoped(selection) },
             onDiscovery = { _, policy, _ ->
                 published += projectDeviceManifest("D", backend.manifestRows(), policy).assets.map { it.assetId }
@@ -1168,7 +1240,11 @@ class UploadCycleTest {
         assertEquals(LedgerState.COMPLETED, backend.get("kept-photo.jpg")?.state, "a selected photo is present")
         assertNull(backend.get("dropped-photo.jpg"), "de-selecting is deleting")
         assertNull(backend.get("flying-photo.jpg"), "in flight or not")
-        assertEquals(listOf(listOf(AssetId("kept"))), published, "the manifest that cycle publishes lists only the selection")
+        assertEquals(
+            listOf(listOf(AssetId("kept"))),
+            published,
+            "the manifest that cycle publishes lists only the selection",
+        )
     }
 
     @Test
@@ -1309,7 +1385,8 @@ class UploadCycleTest {
     ): UploadCycle {
         var lastPublished: List<String>? = null
         return cycle(
-            backend, platform,
+            backend,
+            platform,
             onDiscovery = { _, _, _ ->
                 order += "manifest"
                 atPublish()
@@ -1332,11 +1409,17 @@ class UploadCycleTest {
         val order = mutableListOf<String>()
         val atPublish = mutableListOf<LedgerState?>()
 
-        val result = cycleWithHooks(backend, platform, order, atPublish = { atPublish += backend.get("a-primary.jpg")?.state }).run()
+        val result = cycleWithHooks(backend, platform, order, atPublish = {
+            atPublish += backend.get("a-primary.jpg")?.state
+        }).run()
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(listOf("manifest"), order, "published exactly once")
-        assertEquals(listOf<LedgerState?>(LedgerState.COMPLETED), atPublish, "settled by the time the manifest was published")
+        assertEquals(
+            listOf<LedgerState?>(LedgerState.COMPLETED),
+            atPublish,
+            "settled by the time the manifest was published",
+        )
     }
 
     @Test
@@ -1447,8 +1530,11 @@ class UploadCycleTest {
 
     private fun datedResource(name: String, creationDate: String, assetId: String = name) =
         Resource(
-            filename = name, assetId = AssetId(assetId), contentType = "image/jpeg",
-            metadata = mapOf(RESOURCE_META_CREATION_DATE to creationDate), data = Unit,
+            filename = name,
+            assetId = AssetId(assetId),
+            contentType = "image/jpeg",
+            metadata = mapOf(RESOURCE_META_CREATION_DATE to creationDate),
+            data = Unit,
         )
 
     private suspend fun cycleWithCutoff(
@@ -1546,7 +1632,9 @@ class UploadCycleTest {
         adjusted: Boolean = false,
         mime: String = "image/heic",
     ) = Resource(
-        filename = name, assetId = AssetId(assetId), contentType = "public.heic",
+        filename = name,
+        assetId = AssetId(assetId),
+        contentType = "public.heic",
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE,
             RESOURCE_META_MIME to mime,
@@ -1578,7 +1666,8 @@ class UploadCycleTest {
         albumExcluded: Set<AssetId> = emptySet(),
         manifestSaw: MutableList<AssetId> = mutableListOf(),
     ): UploadCycle = cycle(
-        backend, platform,
+        backend,
+        platform,
         // The manifest is now a PROJECTION of the ledger's COMPLETED rows (capability
         // `photo-sharing`), so what it "sees" is read from the ledger at hook time rather than
         // handed over. These fixtures record COMPLETED rows for the admitted set first, so the
@@ -1713,7 +1802,8 @@ class UploadCycleTest {
         originCycle(backend, platform, albumExcluded = setOf(AssetId("wa")), manifestSaw = manifestSaw).run()
 
         assertEquals(
-            listOf(AssetId("cam"), AssetId("shot")), manifestSaw.sorted(),
+            listOf(AssetId("cam"), AssetId("shot")),
+            manifestSaw.sorted(),
             "the album denylist IS re-applied (its id set is supplied per cycle); the screenshot rule is " +
                 "NOT (the row carries no origin facts)",
         )
@@ -1772,7 +1862,8 @@ class UploadCycleTest {
         originCycle(backend, platform).run()
 
         assertEquals(
-            LedgerState.COMPLETED, backend.get("shot.png")?.state,
+            LedgerState.COMPLETED,
+            backend.get("shot.png")?.state,
             "the row survives a full enumeration — its absence from the admitted set is not evidence " +
                 "that the asset left the library",
         )
@@ -1791,9 +1882,13 @@ class UploadCycleTest {
         // Already contributed under the old, lower cutoff.
         backend.recordUnlessSettled(
             LedgerEntry(
-                key = "old-primary.jpg", assetId = AssetId("old"), state = LedgerState.COMPLETED,
+                key = "old-primary.jpg",
+                assetId = AssetId("old"),
+                state = LedgerState.COMPLETED,
                 creationDate = "2026-07-01T00:00:00Z",
-                role = ResourceRole.PRIMARY, contentType = "image/jpeg", originalFilename = "IMG_old.JPG",
+                role = ResourceRole.PRIMARY,
+                contentType = "image/jpeg",
+                originalFilename = "IMG_old.JPG",
             ),
         )
         // Both assets are still in the library; the member simply raised their cutoff past the older one.
@@ -1820,9 +1915,13 @@ class UploadCycleTest {
         val backend = TestLedger().service
         backend.recordUnlessSettled(
             LedgerEntry(
-                key = "old-primary.jpg", assetId = AssetId("old"), state = LedgerState.COMPLETED,
+                key = "old-primary.jpg",
+                assetId = AssetId("old"),
+                state = LedgerState.COMPLETED,
                 creationDate = IN_SCOPE_DATE,
-                role = ResourceRole.PRIMARY, contentType = "image/jpeg", originalFilename = "IMG_old.JPG",
+                role = ResourceRole.PRIMARY,
+                contentType = "image/jpeg",
+                originalFilename = "IMG_old.JPG",
             ),
         )
         val platform = FakePlatform(
@@ -1831,9 +1930,19 @@ class UploadCycleTest {
         )
 
         cycle(
-            backend, platform,
-            policy = SelectionPolicy(selectionRulesFor(
-                includesUpload = false, cutoff = captureCutoff(TEST_CUTOFF), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() })),
+            backend,
+            platform,
+            policy = SelectionPolicy(
+                selectionRulesFor(
+                    includesUpload = false,
+                    cutoff = captureCutoff(TEST_CUTOFF),
+                    ceiling = null,
+                    suppressedAssetIds = {
+                        emptySet()
+                    },
+                    albumExcludedAssetIds = { emptySet() },
+                ),
+            ),
         ).run()
 
         assertTrue(
@@ -1855,7 +1964,8 @@ class UploadCycleTest {
         var listed: List<AssetId>? = null
 
         val result = cycle(
-            backend, FakePlatform(),
+            backend,
+            FakePlatform(),
             policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
             onDiscovery = { _, policy, _ ->
                 order += "discovery"
@@ -1879,7 +1989,11 @@ class UploadCycleTest {
         val old = datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old")
 
         // Shared under the original floor.
-        cycleWithCutoff(backend, FakePlatform(discovered = listOf(old), fullEnumeration = true), "2026-06-01T00:00:00Z").run()
+        cycleWithCutoff(
+            backend,
+            FakePlatform(discovered = listOf(old), fullEnumeration = true),
+            "2026-06-01T00:00:00Z",
+        ).run()
         backend.completed(old)
         assertEquals(
             listOf(AssetId("old")),
@@ -1894,7 +2008,8 @@ class UploadCycleTest {
         cycleWithCutoff(backend, narrowedPlatform, "2026-07-06T00:00:00Z").run()
 
         assertEquals(
-            LedgerState.COMPLETED, backend.get("old-primary.jpg")?.state,
+            LedgerState.COMPLETED,
+            backend.get("old-primary.jpg")?.state,
             "the ledger records bytes on the backend — a scope change is not a fact about that",
         )
         assertTrue(
@@ -1941,7 +2056,11 @@ class UploadCycleTest {
         cycle(backend, platform, placeInAlbum = placed.hook).run()
 
         assertEquals(listOf(setOf(AssetId("a")), setOf(AssetId("b"))), placed.calls, "one placement per row")
-        assertEquals(listOf(0, 1), placed.createdAtCall, "each made before its own job existed — it waits for no upload")
+        assertEquals(
+            listOf(0, 1),
+            placed.createdAtCall,
+            "each made before its own job existed — it waits for no upload",
+        )
         assertEquals(listOf("a", "b"), platform.created.map { it.filename }, "and the jobs follow")
     }
 
@@ -1967,7 +2086,11 @@ class UploadCycleTest {
 
         cycle(backend, platform, placeInAlbum = placed.hook).run()
 
-        assertEquals(listOf(setOf(AssetId("f")), setOf(AssetId("n"))), placed.calls, "one placement per row, the failure included")
+        assertEquals(
+            listOf(setOf(AssetId("f")), setOf(AssetId("n"))),
+            placed.calls,
+            "one placement per row, the failure included",
+        )
         assertEquals(setOf("f", "n"), platform.created.map { it.filename }.toSet(), "both are enqueued")
     }
 
@@ -1975,9 +2098,13 @@ class UploadCycleTest {
     fun a_row_the_policy_excludes_or_that_no_longer_resolves_is_not_placed() = runTest {
         val backend = TestLedger().service
         // Admitted when it was recorded, excluded by the membership's policy now.
-        backend.recordUnlessSettled(LedgerEntry("old", AssetId("old"), LedgerState.DISCOVERED, creationDate = "2025-01-01T00:00:00Z"))
+        backend.recordUnlessSettled(
+            LedgerEntry("old", AssetId("old"), LedgerState.DISCOVERED, creationDate = "2025-01-01T00:00:00Z"),
+        )
         // Recorded, but the asset has left the library since.
-        backend.recordUnlessSettled(LedgerEntry("gone", AssetId("gone"), LedgerState.DISCOVERED, creationDate = IN_SCOPE_DATE))
+        backend.recordUnlessSettled(
+            LedgerEntry("gone", AssetId("gone"), LedgerState.DISCOVERED, creationDate = IN_SCOPE_DATE),
+        )
         val platform = FakePlatform(discovered = listOf(resource("a")))
         val placed = Placements(platform)
 
@@ -2061,7 +2188,8 @@ class UploadCycleTest {
         val first = cycle(backend, platform, placeInAlbum = placed.hook).run()
         assertEquals(CycleResult.PROCESSING, first)
         assertEquals(
-            listOf(setOf(AssetId("a")), setOf(AssetId("b"))), placed.calls,
+            listOf(setOf(AssetId("a")), setOf(AssetId("b"))),
+            placed.calls,
             "the refused row was placed before the platform refused it; nothing past it was reached",
         )
         assertEquals(LedgerState.DISCOVERED, backend.get("b")?.state, "the refused rows still wait")
@@ -2090,7 +2218,8 @@ class UploadCycleTest {
         val placed = Placements(platform)
 
         cycle(
-            TestLedger().service, platform,
+            TestLedger().service,
+            platform,
             policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
             placeInAlbum = placed.hook,
         ).run()
