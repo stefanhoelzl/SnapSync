@@ -172,6 +172,7 @@ curl -sS localhost:$H/health ; curl -sS localhost:$H/device               # host
 curl -sS localhost:$H/device/state
 $A -s $S exec-out screencap -p > shot.png                                 # then Read it
 $A -s $S logcat -s SnapSync:V AndroidRuntime:E                            # the whole app log (LogcatSink)
+$A -s $S exec-out run-as app.snapsync cat files/private/debug.log > debug.log # the same log as a file (FileLogSink) — a bug report's app_log
 ```
 
 Everything past the port is `rig-channel`'s protocol; load it for the verbs, with `B=http://127.0.0.1:$H`. The app's `/os` foreground and background

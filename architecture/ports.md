@@ -89,7 +89,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Lifecycle` | `:domain:ports` | `:adapter:android` AndroidLifecycle; `:adapter:ios:ui` IosLifecycle | no |
 | `Links` | `:domain:ports` | `:adapter:android` AndroidLinks; `:adapter:ios:app-only` IosLinks | no |
 | `Listenable` | `:domain:ports` | — | no |
-| `LogSink` | `:domain:ports` | `:adapter:android` LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:rig` RecordedLog | yes |
+| `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:rig` RecordedLog | yes |
 | `ManifestPublisher` | `:domain:services` | `:domain:services` BackendManifestPublisher; `:test:feature` FakeUploader | yes |
 | `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
 | `NetworkAccess` | `:domain:model` | `:domain:model` Blocked, Offline, Online | no |

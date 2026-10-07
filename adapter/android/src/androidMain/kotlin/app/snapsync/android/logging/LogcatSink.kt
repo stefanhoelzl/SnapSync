@@ -7,7 +7,7 @@ import co.touchlab.kermit.Severity
 /**
  * The platform log (capability `privacy-security`): every line into logcat under one tag, at its own priority, so
  * `adb logcat -s SnapSync` reads the process's whole log. Logcat does not redact, and is read only over a debugging
- * connection; the process's own log file arrives with the storage adapters.
+ * connection; the process's own log file, the one a bug report carries, is [FileLogSink]'s.
  */
 class LogcatSink : LogSink {
     override fun write(severity: Severity, tag: String, line: String) {
