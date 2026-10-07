@@ -104,7 +104,7 @@ class VersionedHttpBackend(
     override suspend fun mintToken(req: MintRequest): Reply<String> = http().mintToken(req)
     override suspend fun renewToken(req: RenewRequest): Reply<String> = http().renewToken(req)
     override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = http().createEvent(token, req)
-    override suspend fun getEvent(eventId: String): Reply<EventMeta> = http().getEvent(eventId)
+    override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = http().getEvent(token, eventId)
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> =
         http().renameEvent(token, eventId, name)
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =

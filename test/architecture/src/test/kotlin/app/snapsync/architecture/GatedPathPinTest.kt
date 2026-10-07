@@ -121,13 +121,20 @@ class GatedPathPinTest {
     }
 
     @Test
-    fun `the union verifies a token it is sent, so its 401 is a verdict`() {
+    fun `the two event reads verify a token they are sent, so their 401 is a verdict`() {
+        // Both go through `optionalReader`, which verifies a sent token and answers `401` for a bad one (decision
+        // records `changes/incremental-union` D5, `changes/separate-event-page-from-device-api` D7).
         val shared = File(SourceScan.repoRoot, "api/src/routes/shared.ts").readText()
-        val union = shared.substringAfter("deviceApi.get(\"/events/:eventId/files\"", "").substringBefore("deviceApi.")
-        assertTrue(union.contains("verifyToken(") && union.contains("\"unattested\", 401"), "the union no longer verifies a sent token")
+        val reader = shared.substringAfter("const optionalReader = ", "").substringBefore("};")
+        assertTrue(reader.contains("verifyToken(") && reader.contains("\"unattested\", 401"), "the optional reader no longer verifies a sent token")
+        for (route in listOf("\"/events/:eventId\"", "\"/events/:eventId/files\"")) {
+            val body = shared.substringAfter("deviceApi.get($route", "").substringBefore("deviceApi.")
+            assertTrue("await optionalReader(c)" in body, "$route no longer verifies a sent token")
+        }
         assertTrue(verifiesToken("GET", "/api/v2/events/E1/files?cursor=3"))
+        assertTrue(verifiesToken("GET", "/api/v2/events/E1"))
         assertFalse(isGatedRequest("GET", "/api/v2/events/E1/files"), "the union stays public")
-        assertFalse(verifiesToken("GET", "/api/v2/events/E1"))
+        assertFalse(isGatedRequest("GET", "/api/v2/events/E1"), "the event's details stay public")
         assertFalse(verifiesToken("GET", "/api/v2/events/E1/files/devices/D1/A/primary"))
     }
 }

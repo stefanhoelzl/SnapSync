@@ -136,16 +136,17 @@ class CredentialedBackendTest {
     }
 
     @Test
-    fun the_event_details_carry_no_token_and_are_never_retried() = runTest {
+    fun the_event_details_carry_the_token_and_a_rejection_of_it_is_recovered_once() = runTest {
+        // Public, but the backend verifies a token it is sent (decision record
+        // `changes/separate-event-page-from-device-api`, D7): its 401 is a verdict on that token.
         val credential = ScriptedCredential("T1", recovered = "T2")
-        val backend = ScriptedBackend { _, _ -> unauthorized }
-        val authenticated = CredentialedBackend(backend, credential, versionGate = null)
+        val backend = ScriptedBackend { _, token -> if (token == "T1") unauthorized else Reply.Refused(404, "gone") }
 
-        authenticated.getEvent("E")
+        val reply = CredentialedBackend(backend, credential, versionGate = null).getEvent("E")
 
-        assertEquals(listOf("get null"), backend.calls)
-        assertEquals(emptyList(), credential.rejections)
-        assertEquals(0, credential.reads, "an ungated read never reads the credential")
+        assertEquals(Reply.Refused(404, "gone"), reply)
+        assertEquals(listOf("get T1", "get T2"), backend.calls)
+        assertEquals(listOf("T1"), credential.rejections)
     }
 
     @Test
@@ -169,7 +170,7 @@ class CredentialedBackendTest {
         val authenticated = CredentialedBackend(ScriptedBackend { _, _ -> reply }, ScriptedCredential("T1"), gate)
 
         authenticated.getEvent("E")
-        assertEquals(VersionRefusal("0.5"), gate.refusal.value, "the ungated read learns it too — the gate precedes every route")
+        assertEquals(VersionRefusal("0.5"), gate.refusal.value, "the public read learns it too — the gate precedes every route")
 
         reply = Reply.Refused(404, "not found")
         authenticated.joinEvent("E", "D")

@@ -64,7 +64,7 @@ One PR. Each numbered group below is one commit, in this order (design.md, Migra
 - [x] 2.3 Move `legacyKeyFor` to `api/src/object-names.ts` (with its tests), delete `identityFromLegacyKey`, then
   delete `legacy-v1.ts` and `legacy-v1.test.ts`. Verify: `grep -rn "legacy-v1" api/` prints nothing, and the
   api tests pass.
-- [ ] 2.4 Sweep the remaining v1 references: `api/src/dev/serve.ts`, `api/src/dev/fallback.ts`, `api/src/db.ts`
+- [x] 2.4 Sweep the remaining v1 references: `api/src/dev/serve.ts`, `api/src/dev/fallback.ts`, `api/src/db.ts`
   comments, `docs/architecture.md`'s "v1 (frozen) differences" section and v1 mentions,
   `scripts/resolve-deployment.py`'s comment, `.claude/skills/{ssh-mac-build,snapsync-device}/SKILL.md`,
   `app/ios/CLAUDE.md`, and the app tests that only use `/api/v1` as an example path
@@ -74,23 +74,23 @@ One PR. Each numbered group below is one commit, in this order (design.md, Migra
 
 ## 3. The app sends its token on the event read (commit 3)
 
-- [ ] 3.1 Server: `GET /events/:eventId` checks an optional bearer token as the union does (`401` for a bad
+- [x] 3.1 Server: `GET /events/:eventId` checks an optional bearer token as the union does (`401` for a bad
   one, anonymous when absent). Verify: new cases in `v2.test.ts` (valid token `200`, bad token `401`, none
   `200`).
-- [ ] 3.2 Port and adapter: `Backend.getEvent(token: String?, eventId)`. `HttpBackend` sends it, and
+- [x] 3.2 Port and adapter: `Backend.getEvent(token: String?, eventId)`. `HttpBackend` sends it, and
   `verifiesToken` includes the event read (`GatedPaths.kt`). Verify: `HttpBackendTest`'s token pin and
   `GatedPathPinTest` cover the event read.
-- [ ] 3.3 Service: `CredentialedBackend.getEvent` becomes `gated { … }`. Update `BackendMock` (a sent token
+- [x] 3.3 Service: `CredentialedBackend.getEvent` becomes `gated { … }`. Update `BackendMock` (a sent token
   must verify) and the Backend contract (a clause: a bad token on the event read is refused; none is
   served). Verify: `./gradlew build` passes, including `:adapter:generic:app:jvmTest` (the contract against the
   real api/) and the mock's contract binding.
-- [ ] 3.4 Check the join preview on the JVM rig host (`rig-channel` skill, `-Psnapsync.rigBackend=deno`): a
+- [x] 3.4 Check the join preview on the JVM rig host (`rig-channel` skill, `-Psnapsync.rigBackend=deno`): a
   fresh install opening an invite attests, then shows the preview. Verify by reading `UiState` and the
   host's `/device/os-record`.
 
 ## 4. Integration
 
-- [ ] 4.1 `npx --yes @fission-ai/openspec@1.13.2 validate separate-event-page-from-device-api --strict` passes, and
+- [x] 4.1 `npx --yes @fission-ai/openspec@1.13.2 validate separate-event-page-from-device-api --strict` passes, and
   `./gradlew build`, `cd api && deno task test`, `cd site && npm run check` all pass on the PR's head.
 - [ ] 4.2 After merge and deploy, open a real event's page on the deployed site. Verify the download works and
   `curl -si https://<host>/api/v1/events/<id>` answers `426`.

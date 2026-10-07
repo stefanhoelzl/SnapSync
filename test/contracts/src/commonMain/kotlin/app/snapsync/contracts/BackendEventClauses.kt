@@ -31,9 +31,9 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         // The encrypted file format (`docs/architecture.md`): the backend keeps the key's id, never the key.
         val keyId = "de30249b854310c8"
         val encrypted = assertOk(s.port.createEvent(s.token, CreateEventRequest("Secret", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = keyId)))
-        assertEquals(keyId, assertOk(s.port.getEvent(encrypted.eventId)).keyId, "an encrypted event names its key id")
+        assertEquals(keyId, assertOk(s.port.getEvent(null, encrypted.eventId)).keyId, "an encrypted event names its key id")
         val plain = assertOk(s.port.createEvent(s.token, CreateEventRequest("Open", SEEDED_STARTS_AT, SEEDED_ENDS_AT)))
-        assertEquals(null, assertOk(s.port.getEvent(plain.eventId)).keyId, "a plain event names none")
+        assertEquals(null, assertOk(s.port.getEvent(null, plain.eventId)).keyId, "a plain event names none")
         assertRefused(
             BAD_REQUEST,
             s.port.createEvent(s.token, CreateEventRequest("Bad", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = "DE30249B854310C8")),
@@ -60,7 +60,7 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
     }
 
     clause("GET_AN_EXISTING_EVENT_IS_SERVED_WITH_ITS_WINDOW", BackendState.EVENT_EXISTS) { s ->
-        val meta = assertOk(s.port.getEvent(s.seeded.eventId))
+        val meta = assertOk(s.port.getEvent(null, s.seeded.eventId))
         assertEquals(s.seeded.event!!.name, meta.name)
         assertSameInstant(SEEDED_STARTS_AT, meta.startsAt, "the start the creator chose")
         assertSameInstant(SEEDED_ENDS_AT, meta.endsAt, "the end the creator chose")
@@ -69,15 +69,21 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
     }
 
     clause("GET_AN_UNKNOWN_EVENT_IS_NOT_FOUND", BackendState.NO_SUCH_EVENT) { s ->
-        assertRefused(NOT_FOUND, s.port.getEvent(s.seeded.eventId), "absent is 404, which the app reads as gone")
+        assertRefused(NOT_FOUND, s.port.getEvent(null, s.seeded.eventId), "absent is 404, which the app reads as gone")
     }
 
     clause("GET_NEEDS_NO_CREDENTIAL", BackendState.FOREIGN_TOKEN) { s ->
-        assertOk(s.port.getEvent(s.seeded.eventId), "the event read is authorized by the id alone")
+        assertOk(s.port.getEvent(null, s.seeded.eventId), "the event read is authorized by the id alone")
+    }
+
+    // Public, but a token it is SENT is verified, so its 401 is a verdict on that token (decision record
+    // `changes/separate-event-page-from-device-api`, D7).
+    clause("GET_A_SENT_TOKEN_THE_BACKEND_NEVER_ISSUED_IS_REFUSED", BackendState.FOREIGN_TOKEN) { s ->
+        assertRefused(UNAUTHORIZED, s.port.getEvent(s.token, s.seeded.eventId), "a sent token is checked")
     }
 
     clause("A_REFUSED_BUILD_IS_TOLD_THE_MINIMUM", BackendState.VERSION_REFUSED) { s ->
-        val refused = assertRefused(UPGRADE_REQUIRED, s.port.getEvent(s.seeded.eventId), "a refused build is served nothing")
+        val refused = assertRefused(UPGRADE_REQUIRED, s.port.getEvent(null, s.seeded.eventId), "a refused build is served nothing")
         val minimum = assertNotNull(minAppVersionFromRefusal(refused.body), "the backend names the minimum: ${refused.body}")
         assertTrue(Regex("""\d+\.\d+""").matches(minimum), "the minimum is an X.Y marketing version: $minimum")
     }

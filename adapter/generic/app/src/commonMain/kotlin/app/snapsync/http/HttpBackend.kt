@@ -155,8 +155,8 @@ class HttpBackend(
     ) { text -> EventCreated(eventId = field(text, "eventId"), name = optional(text, "name")) }
 
     // Every field optional, as the backend sent it: whether an absent one makes the answer unusable is the reader's.
-    override suspend fun getEvent(eventId: String): Reply<EventMeta> =
-        exchange(HttpMethod.Get, "/events/$eventId", token = null) { text ->
+    override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> =
+        exchange(HttpMethod.Get, "/events/$eventId", token) { text ->
             val meta = objectOf(text)
             EventMeta(
                 eventId = meta.optional("eventId"),

@@ -52,7 +52,7 @@ class MockConcurrencyTest {
                 write = { round ->
                     runBlocking {
                         port.joinEvent(null, event, "D$round")
-                        port.getEvent("absent-$round")
+                        port.getEvent(null, "absent-$round")
                     }
                 },
                 read = {

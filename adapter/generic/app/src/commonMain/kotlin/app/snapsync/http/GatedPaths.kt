@@ -27,12 +27,14 @@ fun isGatedRequest(method: String, path: String): Boolean {
 
 /**
  * Whether a token sent with [method] [path] is VERIFIED, so that a `401` from it is a verdict on that token: every
- * gated route ([isGatedRequest]), and the event union's read, which is public but checks a token when one is sent so
- * its log can name the reader (decision record `changes/incremental-union`, D5). A token is passed only where this
+ * gated route ([isGatedRequest]), and the two public event reads, which check a token when one is sent — the union so
+ * its log can name the reader (decision record `changes/incremental-union`, D5), the event's details so the app's
+ * read is credentialed (`changes/separate-event-page-from-device-api`, D7). A token is passed only where this
  * holds; `HttpBackendTest` pins the `Backend` methods that take one to it.
  */
 fun verifiesToken(method: String, path: String): Boolean =
-    isGatedRequest(method, path) || ((method == "GET" || method == "HEAD") && EVENT_UNION_READ.matches(bare(path)))
+    isGatedRequest(method, path) ||
+        ((method == "GET" || method == "HEAD") && (EVENT_UNION_READ.matches(bare(path)) || EVENT_READ.matches(bare(path))))
 
 private fun bare(path: String) = VERSION_PREFIX.replaceFirst(path.substringBefore('?'), "").ifEmpty { "/" }
 

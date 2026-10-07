@@ -1,7 +1,7 @@
 // The SHARED device API: routes whose contract is identical under every version, mounted into each
 // version's router, so there is one implementation and no possibility of the two drifting apart.
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { verifyToken } from "../attest.ts";
 import {
   completeAssets,
@@ -87,6 +87,18 @@ type UnionAsset = {
 /** The routes both versions serve, built over `deps`. */
 export function sharedRoutes(deps: RouteDeps): Hono {
   const { config, db, now, aws } = deps;
+
+  /**
+   * The device a PUBLIC read's optional bearer token names: `null` when none is sent, the `401` to answer when
+   * one is sent and does not verify — so the app reads that `401` as a verdict on its token and re-attests.
+   */
+  const optionalReader = async (c: Context): Promise<string | null | Response> => {
+    const auth = c.req.header("authorization") ?? "";
+    if (auth === "") return null;
+    const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
+    const reader = token ? await verifyToken(config, token, now()) : null;
+    return reader ?? c.text("unattested", 401);
+  };
   // SHARED: routes whose contract is identical under every version. Mounted into each version's router,
   // so there is one implementation and no possibility of the two drifting apart.
   const deviceApi = new Hono();
@@ -168,9 +180,16 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // derived `deletesAt` ALSO serves normally until the nightly sweep removes it: no route deletes on
   // touch. The 404 a client acts on is therefore always a real deletion, which is what makes it safe as
   // one of the two witnesses the client's self-leave requires (capability `manage-membership`).
+  //
+  // A bearer token is OPTIONAL, as on the union: present, it must verify (`401` otherwise, so the app re-attests);
+  // absent, the read is served as before. The app sends one on every read of an event; builds that predate it
+  // send none, and are served until a minimum app version retires them
+  // (decision record `changes/separate-event-page-from-device-api`, D7).
   deviceApi.get("/events/:eventId", async (c) => {
     const eventId = eventParam(c);
     if (eventId instanceof Response) return eventId;
+    const reader = await optionalReader(c);
+    if (reader instanceof Response) return reader;
     const event = await gateEvent(db, c, eventId, "metadata");
     if (event instanceof Response) return event;
     // `members` feeds the ended event's waiting line (capability `sync-status`): how many of the active
@@ -316,13 +335,8 @@ export function sharedRoutes(deps: RouteDeps): Hono {
     const after = rawCursor === null ? undefined : Number(rawCursor);
     const withUrls = query.get("urls") !== "false";
 
-    const auth = c.req.header("authorization") ?? "";
-    let reader: string | null = null;
-    if (auth !== "") {
-      const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
-      reader = token ? await verifyToken(config, token, now()) : null;
-      if (reader === null) return c.text("unattested", 401);
-    }
+    const reader = await optionalReader(c);
+    if (reader instanceof Response) return reader;
     const said = c.req.header(TRIGGER_HEADER) ?? "";
     const trigger = (UNION_TRIGGERS as readonly string[]).includes(said) ? said : null;
 

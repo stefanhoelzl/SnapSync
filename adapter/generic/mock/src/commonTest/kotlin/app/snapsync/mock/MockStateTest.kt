@@ -71,7 +71,7 @@ class MockStateTest {
         assertTrue(position > 0)
         assertEquals(listOf(SentPush(event, OTHER, "other-token", seq = position)), copy.backend.operator.pushesSent())
         assertEquals(position, copy.backend.operator.unionPositionOf(event), "and so does the union's position")
-        assertIs<Reply.Ok<*>>(copy.backend.port(app.snapsync.mock.DeclaredVersion("99.0")).getEvent(event))
+        assertIs<Reply.Ok<*>>(copy.backend.port(app.snapsync.mock.DeclaredVersion("99.0")).getEvent(null, event))
     }
 
     @Test

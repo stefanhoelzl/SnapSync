@@ -87,7 +87,7 @@ class BackendReach(
         read("the union", port.eventFiles(null, eventId, null, UnionTrigger.FOREGROUND)).assets
 
     /** The event's name, or `null` for an event the backend does not hold (a `404`). */
-    suspend fun eventOf(eventId: String): Pair<Boolean, String?> = when (val reply = port.getEvent(eventId)) {
+    suspend fun eventOf(eventId: String): Pair<Boolean, String?> = when (val reply = port.getEvent(null, eventId)) {
         is Reply.Ok -> true to reply.value.name
         is Reply.Refused -> if (reply.status == NOT_FOUND) false to null else error("the event details route answered $reply")
         else -> error("the event details route answered $reply for $eventId")

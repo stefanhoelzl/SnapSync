@@ -12,11 +12,13 @@ import {
   as,
   CONFIG,
   createApp,
+  createRealApp,
   D,
   D2,
   E,
   ENDS_AT,
   enrolDevice,
+  NOW,
   recorder,
   rows,
   STARTS_AT,
@@ -588,5 +590,19 @@ Deno.test("presigned download URLs carry the configured scheme, not a hardcoded 
   );
   assertEquals(res.status, 302);
   assert(String(res.headers.get("location")).startsWith("http://127.0.0.1:8080/"));
+  db.close();
+});
+
+// ── The event read's optional token (decision record `changes/separate-event-page-from-device-api`, D7) ───
+
+Deno.test("GET /events/:id → a sent token is checked: a valid one is served, a bad one is 401; none is served", async () => {
+  const db = await storeWithEvent();
+  const raw = createRealApp({ config: CONFIG, db, fetch: recorder().fetchImpl, now: () => NOW });
+  const read = (headers: Record<string, string>) =>
+    raw.request(`/api/v2/events/${E}`, { headers: { ...V2, ...headers } });
+  assertEquals((await read(await as(D))).status, 200);
+  assertEquals((await read({ authorization: "Bearer not-a-token" })).status, 401);
+  assertEquals((await read({ authorization: "Basic x" })).status, 401);
+  assertEquals((await read({})).status, 200, "a build that sends none is still served");
   db.close();
 });
