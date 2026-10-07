@@ -13,7 +13,8 @@
 
 import * as BunnySDK from "@bunny.net/edgescript-sdk";
 import { createApp } from "./app.ts";
-import { readConfig } from "./config.ts";
+import { BUILD_SHA, DEPLOYMENT, readConfig } from "./config.ts";
+import { startErrorReporting } from "./error-report.ts";
 import { libsqlDb } from "./db-libsql.ts";
 
 // The relational store (`docs/architecture.md`). Its credentials are validated by `readConfig` above, so
@@ -21,6 +22,23 @@ import { libsqlDb } from "./db-libsql.ts";
 // relational writes go nowhere. This is the ONLY module that constructs the remote driver — the local rig
 // and the tests build a `node:sqlite` one over the same port.
 const config = readConfig(Deno.env.toObject());
-const app = createApp({ config, db: libsqlDb(config.databaseUrl, config.databaseToken), fetch });
+
+// Failure reports (`error-report.ts`): started only when this bundle carries a DSN, which the resolver
+// renders for the deployed `prod` and `maintenance` bundles alone — so nothing else ever reports.
+const reporter = DEPLOYMENT.sentryDsn
+  ? startErrorReporting({
+    dsn: DEPLOYMENT.sentryDsn,
+    release: BUILD_SHA,
+    environment: config.maintenance ? "maintenance" : "production",
+  })
+  : undefined;
+
+const app = createApp({
+  config,
+  db: libsqlDb(config.databaseUrl, config.databaseToken),
+  fetch,
+  around: reporter?.around,
+  reportError: reporter?.report,
+});
 
 BunnySDK.net.http.serve(app.fetch);

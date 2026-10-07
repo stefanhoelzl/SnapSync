@@ -13,7 +13,7 @@
 // Either way plaintext never lands in an encrypted event. The file-key headers are secrets: no line here,
 // nor any caller's, ever logs a header value.
 
-import type { Context } from "hono";
+import type { HonoRequest } from "hono";
 import { decodeBase64Url } from "@std/encoding/base64url";
 import { encodeHex } from "@std/encoding/hex";
 import {
@@ -25,42 +25,55 @@ import {
   KEY_LENGTH,
   PREFIX_LENGTH,
 } from "../encrypted-file.ts";
+import { refuse } from "../refusal.ts";
 
 /** The one file's key the edge seals with — 32 bytes, base64url. */
 export const FILE_KEY_HEADER = "x-snapsync-file-key";
 /** The file's opening bytes, prefix and header — 49 bytes, base64url. */
 export const FILE_HEAD_HEADER = "x-snapsync-file-head";
 
+/** What an upload arrived with: the two sealing headers, when sent, and its body. */
+export type Upload = {
+  fileKey: string | undefined;
+  fileHead: string | undefined;
+  body: ReadableStream<Uint8Array> | null;
+};
+
+/** The upload `req` carries: its sealing headers and its body, as {@link bodyToStore} takes them. */
+export function uploadOf(req: HonoRequest): Upload {
+  return {
+    fileKey: req.header(FILE_KEY_HEADER),
+    fileHead: req.header(FILE_HEAD_HEADER),
+    body: req.raw.body,
+  };
+}
+
 /**
- * The body to store for an upload into an event whose key id is `keyId` (`null` for a plain event), or the
- * refusal to answer. Never reads more than the 9-byte prefix before it decides.
+ * The body to store for an upload into an event whose key id is `keyId` (`null` for a plain event); refused
+ * otherwise. Never reads more than the 9-byte prefix before it decides.
  */
 export async function bodyToStore(
-  c: Context,
+  upload: Upload,
   keyId: string | null,
-): Promise<ReadableStream<Uint8Array> | Response> {
-  const fileKey = c.req.header(FILE_KEY_HEADER);
-  const fileHead = c.req.header(FILE_HEAD_HEADER);
-  const body = c.req.raw.body ?? new ReadableStream<Uint8Array>({ start: (s) => s.close() });
+): Promise<ReadableStream<Uint8Array>> {
+  const { fileKey, fileHead } = upload;
+  const body = upload.body ?? new ReadableStream<Uint8Array>({ start: (s) => s.close() });
   if (keyId === null) {
-    if (fileKey !== undefined || fileHead !== undefined) {
-      return c.text("event is not encrypted", 400);
-    }
+    if (fileKey !== undefined || fileHead !== undefined) refuse(400, "event is not encrypted");
     return body;
   }
   if (fileKey !== undefined || fileHead !== undefined) {
-    return sealedHere(c, keyId, fileKey, fileHead, body);
+    return sealedHere(keyId, fileKey, fileHead, body);
   }
-  return await sealedOnDevice(c, keyId, body);
+  return await sealedOnDevice(keyId, body);
 }
 
 function sealedHere(
-  c: Context,
   keyId: string,
   fileKey: string | undefined,
   fileHead: string | undefined,
   body: ReadableStream<Uint8Array>,
-): ReadableStream<Uint8Array> | Response {
+): ReadableStream<Uint8Array> {
   let key: Uint8Array;
   let head;
   try {
@@ -74,17 +87,16 @@ function sealedHere(
     }
     head = decodeHead(headBytes);
   } catch {
-    return c.text("invalid file key", 400);
+    refuse(400, "invalid file key");
   }
-  if (encodeHex(head.keyId) !== keyId) return c.text("another key", 403);
+  if (encodeHex(head.keyId) !== keyId) refuse(403, "another key");
   return body.pipeThrough(encryptingStream(key, head));
 }
 
 async function sealedOnDevice(
-  c: Context,
   keyId: string,
   body: ReadableStream<Uint8Array>,
-): Promise<ReadableStream<Uint8Array> | Response> {
+): Promise<ReadableStream<Uint8Array>> {
   const reader = body.getReader();
   const seen: Uint8Array[] = [];
   let length = 0;
@@ -100,7 +112,7 @@ async function sealedOnDevice(
     encodeHex(prefix.subarray(1, PREFIX_LENGTH)) !== keyId
   ) {
     await reader.cancel().catch(() => {});
-    return c.text("not encrypted for this event", 422);
+    refuse(422, "not encrypted for this event");
   }
   // The bytes already read go first, then the rest of the body untouched.
   return new ReadableStream<Uint8Array>({

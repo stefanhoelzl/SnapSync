@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // ASSERT THE DEPLOYED STORE'S SHAPE (`docs/deployment.md`).
 //
 // Compares the LIVE store's schema against what replaying `api/migrations/*.sql` builds, and fails the

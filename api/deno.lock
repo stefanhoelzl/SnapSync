@@ -14,6 +14,7 @@
     "npm:@bunny.net/edgescript-sdk@0.13": "0.13.0",
     "npm:@libsql/client@0.18": "0.18.0",
     "npm:@peculiar/x509@^2.1.0": "2.1.0",
+    "npm:@sentry/deno@^10.76.0": "10.76.1",
     "npm:aws4fetch@^1.0.20": "1.0.20",
     "npm:hono@^4.13.10": "4.13.10",
     "npm:jose@^6.2.12": "6.2.12",
@@ -142,6 +143,9 @@
     },
     "@neon-rs/load@0.0.4": {
       "integrity": "sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw=="
+    },
+    "@opentelemetry/api@1.9.1": {
+      "integrity": "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="
     },
     "@peculiar/asn1-asym-key@2.10.0": {
       "integrity": "sha512-1R8xUTeqcUTSMLFTTCzJyFuKiq3y25EQKs9DezUetJ8qMqbJyxo3XkzykiwwT/Xzlt5/vRzS/sW4M1r+pq1FTg==",
@@ -281,6 +285,30 @@
         "tsyringe"
       ]
     },
+    "@sentry/conventions@0.16.0": {
+      "integrity": "sha512-fO9PLmHdVURcSPUpWCItWAtgKiMwGdJHbovoSEyLplX5sxs2ugvI4CBPTrkkgqhObnZOD0CnWBKDzSVQYBKEyQ=="
+    },
+    "@sentry/core@10.76.1": {
+      "integrity": "sha512-WZ1D30FDrvZPWcEgbCgaVHROBOaVGxNUcEeF5O5xRAdGu6UB7Epg+CQBeoatw/SxEctQq0BPbMIwtBgbe1QK3g==",
+      "dependencies": [
+        "@sentry/conventions"
+      ]
+    },
+    "@sentry/deno@10.76.1": {
+      "integrity": "sha512-4C11lzPG3/Dz6ZSr7RA1gThpOGbAPPADPoNbYJj/9xmZlGwwtifvqmeIktGj+D1J3DAkYX9fdVQ73ATYGWKtxA==",
+      "dependencies": [
+        "@opentelemetry/api",
+        "@sentry/core",
+        "@sentry/server-utils"
+      ]
+    },
+    "@sentry/server-utils@10.76.1": {
+      "integrity": "sha512-E4BHBU2F975eQW/eo4w73DvxN2LNac3wqWzd8lvk4A6jXt8nJwtGSxxdPaTM0Il82aJkbZXJ3IIO/Px6rlX+lQ==",
+      "dependencies": [
+        "@sentry/conventions",
+        "@sentry/core"
+      ]
+    },
     "@types/node@26.6.3": {
       "integrity": "sha512-dsqMQQoeTLqu9wynDD00q573mNzso3IdQOAfHRJqLCcmCFPoGo9A1bDpUcv/9tnKpErQWv9uKeGfl37EIS02Yg==",
       "dependencies": [
@@ -379,6 +407,7 @@
       "npm:@bunny.net/edgescript-sdk@0.13",
       "npm:@libsql/client@0.18",
       "npm:@peculiar/x509@^2.1.0",
+      "npm:@sentry/deno@^10.76.0",
       "npm:aws4fetch@^1.0.20",
       "npm:hono@^4.13.10",
       "npm:jose@^6.2.12",

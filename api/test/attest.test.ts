@@ -81,10 +81,13 @@ function recorder(objects: Record<string, string> = {}) {
  */
 const app = (objects: Record<string, string> = {}, db: Db = DB) => {
   const { calls, fetchImpl } = recorder(objects);
-  const raw = createApp({ config: CONFIG, db, fetch: fetchImpl, now: () => NOW });
+  const lines: string[] = [];
+  const logSink = (l: string) => void lines.push(l);
+  const raw = createApp({ config: CONFIG, db, fetch: fetchImpl, now: () => NOW, logSink });
   const request = raw.request.bind(raw);
   return {
     calls,
+    lines,
     app: Object.assign(raw, {
       request: (path: string, init: RequestInit = {}) =>
         request(path, { ...init, headers: { ...V2, ...(init.headers ?? {}) } }),
@@ -553,7 +556,7 @@ Deno.test("renew: a stale challenge is 409, minting nothing", async () => {
 });
 
 Deno.test("attest: a rejected attestation is 401 naming its reason", async () => {
-  const { app: a } = app();
+  const { app: a, lines } = app();
   const res = await a.request("/api/v2/attest/token", {
     method: "POST",
     headers: V2,
@@ -569,6 +572,8 @@ Deno.test("attest: a rejected attestation is 401 naming its reason", async () =>
   });
   assertEquals(res.status, 401);
   assertEquals(await res.text(), "attestation rejected: device-unverifiable");
+  // The precise check is the operator's, on the request's line.
+  assert(lines.at(-1)!.includes(' rejected="apple-appattest (device-unverifiable'), lines.at(-1));
 });
 
 Deno.test("attest: only the typed proof is taken — the retired flat body, or an unknown format, is a 400", async () => {
@@ -614,7 +619,7 @@ Deno.test("attest: a rejected attestation mints no token and stores no key", asy
 });
 
 Deno.test("renew: a device that never attested must attest, not renew", async () => {
-  const { app: a } = app(); // no devices/<id>.attest.json
+  const { app: a, lines } = app(); // no devices/<id>.attest.json
   const res = await a.request("/api/v2/attest/renew", {
     method: "POST",
     body: JSON.stringify({
@@ -624,6 +629,8 @@ Deno.test("renew: a device that never attested must attest, not renew", async ()
     }),
   });
   assertEquals(res.status, 401);
+  await res.text();
+  assert(lines.at(-1)!.endsWith(" refused=not-attested"), lines.at(-1));
 });
 
 Deno.test("renew: an unreadable store is 502, never the 401 that means 'attest again'", async () => {
@@ -646,13 +653,15 @@ Deno.test("config: a device with no attestation on file is refused, and nothing 
   // The token verifies — it is ours and unexpired — but the backend holds no attestation for this device.
   // `401` because the remedy is the one a rejected token already has, and the shipped client takes it.
   const db = await emptyStore();
-  const { app: a } = app({}, db);
+  const { app: a, lines } = app({}, db);
   const res = await a.request(`/api/v2/devices/${D}`, {
     method: "PUT",
     body: JSON.stringify({ pushToken: { kind: "apns", token: "t", env: "sandbox" } }),
     headers: bearer,
   });
   assertEquals(res.status, 401);
+  await res.text();
+  assert(lines.at(-1)!.endsWith(" refused=not-attested"), lines.at(-1));
   assertEquals((await db.execute(`SELECT * FROM devices`)).rows.length, 0);
   db.close();
 });

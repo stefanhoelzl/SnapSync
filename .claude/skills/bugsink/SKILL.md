@@ -4,7 +4,7 @@ description: >-
   Triage SnapSync crash reports from the operator's Bugsink instance
   (steho.bugsink.com). List unresolved issues ranked by last-seen, drill into one
   issue for the full context (symbolicated stacktrace, breadcrumbs,
-  device/OS/app context — an iOS trace symbolicated, an Android one retraced), and resolve an issue a shipped fix closes - the one
+  device/OS/app context — an iOS trace symbolicated, an Android one retraced, an api one source-mapped), and resolve an issue a shipped fix closes - the one
   write, and only on confirmation. Use when the user asks what's crashing, to
   look at a Bugsink issue/crash, to triage errors, names an issue like
   SNAPSYNC-3, or when a merged PR carries a `Bugsink-Resolves:` trailer.
@@ -21,7 +21,9 @@ issues `GET`s. There is exactly **one** write — resolving an issue a shipped f
 first. Muting, reopening, commenting and deleting stay out of scope entirely.
 
 - **Instance:** `https://steho.bugsink.com` — **project 1** (`snapsync`). Both the app
-  and the background-upload extension report to this one project/DSN.
+  and the background-upload extension report to this one project/DSN, and so does the **api**
+  (the Edge Script, tag `platform=api`) for exceptions no route caught — its log line for the same
+  request carries `bugsink=<event id>` and the event's `reqid` tag (`docs/architecture.md`, "The request log").
 - **API namespace:** `/api/canonical/0/` (Bugsink-native). The Sentry-compat `/api/0/`
   is sentry-cli / debug-file upload ONLY — its `/organizations`, `/teams`, `/projects`
   read paths are unimplemented here (they 404). Do not use them.
@@ -192,9 +194,10 @@ Then work the files: `grep -n "enumeration:" "$OUT/app_log.txt" | tail`, `tail -
 - A dump has **no stacktrace and no `debug_meta`**, so symbolication (step 3) does not apply.
 - The two logs share a ~700 KB budget, so a dump is a **tail**, not the whole file. If the answer
   rolled off, ask for a `SNAPSYNC_EXPORT_LOGS=1` launch plus a USB pull instead.
-## 3. Symbolicate (iOS) or retrace (Android) the stacktrace — Linux, no Mac
+## 3. Symbolicate (iOS), retrace (Android) or source-map (api) the stacktrace — Linux, no Mac
 
-**Pick by the event's `data.tags.platform`**: `ios` → the dSYM symbolication below; `android` → 3b.
+**Pick by the event's `data.tags.platform`**: `ios` → the dSYM symbolication below; `android` → 3b;
+`api` → 3c.
 (Events from builds before the tag existed are iOS — Android reported nowhere until Play delivery.)
 
 ```bash
@@ -253,6 +256,28 @@ them as `q91.a`; `retrace.py` strips the prefix itself.
 dSYMs: show the obfuscated frames from `stacktrace_md`, name the build and the missing artifact. Never
 retrace against a *different* build's mapping — R8 renames per build, so the result is confidently wrong.
 A `dist` of `1` is a local or pre-delivery build: no mapping exists for it.
+
+### 3c. api: map the bundle's frames through its source map
+
+The api runs as ONE bundled file, so every frame names that file (`/mod.ts:<line>:<col>`, function often
+`?`). Each green deploy archives the bundle and its source map as GitHub artifact **`bundle-<sha>`**, where
+`<sha> = data.release` (90-day retention, `deploy.yml`'s `api` job). `sourcemap.py` decodes the map and prints
+each frame as `api/src/<file>:<line>:<col>` (a dependency as `npm:<pkg>@<version>/…`). Stdlib only.
+
+```bash
+SHA=$(python3 -c 'import json;print(json.load(open("'"$OUT"'/event.json"))["data"]["release"])')
+BUNDLE_DIR="$OUT/bundle-$SHA"
+gh run download -n "bundle-$SHA" -D "$BUNDLE_DIR"   # from the deploy.yml run that shipped it
+python3 .claude/skills/bugsink/sourcemap.py "$OUT/event.json" "$BUNDLE_DIR"
+```
+
+The event also carries the request as it arrived (`data.request`: URL, headers) and the request's
+outbound calls as `fetch` breadcrumbs (the libsql store and bunny storage among them). To see the rest of
+that request — its status, its fields — find its line in the Edge Script log by the `reqid` tag.
+
+**When `bundle-<sha>` is gone, or holds no `main.js.map` (a bundle archived before the map was): fail loud**
+— show the raw `/mod.ts` frames and name the sha. Never map through another sha's map: line numbers
+shift with every change to any bundled module.
 
 ## 4. Resolve an issue a shipped fix closes
 

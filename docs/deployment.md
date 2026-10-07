@@ -101,7 +101,7 @@ The deployment declares the **names**. Values come from the environment of which
 | `ATTEST_TOKEN_KEY` | Edge Script env | HMAC key for device tokens and attest challenges |
 | `BUNNY_DATABASE_URL` / `BUNNY_DATABASE_AUTH_TOKEN` | Edge Script env; GH secrets for the `api` deploy job and `nightly-cleanup` | the relational store |
 | `FCM_SERVICE_ACCOUNT_KEY` | Edge Script env | the Firebase service account's **JSON key file contents** (not a path), role *Firebase Cloud Messaging API Admin*. **Optional**: absent, the backend boots and the FCM sender skips every Android token |
-| `SENTRY_DSN` | GH secret, `ci.yml` (`ios-build`, `android-build`) | build-scope; baked only into distributed builds (§5), on both platforms |
+| `SENTRY_DSN` | GH secret, `ci.yml` (`ios-build`, `android-build`), `deploy.yml` (`api`'s resolving steps) | build-scope; baked only into distributed builds (§5), on both platforms, and into the api's `prod` and `maintenance` bundles |
 
 - The backend validates every declared runtime secret **once at startup**. A missing or blank one throws,
   and the script does not boot. The one exception is `FCM_SERVICE_ACCOUNT_KEY`: without it Android members
@@ -262,7 +262,8 @@ bundle that disagreed with the schema", never "certainly".
 ### Rollback
 
 - Every green deploy archives `bundle-<sha>` as a GitHub Actions artifact (90 days, the platform
-  maximum). The archive is **not** in the storage zone: the deploy job must not hold that key, and a
+  maximum): `main.js` and its source map `main.js.map`, which the `/bugsink` skill reads to map a reported
+  api stack back to `api/src` (a rollback restores `main.js` alone). The archive is **not** in the storage zone: the deploy job must not hold that key, and a
   rollback must still work when bunny is what is failing. Bunny's own release re-publish needs the
   account key (the deploy key gets `401` there).
 - Only a **migrating** deploy rolls back automatically. There is **no rebuild fallback**: a missing
@@ -564,6 +565,11 @@ never reaches the internal track (below).
   No DSN means the SDK never starts, and a bug report is saved on the phone instead of sent. On Android only
   `android-build`'s bundle step of a delivering run resolves `release` (the platform tests after it resolve `dev`). ⚠️ Injecting `SENTRY_DSN` on a dev `xcodebuild` line does nothing, because a build
   setting cannot substitute into a bundled resource. Dispatch the branch instead.
+- The **api** carries the same DSN in its `prod` and `maintenance` bundles (`api/src/deployment.ts`), for
+  uncaught exceptions only (`docs/architecture.md`, "The request log"; decision record
+  `changes/api-request-log`). Every `deploy.yml` step that resolves (`deno task bundle*` re-resolves) is
+  handed the secret on its own; `local` names none, so a dev rig or a test backend reports nothing. A
+  reported api frame is a line of the bundle: `bundle-<sha>`'s `main.js.map` maps it back.
 - The Bugsink instance ingests no dSYMs. `ios-deliver` publishes each delivered build's dSYMs as
   artifact **`dsyms-<run_number>`** (= `CFBundleVersion`, 90 days, the platform maximum). The `/bugsink`
   skill symbolicates against it on Linux and fails loudly once it has expired. Copy dSYMs somewhere

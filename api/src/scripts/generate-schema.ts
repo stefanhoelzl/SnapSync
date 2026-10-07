@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
 // GENERATE THE SCHEMA SNAPSHOT (`docs/architecture.md`): replay every migration into an empty store, dump
 // what SQLite says the schema is, and write it to `api/schema.sql`.
 //

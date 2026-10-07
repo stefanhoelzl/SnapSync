@@ -225,13 +225,23 @@ jobs:
       # the one build-scope value here; it becomes the stamp the probe matches against.
       # (`deno task bundle` chains the resolver too, so this step is what makes the SHA available to it
       # rather than the `dev` default.)
+      #
+      # `SENTRY_DSN` is the crash-reporting ingestion key the backend reports uncaught exceptions with
+      # (decision record `changes/api-request-log`, D6). It is a build-scope value of `prod` and
+      # `maintenance`, so EVERY step that resolves — this one and each `deno task bundle*`, which re-resolves
+      # — carries it, step by step: the migration and probe steps never see it. `local` names no DSN, so
+      # a dev or test backend reports nothing.
       - name: Resolve the deployment
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: python3 scripts/resolve-deployment.py prod
 
       # Bundle to a single file — the deploy action uploads the file as-is (no bundling). Must stay
       # within the Edge Scripting 10 MB script limit.
       - name: Bundle
         working-directory: api
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: deno task bundle
 
       # The stamp must be IN the artifact before anything is deployed. This turns "CI never supplied a
@@ -369,6 +379,8 @@ jobs:
       - name: Bundle the maintenance window
         if: steps.live.outputs.sha != ''
         working-directory: api
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           deno task bundle:maintenance
           grep -q "${{ github.sha }}" dist/main.js || {
@@ -452,6 +464,8 @@ jobs:
       - name: Re-bundle after the window
         if: steps.live.outputs.sha != ''
         working-directory: api
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           deno task bundle
           grep -q "${{ github.sha }}" dist/main.js || {
@@ -524,11 +538,16 @@ jobs:
       # EXPIRY IS NOT A CORRECTNESS RISK EITHER WAY. The capture step checks the archive BEFORE a window
       # opens, never at rollback time, so an expired archive costs a refused deploy rather than a stuck
       # outage — and re-seeding it is one non-migrating deploy.
+      # The source map rides along (decision record `changes/api-request-log`, D5): a reported stack names
+      # the bundle's lines, and the `/bugsink` skill maps them back to `api/src` through the map of the
+      # event's release — this sha. The rollback below restores only `main.js`.
       - name: Archive this bundle for a future rollback
         uses: actions/upload-artifact@v7.0.1
         with:
           name: bundle-${{ github.sha }}
-          path: api/dist/main.js
+          path: |
+            api/dist/main.js
+            api/dist/main.js.map
           retention-days: 90
           if-no-files-found: error
 

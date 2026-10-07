@@ -75,11 +75,18 @@ async function eventWith(ids: string[]) {
 }
 
 /** The real app with NOTHING attached: no token, no version header — a browser, or an OS transport. */
-const bare = (db: Db) =>
-  createRealApp({ config: CONFIG, db, fetch: recorder().fetchImpl, now: () => NOW, buildSha: "x" });
+const bare = (db: Db, lines: string[] = []) =>
+  createRealApp({
+    config: CONFIG,
+    db,
+    fetch: recorder().fetchImpl,
+    now: () => NOW,
+    buildSha: "x",
+    logSink: (l) => lines.push(l),
+  });
 /** The app as a current v2 build sends it: the version header, plus whatever `headers` add. */
-const app2 = (db: Db, headers: Record<string, string> = {}) => {
-  const app = bare(db);
+const app2 = (db: Db, headers: Record<string, string> = {}, lines: string[] = []) => {
+  const app = bare(db, lines);
   return (path: string) => app.request(path, { headers: { [VERSION_HEADER]: "0.1", ...headers } });
 };
 
@@ -174,9 +181,11 @@ async function fetches(db: Db) {
 
 Deno.test("reads → a verified token names the reader and its trigger; a delta records where it started", async () => {
   const { db } = await eventWith(["A"]);
-  const read = app2(db, { ...await as(D2), "SnapSync-Trigger": "push" });
-  await read(V2_UNION);
-  await read(`${V2_UNION}?cursor=0`);
+  const lines: string[] = [];
+  const read = app2(db, { ...await as(D2), "SnapSync-Trigger": "push" }, lines);
+  await (await read(V2_UNION)).text();
+  await (await read(`${V2_UNION}?cursor=0`)).text();
+  assert(lines[0].endsWith(" served=1 trigger=push"), lines[0]);
   const log = await fetches(db);
   assertEquals(log.length, 2);
   assertEquals(log[0].device_id, D2);
@@ -215,8 +224,13 @@ Deno.test("reads → a failing log write never fails the read", async () => {
     batch: (s) => db.batch(s),
     transaction: (fn) => db.transaction(fn),
   };
-  const res = await app2(failingLog)(V2_UNION);
+  const lines: string[] = [];
+  const res = await app2(failingLog, {}, lines)(V2_UNION);
   assertEquals(res.status, 200);
   assertEquals((await res.json() as Asset[]).length, 1);
+  assert(
+    lines[0].includes(' err="union: could not log the read of ') && lines[0].includes("log down"),
+    lines[0],
+  );
   db.close();
 });

@@ -1,9 +1,14 @@
 // What every route of the device API shares (`docs/architecture.md`): the device binding, the path and body
 // readers, the faithful-outcome refusals, the event gate, the streaming byte PUT and the presigned download
-// URL. Each helper keeps the status, body text and log line its routes answered with before it existed — a
-// route's wire answer is its contract, and a shared helper must not move it.
+// URL. Each helper keeps the status and body text its routes answered with before it existed — a route's
+// wire answer is its contract, and a shared helper must not move it.
+//
+// NO HELPER SEES THE REQUEST'S CONTEXT (decision record `changes/api-request-log`, D2). A handler reads what a
+// helper needs — a path parameter, the token's device, the declared version, the body — and passes it as a
+// value. A failure reply is THROWN as a `Refusal`, which `onError` answers and records on the request's line;
+// a best-effort failure is RETURNED, for the handler to record.
 
-import type { Context } from "hono";
+import type { HonoRequest } from "hono";
 import type { AwsClient } from "aws4fetch";
 import type { Config } from "../config.ts";
 import {
@@ -17,9 +22,10 @@ import {
 } from "../db.ts";
 import { deleteByMs } from "../lifecycle.ts";
 import { type PushSender, unsentSummary } from "../push.ts";
+import { refuse, rethrowRefusal } from "../refusal.ts";
 import { type FetchLike, storageKey } from "../storage.ts";
 import { canonicalFromMs, validateUUID } from "../validators.ts";
-import { APP_VERSION_HEADER, recordableVersion, splitVersion } from "../version.ts";
+import { recordableVersion, splitVersion } from "../version.ts";
 
 /** What a route factory is built over: `createApp`'s dependencies, resolved once. */
 export type RouteDeps = {
@@ -60,92 +66,91 @@ declare module "hono" {
  * FAILS CLOSED: a request that reached a route without passing the token gate has no token device, and
  * `undefined` equals no id.
  */
-export function actsFor(c: Context, deviceId: string): boolean {
-  return c.get("tokenDeviceId") === deviceId;
+export function actsFor(tokenDeviceId: string | undefined, deviceId: string): boolean {
+  return tokenDeviceId === deviceId;
 }
 
 /**
- * The refusal of a request naming a device its token was not minted for. `403`, not `401`: the credential
- * is valid and is NOT the problem — a `401` from a gated route makes the shipped client drop its token and
- * re-attest (`withCredentialInterceptor`), which would loop forever without changing the answer.
+ * Refuse a request naming a device its token was not minted for. `403`, not `401`: the credential is valid
+ * and is NOT the problem — a `401` from a gated route makes the shipped client drop its token and re-attest
+ * (`withCredentialInterceptor`), which would loop forever without changing the answer.
  */
-export function notThisDevice(c: Context): Response {
-  return c.text("not this device", 403);
+export function notThisDevice(): never {
+  refuse(403, "not this device");
 }
 
 /**
- * The path's `deviceId` when it is a UUID the token acts for; otherwise the refusal to return — `400` with the
- * route's own `invalid` text, or `403` ({@link notThisDevice}). The id is validated BEFORE the binding, so a
- * malformed id is a `400` whoever asks.
+ * The path's `deviceId` when it is a UUID the token acts for; otherwise refused — `400` with the route's own
+ * `invalid` text, or `403` ({@link notThisDevice}). The id is validated BEFORE the binding, so a malformed id
+ * is a `400` whoever asks.
  */
-export function ownDeviceParam(c: Context, invalid: string): string | Response {
-  const deviceId = c.req.param("deviceId") ?? "";
-  if (!validateUUID(deviceId)) return c.text(invalid, 400);
-  return actsFor(c, deviceId) ? deviceId : notThisDevice(c);
+export function ownDeviceParam(
+  param: string | undefined,
+  tokenDeviceId: string | undefined,
+  invalid: string,
+): string {
+  const deviceId = param ?? "";
+  if (!validateUUID(deviceId)) refuse(400, invalid);
+  return actsFor(tokenDeviceId, deviceId) ? deviceId : notThisDevice();
 }
 
 /**
- * The path's `eventId` and `deviceId` when both are UUIDs and the token acts for the device; otherwise the
- * refusal to return, as {@link ownDeviceParam} — one `invalid` text for either malformed id.
+ * The path's `eventId` and `deviceId` when both are UUIDs and the token acts for the device; otherwise
+ * refused, as {@link ownDeviceParam} — one `invalid` text for either malformed id.
  */
 export function eventAndOwnDeviceParams(
-  c: Context,
+  params: { eventId?: string; deviceId?: string },
+  tokenDeviceId: string | undefined,
   invalid: string,
-): { eventId: string; deviceId: string } | Response {
-  const eventId = c.req.param("eventId") ?? "";
-  const deviceId = c.req.param("deviceId") ?? "";
-  if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text(invalid, 400);
-  return actsFor(c, deviceId) ? { eventId, deviceId } : notThisDevice(c);
+): { eventId: string; deviceId: string } {
+  const eventId = params.eventId ?? "";
+  const deviceId = params.deviceId ?? "";
+  if (!validateUUID(eventId) || !validateUUID(deviceId)) refuse(400, invalid);
+  return actsFor(tokenDeviceId, deviceId) ? { eventId, deviceId } : notThisDevice();
 }
 
-/** The path's `eventId` when it is a UUID; otherwise the `400 invalid event` to return. */
-export function eventParam(c: Context): string | Response {
-  const eventId = c.req.param("eventId") ?? "";
-  return validateUUID(eventId) ? eventId : c.text("invalid event", 400);
+/** The path's `eventId` when it is a UUID; otherwise refused `400 invalid event`. */
+export function eventParam(param: string | undefined): string {
+  const eventId = param ?? "";
+  return validateUUID(eventId) ? eventId : refuse(400, "invalid event");
 }
 
-/** The request body parsed as JSON, or the `400 invalid body` to return when it is not JSON. */
-export async function readJson(c: Context): Promise<{ body: unknown } | Response> {
+/** The request body parsed as JSON; refused `400 invalid body` when it is not JSON. */
+export async function readJson(req: HonoRequest): Promise<unknown> {
   try {
-    return { body: await c.req.json() };
+    return await req.json();
   } catch {
-    return c.text("invalid body", 400);
+    refuse(400, "invalid body");
   }
 }
 
 /**
- * The faithful-outcome answer to a store or upstream failure: logged as `<what>: <error>`, answered `502` —
+ * The faithful-outcome answer to a store or upstream failure: refused `502`, recorded as `<what>: <error>` —
  * never mistaken for absence, never a partial success.
  */
-export function upstream502(c: Context, what: string, e: unknown): Response {
-  console.error(`${what}: ${e}`);
-  return c.text("upstream error", 502);
+export function upstream502(what: string, e: unknown): never {
+  refuse(502, "upstream error", { err: `${what}: ${e}` });
 }
 
-/** `step()`'s value, or — when it throws — the {@link upstream502} (logged under `what`) to return. */
-export async function tryUpstream<T>(
-  c: Context,
-  what: string,
-  step: () => Promise<T>,
-): Promise<T | Response> {
+/** `step()`'s value, or — when it throws — the {@link upstream502} recorded under `what`. */
+export async function tryUpstream<T>(what: string, step: () => Promise<T>): Promise<T> {
   try {
     return await step();
   } catch (e) {
-    return upstream502(c, what, e);
+    rethrowRefusal(e);
+    upstream502(what, e);
   }
 }
 
-/** `respond()`'s response, or — when it throws — the {@link upstream502} logged under `what`. */
+/**
+ * `respond()`'s response, or — when it throws — the {@link upstream502} recorded under `what`. A refusal
+ * `respond()` throws passes through as itself.
+ */
 export async function orUpstream502(
-  c: Context,
   what: string,
   respond: () => Promise<Response>,
 ): Promise<Response> {
-  try {
-    return await respond();
-  } catch (e) {
-    return upstream502(c, what, e);
-  }
+  return await tryUpstream(what, respond);
 }
 
 // RequestInit + the streaming-body flag required when `body` is a ReadableStream.
@@ -197,22 +202,21 @@ export const WEB_PRESIGN_EXPIRY_SECONDS = 3600;
 export const NO_CACHE = "no-store, no-cache, max-age=0";
 
 /**
- * Stream the request body into ONE bunny native Storage PUT at `key` — pass-through, never buffered or
- * hashed. `null` once bunny confirmed the stored object; otherwise the `502` to return — `upstream error`
- * when the PUT itself errored, `upstream rejected` when bunny refused it — logged under the route's `route`.
- * A PUT that errored because the CLIENT's body broke off is logged as that, at info: it is the network
+ * Stream `body` into ONE bunny native Storage PUT at `key` — pass-through, never buffered or hashed. Returns
+ * once bunny confirmed the stored object; otherwise refused `502` — `upstream error` when the PUT itself
+ * errored, `upstream rejected` when bunny refused it — recorded under the route's `route`. A PUT that errored
+ * because the CLIENT's body broke off is recorded as that (`aborted=true`), not as a fault: it is the network
  * between the phone and the edge, which the device's retry absorbs, not a fault of ours or of storage.
  */
 export async function streamPut(
   fetchImpl: FetchLike,
   config: Config,
-  c: Context,
   route: string,
   key: string,
   contentType: string,
   /** What to store: the request's body, unless the route decided otherwise (`bodyToStore`). */
-  body: ReadableStream<Uint8Array> | null = c.req.raw.body,
-): Promise<Response | null> {
+  body: ReadableStream<Uint8Array> | null,
+): Promise<void> {
   const watch = watchedBody(body);
   let upstream: Response;
   try {
@@ -223,15 +227,14 @@ export async function streamPut(
       duplex: "half",
     } as StreamInit);
   } catch (e) {
-    if (!watch.clientAborted) return upstream502(c, `${route}: upstream PUT errored for ${key}`, e);
-    console.log(`${route}: client aborted the upload of ${key}: ${e}`);
-    return c.text("upstream error", 502);
+    if (!watch.clientAborted) upstream502(`${route}: upstream PUT errored for ${key}`, e);
+    refuse(502, "upstream error", { fields: { aborted: true } });
   }
   if (!upstream.ok) {
-    console.error(`${route}: bunny returned ${upstream.status} for ${key}`);
-    return c.text("upstream rejected", 502);
+    refuse(502, "upstream rejected", {
+      err: `${route}: bunny returned ${upstream.status} for ${key}`,
+    });
   }
-  return null;
 }
 
 /**
@@ -304,22 +307,17 @@ export function downloadPath(
  * case the marker era had to carry is unstateable, because `startsAt`, `endsAt`, `capacity` and
  * `lifetimeSeconds` are `NOT NULL` columns.
  *
- * Returns the row, or the response the route answers with: `404 event not found` when absent, and on a
- * store failure `502` (logged as `<route>: event read failed for <id>`), so the route never mistakes a
- * transient fault for absence. That distinction is load-bearing beyond this file: a `404` here is a
- * SEALED deletion, and `manage-membership`'s two-witness teardown acts on it.
+ * Returns the row; refused `404 event not found` when absent, and on a store failure `502` (recorded as
+ * `<route>: event read failed for <id>`), so the route never mistakes a transient fault for absence. That
+ * distinction is load-bearing beyond this file: a `404` here is a SEALED deletion, and
+ * `manage-membership`'s two-witness teardown acts on it.
  */
-export async function gateEvent(
-  db: Db,
-  c: Context,
-  eventId: string,
-  route: string,
-): Promise<EventRow | Response> {
-  try {
-    return await readEvent(db, eventId) ?? c.text("event not found", 404);
-  } catch (e) {
-    return upstream502(c, `${route}: event read failed for ${eventId}`, e);
-  }
+export async function gateEvent(db: Db, eventId: string, route: string): Promise<EventRow> {
+  const event = await tryUpstream(
+    `${route}: event read failed for ${eventId}`,
+    () => readEvent(db, eventId),
+  );
+  return event ?? refuse(404, "event not found");
 }
 
 /**
@@ -346,36 +344,35 @@ export function publicEvent(event: EventRow) {
   };
 }
 
-/** The refusal every write to a closed (or completed) event answers (capability `event-lifetime`). */
-export function closedRefusal(c: Context) {
-  return c.json({ error: "closed" }, 410);
+/** Refuse a write to a closed (or completed) event (capability `event-lifetime`). */
+export function closedRefusal(): never {
+  refuse(410, { error: "closed" });
 }
 
 /**
- * What an enrollment that did not admit the device answers — or `null` when it did. The zero-row outcome
- * has TWO causes and they are told apart rather than collapsed (capability `database`): at capacity is a
- * `409` the user can act on, absent is a `404` that means something else entirely. A failed enrollment
- * stays the `502` it already is.
+ * Refuse an enrollment that did not admit the device; return when it did. The zero-row outcome has TWO
+ * causes and they are told apart rather than collapsed (capability `database`): at capacity is a `409` the
+ * user can act on, absent is a `404` that means something else entirely. A failed enrollment stays the
+ * `502` it already is.
  */
-export function enrollRefusal(c: Context, outcome: EnrollOutcome | Response): Response | null {
-  if (outcome instanceof Response) return outcome;
-  if (outcome === "no-such-event") return c.text("event not found", 404);
-  if (outcome === "closed") return closedRefusal(c);
-  if (outcome === "full") return c.text("event full", 409);
-  return null;
+export function enrollRefusal(outcome: EnrollOutcome): void {
+  if (outcome === "no-such-event") refuse(404, "event not found");
+  if (outcome === "closed") closedRefusal();
+  if (outcome === "full") refuse(409, "event full");
 }
 
 /**
- * The app version this request declared, as a device row keeps it — or `null` off v2 (only v2 runs the
- * version gate that parses it) or when it is not {@link recordableVersion}.
+ * The app version a request declared, as a device row keeps it — or `null` off v2 (only v2 runs the version
+ * gate that parses it) or when it is not {@link recordableVersion}.
  */
-export function declaredAppVersion(c: Context): string | null {
-  if (splitVersion(new URL(c.req.url).pathname).version !== 2) return null;
-  return recordableVersion(c.req.header(APP_VERSION_HEADER));
+export function declaredAppVersion(url: string, header: string | undefined): string | null {
+  if (splitVersion(new URL(url).pathname).version !== 2) return null;
+  return recordableVersion(header);
 }
 
 /**
- * Keep the app version this request declared on `deviceId`'s row (capability `app-update-required`).
+ * Keep the app version a request declared (`declared`, from {@link declaredAppVersion}) on `deviceId`'s row
+ * (capability `app-update-required`). Answers the failure to record, or `undefined`.
  *
  * Best-effort: the record of a version never costs the request it rode in on. Called by the join, the
  * manifest publish and a union read that carries a verified token — never by every gated route, because
@@ -383,19 +380,17 @@ export function declaredAppVersion(c: Context): string | null {
  * (`docs/deployment.md`).
  */
 export async function noteAppVersion(
-  c: Context,
   db: Db,
   deviceId: string,
+  declared: string | null,
   what: string,
-): Promise<void> {
-  const declared = declaredAppVersion(c);
-  if (declared === null) return;
+): Promise<string | undefined> {
+  if (declared === null) return undefined;
   try {
     await recordAppVersion(db, deviceId, declared);
+    return undefined;
   } catch (e) {
-    console.error(
-      `${what}: could not record app version ${declared} for ${deviceId} (best-effort): ${e}`,
-    );
+    return `${what}: could not record app version ${declared} for ${deviceId} (best-effort): ${e}`;
   }
 }
 
@@ -426,10 +421,11 @@ export async function notifyMembers(
   eventId: string,
   publisherId: string,
   announce: "gain" | "close",
-): Promise<void> {
+): Promise<NotifyOutcome> {
+  const errors: string[] = [];
   try {
     const tokens = await pushTokensForEvent(db, eventId, publisherId);
-    if (tokens.length === 0) return;
+    if (tokens.length === 0) return { recipients: 0, pushed: 0, unsent: "", errors };
     // A wake for a gain names the union position it announces (decision record
     // `changes/incremental-union`, D6), read AFTER the commit: the event's last gain, at or past the one
     // this caller logged. A failed read sends the wake without one, which the device reads as before.
@@ -438,7 +434,7 @@ export async function notifyMembers(
       try {
         seq = await unionPosition(db, eventId);
       } catch (e) {
-        console.error(`v2 notify: position read failed for ${eventId}, waking without one: ${e}`);
+        errors.push(`notify: position read failed for ${eventId}, waking without one: ${e}`);
       }
     }
     const outcomes = await Promise.race([
@@ -447,13 +443,31 @@ export async function notifyMembers(
         setTimeout(() => reject(new Error("fan-out timed out")), FANOUT_TIMEOUT_MS)
       ),
     ]);
-    const sent = outcomes.filter((o) => o.status === "sent").length;
-    console.info(
-      `v2 notify: event ${eventId} — ${tokens.length} recipients, ${sent} pushed${
-        unsentSummary(outcomes)
-      }`,
-    );
+    const pushed = outcomes.filter((o) => o.status === "sent").length;
+    return { recipients: tokens.length, pushed, unsent: unsentSummary(outcomes), errors };
   } catch (e) {
-    console.error(`v2 notify: fan-out failed for ${eventId} (best-effort, the write stands): ${e}`);
+    errors.push(`notify: fan-out failed for ${eventId} (best-effort, the write stands): ${e}`);
+    return { recipients: 0, pushed: 0, unsent: "", errors };
   }
+}
+
+/** What a wake did: how many members it was for, how many pushes went out, why the rest did not. */
+export type NotifyOutcome = {
+  recipients: number;
+  pushed: number;
+  /** Why the unsent ones were not sent, counted (`unsentSummary`); empty when every push went out. */
+  unsent: string;
+  /** Best-effort failures along the way — recorded, never answered. */
+  errors: string[];
+};
+
+/** Put a wake's outcome on the request's line: `recipients= pushed= [unsent=]`, then its failures. */
+export function recordNotify(
+  log: { field(k: string, v: number | string): void; error(m: string): void },
+  outcome: NotifyOutcome,
+): void {
+  log.field("recipients", outcome.recipients);
+  log.field("pushed", outcome.pushed);
+  if (outcome.unsent !== "") log.field("unsent", outcome.unsent);
+  for (const e of outcome.errors) log.error(e);
 }

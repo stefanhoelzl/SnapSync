@@ -126,10 +126,10 @@ class GatedPathPinTest {
         // records `changes/incremental-union` D5, `changes/separate-event-page-from-device-api` D7).
         val shared = File(SourceScan.repoRoot, "api/src/routes/shared.ts").readText()
         val reader = shared.substringAfter("const optionalReader = ", "").substringBefore("};")
-        assertTrue(reader.contains("verifyToken(") && reader.contains("\"unattested\", 401"), "the optional reader no longer verifies a sent token")
+        assertTrue(reader.contains("verifyToken(") && reader.contains("refuse(401, \"unattested\")"), "the optional reader no longer verifies a sent token")
         for (route in listOf("\"/events/:eventId\"", "\"/events/:eventId/files\"")) {
             val body = shared.substringAfter("deviceApi.get($route", "").substringBefore("deviceApi.")
-            assertTrue("await optionalReader(c)" in body, "$route no longer verifies a sent token")
+            assertTrue("await optionalReader(c.req.header(\"authorization\"))" in body, "$route no longer verifies a sent token")
         }
         assertTrue(verifiesToken("GET", "/api/v2/events/E1/files?cursor=3"))
         assertTrue(verifiesToken("GET", "/api/v2/events/E1"))

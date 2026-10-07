@@ -4,7 +4,7 @@
 // `done` or `left`; a closed event refuses joins, renames and
 // any change to a member's asset set; a COMPLETED event (the sweep's verdict) keeps its row and answers
 // "completed". The sweep's own rules are in `scripts/sweep.test.ts`.
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import {
   apnsConfig,
   apnsRecorder,
@@ -57,7 +57,13 @@ const body = (assets: unknown[], extra: Record<string, unknown> = {}) =>
 /** D and D2 both joined; D2 holds a registered push token (see `v2.test.ts` `withRecipient`). */
 async function twoMembers(db: Store) {
   const { pushed, fetchImpl } = apnsRecorder(200);
-  const app = v2({ config: await apnsConfig(), db, fetch: fetchImpl });
+  const lines: string[] = [];
+  const app = v2({
+    config: await apnsConfig(),
+    db,
+    fetch: fetchImpl,
+    logSink: (l) => lines.push(l),
+  });
   await app.request(JOIN(D), { method: "PUT" });
   await app.request(JOIN(D2), { method: "PUT", headers: await as(D2) });
   await enrolDevice(db, D2);
@@ -67,7 +73,7 @@ async function twoMembers(db: Store) {
       WHERE device_id = ?`,
     [D2],
   );
-  return { app, pushed };
+  return { app, pushed, lines };
 }
 
 async function closedAt(db: Store): Promise<unknown> {
@@ -103,7 +109,7 @@ Deno.test("final → a non-boolean final is 400 and writes nothing", async () =>
 
 Deno.test("close → the publish that settles the LAST sharing member closes the event and wakes once", async () => {
   const db = await storeWithEvent(ENDED);
-  const { app, pushed } = await twoMembers(db);
+  const { app, pushed, lines } = await twoMembers(db);
 
   // D2 settles first: D is still unsettled, so nothing closes.
   await app.request(MANIFEST(D2), {
@@ -121,6 +127,7 @@ Deno.test("close → the publish that settles the LAST sharing member closes the
   assertEquals(res.status, 200);
   assertEquals(await closedAt(db), new Date(NOW).toISOString());
   assertEquals(pushed, ["recipient"]);
+  assert(lines.at(-1)!.endsWith(" closed=true recipients=1 pushed=1"), lines.at(-1));
 
   // The waiting line's counts.
   const details = await (await app.request(DETAILS)).json() as Record<string, unknown>;
@@ -198,11 +205,19 @@ Deno.test("rejoin → a settled member that left is back to sharing while the ev
 
 Deno.test("byte landing → stamps the clock's anchor on the event it completed an asset of", async () => {
   const db = await storeWithEvent(ENDED);
-  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const lines: string[] = [];
+  const app = v2({
+    config: CONFIG,
+    db,
+    fetch: recorder().fetchImpl,
+    logSink: (l) => lines.push(l),
+  });
   await app.request(JOIN(D), { method: "PUT" });
   await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET]) });
   assertEquals((await rows(db, `SELECT last_landed_at FROM events`))[0].last_landed_at, null);
   assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "x" })).status, 201);
+  // The landing completed the asset; no other member holds a token, so nobody is woken.
+  assert(lines.at(-1)!.endsWith(" in=1 out=0 completed=1 recipients=0 pushed=0"), lines.at(-1));
   assertEquals(
     (await rows(db, `SELECT last_landed_at FROM events`))[0].last_landed_at,
     new Date(NOW).toISOString(),
@@ -298,7 +313,7 @@ Deno.test("leave → a repeated leave keeps the state the first one recorded", a
 
 Deno.test("close → the leave that takes away the LAST sharing member closes the event and wakes once", async () => {
   const db = await storeWithEvent(ENDED);
-  const { app, pushed } = await twoMembers(db);
+  const { app, pushed, lines } = await twoMembers(db);
   // D2 settles; D is still sharing, so nothing closes.
   await app.request(MANIFEST(D2), {
     method: "PUT",
@@ -310,6 +325,7 @@ Deno.test("close → the leave that takes away the LAST sharing member closes th
   assertEquals((await app.request(LEAVE(D), { method: "DELETE" })).status, 200);
   assertEquals(await closedAt(db), new Date(NOW).toISOString());
   assertEquals(pushed, ["recipient"]);
+  assert(lines.at(-1)!.endsWith(" closed=true recipients=1 pushed=1"), lines.at(-1));
   const details = await (await app.request(DETAILS)).json() as Record<string, unknown>;
   assertEquals(details.members, { active: 1, final: 1 });
   db.close();
