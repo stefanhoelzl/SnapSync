@@ -15,6 +15,8 @@ import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
 import kotlin.test.Test
@@ -181,6 +183,7 @@ class KeyLostTest {
         val LINK_KEY = encodeEventKey(ByteArray(32) { it.toByte() })
         val ENCRYPTED = EventConfig(
             EVENT, "Party", captureCutoff("2026-07-06T00:00:00Z"), maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+            endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             keyId = "0123456789abcdef",
         )
     }

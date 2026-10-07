@@ -21,6 +21,19 @@ middle of an event.
 
 ### The floor itself
 - **What:** `MIN_APP_VERSION` in `api/src/config.ts`.
+- **Deadline: before the 0.6 promote.** 0.6 creates encrypted events, whose invite is the keyed path form
+  `/join/<uuid>#k=…`. 0.4 reports that as a damaged invite, not as "update required"; the floor turns it into the
+  update screen. Record: `openspec/changes/encrypt-events-by-default` (design, Migration Plan).
+- **Extra check before raising it:** no 0.4 device is a member of an open event, so nobody is cut off mid-event.
+  Run against the database and expect `0`:
+  ```sql
+  SELECT count(*) FROM memberships m
+    JOIN events e ON e.id = m.event_id
+    JOIN devices d ON d.device_id = m.device_id
+   WHERE e.closed_at IS NULL AND e.completed_at IS NULL
+     AND m.state IN ('sharing', 'settled')
+     AND (d.app_version = '0.4' OR d.app_version IS NULL);
+  ```
 - **Raise it together with** the `MARKETING_VERSION` floor in `iosApp/Configuration/Config.xcconfig`, otherwise
   `api/test/min-app-version-floor.test.ts` fails and dev builds get `426`.
 - **Also touches:** `api/test/config.test.ts` and the comment in `app/android/build.gradle.kts`.
@@ -114,6 +127,44 @@ is 0.5, no such membership is live.
 - **What:** `api/src/routes/shared.ts` reads an absent `received` as "no", so a 0.4 leave always records `left`,
   never `done`.
 - **Value:** the default is harmless. Making the parameter required is optional.
+
+## At the 0.6 promote
+
+### The privacy claim on the site and the store listing (site + metadata)
+- **What:** "Private by design" gains a concrete line, true on every upload path: photos are stored so only your
+  group can open them. Wording rule: `metadata/messaging.md` (no "encrypted", "secure" or "safe").
+  - the `privacy-story` section of `site/src/pages/index.astro`
+  - `metadata/listing/en-US.json` (the description), which both stores render from at the promote
+- **Why not earlier:** the site deploys on every merge, and before 0.6 no shipped build creates an encrypted
+  event. It stays untrue for the plain events 0.5 creates until those are retired (below); accepted.
+- **Ship:** merge just before dispatching the 0.6 promote, after the floor above.
+- **Record:** `openspec/changes/encrypt-events-by-default` (design D7).
+
+## Once `MIN_APP_VERSION` ≥ 0.6 and no plain event is open
+
+**Unlock condition:**
+- the floor is 0.6 — 0.5 still creates plain (unencrypted) events, and
+- no open event is plain. Run against the database and expect `0`:
+  ```sql
+  SELECT count(*) FROM events WHERE key_id IS NULL AND closed_at IS NULL AND completed_at IS NULL;
+  ```
+
+**How to ship it:** its own OpenSpec change — every event a member meets is then encrypted, which touches
+`join-event`, `event-site` and `privacy-security`.
+
+### Plain events (api + app + site)
+- **What:** everything that still creates, joins, uploads to, downloads from or shows an event without a key:
+  - the rig's plain create: `DevControls.createsPlainEvents`, `device/encrypt-new-events?on=false`, the tests
+    that use it (`EncryptedEventIntegrationTest`, `PathFormLinkIntegrationTest`)
+  - the api's keyless `POST /events` (`keyId` optional in `api/src/routes/shared.ts`, `key_id` NULL in
+    `api/src/db.ts`) and the plain branch of `api/src/routes/encrypted-upload.ts`
+  - the app's plain branches: `EventKeys.opens` with no link key, `EventConfig.inviteUrl`'s fragment form,
+    `UploadSealing` and `DownloadOpening` for an event with no `keyId`, `KeyPresence.NotNeeded` for a joined event
+  - the event page's plain path (`site/src/pages/join.astro`, `encryptionOf`)
+- **Remove:** require a key on create; refuse every keyless event in the app and on the page; drop the rig switch.
+- **Keep forever:** the fragment-form decoder (a printed QR opens forever) — a plain invite then opens the
+  incomplete-invite screen.
+- **Record:** `openspec/changes/encrypt-events-by-default` (proposal, design Non-Goals).
 
 ## One-off ops
 

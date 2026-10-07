@@ -36,7 +36,7 @@
 
 ## 7. Release bookkeeping
 
-- [ ] 7.1 After rebasing onto the merged `cleanups` branch, add two `PENDING_CLEANUPS.md` entries for the 0.6 promote: (a) the SQL check that no 0.4 device is a member of an open event, then `MIN_APP_VERSION` 0.4 → 0.5; (b) the site card + store-listing privacy line ("stored so only your group can open them"). Verify: the file lists both, each with its precondition.
+- [x] 7.1 After rebasing onto the merged `cleanups` branch, add two `PENDING_CLEANUPS.md` entries for the 0.6 promote: (a) the SQL check that no 0.4 device is a member of an open event, then `MIN_APP_VERSION` 0.4 → 0.5; (b) the site card + store-listing privacy line ("stored so only your group can open them"). Verify: the file lists both, each with its precondition.
 
 ## 8. Integration checks
 
