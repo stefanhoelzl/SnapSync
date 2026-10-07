@@ -95,3 +95,8 @@ MARKETING_VERSION = 0.4
 // portal and enabled on the app.snapsync App ID, or signed device/TestFlight builds fail to provision
 // (see the ios-background-upload change, task 2.x). The simulator gate ignores signing.
 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
+
+// A warning fails the build in BOTH targets, Swift and the C family alike — the rule every Kotlin compile already
+// follows (`allWarningsAsErrors`, root build.gradle.kts). A deliberate warning is silenced at its site, never here.
+SWIFT_TREAT_WARNINGS_AS_ERRORS = YES
+GCC_TREAT_WARNINGS_AS_ERRORS = YES
