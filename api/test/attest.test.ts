@@ -465,6 +465,21 @@ Deno.test("gate: the event-link exceptions are exact-path and GET/HEAD-only — 
   );
 });
 
+Deno.test("gate: the event page's read is admitted exactly — GET/HEAD on its one path shape, nothing else", async () => {
+  // Decision record `changes/separate-event-page-from-device-api`: a browser cannot attest, so the page's read
+  // sits with the root routes. Admitted means "reaches the route" — the event is absent here, so 404, not 401.
+  const { app: a } = app();
+  const photos = `/web/events/${E}/photos`;
+  assertEquals((await a.request(photos)).status, 404);
+  assertEquals((await a.request(photos, { method: "HEAD" })).status, 404);
+  for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+    assertEquals((await a.request(photos, { method })).status, 401, method);
+  }
+  assertEquals((await a.request(`${photos}/x`)).status, 401, "deeper");
+  assertEquals((await a.request(`/web/events/${E}`)).status, 401, "shallower");
+  assertEquals((await a.request(`/web/events/${E}/photosx`)).status, 401, "prefix");
+});
+
 Deno.test("gate: a gated GET is never cacheable (the pull zone does not vary on Authorization)", async () => {
   // Load-bearing for AUTHORIZATION, not just freshness: the CDN forwards `Authorization` but does not
   // key its cache on it, so a cacheable gated response would be served to a DIFFERENT device.

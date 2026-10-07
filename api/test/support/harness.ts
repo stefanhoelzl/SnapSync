@@ -197,14 +197,14 @@ export async function seedResource(db: Db, r: {
 
 /**
  * Assert `url` is a presigned S3 GET for the bare object key `key`: path-style origin+path against the S3
- * endpoint, 7-day expiry, and an AWS4-HMAC-SHA256 signature. The signature is time-dependent, so this
+ * endpoint, the expiry (the devices' 7 days unless [expires] names another), and an AWS4-HMAC-SHA256 signature. The signature is time-dependent, so this
  * asserts the shape, not an exact string.
  */
-export function assertPresigned(url: string, key: string) {
+export function assertPresigned(url: string, key: string, expires = "604800") {
   const u = new URL(url);
   assertEquals(`${u.origin}${u.pathname}`, `${S3_ZONE}/${key}`);
   assertEquals(u.searchParams.get("X-Amz-Algorithm"), "AWS4-HMAC-SHA256");
-  assertEquals(u.searchParams.get("X-Amz-Expires"), "604800");
+  assertEquals(u.searchParams.get("X-Amz-Expires"), expires);
   assert((u.searchParams.get("X-Amz-Signature") ?? "").length > 0);
 }
 

@@ -1,7 +1,7 @@
 // The /join island's zip naming (src/lib/zip-names.ts), capability `event-site`. Deno:
 // `deno test --allow-read scripts/zip-names.test.ts` (npm run check:unit).
 import { assertEquals } from "jsr:@std/assert@^1";
-import { type UnionAsset, withDownloadUrls, zipEntries } from "../src/lib/zip-names.ts";
+import { type UnionAsset, zipEntries } from "../src/lib/zip-names.ts";
 
 const photo = (name: string): UnionAsset => ({
   resources: [{ role: "primary", url: "u/" + name, filename: name }],
@@ -74,40 +74,18 @@ Deno.test("a nameless resource falls back to its key", () => {
 });
 
 Deno.test(
-  "a union read without urls addresses each file at its download route on this service",
-  () => {
-    // Decision record `changes/incremental-union`, D1/D8: same-origin, so the page asks only SnapSync's service.
-    const union = withDownloadUrls("/api/v1", "E1", [
-      {
-        deviceId: "D1",
-        assetId: "A.b-c_d~e",
-        resources: [
-          { role: "primary", filename: "IMG.HEIC" },
-          { role: "live", filename: "IMG.MOV" },
-        ],
-      },
-      { resources: [{ role: "primary", filename: "NOID.HEIC" }] },
-    ]);
-    assertEquals(fetched(zipEntries(union).entries), [
-      { url: "/api/v1/events/E1/files/devices/D1/A.b-c_d~e/primary", name: "IMG.HEIC" },
-      { url: "/api/v1/events/E1/files/devices/D1/A.b-c_d~e/live", name: "IMG.MOV" },
-    ]);
-  },
-);
-
-Deno.test(
   "each entry names the resource it is, so an encrypted event's file opens only as that resource",
   () => {
-    const union = withDownloadUrls("/api/v1", "E1", [
+    const union: UnionAsset[] = [
       {
         deviceId: "D1",
         assetId: "A1",
         resources: [
-          { role: "primary", filename: "IMG.HEIC" },
-          { role: "live", filename: "IMG.MOV" },
+          { role: "primary", url: "u/1", filename: "IMG.HEIC" },
+          { role: "live", url: "u/2", filename: "IMG.MOV" },
         ],
       },
-    ]);
+    ];
     const roles = zipEntries(union).entries.map(({ deviceId, assetId, role }) => ({
       deviceId,
       assetId,

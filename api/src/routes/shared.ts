@@ -4,6 +4,7 @@
 import { Hono } from "hono";
 import { verifyToken } from "../attest.ts";
 import {
+  completeAssets,
   downloadStoragePath,
   type EventRow,
   insertEvent,
@@ -342,19 +343,8 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       // per member — whose cost grew with the event and which no index could help.
       const rows = await unionRows(db, eventId, after);
 
-      // Group by (device, asset), keeping each asset's resources together and dropping any asset that
-      // names a resource the backend has not recorded as uploaded. That check IS the completeness
-      // mechanism: a manifest declares roles whose bytes may not have arrived, so the declaration supplies
-      // the expectation and these rows supply the reality. It is what distinguishes "this photo is coming"
-      // from "this photo does not exist". The sweep still protects a referenced byte from collection.
-      const byAsset = new Map<string, { row: typeof rows[number]; resources: typeof rows }>();
-      for (const r of rows) {
-        const id = `${r.deviceId}/${r.assetId}`;
-        const slot = byAsset.get(id) ?? { row: r, resources: [] };
-        slot.resources.push(r);
-        byAsset.set(id, slot);
-      }
-
+      // Each COMPLETE asset (`completeAssets`): an asset naming a resource whose bytes have not arrived is
+      // dropped. The sweep still protects a referenced byte from collection.
       const urlOf = async (r: typeof rows[number]): Promise<string | undefined> => {
         if (!withUrls) return undefined;
         // v1 is FROZEN for builds older than 0.4: its contract asserts the presign (decision record D3).
@@ -365,8 +355,8 @@ export function sharedRoutes(deps: RouteDeps): Hono {
         }`;
       };
       const assets: UnionAsset[] = [];
-      for (const { row, resources } of byAsset.values()) {
-        if (resources.length === 0 || resources.some((r) => !r.present)) continue;
+      for (const resources of completeAssets(rows)) {
+        const row = resources[0];
         assets.push({
           deviceId: row.deviceId,
           assetId: row.assetId,

@@ -181,7 +181,14 @@ function watchedBody(body: ReadableStream<Uint8Array> | null) {
 
 // 7 days — the S3 presign maximum. The device re-presigns (re-reads the union) on every foreground well
 // within this window, so a queued background download that outlives one URL self-heals with a fresh one.
-const PRESIGN_EXPIRY_SECONDS = 604800;
+export const PRESIGN_EXPIRY_SECONDS = 604800;
+
+// 1 hour — the EVENT PAGE's links (`/web/events/<id>/photos`, decision record
+// `changes/separate-event-page-from-device-api` D3). The 7 days above are forced by iOS background sessions,
+// which resume from the redirect target; a browser uses its links within minutes, so a short life costs it
+// nothing and bounds how long a withdrawn photo stays reachable through a page loaded before the withdrawal
+// (capability `privacy-security`). A zip that outlasts it re-reads the list.
+export const WEB_PRESIGN_EXPIRY_SECONDS = 3600;
 
 // The listing routes' cache header. All three directives are deliberate: the Edge Script is fronted by a
 // bunny CDN pull zone, and bunny documents `no-cache` — NOT `no-store` — as the origin directive that
@@ -232,7 +239,8 @@ export async function streamPut(
  * `docs/architecture.md`): `<s3Scheme>://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…` — `https` in
  * every deployed configuration; only the local dev rig moves it, so it can serve loopback HTTP that a
  * device can actually fetch. Path-style, each
- * key segment percent-encoded (deviceId is a UUID → identity), `X-Amz-Expires` 7 days. The zone name is
+ * key segment percent-encoded (deviceId is a UUID → identity), `X-Amz-Expires` 7 days unless
+ * [expirySeconds] says otherwise. The zone name is
  * the S3 Access Key ID and `accessKey` the secret. The device fetches this URL DIRECTLY from bunny's S3
  * endpoint with no credential — the query signature is the sole authorization. A fresh URL is minted on
  * every listing response, so each read yields one valid for a further 7 days. Both list routes use this
@@ -243,9 +251,11 @@ export async function presignDownloadUrl(
   config: Config,
   /** The stored `resources.path` — wherever the bytes were written, before or after migration 0010. */
   path: string,
+  /** How long the link lives: the devices' 7 days unless a caller (the event page's read) asks for less. */
+  expirySeconds: number = PRESIGN_EXPIRY_SECONDS,
 ): Promise<string> {
   const url = `${config.s3Scheme}://${config.s3Host}/${config.zone}/${storageKey(path)}` +
-    `?X-Amz-Expires=${PRESIGN_EXPIRY_SECONDS}`;
+    `?X-Amz-Expires=${expirySeconds}`;
   const signed = await aws.sign(url, { method: "GET", aws: { signQuery: true } });
   return signed.url;
 }

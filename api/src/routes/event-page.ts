@@ -26,6 +26,7 @@ export const TOKENS = [
   "PILL",
   "HEADING",
   "FACTS",
+  "KEY_ID",
 ] as const;
 export type Token = typeof TOKENS[number];
 export type Filling = Record<Token, string>;
@@ -81,6 +82,7 @@ export function pendingFilling(origin: string): Filling {
     PILL: "",
     HEADING: escapeHtml("Event photos"),
     FACTS: "",
+    KEY_ID: "",
   };
 }
 
@@ -95,6 +97,7 @@ export function invalidFilling(origin: string): Filling {
     PILL: "",
     HEADING: "",
     FACTS: "",
+    KEY_ID: "",
   };
 }
 
@@ -216,5 +219,9 @@ export function eventFilling(
     PILL: pill,
     HEADING: escapeHtml(event.name),
     FACTS: facts.join(""),
+    // The id of the key an ENCRYPTED event's photos open with, empty for a plain one: what the page checks the
+    // invite's `#k=` against before fetching a photo (decision record `changes/separate-event-page-from-device-api`,
+    // D5). Not secret — an HKDF tag of the key — and from the row this page already reads.
+    KEY_ID: escapeHtml(event.keyId ?? ""),
   };
 }

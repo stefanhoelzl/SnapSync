@@ -20,7 +20,7 @@ fun isGatedRequest(method: String, path: String): Boolean {
     val read = method == "GET" || method == "HEAD"
     val ungated = method == "OPTIONS" ||
         bare.startsWith("/attest/") ||
-        (read && (bare in PUBLIC_GETS || bare.startsWith("/_astro/") || EVENT_PAGE.matches(bare))) ||
+        (read && (bare in PUBLIC_GETS || bare.startsWith("/_astro/") || EVENT_PAGE.matches(bare) || WEB_PHOTOS.matches(bare))) ||
         (read && (EVENT_READ.matches(bare) || EVENT_UNION_READ.matches(bare) || DOWNLOAD_REDIRECT.matches(bare)))
     return !ungated
 }
@@ -49,6 +49,12 @@ internal val PUBLIC_GETS = setOf(
 
 /** The event's own page, `/join/<eventId>` — exactly one segment (capability `event-site`). */
 private val EVENT_PAGE = Regex("""^/join/[^/]+$""")
+
+/**
+ * The event page's read, `/web/events/<eventId>/photos` (decision record `changes/separate-event-page-from-device-api`):
+ * a browser's, never the app's — known here so the copy of the backend's list stays whole.
+ */
+private val WEB_PHOTOS = Regex("""^/web/events/[^/]+/photos$""")
 
 /** The two event reads authorized by eventId possession alone. */
 private val EVENT_READ = Regex("""^/events/[^/]+$""")

@@ -6,7 +6,7 @@
 // "IMG_4471.MOV"), which is Apple's own export form and re-imports as a Live Photo. So a pair's stem is allocated as
 // a unit: renaming only one half would split the pair.
 
-/** One resource of an asset, as the event's union lists it. */
+/** One resource of a photo, as the event page's read lists it (`/web/events/<id>/photos`). */
 export interface UnionResource {
   role?: string;
   url?: string;
@@ -14,34 +14,11 @@ export interface UnionResource {
   key?: string;
 }
 
-/** One asset of the event's union. */
+/** One photo of the event, as the event page's read lists it. */
 export interface UnionAsset {
   deviceId?: string;
   assetId?: string;
   resources?: UnionResource[];
-}
-
-/**
- * [union] as read with `urls=false`, each resource addressed at its download route on SnapSync's own service
- * (decision record `changes/incremental-union`, D1/D8): `<api>/events/<event>/files/devices/<device>/<asset>/<role>`,
- * which redirects to the bytes. Same-origin and relative, so the page still asks only SnapSync's service and its
- * storage (capability `privacy-security`). A resource whose asset lacks an id, or that has no role, gets no url and
- * is left out of the zip, as one with no url always was.
- */
-export function withDownloadUrls(api: string, eventId: string, union: UnionAsset[]): UnionAsset[] {
-  return union.map((asset) => ({
-    ...asset,
-    resources: (asset.resources || []).map((r) =>
-      asset.deviceId && asset.assetId && r.role
-        ? {
-            ...r,
-            url: [api, "events", eventId, "files", "devices", asset.deviceId, asset.assetId, r.role]
-              .map((segment, i) => (i === 0 ? segment : encodeURIComponent(segment)))
-              .join("/"),
-          }
-        : { ...r, url: undefined },
-    ),
-  }));
 }
 
 /**
