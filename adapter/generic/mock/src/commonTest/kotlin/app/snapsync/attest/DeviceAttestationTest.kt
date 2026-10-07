@@ -122,7 +122,7 @@ private class FakeClient(
     }
 
     override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = unused()
-    override suspend fun getEvent(eventId: String): Reply<EventMeta> = unused()
+    override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = unused()
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = unused()
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
     override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =

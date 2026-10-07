@@ -41,7 +41,7 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
         lastCreate = req
         return call("create", token)
     }
-    override suspend fun getEvent(eventId: String): Reply<EventMeta> = call("get", null)
+    override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = call("get", token)
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = call("rename", token)
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = call("join", token)
     override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =

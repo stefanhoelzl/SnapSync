@@ -92,7 +92,7 @@ class HttpBackendTest {
     fun every_request_declares_this_builds_version_including_the_attest_bootstrap() = runTest {
         val backend = backend()
         backend.challenge()
-        backend.getEvent("E")
+        backend.getEvent(null, "E")
         backend.joinEvent("T", "E", "D")
         assertEquals(listOf("9.9", "9.9", "9.9"), sent.map { it.headers[APP_VERSION_HEADER]?.single() })
     }
@@ -109,7 +109,7 @@ class HttpBackendTest {
     /**
      * Whether a method takes a token IS whether its route verifies one: the backend's gate is pinned against
      * `isGatedRequest` by `GatedPathPinTest`, and this pins every route of the port against [verifiesToken] — the gated
-     * routes and the union read (decision record `changes/incremental-union`, D5) — so a token can never be withheld
+     * routes and the two public event reads (decision records `changes/incremental-union` D5, `changes/separate-event-page-from-device-api` D7) — so a token can never be withheld
      * from a route that verifies it, nor offered to one that does not.
      */
     @Test
@@ -124,12 +124,12 @@ class HttpBackendTest {
             { backend.deviceFiles("T", "E", "D") },
             { backend.putDeviceConfig("T", "D", PushEndpoint("apns", "t", "sandbox")) },
             { backend.eventFiles("T", "E", null, UnionTrigger.FOREGROUND) },
+            { backend.getEvent("T", "E") },
         )
         val ungated = listOf<suspend () -> Unit>(
             { backend.challenge() },
             { backend.mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1), "c")) },
             { backend.renewToken(RenewRequest("D", byteArrayOf(1), "c")) },
-            { backend.getEvent("E") },
         )
         gated.forEach { it() }
         ungated.forEach { it() }
@@ -210,7 +210,7 @@ class HttpBackendTest {
     @Test
     fun the_event_read_carries_every_field_as_sent_and_absent_where_it_sent_none() = runTest {
         val meta = backend(body = """{"eventId":"E","name":"N","createdAt":1700000000000,"startsAt":"s","endsAt":"e"}""")
-            .getEvent("E")
+            .getEvent(null, "E")
         val value = (meta as Reply.Ok).value
         assertEquals("N", value.name)
         assertEquals("1700000000000", value.createdAt)
@@ -223,18 +223,18 @@ class HttpBackendTest {
     fun the_event_read_carries_its_completion_state_and_member_counts() = runTest {
         val closed = (
             backend(body = """{"name":"N","closedAt":"c","completedAt":null,"members":{"active":5,"final":3}}""")
-                .getEvent("E") as Reply.Ok
+                .getEvent(null, "E") as Reply.Ok
             ).value
         assertEquals("c", closed.closedAt)
         assertNull(closed.completedAt)
         assertEquals(MemberCounts(active = 5, settled = 3), closed.members)
         // A backend predating completion sends none of it; a malformed count object is no counts, never a guess.
-        val older = (backend(body = """{"name":"N"}""").getEvent("E") as Reply.Ok).value
+        val older = (backend(body = """{"name":"N"}""").getEvent(null, "E") as Reply.Ok).value
         assertNull(older.closedAt)
         assertNull(older.members)
-        val partial = (backend(body = """{"name":"N","members":{"active":5}}""").getEvent("E") as Reply.Ok).value
+        val partial = (backend(body = """{"name":"N","members":{"active":5}}""").getEvent(null, "E") as Reply.Ok).value
         assertNull(partial.members)
-        val wrongShape = (backend(body = """{"name":"N","members":{"active":"x","final":1}}""").getEvent("E") as Reply.Ok).value
+        val wrongShape = (backend(body = """{"name":"N","members":{"active":"x","final":1}}""").getEvent(null, "E") as Reply.Ok).value
         assertNull(wrongShape.members)
     }
 
@@ -338,7 +338,7 @@ class HttpBackendTest {
     @Test
     fun a_refusal_carries_its_status_and_body_verbatim() = runTest {
         assertEquals(Reply.Refused(409, "event full"), backend(HttpStatusCode.Conflict, "event full").joinEvent("T", "E", "D"))
-        val refused = backend(HttpStatusCode.UpgradeRequired, """{"minAppVersion":"0.4"}""").getEvent("E")
+        val refused = backend(HttpStatusCode.UpgradeRequired, """{"minAppVersion":"0.4"}""").getEvent(null, "E")
         assertEquals(Reply.Refused(426, """{"minAppVersion":"0.4"}"""), refused, "the 426 body is the minimum's only carrier")
     }
 
@@ -352,7 +352,7 @@ class HttpBackendTest {
 
     @Test
     fun a_success_whose_body_does_not_decode_is_malformed() = runTest {
-        assertIs<Reply.Malformed>(backend(body = "not json").getEvent("E"))
+        assertIs<Reply.Malformed>(backend(body = "not json").getEvent(null, "E"))
         assertIs<Reply.Malformed>(backend(HttpStatusCode.Created, "{}").createEvent("T", CreateEventRequest("n", "s", null)))
         assertIs<Reply.Malformed>(backend(body = "{").eventFiles(null, "E", null, UnionTrigger.FOREGROUND))
     }

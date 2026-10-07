@@ -100,10 +100,13 @@ internal class InMemoryBackend(
             }
         }
 
-    // The read is counted when it reaches the backend, before an operator's hold answers it.
-    override suspend fun getEvent(eventId: String): Reply<EventMeta> = held(
+    // The read is counted when it reaches the backend, before an operator's hold answers it. Public, but a token it is
+    // sent is verified — a rejected one is `401`, as on the real route. Not gated: a phone the backend refuses to
+    // attest still reads an event, as it does on the real route.
+    override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = held(
         BackendCall.EVENT,
-        token = null,
+        token = token,
+        checksSentToken = true,
         online = true,
         arrived = { state.eventReads[eventId] = (state.eventReads[eventId] ?: 0) + 1 },
     ) {
@@ -229,19 +232,36 @@ internal class InMemoryBackend(
         token: String?,
         gated: Boolean = false,
         online: Boolean = false,
+        checksSentToken: Boolean = false,
         crossinline arrived: () -> Unit = {},
         crossinline answer: () -> Reply<T>,
     ): Reply<T> {
-        state.locked { refusal<T>(token, gated, online) ?: run { arrived(); null } }?.let { return it }
+        state.locked { refusal<T>(token, gated, online, checksSentToken) ?: run { arrived(); null } }?.let { return it }
         state.awaitRelease(call)
         return state.locked { answer() }
     }
 
-    /** What the route answers before its own work, if anything: the version gate, then offline or the credential. */
-    private fun <T> refusal(token: String?, gated: Boolean = false, online: Boolean = false): Reply<T>? {
+    /**
+     * What the route answers before its own work, if anything: the version gate, then offline or the credential. A
+     * [gated] route is refused for a refused phone and checks its token; a public route that [checksSentToken] checks
+     * only a token it is sent — the refusal of the phone is the gate's, which such a route never runs.
+     */
+    private fun <T> refusal(
+        token: String?,
+        gated: Boolean = false,
+        online: Boolean = false,
+        checksSentToken: Boolean = false,
+    ): Reply<T>? {
         state.refusalFor(declared.value)?.let { return Reply.Refused(UPGRADE_REQUIRED, it) }
         return when {
             online && state.offline -> offline()
+            checksSentToken && token == null -> null
+            checksSentToken && state.refuseNextCredential -> {
+                state.refuseNextCredential = false
+                Reply.Refused(UNAUTHORIZED, "credential rejected")
+            }
+            checksSentToken && token !in state.minted -> Reply.Refused(UNAUTHORIZED, "invalid token")
+            checksSentToken -> null
             !gated -> null
             state.refuseAttestation != null -> Reply.Refused(UNAUTHORIZED, "unattested")
             token != null && state.refuseNextCredential -> {

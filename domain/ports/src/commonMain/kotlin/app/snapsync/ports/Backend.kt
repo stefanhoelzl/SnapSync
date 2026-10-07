@@ -49,8 +49,12 @@ interface Backend : Port {
     /** `POST /events` — mint an event. */
     suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated>
 
-    /** `GET /events/<eventId>` — an event's details; public, authorized by the id alone. */
-    suspend fun getEvent(eventId: String): Reply<EventMeta>
+    /**
+     * `GET /events/<eventId>` — an event's details; public, authorized by the id alone, but a [token] it is sent is
+     * verified, so its `401` is a verdict on that token (decision record `changes/separate-event-page-from-device-api`,
+     * D7).
+     */
+    suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta>
 
     /** `PATCH /events/<eventId>` — rename an event. */
     suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed>

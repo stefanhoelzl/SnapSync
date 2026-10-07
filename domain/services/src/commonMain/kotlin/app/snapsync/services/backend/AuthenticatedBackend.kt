@@ -82,10 +82,11 @@ interface Credential {
  *   **any success** clears that refusal. The upload extension composes this with no gate: it has no screen to show
  *   a refusal on.
  *
- * The event's details, which the backend authorizes by the event id alone, carry no token, so a rejection cannot
- * arise there; only the version verdicts apply. The union read is public too, but carries the credential: the backend
- * verifies a token it is sent so its log can name the reader (decision record `changes/incremental-union`, D5), so its
- * `401` is a verdict on that token and is recovered from like any gated route's.
+ * The two event reads — the event's details and the union — are public on the backend, authorized by the event id
+ * alone, but carry the credential all the same: the backend verifies a token it is sent (the union so its log can name
+ * the reader, decision record `changes/incremental-union` D5; the details since
+ * `changes/separate-event-page-from-device-api` D7, ahead of the backend requiring it), so their `401` is a verdict on
+ * that token and is recovered from like any gated route's.
  */
 class CredentialedBackend(
     private val backend: Backend,
@@ -96,7 +97,7 @@ class CredentialedBackend(
 
     override suspend fun createEvent(req: CreateEventRequest) = gated(obtainFirst = true) { backend.createEvent(it, req) }
 
-    override suspend fun getEvent(eventId: String) = observed(backend.getEvent(eventId))
+    override suspend fun getEvent(eventId: String) = gated { backend.getEvent(it, eventId) }
 
     override suspend fun renameEvent(eventId: String, name: String) = gated { backend.renameEvent(it, eventId, name) }
 
