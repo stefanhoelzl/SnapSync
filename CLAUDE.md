@@ -367,7 +367,7 @@ each state by the scenarios in `:test:integration`'s `Shots.kt` — which `Shots
 `build`. To add or change a state, change `Shots.kt`. The same dispatch's `android` job captures Google Play's six
 in `screenshots/android/` from the emulator (artifact `screenshots-android-raw`); eyeball and commit them the same way.
 Both the App Store listing (at release time) and the `site/` landing page (on merge) derive from these
-committed raws (Google Play's listing from `screenshots/android/`, on the merge that changes them), so refreshing them is a **commit**; nothing regenerates automatically, and a merge to
+committed raws (Google Play's listing, also at release time, from `screenshots/android/`), so refreshing them is a **commit**; nothing regenerates automatically, and a merge to
 `main` uploads nothing to the store.
 
 ```

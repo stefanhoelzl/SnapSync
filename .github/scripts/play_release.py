@@ -7,7 +7,8 @@
 
 `ci.yml`'s `android-deliver` uploads every push to main's signed bundle to the INTERNAL testing track, as
 `ios-deliver` uploads to internal TestFlight, and a branch dispatch's through INTERNAL APP SHARING (`share`), which
-touches no track; `promote.yml` releases an ALREADY-UPLOADED bundle to a further track.
+touches no track; `promote.yml` releases an ALREADY-UPLOADED bundle to a further track, and brings the store listing
+in line with the repo in the same edit.
 Every track or listing change happens inside ONE EDIT, committed once at the end or deleted on any failure, so a run either
 lands whole or changes nothing. Later steps (the diff-gated listing update) are further operations on the same
 `Edit`, not edits of their own: committing one edit invalidates every other open one, so two would race.
@@ -15,36 +16,38 @@ lands whole or changes nothing. Later steps (the diff-gated listing update) are 
     status   <package>                         Read-only: every track's releases, then the edit is DELETED.
     has      <package> <versionCode>           Read-only: fails unless a bundle with that versionCode was uploaded
                                                (whatever track holds it now — internal keeps only its latest).
-    deliver  <package> <bundle> <track> <name> <note> [--listing <dir> --images <dir>]
+    deliver  <package> <bundle> <track> <name> <note>
              Upload the bundle, make it the track's one release named <name> (status `completed`, the note as
-             its en-US release notes, cut to Play's 500 characters), bring the store listing in line with
-             <dir>s when given (below), commit.
+             its en-US release notes, cut to Play's 500 characters), commit. It never touches the listing.
     share    <package> <bundle> <android component>
              Upload the bundle through internal app sharing — no edit, no track, nothing committed — and print its
              install link (`link=` to $GITHUB_OUTPUT too). Play re-signs a sharing build with its own key: fails
              unless that certificate's digest is in the component's `androidSigningCertDigests`, since prod refuses
              the attestation of an app signed with any other, so the link would install an app that cannot join.
     listing-diff <package> <listing dir> <images dir> [--try]
-             What `deliver` would change in the store listing, then the edit is DELETED. With --try the changes
+             What `promote` would change in the store listing, then the edit is DELETED. With --try the changes
              are made too — Play validates them — and still never committed.
-    promote  <package> <track> <versionCode> <name> <note-file> (validate|commit)
+    promote  <package> <track> <versionCode> <name> <note-file> (validate|commit) [--listing <dir> --images <dir>]
              Make the already-uploaded <versionCode> the track's one release named <name> (status `completed`,
-             the file's text as its en-US release notes — REFUSED over 500 characters, never cut), then either
-             ask Play to VALIDATE the edit and delete it (the preflight), or COMMIT it. A track that already
-             carries <versionCode> as a completed release is left alone (`released=true` to $GITHUB_OUTPUT), so a
-             rerun of a half-done promote skips what landed.
+             the file's text as its en-US release notes — REFUSED over 500 characters, never cut), bring the store
+             listing in line with the <dir>s when given (below), then either ask Play to VALIDATE the edit and
+             delete it (the preflight), or COMMIT it. A track that already carries <versionCode> as a completed
+             release is left alone, its listing included (`released=true` to $GITHUB_OUTPUT), so a rerun of a
+             half-done promote skips what landed: the listing landed in that release's edit.
 
 WHY PREFLIGHT AND COMMIT ARE TWO EDITS: a workflow's steps are separate processes, and every merge's
 `android-deliver` commits an edit of its own in between, which leaves an edit opened earlier uncommittable. So the
 preflight's edit is thrown away, and the commit opens a fresh one; a merge landing in the gap fails the commit, and
 the rerun completes it.
 
-THE STORE LISTING (`docs/deployment.md`, "Listing metadata"). <listing dir> holds the rendered Play listing,
+THE STORE LISTING (`docs/deployment.md`, "Google Play listing delivery"). Play's listing is one per app, not per
+track or release, so it is written only when a release is promoted — never on a merge — and so describes the build
+users can install, as the App Store's version-bound listing does. <listing dir> holds the rendered Play listing,
 `<language>.json` (title, shortDescription, fullDescription, contactWebsite: scripts/resolve-deployment.py renders it
 from metadata/listing/); <images dir> holds icon.png, featureGraphic.png and phoneScreenshots/*.png, in upload order.
 Each text field, the contact details and each image set is compared with what Play holds — text by value, images by
 the sha256 Play lists, which is the uploaded file's own (measured: Play keeps the bytes) — and only a difference is
-written. So a merge that changes no copy and no image sends Play nothing to review. PLAY_CONTACT_EMAIL, when set, is the
+written. So a promote that changes no copy and no image sends Play no listing change to review. PLAY_CONTACT_EMAIL, when set, is the
 listing's contact email (a secret: it never enters the repo, and is never printed).
 
 Credentials: the service account's JSON key, from PLAY_SERVICE_ACCOUNT_JSON (the CI secret) or
@@ -286,7 +289,8 @@ def output(key: str, value: str) -> None:
             handle.write(f"{key}={value}\n")
 
 
-def promote(package: str, track: str, version_code: int, name: str, note_file: str, mode: str) -> None:
+def promote(package: str, track: str, version_code: int, name: str, note_file: str, mode: str,
+            listing: str | None = None, images: str | None = None) -> None:
     with open(note_file, encoding="utf-8") as handle:
         note = handle.read().strip()
     if not note or len(note) > NOTE_LIMIT:
@@ -297,6 +301,9 @@ def promote(package: str, track: str, version_code: int, name: str, note_file: s
             output("released", "true")
             return
         edit.release_to(track, version_code, name=name, note=note)
+        if listing and images:
+            changed = sync_listing(edit, listing, images, write=True)
+            print(f"store listing: {', '.join(changed) + ' updated' if changed else 'unchanged, nothing sent'}")
         if mode == "validate":
             edit.validate()
         else:
@@ -304,14 +311,10 @@ def promote(package: str, track: str, version_code: int, name: str, note_file: s
     output("released", "false")
 
 
-def deliver(package: str, bundle: str, track: str, name: str, note: str,
-            listing: str | None = None, images: str | None = None) -> None:
+def deliver(package: str, bundle: str, track: str, name: str, note: str) -> None:
     with Edit(session(), package) as edit:
         version_code = edit.upload_bundle(bundle)
         edit.release_to(track, version_code, name=name, note=clip(note))
-        if listing and images:
-            changed = sync_listing(edit, listing, images, write=True)
-            print(f"store listing: {', '.join(changed) + ' updated' if changed else 'unchanged, nothing sent'}")
         edit.commit()
 
 
@@ -357,8 +360,6 @@ def main(argv: list[str]) -> None:
             has(package, int(version_code))
         case ["deliver", package, bundle, track, name, note]:
             deliver(package, bundle, track, name, note)
-        case ["deliver", package, bundle, track, name, note, "--listing", listing, "--images", images]:
-            deliver(package, bundle, track, name, note, listing, images)
         case ["share", package, bundle, component]:
             share(package, bundle, component)
         case ["listing-diff", package, listing, images]:
@@ -367,6 +368,9 @@ def main(argv: list[str]) -> None:
             listing_diff(package, listing, images, write=True)
         case ["promote", package, track, version_code, name, note_file, ("validate" | "commit") as mode]:
             promote(package, track, int(version_code), name, note_file, mode)
+        case ["promote", package, track, version_code, name, note_file, ("validate" | "commit") as mode,
+              "--listing", listing, "--images", images]:
+            promote(package, track, int(version_code), name, note_file, mode, listing, images)
         case _:
             sys.exit(__doc__)
 

@@ -19,7 +19,7 @@ Two answers are the **operator's explicit choice against the recommendation**: t
 
 | Field | Answer |
 |---|---|
-| App name | SnapSync Photos (from `metadata/listing/`; written by the delivery) |
+| App name | SnapSync Photos (from `metadata/listing/`; written by the promote) |
 | Category | **Events** (App → Events; chosen in the Console over Photography: the app is for events) |
 | Tags | none (the operator's choice) |
 | Contact email | the `ASC_REVIEW_CONTACT_EMAIL` secret, the App Store review contact (written by the delivery; never committed) |
