@@ -75,6 +75,24 @@ class MockStateTest {
     }
 
     @Test
+    fun a_refused_phone_stays_refused_across_a_relaunch_and_is_told_why() = runTest {
+        val device = MockDevice(ownDeviceId = DEVICE, osDrivenUpload = true)
+        device.backend.operator.refuseAttestation = app.snapsync.model.DeviceRefusal.DEVICE_MODIFIED
+        val copy = copyOf(device)
+        assertEquals(app.snapsync.model.DeviceRefusal.DEVICE_MODIFIED, copy.backend.operator.refuseAttestation)
+
+        val backend = copy.backend.port()
+        val challenge = (backend.challenge() as Reply.Ok).value
+        val proof = "attestation:k:$challenge".encodeToByteArray()
+        val mint = backend.mintToken(app.snapsync.model.MintRequest(DEVICE, "k", app.snapsync.model.ProofFormat.APP_ATTEST, proof, challenge))
+        assertEquals(Reply.Refused(401, "attestation rejected: device-modified"), mint, "even a genuine proof, as v2 names it")
+        assertEquals(401, (backend.createEvent(null, CreateEventRequest("Party", "2026-06-01T00:00:00Z", null)) as Reply.Refused).status)
+
+        copy.backend.operator.refuseAttestation = null
+        assertIs<Reply.Ok<*>>(backend.createEvent(null, CreateEventRequest("Party", "2026-06-01T00:00:00Z", null)))
+    }
+
+    @Test
     fun the_restored_library_keeps_its_photos_grant_selection_and_albums() = runTest {
         val copy = copyOf(drive())
         assertEquals(listOf("A1", "S1"), copy.library.operator.current().map { it.assetId.value })

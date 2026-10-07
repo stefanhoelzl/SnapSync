@@ -24,9 +24,10 @@ import co.touchlab.kermit.Logger
  * - [EventFull]: the event already holds its maximum number of devices — a refusal the USER can act on,
  *   kept apart from [EnrollFailed] because the two have different remedies and a screen must be able to
  *   say which (`docs/architecture.md`, "Absence is never silent"). Nothing is persisted either way.
+ * - [Unverified]: the service did not accept this phone's credential — the attestation's refusal says why.
  * - [EnrollFailed]: the join request failed or the event is gone — nothing persisted, no producer enabled.
  */
-enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EventClosed, EnrollFailed, WrongLink }
+enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EventClosed, Unverified, EnrollFailed, WrongLink }
 
 /**
  * What the join surface should show for this outcome (capability `join-event`).
@@ -40,6 +41,7 @@ fun JoinOutcome.toCommit(): JoinCommit = when (this) {
     JoinOutcome.Committed, JoinOutcome.AlreadyJoined -> JoinCommit.Committed
     JoinOutcome.EventFull -> JoinCommit.Full
     JoinOutcome.EventClosed -> JoinCommit.Closed
+    JoinOutcome.Unverified -> JoinCommit.Unverified
     JoinOutcome.EnrollFailed -> JoinCommit.Failed
     JoinOutcome.WrongLink -> JoinCommit.WrongLink
 }
@@ -113,6 +115,7 @@ class JoinEvent(
             JoinResult.JOINED -> Unit
             JoinResult.EVENT_FULL -> return JoinOutcome.EventFull
             JoinResult.EVENT_CLOSED -> return JoinOutcome.EventClosed
+            JoinResult.UNVERIFIED -> return JoinOutcome.Unverified
             JoinResult.EVENT_NOT_FOUND, JoinResult.FAILED -> return JoinOutcome.EnrollFailed
         }
         // The key before the config: a config naming a key id must never exist without its key. A refused write fails

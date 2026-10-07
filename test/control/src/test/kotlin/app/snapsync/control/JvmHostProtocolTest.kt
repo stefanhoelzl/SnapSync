@@ -112,6 +112,18 @@ class JvmHostProtocolTest {
     @Test
     fun create_join_upload_round_trip_over_the_real_backend() = roundTrip("deno")
 
+    /** The backend refusing this phone as not genuine, for a reason the app tells (capability `privacy-security`). */
+    @Test
+    fun the_attestation_refusal_lever_takes_a_reason_and_refuses_any_other() = onHost { client ->
+        assertTrue("device/backend/refuse-attestation" in client.device().honoured)
+        val on = client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "device-modified")).done()
+        assertTrue("device-modified" in on, on)
+        assertTrue("off" in client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "off")).done())
+        val bad = assertIs<Reply.Failed>(client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "tampered")))
+        assertEquals(400, bad.status)
+        assertTrue("device-unverifiable" in bad.body, bad.body)
+    }
+
     @Test
     fun a_backend_lever_the_real_backend_cannot_honour_is_refused() = onHost("deno") { client ->
         val offline = assertIs<Reply.Refused>(client.deviceVerb("backend/offline"))

@@ -29,7 +29,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigRead` | `:domain:model` | `:domain:model` Joined, None, Unavailable | no |
 | `CrashReporter` | `:domain:ports` | `:adapter:generic:mock` InMemoryCrashReporter, Recording; `:adapter:generic:sentry` SentryCrashReporter, SettledStart | yes |
-| `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient | no |
+| `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient, Unverified | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `Credential` | `:domain:services` | `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential | no |
 | `Crypto` | `:domain:ports` | `:adapter:android` AndroidCrypto; `:adapter:generic:app` JcaCrypto; `:adapter:generic:mock` FakeCrypto; `:adapter:ios:ext-safe` IosCrypto | yes |
@@ -132,10 +132,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, IdleSync, MenuTestSync, Sync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:ios:app-only` IosSystemUi | no |
 | `TimeLeft` | `:domain:model` | `:domain:model` Days, Hours, Minutes, UnderAMinute | no |
-| `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
+| `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, ProofFailed, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |
 | `Ui` | `:domain:ports` | `:adapter:android` AndroidUi; `:adapter:ios:ui` IosUi; `:test:rig` RigUi | yes |
-| `UiIntent` | `:domain:model` | `:domain:model` CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmStopSharing, ConfirmSwitch, CreateEvent, KeepSharing, LeaveEvent, MenuDismiss, MenuOpen, MenuReportBug, MobileData, OpenAppStore, OpenLink, OpenReconfigure, OpenSettings, QrDismiss, QrOpen, RangeCustom, RangePreset, ReceiveOn, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, ReportNoticeDismiss, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn | no |
+| `UiIntent` | `:domain:model` | `:domain:model` CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmStopSharing, ConfirmSwitch, CreateEvent, KeepSharing, LeaveEvent, MenuDismiss, MenuOpen, MenuReportBug, MobileData, OpenAppStore, OpenLink, OpenReconfigure, OpenSettings, QrDismiss, QrOpen, RangeCustom, RangePreset, ReceiveOn, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, ReportNoticeDismiss, ReportRefusal, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn | no |
 | `Upload` | `:domain:ports` | `:adapter:android` AndroidUpload; `:adapter:generic:mock` NetworkedUpload; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` ScriptedUpload; `:test:feature` Platform | yes |
 | `UploadDiscovery` | `:domain:services` | `:domain:feature` RecordingDelegate, SelectionScopedDiscovery; `:domain:services` GalleryDiscovery, Library, Resources, WalkMemo; `:test:feature` FakePlatform, Library | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |

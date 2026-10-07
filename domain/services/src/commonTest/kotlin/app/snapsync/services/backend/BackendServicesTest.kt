@@ -106,6 +106,11 @@ class BackendServicesTest {
     }
 
     @Test
+    fun a_create_still_refused_for_its_credential_is_unverified_not_transient() = runTest {
+        assertEquals(CreateOutcome.Unverified, servicesAnswering(Reply.Refused(401, "unattested")).creation.create("n", "s", null))
+    }
+
+    @Test
     fun every_other_create_answer_is_transient() = runTest {
         for (reply in listOf(Reply.Refused(502, ""), Reply.Malformed("x"), offline)) {
             assertEquals(CreateOutcome.Transient, servicesAnswering(reply).creation.create("n", "s", null), "$reply")
@@ -134,6 +139,7 @@ class BackendServicesTest {
         assertEquals(JoinResult.EVENT_NOT_FOUND, servicesAnswering(Reply.Refused(404, "")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(Reply.Refused(500, "")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(offline).join.join("E", "D"))
+        assertEquals(JoinResult.UNVERIFIED, servicesAnswering(Reply.Refused(401, "unattested")).join.join("E", "D"), "a credential refusal")
     }
 
     @Test

@@ -1,6 +1,7 @@
 package app.snapsync.ui
 
 import app.snapsync.model.AppLink
+import app.snapsync.model.ScreenMessage
 import kotlinx.datetime.LocalDateTime
 
 /**
@@ -159,5 +160,7 @@ class SurfaceActions(
      */
     val onReportBugOpen: () -> Unit,
     val onReportBugDismiss: () -> Unit,
+    /** "Report this" beside a refusal (capability `privacy-security`): the same sheet, its description written. */
+    val onReportRefusal: (ScreenMessage) -> Unit,
 )
 

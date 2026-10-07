@@ -56,6 +56,9 @@
     <string name="network_offline">You're offline</string>
     <!-- No remedy to offer: say only what is true of every cause — the app keeps trying, nothing is lost. -->
     <string name="cannot_verify_title">Can't verify this device — sharing is paused</string>
+    <string name="cannot_verify_title_unverifiable">This phone couldn't be verified — sharing is paused</string>
+    <string name="cannot_verify_title_modified">This phone's system is modified — sharing is paused</string>
+    <string name="cannot_verify_title_not_genuine">This copy of SnapSync isn't the official one — sharing is paused</string>
     <string name="cannot_verify_detail">Still retrying — your photos aren't lost.</string>
 
     <string name="menu">Menu</string>

@@ -38,7 +38,6 @@ link SHALL carry nothing else a member relies on — no event name, no server ad
 - **WHEN** an event's invite link is decoded, in either form
 - **THEN** it holds the event's identifier and nothing else — not its name, not a server address, not a credential
 
-
 ### Requirement: An invite opens the app on its join screen
 Tapping an invite link or scanning an event's QR code with the Camera app SHALL open SnapSync on the join
 screen for that event, whether the app was not running, suspended, or open. Each opened invite SHALL be
@@ -325,6 +324,20 @@ the user SHALL see the joined screen.
 #### Scenario: Cancel abandons the invite
 - **WHEN** the user taps Cancel on the join screen
 - **THEN** nothing is joined or shared and the create screen is shown
+
+### Requirement: A refused phone is told why it cannot join
+When the user taps Join and the service refuses this phone as not genuine, the join screen SHALL show that refusal
+and its cause (capability `privacy-security`, "A refused phone is told why") — never a generic failure and never
+that the connection dropped — with Retry, which first tries to verify the phone again, and Cancel. The device SHALL
+be in no event.
+
+#### Scenario: A refused guest is told why
+- **WHEN** a guest taps Join on a phone the service refuses as not genuine
+- **THEN** the join screen says this phone was refused and why, offers Retry and Cancel, and the device is in no event
+
+#### Scenario: Retry after the service stops refusing
+- **WHEN** a refused guest taps Retry after the service has stopped refusing their phone
+- **THEN** the guest joins with the choices they made, as any guest does
 
 ### Requirement: A full event is reported as full
 The join screen SHALL say that the event is full when it already holds its maximum number of devices

@@ -27,6 +27,12 @@ sealed interface UiIntent {
     data object QrOpen : UiIntent
     data object QrDismiss : UiIntent
     data object ReportBugOpen : UiIntent
+
+    /**
+     * "Report this" beside a refusal the user can only tell us about (capability `privacy-security`, "A refused phone is
+     * told why"): the same sheet, opened with a description already written for [message].
+     */
+    data class ReportRefusal(val message: ScreenMessage) : UiIntent
     data object ReportBugDismiss : UiIntent
 
     /** The app menu (capability `sync-status`): open it, close it, and its "Report a problem" row. */

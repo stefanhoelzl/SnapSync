@@ -31,6 +31,7 @@ import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.EventCreator
 import app.snapsync.model.JoinLoad
@@ -301,13 +302,13 @@ private fun host(
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
     commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed },
     leave: suspend () -> Unit = {},
-    attested: MutableStateFlow<Boolean> = MutableStateFlow(true),
+    verification: DeviceVerification = DeviceVerification(),
     onIntentError: (Throwable) -> Unit = {},
     // The shipped answer by default, as a production root composes; the autoJoin tests pass `Honoured`,
     // which only a rig build's root does.
     inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
 ) = StatusContainerHost(
-    StatusSources(source, permission.permission, configFake.config, attested = attested),
+    StatusSources(source, permission.permission, configFake.config, verification = verification),
     scope,
     queries = joinDetails(loadJoinDetails),
     commands = testCommands(
@@ -342,6 +343,29 @@ private fun TestScope.firstJoinGate(
 )
 
 class StatusContainerHostTest {
+
+    // The create layer is the top rung: config absent, reduced from the creation status.
+    private fun createHost(
+        creation: CreationStatus,
+        permission: FakePermissionSource = FakePermissionSource(GalleryAccess.GRANTED),
+        creator: EventCreator = SpyCreator(),
+        scope: CoroutineScope,
+        foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
+    ): StatusContainerHost {
+        val config = FakeConfig(null)
+        return StatusContainerHost(
+            StatusSources(
+                FakeSyncStatusSource(), permission.permission, config.config,
+                creation = MutableStateFlow(creation),
+                foreground = foreground,
+            ), scope,
+            commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
+            cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
+            diagnostics = testDiagnostics(),
+        )
+    }
+
 
     // ── the not-started clock line (capability `sync-status`) ──────────────────────────────
 
@@ -578,28 +602,6 @@ class StatusContainerHostTest {
                 )
                 cancelAndIgnoreRemainingItems()
             }
-    }
-
-    // The create layer is the top rung: config absent, reduced from the creation status.
-    private fun createHost(
-        creation: CreationStatus,
-        permission: FakePermissionSource = FakePermissionSource(GalleryAccess.GRANTED),
-        creator: EventCreator = SpyCreator(),
-        scope: CoroutineScope,
-        foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
-    ): StatusContainerHost {
-        val config = FakeConfig(null)
-        return StatusContainerHost(
-            StatusSources(
-                FakeSyncStatusSource(), permission.permission, config.config,
-                creation = MutableStateFlow(creation),
-                foreground = foreground,
-            ), scope,
-            commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
-            cutoffFormatter = fixedCutoffFormatter(),
-            queries = noQueries,
-            diagnostics = testDiagnostics(),
-        )
     }
 
     @Test
@@ -1882,14 +1884,14 @@ class StatusContainerHostTest {
         // engine retries and loses nothing — but nothing ever arrives either, and nothing says so.
         val source = FakeSyncStatusSource()
         val attested = MutableStateFlow(true)
-        host(source, backgroundScope, attested = attested).testWithInternalState(this) {
+        host(source, backgroundScope, verification = DeviceVerification(attested)).testWithInternalState(this) {
             runOnCreate()
             source.value = snapshot(pending = 5, completed = 0, total = 5)
             expectInternalState(syncing(up = Arrow.PULSING, counts = counts(0 to 5)))
 
             attested.value = false // a renewal was attempted while the app was open — and it failed
 
-            expectInternalState(joined(SyncHealth.Unattested))
+            expectInternalState(joined(SyncHealth.Unattested()))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1900,7 +1902,7 @@ class StatusContainerHostTest {
         // renews. The state exists to catch the case where that renewal keeps failing.
         val source = FakeSyncStatusSource()
         val attested = MutableStateFlow(false)
-        host(source, backgroundScope, attested = attested).testWithInternalState(this) {
+        host(source, backgroundScope, verification = DeviceVerification(attested)).testWithInternalState(this) {
             // The initial state is already Unattested (asserted by the test above), so nothing is emitted
             // until the flag flips — Orbit only re-emits on a CHANGE.
             runOnCreate()
@@ -1919,7 +1921,7 @@ class StatusContainerHostTest {
         // problem — and two attention states at once would just be confusing.
         val source = FakeSyncStatusSource()
         val permission = FakePermissionSource(GalleryAccess.GRANTED)
-        host(source, backgroundScope, permission = permission, attested = MutableStateFlow(false))
+        host(source, backgroundScope, permission = permission, verification = DeviceVerification(MutableStateFlow(false)))
             .testWithInternalState(this) {
                 // Starts Unattested (no token, granted permission); revoking access must OUTRANK it.
                 runOnCreate()
@@ -2255,4 +2257,131 @@ class StatusContainerHostJoinedFactsTest {
                 cancelAndIgnoreRemainingItems()
             }
     }
+}
+
+/**
+ * A phone the service refuses as not genuine, as each surface tells it (capabilities `privacy-security`, `create-event`,
+ * `join-event`, `sync-status`): its own class beside [StatusContainerHostTest], over the same file-private helpers.
+ */
+class StatusContainerHostRefusalTest {
+
+    // The create layer, as in [StatusContainerHostTest]: config absent, reduced from the creation status.
+    private fun createHost(
+        creation: CreationStatus,
+        permission: FakePermissionSource = FakePermissionSource(GalleryAccess.GRANTED),
+        creator: EventCreator = SpyCreator(),
+        scope: CoroutineScope,
+        foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
+        refusal: MutableStateFlow<DeviceRefusal?> = MutableStateFlow(null),
+    ): StatusContainerHost {
+        val config = FakeConfig(null)
+        return StatusContainerHost(
+            StatusSources(
+                FakeSyncStatusSource(), permission.permission, config.config,
+                creation = MutableStateFlow(creation),
+                foreground = foreground,
+                verification = DeviceVerification(refusal = refusal),
+            ), scope,
+            commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
+            cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
+            diagnostics = testDiagnostics(),
+        )
+    }
+
+
+    // ---- a refused phone (capability `create-event`, "The front screen tells a refused phone before it tries") ----
+
+    @Test
+    fun `a refused phone is told why on the front screen before it taps anything in place of the scan hint`() = runTest {
+        for (reason in DeviceRefusal.entries) {
+            val host = createHost(CreationStatus.Idle, scope = backgroundScope, refusal = MutableStateFlow(reason))
+            assertEquals(screen(Layer.CreateEvent(error = ScreenMessage.of(reason))), host.container.stateFlow.value)
+        }
+    }
+
+    @Test
+    fun `a refusal the service stops making leaves the scan hint`() = runTest {
+        val refusal = MutableStateFlow<DeviceRefusal?>(DeviceRefusal.DEVICE_UNVERIFIABLE)
+        createHost(CreationStatus.Idle, scope = backgroundScope, refusal = refusal).testWithInternalState(this) {
+            runOnCreate()
+            refusal.value = null
+            expectInternalState(screen(Layer.CreateEvent(error = null)))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `a create refused for this phone says why - and without a verdict that the server could not be reached`() = runTest {
+        val unverified = CreationStatus.Failed(CreationFailureReason.UNVERIFIED)
+        val told = createHost(unverified, scope = backgroundScope, refusal = MutableStateFlow(DeviceRefusal.APP_NOT_GENUINE))
+        assertEquals(screen(Layer.CreateEvent(error = ScreenMessage.APP_NOT_GENUINE)), told.container.stateFlow.value)
+        val noVerdict = createHost(unverified, scope = backgroundScope)
+        assertEquals(screen(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)), noVerdict.container.stateFlow.value)
+    }
+
+    @Test
+    fun `a join refused for this phone says why and keeps the retry`() = runTest {
+        // Capability `join-event`, "A refused phone is told why it cannot join".
+        var joins = 0
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            // Refused, then — the service having stopped refusing — accepted on the Retry.
+            commitJoin = { _ -> if (joins++ == 0) JoinCommit.Unverified else JoinCommit.Committed },
+            verification = DeviceVerification(refusal = MutableStateFlow(DeviceRefusal.DEVICE_MODIFIED)),
+        ).testWithInternalState(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            containerHost.confirmJoinAs()
+            val refused = phaseAt(JoinPhase.Detailed.Step.DeviceRefused, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+                .copy(refusal = ScreenMessage.DEVICE_MODIFIED)
+            assertJoining(awaitInternalState(), EVENT_ID, refused)
+            containerHost.onRetryJoin()
+            // The Retry re-ran the join, and a committed join drops the pending surface (the config then joins).
+            var next = awaitInternalState()
+            while (next.layer is Layer.JoiningEvent) next = awaitInternalState()
+            assertIs<Layer.CreateEvent>(next.layer)
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(2, joins, "Retry re-runs the join, which tries to verify the phone again first")
+    }
+
+    @Test
+    fun `a join refused for this phone with no verdict is the ordinary retryable failure`() = runTest {
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            commitJoin = { _ -> JoinCommit.Unverified },
+        ).testWithInternalState(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            containerHost.confirmJoinAs()
+            assertJoining(awaitInternalState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.CommitFailed, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `a joined phone the service refuses is told the cause on the cannot-verify line`() = runTest {
+        // Capability `sync-status`: a definite refusal names its cause; the line without a verdict names none.
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val attested = MutableStateFlow(true)
+        val refusal = MutableStateFlow<DeviceRefusal?>(null)
+        host(source, backgroundScope, verification = DeviceVerification(attested, refusal)).testWithInternalState(this) {
+            runOnCreate()
+            source.value = snapshot(pending = 5, completed = 0, total = 5)
+            expectInternalState(syncing(up = Arrow.PULSING, counts = counts(0 to 5)))
+            attested.value = false
+            expectInternalState(joined(SyncHealth.Unattested()))
+            refusal.value = DeviceRefusal.DEVICE_MODIFIED
+            expectInternalState(joined(SyncHealth.Unattested(DeviceRefusal.DEVICE_MODIFIED)))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
 }

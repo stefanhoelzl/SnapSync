@@ -1,6 +1,7 @@
 package app.snapsync.host
 
 import app.snapsync.model.redactEventKeys
+import app.snapsync.presentation.DeviceVerification
 import app.snapsync.presentation.onIntent
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
@@ -198,7 +199,7 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     creation = core.creationStatus,
     rename = core.renameStatus,
     download = core.downloadStatusSource.progress,
-    attested = core.attested,
+    verification = DeviceVerification(core.attested, core.refusal),
     pending = MutableStateFlow(null),
     versionRefusal = core.versionRefusal,
     network = core.network.status,

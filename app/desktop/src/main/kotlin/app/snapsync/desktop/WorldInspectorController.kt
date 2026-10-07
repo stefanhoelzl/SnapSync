@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.NetworkAccess
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -230,6 +231,12 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     fun setBackendOffline(offline: Boolean) = launchMutation { mocks.backend.operator.offline = offline }
 
     /**
+     * The backend refuses this phone as not genuine for [reason], or stops (`null`) — capability `privacy-security`, "A
+     * refused phone is told why". The app learns of it at its next attestation: a wake, or a tap on Create or Join.
+     */
+    fun setRefusedAttestation(reason: DeviceRefusal?) = launchMutation { mocks.backend.operator.refuseAttestation = reason }
+
+    /**
      * The membership made **unreadable** (capability `background-upload`) — the state a real device is in before its
      * first unlock after a boot. A lever here because it is otherwise unreachable by a reviewer.
      */
@@ -443,6 +450,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             downloads = downloads,
             jobLimit = queue.jobLimit,
             backendOffline = mocks.backend.operator.offline,
+            refusedAttestation = mocks.backend.operator.refuseAttestation,
             membershipUnreadable = mocks.disk.operator.isDenied(FileArea.SHARED, CONFIG_FILE_NAME),
             held = BackendCall.entries.filter { mocks.backend.operator.isHeld(it) }.mapTo(mutableSetOf()) { it.key } +
                 listOfNotNull(ENUMERATION.takeIf { mocks.library.operator.enumerationHeld }),
@@ -485,6 +493,8 @@ data class InspectorSnapshot(
     val downloads: List<DownloadRow>,
     val jobLimit: Int,
     val backendOffline: Boolean,
+    /** Why the backend refuses this phone's attestation, or `null` for a genuine phone. */
+    val refusedAttestation: DeviceRefusal?,
     val membershipUnreadable: Boolean,
     /** Which of [HOLDS] are held. */
     val held: Set<String>,
@@ -492,7 +502,7 @@ data class InspectorSnapshot(
     companion object {
         val EMPTY =
             InspectorSnapshot(
-                null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, false, emptySet(),
+                null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, null, false, emptySet(),
             )
     }
 }

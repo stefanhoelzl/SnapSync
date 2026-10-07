@@ -2,6 +2,7 @@ package app.snapsync.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReportDestination
@@ -295,7 +296,9 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
         )
     }
     if (overlays.reportingBug) {
-        BugReportSheet(actions, actions.menu.onSendDiagnostics, screenLabel(state), state.reportDestination)
+        BugReportSheet(
+            actions, actions.menu.onSendDiagnostics, screenLabel(state), state.reportDestination, overlays.reportSeed,
+        )
     }
     // A switch confirmation over the joined screen (scanning a different event while joined).
     joined?.pendingSwitch?.let { switch ->
@@ -398,6 +401,7 @@ private fun BugReportSheet(
     onSend: (note: String, screen: String) -> Unit,
     screen: String,
     destination: ReportDestination,
+    seed: ScreenMessage?,
 ) {
     AppTextPromptSheet(
         copy = when (destination) {
@@ -421,6 +425,9 @@ private fun BugReportSheet(
             // The description titles the report in the error-tracking service, so it is bounded to
             // stay readable in a list of issues (capability `privacy-security`).
             maxLength = 200,
+            // A report the app offered opens with its description written, which may be sent as it stands.
+            initialValue = seed?.reportSeed().orEmpty(),
+            submitUnchanged = seed != null,
         ),
         onConfirm = { note ->
             actions.surfaces.onReportBugDismiss()
@@ -483,7 +490,9 @@ private fun ColumnScope.CurrentLayer(
         // ONE branch for both create layers, so the form's draft survives a failed create's round trip
         // through the in-flight screen (capability `create-event`) — see [CreateFlow].
         is Layer.CreateEvent, Layer.CreatingEvent ->
-            CreateFlow(layer, actions.onCreateEvent, actions.access.onOpenSettings, cutoff)
+            CreateFlow(
+                layer, actions.onCreateEvent, actions.access.onOpenSettings, cutoff, actions.surfaces.onReportRefusal,
+            )
         is Layer.JoiningEvent ->
             JoiningEventScreen(
                 layer = layer,
@@ -494,6 +503,7 @@ private fun ColumnScope.CurrentLayer(
                     onRetryLoad = actions.join.onRetryLoad,
                     participation = actions.participation,
                     onOpenSettings = actions.access.onOpenSettings,
+                    onReportRefusal = actions.surfaces.onReportRefusal,
                 ),
             )
         is Layer.Joined ->

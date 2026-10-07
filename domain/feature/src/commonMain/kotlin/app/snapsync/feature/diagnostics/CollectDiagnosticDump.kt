@@ -1,5 +1,6 @@
 package app.snapsync.feature.diagnostics
 
+import app.snapsync.model.RefusalFacts
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
@@ -71,6 +72,8 @@ class CollectDiagnosticDump(
      * (decision record `changes/both-uploaders-active`).
      */
     private val uploadFacts: () -> Map<String, String>,
+    /** The latest refused attestation's facts, if any — carried only by a report opened from "Report this". */
+    private val refusalFacts: () -> RefusalFacts?,
     private val budgetBytes: Int = DIAGNOSTIC_LOG_BUDGET_BYTES,
     /** How long one device read may take before it is written as failed. The slowest is a hop onto the main thread. */
     private val readTimeout: Duration = DEFAULT_READ_TIMEOUT,
@@ -138,6 +141,7 @@ class CollectDiagnosticDump(
             put("device", environment.deviceModel)
             put("uploaders_carried", environment.uploadTier)
             putAll(uploadFacts())
+            if (context.verification) putAll(verificationSection(refusalFacts()))
             put("upload_base", environment.uploadBase)
             put("reporter_environment", environment.reporterEnvironment)
             put("photo_permission", permission.name)
@@ -151,6 +155,27 @@ class CollectDiagnosticDump(
                 put("save_to_album", config.saveToAlbum.toString())
             }
         }
+
+    /**
+     * What a report offered for a refused phone carries about its verification (capability `privacy-security`): the
+     * service's answer as it named it, and the certificates the phone presented above its own key — names, validity
+     * and key type — with the root key's fingerprint. Nothing else: no certificate, no serial number. A phone whose
+     * latest attestation was not refused says so rather than leaving the reader to guess.
+     */
+    private fun verificationSection(facts: RefusalFacts?): Map<String, String> {
+        if (facts == null) return mapOf("attest_failure" to "none recorded")
+        return buildMap {
+            put("attest_failure", facts.reason.wireName + (facts.detail?.let { " ($it)" } ?: ""))
+            val chain = facts.chain ?: return@buildMap
+            put(
+                "attest_chain",
+                chain.certificates.withIndex().joinToString("\n") { (i, c) ->
+                    "[${i + 1}] subject=${c.subject} issuer=${c.issuer} valid=${c.notBefore}..${c.notAfter} key=${c.key}"
+                },
+            )
+            put("attest_root_key_sha256", chain.rootKeySha256)
+        }
+    }
 
     /**
      * Counts only. The units are labelled because the two stores count different things and their

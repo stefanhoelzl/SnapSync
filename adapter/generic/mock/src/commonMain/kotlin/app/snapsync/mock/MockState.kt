@@ -2,6 +2,7 @@
 
 package app.snapsync.mock
 
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -456,6 +457,8 @@ private class BackendLeversDto(
     val offline: Boolean,
     val failDeviceListing: Boolean,
     val refuseNextCredential: Boolean,
+    val refuseAttestation: DeviceRefusal? = null,
+    val refuseAttestationDetail: String? = null,
     val minAppVersion: String?,
     val legacyCounter: Long,
 ) {
@@ -464,6 +467,8 @@ private class BackendLeversDto(
         state.offline = offline
         state.failDeviceListing = failDeviceListing
         state.refuseNextCredential = refuseNextCredential
+        state.refuseAttestation = refuseAttestation
+        state.refuseAttestationDetail = refuseAttestationDetail
         state.minAppVersion = minAppVersion
         state.legacyCounter = legacyCounter
     }
@@ -563,6 +568,8 @@ private class BackendDto(
                 offline = state.offline,
                 failDeviceListing = state.failDeviceListing,
                 refuseNextCredential = state.refuseNextCredential,
+                refuseAttestation = state.refuseAttestation,
+                refuseAttestationDetail = state.refuseAttestationDetail,
                 minAppVersion = state.minAppVersion,
                 legacyCounter = state.legacyCounter,
             ),

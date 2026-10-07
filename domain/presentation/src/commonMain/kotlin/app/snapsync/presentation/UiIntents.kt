@@ -26,6 +26,7 @@ fun StatusContainerHost.onIntent(intent: UiIntent) {
         UiIntent.QrOpen -> surfaces.onQrOpen()
         UiIntent.QrDismiss -> surfaces.onQrDismiss()
         UiIntent.ReportBugOpen -> surfaces.onReportBugOpen()
+        is UiIntent.ReportRefusal -> surfaces.onReportRefusal(intent.message)
         UiIntent.ReportBugDismiss -> surfaces.onReportBugDismiss()
         UiIntent.MenuOpen -> surfaces.onMenuOpen()
         UiIntent.MenuDismiss -> surfaces.onMenuDismiss()

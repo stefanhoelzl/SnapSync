@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.Flow
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.NetworkAccess
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.creation.readmodel.CreationStatus
@@ -59,15 +60,8 @@ class StatusSources(
      * second until its first refresh (capability `sync-status`).
      */
     val download: StateFlow<DownloadProgress> = MutableStateFlow(DownloadProgress(0, 0)),
-    /**
-     * Attestation health (capability `privacy-security`): false only when this device's token is
-     * UNUSABLE (absent, unreadable, or expired) and the refresh could not obtain one. Never false for a
-     * token merely due for renewal — that one still authorizes every upload, and saying otherwise told a
-     * member sharing was paused with six days of token left (`SNAPSYNC-20`). The feature that owns the
-     * fact also owns the rule that a verdict never outlives the refresh that produced it, so nothing
-     * downstream reasons about how old this value is. Defaults to always-true.
-     */
-    val attested: StateFlow<Boolean> = MutableStateFlow(true),
+    /** Whether this device is verified, and why the service refused it if it did (see [DeviceVerification]). */
+    val verification: DeviceVerification = DeviceVerification(),
     /**
      * The in-progress join/switch confirmation (capability `join-event`). Event-driven rather than
      * level-triggered: the gate sets it on a decoded interactive event link and clears it on
@@ -145,3 +139,20 @@ private object AlwaysOnline : NetworkStatusSource {
     override val access: StateFlow<NetworkAccess> = MutableStateFlow(NetworkAccess.Online(restricted = false))
     override val returned: Flow<Unit> = emptyFlow()
 }
+
+/**
+ * The attestation's verdict, as the status host reads it (capability `privacy-security`): its two halves travel together.
+ *
+ * [attested] is false only when this device's token is UNUSABLE (absent, unreadable, or expired) and the refresh could
+ * not obtain one. Never false for a token merely due for renewal — that one still authorizes every upload, and saying
+ * otherwise told a member sharing was paused with six days of token left (`SNAPSYNC-20`). The feature that owns the
+ * fact also owns the rule that a verdict never outlives the refresh that produced it, so nothing downstream reasons
+ * about how old this value is. Defaults to always-true.
+ *
+ * [refusal] is why the service refused this phone at the latest attempt to verify it, or `null` when it did not ("A
+ * refused phone is told why") — the same bracket as [attested]. Defaults to never refused.
+ */
+class DeviceVerification(
+    val attested: StateFlow<Boolean> = MutableStateFlow(true),
+    val refusal: StateFlow<DeviceRefusal?> = MutableStateFlow(null),
+)

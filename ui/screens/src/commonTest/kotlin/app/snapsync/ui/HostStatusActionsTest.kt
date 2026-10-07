@@ -56,6 +56,8 @@ import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
+import kotlin.test.assertTrue
+import app.snapsync.model.ScreenMessage
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusSources
 import app.snapsync.model.UiState
@@ -102,6 +104,11 @@ import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.report_placeholder
 import app.snapsync.ui.resources.report_problem
 import app.snapsync.ui.resources.report_send
+import app.snapsync.ui.resources.create_join_hint
+import app.snapsync.ui.resources.message_app_not_genuine
+import app.snapsync.ui.resources.report_seed_device_unverifiable
+import app.snapsync.ui.resources.message_report_this
+import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.save
@@ -165,6 +172,7 @@ class HostStatusActionsTest {
         diagnostics: Boolean = false,
         private val details: suspend (String) -> JoinLoad = { OTHER_EVENT },
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
+        deviceRefusal: app.snapsync.model.DeviceRefusal? = null,
     ) {
         val config = MutableStateFlow(config)
         val permission = MutableStateFlow(permission)
@@ -182,6 +190,7 @@ class HostStatusActionsTest {
                 permission = this.permission,
                 config = this.config,
                 versionRefusal = MutableStateFlow(refusal),
+                verification = app.snapsync.presentation.DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
                 store = StoreLink(STORE_URL, StoreKind.APP_STORE),
                 network = object : NetworkStatusSource {
                     override val access: StateFlow<NetworkAccess> = MutableStateFlow(network)
@@ -208,7 +217,11 @@ class HostStatusActionsTest {
                 reconfigure = { eventId, direction, _, _, _ -> record("reconfigure:$eventId:$direction"); ReconfigureOutcome.Saved },
                 rename = { eventId, name -> record("rename:$eventId:$name") },
                 resetRename = { record("resetRename") },
-                sendDiagnostics = { note, _ -> record("sendDiagnostics:$note"); app.snapsync.model.ReportOutcome.SENT },
+                sendDiagnostics = { note, context ->
+                    // A report opened from "Report this" is marked: only it carries the refused verification's facts.
+                    record("sendDiagnostics:$note" + if (context.verification) " [verification]" else "")
+                    app.snapsync.model.ReportOutcome.SENT
+                },
                 setMobileData = { on -> record("setMobileData:$on"); true },
             ),
             queries = UserQueries(loadJoinDetails = { id, _ -> details(id) }, shareableCount = { _, _ -> null }),
@@ -262,7 +275,8 @@ class HostStatusActionsTest {
         diagnostics: Boolean = false,
         details: suspend (String) -> JoinLoad = { OTHER_EVENT },
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
-    ) = Rig(config, permission, refusal, diagnostics, details, network)
+        deviceRefusal: app.snapsync.model.DeviceRefusal? = null,
+    ) = Rig(config, permission, refusal, diagnostics, details, network, deviceRefusal)
 
     private val ready: (UiState) -> Boolean =
         { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready }
@@ -563,6 +577,39 @@ class HostStatusActionsTest {
         awaitFired(rig, "setMobileData:false")
         awaitState(rig) { it.overlays.menuOpen }
     }
+
+    // ---- a refused phone (capabilities `create-event`, `privacy-security`) ----
+
+    @Test
+    fun `a refused phone is told why with Create still offered - and Report this opens the sheet already written`() =
+        rigTest(rig(diagnostics = true, deviceRefusal = app.snapsync.model.DeviceRefusal.DEVICE_UNVERIFIABLE)) { rig ->
+            awaitState(rig) { (it.layer as? Layer.CreateEvent)?.error == ScreenMessage.DEVICE_UNVERIFIABLE }
+            val told = "${str(Res.string.message_device_unverifiable)} ${str(Res.string.message_report_this)}"
+            onNodeWithText(told).assertExists()
+            onNodeWithText(str(Res.string.create_join_hint)).assertDoesNotExist()
+            onNodeWithText(str(Res.string.create_button)).assertExists()
+
+            onNodeWithText(told).performClick()
+            awaitState(rig) { it.overlays.reportingBug && it.overlays.reportSeed == ScreenMessage.DEVICE_UNVERIFIABLE }
+            // Cancelling sends nothing.
+            onNodeWithText(str(Res.string.cancel)).performClick()
+            awaitState(rig) { !it.overlays.reportingBug && it.overlays.reportSeed == null }
+            assertTrue(rig.fired.none { it.startsWith("sendDiagnostics") })
+
+            // Sent as the app wrote it — the user may change it, but need not.
+            onNodeWithText(told).performClick()
+            awaitState(rig) { it.overlays.reportingBug }
+            onNodeWithText(str(Res.string.report_send)).performClick()
+            awaitFired(rig, "sendDiagnostics:${str(Res.string.report_seed_device_unverifiable)} [verification]")
+        }
+
+    @Test
+    fun `a refusal that only a store install can fix offers no report`() =
+        rigTest(rig(deviceRefusal = app.snapsync.model.DeviceRefusal.APP_NOT_GENUINE)) { rig ->
+            awaitState(rig) { (it.layer as? Layer.CreateEvent)?.error == ScreenMessage.APP_NOT_GENUINE }
+            onNodeWithText(str(Res.string.message_app_not_genuine)).assertExists()
+            onNodeWithText(str(Res.string.message_report_this), substring = true).assertDoesNotExist()
+        }
 
     // ---- the hidden bug report (capability `privacy-security`) ----
 

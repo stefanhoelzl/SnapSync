@@ -7,6 +7,8 @@ import {
   challengeIsValid,
   mintChallenge,
   mintToken,
+  type RefusalReason,
+  refusalReason,
   verifyAttestation,
   verifyToken,
 } from "../src/attest.ts";
@@ -97,7 +99,11 @@ Deno.test("attestation: a REAL attestation from a REAL device verifies", async (
 
 // Each of these MUST throw. A verifier that accepts them is worse than no verifier, because it would
 // look like a gate while admitting anyone.
-const rejects = async (name: string, mutate: (o: Record<string, unknown>) => void) => {
+const rejects = async (
+  name: string,
+  mutate: (o: Record<string, unknown>) => void,
+  reason: RefusalReason = "device-unverifiable",
+) => {
   const opts: Record<string, unknown> = {
     attestation: b64ToBytes(SAMPLE.attestationBase64),
     challenge: SAMPLE_CHALLENGE,
@@ -107,13 +113,15 @@ const rejects = async (name: string, mutate: (o: Record<string, unknown>) => voi
   let config = SAMPLE_CONFIG;
   if (name === "a different app") config = CONFIG; // our real app id, not the fixture's
   mutate(opts);
-  let threw = false;
+  let threw: unknown = undefined;
   try {
     await verifyAttestation(config, opts as never);
-  } catch {
-    threw = true;
+  } catch (e) {
+    threw = e;
   }
   assert(threw, `attestation with ${name} was ACCEPTED — the verifier is a rubber stamp`);
+  // The reason the app is told: only a wrong app id is `app-not-genuine`; App Attest has no `device-modified`.
+  assertEquals(refusalReason(threw), reason, `the reason told for ${name}`);
 };
 
 Deno.test("attestation: a different challenge is rejected (no replay against another nonce)", () =>
@@ -122,7 +130,7 @@ Deno.test("attestation: a different challenge is rejected (no replay against ano
   }));
 
 Deno.test("attestation: a different app is rejected (rpIdHash is not ours)", () =>
-  rejects("a different app", () => {}));
+  rejects("a different app", () => {}, "app-not-genuine"));
 
 Deno.test("attestation: a mismatched keyId is rejected", () =>
   rejects("a mismatched keyId", (o) => {
@@ -544,8 +552,19 @@ Deno.test("renew: a stale challenge is 401 under v1 (frozen) and 409 under v2, m
   }
 });
 
-Deno.test("attest: v2 answers a rejected attestation 401, exactly as v1 does", async () => {
+Deno.test("attest: v2 answers a rejected attestation 401 naming its reason; v1's body is unchanged", async () => {
   const { app: a } = app();
+  const v1 = await a.request("/api/v1/attest/token", {
+    method: "POST",
+    body: JSON.stringify({
+      deviceId: D,
+      keyId: SAMPLE.keyIdBase64,
+      attestation: SAMPLE.attestationBase64,
+      challenge: await mintChallenge(CONFIG, NOW),
+    }),
+  });
+  assertEquals(v1.status, 401);
+  assertEquals(await v1.text(), "attestation rejected");
   const res = await a.request("/api/v2/attest/token", {
     method: "POST",
     headers: V2,
@@ -560,6 +579,7 @@ Deno.test("attest: v2 answers a rejected attestation 401, exactly as v1 does", a
     }),
   });
   assertEquals(res.status, 401);
+  assertEquals(await res.text(), "attestation rejected: device-unverifiable");
 });
 
 Deno.test("attest: v2 takes only the typed proof — the flat v1 body, or an unknown format, is a 400", async () => {

@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -64,7 +65,16 @@ internal class InMemoryBackend(
     override suspend fun mintToken(req: MintRequest): Reply<String> = served {
         val genuine = req.challenge in state.challenges &&
             req.attestation.contentEquals("attestation:${req.keyId}:${req.challenge}".encodeToByteArray())
-        if (genuine) Reply.Ok(state.mint(req.deviceId, req.challenge)) else Reply.Refused(UNAUTHORIZED, "attestation rejected")
+        when {
+            state.refuseAttestation != null ->
+                Reply.Refused(
+                    UNAUTHORIZED,
+                    "attestation rejected: ${state.refuseAttestation?.wireName}" +
+                        (state.refuseAttestationDetail?.let { " ($it)" } ?: ""),
+                )
+            genuine -> Reply.Ok(state.mint(req.deviceId, req.challenge))
+            else -> Reply.Refused(UNAUTHORIZED, "attestation rejected")
+        }
     }
 
     override suspend fun renewToken(req: RenewRequest): Reply<String> = served {
@@ -233,6 +243,7 @@ internal class InMemoryBackend(
         return when {
             online && state.offline -> offline()
             !gated -> null
+            state.refuseAttestation != null -> Reply.Refused(UNAUTHORIZED, "unattested")
             token != null && state.refuseNextCredential -> {
                 state.refuseNextCredential = false
                 Reply.Refused(UNAUTHORIZED, "credential rejected")

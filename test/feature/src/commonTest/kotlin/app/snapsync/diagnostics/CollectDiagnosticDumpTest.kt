@@ -100,8 +100,53 @@ class CollectDiagnosticDumpTest {
         conditions = DeviceConditionsReadings(conditions.port()),
         appFacts = appFacts,
         uploadFacts = { mapOf("extension_registrable" to "false", "app_admission" to "Admit") },
+        refusalFacts = { refusalFacts },
         budgetBytes = budget,
     )
+
+    // ---- a refused phone's offered report (capability `privacy-security`) ----
+
+    /** What the attestation service holds about the latest refusal, for the collector a test builds next. */
+    private var refusalFacts: app.snapsync.model.RefusalFacts? = null
+
+    private val refused = app.snapsync.model.RefusalFacts(
+        app.snapsync.model.DeviceRefusal.DEVICE_UNVERIFIABLE,
+        detail = "certificate",
+        chain = app.snapsync.model.AttestationChain(
+            listOf(
+                app.snapsync.model.CertificateFacts("CN=Intermediate,O=OnePlus", "CN=Root,O=OnePlus", "2019-03-01T00:00:00Z", "2029-03-01T00:00:00Z", "EC 256"),
+                app.snapsync.model.CertificateFacts("CN=Root,O=OnePlus", "CN=Root,O=OnePlus", "2016-01-01T00:00:00Z", "2036-01-01T00:00:00Z", "RSA 4096"),
+            ),
+            rootKeySha256 = "3c7a00ff",
+        ),
+    )
+
+    @Test
+    fun `an offered report carries the refused verification - which root the chain ends at`() = runTest {
+        refusalFacts = refused
+        val dump = collector().collect(NOTE, SCREEN.copy(verification = true))
+        assertEquals("device-unverifiable (certificate)", dump.state["attest_failure"])
+        assertEquals(
+            "[1] subject=CN=Intermediate,O=OnePlus issuer=CN=Root,O=OnePlus valid=2019-03-01T00:00:00Z..2029-03-01T00:00:00Z key=EC 256\n" +
+                "[2] subject=CN=Root,O=OnePlus issuer=CN=Root,O=OnePlus valid=2016-01-01T00:00:00Z..2036-01-01T00:00:00Z key=RSA 4096",
+            dump.state["attest_chain"],
+        )
+        assertEquals("3c7a00ff", dump.state["attest_root_key_sha256"])
+    }
+
+    @Test
+    fun `any other report carries no verification facts`() = runTest {
+        refusalFacts = refused
+        val dump = collector().collect(NOTE, SCREEN)
+        assertTrue(dump.state.keys.none { it.startsWith("attest_") }, "${dump.state.keys}")
+    }
+
+    @Test
+    fun `an offered report from a phone not refused says so`() = runTest {
+        val dump = collector().collect(NOTE, SCREEN.copy(verification = true))
+        assertEquals("none recorded", dump.state["attest_failure"])
+        assertTrue("attest_chain" !in dump.state)
+    }
 
     @Test
     fun `two oversized logs never exceed the budget`() = runTest {

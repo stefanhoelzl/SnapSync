@@ -2,6 +2,7 @@ package app.snapsync.ui
 
 import androidx.compose.foundation.layout.Box
 import app.snapsync.ui.components.AppNetworkNotice
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.NetworkNotice
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
+import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.create_button
 import app.snapsync.ui.resources.create_join_hint
@@ -159,6 +161,8 @@ private fun CreateQuestion(question: String, modifier: Modifier = Modifier, answ
 internal class CreateCallbacks(
     val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
     val onOpenSettings: () -> Unit,
+    /** "Report this" on a refusal the user can only tell us about (capability `privacy-security`). */
+    val onReportRefusal: (ScreenMessage) -> Unit,
 )
 
 /**
@@ -198,7 +202,15 @@ private fun CreateActions(
                 AppNetworkNotice(blocked = network == NetworkNotice.BLOCKED, onOpenSettings = callbacks.onOpenSettings)
             }
         } else {
-            StatusHint(error ?: stringResource(Res.string.create_join_hint), isError = error != null)
+            // A refusal the user can only tell us about offers the report in the SAME line, so the bottom keeps its
+            // constant height (capability `create-event`, "The front screen tells a refused phone before it tries").
+            val reportable = state.error?.takeIf { it.offersReport }
+            StatusHint(
+                text = if (reportable != null) "$error ${stringResource(Res.string.message_report_this)}" else
+                    error ?: stringResource(Res.string.create_join_hint),
+                isError = error != null,
+                onClick = reportable?.let { { callbacks.onReportRefusal(it) } },
+            )
         }
     }
 }

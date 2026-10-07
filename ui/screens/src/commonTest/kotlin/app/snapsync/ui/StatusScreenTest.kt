@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
@@ -105,6 +106,11 @@ import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.status_in_sync
 import app.snapsync.ui.components.resources.status_inactive
 import app.snapsync.ui.components.resources.status_not_started
+import app.snapsync.ui.components.resources.cannot_verify_detail
+import app.snapsync.ui.components.resources.cannot_verify_title_not_genuine
+import app.snapsync.ui.components.resources.cannot_verify_title_unverifiable
+import app.snapsync.ui.components.resources.cannot_verify_title_modified
+import app.snapsync.ui.components.resources.cannot_verify_title
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
 import app.snapsync.ui.components.resources.status_waiting_wifi
@@ -395,6 +401,25 @@ class StatusScreenTest {
         onNodeWithText(str(Res.string.store_app_store)).assertDoesNotExist()
         onNodeWithText(str(Res.string.store_google_play)).performClick()
         assertEquals(PLAY_URL, opened)
+    }
+
+    @Test
+    fun `the cannot-verify line names the cause of a refusal and names none without one - never tappable`() = runComposeUiTest {
+        // Capability `sync-status`, "A device that cannot be verified is shown, and never blamed on the member".
+        val state = mutableStateOf(joined(SyncHealth.Unattested()))
+        setContent { TestStatusScreen(state.value, cutoff = fixedCutoff()) }
+        val titles = mapOf(
+            null to ComponentRes.string.cannot_verify_title,
+            app.snapsync.model.DeviceRefusal.DEVICE_MODIFIED to ComponentRes.string.cannot_verify_title_modified,
+            app.snapsync.model.DeviceRefusal.DEVICE_UNVERIFIABLE to ComponentRes.string.cannot_verify_title_unverifiable,
+            app.snapsync.model.DeviceRefusal.APP_NOT_GENUINE to ComponentRes.string.cannot_verify_title_not_genuine,
+        )
+        for ((cause, title) in titles) {
+            state.value = joined(SyncHealth.Unattested(cause))
+            waitForIdle()
+            onNodeWithText(str(title)).assertExists().assertHasNoClickAction()
+            onNodeWithText(str(ComponentRes.string.cannot_verify_detail)).assertExists()
+        }
     }
 
     @Test

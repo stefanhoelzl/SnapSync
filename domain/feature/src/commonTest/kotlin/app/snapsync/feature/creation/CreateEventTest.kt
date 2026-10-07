@@ -121,4 +121,18 @@ class CreateEventTest {
         assertEquals(CreationStatus.Failed(CreationFailureReason.SERVER), status.value)
         assertNull(provisioned)
     }
+
+    @Test
+    fun `a create refused for this phone's credential fails as unverified and does not provision`() = runTest {
+        val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
+        var provisioned: String? = null
+        val useCase = CreateEvent(
+            FakeClient(CreateOutcome.Unverified), status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null,
+        )
+
+        useCase.create("x", startsAt, endsAt)
+
+        assertEquals(CreationStatus.Failed(CreationFailureReason.UNVERIFIED), status.value)
+        assertNull(provisioned)
+    }
 }

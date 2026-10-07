@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.mock.DeviceConditionsText
 import app.snapsync.model.NetworkAccess
 import app.snapsync.contracts.PhotoLibrary
@@ -259,6 +260,21 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
     "backend/refuse-credential" to op { _ ->
         device.backend.operator.refuseNextCredential()
         OK
+    },
+    // The backend refuses this phone as not genuine, for `reason` (device-modified|device-unverifiable|app-not-genuine),
+    // until `reason=off` (capability `privacy-security`, "A refused phone is told why"); `detail=certificate` names the
+    // diagnostic code beside the reason, as v2 does for a failed certificate check.
+    "backend/refuse-attestation" to op { params ->
+        val wire = params["reason"]
+        val reason = DeviceRefusal.entries.firstOrNull { it.wireName == wire }
+        if (reason == null && wire != "off") {
+            return@op CommandResult.badRequest(
+                "reason must be one of ${DeviceRefusal.entries.joinToString("|") { it.wireName }}|off, was '$wire'",
+            )
+        }
+        device.backend.operator.refuseAttestation = reason
+        device.backend.operator.refuseAttestationDetail = params["detail"]?.takeIf { reason != null }
+        CommandResult.ok(buildJsonObject { put("refusing", reason?.wireName ?: "off") }.toString())
     },
     // A fellow member with complete photos, through the backend's public surface. `event` defaults to the joined
     // one; `assets` is a comma-separated list of asset ids. `kind=motion-photo` makes each a real Google motion photo

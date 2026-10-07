@@ -8,6 +8,8 @@ import {
   challengeIsValid,
   mintChallenge,
   mintToken,
+  refusalDetail,
+  refusalReason,
   tokenExpiryIso,
 } from "../attest.ts";
 import { type MintShape, parseMintBody, verifyMintProof, verifyRenewal } from "../attest-proofs.ts";
@@ -71,8 +73,20 @@ export function attestRoutes(
       if (e instanceof RevocationUnavailable) {
         return upstream502(c, `attest: ${deviceId}`, e.message);
       }
-      console.error(`attest: ${proof.format} attestation rejected for ${deviceId}: ${e}`);
-      return c.text("attestation rejected", 401);
+      const reason = refusalReason(e);
+      const detail = refusalDetail(e);
+      // The detail is diagnostics only: the app logs and reports it, and never tells the user.
+      const named = detail ? `${reason} (${detail})` : reason;
+      console.error(
+        `attest: ${proof.format} attestation rejected for ${deviceId} (${named}): ${e}`,
+      );
+      // v2 names the REASON, so the app can tell its user why (capability `privacy-security`, "A refused phone is
+      // told why"); v1 is frozen. Every shipped client reads any `401` body it does not know as a refusal, so the
+      // suffix changes nothing for them. The precise check stays in the log line above.
+      return c.text(
+        mintShape === "typed" ? `attestation rejected: ${named}` : "attestation rejected",
+        401,
+      );
     }
 
     // Persist the attested key so RENEWAL can verify a cheap local assertion against it instead of

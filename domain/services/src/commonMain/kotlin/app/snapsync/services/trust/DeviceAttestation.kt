@@ -1,5 +1,7 @@
 package app.snapsync.services.trust
 
+import app.snapsync.model.DeviceRefusal
+import app.snapsync.model.RefusalFacts
 import app.snapsync.model.MintRequest
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
 
 /**
  * Renew once the token has less than this left. The token lives 30 days, so renewal is attempted from
@@ -90,6 +93,8 @@ class DeviceAttestation(
 
     private val _attested = MutableStateFlow(true)
 
+    private val _refusal = MutableStateFlow<DeviceRefusal?>(null)
+
     /**
      * Emits whenever a NEW token is obtained — a first mint, a re-attestation and every periodic renewal alike;
      * a consumer cannot tell them apart, and the one that matters must not.
@@ -129,6 +134,15 @@ class DeviceAttestation(
         onRejected(sent)
         refresh()
         return runCatchingCancellable { token() }.getOrNull()?.takeIf { it != sent }
+    }
+
+    /**
+     * No token is held and a user is waiting (create, join): attempt one [refresh] — which also publishes its verdict,
+     * so the screen learns of a refusal from this very tap — and answer what it obtained.
+     */
+    override suspend fun missing(): String? {
+        refresh()
+        return runCatchingCancellable { token() }.getOrNull()
     }
 
     /**
@@ -223,7 +237,10 @@ class DeviceAttestation(
      *
      * Returns whether a usable (fresh) token is in the store afterwards.
      */
-    suspend fun ensureFresh(): Boolean = refreshing.withLock { refreshLocked() }
+    suspend fun ensureFresh(): Boolean = refreshing.withLock { refreshLocked().fresh }
+
+    /** One refresh's answer: whether a fresh token is held afterwards, and the service's refusal if it gave one. */
+    private data class Attempt(val fresh: Boolean, val refusal: DeviceRefusal? = null)
 
     /**
      * Whether this device holds a usable attestation token — the one fact the status screen surfaces
@@ -248,6 +265,28 @@ class DeviceAttestation(
     val attested: StateFlow<Boolean> = _attested.asStateFlow()
 
     /**
+     * Why the service refused this phone at the latest [refresh], or `null` when it did not — it minted, renewed, held a
+     * fresh token, or got no answer (capability `privacy-security`, "A refused phone is told why": no answer is not a
+     * refusal). Only a SERVICE verdict is told; a proof this device could not produce ([TokenOutcome.ProofFailed]) is not.
+     *
+     * The same bracket as [attested], for the same reason (`SNAPSYNC-20`): cleared on entry to [refresh] and set at its
+     * end, so a refusal from an earlier wake is never the first frame of a later foreground.
+     */
+    val refusal: StateFlow<DeviceRefusal?> = _refusal.asStateFlow()
+
+    /**
+     * The latest refused attestation's facts — the service's answer and the chain the phone presented — for a report
+     * the user sends from "Report this" (capability `privacy-security`), or `null` once an attestation succeeded.
+     *
+     * NOT [refusal]'s bracket: a refresh does not clear these when it begins, because a report opened while one runs must
+     * still find them. In memory only: a relaunch re-attests at launch, and that refusal captures them afresh.
+     */
+    fun refusalFacts(): RefusalFacts? = facts
+
+    @Volatile
+    private var facts: RefusalFacts? = null
+
+    /**
      * Refresh the token if it is stale, and publish what that says about [attested].
      *
      * Called at every wake — launch, foreground, silent push, each `BGTask` — through the trigger flows.
@@ -266,13 +305,15 @@ class DeviceAttestation(
      */
     suspend fun refresh() {
         _attested.value = true
+        _refusal.value = null
         // A refresh that reports `false` still leaves a *working* device fine if the stored token is usable — it was
         // merely due for renewal, or a concurrent path already fixed it. [isUnusable], never [isStale]: `SNAPSYNC-20`.
-        val renewed = runCatchingCancellable { ensureFresh() }.getOrDefault(false)
-        _attested.value = renewed || !isUnusable(token())
+        val attempt = runCatchingCancellable { refreshing.withLock { refreshLocked() } }.getOrDefault(Attempt(fresh = false))
+        _attested.value = attempt.fresh || !isUnusable(token())
+        _refusal.value = attempt.refusal
     }
 
-    private suspend fun refreshLocked(): Boolean {
+    private suspend fun refreshLocked(): Attempt {
         // Every decision starts from the store of record, not the in-memory copy: the upload extension shares the
         // item and clears a token the backend rejected there, which this process's copy cannot have seen. This is
         // the wake point (every launch, foreground, silent push and BGTask refreshes), so it is also what bounds
@@ -282,18 +323,18 @@ class DeviceAttestation(
             // The extension. It must never reach here — but if it ever does, do nothing rather than
             // half-attesting: it has no App Attest to attest WITH.
             log.d { "App Attest is unavailable in this process — not attesting" }
-            return !isStale(store.token())
+            return Attempt(fresh = !isStale(store.token()))
         }
 
         val current = store.token()
-        if (!isStale(current)) return true
+        if (!isStale(current)) return Attempt(fresh = true)
 
         // Resolved first, and on its own: it is a Keychain read that throws while protected data is unavailable,
         // and inside the renewal's guard below that throw was reported as a failed Secure-Enclave assertion —
         // and answered by attesting afresh, for a key that was fine.
         val deviceId = runCatchingCancellable { identity.deviceId() }.getOrElse {
             log.w(it) { "the device identity is unreadable — leaving the existing token in place" }
-            return false
+            return Attempt(fresh = false)
         }
 
         // Renew with an ASSERTION when this install has already attested: no Apple round-trip, so it is
@@ -302,32 +343,37 @@ class DeviceAttestation(
         val existingKeyId = store.keyId()
         if (existingKeyId != null) {
             when (val renewed = renew(deviceId, existingKeyId)) {
-                is TokenOutcome.Minted -> return accept(renewed.token, "token renewed")
+                is TokenOutcome.Minted -> return Attempt(fresh = accept(renewed.token, "token renewed"))
                 // No verdict on this device, so no reason to spend Apple's throttled path: keep the token we
                 // hold (it may well still authorize every request) and let the next wake retry. Neither case
                 // clears it — a stale challenge or a network failure says nothing about the credential.
                 TokenOutcome.Unreachable, TokenOutcome.ChallengeStale -> {
                     log.w { "renewal got no answer ($renewed) — keeping the existing token for the next wake" }
-                    return false
+                    return Attempt(fresh = false)
                 }
                 // The backend holds no record of this device (the leave cascade GCs it), or declined the
                 // assertion: attest afresh rather than stalling forever.
-                TokenOutcome.NotAttested, TokenOutcome.Refused ->
+                TokenOutcome.NotAttested, is TokenOutcome.Refused, TokenOutcome.ProofFailed ->
                     log.w { "renewal did not yield a token ($renewed) — attesting afresh" }
             }
         }
 
         return when (val minted = mint(deviceId)) {
-            is TokenOutcome.Minted -> accept(minted.token, "attested and minted a fresh token")
+            is TokenOutcome.Minted -> Attempt(fresh = accept(minted.token, "attested and minted a fresh token"))
+            is TokenOutcome.Refused -> {
+                log.w { "the service refused this device's attestation (${minted.reason.wireName})" }
+                Attempt(fresh = false, refusal = minted.reason)
+            }
             else -> {
                 log.w { "attestation did not yield a token ($minted)" }
-                false
+                Attempt(fresh = false)
             }
         }
     }
 
     /** Store a token the backend just minted and announce it. */
     private fun accept(token: String, what: String): Boolean {
+        facts = null
         store.setToken(token)
         _tokenChanged.tryEmit(Unit)
         log.i { what }
@@ -336,7 +382,7 @@ class DeviceAttestation(
 
     /**
      * One renewal: an assertion over a fresh challenge. A failure to produce the assertion is LOCAL — no request
-     * was sent — and reads as [TokenOutcome.Refused], so the device attests afresh as it always has.
+     * was sent — and reads as [TokenOutcome.ProofFailed], so the device attests afresh as it always has.
      *
      * It used to be discarded with `getOrNull()` and reported as "renewal refused", which named the backend for
      * something it was never asked about — what made `SNAPSYNC-20` unanswerable. So the platform's own error is
@@ -345,7 +391,7 @@ class DeviceAttestation(
     private suspend fun renew(deviceId: String, keyId: String): TokenOutcome = withFreshChallenge { challenge ->
         val assertion = runCatchingCancellable { integrity.prove(challenge, keyId) }.getOrElse {
             log.w(it) { "could not produce a renewal assertion — attesting afresh" }
-            return@withFreshChallenge TokenOutcome.Refused
+            return@withFreshChallenge TokenOutcome.ProofFailed
         }
         tokenOutcome(backend.renewToken(RenewRequest(deviceId, assertion.bytes, challenge)))
     }
@@ -360,10 +406,12 @@ class DeviceAttestation(
             val proof = integrity.prove(challenge)
             val outcome = tokenOutcome(backend.mintToken(MintRequest(deviceId, proof.handle, proof.format, proof.bytes, challenge)))
             if (outcome is TokenOutcome.Minted) store.setKeyId(proof.handle)
+            if (outcome is TokenOutcome.Refused) facts = RefusalFacts(outcome.reason, outcome.detail, proof.chain)
             outcome
         }.getOrElse {
+            // Local: the platform could not produce the proof, so the service gave no verdict to tell the user.
             log.w(it) { "attestation failed" }
-            TokenOutcome.Refused
+            TokenOutcome.ProofFailed
         }
     }
 
@@ -405,10 +453,23 @@ class DeviceAttestation(
  * `409` is v2's stale challenge. Under v1, which is frozen, a stale challenge is still a `401` whose body says so,
  * and it is classified the same way, because the remedy is the same: one fresh challenge. `401 not attested` is the
  * renewal's "no record on file". Any other `4xx` is a verdict on what was sent; a `5xx` is no verdict at all.
+ *
+ * v2 names a refused attestation's reason — `attestation rejected: <reason>` — and that reason is what the user is told
+ * ([DeviceRefusal.fromWire]); v1's bare body, or a reason this build does not know, reads as the default.
  */
 internal fun tokenRefusal(status: Int, body: String): TokenOutcome = when {
     status == 409 || (status == 401 && body.trim() == "stale challenge") -> TokenOutcome.ChallengeStale
     status == 401 && body.trim() == "not attested" -> TokenOutcome.NotAttested
-    status in 400..499 -> TokenOutcome.Refused
+    status in 400..499 -> refused(body.substringAfter(REFUSAL_PREFIX, "").trim())
     else -> TokenOutcome.Unreachable
 }
+
+/** What precedes the reason in v2's refused-attestation body. */
+private const val REFUSAL_PREFIX = "attestation rejected:"
+
+/** `<reason>` or `<reason> (<detail>)`, as v2 names a refusal; a detail is a diagnostic code, never told to the user. */
+private fun refused(named: String): TokenOutcome.Refused {
+    val detail = named.substringAfter("(", "").substringBefore(")").trim().takeIf { it.isNotEmpty() }
+    return TokenOutcome.Refused(DeviceRefusal.fromWire(named.substringBefore("(")), detail)
+}
+

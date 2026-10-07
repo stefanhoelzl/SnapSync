@@ -39,16 +39,7 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
         onOpenSettings = { dispatch(UiIntent.OpenSettings) },
         onChoosePhotos = { dispatch(UiIntent.ChoosePhotos) },
     ),
-    surfaces = SurfaceActions(
-        onConfirmLeaveOpen = { dispatch(UiIntent.ConfirmLeaveOpen) },
-        onConfirmLeaveDismiss = { dispatch(UiIntent.ConfirmLeaveDismiss) },
-        onRenameOpen = { dispatch(UiIntent.RenameOpen) },
-        onRenameDismiss = { dispatch(UiIntent.RenameDismiss) },
-        onOpenReconfigure = { dispatch(UiIntent.OpenReconfigure) },
-        onCancelReconfigure = { dispatch(UiIntent.CancelReconfigure) },
-        onReportBugOpen = { dispatch(UiIntent.ReportBugOpen) },
-        onReportBugDismiss = { dispatch(UiIntent.ReportBugDismiss) },
-    ),
+    surfaces = surfaceActions(dispatch),
     switch = SwitchActions(
         onConfirmSwitch = { dispatch(UiIntent.ConfirmSwitch) },
         onCancelSwitch = { dispatch(UiIntent.CancelSwitch) },
@@ -75,4 +66,17 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
         onReportNoticeDismiss = { dispatch(UiIntent.ReportNoticeDismiss) },
         onMobileData = { dispatch(UiIntent.MobileData(it)) },
     ),
+)
+
+/** The overlays' opening and dismissal taps, each one intent. */
+private fun surfaceActions(dispatch: (UiIntent) -> Unit) = SurfaceActions(
+    onConfirmLeaveOpen = { dispatch(UiIntent.ConfirmLeaveOpen) },
+    onConfirmLeaveDismiss = { dispatch(UiIntent.ConfirmLeaveDismiss) },
+    onRenameOpen = { dispatch(UiIntent.RenameOpen) },
+    onRenameDismiss = { dispatch(UiIntent.RenameDismiss) },
+    onOpenReconfigure = { dispatch(UiIntent.OpenReconfigure) },
+    onCancelReconfigure = { dispatch(UiIntent.CancelReconfigure) },
+    onReportBugOpen = { dispatch(UiIntent.ReportBugOpen) },
+    onReportBugDismiss = { dispatch(UiIntent.ReportBugDismiss) },
+    onReportRefusal = { dispatch(UiIntent.ReportRefusal(it)) },
 )

@@ -1,5 +1,6 @@
 package app.snapsync.services.trust
 
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.TokenOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,8 +24,34 @@ class TokenRefusalTest {
 
     @Test
     fun any_other_4xx_is_a_verdict_on_what_was_sent_and_a_5xx_no_verdict_at_all() {
-        assertEquals(TokenOutcome.Refused, tokenRefusal(401, "attestation rejected"))
-        assertEquals(TokenOutcome.Refused, tokenRefusal(400, "bad body"))
+        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(400, "bad body"))
         assertEquals(TokenOutcome.Unreachable, tokenRefusal(502, "write failed"))
+    }
+
+    @Test
+    fun a_refused_attestation_carries_the_reason_v2_names() {
+        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_MODIFIED), tokenRefusal(401, "attestation rejected: device-modified"))
+        assertEquals(TokenOutcome.Refused(DeviceRefusal.APP_NOT_GENUINE), tokenRefusal(401, "attestation rejected: app-not-genuine\n"))
+        assertEquals(
+            TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE),
+            tokenRefusal(401, "attestation rejected: device-unverifiable"),
+        )
+    }
+
+    @Test
+    fun a_certificate_problem_carries_its_diagnostic_code_beside_the_reason() {
+        assertEquals(
+            TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE, detail = "certificate"),
+            tokenRefusal(401, "attestation rejected: device-unverifiable (certificate)"),
+        )
+        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_MODIFIED), tokenRefusal(401, "attestation rejected: device-modified"))
+        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(401, "attestation rejected"), "v1: none")
+    }
+
+    @Test
+    fun a_refusal_naming_no_reason_or_an_unknown_one_is_the_default_that_accuses_no_one() {
+        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(401, "attestation rejected"), "the frozen v1")
+        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(401, "attestation rejected: tpm-missing"))
+        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(401, "assertion rejected"))
     }
 }

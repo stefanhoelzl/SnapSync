@@ -81,9 +81,10 @@ internal fun testSurfaceActions(
     onCancelReconfigure: () -> Unit = {},
     onReportBugOpen: () -> Unit = {},
     onReportBugDismiss: () -> Unit = {},
+    onReportRefusal: (app.snapsync.model.ScreenMessage) -> Unit = {},
 ) = SurfaceActions(
     onConfirmLeaveOpen, onConfirmLeaveDismiss, onRenameOpen, onRenameDismiss,
-    onOpenReconfigure, onCancelReconfigure, onReportBugOpen, onReportBugDismiss,
+    onOpenReconfigure, onCancelReconfigure, onReportBugOpen, onReportBugDismiss, onReportRefusal,
 )
 
 internal fun testParticipationActions(

@@ -72,6 +72,10 @@ class CreateEvent(
                 log.i { "create rejected: invalid date range" }
                 status.value = CreationStatus.Failed(CreationFailureReason.INVALID_WINDOW)
             }
+            CreateOutcome.Unverified -> {
+                log.i { "create refused: this phone holds no credential the service accepts" }
+                status.value = CreationStatus.Failed(CreationFailureReason.UNVERIFIED)
+            }
             CreateOutcome.Transient -> {
                 log.i { "create failed: transient/server error" }
                 status.value = CreationStatus.Failed(CreationFailureReason.SERVER)

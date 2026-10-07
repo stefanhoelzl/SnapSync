@@ -16,6 +16,10 @@ import app.snapsync.ui.resources.message_create_failed
 import app.snapsync.ui.resources.message_create_name_refused
 import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_rename_failed
+import app.snapsync.ui.resources.message_device_modified
+import app.snapsync.ui.resources.message_device_unverifiable
+import app.snapsync.ui.resources.message_app_not_genuine
+import app.snapsync.ui.resources.report_seed_device_unverifiable
 import app.snapsync.ui.resources.message_rename_name_refused
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.pluralStringResource
@@ -33,8 +37,18 @@ internal fun ScreenMessage.text(): String = stringResource(
         ScreenMessage.CREATE_FAILED -> Res.string.message_create_failed
         ScreenMessage.RENAME_NAME_REFUSED -> Res.string.message_rename_name_refused
         ScreenMessage.RENAME_FAILED -> Res.string.message_rename_failed
+        ScreenMessage.DEVICE_MODIFIED -> Res.string.message_device_modified
+        ScreenMessage.DEVICE_UNVERIFIABLE -> Res.string.message_device_unverifiable
+        ScreenMessage.APP_NOT_GENUINE -> Res.string.message_app_not_genuine
     },
 )
+
+/** The description a report the app offered for [this] opens with, or `null` where it offers none. */
+@Composable
+internal fun ScreenMessage.reportSeed(): String? = when (this) {
+    ScreenMessage.DEVICE_UNVERIFIABLE -> stringResource(Res.string.report_seed_device_unverifiable)
+    else -> null
+}
 
 /** "2 weeks", "5 days", "3 hours" — the create screen's duration. */
 @Composable

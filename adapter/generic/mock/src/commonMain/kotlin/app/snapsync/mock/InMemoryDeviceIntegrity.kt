@@ -1,5 +1,7 @@
 package app.snapsync.mock
 
+import app.snapsync.model.CertificateFacts
+import app.snapsync.model.AttestationChain
 import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
@@ -34,7 +36,7 @@ internal class InMemoryDeviceIntegrity(
         if (handle == null) {
             check(available) { "App Attest attestKey failed: unsupported in this process" }
             val key = keys.create()
-            return Proof(key, ProofFormat.APP_ATTEST, "attestation:$key:$challenge".encodeToByteArray())
+            return Proof(key, ProofFormat.APP_ATTEST, "attestation:$key:$challenge".encodeToByteArray(), MOCK_CHAIN)
         }
         check(available) { "App Attest generateAssertion failed: unsupported in this process" }
         check(keys.holds(handle)) { "App Attest generateAssertion failed: no such key $handle" }
@@ -65,3 +67,23 @@ internal class EnclaveKeys {
         this.held.addAll(held)
     }
 }
+
+/**
+ * The chain summary every fresh mock proof carries, as an Android Keystore proof does — so a report offered for a refused
+ * phone has certificate facts to carry (capability `privacy-security`). Fixed: a report reads the same every run.
+ */
+private const val MOCK_ROOT = "CN=Mock Root,O=SnapSync Mock"
+
+val MOCK_CHAIN: AttestationChain = AttestationChain(
+    certificates = listOf(
+        CertificateFacts(
+            subject = "CN=Mock Attestation,O=SnapSync Mock",
+            issuer = MOCK_ROOT,
+            notBefore = "2026-01-01T00:00:00Z",
+            notAfter = "2036-01-01T00:00:00Z",
+            key = "EC 256",
+        ),
+        CertificateFacts(MOCK_ROOT, MOCK_ROOT, notBefore = "2026-01-01T00:00:00Z", notAfter = "2046-01-01T00:00:00Z", key = "EC 384"),
+    ),
+    rootKeySha256 = "0000000000000000000000000000000000000000000000000000000000000000",
+)
