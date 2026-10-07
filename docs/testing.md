@@ -763,6 +763,12 @@ selection-policy exclusion is proved by missing bytes and a missing manifest ent
 A test that needs a missing lever or read adds it **to the vocabulary, classified on both hosts**. It
 never reaches past the protocol.
 
+**What it credits.** The suite is instrumented, and its coverage counts toward exactly three modules: the wiring —
+`:domain:compose`, `:domain:host` and `:app:jvm` (`docs/architecture.md`, "Coverage"). The wiring graph is not
+unit-tested by law and is smoke-tested here, so this suite is the test written for it. Everything else it runs —
+model, feature, services, presentation — it credits nothing: those modules reach zero through their own unit tests,
+never through a scenario that happens to pass through them.
+
 ### Journeys: the contracts' safety net
 
 A few end-to-end runs with **everything real**: the rig build on **one** simulator or emulator, `api/` served

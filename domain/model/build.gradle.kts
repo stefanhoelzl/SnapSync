@@ -167,9 +167,8 @@ kotlin {
 // ONE package now, so there is no floor rule here: the aggregate IS the floor. The old
 // `:domain package floor` measured eleven packages inside a single `:domain` module; the zone split
 // turned each of those zones into a module with an aggregate of its own, which is the same check
-// expressed by the module graph instead of by a grouping rule. `:domain:compose` is the one zone with
-// no bound at all - a composition root is outside the measurable set (`docs/architecture.md`),
-// and leaving the module uninstrumented states that better than the package exclude that used to.
+// expressed by the module graph instead of by a grouping rule. `:domain:compose` is measured over the
+// integration surface rather than bounded here (`docs/architecture.md`, "Coverage").
 //
 // What remains uncovered is largely NOT a testing gap: data-class `equals`/`hashCode`/`toString` and
 // enum `<clinit>` make up the bulk - 72 of `LedgerEntry`'s 86 missed instructions are `equals` alone -
@@ -182,12 +181,15 @@ kotlin {
 coverageFloors {
     aggregate(
         instruction = 85,
-        // LOWERED 80 -> 78 by the feature → ports cut. Forcing proof: the inline logging helpers
-        // (`invocation`, `logAt`, `bestEffort`) MOVED here from `ports/` — they must stay `inline`, since
-        // an invocation's block suspends wherever its call site is a coroutine — and an inline function's
-        // out-of-line copy, the one Kover measures, is never executed: every call site, the tests'
-        // included, runs an inlined copy. `InvocationTest` and `LogAtTest` moved with them and still pass;
-        // the 36 branches they add read uncovered by construction, not by rot.
+        // LOWERED 80 -> 78 by the feature → ports cut, which MOVED the inline logging helpers
+        // (`invocation`, `logAt`, `bestEffort`) here from `ports/`. The forcing proof recorded then — that
+        // an inline function's out-of-line copy is the one Kover measures and is never executed — was
+        // WRONG: Kover credits inlined execution back to the inline function's own source lines (measured
+        // 2026-10-07: `logAt` 0 missed, both `runCatchingCancellable` fully covered). The branches the
+        // move brought in are ordinary debt: `invocation`'s misses are the `logAt` severity arms and
+        // Kermit's level checks inlined into it, which the tests reach only at Info/Debug, and
+        // `bestEffort` reads 0% because nothing tests it. Still 78 because that is what the module
+        // measures (78.3%); it rises when those tests are written.
         branch = 78,
     )
 }

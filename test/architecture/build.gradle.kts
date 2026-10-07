@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kover)
 }
-// NOT INSTRUMENTED (`docs/architecture.md`, "Coverage is measured over unit tests only"):
+// NOT INSTRUMENTED (`docs/architecture.md`, "Coverage"):
 // structural guards over the repository's own text. A guard passing is not evidence that the
 // code it inspects is tested - measured, it adds zero incremental coverage anywhere.
 //

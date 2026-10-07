@@ -101,6 +101,14 @@ listOf(
     ":domain:model" to ":test:feature",
     ":domain:ports" to ":test:feature",
     ":domain:flow" to ":adapter:generic:mock",
+    // The WIRING modules, credited by the integration surface and by nothing else it runs (`docs/architecture.md`,
+    // "Coverage"): "One shared composition" says the wiring graph is not unit-tested and IS smoke-tested by the
+    // integration surface, so for these three the integration tests are the tests written for the code. Every other
+    // module stays credited by unit tests only — integration still runs model, feature, services, … and counts for none
+    // of them.
+    ":domain:compose" to ":test:integration",
+    ":domain:host" to ":test:integration",
+    ":app:jvm" to ":test:integration",
     ":ui:components" to ":ui:screens",
     ":domain:presentation" to ":ui:screens",
 ).forEach { (consumer, producer) ->
@@ -195,6 +203,10 @@ tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
 }
 
 tasks.named("check") { dependsOn("detektAppShell") }
+
+// The build logic's own tests (today the zero coverage gate's judgement, `CoverageZeroTest`): an included build's
+// `check` is never reached from this one's, so without this edge they would run on nobody's command.
+tasks.named("check") { dependsOn(gradle.includedBuild("build-logic").task(":test")) }
 
 // ---- Complexity budgets (`docs/architecture.md`) --------------------------------------
 //

@@ -17,6 +17,13 @@ dependencies {
     compileOnly(libs.android.gradle)
     // compileOnly for the same reason: `snapsync.coverage` configures the ONE Kover plugin the root build loaded.
     compileOnly("org.jetbrains.kotlinx:kover-gradle-plugin:${libs.versions.kover.get()}")
+    // The zero coverage gate's judgement (`CoverageZero`) is pure and tested here; the root build's `check` runs these.
+    testImplementation(kotlin("test"))
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 gradlePlugin {
@@ -36,6 +43,10 @@ gradlePlugin {
         register("coverage") {
             id = "snapsync.coverage"
             implementationClass = "app.snapsync.buildlogic.CoveragePlugin"
+        }
+        register("coverageZero") {
+            id = "snapsync.coverage-zero"
+            implementationClass = "app.snapsync.buildlogic.CoverageZeroPlugin"
         }
         register("simulatorTestOutput") {
             id = "snapsync.simulator-test-output"
