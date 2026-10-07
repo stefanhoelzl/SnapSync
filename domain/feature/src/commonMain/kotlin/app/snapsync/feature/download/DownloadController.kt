@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.services.crypto.openingFilesOf
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.model.AlbumId
@@ -737,7 +738,10 @@ class DownloadController(
         runCatchingCancellable {
             mutex.withLock {
                 val listed = stagedBytes.list() ?: return@withLock
-                val unclaimed = listed - store.claims.pathsInUse(stagedBytes.stagingRoot())
+                // A claimed path's opening files are claimed too: an encrypted event's download waits beside its landing
+                // path, sealed, until it is opened into it (the encrypted file format, `docs/architecture.md`).
+                val inUse = store.claims.pathsInUse(stagedBytes.stagingRoot())
+                val unclaimed = listed - inUse - inUse.flatMap(::openingFilesOf).toSet()
                 if (unclaimed.isEmpty()) return@withLock
                 log.i { "releasing ${unclaimed.size} staged file(s) no download claims" }
                 stagedBytes.release(unclaimed)

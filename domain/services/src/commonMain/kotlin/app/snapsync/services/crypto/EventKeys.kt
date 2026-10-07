@@ -5,7 +5,14 @@ import app.snapsync.model.Hmac
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.decodeEventKey
 import app.snapsync.model.encodeEventKey
+import app.snapsync.model.EventConfig
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Crypto
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.SecureStore
 import app.snapsync.model.SecureStoreUnavailable
@@ -52,6 +59,16 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
 
     /** The joined event's key as its invite link carries it, or `null` when none is kept. Throws like [current]. */
     fun linkKey(): String? = readExisting(store, SecureSlots.EVENT_KEY)
+
+    /**
+     * The key an invite to the joined event carries, following [membership]: read from the store each time the
+     * membership changes, `null` for a plain one or while the store cannot be read (a locked device), so an invite
+     * never carries a key that is not the event's.
+     */
+    fun inviteKeyOf(membership: StateFlow<EventConfig?>, scope: CoroutineScope): StateFlow<String?> =
+        membership
+            .map { config -> config?.keyId?.let { runCatchingCancellable { linkKey() }.getOrNull() } }
+            .stateIn(scope, SharingStarted.Eagerly, null)
 
     /** Remove the kept key — at a leave or a reset. Deleting nothing is fine. */
     fun forget() {

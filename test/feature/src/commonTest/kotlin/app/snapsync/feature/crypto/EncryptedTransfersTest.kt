@@ -170,7 +170,7 @@ class EncryptedTransfersTest {
             network = { TransferNetwork.ANY },
             opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
         )
-        jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY", HEALTHY, "mem:/shared/os-tmp/1")
+        jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY\n$EVENT", HEALTHY, "mem:/shared/os-tmp/1")
         advanceUntilIdle()
         val path = staged.single()
         assertContentEquals(photo, assertIs<FileResult.Ok<ByteArray>>(receiver.files.read(FileArea.SHARED, path)).value)
@@ -234,7 +234,7 @@ class EncryptedTransfersTest {
         // Plaintext, as a build predating encryption would have stored it — or anything else that is not a file of this key.
         repeat(5) { attempt ->
             receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
-            jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY", HEALTHY, "mem:/shared/os-tmp/$attempt")
+            jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY\n$EVENT", HEALTHY, "mem:/shared/os-tmp/$attempt")
         }
         advanceUntilIdle()
         assertTrue(staged.isEmpty())
