@@ -71,6 +71,23 @@ CREATE TABLE memberships (
   PRIMARY KEY (event_id, device_id)
 ) STRICT;
 
+CREATE TABLE request_log (
+  id        INTEGER PRIMARY KEY,
+  at        TEXT NOT NULL,
+  reqid     TEXT NOT NULL,
+  method    TEXT NOT NULL,
+  url       TEXT NOT NULL,
+  status    INTEGER NOT NULL,
+  ms        INTEGER NOT NULL,
+  version   TEXT,
+  bytes_in  INTEGER,
+  bytes_out INTEGER NOT NULL,
+  fields    TEXT NOT NULL CHECK (json_valid(fields) AND json_type(fields) = 'object'),
+  errors    TEXT CHECK (errors IS NULL OR errors <> '')
+) STRICT;
+
+CREATE INDEX request_log_by_at ON request_log (at);
+
 CREATE TABLE resources (
   event_id     TEXT NOT NULL,
   device_id    TEXT NOT NULL,

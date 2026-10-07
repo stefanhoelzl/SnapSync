@@ -14,7 +14,7 @@ import {
 } from "../src/attest.ts";
 import { type Config, readConfig } from "../src/config.ts";
 import { ATTESTATION_SAMPLE } from "./fixtures/attestation-sample.ts";
-import { CONFIG as HARNESS_CONFIG, D, E, NOW, V2 } from "./support/harness.ts";
+import { CONFIG as HARNESS_CONFIG, D, E, lineSink, NOW, V2 } from "./support/harness.ts";
 
 // The gate (capability `privacy-security`). app.test.ts wraps `createApp` so every request carries a
 // token — it proves the gate does not BREAK the routes. This file uses the app RAW, and proves the gate
@@ -82,7 +82,7 @@ function recorder(objects: Record<string, string> = {}) {
 const app = (objects: Record<string, string> = {}, db: Db = DB) => {
   const { calls, fetchImpl } = recorder(objects);
   const lines: string[] = [];
-  const logSink = (l: string) => void lines.push(l);
+  const logSink = lineSink(lines);
   const raw = createApp({ config: CONFIG, db, fetch: fetchImpl, now: () => NOW, logSink });
   const request = raw.request.bind(raw);
   return {

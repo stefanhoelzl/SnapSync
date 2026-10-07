@@ -367,6 +367,24 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
   failover, 32 766 bound parameters per statement. Acceptable because every row can be rebuilt by a
   device round-trip.
 
+### Reading the api's log
+
+bunny keeps only the Edge Script's **last 100 console lines** (a ring, not a time window), so the history is
+the store's `request_log` table: one row per request, kept 30 days (`docs/architecture.md`, "The request
+log"). `deno task logs` (in `api/`, `src/scripts/logs.ts`) reads it with the read-only token:
+
+```
+secrets-env -- deno task logs                              # the last 24 h, oldest first, as console lines
+secrets-env -- deno task logs --status 5xx --since 7d      # --method --path --route --event --device --reqid --v --error <tag> --errors --slow <ms> --until
+secrets-env -- deno task logs --stats route                # or hour · day · error · status · version
+secrets-env -- deno task logs --live                       # the console itself, streamed (the account key)
+deno task logs --db .localstore/api.db                     # a local rig's store
+```
+
+`--json` prints rows, `--limit` raises the 1000-line default (statistics read the whole window). The route a
+statistic groups by is derived from the URL (ids → `:id`). `--live` reads the dashboard's undocumented
+websocket; a 403 or an empty answer is the first sign it changed.
+
 ---
 
 ## 3. Scheduled jobs: the nightly sweep
@@ -376,7 +394,8 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
 
 - **Workflow:** `.github/workflows/nightly-cleanup.yml`, cron `17 3 * * *` (03:17 UTC), plus
   `workflow_dispatch` with `dry_run` (`gh workflow run nightly-cleanup.yml -f dry_run=true`: logs what
-  it would delete and deletes nothing). Concurrency group `nightly-cleanup`, never cancelled.
+  it would delete and deletes nothing) and `date` (the day whose request log is counted and reported,
+  `-f date=2026-10-06`; yesterday by default). Concurrency group `nightly-cleanup`, never cancelled.
 - **Program:** `api/src/scripts/sweep.ts`, resolved against `prod`. It imports the Edge Script's own
   `db.ts`, `lifecycle.ts`, `storage.ts` and config, so the rules cannot drift. It **marks from the
   database and deletes from storage**. It makes no request to the Edge Script and sends no notification.
@@ -394,6 +413,15 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
   landed just after the event completed, is healed by the next run. A device with no membership left
   loses its `devices` row **only after its last token has expired**. Deleting it earlier would push the
   device into a re-attestation loop every night.
+- **Request-log phase** (`src/scripts/request-log-report.ts`): deletes `request_log` rows older than 30
+  days, counts the previous UTC day (`[00:00, 24:00)`; total, 4xx, 5xx, rows with faults) and the table's
+  size, and — when that day had **any 5xx** — sends one Bugsink report (project 1, `platform=api`, fixed
+  fingerprint `api-5xx-elevated`, so a run of bad days is one issue that alerts on its first event and again
+  after it is resolved). The report carries every 5xx row as its console line, newest first, cut at a
+  512 KB budget (`omitted` counts the rest) to stay well under Bugsink's 1 MiB event cap. The DSN is the
+  deployment's: the resolve step is handed `SENTRY_DSN`. ⚠️ **A report that did not leave fails the run**,
+  after the summary is written — including a run with no DSN to send with. A dry run prints the report
+  instead.
 - **Storage it touches:** only the `files/<eventId>/` folders. Never `site/`, and never `files/devices/`:
   that holds the bytes written before migration 0010, still served through rows that point at them, and is
   deleted outright once they are copied into their events (`changes/per-event-storage-layout`).
@@ -402,7 +430,7 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
   devices, files and dirs deleted and kept, byte sizes, error count) goes to the job's Summary panel,
   followed by the kept devices counted by app version (rows, newest first, `unknown` for a row that never
   declared one) and platform (`ios` / `android` columns), with a total row — read it before raising
-  `minAppVersion`.
+  `minAppVersion` — and the request-log phase's counts, report and table size.
 - ⚠️ The old guard that refused to sweep an empty store is gone. If the database stops describing this
   zone, the sweep would delete every byte in it.
 
@@ -566,7 +594,8 @@ never reaches the internal track (below).
   setting cannot substitute into a bundled resource. Dispatch the branch instead.
 - The **api** carries the same DSN in its `prod` and `maintenance` bundles (`api/src/deployment.ts`), for
   uncaught exceptions only (`docs/architecture.md`, "The request log"; decision record
-  `changes/api-request-log`). Every `deploy.yml` step that resolves (`deno task bundle*` re-resolves) is
+  `changes/api-request-log`). The nightly sweep resolves `prod` with it too, for its one daily 5xx report
+  (§3). Every `deploy.yml` step that resolves (`deno task bundle*` re-resolves) is
   handed the secret on its own; `local` names none, so a dev rig or a test backend reports nothing. A
   reported api frame is a line of the bundle: `bundle-<sha>`'s `main.js.map` maps it back.
 - The Bugsink instance ingests no dSYMs. `ios-deliver` publishes each delivered build's dSYMs as

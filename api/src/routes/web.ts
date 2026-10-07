@@ -79,7 +79,10 @@ export function webRoutes(deps: RouteDeps): Hono {
           at: new Date(now()).toISOString(),
         });
       } catch (e) {
-        c.var.log.error(`web photos: could not log the read of ${eventId} (best-effort): ${e}`);
+        c.var.log.error(
+          "read-log",
+          `web photos: could not log the read of ${eventId} (best-effort): ${e}`,
+        );
       }
       c.var.log.field("served", photos.length);
       return c.req.method === "HEAD" ? c.body(null) : c.json(photos);

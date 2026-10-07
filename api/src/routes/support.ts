@@ -22,7 +22,8 @@ import {
 } from "../db.ts";
 import { deleteByMs } from "../lifecycle.ts";
 import { type PushSender, unsentSummary } from "../push.ts";
-import { refuse, rethrowRefusal } from "../refusal.ts";
+import { type Fault, refuse, rethrowRefusal } from "../refusal.ts";
+import type { RequestLog } from "../request-log.ts";
 import { type FetchLike, storageKey } from "../storage.ts";
 import { canonicalFromMs, validateUUID } from "../validators.ts";
 import { recordableVersion, splitVersion } from "../version.ts";
@@ -129,7 +130,7 @@ export async function readJson(req: HonoRequest): Promise<unknown> {
  * never mistaken for absence, never a partial success.
  */
 export function upstream502(what: string, e: unknown): never {
-  refuse(502, "upstream error", { err: `${what}: ${e}` });
+  refuse(502, "upstream error", { fault: { tag: "upstream", detail: `${what}: ${e}` } });
 }
 
 /** `step()`'s value, or — when it throws — the {@link upstream502} recorded under `what`. */
@@ -232,7 +233,10 @@ export async function streamPut(
   }
   if (!upstream.ok) {
     refuse(502, "upstream rejected", {
-      err: `${route}: bunny returned ${upstream.status} for ${key}`,
+      fault: {
+        tag: "upstream-rejected",
+        detail: `${route}: bunny returned ${upstream.status} for ${key}`,
+      },
     });
   }
 }
@@ -422,7 +426,7 @@ export async function notifyMembers(
   publisherId: string,
   announce: "gain" | "close",
 ): Promise<NotifyOutcome> {
-  const errors: string[] = [];
+  const errors: Fault[] = [];
   try {
     const tokens = await pushTokensForEvent(db, eventId, publisherId);
     if (tokens.length === 0) return { recipients: 0, pushed: 0, unsent: "", errors };
@@ -434,7 +438,10 @@ export async function notifyMembers(
       try {
         seq = await unionPosition(db, eventId);
       } catch (e) {
-        errors.push(`notify: position read failed for ${eventId}, waking without one: ${e}`);
+        errors.push({
+          tag: "union-position",
+          detail: `notify: position read failed for ${eventId}, waking without one: ${e}`,
+        });
       }
     }
     const outcomes = await Promise.race([
@@ -446,7 +453,10 @@ export async function notifyMembers(
     const pushed = outcomes.filter((o) => o.status === "sent").length;
     return { recipients: tokens.length, pushed, unsent: unsentSummary(outcomes), errors };
   } catch (e) {
-    errors.push(`notify: fan-out failed for ${eventId} (best-effort, the write stands): ${e}`);
+    errors.push({
+      tag: "fanout",
+      detail: `notify: fan-out failed for ${eventId} (best-effort, the write stands): ${e}`,
+    });
     return { recipients: 0, pushed: 0, unsent: "", errors };
   }
 }
@@ -458,16 +468,16 @@ export type NotifyOutcome = {
   /** Why the unsent ones were not sent, counted (`unsentSummary`); empty when every push went out. */
   unsent: string;
   /** Best-effort failures along the way — recorded, never answered. */
-  errors: string[];
+  errors: Fault[];
 };
 
 /** Put a wake's outcome on the request's line: `recipients= pushed= [unsent=]`, then its failures. */
 export function recordNotify(
-  log: { field(k: string, v: number | string): void; error(m: string): void },
+  log: Pick<RequestLog, "field" | "error">,
   outcome: NotifyOutcome,
 ): void {
   log.field("recipients", outcome.recipients);
   log.field("pushed", outcome.pushed);
   if (outcome.unsent !== "") log.field("unsent", outcome.unsent);
-  for (const e of outcome.errors) log.error(e);
+  for (const e of outcome.errors) log.error(e.tag, e.detail);
 }

@@ -16,6 +16,7 @@ import { createApp } from "./app.ts";
 import { BUILD_SHA, DEPLOYMENT, readConfig } from "./config.ts";
 import { startErrorReporting } from "./error-report.ts";
 import { libsqlDb } from "./db-libsql.ts";
+import { storeSink } from "./request-log-store.ts";
 
 // The relational store (`docs/architecture.md`). Its credentials are validated by `readConfig` above, so
 // a deployment that cannot reach its store fails HERE, at boot, rather than serving requests whose
@@ -33,10 +34,15 @@ const reporter = DEPLOYMENT.sentryDsn
   })
   : undefined;
 
+const db = libsqlDb(config.databaseUrl, config.databaseToken);
+
+// The request log (`request-log.ts`): each request's line on the console AND its row in the store
+// (`request-log-store.ts`), because bunny keeps only the script's last 100 lines.
 const app = createApp({
   config,
-  db: libsqlDb(config.databaseUrl, config.databaseToken),
+  db,
   fetch,
+  logSink: storeSink(db),
   around: reporter?.around,
   reportError: reporter?.report,
 });

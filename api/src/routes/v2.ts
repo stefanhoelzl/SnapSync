@@ -22,7 +22,7 @@ import {
 import { RESOURCE_ROLES } from "../object-names.ts";
 import { eventBytePath, storageKey } from "../storage.ts";
 import { validateFilename } from "../validators.ts";
-import { refuse } from "../refusal.ts";
+import { type Fault, refuse } from "../refusal.ts";
 import type { RequestLog } from "../request-log.ts";
 import { APP_VERSION_HEADER } from "../version.ts";
 import { bodyToStore, type Upload, uploadOf } from "./encrypted-upload.ts";
@@ -47,12 +47,12 @@ import {
 } from "./support.ts";
 
 /** What storing one resource did beyond storing it: what it completed, whom it woke, what failed on the way. */
-type StoreOutcome = { completed: number; woken: NotifyOutcome[]; errors: string[] };
+type StoreOutcome = { completed: number; woken: NotifyOutcome[]; errors: Fault[] };
 
 /** Put a byte route's outcome on the request's line. */
 function recordStore(log: RequestLog, outcome: StoreOutcome): void {
   log.field("completed", outcome.completed);
-  for (const e of outcome.errors) log.error(e);
+  for (const e of outcome.errors) log.error(e.tag, e.detail);
   for (const w of outcome.woken) recordNotify(log, w);
 }
 
@@ -155,7 +155,7 @@ export function v2Routes(deps: RouteDeps): Hono {
     contentType: string,
   ): Promise<StoreOutcome> {
     const { eventId, deviceId, assetId, role, filename } = r;
-    const errors: string[] = [];
+    const errors: Fault[] = [];
     const path = await eventBytePath(eventId, deviceId, assetId, role);
     const body = await bodyToStore(upload, r.keyId);
     await streamPut(fetchImpl, config, route, storageKey(path), contentType, body);
@@ -172,9 +172,11 @@ export function v2Routes(deps: RouteDeps): Hono {
     try {
       completed = await eventsCompletedBy(db, { eventId, deviceId, assetId, role });
     } catch (e) {
-      errors.push(
-        `${route}: completion lookup failed for ${eventId}/${deviceId}/${assetId}/${role}: ${e}`,
-      );
+      errors.push({
+        tag: "completion-lookup",
+        detail:
+          `${route}: completion lookup failed for ${eventId}/${deviceId}/${assetId}/${role}: ${e}`,
+      });
     }
     // The record and the union-log rows it causes commit as ONE batch (decision record
     // `changes/incremental-union`, D4): a gain logged for bytes never recorded would announce what no read
@@ -206,7 +208,10 @@ export function v2Routes(deps: RouteDeps): Hono {
     try {
       await stampLanded(db, completed, landedAt);
     } catch (e) {
-      errors.push(`${route}: could not stamp the landing for ${completed.join(",")}: ${e}`);
+      errors.push({
+        tag: "landing-stamp",
+        detail: `${route}: could not stamp the landing for ${completed.join(",")}: ${e}`,
+      });
     }
     const woken: NotifyOutcome[] = [];
     for (const id of completed) woken.push(await notifyMembers(deps, id, deviceId, "gain"));
@@ -342,7 +347,7 @@ export function v2Routes(deps: RouteDeps): Hono {
     );
     const declared = declaredAppVersion(c.req.url, c.req.header(APP_VERSION_HEADER));
     const notRecorded = await noteAppVersion(db, deviceId, declared, "v2 join");
-    if (notRecorded) c.var.log.error(notRecorded);
+    if (notRecorded) c.var.log.error("app-version", notRecorded);
     enrollRefusal(
       await tryUpstream(
         `v2 join: enrollment failed for ${eventId}/${deviceId}`,
@@ -362,7 +367,7 @@ export function v2Routes(deps: RouteDeps): Hono {
     );
     const declared = declaredAppVersion(c.req.url, c.req.header(APP_VERSION_HEADER));
     const notRecorded = await noteAppVersion(db, deviceId, declared, "v2 manifest");
-    if (notRecorded) c.var.log.error(notRecorded);
+    if (notRecorded) c.var.log.error("app-version", notRecorded);
     const parsed = parseManifestBody(await readJson(c.req));
     if ("invalid" in parsed) return c.text(parsed.invalid, 400);
     const { assets, version, final } = parsed;
@@ -404,7 +409,10 @@ export function v2Routes(deps: RouteDeps): Hono {
         assets.map((a) => ({ assetId: a.assetId, roles: a.resources.map((r) => r.role) })),
       );
     } catch (e) {
-      c.var.log.error(`v2 manifest: fetchability lookup failed for ${eventId}/${deviceId}: ${e}`);
+      c.var.log.error(
+        "fetchability",
+        `v2 manifest: fetchability lookup failed for ${eventId}/${deviceId}: ${e}`,
+      );
     }
     const addsFetchable = changes.gained.length > 0;
     // ORDERED by the body's manifest version, inside the one transaction (see `publishStatements`): the

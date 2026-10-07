@@ -28,6 +28,7 @@ import {
   EVENT,
   fcmRecorder,
   joinEvent,
+  lineSink,
   recorder,
   rows,
   store,
@@ -356,7 +357,7 @@ const draining: Parameters<typeof v2>[0]["fetch"] = async (_url, init) => {
 
 Deno.test("byte PUT → a client whose body breaks off is logged as aborting, not as a storage error", async () => {
   // A weak mobile uplink: the phone's upload dies mid-body. That is the network the device's retry
-  // absorbs, so it must not read as storage failing: the request's line says `aborted=true`, with no `err=`.
+  // absorbs, so it must not read as storage failing: the request's line says `aborted=true`, with no `errors=`.
   const db = await memberStore();
   const body = new ReadableStream<Uint8Array>({
     start(c) {
@@ -365,13 +366,13 @@ Deno.test("byte PUT → a client whose body breaks off is logged as aborting, no
     },
   });
   const lines: string[] = [];
-  const res = await v2({ config: CONFIG, db, fetch: draining, logSink: (l) => lines.push(l) })
+  const res = await v2({ config: CONFIG, db, fetch: draining, logSink: lineSink(lines) })
     .request(BYTE_PATH, { method: "PUT", body, duplex: "half" } as RequestInit);
   assertEquals(res.status, 502);
   await res.text();
   assertEquals(lines.length, 1);
   assert(lines[0].endsWith(" aborted=true"), lines[0]);
-  assert(!lines[0].includes("err="), lines[0]);
+  assert(!lines[0].includes("errors="), lines[0]);
   assertEquals((await rows(db, `SELECT * FROM resources`)).length, 0);
   db.close();
 });
@@ -383,11 +384,11 @@ Deno.test("byte PUT → storage erroring on an intact body is still an error", a
     config: CONFIG,
     db,
     fetch: recorder({ throws: true }).fetchImpl,
-    logSink: (l) => lines.push(l),
+    logSink: lineSink(lines),
   }).request(BYTE_PATH, { method: "PUT", body: "bytes" });
   await res.text();
   assertEquals(lines.length, 1);
-  assert(lines[0].includes(' err="v2 upload: upstream PUT errored for '), lines[0]);
+  assert(lines[0].includes(' upstream="v2 upload: upstream PUT errored for '), lines[0]);
   db.close();
 });
 
@@ -578,7 +579,7 @@ async function joined(db: Awaited<ReturnType<typeof storeWithEvent>>) {
     config: CONFIG,
     db,
     fetch: recorder().fetchImpl,
-    logSink: (l) => lines.push(l),
+    logSink: lineSink(lines),
   });
   await app.request(JOIN_PATH, { method: "PUT" });
   const put = (body: string) => app.request(MANIFEST_PATH, { method: "PUT", body });

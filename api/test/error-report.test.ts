@@ -10,6 +10,7 @@ import * as Sentry from "@sentry/deno";
 import { Hono } from "hono";
 import { startErrorReporting, withoutAddress } from "../src/error-report.ts";
 import { errorHandler, requestLogMiddleware } from "../src/request-log.ts";
+import { lineSink } from "./support/harness.ts";
 
 type Sent = {
   event_id?: string;
@@ -41,7 +42,7 @@ const reporter = startErrorReporting({
 function reporting(build: (app: Hono) => void) {
   const lines: string[] = [];
   const app = new Hono();
-  app.use("*", requestLogMiddleware({ sink: (l) => lines.push(l), around: reporter.around }));
+  app.use("*", requestLogMiddleware({ sink: lineSink(lines), around: reporter.around }));
   app.onError(errorHandler(reporter.report));
   build(app);
   return { app, lines };
@@ -82,7 +83,7 @@ Deno.test("report → a throw reaches the tracker with its tags and the request;
   assertEquals(lines.length, 1);
   assert(lines[0].includes(`[${event.tags?.reqid}]`), lines[0]);
   assert(lines[0].endsWith(` bugsink=${event.event_id}`), lines[0]);
-  assert(!lines[0].includes("err="), lines[0]);
+  assert(!lines[0].includes("errors="), lines[0]);
 });
 
 Deno.test("report → a refusal is an answer, not a failure: nothing is reported", async () => {
@@ -90,7 +91,9 @@ Deno.test("report → a refusal is an answer, not a failure: nothing is reported
   const { Refusal } = await import("../src/refusal.ts");
   const { app } = reporting((a) =>
     a.get("/r", () => {
-      throw new Refusal(502, "upstream error", { err: "store: down" });
+      throw new Refusal(502, "upstream error", {
+        fault: { tag: "upstream", detail: "store: down" },
+      });
     })
   );
   const res = await app.request("/r");

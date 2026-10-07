@@ -658,7 +658,7 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
 
 Top-level Hono middleware in `src/app.ts`, in this order:
 
-0. **Request log** (`src/request-log.ts`, below). First, so every request writes its line, a gate's
+0. **Request log** (`src/request-log.ts`, below). First, so every request writes its record, a gate's
    refusal included.
 1. **Maintenance gate.** While the bundle carries the maintenance flag, everything under the `/api/`
    and `/web/` **prefixes** answers `503` with `Retry-After` and no-cache, touching no store. It runs before
@@ -697,30 +697,50 @@ keeps the Keychain device id but loses the App Attest key.
 
 ### The request log
 
-Every request writes **exactly one line**, when its response body has finished, and that line is the
-only thing the edge script writes (decision record `changes/api-request-log`). The line goes to bunny's
-Edge Scripting log in production, and to the console under `deno task dev:local` and the ephemeral test
-backend:
+Every request produces **exactly one record**, when its response body has finished, and that record is
+the only thing the edge script writes (decision record `changes/api-request-log`). The sink writes it twice:
+as one console line (bunny's Edge Scripting log in production; the console under `deno task dev:local` and
+the ephemeral test backend) and as one row of the store's `request_log` table (migration 0012;
+`src/request-log-store.ts`), in production and the dev rig alike. Tests collect lines instead.
 
 ```
-<ISO> [<reqid>] <METHOD> <url> <status> <ms>ms v=<declared app version|-> in=<bytes|-> out=<bytes> <fields…>
+<ISO> [<reqid>] <METHOD> <url> <status> <ms>ms v=<declared app version|-> in=<bytes|-> out=<bytes> <fields…> [errors=<tag>,…]
 ```
+
+**Why the row.** bunny keeps a ring of the script's **last 100 console lines**, not a time window, so a burst
+of errors pushes out everything before it. The row is the history: kept 30 days (the nightly sweep deletes
+older ones, `docs/deployment.md` §3), read with `deno task logs` (filters and statistics, §2 "Reading the
+api's log"). The columns are the line's facts (`at`, `reqid`, `method`, `url`, `status`, `ms`, `version`,
+`bytes_in`, `bytes_out`); `fields` is one JSON object — a key recorded once holds its value, one recorded
+again an array of its values — and `errors` holds the fault tags, space-joined and each once, `NULL` when
+there were none (`' ' || errors || ' ' LIKE '% fanout %'` finds one).
+
+**The response's end waits for the row.** The sink's insert is a subrequest the platform may cut off once
+the response is out, and bunny offers no `waitUntil`, so the counted response stream closes only after the
+insert settled (a body-less answer is returned after it). Fire-and-forget would save that round-trip, but
+whether bunny lets a post-response subrequest finish is unmeasured. A refused insert never fails the
+request: it is said on a second console line, `[<reqid>] logdb=failed detail="…"` — the one exception to
+one line per request. Rows are operator-only like the line, and belong to no event: deleting an event
+deletes none of them.
 
 - `url` is whole, query included (`?filename=`). The line never carries the caller's address or
   User-Agent (capability `privacy-security`).
 - `ms` runs until the body finishes, so it includes the transfer. `out=` counts the bytes actually sent.
   `in=` counts the bytes a route read, or is the declared `Content-Length` (or `-`) when none was read.
-  A body abandoned or broken mid-stream adds `cut=true` (and `err=` when it broke).
+  A body abandoned or broken mid-stream adds `cut=true` (and the `body-cut` fault when it broke).
 - A field value is bare when it is one plain token (`[A-Za-z0-9._:/-]+`), otherwise JSON-quoted.
 - `reqid` is six random hex characters per request: the key that ties a line to the same request's
   error report.
 
 **Routes record; nothing else writes.** A handler adds `key=value` with `c.var.log.field(k, v)` and a
-server fault with `c.var.log.error(msg)`, which becomes `err="…"`. Both only buffer. Only the handler
-touches the context:
+server fault with `c.var.log.error(tag, detail)`: the tag — one of the closed `ERROR_TAGS` in
+`src/request-log.ts`, so a misspelt one does not compile — joins the record's `errors`, and the detail is
+kept as a field under the tag's name (`fanout="notify: …"`). Both only buffer. Only the handler touches the
+context:
 - a helper takes the values it needs (path params, the token's device, the declared version, the body);
 - a helper whose outcome is a failure reply **throws a `Refusal`** (`src/refusal.ts`: status, the reply
-  body byte-identical to before, an optional `err`, optional fields), which `onError` answers and records;
+  body byte-identical to before, an optional `fault` (tag + detail), optional fields), which `onError`
+  answers and records;
 - a best-effort helper **returns** its outcome or failure for the handler to record (`notifyMembers` →
   `{recipients, pushed, unsent, errors}`).
 
@@ -740,8 +760,29 @@ The fields today:
 | push registration | `refused=not-attested` |
 | attest | `attested=<platform>/<environment>` · `rejected="<format> (<reason> (<detail>)): <error>"` |
 | renew | `refused=not-attested\|vanished` · `rejected="<platform> assertion: <error>"` |
-| any 5xx or best-effort failure | `err="<what>: <error>"` |
-| an exception no route caught | `bugsink=<event id>` where the service reports (below), else `err="<Name>: <message>"`; answered `500 Internal Server Error` |
+| any 5xx or best-effort failure | `<tag>="<what>: <error>"` + `errors=<tag>` (the tags below) |
+| an exception no route caught | `bugsink=<event id>` where the service reports (below), else the `uncaught` fault; answered `500 Internal Server Error` |
+
+The fault tags:
+
+| Tag | Fault | Request answered |
+|---|---|---|
+| `upstream` | a call to the store or to storage threw | `502` |
+| `upstream-rejected` | storage answered a non-2xx | `502` |
+| `uncaught` | an exception no route caught, where nothing reports | `500` |
+| `body-cut` | the response body broke off mid-stream | as it was |
+| `completion-lookup` | the byte route could not ask which events the upload completed (it wakes nobody) | `201` |
+| `landing-stamp` | the byte route could not stamp the landing time | `201` |
+| `union-position` | a wake could not read the position it announces (sent without one) | as it was |
+| `fanout` | a wake's fan-out failed or timed out (the write stands) | as it was |
+| `app-version` | the declared app version was not recorded | as it was |
+| `fetchability` | the manifest publish could not look up which declared assets are fetchable | as it was |
+| `read-log` | a list read was served but its union-log row was not written | `200` |
+| `event-page` | the event page could not read its event | as it was |
+| `store-down` · `zone-down` | `/health`: the store / the storage zone did not answer (both always checked) | `503` |
+
+Per-push failures are not faults: they are counted by reason in `unsent=`. The byte upload is the one route
+that can record several: two of its own and two per event it completed and woke.
 
 ### Failure reports
 
@@ -749,7 +790,8 @@ An exception no route caught is reported to the operator's Bugsink, project 1, t
 to (`src/error-report.ts`, over `@sentry/deno`, tagged `platform=api`). It is answered `500` as before, and
 its line carries only `bugsink=<event id>` (capability `privacy-security`, "The service reports its own
 failures to the operator"). A `Refusal` is an answer, never a report. Caught upstream and best-effort
-failures stay `err=` on the line.
+failures stay faults on the record. A day's **5xx** reach Bugsink too, as one nightly report from the
+kept log (`docs/deployment.md` §3).
 
 - **Only the deployed service reports.** `main.ts` starts the SDK only when the bundle carries a DSN,
   which the resolver renders for `prod` and `maintenance` (`docs/deployment.md`). `createApp` takes the

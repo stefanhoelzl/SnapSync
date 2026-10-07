@@ -32,7 +32,7 @@ import {
   RKP_TEE_CA1_ROOT,
   SOFTWARE,
 } from "./fixtures/android-attestation-samples.ts";
-import { CONFIG, createApp, D, NOW, store, V2 } from "./support/harness.ts";
+import { CONFIG, createApp, D, lineSink, NOW, store, V2 } from "./support/harness.ts";
 
 /** The roots every deployed backend pins — read from the committed component, so this tests what ships. */
 const GOOGLE_ROOTS: string[] = JSON.parse(
@@ -381,7 +381,7 @@ Deno.test("route: an Android row renews by its SIGNATURE, and the row says what 
     config: CONFIG,
     db,
     fetch: () => Promise.reject(new Error("no network here")),
-    logSink: (l) => lines.push(l),
+    logSink: lineSink(lines),
   });
   const challenge = await mintChallenge(CONFIG, NOW);
   const res = await app.request("/api/v2/attest/renew", {

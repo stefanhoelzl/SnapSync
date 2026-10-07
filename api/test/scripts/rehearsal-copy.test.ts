@@ -8,6 +8,7 @@ import {
   isPseudonymised,
   Pseudonymiser,
   safeMessage,
+  SCHEMA_ONLY_TABLES,
   VERBATIM_TABLES,
 } from "../../src/scripts/rehearsal-copy.ts";
 
@@ -78,6 +79,11 @@ Deno.test("secrets are rewritten; structural columns and the runner's history ar
 Deno.test("the allowlist is closed: an unknown column or table is pseudonymised", () => {
   assert(isPseudonymised("devices", "some_future_column"));
   assert(isPseudonymised("some_future_table", "created_at"));
+});
+
+Deno.test("the request log is copied as a table without its rows", () => {
+  assert(SCHEMA_ONLY_TABLES.has("request_log"));
+  assert(!SCHEMA_ONLY_TABLES.has("union_log"));
 });
 
 Deno.test("an error message keeps its first line and loses every quoted literal", () => {

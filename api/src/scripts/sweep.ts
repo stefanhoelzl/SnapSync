@@ -45,7 +45,7 @@
 // of it is retired, and the folder is deleted outright once its bytes are copied into their events
 // (change `per-event-storage-layout`, migration plan). `site/` is the landing page's.
 
-import { readSweepConfig } from "../config.ts";
+import { BUILD_SHA, DEPLOYMENT, readSweepConfig } from "../config.ts";
 import { libsqlDb } from "../db-libsql.ts";
 import { deleteObject, eventDir, type FetchLike, listDir } from "../storage.ts";
 import {
@@ -63,6 +63,13 @@ import { validateUUID } from "../validators.ts";
 import { sweepVerdict } from "../lifecycle.ts";
 import { compareVersions } from "../version.ts";
 import type { Config } from "../config.ts";
+import {
+  bugsinkSender,
+  noSender,
+  type ReportSender,
+  type RequestLogSummary,
+  runRequestLogPhase,
+} from "./request-log-report.ts";
 
 /** A count of storage objects plus their total size in bytes (summed from each entry's `Length`). */
 export type Tally = { count: number; bytes: number };
@@ -90,6 +97,8 @@ export type SweepSummary = {
   dirs: { deleted: number; kept: number };
   errors: number;
   dryRun: boolean;
+  /** The kept request log: aged out, the day counted, its 5xx reported. Absent when it could not be read. */
+  requests?: RequestLogSummary;
 };
 
 export type SweepDeps = {
@@ -105,6 +114,10 @@ export type SweepDeps = {
   dryRun: boolean;
   /** Progress log. Defaults to `console.log`. */
   log?: (msg: string) => void;
+  /** The UTC day whose request log is counted and reported (`YYYY-MM-DD`); the day before `now` by default. */
+  day?: string;
+  /** Where a day's 5xx report goes. Defaults to one that cannot send, so a day with 5xx fails the run. */
+  sendReport?: ReportSender;
 };
 
 /**
@@ -252,6 +265,24 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
     log(`device version read failed (continuing): ${err}`);
   }
 
+  // ── REQUEST-LOG PHASE (`request-log-report.ts`) ────────────────────────────────────────────────────
+  // Last, and independent of the phases above: a store that cannot be read here loses the request rows
+  // of the summary and counts an error, never the run. A report that did not leave is set on the summary,
+  // and the entry point fails the run on it.
+  try {
+    summary.requests = await runRequestLogPhase({
+      db,
+      now,
+      dryRun,
+      day: deps.day,
+      send: deps.sendReport ?? noSender,
+      log,
+    });
+  } catch (err) {
+    summary.errors++;
+    log(`request log phase failed (continuing): ${err}`);
+  }
+
   return summary;
 }
 
@@ -327,7 +358,27 @@ export function formatSummary(s: SweepSummary): string {
     ...versionLines(s.versions).map((l) =>
       `    ${l.label.padEnd(10)}${String(l.ios).padStart(6)}${String(l.android).padStart(9)}`
     ),
+    ...requestLines(s.requests),
   ].join("\n");
+}
+
+/** The request log's lines of {@link formatSummary}; none when the phase did not run. */
+function requestLines(r: RequestLogSummary | undefined): string[] {
+  if (!r) return [];
+  const c = r.counts;
+  return [
+    `  requests ${r.day}`,
+    `    ${c.total} total   ${c.clientErrors} 4xx   ${c.serverErrors} 5xx   ${c.withErrors} with errors`,
+    `    5xx report: ${reportState(r)}`,
+    `    log: ${r.deleted} rows aged out   ${r.size.rows} rows kept (~${humanBytes(r.size.bytes)})`,
+  ];
+}
+
+/** What became of the day's 5xx report, in words. */
+function reportState(r: RequestLogSummary): string {
+  if (r.sendFailed !== undefined) return `NOT SENT — ${r.sendFailed}`;
+  if (r.counts.serverErrors === 0) return "none (no 5xx)";
+  return `${r.reported} rows${r.omitted > 0 ? `, ${r.omitted} omitted by the budget` : ""}`;
 }
 
 /**
@@ -359,7 +410,28 @@ export function markdownSummary(s: SweepSummary): string {
         : `| ${l.label} | ${l.ios} | ${l.android} |`
     ),
     ``,
+    ...requestMarkdown(s.requests),
   ].join("\n");
+}
+
+/** The request log's section of {@link markdownSummary}; none when the phase did not run. */
+function requestMarkdown(r: RequestLogSummary | undefined): string[] {
+  if (!r) return [];
+  const c = r.counts;
+  return [
+    `### Requests on ${r.day}`,
+    ``,
+    `| total | 4xx | 5xx | with errors |`,
+    `| --- | --- | --- | --- |`,
+    `| ${c.total} | ${c.clientErrors} | ${c.serverErrors} | ${c.withErrors} |`,
+    ``,
+    `**5xx report:** ${reportState(r)}`,
+    ``,
+    `**request log:** ${r.deleted} rows aged out, ${r.size.rows} kept (~${
+      humanBytes(r.size.bytes)
+    })`,
+    ``,
+  ];
 }
 
 // ── Entry point (GitHub Actions) ────────────────────────────────────────────────────────────────────
@@ -368,6 +440,8 @@ if (import.meta.main) {
     // Config first (a missing secret is a systemic failure), then the run. Both exit 1 loudly.
     const config = readSweepConfig(Deno.env.toObject());
     const dryRun = Deno.args.includes("--dry-run");
+    const day = Deno.args.find((a) => a.startsWith("--date="))?.slice("--date=".length) ||
+      undefined;
 
     const summary = await runSweep({
       fetch: (url, init) => fetch(url, init),
@@ -376,6 +450,9 @@ if (import.meta.main) {
       now: Date.now,
       dryRun,
       log: console.log,
+      day,
+      // The DSN is the deployment's (rendered when the resolve step had SENTRY_DSN), as the edge's is.
+      sendReport: DEPLOYMENT.sentryDsn ? bugsinkSender(DEPLOYMENT.sentryDsn, BUILD_SHA) : noSender,
     });
     console.log(formatSummary(summary));
     // On a GitHub Actions runner, also render the summary to the job's Summary panel (a Markdown table).
@@ -383,6 +460,11 @@ if (import.meta.main) {
     const stepSummaryPath = Deno.env.get("GITHUB_STEP_SUMMARY");
     if (stepSummaryPath) {
       await Deno.writeTextFile(stepSummaryPath, markdownSummary(summary), { append: true });
+    }
+    // The 5xx report is the alert: one that did not leave fails the run, after the summary is out.
+    if (summary.requests?.sendFailed !== undefined) {
+      console.error(`sweep: the 5xx report did not leave — ${summary.requests.sendFailed}`);
+      Deno.exit(1);
     }
   } catch (e) {
     console.error(`sweep: systemic failure — ${e}`);
