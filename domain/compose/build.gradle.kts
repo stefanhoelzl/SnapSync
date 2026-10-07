@@ -2,6 +2,9 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
+    // Coverage MEASUREMENT, no floor yet (`docs/architecture.md`, "Coverage"): a wiring module, credited by the
+    // integration surface (the root build file's edges); its first numbers are being taken, and its bound comes later.
+    id("snapsync.coverage")
     alias(libs.plugins.kotlin.serialization)
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")

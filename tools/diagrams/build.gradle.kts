@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kover)
 }
-// NOT INSTRUMENTED (`docs/architecture.md`, "Coverage is measured over unit tests only"):
+// NOT INSTRUMENTED (`docs/architecture.md`, "Coverage"):
 // the freshness gate re-renders committed text and compares it, which is not evidence about
 // product code.
 //

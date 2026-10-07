@@ -2,17 +2,18 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kover)
 }
-// NOT INSTRUMENTED (`docs/architecture.md`, "Coverage is measured over unit tests only"):
-// the seam-to-UI-state integration surface. It drives the real core over the whole graph, so counting it
-// would let a thick integration suite stand in for a thin unit suite.
+// INSTRUMENTED, credited to the three WIRING modules only (`docs/architecture.md`, "Coverage"): `:domain:compose`,
+// `:domain:host` and `:app:jvm`, through the root build file's crediting edges. The wiring graph is not unit-tested by
+// law ("One shared composition") and is smoke-tested here, so this suite is the test written for it. For every other
+// module it runs, it counts for nothing: a module's report is filtered to its own classes, and only those three name
+// this module as a producer — so a thick integration suite still cannot stand in for a thin unit suite.
 //
-// `disabledForAll` - note the spelling, not `disableForAll` - means this module is not instrumented,
-// its coverage data is omitted from every report, and its test tasks are not triggered by report
-// generation.
+// The `journeys` task is NOT instrumented: the all-real journeys run outside `build`, against a simulator app or an
+// emulator, and a report must never trigger them. `disabledForTestTasks` keeps both their data and their run out.
 kover {
     currentProject {
         instrumentation {
-            disabledForAll = true
+            disabledForTestTasks.add("journeys")
         }
     }
 }

@@ -132,6 +132,32 @@ class ForegroundOrderingTest {
         watch.stop()
     }
 
+    /** Joined, the two membership-bound children run against the ACTIVE event: the foreground reconcile reads that
+     *  event's union, and the membership refresh fetches that event's details. Unjoined (every other test here), both
+     *  short-circuit. */
+    @Test
+    fun `joined - the reconcile and the membership refresh act on the active event`() = runTest {
+        val unionReads = mutableListOf<Pair<String, UnionTrigger>>()
+        val fetched = mutableListOf<String>()
+        val poller = StatusCountsPoller(backgroundScope, {})
+        foreground(
+            statusPoller = poller,
+            refreshStatus = {},
+            activeEventId = { "EVT" },
+            union = object : EventUnionSource {
+                override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
+                    unionReads += eventId to trigger
+                    return Result.success(UnionPage(emptyList(), 0))
+                }
+            },
+            fetchEventDetails = { id -> fetched += id; JoinLoad.Failed },
+        ).run()
+
+        assertEquals(listOf("EVT" to UnionTrigger.FOREGROUND), unionReads, "the reconcile read the active event's union")
+        assertEquals(listOf("EVT"), fetched, "the membership refresh fetched the active event's details")
+        poller.stop()
+    }
+
     // ---- scaffolding ----------------------------------------------------------------------------
 
     private fun TestScope.foreground(
@@ -139,10 +165,13 @@ class ForegroundOrderingTest {
         refreshStatus: suspend () -> Unit,
         settleStoredUploads: suspend () -> Unit = {},
         networkWatch: NetworkWatch? = null,
+        activeEventId: () -> String? = { null },
+        union: EventUnionSource = EmptyUnion,
+        fetchEventDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
     ): Foreground {
         val config = noMembership()
         return Foreground(
-            downloadController = flowDownloadController(EmptyUnion),
+            downloadController = flowDownloadController(union),
             membershipRefresh = MembershipRefresh(
                 configSource = config,
                 leaveEvent = LeaveEvent(
@@ -160,11 +189,11 @@ class ForegroundOrderingTest {
             reloadConfig = {},
             uploadOwnWork = settleStoredUploads,
             refreshStatus = refreshStatus,
-            // No membership: the reconcile and the membership refresh short-circuit, leaving the settle,
-            // the status refresh and the unconditional reclaim as the flow's children — which is exactly
-            // the set this test is about.
-            activeEventId = { null },
-            fetchEventDetails = { JoinLoad.Failed },
+            // No membership by default: the reconcile and the membership refresh short-circuit, leaving the
+            // settle, the status refresh and the unconditional reclaim as the flow's children — which is exactly
+            // the set the ordering tests are about.
+            activeEventId = activeEventId,
+            fetchEventDetails = fetchEventDetails,
             refreshAttestation = {},
         )
     }

@@ -377,6 +377,7 @@ Both are **ratchets carried by a written contract, not proofs**. A number may mo
 mechanical stops a change from moving it the other way, and a diff shows it if one does. An exact-match
 ("fail when you improve") check was rejected for both, because it teaches people to route around the
 gate.
+The coverage floors' end state is not a ratchet: a module at zero is held there by a gate with no number to move.
 
 ### Complexity ceilings (fall only)
 
@@ -407,29 +408,62 @@ gate.
 
 Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
 
-### Coverage bounds (rise only, toward 100%)
+### Coverage (toward zero missed)
 
-- Kover `verify` rules with `onCheck = true`, in each bounded module's `build.gradle.kts`. Each bounded
-  module carries an `INSTRUCTION` aggregate, a `BRANCH` aggregate, and an `INSTRUCTION` **package
-  floor** (the worst package). `LINE` is not bounded, and `BRANCH` has no package floor (too noisy at
-  package size).
-- **Unit tests only.** Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:mock`, `:test:feature`,
-  `:domain:presentation`, `:ui:screens`, `:ui:components`. Bounded: all of those except
-  `:adapter:generic:mock` (its `commonTest` hosts the flow tests and the services' mock-driven tests, and the mocks
-  themselves are test equipment) and `:test:feature` (the feature tests that compose real services over the ports'
-  mocks; it holds no class of its own). `:test:integration`, `:test:contracts` and the other
-  test modules contribute nothing, so a thick harness cannot stand in for a thin unit suite.
-- **Crediting edges** (root `build.gradle.kts`) let tests that a placement rule forced elsewhere credit
-  the module they test: the `:domain:*` zones from `:adapter:generic:mock` and from `:test:feature`, and `:ui:components` and
-  `:domain:presentation` from `:ui:screens`. Always name leaf modules. `:domain` is an empty container, and
-  a filter on it measures nothing. Incidental coverage is never credited.
-- `compose/` is **permanently unbounded**. The wiring graph is not unit-tested by law, so the gap
-  cannot be paid.
-- What a green gate does **not** cover: Kover is JVM-only, so the iOS adapter modules (PhotoKit,
-  Keychain, `URLSession`) are invisible. The Compose compiler depresses `BRANCH`. Bounds are integer
-  percentages. Bounds are engine-specific, so changing the engine means re-seeding.
+The target is **zero**: every JVM-measurable module that holds decisions or wiring misses no instruction and no
+branch. A module is in one of two states, and its `plugins {}` block says which.
 
-Decision record: `changes/archive/2026-08-28-add-coverage-bounds`.
+- **At zero** — `id("snapsync.coverage-zero")`. Its `coverageZero` task (on `check`) reads the module's own Kover
+  `report.xml` and fails on any missed `INSTRUCTION` or `BRANCH`. No ceiling, no percentage: a miss is fixed by a test,
+  never by a number. Today: `:domain:flow`.
+- **Floored** — `id("snapsync.coverage")` with a `coverageFloors { aggregate(…) packageFloor(…) }` block: Kover
+  `verify` rules on `check`, an `INSTRUCTION` and a `BRANCH` aggregate plus an `INSTRUCTION` package floor, whole
+  percentages that may only rise. Every module that has not yet reached zero keeps these, untouched. A module joins the
+  zero gate only once it measures 0/0, and the change that switches it deletes its floors: the two plugins refuse to
+  be applied together, so switching is one visible edit. `snapsync.coverage` with no floor block MEASURES only — the
+  wiring modules below, until they are bounded.
+
+**What the zero gate excuses: Compose glue, and only on declaration lines.** The Compose compiler attributes its
+generated glue — restart groups, the `$changed`/`$default` bits, `skipToGroupEnd`, `updateScope` — to the declaration
+lines of a `@Composable` function, from `fun` through the body's opening `{`. Those lines' misses are excused and
+counted; the task prints, per module, how many lines, instructions and branches it excused, so growth is visible. A
+body line is never excused. `@Composable` itself is the mark: there is no opt-in annotation and no comment marker.
+Composable **lambdas** carry no excusable glue — measured 2026-10-07, every miss inside one of `:ui:*`'s 67 is a branch
+someone wrote (`if (body != null)`, `when (cause)`). The declaration ranges come from a source scan (bracket-balanced,
+so a function-type parameter's `->` or a default value's `=` ends nothing), **checked against the bytecode**: every
+composable method in the report must match a scanned declaration in the same file and the reverse, or the gate fails.
+A scanner that misreads a signature therefore breaks the build rather than excusing the wrong lines. The gate also
+refuses a report whose per-line counts do not add up to its own totals, so a Kover upgrade that moves the counts fails
+loudly instead of passing vacuously. Logic: `build-logic`'s `CoverageZero` (tested by `CoverageZeroTest`, which the
+root `check` runs).
+
+**Inline functions need no exemption.** Kover credits inlined execution back to the inline function's own source
+lines; an uncovered inline helper is untested, not unmeasurable.
+
+**Credit is unit-only, with one placed exception.**
+- Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:mock`, `:test:feature`, `:ui:screens`,
+  `:ui:components`, `:app:jvm` and `:test:integration`. A module's report is filtered to its OWN classes, so another
+  module's tests count only through a declared **crediting edge** (root `build.gradle.kts`).
+- Unit edges let tests that a placement rule forced elsewhere credit the module they test: the `:domain:*` zones from
+  `:adapter:generic:mock` and from `:test:feature`, and `:ui:components` and `:domain:presentation` from `:ui:screens`.
+- **Wiring edges**: `:domain:compose`, `:domain:host` and `:app:jvm` are credited by `:test:integration`, and nothing
+  else is. "One shared composition" (§2) says the wiring graph is not unit-tested and IS smoke-tested by the
+  integration surface, so for these three the integration tests are the tests written for the code. Integration also
+  runs model, feature, services and the rest, and counts for none of them: a thick integration suite still cannot stand
+  in for a thin unit suite.
+- `:test:contracts`, `:test:architecture`, `:tools:*` and the other test modules contribute nothing. Always name leaf
+  modules in an edge: `:domain` is an empty container, and a filter on it measures nothing.
+
+**Out of the zero target**: test equipment (`:adapter:generic:mock`, `:test:*`, `:tools:*`, `:app:desktop`), the
+non-JVM shells (`:app:ios`, `:app:ios:extension`, `:app:android`) and the iOS/Android adapters, which Kover cannot see
+(it is JVM-only) and which the port contracts hold to clause completeness instead (§4).
+
+Decision record: `changes/archive/2026-08-28-add-coverage-bounds`, **partly superseded** by this section. D1 (Kover's
+default engine), D3 (`INSTRUCTION` and `BRANCH`, never `LINE`) and D5a (credit follows placement) stand. D2 (aggregate
++ package-floor percentages) gives way to the own-`report.xml` gate — the very alternative D2 deferred — module by
+module as each reaches zero. D4 stands except that integration now credits the three wiring modules. D5 (`compose/`
+unbounded) rested on Kover crediting per project while `compose/` was a package of `:domain`; it is its own module now,
+so it is measured. D6 (seed at `floor(measured)`) gives way to zero.
 
 ---
 
