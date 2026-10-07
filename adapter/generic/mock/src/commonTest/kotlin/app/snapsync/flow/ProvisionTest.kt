@@ -1,5 +1,9 @@
 package app.snapsync.flow
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
@@ -62,6 +66,8 @@ class ProvisionTest {
         minPhotoDate = captureCutoff("2026-07-14T18:00:00Z"),
         maxPhotoDate = captureCeiling("2026-07-21T18:00:00Z"),
         saveToAlbum = saveToAlbum,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     @Test
@@ -124,12 +130,12 @@ class ProvisionTest {
     fun `the album call carries the access fact rather than a caller’s guess`() = runTest {
         // Same membership, same opt-in — only the grant differs, and the coordinator's own leading
         // guard is what turns that into "no album". The flow's job is to pass it through honestly.
-        val albums = AlbumMapService(inMemoryPreferences(), inMemorySecureStore())
+        val albums = AlbumMapService(inMemoryPreferences())
         provision(order = mutableListOf(), hasUsableAccess = { false }, albumStore = albums, saveToAlbum = true)
             .run(config(eventB, saveToAlbum = true))
         assertNull(albums.get(eventB), "an album was created for a membership with no photo access")
 
-        val granted = AlbumMapService(inMemoryPreferences(), inMemorySecureStore())
+        val granted = AlbumMapService(inMemoryPreferences())
         provision(order = mutableListOf(), hasUsableAccess = { true }, albumStore = granted, saveToAlbum = true)
             .run(config(eventB, saveToAlbum = true))
         assertEquals("album-for-Anna's Birthday", granted.get(eventB))
@@ -173,7 +179,7 @@ class ProvisionTest {
         activeEventId: () -> String? = { null },
         saveConfig: suspend (EventConfig) -> Unit = { order += "save:${it.eventId}" },
         hasUsableAccess: () -> Boolean = { true },
-        albumStore: AlbumMapService = AlbumMapService(inMemoryPreferences(), inMemorySecureStore()),
+        albumStore: AlbumMapService = AlbumMapService(inMemoryPreferences()),
         saveToAlbum: Boolean = false,
         registerPush: suspend () -> Unit = { order += "push" },
     ): Provision {

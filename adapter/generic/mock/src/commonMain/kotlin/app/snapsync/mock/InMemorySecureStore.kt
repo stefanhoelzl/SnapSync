@@ -30,13 +30,6 @@ internal class InMemorySecureStore(
         return WriteOutcome.Ok
     }
 
-    /** Best-effort, like every store: an unavailable one keeps what it has. */
-    override fun migrateProtection(slot: SecureSlot): WriteOutcome {
-        if (unavailable) return WriteOutcome.Failed(UNAVAILABLE)
-        items[slot]?.let { items[slot] = it.copy(protection = StoredProtection.BACKGROUND_READABLE) }
-        return WriteOutcome.Ok
-    }
-
     /** Deleting an absent item is a no-op; an unavailable store has nothing it can delete. */
     override fun delete(slot: SecureSlot): WriteOutcome {
         if (unavailable) return WriteOutcome.Failed(UNAVAILABLE)

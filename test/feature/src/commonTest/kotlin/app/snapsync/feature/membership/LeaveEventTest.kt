@@ -2,6 +2,8 @@
 
 package app.snapsync.feature.membership
 
+import app.snapsync.model.deletesAt
+
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.services.crypto.EventKeys
@@ -37,7 +39,14 @@ class LeaveEventTest {
 
     // A membership always carries a cutoff (capability `photo-sharing`); leave ignores it.
     private fun joined(eventId: String?) =
-        eventId?.let { EventConfig(it, name = "Anna's Birthday", minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"), maxPhotoDate = FIXTURE_CEILING) }
+        eventId?.let { EventConfig(
+            it,
+            name = "Anna's Birthday",
+            minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
+            maxPhotoDate = FIXTURE_CEILING,
+            endsAt = eventEnd("2099-12-31T00:00:00Z"),
+            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        ) }
 
     @Test
     fun `leave stops the producer clears config then notifies with the snapshotted eventId`() = runTest {

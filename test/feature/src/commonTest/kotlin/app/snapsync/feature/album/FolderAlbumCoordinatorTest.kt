@@ -37,7 +37,7 @@ class FolderAlbumCoordinatorTest {
     private val event = "e1"
     private val library = PhotoLibraryMock().apply { operator.albumKind = AlbumKind.FOLDER }
     private val gallery: Gallery = library.port().apply { listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> })) }
-    private val store = AlbumMapService(inMemoryPreferences(), inMemorySecureStore())
+    private val store = AlbumMapService(inMemoryPreferences())
     private val coordinator = AlbumCoordinator(GalleryAlbums(gallery), store, kind = AlbumKind.FOLDER)
 
     /** A received photo, imported the way the download controller imports it: into [album], then settled. */

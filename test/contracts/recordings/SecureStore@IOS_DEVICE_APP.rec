@@ -16,8 +16,6 @@
 # live HOLDING_WRITE_REPLACES: Passed
 # live HOLDING_DELETE_REMOVES: Passed
 # live RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE: Passed
-# live RESTRICTED_MIGRATE_PRESERVES_VALUE: Passed
-# live RESTRICTED_RESOLVE_UPGRADES_IN_PLACE: Passed
 [EMPTY_DELETE_IS_A_NOOP]
 SecItemDelete(acct=s:EMPTY_DELETE_IS_A_NOOP agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> -25300
 SecItemDelete(acct=s:EMPTY_DELETE_IS_A_NOOP agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> -25300
@@ -62,21 +60,8 @@ SecItemDelete(acct=s:HOLDING_WRITE_REPLACES agrp=s:E9Z8BADH58.app.snapsync.share
 SecItemAdd(acct=s:HOLDING_WRITE_REPLACES agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract v_Data=d:7772697474656e3a484f4c44494e475f57524954455f5245504c41434553) -> 0
 SecItemCopyMatching(acct=s:HOLDING_WRITE_REPLACES agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:HOLDING_WRITE_REPLACES agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract sync=n:0 tomb=n:0 v_Data=d:7772697474656e3a484f4c44494e475f57524954455f5245504c41434553
 SecItemDelete(acct=s:HOLDING_WRITE_REPLACES agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> 0
-[RESTRICTED_MIGRATE_PRESERVES_VALUE]
-SecItemDelete(acct=s:RESTRICTED_MIGRATE_PRESERVES_VALUE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> -25300
-SecItemAdd(acct=s:RESTRICTED_MIGRATE_PRESERVES_VALUE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ak svce=s:app.snapsync.contract v_Data=d:736565643a524553545249435445445f4d4947524154455f5052455345525645535f56414c5545) -> 0
-SecItemUpdate(acct=s:RESTRICTED_MIGRATE_PRESERVES_VALUE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract | pdmn=s:ck) -> 0
-SecItemCopyMatching(acct=s:RESTRICTED_MIGRATE_PRESERVES_VALUE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:RESTRICTED_MIGRATE_PRESERVES_VALUE agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract sync=n:0 tomb=n:0 v_Data=d:736565643a524553545249435445445f4d4947524154455f5052455345525645535f56414c5545
-SecItemDelete(acct=s:RESTRICTED_MIGRATE_PRESERVES_VALUE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> 0
 [RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE]
 SecItemDelete(acct=s:RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> -25300
 SecItemAdd(acct=s:RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ak svce=s:app.snapsync.contract v_Data=d:736565643a524553545249435445445f52454144535f41535f4e4f545f4241434b47524f554e445f5245414441424c45) -> 0
 SecItemCopyMatching(acct=s:RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract) -> 0 accc=o:<SecAccessControlRef:%20ak> acct=s:RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ak sha1=<masked> svce=s:app.snapsync.contract sync=n:0 tomb=n:0 v_Data=d:736565643a524553545249435445445f52454144535f41535f4e4f545f4241434b47524f554e445f5245414441424c45
 SecItemDelete(acct=s:RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> 0
-[RESTRICTED_RESOLVE_UPGRADES_IN_PLACE]
-SecItemDelete(acct=s:RESTRICTED_RESOLVE_UPGRADES_IN_PLACE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> -25300
-SecItemAdd(acct=s:RESTRICTED_RESOLVE_UPGRADES_IN_PLACE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ak svce=s:app.snapsync.contract v_Data=d:736565643a524553545249435445445f5245534f4c56455f55504752414445535f494e5f504c414345) -> 0
-SecItemCopyMatching(acct=s:RESTRICTED_RESOLVE_UPGRADES_IN_PLACE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract) -> 0 accc=o:<SecAccessControlRef:%20ak> acct=s:RESTRICTED_RESOLVE_UPGRADES_IN_PLACE agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ak sha1=<masked> svce=s:app.snapsync.contract sync=n:0 tomb=n:0 v_Data=d:736565643a524553545249435445445f5245534f4c56455f55504752414445535f494e5f504c414345
-SecItemUpdate(acct=s:RESTRICTED_RESOLVE_UPGRADES_IN_PLACE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract | pdmn=s:ck) -> 0
-SecItemCopyMatching(acct=s:RESTRICTED_RESOLVE_UPGRADES_IN_PLACE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:RESTRICTED_RESOLVE_UPGRADES_IN_PLACE agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract sync=n:0 tomb=n:0 v_Data=d:736565643a524553545249435445445f5245534f4c56455f55504752414445535f494e5f504c414345
-SecItemDelete(acct=s:RESTRICTED_RESOLVE_UPGRADES_IN_PLACE agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract) -> 0

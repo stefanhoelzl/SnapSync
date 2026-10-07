@@ -20,12 +20,6 @@ object SecureSlots {
     /** The device id, in the shared group both processes read (capability `photo-sharing`). */
     val DEVICE_ID = SecureSlot(service = "app.snapsync.deviceid", account = "deviceid", shared = true)
 
-    /**
-     * The same item searched without a group: where an older build may have filed the device id, and the one
-     * place the app adopts it from before minting (never the extension).
-     */
-    val DEVICE_ID_LEGACY = DEVICE_ID.copy(shared = false)
-
     /** The attestation token and its App Attest key id (capability `privacy-security`). Unscoped (pinned). */
     val ATTEST_TOKEN = SecureSlot(service = "app.snapsync.attest", account = "token", shared = false)
     val ATTEST_KEY_ID = SecureSlot(service = "app.snapsync.attest", account = "keyid", shared = false)
@@ -35,9 +29,6 @@ object SecureSlots {
      * the shared group, because the upload extension derives each file's key from it. One slot — one membership.
      */
     val EVENT_KEY = SecureSlot(service = "app.snapsync.eventkey", account = "key", shared = true)
-
-    /** The pre-App-Group event-album map, migrated once and deleted (capability `event-album`). Unscoped (pinned). */
-    val ALBUM_MAP_LEGACY = SecureSlot(service = "app.snapsync.album", account = "albummap", shared = false)
 }
 
 /**
@@ -46,13 +37,12 @@ object SecureSlots {
 enum class DeviceIdentityRole {
 
     /**
-     * The app. Reads the shared slot, adopts an out-of-group id if it finds one, and mints only when the id exists
-     * nowhere it can reach. The sole minter.
+     * The app. Reads the shared slot, and mints only when the lookup succeeded and found nothing. The sole minter.
      */
     MINTING,
 
     /**
-     * The upload extension. Reads the shared slot and nothing else — it neither adopts nor mints, because it cannot
+     * The upload extension. Reads the shared slot and nothing else — it never mints, because it cannot
      * distinguish "this device has no identity yet" from "the app's identity is not reachable from here", and acting
      * on that ambiguity is what produced two identities. The app resolves the identity on every launch, so the
      * extension's wait is bounded.
@@ -72,5 +62,5 @@ sealed interface DeviceIdResult {
     /** The lookup succeeded, found nothing, and this process may not mint ([DeviceIdentityRole.READ_ONLY]). */
     data object AbsentNotMintable : DeviceIdResult
 
-    enum class Via { READ, ADOPTED, MINTED }
+    enum class Via { READ, MINTED }
 }

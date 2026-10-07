@@ -96,7 +96,7 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.membershipClauses() 
 }
 
 internal fun manifest(deviceId: String) =
-    DeviceManifest(deviceId, listOf(SeededAsset(AssetId("asset-1"), listOf(app.snapsync.model.ResourceRole.PRIMARY)).manifestEntry()))
+    DeviceManifest(deviceId, listOf(SeededAsset(AssetId("asset-1"), listOf(app.snapsync.model.ResourceRole.PRIMARY)).manifestEntry()), version = 0)
 
 /** A manifest declaring exactly [asset], projected under manifest [version]. */
 private fun versioned(deviceId: String, asset: SeededAsset, version: Long) =

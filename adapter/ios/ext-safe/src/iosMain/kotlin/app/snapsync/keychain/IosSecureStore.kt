@@ -76,13 +76,13 @@ val ACCESSIBLE_AFTER_FIRST_UNLOCK: String =
  * Decision record: `changes/…/reshape-keychain-port` (D3, D4).
  *
  * [accessGroup] names the Keychain access group **explicitly**, and every operation this class
- * performs carries it — read, write, delete, and the accessibility migration alike. A partially
+ * performs carries it — read, write and delete alike. A partially
  * scoped item is worse than an unscoped one: it would be written to one group and searched for in
  * another.
  *
- * It is a parameter, and `null` (search and write wherever the platform decides) is still the
- * default, because exactly one item legitimately wants that: the legacy config reader, whose whole
- * job is to find an item an older build left *anywhere*. Everything else names its group.
+ * `null` (search and write wherever the platform decides) is what an unshared slot gets, and only the
+ * attestation token and its key id are unshared — a pinned inventory (`RuntimeIdentityTest`). Everything
+ * else names its group.
  *
  * This used to read: *"No `kSecAttrAccessGroup` is set: the app's entitlement declares the shared
  * group as its first entry, so items land there by default and the upload extension reads the same
@@ -99,7 +99,7 @@ val ACCESSIBLE_AFTER_FIRST_UNLOCK: String =
  * Decision record: `changes/archive/2026-07-20-fix-split-device-identity`.
  */
 class IosSecureStore internal constructor(
-    /** Where the four `SecItem*` calls go: the real Keychain, or — in a contract run — a recording. */
+    /** Where the three `SecItem*` calls go: the real Keychain, or — in a contract run — a recording. */
     private val keychain: KeychainApi,
 ) : SecureStore {
 
@@ -117,8 +117,6 @@ class IosSecureStore internal constructor(
 
     override fun write(slot: SecureSlot, value: String): WriteOutcome = item(slot).write(value)
 
-    override fun migrateProtection(slot: SecureSlot): WriteOutcome = item(slot).migrateProtection()
-
     override fun delete(slot: SecureSlot): WriteOutcome = item(slot).delete()
 }
 
@@ -135,8 +133,8 @@ internal class KeychainItem(
 ) {
 
     /**
-     * One query returns **both** the value and its accessibility class, so detecting a legacy item
-     * costs nothing: an already-correct item is read, compared, and left alone (no write).
+     * One query returns **both** the value and its accessibility class, so the protection is reported on
+     * every read at no extra cost. A read never writes.
      */
     fun read(): SecureStoreRead = memScoped {
         val query = baseQuery()
@@ -174,23 +172,23 @@ internal class KeychainItem(
      * The observed class is **logged** when it is not the required one. [StoredProtection.RESTRICTED]
      * deliberately does not say which class an item was filed under (the port would be carrying an
      * `kSecAttrAccessible` value inward only to be printed), so the detail is recorded here, where it
-     * was read — once per legacy item per process, and never for a healthy one.
+     * was read — and never for a healthy one.
      */
     private fun protectionOf(accessibility: String?): StoredProtection = when (accessibility) {
         ACCESSIBLE_AFTER_FIRST_UNLOCK -> StoredProtection.BACKGROUND_READABLE
         null -> {
-            log.i { "$service/$account reports no accessibility class; it will be upgraded in place" }
+            log.i { "$service/$account reports no accessibility class" }
             StoredProtection.UNREPORTED
         }
         else -> {
-            log.i { "$service/$account is stored `$accessibility`, not the required class — upgrading in place" }
+            log.i { "$service/$account is stored `$accessibility`, not the required class" }
             StoredProtection.RESTRICTED
         }
     }
 
     /**
      * The attributes **every** written item carries, as plain strings. This is the single source of
-     * truth: both [write] and [migrateAccessibility] build their CF dictionaries from it, so a test can
+     * truth: [write] builds its CF dictionary from it, so a test can
      * assert the accessibility class the adapter really applies without needing a working Keychain —
      * which, as it turns out, no test has: a Kotlin/Native test binary is not an app bundle, so
      * `securityd` refuses it Keychain access outright (`errSecNotAvailable`, -25291).
@@ -242,27 +240,6 @@ internal class KeychainItem(
         return if (status == errSecSuccess) WriteOutcome.Ok else WriteOutcome.Failed(diagnostic(status))
     }
 
-    /**
-     * `SecItemUpdate` changes the item's accessibility class and **nothing else** — the value is not
-     * supplied, so it cannot be altered. This is what lets an already-provisioned device heal without
-     * its device id changing (a new id would orphan its byte partition and its ledger).
-     */
-    fun migrateProtection(): WriteOutcome {
-        val query = baseQuery()
-        val attributes = newDictionary()
-        applyWrittenAttributes(attributes)
-        val status = keychain.update(query, attributes)
-        CFRelease(query)
-        CFRelease(attributes)
-        // Best-effort: a device that cannot be migrated right now keeps its (readable) item and retries
-        // on the next read. Failing the read here would turn a healthy legacy device into a broken one.
-        if (status != errSecSuccess) {
-            log.w { "keychain accessibility migration failed for $service/$account: status=$status" }
-            return WriteOutcome.Failed(diagnostic(status))
-        }
-        return WriteOutcome.Ok
-    }
-
     fun delete(): WriteOutcome {
         val deleteQuery = baseQuery()
         val status = keychain.delete(deleteQuery)
@@ -278,11 +255,10 @@ internal class KeychainItem(
      * The (class, service, account) triple that identifies the item — plus [accessGroup] when one is
      * named, which is what makes placement deterministic.
      *
-     * Every operation is built from this one function (`read`, `write`'s add, `delete`, and
-     * `migrateAccessibility`'s update), so the group cannot be applied to some operations and not
-     * others. On an add it selects the destination group; on a search it narrows the scope to that
-     * group alone, instead of spanning every group the process is entitled to and returning whichever
-     * match the platform happens to surface first.
+     * Every operation is built from this one function (`read`, `write`'s add and `delete`), so the group cannot be
+     * applied to some operations and not others. On an add it selects the destination group; on a search it narrows
+     * the scope to that group alone, instead of spanning every group the process is entitled to and returning
+     * whichever match the platform happens to surface first.
      */
     private fun baseQuery(): CFMutableDictionaryRef {
         val dict = newDictionary()

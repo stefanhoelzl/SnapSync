@@ -34,7 +34,6 @@ class ConfigServiceTest {
         val service = service(inMemoryFiles())
         assertTrue(service.isPastDeletion(deletesAt("2026-06-01T00:00:00Z")), "the deadline is behind the clock")
         assertFalse(service.isPastDeletion(deletesAt("2026-07-01T00:00:00Z")), "the deadline is ahead of the clock")
-        assertFalse(service.isPastDeletion(null), "a membership without a deadline never reaches it")
     }
 
 

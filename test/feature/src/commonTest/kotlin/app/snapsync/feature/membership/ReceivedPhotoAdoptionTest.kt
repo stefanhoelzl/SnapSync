@@ -1,5 +1,9 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.UnionPage
 import app.snapsync.feature.support.testIdentity
@@ -48,6 +52,7 @@ class ReceivedPhotoAdoptionTest {
         startsAt = EventStart(CaptureDate("2026-06-01T00:00:00Z")),
         endsAt = EventEnd(CaptureDate("2026-06-10T00:00:00Z")),
         maxPhotoDate = CaptureCeiling(CaptureDate("2026-06-10T00:00:00Z")),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     private fun ref(asset: String, device: String = other) = AssetRef(device, AssetId(asset))

@@ -30,7 +30,6 @@ internal class RecordingSecureStore(
 
     val reads: MutableList<SecureSlot> = mutableListOf()
     val writes: MutableList<Pair<SecureSlot, String>> = mutableListOf()
-    val migrations: MutableList<SecureSlot> = mutableListOf()
     val deletes: MutableList<SecureSlot> = mutableListOf()
 
     fun readsOf(slot: SecureSlot): Int = reads.count { it == slot }
@@ -49,21 +48,12 @@ internal class RecordingSecureStore(
         return WriteOutcome.Ok
     }
 
-    override fun migrateProtection(slot: SecureSlot): WriteOutcome {
-        migrations += slot
-        // In place, value preserved — the Keychain's SecItemUpdate supplies no value either.
-        (answers[slot] as? SecureStoreRead.Found)?.let {
-            answers[slot] = it.copy(protection = StoredProtection.BACKGROUND_READABLE)
-        }
-        return WriteOutcome.Ok
-    }
-
     override fun delete(slot: SecureSlot): WriteOutcome {
         deletes += slot
         answers.remove(slot)
         return WriteOutcome.Ok
     }
 
-    /** True when nothing was ever persisted, upgraded or deleted — the never-mint invariant's oracle. */
-    fun untouched(): Boolean = writes.isEmpty() && deletes.isEmpty() && migrations.isEmpty()
+    /** True when nothing was ever persisted or deleted — the never-mint invariant's oracle. */
+    fun untouched(): Boolean = writes.isEmpty() && deletes.isEmpty()
 }

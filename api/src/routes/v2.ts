@@ -92,7 +92,7 @@ export function v2Routes(deps: RouteDeps): Hono {
     event: EventRow,
     deviceId: string,
     assets: ManifestAssetEntry[],
-    version: number | null,
+    version: number,
     final: boolean,
     changes: { gained: string[]; removed: string[] },
   ): Promise<{ won: boolean; closed: boolean }> {

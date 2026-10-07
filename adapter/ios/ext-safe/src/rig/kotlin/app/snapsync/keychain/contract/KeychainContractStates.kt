@@ -79,8 +79,8 @@ internal fun keychainInState(
 
 /**
  * An item as a build before the locked-device fix filed it: `kSecAttrAccessibleWhenUnlocked`, the iOS
- * default — the class that made every background read fail while locked, and that the upgrade exists to
- * move items off. Same address [IosSecureStore] uses.
+ * default — the class that made every background read fail while locked; the store reports it as not
+ * background-readable. Same address [IosSecureStore] uses.
  */
 private fun legacyItem(account: String, value: String): CFDictionaryRef {
     val attributes = mapOf(

@@ -51,7 +51,12 @@ async function eventWith(ids: string[]) {
   await app.request(`/api/v2/events/${E}/devices/${D}/manifest`, {
     method: "PUT",
     headers: h,
-    body: JSON.stringify({ deviceId: D, assets: ids.map((id) => asset(id)) }),
+    body: JSON.stringify({
+      deviceId: D,
+      version: 0,
+      final: false,
+      assets: ids.map((id) => asset(id)),
+    }),
   });
   for (const id of ids) {
     await app.request(`/api/v2/files/devices/${D}/${id}/primary?filename=IMG_${id}.HEIC`, {
@@ -64,7 +69,12 @@ async function eventWith(ids: string[]) {
     app.request(`/api/v2/events/${E}/devices/${D}/manifest`, {
       method: "PUT",
       headers: h,
-      body: JSON.stringify({ deviceId: D, assets: next.map((id) => asset(id)) }),
+      body: JSON.stringify({
+        deviceId: D,
+        version: 0,
+        final: false,
+        assets: next.map((id) => asset(id)),
+      }),
     });
   const upload = (id: string) =>
     app.request(`/api/v2/files/devices/${D}/${id}/primary?filename=IMG_${id}.HEIC`, {

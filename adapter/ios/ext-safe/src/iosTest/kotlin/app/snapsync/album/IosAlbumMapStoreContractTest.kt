@@ -7,11 +7,7 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.WriteOutcome
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.ports.SecureStore
 import app.snapsync.preferences.IosPreferences
 import platform.Foundation.NSUserDefaults
 import kotlin.test.Test
@@ -20,11 +16,6 @@ import kotlin.test.Test
  * The event-album map in its `NSUserDefaults` suite, live (`docs/architecture.md`). Each clause gets its
  * own suite, named from the clause id and removed afterwards — measured in this executable (2026-09-23): a
  * named suite round-trips and `removePersistentDomainForName` empties it.
- *
- * The legacy Keychain the adapter migrates from is its production default. Here it answers unavailable (the
- * executable is unentitled), which sends the adapter down its "defer the migration" branch to an empty map —
- * the honest answer for a store holding nothing, and the one it gives on any host without a Keychain. The
- * migration itself is not this contract's: its decision is `albumMapSource`, covered in `commonTest`.
  *
  * Seeding goes through the adapter's own `put`, so the stored encoding is the adapter's; only the corrupt
  * state writes the suite directly, because no `put` can produce it.
@@ -53,15 +44,8 @@ class IosAlbumMapStoreContractTest {
         }
     }
 
-    /** The service over the real suite, with no legacy Keychain map — the migration is the service's own test. */
-    private fun service(suite: String) = AlbumMapService(IosPreferences(suite), NoLegacyMap)
-
-    private object NoLegacyMap : SecureStore {
-        override fun read(slot: SecureSlot): SecureStoreRead = SecureStoreRead.Absent
-        override fun write(slot: SecureSlot, value: String): WriteOutcome = error("the contract never writes a legacy map")
-        override fun migrateProtection(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok
-        override fun delete(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok
-    }
+    /** The service over the real suite. */
+    private fun service(suite: String) = AlbumMapService(IosPreferences(suite))
 
     @Test
     fun `the App-Group album map satisfies the AlbumMapService contract`() = verify(AlbumMapStoreContract, binding)

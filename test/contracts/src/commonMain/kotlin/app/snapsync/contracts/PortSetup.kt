@@ -49,7 +49,7 @@ class PortSetup(
     }
 
     override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean) {
-        val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() }, final = final)
+        val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() }, version = 0, final = final)
         checked("publish manifest", backend.publishManifest(null, eventId, deviceId, manifest))
     }
 

@@ -33,10 +33,9 @@ import java.nio.file.Files as Nio
  * [StoredProtection.BACKGROUND_READABLE].
  *
  * **Slots stay distinct by all three coordinates.** A slot's [SecureSlot.shared] flag means nothing on Android — one
- * process, nobody to share with — but it is kept in the address: the device id's shared and legacy slots have the same
- * service and account, and the identity service adopts from the one into the other, so collapsing them would make the
- * adoption read and delete the very item it wrote. The slot's address is also the cipher's associated data, so a file
- * moved to another slot's name does not decrypt there.
+ * process, nobody to share with — but it is kept in the address, because the address is what the installed items are
+ * filed under: dropping a coordinate would move every existing file. The slot's address is also the cipher's
+ * associated data, so a file moved to another slot's name does not decrypt there.
  *
  * **What outlives what.** The port's iOS reading is "outlives the app install"; this store does not — app-private
  * storage and the Keystore key both go with the app, and Auto Backup is off. What that costs is carried elsewhere: the
@@ -107,9 +106,6 @@ class AndroidSecureStore(
     } catch (e: RuntimeException) {
         WriteOutcome.Failed("encrypt ${slot.describe()}: ${e.describe()}")
     }
-
-    // Every item is filed background-readable from its first write; there is nothing to upgrade.
-    override fun migrateProtection(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok
 
     @Synchronized
     override fun delete(slot: SecureSlot): WriteOutcome = try {

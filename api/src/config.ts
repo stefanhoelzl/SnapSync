@@ -164,8 +164,7 @@ export type Config = {
  * ⚠️ **Raising it now disables shipped installs.** 0.4 is the first App Store build and speaks v2, so a
  * bump refuses every installed 0.4 at once, sending it to the update notice. That is the ONE sanctioned
  * way to break v2's wire (the other is a `/api/v3`): v2 is frozen for compatible changes only
- * (`docs/architecture.md`). Builds below 0.4 spoke v1, which is retired: every `/api/v1` request is answered
- * `426` with this minimum (`changes/separate-event-page-from-device-api`).
+ * (`docs/architecture.md`). Builds below 0.4 spoke v1, which is no longer served.
  *
  * ⚠️ **It must stay at or below `MARKETING_VERSION` in `iosApp/Configuration/Config.xcconfig`.** That
  * floor is what every DEV and SIDELOAD build carries — such builds have no release tag to compute a

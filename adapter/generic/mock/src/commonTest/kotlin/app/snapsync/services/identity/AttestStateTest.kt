@@ -112,18 +112,13 @@ class AttestStateTest {
         assertNull(state.token())
     }
 
-    /**
-     * Both slots are read through `readExisting`, so a legacy-protection item is upgraded in place on the next
-     * read. Without it, a token written by a pre-fix build stays unreadable to the upload extension for ever, and
-     * every background upload goes out unauthenticated.
-     */
+    /** A token filed under another protection is read as it is, and a read never rewrites it. */
     @Test
-    fun `a legacy-protection token is upgraded in place on read`() {
+    fun `a token under another protection is read verbatim and never rewritten`() {
         secure.answers[TOKEN] = SecureStoreRead.Found("bearer-from-june", StoredProtection.RESTRICTED)
 
         assertEquals("bearer-from-june", state.token())
-        assertEquals(listOf(TOKEN), secure.migrations)
-        assertTrue(secure.writes.isEmpty(), "the value is preserved; only the protection changes")
+        assertTrue(secure.untouched(), "a read never writes")
     }
 
     /** Every write goes through the one store, so every item is background-readable by construction. */

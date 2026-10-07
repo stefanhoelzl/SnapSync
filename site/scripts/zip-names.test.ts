@@ -67,10 +67,8 @@ Deno.test("an asset with no original, and a resource with no url, are skipped", 
   assertEquals(photos, 1);
 });
 
-Deno.test("a nameless resource falls back to its key", () => {
-  assertEquals(names([{ resources: [{ role: "primary", url: "u/k", key: "abc-primary.heic" }] }]), [
-    "abc-primary.heic",
-  ]);
+Deno.test("a nameless resource is saved under a generic name", () => {
+  assertEquals(names([{ resources: [{ role: "primary", url: "u/k" }] }]), ["photo"]);
 });
 
 Deno.test(

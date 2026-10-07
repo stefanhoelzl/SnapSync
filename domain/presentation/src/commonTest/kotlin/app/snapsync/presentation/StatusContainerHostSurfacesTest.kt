@@ -65,6 +65,7 @@ private val CONFIG = EventConfig(
     startsAt = eventStart("2026-07-06T14:32:11Z"),
     endsAt = eventEnd("2026-07-13T14:32:11Z"),
     maxPhotoDate = captureCeiling("2026-07-13T14:32:11Z"),
+    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
 )
 
 private class FakeSync : SyncStatusSource {
@@ -216,7 +217,7 @@ class StatusContainerHostSurfacesTest {
         // the rejoin of one event can conflate in the StateFlow into A → A.
         val config = MutableStateFlow<EventConfig?>(CONFIG)
         val details = joinDetails {
-            JoinLoad.Found(CONFIG.name, CONFIG.startsAt, CONFIG.endsAt!!, deletesAt("2026-08-05T14:32:11Z"))
+            JoinLoad.Found(CONFIG.name, CONFIG.startsAt, CONFIG.endsAt, deletesAt("2026-08-05T14:32:11Z"))
         }
         return onHost(config = config, queries = details, onCommitJoin = { config.value = CONFIG }) { host ->
             host.surfaces.onOpenReconfigure()

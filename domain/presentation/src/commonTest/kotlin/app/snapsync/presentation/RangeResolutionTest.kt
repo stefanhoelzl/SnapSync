@@ -1,5 +1,7 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.deletesAt
+
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
@@ -243,6 +245,7 @@ class RangeResolutionTest {
         startsAt = eventStart("2026-07-06T14:00:00Z"),
         endsAt = eventEnd("2026-07-13T14:00:00Z"),
         maxPhotoDate = captureCeiling(until),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     /** The wall clock is the instant's own digits — the zone is not what is under test. */

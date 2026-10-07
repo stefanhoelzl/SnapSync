@@ -1,5 +1,9 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.StoreKind
@@ -64,7 +68,7 @@ class VersionGateHostTest {
         val refusal = MutableStateFlow<VersionRefusal?>(null)
         gateHost(
             backgroundScope, refusal,
-            config = EventConfig(GATE_EVENT_ID, "Anna's Birthday", GATE_CUTOFF, maxPhotoDate = GATE_CEILING),
+            config = EventConfig(GATE_EVENT_ID, "Anna's Birthday", GATE_CUTOFF, maxPhotoDate = GATE_CEILING, endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z")),
         ).testWithInternalState(this) {
             runOnCreate() // the initial state is the joined layer
 

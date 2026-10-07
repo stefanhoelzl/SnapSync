@@ -28,7 +28,7 @@ import platform.Foundation.dataUsingEncoding
 import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
 
-/** The simulator: every shared slot in an App-Group file, the legacy device-id slot absent, the rest the Keychain. */
+/** The simulator: every shared slot in an App-Group file, the rest the Keychain. */
 actual fun platformSecureStore(): SecureStore = SimulatorSecureStore(
     keychain = IosSecureStore(),
     files = AppGroupFileSecureStore(
@@ -38,25 +38,17 @@ actual fun platformSecureStore(): SecureStore = SimulatorSecureStore(
 
 /**
  * Routes every SHARED slot ([SecureSlots.DEVICE_ID], [SecureSlots.EVENT_KEY]) to [files] — the shared access group cannot
- * exist on a simulator — answers [SecureSlots.DEVICE_ID_LEGACY] as absent, and the rest to [keychain].
+ * exist on a simulator — and the rest to [keychain].
  */
 internal class SimulatorSecureStore(private val keychain: SecureStore, private val files: SecureStore) : SecureStore {
 
-    private fun storeFor(slot: SecureSlot): SecureStore? = when (slot) {
-        // No older build ever wrote a device id on a simulator. `Absent` states the truth; a store that failed
-        // here would block minting forever (unavailability outranks absence in the resolution).
-        SecureSlots.DEVICE_ID_LEGACY -> null
-        else -> if (slot.shared) files else keychain
-    }
+    private fun storeFor(slot: SecureSlot): SecureStore = if (slot.shared) files else keychain
 
-    override fun read(slot: SecureSlot): SecureStoreRead = storeFor(slot)?.read(slot) ?: SecureStoreRead.Absent
+    override fun read(slot: SecureSlot): SecureStoreRead = storeFor(slot).read(slot)
 
-    override fun write(slot: SecureSlot, value: String): WriteOutcome =
-        storeFor(slot)?.write(slot, value) ?: WriteOutcome.Failed("the simulator target has no legacy device-id store to write")
+    override fun write(slot: SecureSlot, value: String): WriteOutcome = storeFor(slot).write(slot, value)
 
-    override fun migrateProtection(slot: SecureSlot): WriteOutcome = storeFor(slot)?.migrateProtection(slot) ?: WriteOutcome.Ok
-
-    override fun delete(slot: SecureSlot): WriteOutcome = storeFor(slot)?.delete(slot) ?: WriteOutcome.Ok
+    override fun delete(slot: SecureSlot): WriteOutcome = storeFor(slot).delete(slot)
 }
 
 /**
@@ -104,9 +96,6 @@ internal class AppGroupFileSecureStore(private val directory: String?) : SecureS
         )
         if (ok) WriteOutcome.Ok else WriteOutcome.Failed("secure file write failed: ${errorVar.value?.localizedDescription}")
     }
-
-    /** Nothing to migrate: [read] reports the protection this store always writes. */
-    override fun migrateProtection(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok
 
     override fun delete(slot: SecureSlot): WriteOutcome = memScoped {
         val path = path(slot) ?: return WriteOutcome.Failed(unavailable)

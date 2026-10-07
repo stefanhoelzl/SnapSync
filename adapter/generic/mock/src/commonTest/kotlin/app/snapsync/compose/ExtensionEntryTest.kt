@@ -1,5 +1,9 @@
 package app.snapsync.compose
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.mock.BackendMock
 import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.PhotoLibraryMock
@@ -90,6 +94,8 @@ class ExtensionEntryTest {
                 minPhotoDate = captureCutoff("2026-07-14T18:00:00Z"),
                 maxPhotoDate = captureCeiling("2026-07-21T18:00:00Z"),
                 saveToAlbum = false,
+                endsAt = eventEnd("2099-12-31T00:00:00Z"),
+                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             ),
         )
         // The app creates and migrates the download store; the extension only ever opens it read-only.

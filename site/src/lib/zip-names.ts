@@ -11,7 +11,6 @@ export interface UnionResource {
   role?: string;
   url?: string;
   filename?: string;
-  key?: string;
 }
 
 /** One photo of the event, as the event page's read lists it. */
@@ -39,7 +38,7 @@ function splitName(name: string): [string, string] {
 }
 
 function nameOf(r: UnionResource, fallback: string): string {
-  return r.filename || r.key || fallback;
+  return r.filename || fallback;
 }
 
 /**

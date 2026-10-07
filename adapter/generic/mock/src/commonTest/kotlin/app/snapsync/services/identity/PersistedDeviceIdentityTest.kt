@@ -21,7 +21,6 @@ import kotlin.test.assertTrue
 private const val LOCKED = "OSStatus -25308" // errSecInteractionNotAllowed, as the iOS adapter formats it
 
 private val SHARED = SecureSlots.DEVICE_ID
-private val LEGACY = SecureSlots.DEVICE_ID_LEGACY
 
 private fun found(value: String, protection: StoredProtection = StoredProtection.BACKGROUND_READABLE) =
     SecureStoreRead.Found(value, protection)
@@ -61,22 +60,17 @@ class PersistedDeviceIdentityTest {
         assertEquals(DeviceIdResult.Id("device-42", DeviceIdResult.Via.READ), identity.resolve())
         assertEquals("device-42", identity.deviceId())
         assertTrue(store.untouched(), "a healthy read writes nothing")
-        assertEquals(0, store.readsOf(LEGACY), "the extension must never consult the unscoped slot")
     }
 
-    /**
-     * The branch that closed the split. An unscoped search from the *extension* finds that process's OWN stale
-     * item — so adopting here would re-create the second identity rather than heal it.
-     */
+    /** The extension cannot tell "no identity yet" from "the app's identity is not reachable from here". */
     @Test
-    fun `the extension refuses to mint when the shared slot is absent and consults no legacy slot`() {
-        store.answers[LEGACY] = found("the-extensions-own-stale-id")
+    fun `the extension refuses to mint when the shared slot is absent`() {
         var asked = false
         val identity = identity(DeviceIdentityRole.READ_ONLY, platform = { asked = true; "minted-id" })
 
         assertEquals(DeviceIdResult.AbsentNotMintable, identity.resolve())
         assertFailsWith<DeviceIdentityAbsent> { identity.deviceId() }
-        assertEquals(0, store.readsOf(LEGACY), "an unscoped fallback here is what produced two device ids")
+        assertEquals(listOf(SHARED), store.reads.distinct(), "the shared slot and nothing else")
         assertTrue(store.writes.isEmpty(), "the extension may not create an identity under any circumstances")
         assertTrue(!asked, "the extension never even asks for an id to mint")
     }
@@ -95,62 +89,39 @@ class PersistedDeviceIdentityTest {
     // ---- the minting role (the app) -------------------------------------------------------------
 
     @Test
-    fun `the app adopts an out-of-group id instead of minting a second one`() {
-        store.answers[LEGACY] = found("provisioned-in-july", StoredProtection.UNREPORTED)
-        var minted = false
-        val identity = identity(DeviceIdentityRole.MINTING, platform = { minted = true; "minted-id" })
-
-        assertEquals(DeviceIdResult.Id("provisioned-in-july", DeviceIdResult.Via.ADOPTED), identity.resolve())
-        assertTrue(!minted, "adopting is the whole repair path; minting here strands the device's partition")
-        assertEquals(
-            listOf("provisioned-in-july"),
-            store.writesTo(SHARED),
-            "the adopted value must be re-filed under the shared slot VERBATIM — a re-mint on adoption " +
-                "would be the same fault wearing the repair's clothes",
-        )
-        assertTrue(LEGACY !in store.deletes, "the out-of-group item survives, so a rollback still finds it")
-    }
-
-    @Test
-    fun `the app mints only when the id exists nowhere it can reach`() {
+    fun `the app mints only when the shared slot is absent`() {
         val identity = identity(DeviceIdentityRole.MINTING)
 
         assertEquals(DeviceIdResult.Id("minted-id", DeviceIdResult.Via.MINTED), identity.resolve())
-        assertEquals(1, store.readsOf(LEGACY), "the unscoped slot must be consulted BEFORE minting")
+        assertEquals(listOf(SHARED), store.reads, "the shared slot is the only one consulted")
         assertEquals(listOf("minted-id"), store.writesTo(SHARED), "a minted id is persisted to the shared slot")
-        assertTrue(store.writesTo(LEGACY).isEmpty())
+        assertEquals(listOf(SHARED), store.writes.map { it.first }, "nothing else is written")
     }
 
-    /**
-     * "I could not look" on the legacy read is as disqualifying as on the primary one. This is the arm that is
-     * easiest to get wrong, because minting here *works* — it just quietly hands a device that already has an
-     * identity a second one.
-     */
+    /** "I could not look" never mints: a locked device waits for the next launch rather than acquiring a new id. */
     @Test
-    fun `an unreadable legacy slot blocks the mint rather than being treated as absence`() {
-        store.answers[LEGACY] = SecureStoreRead.Unavailable(LOCKED)
+    fun `an unreadable shared slot blocks the app's mint rather than being treated as absence`() {
+        store.answers[SHARED] = SecureStoreRead.Unavailable(LOCKED)
         var minted = false
         val identity = identity(DeviceIdentityRole.MINTING, platform = { minted = true; "minted-id" })
 
         assertEquals(DeviceIdResult.Unavailable(LOCKED), identity.resolve())
         assertFailsWith<SecureStoreUnavailable> { identity.deviceId() }
         assertTrue(!minted, "a locked device must wait for the next launch, not acquire a new identity")
-        assertTrue(store.writes.isEmpty())
+        assertTrue(store.untouched())
     }
 
     /**
-     * A device provisioned by a pre-fix build carries the weaker protection. It must be upgraded **in place**,
-     * value untouched: re-minting would orphan the partition and the ledger.
+     * An item filed under another protection is read as it is — reported in the log line, never rewritten: the
+     * id is written once, at mint, and a re-mint would orphan the partition and the ledger.
      */
     @Test
-    fun `a legacy-protection item is upgraded in place with its value untouched`() {
+    fun `an item under another protection is read verbatim and never rewritten`() {
         store.answers[SHARED] = found("provisioned-in-june", StoredProtection.RESTRICTED)
         val identity = identity(DeviceIdentityRole.MINTING)
 
         assertEquals(DeviceIdResult.Id("provisioned-in-june", DeviceIdResult.Via.READ), identity.resolve())
-        assertEquals(listOf(SHARED), store.migrations, "the item must be upgraded so background wakes can read it")
-        assertTrue(store.writes.isEmpty(), "migration supplies no value; the id is never rewritten")
-        assertEquals(0, store.readsOf(LEGACY), "a found item ends the resolution — no legacy read")
+        assertTrue(store.untouched(), "the id is never rewritten")
     }
 
     @Test
@@ -203,19 +174,6 @@ class PersistedDeviceIdentityTest {
         assertIs<DeviceIdResult.Id>(resolved, "a failure is not kept: the next resolve retries")
         assertEquals(DeviceIdResult.Via.MINTED, resolved.via)
         assertEquals(found(resolved.value), store.read(SHARED), "the id handed out is the id stored")
-    }
-
-    @Test
-    fun `a refused write of an adopted id is unavailable and leaves the legacy item in place`() {
-        store.answers[LEGACY] = found("provisioned-in-july")
-        store.refuseWrites = true
-        val identity = identity(DeviceIdentityRole.MINTING)
-
-        assertIs<DeviceIdResult.Unavailable>(identity.resolve())
-        assertEquals(found("provisioned-in-july"), store.read(LEGACY))
-
-        store.refuseWrites = false
-        assertEquals(DeviceIdResult.Id("provisioned-in-july", DeviceIdResult.Via.ADOPTED), identity.resolve())
     }
 
     // ---- caching: a success is kept, a failure never ----------------------------------------------
@@ -278,15 +236,14 @@ class PersistedDeviceIdentityTest {
 
         assertEquals(DeviceIdResult.AbsentNotMintable, identity.current())
         assertTrue(store.untouched(), "a report's read must not create the identity it reports")
-        assertEquals(0, store.readsOf(LEGACY), "adopting from the legacy slot is a write; current never reads it")
     }
 
     @Test
-    fun `current answers the stored id without migrating its protection`() {
+    fun `current answers the stored id without writing`() {
         store.answers[SHARED] = found("device-42", StoredProtection.RESTRICTED)
 
         assertEquals(DeviceIdResult.Id("device-42", DeviceIdResult.Via.READ), identity(DeviceIdentityRole.MINTING).current())
-        assertTrue(store.untouched(), "an item filed under the old protection is left for the app's own read to upgrade")
+        assertTrue(store.untouched(), "a report's read writes nothing")
     }
 
     @Test

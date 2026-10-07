@@ -41,18 +41,10 @@ export function parseManifestAssets(body: { assets?: unknown }): ManifestAssetEn
 }
 
 /**
- * Read a v2 manifest body's optional `version` (`docs/architecture.md`, "The v2 manifest publish is
- * ordered by its version"): the number, `null` when the field is absent (a build that predates it), or
- * `undefined` when it is present but not a non-negative safe integer — a `400`. Safe-integer rather than
- * any number because the comparison is exact: a value past 2^53 would already have been rounded by the
- * JSON parse, and two distinct device versions could compare equal.
- */
-/**
- * The manifest's `final` declaration (capability `photo-sharing`): absent → `false` (every build that
- * predates it); anything but a boolean → `undefined`, which the route answers `400`.
+ * The manifest's `final` declaration (capability `photo-sharing`): a boolean, or `undefined` — absent or
+ * anything else — which the route answers `400`. Every admitted build (0.4 and later) sends it.
  */
 export function parseManifestFinal(body: { final?: unknown }): boolean | undefined {
-  if (body.final === undefined || body.final === null) return false;
   return typeof body.final === "boolean" ? body.final : undefined;
 }
 
@@ -63,7 +55,7 @@ export function parseManifestFinal(body: { final?: unknown }): boolean | undefin
 export function parseManifestBody(
   body: unknown,
 ):
-  | { assets: ManifestAssetEntry[]; version: number | null; final: boolean }
+  | { assets: ManifestAssetEntry[]; version: number; final: boolean }
   | { invalid: string } {
   const b = (body ?? {}) as { version?: unknown; final?: unknown };
   const assets = parseManifestAssets(b as Parameters<typeof parseManifestAssets>[0]);
@@ -75,8 +67,14 @@ export function parseManifestBody(
   return { assets, version, final };
 }
 
-export function parseManifestVersion(body: { version?: unknown }): number | null | undefined {
-  if (body.version === undefined || body.version === null) return null;
+/**
+ * Read a v2 manifest body's `version` (`docs/architecture.md`, "The v2 manifest publish is ordered by its
+ * version"): the number, or `undefined` when it is absent or not a non-negative safe integer — a `400`. Every
+ * admitted build (0.4 and later) stamps it. Safe-integer rather than any number because the comparison is
+ * exact: a value past 2^53 would already have been rounded by the JSON parse, and two distinct device versions
+ * could compare equal.
+ */
+export function parseManifestVersion(body: { version?: unknown }): number | undefined {
   const v = body.version;
   return typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : undefined;
 }

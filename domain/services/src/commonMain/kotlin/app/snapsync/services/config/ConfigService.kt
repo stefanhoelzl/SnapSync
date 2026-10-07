@@ -117,9 +117,9 @@ class ConfigService(
 
     /**
      * Has this membership's own retention deadline [deletesAt] passed (capability `manage-membership`)? The self-leave's
-     * OFFLINE witness — see [confirmedGone] for why it is exact, and why a `null` deadline is never reached.
+     * OFFLINE witness — see [confirmedGone] for why it is exact.
      */
-    fun isPastDeletion(deletesAt: DeletesAt?): Boolean = confirmedGone(deletesAt, instantToCutoff(clock.now()))
+    fun isPastDeletion(deletesAt: DeletesAt): Boolean = confirmedGone(deletesAt, instantToCutoff(clock.now()))
 
     /**
      * Has [config]'s event range ended (capability `event-lifetime`)? Read on the same clock as [isPastDeletion]; an

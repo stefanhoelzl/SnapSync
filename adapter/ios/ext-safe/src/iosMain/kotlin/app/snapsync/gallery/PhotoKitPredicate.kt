@@ -89,15 +89,10 @@ internal fun predicateFor(policy: SelectionPolicy): NSPredicate? {
 }
 
 /**
- * Parse a canonical cutoff into an `NSDate`, tolerating **fractional seconds**.
- *
- * A bare `NSISO8601DateFormatter` uses `.withInternetDateTime`, which does not accept a `.sss` fraction and
- * returns `nil` for `2026-07-09T19:24:17.182Z`. Bounds are supposed to be second precision (capability
- * `photo-sharing`) and the join gate normalizes them — but one persisted by an older build carries
- * the backend's raw `toISOString()` milliseconds. Losing the predicate there would silently restore the
- * whole-library fetch that trips the watchdog, so parse both shapes rather than trust the invariant.
+ * Parse a canonical cutoff into an `NSDate`. Bounds are second precision (capability `photo-sharing`): the join gate
+ * normalizes the backend's milliseconds before anything is persisted, and every build since v0.1 has stored them so.
  */
-private fun parseBound(iso: String): NSDate? = Iso8601.parseTolerant(iso)
+private fun parseBound(iso: String): NSDate? = Iso8601.parse(iso)
 
 /**
  * One day of slack on each date bound. The authoritative compare is a *lexicographic* string compare in

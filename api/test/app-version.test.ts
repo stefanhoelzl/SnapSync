@@ -57,7 +57,7 @@ Deno.test("app version → the manifest publish records it", async () => {
   const res = await app.request(MANIFEST, {
     method: "PUT",
     headers: v("0.14"),
-    body: JSON.stringify({ deviceId: D, assets: [] }),
+    body: JSON.stringify({ deviceId: D, version: 0, final: false, assets: [] }),
   });
   assertEquals(res.status, 200);
   assertEquals(await versionOf(db), "0.14");
@@ -88,18 +88,6 @@ Deno.test("app version → the byte route does not record it (no subrequest to s
     body: "b",
   });
   assertEquals(res.status, 201);
-  assertEquals(await versionOf(db), null);
-  db.close();
-});
-
-Deno.test("app version → a request to the retired v1 records nothing", async () => {
-  const { db, app } = await enrolled();
-  const res = await app.request(`/api/v1/events/${E}/devices/${D}`, {
-    method: "PUT",
-    headers: v("0.12"),
-    body: JSON.stringify({ deviceId: D, assets: [] }),
-  });
-  assertEquals(res.status, 426);
   assertEquals(await versionOf(db), null);
   db.close();
 });

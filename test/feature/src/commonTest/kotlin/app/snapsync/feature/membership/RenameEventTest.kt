@@ -2,6 +2,10 @@
 
 package app.snapsync.feature.membership
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.captureCeiling
@@ -49,6 +53,8 @@ class RenameEventTest {
         maxPhotoDate = FIXTURE_CEILING,
         direction = Direction.Both,
         saveToAlbum = true,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     /** Drive the fire-and-forget command to completion on the test scheduler. */

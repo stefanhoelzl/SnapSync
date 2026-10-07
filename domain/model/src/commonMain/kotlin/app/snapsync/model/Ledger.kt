@@ -18,10 +18,9 @@ package app.snapsync.model
  * in-event resources, so the manifest is a projection of it (capability `photo-sharing`) rather
  * than a parallel accumulator maintaining the same asset set with different columns.
  *
- * They default to `""` — the "not yet enriched" sentinel, and a row can rest there two ways: it
- * predates the 5.sqm migration, or the **join-time load** seeded it from the device's stored-file
- * listing, which carries no capture date. Both are swept the same
- * way, by the single writer's next full enumeration ([LedgerStore.backfillManifestDetail]).
+ * They default to `""` — the "not yet enriched" sentinel, where a row rests when the **join-time load** seeded
+ * it from the device's stored-file listing, which carries no capture date. It is swept by the single writer's
+ * next full enumeration ([LedgerStore.backfillManifestDetail]).
  */
 class LedgerEntry(
     val key: String,
@@ -124,10 +123,9 @@ enum class LedgerState {
      * nothing further is owed for the key.
      *
      * Written by whichever party the platform tells that the upload terminated, **at the moment it is
-     * told** ([TerminalOutcome], through the ledger's guarded terminal write), by the join-time load for a
-     * resource the device listing already holds, and by the `8.sqm` migration for rows an earlier build
-     * left `UPLOADED`. Nothing a completion used to trigger remains: the device manifest declared the
-     * resource at discovery, and the event-album placement happened when its upload was first enqueued.
+     * told** ([TerminalOutcome], through the ledger's guarded terminal write), and by the join-time load for a
+     * resource the device listing already holds. Nothing a completion used to trigger remains: the device manifest
+     * declared the resource at discovery, and the event-album placement happened when its upload was first enqueued.
      *
      * Decision record: `changes/retire-uploaded-state` (D1), superseding the `UPLOADED` state of
      * `changes/archive/2026-08-26-fix-lost-upload-acks`.

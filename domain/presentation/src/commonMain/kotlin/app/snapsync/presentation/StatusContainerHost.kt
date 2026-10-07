@@ -257,7 +257,7 @@ class StatusContainerHost(
                         // UTC ⇒ lexicographic order IS chronological.
                         // (A backgrounded iOS app is suspended, so this is foreground-only in practice.)
                         val startPassed = now >= startsAt.at
-                        val endPassed = endsAt == null || now >= endsAt.at
+                        val endPassed = now >= endsAt.at
                         if (startPassed && endPassed) return@flow
                         delay(NOT_STARTED_TICK_MILLIS)
                     }

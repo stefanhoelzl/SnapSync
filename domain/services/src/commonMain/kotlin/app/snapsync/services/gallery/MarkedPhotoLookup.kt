@@ -41,10 +41,9 @@ class MarkedPhotoLookup(
 
     /**
      * Every marked photo in `[startsAt, endsAt]` outside [known], by the token its name carries, or `null` when the
-     * library cannot be read. A null [endsAt] (a membership saved before events carried an end) bounds the window
-     * below only.
+     * library cannot be read.
      */
-    suspend fun markedIn(startsAt: EventStart, endsAt: EventEnd?, known: Set<AssetId>): Map<String, AssetId>? {
+    suspend fun markedIn(startsAt: EventStart, endsAt: EventEnd, known: Set<AssetId>): Map<String, AssetId>? {
         val window = eventWindow(startsAt, endsAt)
         return when (val scope = selectionScope()) {
             is SelectionScope.Scoped -> fromSnapshot(scope.resources, window, known)

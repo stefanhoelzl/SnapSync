@@ -216,6 +216,7 @@ private val MEMBERSHIP = EventConfig(
     maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
     direction = Direction.Both,
     saveToAlbum = false,
+    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
 )
 
 /** The joined layer with the leave confirmation up — the state the leave action produces. */
@@ -250,7 +251,7 @@ private fun reconfiguring(
 private fun reconfigureResolved(membership: EventConfig, form: RangeForm): ResolvedRange {
     val f = fixedCutoff()
     val windowStart = f.toLocal(membership.startsAt.at)!!
-    val windowEnd = f.toLocal(membership.endsAt?.at ?: membership.maxPhotoDate.at)!!
+    val windowEnd = f.toLocal(membership.endsAt.at)!!
     val from = if (form.preset == RangeChoice.CUSTOM) form.customFrom ?: windowStart else windowStart
     val until = if (form.preset == RangeChoice.CUSTOM) form.customUntil ?: windowEnd else windowEnd
     return ResolvedRange(

@@ -166,7 +166,7 @@ class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
     }
 
     override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean) {
-        val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() }, final = final)
+        val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() }, version = 0, final = final)
         checked(
             "publish manifest",
             client.put("$base/events/$eventId/devices/$deviceId/manifest") {

@@ -8,7 +8,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `AlbumMapSource` | `:domain:services` | `:domain:services` Current, Migrate, Retry | no |
 | `AppUploadEngine` | `:domain:feature` | `:test:architecture` Engine; `:test:feature` FakeEngine | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:mock` InMemoryAttestStore; `:domain:services` AttestState, CachedAttestStore, Item, SharedItem | yes |
 | `AuthenticatedBackend` | `:domain:services` | `:domain:services` CredentialedBackend | no |
@@ -114,9 +113,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Reply` | `:domain:model` | `:domain:model` Malformed, Ok, Refused, Unreachable; `:test:control` Done, Failed, Refused | yes |
 | `ResourceBatch` | `:domain:model` | — | no |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
-| `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, Legacy, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, NoLegacyMap, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:feature` LockableSecureStore | yes |
+| `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:feature` LockableSecureStore | yes |
 | `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
-| `SecureStoreResolution` | `:domain:model` | `:domain:model` Adopted, Found, Minted | no |
+| `SecureStoreResolution` | `:domain:model` | `:domain:model` Found, Minted | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |
 | `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unread, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Ready | no |

@@ -181,8 +181,8 @@ class LedgerService(
      * Fill the manifest detail of one already-recorded row **without touching its state**,
      * and only while the row is still bare — so re-running is free and can never clobber a good value.
      *
-     * The sweep for the two ways a row rests bare: it predates the 5.sqm migration, or the re-join
-     * reconcile seeded it from a stored-file listing (filenames carry no capture date). A writer-family
+     * The sweep for a row resting bare: the re-join reconcile seeded it from a stored-file listing (filenames carry
+     * no capture date). A writer-family
      * operation like [deleteKeys]: only the single writer's cycle runs it.
      */
     suspend fun backfillManifestDetail(entry: LedgerEntry) {

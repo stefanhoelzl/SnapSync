@@ -130,43 +130,6 @@ class MembershipRefreshTest {
         assertNull(config.saved)
     }
 
-    @Test
-    fun `a legacy config missing the window is backfilled from the fetched details`() = runTest {
-        // capability `photo-sharing`: endsAt/maxPhotoDate/deletesAt all absent (joined
-        // before the window and the deadline existed) → filled from the fetched details, in the SAME save
-        // as any name refresh.
-        val legacy = EventConfig(eventId = "E", name = "Anna's Birthday", minPhotoDate = CUTOFF, startsAt = STARTS, maxPhotoDate = CEILING)
-        val config = Membership(legacy)
-        refresh(config).refresh("E", found("Anna's Birthday"))
-        assertEquals(legacy.copy(endsAt = ENDS, maxPhotoDate = CEILING, deletesAt = DELETES), config.saved)
-    }
-
-    @Test
-    fun `backfill and name convergence ride in one save`() = runTest {
-        // A STALE name, not a missing one: the name arm converges on the served value (a membership
-        // always carries a name), and the point of the test is that it rides in the backfill's save.
-        val legacy = EventConfig(eventId = "E", name = "Anna's Bithday", minPhotoDate = CUTOFF, startsAt = STARTS, maxPhotoDate = CEILING)
-        val config = Membership(legacy)
-        refresh(config).refresh("E", found("Anna's Birthday"))
-        assertEquals(
-            legacy.copy(
-                name = "Anna's Birthday",
-                endsAt = ENDS,
-                maxPhotoDate = CEILING,
-                deletesAt = DELETES,
-            ),
-            config.saved,
-        )
-    }
-
-    @Test
-    fun `an already-set window is never overwritten by a backfill`() = runTest {
-        // The member already chose a window; a later details fetch must not clobber their ceiling.
-        val config = Membership(joined.copy(name = "Anna's Birthday", maxPhotoDate = CaptureCeiling(STARTS.at)))
-        refresh(config).refresh("E", found("Anna's Birthday", endsAt = ENDS))
-        assertNull(config.saved) // name unchanged AND endsAt already present → nothing to write
-    }
-
     // ── The two-witness absence verdict (capability `manage-membership`) ───────────────────────────────────
     //
     // ABSENT is the ONE destructive answer, and reaching it needs a definitive `NotFound` AND the
@@ -198,17 +161,6 @@ class MembershipRefreshTest {
     }
 
     @Test
-    fun `NotFound with no persisted deadline is disbelieved however late`() = runTest {
-        // A membership stored before the field existed, or whose backfill has not landed. An absent
-        // deadline reads as NEVER REACHED — the safe direction, mirroring the unbounded ceiling.
-        val config = Membership(joined.copy(deletesAt = null))
-        assertEquals(
-            RefreshOutcome.INCONCLUSIVE,
-            refresh(config, now = AFTER_DEADLINE).refresh("E", JoinLoad.NotFound),
-        )
-    }
-
-    @Test
     fun `an inconclusive fetch past the deadline is still inconclusive`() = runTest {
         // The deadline alone is not a witness: absence must be CONFIRMED, not merely plausible.
         val config = Membership(joined)
@@ -236,14 +188,6 @@ class MembershipRefreshTest {
             RefreshOutcome.INCONCLUSIVE,
             refresh(config, now = AFTER_DEADLINE).refresh("E", JoinLoad.NotFound),
         )
-    }
-
-    @Test
-    fun `a legacy config missing the deadline is backfilled from the fetched details`() = runTest {
-        val legacy = joined.copy(name = "Anna's Birthday", deletesAt = null)
-        val config = Membership(legacy)
-        assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", found("Anna's Birthday")))
-        assertEquals(legacy.copy(deletesAt = DELETES), config.saved)
     }
 
     // ── Early completion (capability `event-lifetime`) ─────────────────────────────────────────────────

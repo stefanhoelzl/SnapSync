@@ -54,6 +54,8 @@ async function share(
     headers: h,
     body: JSON.stringify({
       deviceId: device,
+      version: 0,
+      final: false,
       assets: Object.entries(declared).map(([id, roles]) => asset(id, roles)),
     }),
   });

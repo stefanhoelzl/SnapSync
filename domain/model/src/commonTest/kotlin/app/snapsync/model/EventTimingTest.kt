@@ -54,9 +54,4 @@ class EventTimingTest {
         assertEquals(EventTiming.Running(TimeLeft.UnderAMinute), at("2026-07-14T22:00:00Z"))
         assertEquals(EventTiming.Ended, at("2026-07-14T22:00:01Z"))
     }
-
-    @Test
-    fun `a legacy membership with no stored end says nothing about an end`() {
-        assertEquals(EventTiming.Running(remaining = null), eventTiming(start, null, CaptureDate("2026-07-13T00:00:00Z")))
-    }
 }

@@ -16,18 +16,6 @@ export type ApiVersion = 2;
 const PREFIX = /^\/api\/v(\d+)(?=\/|$)/;
 
 /**
- * The versions RETIRED from service: their paths are answered `426` and routed nowhere (`app.ts`). v1 went
- * with decision record `changes/separate-event-page-from-device-api` (D6).
- */
-const RETIRED: readonly number[] = [1];
-
-/** Whether [pathname] is addressed to a retired API version. */
-export function isRetiredVersion(pathname: string): boolean {
-  const m = PREFIX.exec(pathname);
-  return m !== null && RETIRED.includes(Number(m[1]));
-}
-
-/**
  * Split a request path into the version it names and the path with that prefix removed.
  *
  * The un-prefixed path is what the auth gate's closed list is written in terms of, so `/api/v2` → `/` and

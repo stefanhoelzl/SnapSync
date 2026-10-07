@@ -53,7 +53,7 @@ const ASSET = {
 };
 
 const body = (assets: unknown[], extra: Record<string, unknown> = {}) =>
-  JSON.stringify({ assets, ...extra });
+  JSON.stringify({ version: 0, final: false, assets, ...extra });
 
 /** D and D2 both joined; D2 holds a registered push token (see `v2.test.ts` `withRecipient`). */
 async function twoMembers(db: Store) {

@@ -1,12 +1,7 @@
 package app.snapsync.services.album
 
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.PrefRead
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
 import app.snapsync.ports.Preferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,8 +9,8 @@ import kotlin.test.assertTrue
 
 /**
  * The album map's read-modify-writes — [AlbumMapService.markFilled] and [AlbumMapService.put] — never write over what
- * they could not read: a key that answers [PrefRead.Unavailable] while a write still lands, or a legacy map whose
- * migration is deferred. [ReadFailing] forces the first, which no shipped Preferences adapter answers today.
+ * they could not read: a key that answers [PrefRead.Unavailable] while a write still lands. [ReadFailing] forces it,
+ * which no shipped Preferences adapter answers today.
  */
 class AlbumMapReadFailureTest {
 
@@ -26,7 +21,7 @@ class AlbumMapReadFailureTest {
 
     private val values = mutableMapOf<String, String>()
     private val prefs = ReadFailing(inMemoryPreferences(values))
-    private fun service() = AlbumMapService(prefs, inMemorySecureStore())
+    private fun service() = AlbumMapService(prefs)
 
     @Test
     fun `marking an album filled while the marks are unreadable keeps the other events' marks`() {
@@ -52,16 +47,5 @@ class AlbumMapReadFailureTest {
         assertEquals("album-a", service().get("A"))
         service().put("B", "album-b")
         assertEquals("album-b", service().get("B"))
-    }
-
-    @Test
-    fun `storing an album while the legacy map is unreadable leaves it to migrate`() {
-        val items = mutableMapOf<SecureSlot,SecureStoreRead.Found>()
-        AlbumMapService(prefs, inMemorySecureStore(items, unavailable = true)).put("B", "album-b")
-
-        items[SecureSlots.ALBUM_MAP_LEGACY] = SecureStoreRead.Found("""{"A":"album-a"}""", StoredProtection.BACKGROUND_READABLE)
-        val readable = AlbumMapService(prefs, inMemorySecureStore(items))
-
-        assertEquals("album-a", readable.get("A"), "the legacy map still migrates")
     }
 }

@@ -113,7 +113,7 @@ class AppGroupStoreContractBindingsTest {
         override val reaches = setOf(AlbumMapStoreState.EMPTY, AlbumMapStoreState.HOLDING)
 
         override fun create(state: AlbumMapStoreState, clauseId: String): Entered<AlbumMapService> {
-            val service = AlbumMapService(inMemoryPreferences(), inMemorySecureStore())
+            val service = AlbumMapService(inMemoryPreferences())
             return when (state) {
                 AlbumMapStoreState.EMPTY -> Entered.Ready(service)
                 AlbumMapStoreState.HOLDING -> Entered.Ready(

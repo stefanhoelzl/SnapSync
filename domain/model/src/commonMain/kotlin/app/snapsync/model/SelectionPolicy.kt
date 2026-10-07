@@ -230,14 +230,12 @@ fun noContribution(): SelectionPolicy = SelectionPolicy(listOf(SelectionRule.Den
 /**
  * The library photos that may be one of an event's RECEIVED photos (capability `receiving-photos`): everything captured
  * inside the event's own range, `[startsAt, endsAt]`, with no origin exclusion — a received photo is recognised by the
- * SnapSync mark in its name, not by what it is. Never a contribution policy: nothing it admits is shared. It carries a
- * floor like every policy here, so its walk is bounded; a null [endsAt] (a membership saved before events carried an
- * end) is unbounded above, as [selectionRulesFor]'s ceiling is.
+ * SnapSync mark in its name, not by what it is. Never a contribution policy: nothing it admits is shared.
  */
-fun eventWindow(startsAt: EventStart, endsAt: EventEnd?): SelectionPolicy = SelectionPolicy(
-    listOfNotNull(
+fun eventWindow(startsAt: EventStart, endsAt: EventEnd): SelectionPolicy = SelectionPolicy(
+    listOf(
         SelectionRule.CaptureAfter(CaptureCutoff(startsAt.at)),
-        endsAt?.let { SelectionRule.CaptureBefore(CaptureCeiling(it.at)) },
+        SelectionRule.CaptureBefore(CaptureCeiling(endsAt.at)),
     ),
 )
 

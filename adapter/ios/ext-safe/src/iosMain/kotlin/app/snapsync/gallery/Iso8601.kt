@@ -1,8 +1,6 @@
 package app.snapsync.gallery
 
 import platform.Foundation.NSDate
-import platform.Foundation.NSISO8601DateFormatWithFractionalSeconds
-import platform.Foundation.NSISO8601DateFormatWithInternetDateTime
 import platform.Foundation.NSISO8601DateFormatter
 
 /**
@@ -20,30 +18,17 @@ import platform.Foundation.NSISO8601DateFormatter
  *
  * **Why the output is byte-identical.** [internetDateTime] is a **default-constructed** formatter, exactly what
  * every call site constructed before: `formatOptions` = `NSISO8601DateFormatWithInternetDateTime` and the GMT
- * time zone, both Foundation's defaults. [withFractionalSeconds] carries the one non-default option set any
- * call site used (`InternetDateTime | FractionalSeconds`). `Iso8601Test` pins both against freshly built
- * formatters, so a drift fails the simulator suite rather than reaching a capture date on the wire.
+ * time zone, both Foundation's defaults. `Iso8601Test` pins it against a freshly built formatter, so a drift fails
+ * the simulator suite rather than reaching a capture date on the wire.
  */
 object Iso8601 {
 
     /** The default formatter (`…T…Z`, second precision, GMT) — what `NSISO8601DateFormatter()` builds. */
     val internetDateTime: NSISO8601DateFormatter = NSISO8601DateFormatter()
 
-    /** The same shape, also accepting/emitting a `.sss` fraction. Used only to parse. */
-    val withFractionalSeconds: NSISO8601DateFormatter = NSISO8601DateFormatter().apply {
-        formatOptions = NSISO8601DateFormatWithInternetDateTime or NSISO8601DateFormatWithFractionalSeconds
-    }
-
     /** [date] as the default ISO-8601 string — the capture-date stamp every candidate and resource carries. */
     fun format(date: NSDate): String = internetDateTime.stringFromDate(date)
 
     /** Parse the default (second-precision) shape only; `null` for anything else, as before. */
     fun parse(iso: String): NSDate? = internetDateTime.dateFromString(iso)
-
-    /**
-     * Parse either shape: second precision first, then with a fraction — for bounds an older build may have
-     * persisted with the backend's raw milliseconds.
-     */
-    fun parseTolerant(iso: String): NSDate? =
-        internetDateTime.dateFromString(iso) ?: withFractionalSeconds.dateFromString(iso)
 }

@@ -47,8 +47,8 @@ class IosSecureStoreTest {
     /**
      * The half of `docs/architecture.md`'s argument that containment cannot supply: Konsist
      * proves all Keychain code lives in this module; this proves this module always writes items a
-     * locked device can read. [KeychainItem.writtenAttributes] is the single source that both `write` and
-     * `migrateProtection` build their dictionaries from, so it cannot drift from what is applied.
+     * locked device can read. [KeychainItem.writtenAttributes] is the single source `write` builds its
+     * dictionary from, so it cannot drift from what is applied.
      */
     @Test
     fun `every written item carries AfterFirstUnlock`() {

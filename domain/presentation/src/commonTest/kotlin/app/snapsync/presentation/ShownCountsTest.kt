@@ -1,5 +1,9 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
@@ -38,6 +42,8 @@ class ShownCountsTest {
                 name = "Anna's Birthday",
                 minPhotoDate = CaptureCutoff(CaptureDate("2026-07-06T14:32:11Z")),
                 maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-13T14:32:11Z")),
+                endsAt = eventEnd("2099-12-31T00:00:00Z"),
+                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             ),
             inviteUrl = "https://snapsync.stho.net/e/x",
             health = SyncHealth.InSync,

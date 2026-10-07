@@ -42,7 +42,7 @@ const asset = (id: string, roles: string[] = ["primary"]) => ({
   resources: roles.map((r) => RES(`${id}-${r}`, r)),
 });
 const body = (assets: ReturnType<typeof asset>[], version?: number) =>
-  JSON.stringify({ deviceId: D, version, assets });
+  JSON.stringify({ deviceId: D, version: version ?? 0, final: false, assets });
 
 /** A joined v2 member D over a fresh store holding the event. */
 async function member() {

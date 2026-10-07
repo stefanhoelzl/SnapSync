@@ -62,9 +62,8 @@ object ReceivedPhotoName {
     /**
      * The marked name for a resource of [ref]: the sender's [originalFilename] with any mark it already carries
      * removed and this ref's mark added before its extension. [originalFilename] is `""` when the uploader's
-     * manifest row was never enriched (a row predating the 5.sqm migration, or one the join-time load seeded from a
-     * stored-file listing); the name is then `snapsync-<token>.<ext>`, the extension taken from the storage
-     * [resourceKey]. Never empty.
+     * manifest row was never enriched (one the join-time load seeded from a stored-file listing); the name is then
+     * `snapsync-<token>.<ext>`, the extension taken from the storage [resourceKey]. Never empty.
      */
     fun mark(originalFilename: String, resourceKey: String, ref: AssetRef): String {
         val source = originalFilename.ifEmpty { resourceKey }

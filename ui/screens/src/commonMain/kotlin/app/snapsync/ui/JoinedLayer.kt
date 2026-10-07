@@ -182,7 +182,7 @@ internal fun JoinedHeadingDetails(state: Layer.Joined, cutoff: CutoffFormatter) 
     val start = cutoff.toLocal(state.membership.startsAt.at) ?: return
     val range = appDateRangeLabel(
         start = start,
-        end = state.membership.endsAt?.let { cutoff.toLocal(it.at) },
+        end = cutoff.toLocal(state.membership.endsAt.at),
         today = cutoff.nowLocal().date,
     )
     AppDatesLine(range, state.timing.phrase())

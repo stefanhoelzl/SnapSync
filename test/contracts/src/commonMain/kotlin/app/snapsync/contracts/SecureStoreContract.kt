@@ -27,7 +27,7 @@ enum class SecureStoreState {
     /** Holding the seed value, already background-readable. */
     HOLDING_BACKGROUND_READABLE,
 
-    /** Holding the seed value under some other protection — a legacy item awaiting the in-place upgrade. */
+    /** Holding the seed value under some other protection than the background-readable one this store writes. */
     HOLDING_RESTRICTED,
 
     /**
@@ -156,28 +156,7 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
             assertEquals(seedValue("RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE"), read.value)
             assertTrue(
                 read.protection != StoredProtection.BACKGROUND_READABLE,
-                "a legacy item must report that it needs the upgrade, not hide it",
-            )
-        }
-
-        clause("RESTRICTED_MIGRATE_PRESERVES_VALUE", SecureStoreState.HOLDING_RESTRICTED) { store ->
-            store.migrateProtection(slot("RESTRICTED_MIGRATE_PRESERVES_VALUE"))
-            assertEquals(
-                SecureStoreRead.Found(
-                    seedValue("RESTRICTED_MIGRATE_PRESERVES_VALUE"),
-                    StoredProtection.BACKGROUND_READABLE,
-                ),
-                store.read(slot("RESTRICTED_MIGRATE_PRESERVES_VALUE")),
-                "the upgrade changes the protection and nothing else — a changed id orphans the device",
-            )
-        }
-
-        clause("RESTRICTED_RESOLVE_UPGRADES_IN_PLACE", SecureStoreState.HOLDING_RESTRICTED) { store ->
-            val resolved = resolveOrMint(store, slot("RESTRICTED_RESOLVE_UPGRADES_IN_PLACE")) { error("a held value must never be re-minted") }
-            assertEquals(seedValue("RESTRICTED_RESOLVE_UPGRADES_IN_PLACE"), resolved)
-            assertEquals(
-                SecureStoreRead.Found(resolved, StoredProtection.BACKGROUND_READABLE),
-                store.read(slot("RESTRICTED_RESOLVE_UPGRADES_IN_PLACE")),
+                "an item filed under another protection must say so truthfully, not read as background-readable",
             )
         }
     }

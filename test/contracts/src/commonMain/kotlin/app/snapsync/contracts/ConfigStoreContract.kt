@@ -1,5 +1,9 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
@@ -70,6 +74,8 @@ object ConfigStoreContract : Contract<ConfigStoreState, ConfigService>("ConfigSe
         name = "Contract $eventId",
         minPhotoDate = CaptureCutoff(CaptureDate("2026-09-01T00:00:00Z")),
         maxPhotoDate = CaptureCeiling(CaptureDate("2026-09-08T00:00:00Z")),
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     private fun written(clauseId: String) = config("written:$clauseId")

@@ -9,19 +9,11 @@
 // that needed it — and two whole classes of sweep logic existed only to repair states a foreign key
 // forbids. See `openspec/changes/record-uploads-in-database/design.md`.
 //
-// WHY `resources` IS NOT UNDER THE EVENT CASCADE. This is FORCED, not chosen. The byte upload route
-// addresses a resource row from the URL path alone — the event-less `/api/v2/files/devices/<deviceId>/…`,
-// which carries NO event (`docs/architecture.md`). A resource row bearing `event_id` could not be
-// written by the one route that knows a byte landed. The upload URL is compile-time on the client
-// (PhotoKit forces it), so this outlives any schema revision: a proposal to move `resources` under the
-// event chain must first explain how the byte route learns the event. The same separation is what lets
-// one uploaded byte serve two events during an event switch without being stored twice.
-//
-// WHY THE UNION CAN JOIN RESOURCES BY (device, asset) rather than through a per-event resource list: an
-// asset's ORIGINAL resource set is a property of the ASSET, not of the membership (capability
-// `photo-sharing` — one `primary`, at most one `live`, no edit artifacts). Two events' manifests for
-// the same asset therefore name the same resources, so a device-global resource table reproduces each
-// event's projection exactly, with no sixth join table.
+// WHY `resources` IS UNDER THE MEMBERSHIP CASCADE. A resource row bears its event (migration 0010,
+// `changes/per-event-storage-layout`): the byte route `/api/v2/events/<eventId>/files/devices/<deviceId>/…`
+// names it, and the event-less form a 0.4 build still uploads to resolves the device's present membership
+// ([presentUploadMembership]). So a resource lives exactly as long as its membership, and the union joins
+// resources within one event: two events holding the same asset each hold its bytes.
 //
 // EVERY TEXT PRIMARY KEY IS EXPLICITLY `NOT NULL`. Only `INTEGER PRIMARY KEY` implies it in SQLite —
 // measured: an explicit `INSERT … VALUES (NULL)` into a bare `TEXT PRIMARY KEY` SUCCEEDED, while the same
@@ -358,9 +350,8 @@ export type ManifestAssetEntry = {
  * later statement is then gated on the stored version now being exactly this one, which is true iff the
  * first statement matched: a refused publish applies none of itself, however many statements (chunks) it
  * spans, and all of it is one transaction (`docs/architecture.md`). Equal is admitted — two publishes with
- * one version carry one snapshot, so re-applying it is harmless. A publish with NO version (a v2 build that
- * predates it) clears the stored version and is ungated: today's behaviour, and the next versioned publish
- * always wins.
+ * one version carry one snapshot, so re-applying it is harmless. Every publish carries a version (the route
+ * refuses one without); the stored one is absent only after a (re)join, so the next publish always wins.
  *
  * ONE STATEMENT PER ASSET AND PER RESOURCE, never one multi-row insert. The deployed store refuses a
  * statement past 32 766 bound parameters — measured: 32 766 accepted, 40 000 refused with "too many SQL
@@ -373,7 +364,7 @@ export function publishStatements(
   deviceId: string,
   assets: ManifestAssetEntry[],
   opts: {
-    version: number | null;
+    version: number;
     /** The device declares its asset set settled (capability `photo-sharing`) → `settled`, else `sharing`. */
     final?: boolean;
     /**
@@ -389,25 +380,16 @@ export function publishStatements(
   },
 ): Statement[] {
   const out: Statement[] = [];
-  // The version gate appended to every statement after the first; empty for a versionless publish.
-  let gate = "";
-  let gateArgs: unknown[] = [];
-  if (opts.version === null) {
-    out.push({
-      sql: `UPDATE memberships SET manifest_version = NULL WHERE event_id = ? AND device_id = ?`,
-      args: [eventId, deviceId],
-    });
-  } else {
-    out.push({
-      sql: `UPDATE memberships SET manifest_version = ?
-            WHERE event_id = ? AND device_id = ?
-              AND (manifest_version IS NULL OR manifest_version <= ?)`,
-      args: [opts.version, eventId, deviceId, opts.version],
-    });
-    gate = ` AND EXISTS (SELECT 1 FROM memberships
-                         WHERE event_id = ? AND device_id = ? AND manifest_version = ?)`;
-    gateArgs = [eventId, deviceId, opts.version];
-  }
+  // The version gate appended to every statement after the first.
+  out.push({
+    sql: `UPDATE memberships SET manifest_version = ?
+          WHERE event_id = ? AND device_id = ?
+            AND (manifest_version IS NULL OR manifest_version <= ?)`,
+    args: [opts.version, eventId, deviceId, opts.version],
+  });
+  let gate = ` AND EXISTS (SELECT 1 FROM memberships
+                       WHERE event_id = ? AND device_id = ? AND manifest_version = ?)`;
+  let gateArgs: unknown[] = [eventId, deviceId, opts.version];
   // A CLOSED event's asset sets are fixed (capability `photo-sharing`). The route refuses a changed set
   // before it gets here; this gate closes the race with a close stamped between that check and this
   // batch, so no statement below can rewrite a closed event's assets.
@@ -1003,16 +985,11 @@ export async function putDeviceRecord(
   at: string,
 ): Promise<WriteResult> {
   const { rowsAffected } = await db.execute(
-    // `AND attest_key IS NOT NULL` keeps the question "has this device ATTESTED", which is what the 401
-    // means — rather than letting it degrade into "does a row exist" during the cutover window, when v2
-    // has carried legacy rows across but their attestation columns are not yet filled. Such a device
-    // keeps the push token it already had (the row survived) and is refused the next write until it
-    // attests, which fills the columns and lets the write through.
     `UPDATE devices SET push_kind       = ?,
                         push_token      = ?,
                         push_env        = ?,
                         push_updated_at = ?
-      WHERE device_id = ? AND attest_key IS NOT NULL`,
+      WHERE device_id = ?`,
     [push?.kind ?? null, push?.token ?? null, push?.env ?? null, at, deviceId],
   );
   return { rowsAffected };

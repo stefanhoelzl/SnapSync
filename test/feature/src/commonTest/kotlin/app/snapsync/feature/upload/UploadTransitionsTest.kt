@@ -1,5 +1,9 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
@@ -285,7 +289,14 @@ class UploadTransitionsTest {
  * device cannot read (locked since boot), which the service reads as unreadable whatever the file holds.
  */
 private fun membership(joined: Boolean, unreadable: Boolean): ConfigService = configService(
-    initial = EventConfig("E", "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
+    initial = EventConfig(
+        "E",
+        "E",
+        captureCutoff("2026-01-01T00:00:00Z"),
+        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    )
         .takeIf { joined },
     files = RecordingFiles().apply { if (unreadable) membershipUnreadable() },
 )

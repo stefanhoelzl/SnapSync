@@ -37,6 +37,8 @@ class AppMenuTest {
             name = "Anna's Birthday",
             minPhotoDate = captureCutoff("2026-07-06T00:00:00Z"),
             maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+            endsAt = eventEnd("2099-12-31T00:00:00Z"),
+            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
         )
         val joined = Layer.Joined(membership = membership, inviteUrl = "$LINK_ORIGIN/join#v=3&d=x", health = SyncHealth.InSync)
         val range = ResolvedRange(

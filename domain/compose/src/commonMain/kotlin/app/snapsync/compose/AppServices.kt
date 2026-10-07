@@ -86,7 +86,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     val fileCipher: FileCipher by lazy { FileCipher(process.crypto, process.files) }
 
     /** The event album's leave-surviving `eventId → album` map (capability `event-album`). */
-    val albumMapStore: AlbumMapService by lazy { AlbumMapService(ports.preferences, ports.secureStore) }
+    val albumMapStore: AlbumMapService by lazy { AlbumMapService(ports.preferences) }
 
     /**
      * The device's mobile-data choice (capability `mobile-data`; decision record

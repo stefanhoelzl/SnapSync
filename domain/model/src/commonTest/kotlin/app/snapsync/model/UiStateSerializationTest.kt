@@ -28,6 +28,8 @@ class UiStateSerializationTest {
         name = "Anna's Birthday",
         minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
         maxPhotoDate = captureCeiling("2026-07-13T14:32:11Z"),
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     private fun roundTrip(state: UiState) {

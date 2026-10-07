@@ -1,5 +1,9 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.deletesAt
+
+import app.snapsync.model.eventEnd
+
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.UnionPage
 import app.snapsync.mock.inMemoryPreferences
@@ -129,6 +133,6 @@ class DownloadPushReceiverTest {
 /** The real membership service, holding [eventId]'s membership — or none. */
 private fun membership(eventId: String?): ConfigService = configService(
     eventId?.let {
-        EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
+        EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"), endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z"))
     },
 )
