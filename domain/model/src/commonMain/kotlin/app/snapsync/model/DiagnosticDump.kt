@@ -46,6 +46,9 @@ const val DIAGNOSTIC_FAILURE_REASON_CHARS: Int = 80
 /** The state-section keys a report's device and screen facts are written under (capability `privacy-security`). */
 object DiagnosticKeys {
     const val NETWORK = "network"
+
+    /** The device's mobile-data choice (capability `mobile-data`): `on`, `off` or `unreadable`. */
+    const val MOBILE_DATA = "mobile_data"
     const val POWER_SAVING = "power_saving"
     const val BACKGROUND_REFRESH = "background_refresh"
     const val STANDBY_BUCKET = "standby_bucket"

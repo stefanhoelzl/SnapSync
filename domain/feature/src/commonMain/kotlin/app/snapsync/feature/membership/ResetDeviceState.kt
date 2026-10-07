@@ -5,6 +5,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.settings.MobileDataSetting
 import co.touchlab.kermit.Logger
 
 /**
@@ -48,6 +49,10 @@ import co.touchlab.kermit.Logger
  * The staged bytes of the rows it does drop are freed by that same step: the prune returns the paths it
  * stranded, so there is no second read at a second instant for a concurrent marker write to slip between.
  *
+ * The device's mobile-data choice returns to its default ("on"): a reset starts the device from nothing, and a choice
+ * left off by an earlier session would hold every photo of the next one for Wi-Fi with no visible cause (decision
+ * record `changes/archive/2026-10-07-mobile-data-per-device`, D5).
+ *
  * The attestation credential is **untouched**. A token minted by another backend is rejected there with
  * a `401`, and `DeviceAttestation.rejected()` already drops it and re-attests — so crossing backends
  * heals it with no operator action, and clearing it here would only cost an extra round trip.
@@ -59,6 +64,7 @@ class ResetDeviceState(
     private val config: ConfigService,
     private val ledger: LedgerService,
     private val downloads: DownloadService,
+    private val mobileData: MobileDataSetting,
     /**
      * The download half of the reset — the non-terminal prune and the release of the bytes it strands,
      * together.
@@ -90,9 +96,10 @@ class ResetDeviceState(
         // Local only — no backend is notified. See the class doc.
         steps.bestEffort("clear config") { config.clear() }
         steps.bestEffort("forget the event key") { keys.forget() }
+        steps.bestEffort("clear mobile-data choice") { mobileData.clear() }
 
         log.i {
-            "reset: ledger + config cleared, non-terminal downloads pruned " +
+            "reset: ledger + config + mobile-data choice cleared, non-terminal downloads pruned " +
                 "(${keptImported ?: "?"} imported row(s) kept)"
         }
     }

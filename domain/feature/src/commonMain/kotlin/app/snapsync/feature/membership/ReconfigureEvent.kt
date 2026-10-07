@@ -17,7 +17,7 @@ import co.touchlab.kermit.Logger
  * (join/provision saves it, leave clears it, [MembershipRefresh] reconciles it against fresh details,
  * this rewrites the participation fields), and it mirrors that reconcile's discipline: read the current
  * config, guard the `eventId` still matches, and save the **whole** object with only the intended fields
- * replaced (`copy(direction, minPhotoDate, saveToAlbum, mobileData)`). It never enters `JoinEvent`, so the
+ * replaced (`copy(direction, minPhotoDate, saveToAlbum)`). It never enters `JoinEvent`, so the
  * `AlreadyJoined` short-circuit and the enrollment path are untouched, and the ledger / enrollment /
  * device identity are all preserved. `direction` is a device-local gate, so a reconfigure reaches nothing
  * on the backend.
@@ -78,7 +78,6 @@ class ReconfigureEvent(
         chosenCutoff: CaptureCutoff,
         chosenUpper: CaptureCeiling,
         saveToAlbum: Boolean,
-        mobileData: Boolean,
     ): ReconfigureOutcome {
         val current = configSource.config.value
         if (current == null || current.eventId != eventId) return ReconfigureOutcome.NotCurrent
@@ -93,9 +92,6 @@ class ReconfigureEvent(
             minPhotoDate = clampToFloor(chosenCutoff, current.startsAt),
             maxPhotoDate = newMax,
             saveToAlbum = saveToAlbum,
-            // Read by each transfer as it is CREATED (capability `mobile-data`): a change governs the transfers that
-            // start after this save, and the ones already handed to the platform keep the rule they started with.
-            mobileData = mobileData,
         )
         // Persist the WHOLE config with only the participation fields changed (one-writer, in place) —
         // THEN advance the manifest version, in the same step so a failed save advances nothing. The order is

@@ -118,20 +118,26 @@ class JvmHostProtocolTest {
         assertTrue("unavailable on this backend" in offline.reason, offline.reason)
     }
 
-    /** The mobile-data choice (capability `mobile-data`) is set at the join and changed in settings over the channel. */
+    /**
+     * The device's mobile-data choice (capability `mobile-data`; decision record `changes/archive/2026-10-07-mobile-data-per-device`) is
+     * flipped from the menu over the channel — before any event, and it carries into the one joined after.
+     */
     @Test
-    fun the_mobile_data_choice_is_driven_at_the_join_and_in_settings() = onHost { client ->
+    fun the_mobile_data_choice_is_the_devices_and_driven_from_the_menu() = onHost { client ->
+        client.user("mobileData", mapOf("on" to "false")).done()
+        client.awaitState { !it.ui.mobileData.on }
+
         client.user(
             "create",
             mapOf("name" to "Data", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"),
         ).done()
         client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
-        client.user("confirmJoin", mapOf("mobileData" to "false")).done()
+        client.user("confirmJoin").done()
         val joined = client.awaitState { it.ready.configResolved }
-        assertEquals(false, (joined.ui.layer as Layer.Joined).membership.mobileData, "joined with mobile data off")
+        assertEquals(false, joined.ui.mobileData.on, "the joined event follows the device's choice")
 
-        client.user("reconfigure", mapOf("mobileData" to "true")).done()
-        client.awaitState { (it.ui.layer as? Layer.Joined)?.membership?.mobileData == true }
+        client.user("mobileData", mapOf("on" to "true")).done()
+        client.awaitState { it.ui.mobileData.on }
     }
 
     /**

@@ -41,7 +41,7 @@ fun StatusContainerHost.onIntent(intent: UiIntent) {
         is UiIntent.ShareOn -> form.onShareOn(intent.on)
         is UiIntent.ReceiveOn -> form.onReceiveOn(intent.on)
         is UiIntent.SaveToAlbum -> form.onSaveToAlbum(intent.on)
-        is UiIntent.MobileData -> form.onMobileData(intent.on)
+        is UiIntent.MobileData -> surfaces.onMobileData(intent.on)
         is UiIntent.RangePreset -> form.onRangePreset(intent.preset)
         is UiIntent.RangeCustom -> form.onRangeCustom(intent.from, intent.until)
         UiIntent.RetryLoad -> onRetryLoad()

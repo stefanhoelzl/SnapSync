@@ -73,7 +73,6 @@ class ReconfigureEventTest {
             chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
             chosenUpper = FIXTURE_CEILING,
             saveToAlbum = false,
-            mobileData = true,
         )
         assertEquals(1, bumps)
         // Bumped BEFORE the save, a cycle could read the new version and then the old config, and publish
@@ -91,7 +90,6 @@ class ReconfigureEventTest {
                 chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
                 chosenUpper = FIXTURE_CEILING,
                 saveToAlbum = false,
-                mobileData = true,
             )
         assertEquals(0, bumps)
     }
@@ -111,7 +109,6 @@ class ReconfigureEventTest {
                 chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
                 chosenUpper = FIXTURE_CEILING,
                 saveToAlbum = true, // would create and fill the album
-                mobileData = true,
             )
         assertEquals(ReconfigureOutcome.SaveFailed, outcome)
         assertEquals(emptyList(), order, "a step ran on settings that were never saved")
@@ -120,10 +117,10 @@ class ReconfigureEventTest {
     @Test
     fun `a landed save answers Saved and a stale surface answers NotCurrent`() = runTest {
         val saved = make(Membership(current()), ConfigWrites())
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false, true)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
         assertEquals(ReconfigureOutcome.Saved, saved)
         val stale = make(Membership(current(eventId = "OTHER")), ConfigWrites())
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false, true)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
         assertEquals(ReconfigureOutcome.NotCurrent, stale)
     }
 
@@ -137,7 +134,6 @@ class ReconfigureEventTest {
                 chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
                 chosenUpper = FIXTURE_CEILING,
                 saveToAlbum = false,
-                mobileData = true,
             )
         assertEquals(0, bumps)
     }
@@ -151,7 +147,6 @@ class ReconfigureEventTest {
             chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
             chosenUpper = FIXTURE_CEILING,
             saveToAlbum = true,
-            mobileData = true,
         )
 
         val saved = store.saved!!
@@ -165,21 +160,6 @@ class ReconfigureEventTest {
     }
 
     @Test
-    fun `saves the mobile-data choice`() = runTest {
-        // Capability `mobile-data`: settings change the choice in place; transfers created after the save read it.
-        val store = ConfigWrites()
-        make(Membership(current()), store).reconfigure(
-            eventId = "E1",
-            direction = Direction.Both,
-            chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
-            chosenUpper = FIXTURE_CEILING,
-            saveToAlbum = false,
-            mobileData = false,
-        )
-        assertEquals(false, store.saved!!.mobileData)
-    }
-
-    @Test
     fun `a chosen cutoff below the floor is clamped up to startsAt`() = runTest {
         val store = ConfigWrites()
         make(Membership(current()), store).reconfigure(
@@ -188,7 +168,6 @@ class ReconfigureEventTest {
             chosenCutoff = captureCutoff("2026-07-01T00:00:00Z"), // before the event start
             chosenUpper = FIXTURE_CEILING,
             saveToAlbum = false,
-            mobileData = true,
         )
         assertEquals(captureCutoff("2026-07-06T12:00:00Z"), store.saved!!.minPhotoDate)
     }
@@ -204,7 +183,6 @@ class ReconfigureEventTest {
             chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
             chosenUpper = FIXTURE_CEILING,
             saveToAlbum = true,
-            mobileData = true,
         )
         assertNull(store.saved)
         assertTrue(order.isEmpty())
@@ -213,7 +191,7 @@ class ReconfigureEventTest {
     @Test
     fun `no config is a no-op`() = runTest {
         val store = ConfigWrites()
-        make(Membership(null), store).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false, true)
+        make(Membership(null), store).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
         assertNull(store.saved)
     }
 
@@ -221,7 +199,7 @@ class ReconfigureEventTest {
     fun `enabling upload arms the producer`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current(direction = Direction.DownloadOnly)), ConfigWrites(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false, true)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("arm" in order)
     }
 
@@ -229,7 +207,7 @@ class ReconfigureEventTest {
     fun `disabling upload still only kicks the arm whose transition stops nothing`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current(direction = Direction.Both)), ConfigWrites(), order)
-            .reconfigure("E1", Direction.DownloadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false, true)
+            .reconfigure("E1", Direction.DownloadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         // The reconfigure transition never deregisters or cancels (UploadTransitionsTest); the cycle's policy is
         // what stops new work, so in-flight uploads drain.
         assertTrue("arm" in order)
@@ -239,7 +217,7 @@ class ReconfigureEventTest {
     fun `enabling download reconciles`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current(direction = Direction.UploadOnly)), ConfigWrites(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false, true)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("reconcile:E1" in order)
         assertTrue("cancelDownloads" !in order)
     }
@@ -248,7 +226,7 @@ class ReconfigureEventTest {
     fun `disabling download cancels in-flight downloads`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current(direction = Direction.Both)), ConfigWrites(), order)
-            .reconfigure("E1", Direction.UploadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false, true)
+            .reconfigure("E1", Direction.UploadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("cancelDownloads" in order)
         assertTrue(order.none { it.startsWith("reconcile") })
     }
@@ -258,7 +236,7 @@ class ReconfigureEventTest {
         val order = mutableListOf<String>()
         val writes = ConfigWrites()
         make(Membership(current(direction = Direction.Both)), writes, order)
-            .reconfigure("E1", Direction.Neither, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false, true)
+            .reconfigure("E1", Direction.Neither, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         // The member stays in the event doing nothing (capability `manage-membership`): no reconcile, in-flight
         // downloads stop, and the upload arm's kick lets the cycle's policy admit nothing while uploads drain.
         assertEquals(Direction.Neither, writes.saved?.direction)
@@ -273,7 +251,7 @@ class ReconfigureEventTest {
     fun `always ensures the album and refreshes status`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current()), ConfigWrites(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true, true)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
         assertTrue("refresh" in order)
         assertTrue("album" in order)
     }
@@ -282,7 +260,7 @@ class ReconfigureEventTest {
     fun `the album gather starts after the album is ensured`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current()), ConfigWrites(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true, true)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
         assertTrue("gather" in order)
         assertTrue(order.indexOf("album") < order.indexOf("gather"), "the gather never ensures the album itself")
     }
@@ -293,7 +271,7 @@ class ReconfigureEventTest {
         make(
             Membership(current(direction = Direction.UploadOnly)), ConfigWrites(), order,
             gatherAlbum = { error("boom") },
-        ).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true, true)
+        ).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
         assertTrue("reconcile:E1" in order, "the download effect after the gather still ran")
     }
 }

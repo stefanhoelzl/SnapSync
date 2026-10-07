@@ -202,6 +202,7 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     pending = MutableStateFlow(null),
     versionRefusal = core.versionRefusal,
     network = core.network.status,
+    mobileData = core.mobileDataChoice,
     store = ports.process.build.store,
     foreground = core.foregroundLife.returns,
     inviteKey = core.inviteKey,

@@ -4,7 +4,6 @@ import app.snapsync.services.crypto.EventKeyMinting
 import kotlinx.coroutines.flow.map
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.model.UnionTrigger
-import app.snapsync.model.transferNetworkOf
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 
 import app.snapsync.services.gallery.PermissionAwareAssetPresence
@@ -348,6 +347,9 @@ class AppCore internal constructor(
      */
     val inviteKey: StateFlow<String?> by lazy { services.eventKeys.inviteKeyOf(membership, scope) }
 
+    /** The device's mobile-data choice (capability `mobile-data`), for the status host's menu and waiting line. */
+    val mobileDataChoice: StateFlow<Boolean> get() = services.mobileData.allowed
+
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant
 
@@ -383,7 +385,7 @@ class AppCore internal constructor(
                 val recorded = downloadController.onResourceStaged(ref, key, path)
                 if (recorded) tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
             },
-            network = { transferNetworkOf(services.config.config.value) },
+            network = services.mobileData::transferNetwork,
             // An encrypted event's bytes are opened before they are staged (the encrypted file format).
             opening = DownloadOpening(services.eventKeys, services.fileCipher, services.config, process.files),
             entryContext = process.entryContext,
@@ -615,6 +617,7 @@ class AppCore internal constructor(
             // Read-only here now: the reset reports how many imported rows SURVIVED, which is the number
             // that makes "imported rows were kept" verifiable rather than assumed.
             downloads = services.downloadStore,
+            mobileData = services.mobileData,
             // The download half is the CONTROLLER's, not the store's: the prune must run under the
             // controller's lock, because a ref is claimed under it and a reset that merely reads a
             // snapshot of what is claimed leaves a window for a claim in between — whose row is then

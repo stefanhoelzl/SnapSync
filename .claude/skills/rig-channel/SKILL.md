@@ -308,6 +308,7 @@ curl -X POST $B/user/leave
 
 # THE REST OF /user (both hosts): rename[?event=]&name=, renameStatusConsumed, confirmSwitch, retryLoad, retryJoin,
 # setRange?[range=wholeEvent|fromNow][&cutoff=…Z][&until=…Z]  (sets the form, commits nothing; cutoff/until = a custom range),
+# mobileData?on=true|false  (the device's choice, as the menu's switch flips it — with or without an event; UiState.mobileData reads it),
 # sendDiagnostics?note=&screen=  (a rig build of the app carries no DSN: it SAVES the report to Documents/diagnostic-report.json, sends nothing)
 ```
 

@@ -109,7 +109,6 @@ class UserCommands(
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
-        mobileData: Boolean,
     ) -> ReconfigureOutcome,
     val rename: (eventId: String, name: String) -> Unit,
     /**
@@ -120,4 +119,6 @@ class UserCommands(
      */
     val resetRename: suspend () -> Unit,
     val sendDiagnostics: suspend (note: String, context: ReportContext) -> ReportOutcome,
+    /** The device's mobile-data choice, from the app menu (capability `mobile-data`): answers whether it was saved. */
+    val setMobileData: suspend (on: Boolean) -> Boolean,
 )

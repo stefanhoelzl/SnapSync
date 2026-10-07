@@ -182,7 +182,6 @@ private fun mirrorActions(
             onShareOn = { on -> form()?.let { setDirection(on, it.receiveOn) } ?: note("no join form open") },
             onReceiveOn = { on -> form()?.let { setDirection(it.shareOn, on) } ?: note("no join form open") },
             onSaveToAlbum = { on -> post("setRange", "saveToAlbum" to on.toString())() },
-            onMobileData = { on -> post("setRange", "mobileData" to on.toString())() },
         ),
         menu = MenuActions(
             onSendDiagnostics = { text, screen -> post("sendDiagnostics", "note" to text, "screen" to screen)() },
@@ -191,6 +190,7 @@ private fun mirrorActions(
             onReportBug = inert("open bug report from the menu"),
             onOpenLink = { link -> note("open ${link.url}: the mirror opens no browser") },
             onReportNoticeDismiss = inert("dismiss report notice"),
+            onMobileData = { on -> post("mobileData", "on" to on.toString())() },
         ),
     )
 }

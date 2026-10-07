@@ -105,7 +105,6 @@ internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> 
         shareOn = membership.direction.includesUpload,
         receiveOn = membership.direction.includesDownload,
         saveToAlbum = membership.saveToAlbum,
-        mobileData = membership.mobileData,
         preset = if (whole) RangeChoice.WHOLE_EVENT else RangeChoice.CUSTOM,
         customFrom = if (whole || fromAtFloor) null else toLocal(membership.minPhotoDate.at),
         customUntil = if (whole || untilAtCeiling) null else toLocal(membership.maxPhotoDate.at),

@@ -120,6 +120,8 @@
     <string name="mobile_data_toggle">Use mobile data for photos</string>
     <string name="mobile_data_on_note">Photos are shared and received on any network.</string>
     <string name="mobile_data_off_note">Photos are shared and received only on Wi-Fi.</string>
+    <!-- The app menu's mobile-data switch, when a flip could not be saved: the switch shows the setting still in effect. -->
+    <string name="mobile_data_not_saved">The change could not be saved. Try again.</string>
     <string name="share_off_note">Nothing of yours leaves this phone.</string>
     <string name="share_zero_note">New photos you take will be shared as you go.</string>
     <!-- What is SUBTRACTED, never a promise of what gets through: the app cannot tell a camera photo apart. -->

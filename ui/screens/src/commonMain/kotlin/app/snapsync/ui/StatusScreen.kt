@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
+import app.snapsync.model.MobileDataState
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.offersMenu
 import app.snapsync.ui.components.AppMenuDivider
@@ -35,6 +36,7 @@ import app.snapsync.ui.components.AppMenuFooter
 import app.snapsync.ui.components.AppMenuHeader
 import app.snapsync.ui.components.AppMenuIcon
 import app.snapsync.ui.components.AppMenuItem
+import app.snapsync.ui.components.AppMenuSwitch
 import app.snapsync.ui.components.AppNotice
 import app.snapsync.ui.components.DialogCopy
 import app.snapsync.ui.components.ScreenHeading
@@ -50,6 +52,10 @@ import app.snapsync.ui.resources.leave_confirm
 import app.snapsync.ui.resources.leave_event
 import app.snapsync.ui.resources.leave_title
 import app.snapsync.ui.resources.menu_privacy
+import app.snapsync.ui.resources.mobile_data_not_saved
+import app.snapsync.ui.resources.mobile_data_off_note
+import app.snapsync.ui.resources.mobile_data_on_note
+import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.menu_version
 import app.snapsync.ui.resources.menu_website
 import app.snapsync.ui.resources.rename_body
@@ -129,7 +135,7 @@ fun StatusScreen(
         AppMenuDrawer(
             open = state.overlays.menuOpen,
             onDismiss = actions.menu.onMenuDismiss,
-            menu = { AppMenu(state.build, actions.menu) },
+            menu = { AppMenu(state.build, state.mobileData, actions.menu) },
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // The app-name nav label is always "SnapSync"; the joined event's name is the prominent heading.
@@ -172,12 +178,22 @@ fun StatusScreen(
 }
 
 /**
- * The app menu's rows (capability `sync-status`): the report set apart at the top, then the site's pages, then which
- * build this is — shown, never a control.
+ * The app menu's rows (capability `sync-status`): the device's mobile-data switch set apart at the top (capability
+ * `mobile-data`), then the report, then the site's pages, then which build this is — shown, never a control.
  */
 @Composable
-private fun ColumnScope.AppMenu(build: BuildLabel, actions: MenuActions) {
+private fun ColumnScope.AppMenu(build: BuildLabel, mobileData: MobileDataState, actions: MenuActions) {
     AppMenuHeader(stringResource(Res.string.app_name), onClose = actions.onMenuDismiss)
+    // Everything else the app does keeps working on any network, which is why the note speaks of photos only.
+    AppMenuSwitch(
+        icon = AppMenuIcon.MOBILE_DATA,
+        label = stringResource(Res.string.mobile_data_toggle),
+        note = stringResource(if (mobileData.on) Res.string.mobile_data_on_note else Res.string.mobile_data_off_note),
+        checked = mobileData.on,
+        onCheckedChange = actions.onMobileData,
+        error = if (mobileData.notSaved) stringResource(Res.string.mobile_data_not_saved) else null,
+    )
+    AppMenuDivider()
     AppMenuItem(
         icon = AppMenuIcon.REPORT,
         label = stringResource(Res.string.report_problem),

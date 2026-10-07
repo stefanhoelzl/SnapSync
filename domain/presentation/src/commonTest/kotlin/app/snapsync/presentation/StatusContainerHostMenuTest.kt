@@ -66,6 +66,9 @@ class StatusContainerHostMenuTest {
         val links = mutableListOf<String>()
         val reports = mutableListOf<String>()
         var outcome: suspend () -> ReportOutcome = { ReportOutcome.SENT }
+        /** The device's mobile-data choice, as the setting service holds it; [saves] plays a write that lands or not. */
+        val mobileData = MutableStateFlow(true)
+        var saves = true
     }
 
     private fun onHost(world: World = World(), body: suspend (StatusContainerHost, World) -> Unit) = runTest {
@@ -73,11 +76,15 @@ class StatusContainerHostMenuTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
                 val host = StatusContainerHost(
-                    StatusSources(MenuTestSync(), MutableStateFlow(GalleryAccess.GRANTED), world.config, creation = world.creation),
+                    StatusSources(
+                        MenuTestSync(), MutableStateFlow(GalleryAccess.GRANTED), world.config,
+                        creation = world.creation, mobileData = world.mobileData,
+                    ),
                     scope,
-                    commands = testCommands(
+                    commands = testMenuCommands(
                         openLink = { world.links += it },
                         sendDiagnostics = { note, _ -> world.reports += note; world.outcome() },
+                        setMobileData = { on -> world.saves.also { if (it) world.mobileData.value = on } },
                     ),
                     cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
                     queries = noQueries,
@@ -111,6 +118,40 @@ class StatusContainerHostMenuTest {
             host.onIntent(UiIntent.ReportBugDismiss)
             host.stateWhere("nothing open") { it.overlays == Overlays() }
         }
+
+    // ── the mobile-data switch (capability `mobile-data`; decision record `changes/archive/2026-10-07-mobile-data-per-device`, D3) ──────
+
+    @Test
+    fun `the menu's mobile-data switch applies as it is flipped and the menu stays open`() = onHost { host, world ->
+        host.onIntent(UiIntent.MenuOpen)
+        host.stateWhere("menu open, mobile data on") { it.overlays.menuOpen && it.mobileData.on }
+        host.onIntent(UiIntent.MobileData(false))
+        host.stateWhere("switched off, menu still open") { it.overlays.menuOpen && !it.mobileData.on && !it.mobileData.notSaved }
+        assertFalse(world.mobileData.value, "the device's choice was saved")
+    }
+
+    @Test
+    fun `a flip that cannot be saved leaves the switch and says so until the menu closes`() {
+        val world = World().apply { saves = false }
+        onHost(world) { host, _ ->
+            host.onIntent(UiIntent.MenuOpen)
+            host.onIntent(UiIntent.MobileData(false))
+            host.stateWhere("not saved, switch still on") { it.overlays.menuOpen && it.mobileData.on && it.mobileData.notSaved }
+            host.onIntent(UiIntent.MenuDismiss)
+            host.stateWhere("closed, the word gone") { !it.overlays.menuOpen && !it.mobileData.notSaved }
+        }
+    }
+
+    @Test
+    fun `the mobile-data choice is shown with no event`() {
+        val world = World().apply { config.value = null; mobileData.value = false }
+        onHost(world) { host, _ ->
+            host.onIntent(UiIntent.MenuOpen)
+            host.stateWhere("the create layer's menu shows it off") {
+                it.layer is Layer.CreateEvent && it.overlays.menuOpen && !it.mobileData.on
+            }
+        }
+    }
 
     @Test
     fun `a link closes the menu and opens the page outside the app`() = onHost { host, world ->

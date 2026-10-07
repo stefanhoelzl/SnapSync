@@ -24,6 +24,7 @@ internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnos
     config = services.config,
     permission = galleryAccess,
     network = NetworkReadings(ports.network),
+    mobileData = services.mobileData,
     conditions = DeviceConditionsReadings(ports.deviceConditions),
     appFacts = {
         AppFacts(

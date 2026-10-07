@@ -24,7 +24,20 @@ data class UiState(
     val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
     /** Which build this is — the app menu's footer (capability `sync-status`). A constant of the build. */
     val build: BuildLabel = BuildLabel.UNKNOWN,
+    /**
+     * The device's mobile-data choice as the app menu shows it (capability `mobile-data`) — a fact of the device, not
+     * of a layer, because the menu offers it with and without an event.
+     */
+    val mobileData: MobileDataState = MobileDataState(),
 )
+
+/**
+ * The app menu's mobile-data switch (capability `mobile-data`; decision record `changes/archive/2026-10-07-mobile-data-per-device`, D3):
+ * [on] is the choice in effect, so a flip that could not be saved leaves the switch where it was, and [notSaved] says
+ * so until the next flip or the menu closes.
+ */
+@Serializable
+data class MobileDataState(val on: Boolean = true, val notSaved: Boolean = false)
 
 /**
  * The build's version and build number as the app menu shows them (capability `sync-status`). Off-device

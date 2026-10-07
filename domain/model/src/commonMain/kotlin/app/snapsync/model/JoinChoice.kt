@@ -18,8 +18,6 @@ data class JoinChoice(
     val maxPhotoDate: CaptureCeiling,
     val direction: Direction,
     val saveToAlbum: Boolean,
-    /** Whether the membership's photos may use mobile data (capability `mobile-data`). */
-    val mobileData: Boolean = true,
     /** The key the invite link carried (base64url), `null` when it carried none. Never persisted in the config. */
     val linkKey: String? = null,
     /** The loaded event's key id, `null` for a plain event — what [linkKey] must name. */

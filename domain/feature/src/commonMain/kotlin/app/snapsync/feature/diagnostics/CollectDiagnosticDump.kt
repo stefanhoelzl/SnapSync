@@ -20,6 +20,7 @@ import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.network.NetworkReadings
+import app.snapsync.services.settings.MobileDataSetting
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.async
@@ -57,6 +58,8 @@ class CollectDiagnosticDump(
     private val permission: GalleryAccessState,
     /** The device's network, read fresh for the report — not the screen's notice, which lags by its grace period. */
     private val network: NetworkReadings,
+    /** The device's mobile-data choice — a device fact, so a report without an event carries it too. */
+    private val mobileData: MobileDataSetting,
     /** The device's power, battery, thermal state and background allowance. */
     private val conditions: DeviceConditionsReadings,
     /** The facts only the composition holds — the device id, the zone, the footprint, the selection's size. */
@@ -146,7 +149,6 @@ class CollectDiagnosticDump(
                 put("shares_from", config.minPhotoDate.at.iso)
                 put("shares_until", config.maxPhotoDate.at.iso)
                 put("save_to_album", config.saveToAlbum.toString())
-                put("mobile_data", config.mobileData.toString())
             }
         }
 
@@ -182,6 +184,7 @@ class CollectDiagnosticDump(
         }
         buildMap {
             put(DiagnosticKeys.NETWORK, access.await()) { it.label }
+            put(DiagnosticKeys.MOBILE_DATA, mobileData.describe())
             putConditions(
                 when (val read = reading.await()) {
                     is Fact.Known -> read.value

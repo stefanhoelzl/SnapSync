@@ -80,6 +80,12 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
         dispatch(UiIntent.RenameEvent(event, requireNotNull(params["name"]) { "name is required" }))
     },
     "renameStatusConsumed" to RigUserCommand { dispatch(UiIntent.RenameStatusConsumed) },
+    // The device's mobile-data choice, as the app menu's switch flips it (capability `mobile-data`): it applies as it
+    // is flipped, with or without an event. `UiState.mobileData` reads it back.
+    "mobileData" to RigUserCommand { params ->
+        val on = requireNotNull(params["on"]) { "on=true|false is required" }.toBooleanStrict()
+        dispatch(UiIntent.MobileData(on))
+    },
     "confirmSwitch" to RigUserCommand { dispatch(UiIntent.ConfirmSwitch) },
     "retryLoad" to RigUserCommand { dispatch(UiIntent.RetryLoad) },
     "retryJoin" to RigUserCommand { dispatch(UiIntent.RetryJoin) },
@@ -108,7 +114,6 @@ private fun rangeChoices(params: Map<String, String>): List<UiIntent> = buildLis
         add(UiIntent.ReceiveOn(d.includesDownload))
     }
     params["saveToAlbum"]?.let { add(UiIntent.SaveToAlbum(it.toBoolean())) }
-    params["mobileData"]?.let { add(UiIntent.MobileData(it.toBoolean())) }
     // A custom range: either bound may be named alone, and the one left out keeps what was already picked
     // (or the event's own bound, if nothing was).
     val from = params["cutoff"]?.let(::toLocalWallClock)

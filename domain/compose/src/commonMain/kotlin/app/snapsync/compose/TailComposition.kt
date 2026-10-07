@@ -10,7 +10,6 @@ import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.transferNetworkOf
 import app.snapsync.ports.EntryContext
 import app.snapsync.services.wake.Heartbeat
 import app.snapsync.services.wake.OsCompletions
@@ -63,7 +62,7 @@ class AppTail internal constructor(
     /** The heartbeat the runner re-arms and a disarm cancels — the process's, over the `Wake` port. */
     private val heartbeat = Heartbeat(
         services.ports.wake,
-        transferNetwork = { transferNetworkOf(services.config.config.value) },
+        transferNetwork = services.mobileData::transferNetwork,
         log = services.log,
     )
 

@@ -23,6 +23,8 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.mock.DeviceConditionsMock
 import app.snapsync.mock.inMemoryNetworkMonitor
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DeviceConditionsReading
@@ -79,6 +81,7 @@ class CollectDiagnosticDumpTest {
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
         conditions: DeviceConditionsMock = DeviceConditionsMock(),
         appFacts: () -> AppFacts = { APP_FACTS },
+        mobileData: MobileDataSetting = MobileDataSetting(inMemoryPreferences()),
     ) = CollectDiagnosticDump(
         environment = environment,
         // The REAL log tail over the two log files: the app's in its private area, the extension's in the shared one.
@@ -93,6 +96,7 @@ class CollectDiagnosticDumpTest {
         config = configService(config),
         permission = galleryAccess(MutableStateFlow(permission)),
         network = NetworkReadings(inMemoryNetworkMonitor(MutableStateFlow(network))),
+        mobileData = mobileData,
         conditions = DeviceConditionsReadings(conditions.port()),
         appFacts = appFacts,
         uploadFacts = { mapOf("extension_registrable" to "false", "app_admission" to "Admit") },
@@ -173,6 +177,17 @@ class CollectDiagnosticDumpTest {
         assertEquals("true", dump.state["joined"])
         assertEquals("5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e", dump.state["event_id"])
         assertEquals("Both", dump.state["direction"])
+    }
+
+    @Test
+    fun `the mobile-data choice is a device fact reported with no event joined`() = runTest {
+        // Decision record `changes/archive/2026-10-07-mobile-data-per-device`, D5.
+        val setting = MobileDataSetting(inMemoryPreferences())
+        setting.set(false)
+        val dump = collector(config = null, mobileData = setting).collect(NOTE, SCREEN)
+
+        assertEquals("false", dump.state["joined"])
+        assertEquals("off", dump.state[DiagnosticKeys.MOBILE_DATA])
     }
 
     @Test

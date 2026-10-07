@@ -26,6 +26,7 @@ private val DOCUMENTED_INVENTORY: Set<String> = setOf(
     "rejoin.joinedEventId",
     "app.snapsync.album.map",
     "app.snapsync.album.filled",
+    "app.snapsync.settings.mobileData",
     "ledger.db",
     "downloads.db",
     "eventconfig.json",
@@ -132,6 +133,9 @@ class RuntimeIdentityTest {
         // The folder album's filled marks (`android-event-album` D4): a drifted key reads every album unfilled, so an
         // emptied Android album would silently keep being filled instead of reading as deleted.
         "app.snapsync.album.filled",
+        // The device's mobile-data choice (`mobile-data-per-device` D1): a drifted key reads every device as "on", so
+        // a member who kept photos off mobile data would silently have them sent over it.
+        "app.snapsync.settings.mobileData",
         "ledger.db",
         "downloads.db",
         "eventconfig.json",

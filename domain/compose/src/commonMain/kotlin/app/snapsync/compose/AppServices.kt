@@ -2,6 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
+import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.wake.EventChecks
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.AttestStore
@@ -86,6 +87,13 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
 
     /** The event album's leave-surviving `eventId → album` map (capability `event-album`). */
     val albumMapStore: AlbumMapService by lazy { AlbumMapService(ports.preferences, ports.secureStore) }
+
+    /**
+     * The device's mobile-data choice (capability `mobile-data`; decision record
+     * `changes/archive/2026-10-07-mobile-data-per-device`, D1) — over the shared preferences, which the upload
+     * extension reads too.
+     */
+    val mobileData: MobileDataSetting by lazy { MobileDataSetting(ports.preferences) }
 
     /**
      * When a background wake last asked the event for its photos and its state (capability `receiving-photos`;
