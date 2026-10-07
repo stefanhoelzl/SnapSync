@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlinx.coroutines.test.runTest
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
@@ -191,26 +192,13 @@ class EventConfigTest {
     }
 
     @Test
-    fun `a legacy config JSON without mobileData decodes to photos on any network`() {
-        // A config written before the choice existed (capability `mobile-data`) carries no `mobileData` key; it must
-        // keep transferring on any network, as it did when it was written.
-        val legacy =
-            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z"}"""
-        val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
-        assertEquals(true, decoded.mobileData)
-        assertEquals(TransferNetwork.ANY, decoded.transferNetwork)
-    }
-
-    @Test
-    fun `mobile data off persists and asks for an unrestricted network`() {
-        val config = EventConfig(
-            eventId = "11111111-1111-4111-8111-111111111111",
-            name = "Birthday",
-            minPhotoDate = cutoff, maxPhotoDate = FIXTURE_CEILING,
-            mobileData = false,
-        )
-        assertEquals(config, roundTrip(config))
-        assertEquals(TransferNetwork.UNRESTRICTED_ONLY, roundTrip(config).transferNetwork)
+    fun `a config JSON still carrying the retired mobileData key decodes`() {
+        // Internal builds wrote the per-membership choice (capability `mobile-data`) before it became the device's
+        // (`changes/archive/2026-10-07-mobile-data-per-device`); their configs must keep decoding, the stale key ignored.
+        val config = EventConfig(eventId = "e", name = "Birthday", minPhotoDate = cutoff, maxPhotoDate = FIXTURE_CEILING)
+        val stale = encodeConfigFile(config).replace("\"name\":\"Birthday\"", "\"name\":\"Birthday\",\"mobileData\":false")
+        assertTrue("mobileData" in stale, "the fixture carries the retired key")
+        assertEquals(ConfigFileDecode.Valid(config), decodeConfigFile(stale))
     }
 
     @Test

@@ -78,7 +78,6 @@ private data class Reconfigure(
     val from: CaptureCutoff,
     val until: CaptureCeiling,
     val saveToAlbum: Boolean,
-    val mobileData: Boolean = true,
 )
 
 private class Spy {
@@ -123,12 +122,12 @@ class StatusContainerHostSurfacesTest {
         StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config),
         scope,
         commands = testCommands(
-            reconfigure = { id, direction, from, until, album, mobileData ->
-                spy.reconfigures += Reconfigure(id, direction, from, until, album, mobileData)
+            reconfigure = { id, direction, from, until, album ->
+                spy.reconfigures += Reconfigure(id, direction, from, until, album)
                 // A save that lands rewrites the membership, as the use-case does (its clamp is not under test here).
                 if (spy.reconfigureOutcome == ReconfigureOutcome.Saved && spy.configFollows) {
                     config.value = config.value?.copy(
-                        direction = direction, minPhotoDate = from, maxPhotoDate = until, saveToAlbum = album, mobileData = mobileData,
+                        direction = direction, minPhotoDate = from, maxPhotoDate = until, saveToAlbum = album,
                     )
                 }
                 spy.reconfigureOutcome
@@ -525,7 +524,7 @@ class StatusContainerHostSurfacesTest {
             val kept = host.stateWhere("the question gone") { it.settings()?.askingToStopSharing == false }
             assertEquals(true, kept.settings()?.form?.shareOn)
             // A later change proves the dropped one never ran: it is the only reconfigure.
-            host.form.onMobileData(false)
+            host.form.onSaveToAlbum(!CONFIG.saveToAlbum)
             awaitReconfigures(spy, 1)
             assertEquals(Direction.Both, spy.reconfigures.single().direction)
         }
@@ -605,19 +604,6 @@ class StatusContainerHostSurfacesTest {
             assertEquals(true, spy.reconfigures.single().saveToAlbum)
             val after = host.stateWhere("the album on") { it.settings()?.form?.saveToAlbum == true }
             assertEquals(AlbumKind.FOLDER, after.settings()?.form?.albumKind, "the reseeded controls keep the album kind")
-        }
-    }
-
-    @Test
-    fun `settings open with the stored mobile-data choice and apply the one turned on`() {
-        // Capability `mobile-data`: a membership joined with mobile data off shows it off in settings.
-        val spy = Spy()
-        return onHost(spy, config = MutableStateFlow(CONFIG.copy(mobileData = false))) { host ->
-            host.surfaces.onOpenReconfigure()
-            assertEquals(false, host.reconfigureForm().mobileData, "the stored choice is shown as it was saved")
-            host.form.onMobileData(true)
-            awaitReconfigures(spy, 1)
-            assertEquals(true, spy.reconfigures.single().mobileData)
         }
     }
 

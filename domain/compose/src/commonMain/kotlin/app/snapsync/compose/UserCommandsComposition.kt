@@ -118,15 +118,20 @@ internal fun AppCore.userCommandsFor(): UserCommands = UserCommands(
     // the selection-change seam.
     choosePhotos = { detachedOnCoreLane("tap.choosePhotos") { ports.gallery.widenSelection() } },
     // In-place membership reconfigure (capability `manage-membership`): edit direction/
-    // cutoff/album/mobile data without leaving. Distinct from `openSettings` (the iOS system settings page).
-    reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum, mobileData ->
+    // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
+    reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
         awaitingOnCoreLane(
             "tap.reconfigure",
             params = "eventId=$eventId",
             result = { outcome: ReconfigureOutcome -> "$outcome" },
         ) {
-            reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum, mobileData)
+            reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
         }
+    },
+    // The device's mobile-data choice from the app menu (capability `mobile-data`): one shared preference, read by
+    // each transfer as it is created, so the change governs only what starts after it.
+    setMobileData = { on ->
+        awaitingOnCoreLane("tap.setMobileData", params = "on=$on") { services.mobileData.set(on) }
     },
     // Rename the joined event (capability `manage-membership`): unlike `reconfigure`, which edits only
     // this device's settings, this rewrites the SHARED event — every member picks the new name up

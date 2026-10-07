@@ -24,6 +24,7 @@ import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventDetails
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
+import app.snapsync.model.MobileDataState
 import app.snapsync.model.Overlays
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.UiState
@@ -45,6 +46,10 @@ import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.resources.menu_privacy
 import app.snapsync.ui.resources.menu_version
 import app.snapsync.ui.resources.menu_website
+import app.snapsync.ui.resources.mobile_data_not_saved
+import app.snapsync.ui.resources.mobile_data_off_note
+import app.snapsync.ui.resources.mobile_data_on_note
+import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.report_problem
 import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.report_saved
@@ -114,6 +119,51 @@ class AppMenuScreenTest {
             val footer = onNodeWithText(str(Res.string.menu_version, "0.12", "2140")).fetchSemanticsNode()
             assertFalse(hasClickAction().matches(footer), "the build line is shown, never a control")
         }
+
+    // ---- the device's mobile-data switch (capability `mobile-data`) ---------------------------------------
+
+    @Test
+    fun `the open menu leads with the mobile-data switch and says what it means and a tap asks to flip it`() =
+        runComposeUiTest {
+            val flips = mutableListOf<Boolean>()
+            setContent {
+                // No event: the switch is the device's, offered before any join.
+                TestStatusScreen(
+                    UiState(Layer.CreateEvent(), Overlays(menuOpen = true)),
+                    cutoff,
+                    testActions(menu = testMenuActions(onMobileData = { flips += it })),
+                )
+            }
+            waitForIdle()
+            onNodeWithText(str(Res.string.mobile_data_on_note)).assertExists()
+            val switchTop = onNodeWithText(str(Res.string.mobile_data_toggle)).fetchSemanticsNode().positionInRoot.y
+            val reportTop = onNodeWithText(str(Res.string.report_problem)).fetchSemanticsNode().positionInRoot.y
+            assertTrue(switchTop < reportTop, "the switch comes first, ahead of the report")
+            onNodeWithText(str(Res.string.mobile_data_toggle)).performClick()
+            assertEquals(listOf(false), flips, "a tap from on asks to keep photos off mobile data")
+        }
+
+    @Test
+    fun `with mobile data off the menu says photos travel only on Wi-Fi`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(UiState(Layer.CreateEvent(), Overlays(menuOpen = true), mobileData = MobileDataState(on = false)), cutoff)
+        }
+        waitForIdle()
+        onNodeWithText(str(Res.string.mobile_data_off_note)).assertExists()
+    }
+
+    @Test
+    fun `a flip that could not be saved is said in the menu`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(
+                UiState(Layer.CreateEvent(), Overlays(menuOpen = true), mobileData = MobileDataState(on = true, notSaved = true)),
+                cutoff,
+            )
+        }
+        waitForIdle()
+        onNodeWithText(str(Res.string.mobile_data_not_saved)).assertExists()
+        onNodeWithText(str(Res.string.mobile_data_on_note)).assertDoesNotExist()
+    }
 
     @Test
     fun `tapping well beside the open menu on a phone-sized screen asks to close it`() = runComposeUiTest {

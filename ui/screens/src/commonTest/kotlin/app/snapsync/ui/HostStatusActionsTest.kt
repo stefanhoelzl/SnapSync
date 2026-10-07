@@ -205,10 +205,11 @@ class HostStatusActionsTest {
                 openSettings = { record("openSettings") },
                 openLink = { record("openLink:$it") },
                 choosePhotos = { record("choosePhotos") },
-                reconfigure = { eventId, direction, _, _, _, _ -> record("reconfigure:$eventId:$direction"); ReconfigureOutcome.Saved },
+                reconfigure = { eventId, direction, _, _, _ -> record("reconfigure:$eventId:$direction"); ReconfigureOutcome.Saved },
                 rename = { eventId, name -> record("rename:$eventId:$name") },
                 resetRename = { record("resetRename") },
                 sendDiagnostics = { note, _ -> record("sendDiagnostics:$note"); app.snapsync.model.ReportOutcome.SENT },
+                setMobileData = { on -> record("setMobileData:$on"); true },
             ),
             queries = UserQueries(loadJoinDetails = { id, _ -> details(id) }, shareableCount = { _, _ -> null }),
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
@@ -447,9 +448,6 @@ class HostStatusActionsTest {
         // The album opt-in defaults ON, so the tap turns it off.
         onNodeWithText(str(Res.string.album_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.saveToAlbum == false }
-        // The mobile-data choice (capability `mobile-data`) defaults ON too.
-        onNodeWithText(str(Res.string.mobile_data_toggle)).performScrollTo().performClick()
-        awaitState(rig) { it.joining?.form?.mobileData == false }
         // Share off with receive on: a direction only the two switches together can produce.
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.shareOn == false }
@@ -553,6 +551,17 @@ class HostStatusActionsTest {
         awaitState(rig) { it.overlays.menuOpen }
         onNodeWithText(str(Res.string.menu_website)).performClick()
         awaitFired(rig, "openLink:${app.snapsync.model.AppLink.WEBSITE.url}")
+    }
+
+    @Test
+    fun `the menu's mobile-data switch reaches the command and leaves the menu open`() = rigTest(rig()) { rig ->
+        // Capability `mobile-data`, with no event: the choice is the device's.
+        awaitState(rig) { it.layer is Layer.CreateEvent }
+        onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
+        awaitState(rig) { it.overlays.menuOpen }
+        onNodeWithText(str(Res.string.mobile_data_toggle)).performClick()
+        awaitFired(rig, "setMobileData:false")
+        awaitState(rig) { it.overlays.menuOpen }
     }
 
     // ---- the hidden bug report (capability `privacy-security`) ----

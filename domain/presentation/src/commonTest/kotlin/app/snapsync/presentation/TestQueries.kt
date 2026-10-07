@@ -32,8 +32,7 @@ internal fun testCommands(
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
-        mobileData: Boolean,
-    ) -> app.snapsync.model.ReconfigureOutcome = { _, _, _, _, _, _ -> app.snapsync.model.ReconfigureOutcome.Saved },
+    ) -> app.snapsync.model.ReconfigureOutcome = { _, _, _, _, _ -> app.snapsync.model.ReconfigureOutcome.Saved },
     rename: (eventId: String, name: String) -> Unit = { _, _ -> },
     resetRename: suspend () -> Unit = {},
     sendDiagnostics: suspend (note: String, context: ReportContext) -> app.snapsync.model.ReportOutcome = { _, _ -> app.snapsync.model.ReportOutcome.SENT },
@@ -41,7 +40,21 @@ internal fun testCommands(
     leave, create, commitJoin, share, requestAccess, openSettings, openLink,
     choosePhotos = {}, // no presentation test is about the picker; its binding is the shells' and compose/'s
     reconfigure = reconfigure, rename = rename, resetRename = resetRename, sendDiagnostics = sendDiagnostics,
+    // The menu's mobile-data switch saves; a test about it builds its bundle with [testMenuCommands].
+    setMobileData = { true },
 )
+
+/** The command bundle a menu test drives: its links, its report and its mobile-data switch; the rest inert. */
+internal fun testMenuCommands(
+    openLink: (url: String) -> Unit,
+    sendDiagnostics: suspend (note: String, context: ReportContext) -> app.snapsync.model.ReportOutcome,
+    setMobileData: suspend (on: Boolean) -> Boolean,
+) = testCommands(openLink = openLink, sendDiagnostics = sendDiagnostics).let {
+    app.snapsync.model.UserCommands(
+        it.leave, it.create, it.commitJoin, it.share, it.requestAccess, it.openSettings, it.openLink, it.choosePhotos,
+        it.reconfigure, it.rename, it.resetRename, it.sendDiagnostics, setMobileData,
+    )
+}
 
 /** Diagnostics that go nowhere unless a test is about them. */
 internal fun testDiagnostics(log: (String) -> Unit = {}, onIntentError: (Throwable) -> Unit = {}) =

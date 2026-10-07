@@ -37,7 +37,8 @@ internal fun testMenuActions(
     onReportBug: () -> Unit = {},
     onOpenLink: (app.snapsync.model.AppLink) -> Unit = {},
     onReportNoticeDismiss: () -> Unit = {},
-) = MenuActions(onSendDiagnostics, onMenuOpen, onMenuDismiss, onReportBug, onOpenLink, onReportNoticeDismiss)
+    onMobileData: (Boolean) -> Unit = {},
+) = MenuActions(onSendDiagnostics, onMenuOpen, onMenuDismiss, onReportBug, onOpenLink, onReportNoticeDismiss, onMobileData)
 
 internal fun testJoinGateActions(
     onConfirmJoin: () -> Unit = {},
@@ -90,8 +91,7 @@ internal fun testParticipationActions(
     onShareOn: (Boolean) -> Unit = {},
     onReceiveOn: (Boolean) -> Unit = {},
     onSaveToAlbum: (Boolean) -> Unit = {},
-    onMobileData: (Boolean) -> Unit = {},
-) = ParticipationActions(choices, onShareOn, onReceiveOn, onSaveToAlbum, onMobileData)
+) = ParticipationActions(choices, onShareOn, onReceiveOn, onSaveToAlbum)
 
 internal fun testRangeChoiceActions(
     onPreset: (app.snapsync.model.RangeChoice) -> Unit = {},

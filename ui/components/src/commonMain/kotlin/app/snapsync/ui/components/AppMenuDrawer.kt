@@ -5,7 +5,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
@@ -14,6 +18,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.SignalCellularAlt
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,6 +37,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -139,6 +145,7 @@ enum class AppMenuIcon(internal val vector: ImageVector) {
     REPORT(Icons.Outlined.Feedback),
     WEBSITE(Icons.Outlined.Language),
     PRIVACY(Icons.Outlined.PrivacyTip),
+    MOBILE_DATA(Icons.Outlined.SignalCellularAlt),
 }
 
 /** One row of the menu: an [icon], a [label], and what tapping it does. */
@@ -155,6 +162,45 @@ fun AppMenuItem(icon: AppMenuIcon, label: String, onClick: () -> Unit) {
             unselectedTextColor = scheme.onSurface,
         ),
     )
+}
+
+/**
+ * A menu row that is a setting: an [icon], a [label] and the switch as ONE toggleable row ([Role.Switch]), the same
+ * switch the cards draw, with [note] — what the setting currently means — beneath the label, and [error] in place of
+ * it when the last change could not be saved. The row lines up with [AppMenuItem]'s icon and label.
+ */
+@Composable
+fun AppMenuSwitch(
+    icon: AppMenuIcon,
+    label: String,
+    note: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    error: String? = null,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .heightIn(min = 56.dp)
+            .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(imageVector = icon.vector, contentDescription = null, tint = scheme.onSurfaceVariant)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = label, style = MaterialTheme.typography.bodyLarge, color = scheme.onSurface)
+            Text(
+                text = error ?: note,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (error != null) scheme.error else scheme.onSurfaceVariant,
+            )
+        }
+        // The row owns the gesture and the semantics; the switch is drawing only.
+        SectionSwitch(checked = checked)
+    }
 }
 
 /** Sets the rows above it apart from the rows below. */

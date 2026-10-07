@@ -70,11 +70,10 @@ that finds the event missing SHALL NOT end it.
 - **WHEN** a rename fails because the server no longer finds the event
 - **THEN** the member stays joined, with the generic failure message and nothing torn down
 
-### Requirement: Settings change as they are made, without leaving
+### Requirement: Event settings change as they are made, without leaving
 Until the event closes (capability `event-lifetime`), the joined screen SHALL offer a settings action
-that opens the same choices as the join screen — share and receive switches, the capture range, the
-album, and whether photos may use mobile data (capability `mobile-data`) — showing the membership's current
-settings, over the joined screen, which stays partly visible above them. A
+that opens the same choices as the join screen — share and receive switches, the capture range and the
+album — showing the membership's current settings, over the joined screen, which stays partly visible above them. A
 range equal to the event's whole window SHALL show as the whole event, and any other as a custom range.
 Each change SHALL apply as it is made — a switch when it is flipped, the range when a preset is chosen or a
 picked range is confirmed — with no Save or Cancel; changes made one after another SHALL apply in order, the
@@ -125,9 +124,9 @@ close.
 - **WHEN** a member opens the joined screen of an event that has closed
 - **THEN** no settings action is offered, and what they share and receive stays as it was
 
-#### Scenario: Settings show the mobile-data choice
-- **WHEN** a member who joined with mobile data off opens settings
-- **THEN** the mobile-data choice is shown off
+#### Scenario: Settings hold no mobile-data choice
+- **WHEN** a member opens settings
+- **THEN** no mobile-data choice is offered there; it is the device's, in the app menu (capability `mobile-data`)
 
 ### Requirement: Settings explain what a change does
 The settings SHALL show the live count of photos that will be shared (as on the join screen,
@@ -163,7 +162,7 @@ photos already received.
 - **WHEN** an Android member turns the album on in settings
 - **THEN** the settings say the album also collects the photos already received, and that their own photos stay in the camera folder
 
-### Requirement: Saved settings take effect immediately
+### Requirement: Settings changes take effect immediately
 A settings change SHALL take effect as soon as it applies, and newly enabled directions SHALL start at once
 rather than waiting for iOS to schedule work:
 turning sharing on SHALL start sharing, and turning receiving on SHALL start bringing in the event's
@@ -172,9 +171,7 @@ shared. Narrowing the range or turning sharing off SHALL stop listing the exclud
 members who already received them SHALL keep them, and a later widening SHALL bring them back to the
 event. Turning sharing off SHALL let uploads already under way finish and count as shared; turning
 receiving off SHALL stop downloads under way at once. Photos the member already received SHALL be
-unaffected by any change. Changing whether photos may use mobile data SHALL govern every transfer that
-starts after the change, while a transfer already under way keeps the rule it started with (capability
-`mobile-data`).
+unaffected by any change.
 
 #### Scenario: Turning sharing on starts right away
 - **WHEN** a receive-only member turns sharing on, with photo access granted
@@ -203,10 +200,6 @@ starts after the change, while a transfer already under way keeps the rule it st
 #### Scenario: Turning receiving off stops downloads
 - **WHEN** a member turns receiving off while the event's photos are downloading
 - **THEN** those downloads stop and no further photos arrive
-
-#### Scenario: Turning mobile data off governs what starts next
-- **WHEN** a member on mobile data turns the mobile-data choice off
-- **THEN** no photo transfer starts over mobile data from then on, and transfers already under way are not cancelled
 
 ### Requirement: A settings change that cannot be saved says so and applies nothing
 If a settings change cannot be saved, the changed control SHALL return to the setting still in effect, the

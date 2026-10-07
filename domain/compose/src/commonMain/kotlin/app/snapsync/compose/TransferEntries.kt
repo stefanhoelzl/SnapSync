@@ -1,6 +1,5 @@
 package app.snapsync.compose
 
-import app.snapsync.model.transferNetworkOf
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.gallery.GalleryDiscovery
@@ -37,7 +36,7 @@ class AppEvents internal constructor(private val core: AppCore) {
             resources = GalleryDiscovery(core.ports.gallery),
             gallery = core.ports.gallery,
             files = core.process.files,
-            network = { transferNetworkOf(core.services.config.config.value) },
+            network = core.services.mobileData::transferNetwork,
             log = core.services.log,
             entryContext = core.process.entryContext,
         )

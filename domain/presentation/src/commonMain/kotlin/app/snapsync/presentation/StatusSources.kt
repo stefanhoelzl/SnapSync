@@ -90,6 +90,11 @@ class StatusSources(
      */
     val network: NetworkStatusSource = AlwaysOnline,
     /**
+     * The device's mobile-data choice (capability `mobile-data`): what the menu's switch shows, and whether work on a
+     * restricted network reads as waiting for Wi-Fi. Inert default: photos may use any network.
+     */
+    val mobileData: StateFlow<Boolean> = MutableStateFlow(true),
+    /**
      * This build's store page, or `null` when it carries none. A build constant supplied by the
      * composition root, not a source — it is here because the ONE screen that needs it is the refusal
      * above, and pairing them is what stops a host wiring the state without the remedy.

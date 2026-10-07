@@ -1421,9 +1421,11 @@ class StatusScreenTest {
     fun `the settings show every choice and no Save or Cancel`() = runComposeUiTest {
         // Each change applies as it is made (capability `manage-membership`): there is nothing to commit or discard.
         setContent { TestStatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
-        for (choice in listOf(Res.string.share_toggle, Res.string.receive_toggle, Res.string.album_toggle, Res.string.mobile_data_toggle)) {
+        for (choice in listOf(Res.string.share_toggle, Res.string.receive_toggle, Res.string.album_toggle)) {
             onNodeWithText(str(choice)).assertExists()
         }
+        // The mobile-data choice is the device's, in the app menu (decision record `changes/archive/2026-10-07-mobile-data-per-device`).
+        onNodeWithText(str(Res.string.mobile_data_toggle)).assertDoesNotExist()
         onNodeWithText(str(Res.string.save)).assertDoesNotExist()
         onNodeWithText(str(Res.string.cancel)).assertDoesNotExist()
     }

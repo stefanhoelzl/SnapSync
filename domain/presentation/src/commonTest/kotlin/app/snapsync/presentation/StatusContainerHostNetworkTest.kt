@@ -75,6 +75,7 @@ class StatusContainerHostNetworkTest {
         load: suspend (String) -> JoinLoad = { JoinLoad.Failed },
         scope: CoroutineScope = backgroundScope,
         progress: SyncProgress = SyncProgress(0, 0, 0, 0, false, null),
+        mobileData: Boolean = true,
     ) = StatusContainerHost(
         StatusSources(
             Sync(SyncStatus.Ready(progress)),
@@ -83,6 +84,7 @@ class StatusContainerHostNetworkTest {
             creation = MutableStateFlow(creation),
             attested = MutableStateFlow(attested),
             network = network,
+            mobileData = MutableStateFlow(mobileData),
         ),
         scope,
         queries = joinDetails(load),
@@ -171,7 +173,8 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `photos kept off mobile data on a restricted network wait for Wi-Fi with still arrows`() = runTest {
-        val host = host(FakeNetwork(NetworkAccess.Online(restricted = true)), config = STARTED.copy(mobileData = false), progress = oneUploading)
+        // The device's choice, not the membership's (decision record `changes/archive/2026-10-07-mobile-data-per-device`).
+        val host = host(FakeNetwork(NetworkAccess.Online(restricted = true)), progress = oneUploading, mobileData = false)
         assertEquals(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN, waitingForWifi = true), host.health())
     }
 
@@ -179,7 +182,7 @@ class StatusContainerHostNetworkTest {
     fun `photos allowed on mobile data or a member on Wi-Fi do not wait`() = runTest {
         val onMobileData = host(FakeNetwork(NetworkAccess.Online(restricted = true)), progress = oneUploading)
         assertEquals(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN), onMobileData.health(), "the choice is on")
-        val onWifi = host(FakeNetwork(), config = STARTED.copy(mobileData = false), progress = oneUploading)
+        val onWifi = host(FakeNetwork(), progress = oneUploading, mobileData = false)
         assertEquals(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN), onWifi.health(), "the network is unrestricted")
     }
 

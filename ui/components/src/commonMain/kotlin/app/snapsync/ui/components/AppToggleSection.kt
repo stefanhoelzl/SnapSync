@@ -141,7 +141,7 @@ fun AppToggleDivider() {
  * The thumb slide honours reduce-motion by snapping ([LocalReduceMotion]).
  */
 @Composable
-private fun SectionSwitch(checked: Boolean) {
+internal fun SectionSwitch(checked: Boolean) {
     val scheme = MaterialTheme.colorScheme
     val target = if (checked) 22.dp else 2.dp
     val thumbOffset by animateDpAsState(target)

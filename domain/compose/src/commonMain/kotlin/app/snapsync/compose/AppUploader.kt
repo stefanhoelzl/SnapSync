@@ -52,6 +52,7 @@ internal class AppUploader(private val core: AppCore) {
                 ),
                 // The THREE-state membership read, never the core's StateFlow (capability `join-event`).
                 config = app.config,
+                mobileData = app.mobileData,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the cycle cleanly.
                 deviceIdentity = app.deviceIdentity,
                 host = build.uploadHost,

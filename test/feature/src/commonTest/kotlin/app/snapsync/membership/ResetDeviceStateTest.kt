@@ -5,6 +5,7 @@ import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configCleared
 import app.snapsync.feature.support.configService
@@ -17,6 +18,8 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.AssetRef
 import app.snapsync.services.config.ConfigService
 import app.snapsync.model.PlannedResource
+import app.snapsync.model.TransferNetwork
+import app.snapsync.services.settings.MobileDataSetting
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -36,6 +39,7 @@ class ResetDeviceStateTest {
         private val databases = inMemoryDatabases()
         val ledger = LedgerService(databases) { LEDGER_EVENT }
         val downloads = DownloadService(databases)
+        val mobileData = MobileDataSetting(inMemoryPreferences())
 
         /**
          * Stands in for the download controller's lock-holding reset entry point. It prunes through the
@@ -49,6 +53,7 @@ class ResetDeviceStateTest {
             config = config,
             ledger = ledger,
             downloads = downloads,
+            mobileData = mobileData,
             resetDownloads = { downloadsReset = true; downloads.pruneNonTerminal(protecting = emptySet()) },
         )
     }
@@ -70,6 +75,18 @@ class ResetDeviceStateTest {
         assertEquals(0, aggregates.completed)
         assertEquals(0, aggregates.pending)
         assertTrue(f.configFiles.configCleared, "the membership config must be cleared")
+    }
+
+    @Test
+    fun `it returns the mobile-data choice to on`() = runTest {
+        // Decision record `changes/archive/2026-10-07-mobile-data-per-device`, D5: a reset starts the device from nothing.
+        val f = Fixture()
+        f.mobileData.set(false)
+
+        f.reset().reset()
+
+        assertTrue(f.mobileData.allowed.value)
+        assertEquals(TransferNetwork.ANY, f.mobileData.transferNetwork())
     }
 
     @Test
@@ -113,6 +130,7 @@ class ResetDeviceStateTest {
             config = f.config,
             ledger = f.ledger,
             downloads = f.downloads,
+            mobileData = f.mobileData,
             resetDownloads = { f.downloadsReset = true },
         ).reset()
 

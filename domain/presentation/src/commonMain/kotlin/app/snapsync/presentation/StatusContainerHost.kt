@@ -84,6 +84,7 @@ import app.snapsync.model.step
 import app.snapsync.model.VersionRefusal
 import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
+import app.snapsync.model.MobileDataState
 import app.snapsync.model.ReportOutcome
 
 class StatusContainerHost(
@@ -142,6 +143,7 @@ class StatusContainerHost(
     private val pending = sources.pending
     private val versionRefusal = sources.versionRefusal
     private val network = sources.network
+    private val mobileData = sources.mobileData
     private val renameFlow: StateFlow<RenameStatus> = sources.rename
     private val store = sources.store
     private val foreground = sources.foreground
@@ -264,7 +266,7 @@ class StatusContainerHost(
             initialState = render(
                 Membership(
                     config.value, permission.value, syncSource.status.value, downloadSource.value, attested.value,
-                    network.access.value,
+                    network.access.value, mobileData.value,
                 ),
                 Interaction(pending.value, creationStatus.value, renameFlow.value, versionRefusal.value),
                 local.value,
@@ -295,12 +297,12 @@ class StatusContainerHost(
                 // it runs ONLY while an event has not ended (see above) — every other re-emission is a real
                 // source change or a presentation-owned cell's.
                 combineFlat(
-                    config, permission, syncSource.status, downloadSource, attested, network.access,
+                    config, permission, syncSource.status, downloadSource, attested, network.access, mobileData,
                     pending, creationStatus, renameFlow, versionRefusal,
                     local, nowTick,
-                ) { config, permission, sync, download, attested, access, pending, creation, rename, refusal, local, now ->
+                ) { config, permission, sync, download, attested, access, mobileData, pending, creation, rename, refusal, local, now ->
                     render(
-                        Membership(config, permission, sync, download, attested, access),
+                        Membership(config, permission, sync, download, attested, access, mobileData),
                         Interaction(pending, creation, rename, refusal),
                         local,
                         now,
@@ -364,7 +366,10 @@ class StatusContainerHost(
         val layer = interaction.versionRefusal
             ?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, store = store) }
             ?: reduceFrom(membership, interaction, local, now, ::resolveRange)
-        return UiState(layer, local.overlays.maskedFor(layer), reportDestination, build)
+        return UiState(
+            layer, local.overlays.maskedFor(layer), reportDestination, build,
+            MobileDataState(on = membership.mobileData, notSaved = local.mobileDataNotSaved),
+        )
     }
 
 
@@ -501,9 +506,19 @@ class StatusContainerHost(
         fun onReportBugDismiss() = intent { local.editOverlays { it.copy(reportingBug = false) } }
 
         /** The app menu (capability `sync-status`). Where the layer does not offer it, an open flag is masked. */
-        fun onMenuOpen() = intent { local.editOverlays { it.copy(menuOpen = true) } }
+        fun onMenuOpen() = intent { local.update { it.copy(overlays = it.overlays.copy(menuOpen = true), mobileDataNotSaved = false) } }
 
-        fun onMenuDismiss() = intent { local.editOverlays { it.copy(menuOpen = false) } }
+        fun onMenuDismiss() = intent { local.update { it.copy(overlays = it.overlays.copy(menuOpen = false), mobileDataNotSaved = false) } }
+
+        /**
+         * The menu's mobile-data switch (capability `mobile-data`): applied as it is flipped, the menu staying open. The
+         * switch shows the device's choice, which only a save moves — so a flip that could not be saved leaves it where
+         * it was, and the menu says so (decision record `changes/archive/2026-10-07-mobile-data-per-device`, D3).
+         */
+        fun onMobileData(on: Boolean) = intent {
+            local.update { it.copy(mobileDataNotSaved = false) }
+            if (!commands.setMobileData(on)) local.update { it.copy(mobileDataNotSaved = true) }
+        }
 
         /** The menu's "Report a problem": the menu gives way to the sheet in one edit, so the two never stack. */
         fun onMenuReportBug() = intent { local.editOverlays { it.copy(menuOpen = false, reportingBug = true) } }
@@ -643,7 +658,7 @@ class StatusContainerHost(
          */
         private suspend fun applySetting(config: EventConfig, before: SettingChange, next: SettingChange) {
             local.update { it.copy(pendingWithdrawal = Owned(null, null)) }
-            val outcome = commands.reconfigure(config.eventId, next.direction, next.from, next.until, next.saveToAlbum, next.mobileData)
+            val outcome = commands.reconfigure(config.eventId, next.direction, next.from, next.until, next.saveToAlbum)
             if (outcome == ReconfigureOutcome.NotCurrent) {
                 local.update { it.copy(settings = Owned(null, SettingsSurface.Closed), lastApplied = Owned(null, null)) }
                 return
@@ -710,10 +725,6 @@ class StatusContainerHost(
 
         fun onSaveToAlbum(on: Boolean) = formIntent {
             if (settings.isOpen()) settings.change { now, _ -> now.copy(saveToAlbum = on) } else local.editForm { it.copy(saveToAlbum = on) }
-        }
-
-        fun onMobileData(on: Boolean) = formIntent {
-            if (settings.isOpen()) settings.change { now, _ -> now.copy(mobileData = on) } else local.editForm { it.copy(mobileData = on) }
         }
 
         fun onRangePreset(preset: RangeChoice) = formIntent { editRange { it.copy(preset = preset) } }
@@ -993,7 +1004,7 @@ class StatusContainerHost(
         if (!range.commitEnabled) return
         val choice = JoinChoice(
             p.eventId, event.name, event.startsAt, event.endsAt, event.deletesAt,
-            range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum, form.mobileData,
+            range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum,
             linkKey = p.linkKey, eventKeyId = p.eventKeyId,
         )
         pending.value = p.copy(phase = JoinPhase.Detailed(event, JoinPhase.Detailed.Step.Committing))
@@ -1247,10 +1258,10 @@ private fun joinedHealth(membership: Membership, config: EventConfig, network: N
         // their first launch (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `sync-status`).
         !download.read -> SyncHealth.Loading
         // Photos kept off mobile data wait while the phone is on a network the choice avoids (capability `mobile-data`):
-        // from the CURRENT choice, so after turning mobile data back on the few transfers still holding the old rule
-        // read as pending, not waiting (decision record `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
+        // from the device's CURRENT choice, so after turning mobile data back on the few transfers still holding the old
+        // rule read as pending, not waiting (decision record `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
         snapshot is SyncStatus.Ready ->
-            syncHealth(snapshot.progress, download, heldForWifi = !config.mobileData && access == NetworkAccess.Online(restricted = true))
+            syncHealth(snapshot.progress, download, heldForWifi = !membership.mobileData && access == NetworkAccess.Online(restricted = true))
         else -> SyncHealth.Loading
     }
     return when {
@@ -1472,7 +1483,6 @@ internal data class SettingChange(
     val from: CaptureCutoff,
     val until: CaptureCeiling,
     val saveToAlbum: Boolean,
-    val mobileData: Boolean,
 ) {
     /**
      * Whether this change withdraws photos from the event, and so is asked about first: sharing turned off, or a
@@ -1484,12 +1494,12 @@ internal data class SettingChange(
 
     /** [config] carrying these settings — what the controls are seeded from. */
     fun appliedTo(config: EventConfig): EventConfig = config.copy(
-        direction = direction, minPhotoDate = from, maxPhotoDate = until, saveToAlbum = saveToAlbum, mobileData = mobileData,
+        direction = direction, minPhotoDate = from, maxPhotoDate = until, saveToAlbum = saveToAlbum,
     )
 
     companion object {
         fun of(config: EventConfig) =
-            SettingChange(config.direction, config.minPhotoDate, config.maxPhotoDate, config.saveToAlbum, config.mobileData)
+            SettingChange(config.direction, config.minPhotoDate, config.maxPhotoDate, config.saveToAlbum)
     }
 }
 
@@ -1527,6 +1537,8 @@ private data class Membership(
     val attested: Boolean,
     /** What the member is told about the network — it reaches every layer, not only the joined one. */
     val network: NetworkAccess,
+    /** The device's mobile-data choice (capability `mobile-data`): the menu's switch, and the waiting line's cause. */
+    val mobileData: Boolean,
 )
 
 /** The observed outcomes of what the member started: the join gate, a create, a rename — and a refused build. */
@@ -1583,22 +1595,24 @@ private data class Local(
      * "being computed" once one has been asked for.
      */
     val shareCount: ShareCount = ShareCount.Unavailable,
+    /** The menu's last mobile-data flip could not be saved (capability `mobile-data`); cleared by the next flip or a close. */
+    val mobileDataNotSaved: Boolean = false,
 )
 
 /**
- * [combine] over twelve flows, typed. The library's typed overloads stop at five, and nesting them is not the same
+ * [combine] over thirteen flows, typed. The library's typed overloads stop at five, and nesting them is not the same
  * thing: each level is a stage of its own, so one synchronous change to cells in different levels reaches the
  * screen as several emissions rather than one. The casts are positional and fixed by this signature.
  */
 @Suppress("UNCHECKED_CAST", "LongParameterList")
-private fun <A, B, C, D, E, F, G, H, I, J, K, L, R> combineFlat(
-    a: Flow<A>, b: Flow<B>, c: Flow<C>, d: Flow<D>, e: Flow<E>, f: Flow<F>,
-    g: Flow<G>, h: Flow<H>, i: Flow<I>, j: Flow<J>, k: Flow<K>, l: Flow<L>,
-    transform: (A, B, C, D, E, F, G, H, I, J, K, L) -> R,
-): Flow<R> = combine(listOf(a, b, c, d, e, f, g, h, i, j, k, l)) { v ->
+private fun <A, B, C, D, E, F, G, H, I, J, K, L, M, R> combineFlat(
+    a: Flow<A>, b: Flow<B>, c: Flow<C>, d: Flow<D>, e: Flow<E>, f: Flow<F>, g: Flow<G>,
+    h: Flow<H>, i: Flow<I>, j: Flow<J>, k: Flow<K>, l: Flow<L>, m: Flow<M>,
+    transform: (A, B, C, D, E, F, G, H, I, J, K, L, M) -> R,
+): Flow<R> = combine(listOf(a, b, c, d, e, f, g, h, i, j, k, l, m)) { v ->
     transform(
-        v[0] as A, v[1] as B, v[2] as C, v[3] as D, v[4] as E, v[5] as F,
-        v[6] as G, v[7] as H, v[8] as I, v[9] as J, v[10] as K, v[11] as L,
+        v[0] as A, v[1] as B, v[2] as C, v[3] as D, v[4] as E, v[5] as F, v[6] as G,
+        v[7] as H, v[8] as I, v[9] as J, v[10] as K, v[11] as L, v[12] as M,
     )
 }
 

@@ -99,6 +99,7 @@
     <string name="mobile_data_toggle">Mobile Daten für Fotos nutzen</string>
     <string name="mobile_data_on_note">Fotos werden in jedem Netz geteilt und empfangen.</string>
     <string name="mobile_data_off_note">Fotos werden nur im WLAN geteilt und empfangen.</string>
+    <string name="mobile_data_not_saved">Die Änderung konnte nicht gespeichert werden. Versuch es noch einmal.</string>
     <string name="share_off_note">Nichts von dir verlässt dieses Handy.</string>
     <string name="share_zero_note">Neue Fotos, die du aufnimmst, werden laufend geteilt.</string>
     <string name="share_exclusions_note">Screenshots, Bildschirmaufnahmen, GIFs und aus Chat-Apps gespeicherte Fotos werden nie geteilt.</string>

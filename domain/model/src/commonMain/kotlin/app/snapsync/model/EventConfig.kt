@@ -181,12 +181,6 @@ data class EventConfig(
      */
     val members: MemberCounts? = null,
     /**
-     * Whether this membership's photos may travel over mobile data (capability `mobile-data`) — the member's choice
-     * on the join screen and in settings. Defaults to `true`, so a config persisted before it existed decodes to the
-     * behaviour from before the choice: every photo transfer on any network. Read through [transferNetwork].
-     */
-    val mobileData: Boolean = true,
-    /**
      * An ENCRYPTED event's key id (16 lowercase hex — the encrypted file format, `docs/architecture.md`), `null` for a
      * plain event. The key itself is never here: it is in the secure store, beside the device id. Defaults to `null`,
      * so a config persisted before it existed decodes as plain — the truth, since no earlier event was encrypted.
@@ -195,7 +189,4 @@ data class EventConfig(
 ) {
     /** Whether this membership's photos are stored encrypted. */
     val encrypted: Boolean get() = keyId != null
-
-    /** The network rule a photo transfer started now carries (capability `mobile-data`). */
-    val transferNetwork: TransferNetwork get() = transferNetworkOf(mobileData)
 }

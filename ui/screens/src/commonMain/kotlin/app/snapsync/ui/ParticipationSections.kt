@@ -17,9 +17,6 @@ import app.snapsync.ui.components.RangeChoices
 import app.snapsync.ui.components.RangeWindow
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_toggle
-import app.snapsync.ui.resources.mobile_data_off_note
-import app.snapsync.ui.resources.mobile_data_on_note
-import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.range_custom
 import app.snapsync.ui.resources.range_from_now
 import app.snapsync.ui.resources.range_whole_event
@@ -91,21 +88,6 @@ internal fun ColumnScope.ParticipationSections(
             onCheckedChange = actions.onSaveToAlbum,
         )
         AppSectionNote(albumNote)
-        AppToggleDivider()
-        // Capability `mobile-data`: a preference over both directions, last; everything else the app does keeps
-        // working on any network, which is why the note speaks of photos only.
-        AppToggleRow(
-            title = stringResource(Res.string.mobile_data_toggle),
-            checked = state.mobileData,
-            onCheckedChange = actions.onMobileData,
-        )
-        AppSectionNote(
-            if (state.mobileData) {
-                stringResource(Res.string.mobile_data_on_note)
-            } else {
-                stringResource(Res.string.mobile_data_off_note)
-            },
-        )
     }
 }
 
@@ -171,7 +153,6 @@ class ParticipationState(
     val shareOn: Boolean get() = form.shareOn
     val receiveOn: Boolean get() = form.receiveOn
     val saveToAlbum: Boolean get() = form.saveToAlbum
-    val mobileData: Boolean get() = form.mobileData
     val albumKind: AlbumKind get() = form.albumKind
     val choices: RangeChoices get() = RangeChoices(form.preset, range.from, range.until)
     val window: RangeWindow get() = RangeWindow(range.windowStart, range.windowEnd, range.nowAvailable)
@@ -183,5 +164,4 @@ class ParticipationActions(
     val onShareOn: (Boolean) -> Unit,
     val onReceiveOn: (Boolean) -> Unit,
     val onSaveToAlbum: (Boolean) -> Unit,
-    val onMobileData: (Boolean) -> Unit,
 )

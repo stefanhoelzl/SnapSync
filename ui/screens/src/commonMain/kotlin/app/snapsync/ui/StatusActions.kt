@@ -78,6 +78,8 @@ class MenuActions(
     val onReportBug: () -> Unit,
     val onOpenLink: (AppLink) -> Unit,
     val onReportNoticeDismiss: () -> Unit,
+    /** The menu's mobile-data switch (capability `mobile-data`): the device's choice, applied as it is flipped. */
+    val onMobileData: (Boolean) -> Unit,
 )
 
 /**

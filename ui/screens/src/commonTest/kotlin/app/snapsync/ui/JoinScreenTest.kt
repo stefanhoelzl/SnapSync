@@ -94,8 +94,6 @@ import app.snapsync.ui.resources.join_button
 import app.snapsync.ui.resources.join_button_allow
 import app.snapsync.ui.resources.join_failed_title
 import app.snapsync.ui.resources.loading_event
-import app.snapsync.ui.resources.mobile_data_off_note
-import app.snapsync.ui.resources.mobile_data_on_note
 import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.ok
 import app.snapsync.ui.resources.range_custom
@@ -166,14 +164,12 @@ class JoinScreenTest {
         onShareOn: (Boolean) -> Unit = {},
         onReceiveOn: (Boolean) -> Unit = {},
         onSaveToAlbum: (Boolean) -> Unit = {},
-        onMobileData: (Boolean) -> Unit = {},
         choices: RangeChoiceActions = testRangeChoiceActions(),
     ) = testParticipationActions(
         choices = choices,
         onShareOn = onShareOn,
         onReceiveOn = onReceiveOn,
         onSaveToAlbum = onSaveToAlbum,
-        onMobileData = onMobileData,
     )
 
     /**
@@ -774,24 +770,11 @@ class JoinScreenTest {
     // ---- the mobile-data choice (capability `mobile-data`) ---------------------------------------------
 
     @Test
-    fun `the mobile-data choice starts on and a tap reports turning it off`() = runComposeUiTest {
-        var mobileData: Boolean? = null
-        setScreen {
-            TestStatusScreen(
-                joining(ready()),
-                cutoff = fixedCutoff(),
-                actions = testActions(participation = participationActions(onMobileData = { mobileData = it })),
-            )
-        }
-        onNodeWithText(str(Res.string.mobile_data_on_note)).performScrollTo().assertExists()
-        onNodeWithText(str(Res.string.mobile_data_toggle)).performScrollTo().performClick()
-        assertEquals(false, mobileData, "a tap from the on-by-default row keeps photos off mobile data")
-    }
-
-    @Test
-    fun `with mobile data off the note says photos travel only on Wi-Fi`() = runComposeUiTest {
-        setScreen { TestStatusScreen(joining(ready(), form = RangeForm(mobileData = false)), cutoff = fixedCutoff()) }
-        onNodeWithText(str(Res.string.mobile_data_off_note)).performScrollTo().assertExists()
+    fun `the join screen offers no mobile-data choice`() = runComposeUiTest {
+        // The choice is the device's, in the app menu (decision record `changes/archive/2026-10-07-mobile-data-per-device`).
+        setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.album_toggle)).performScrollTo().assertExists()
+        onNodeWithText(str(Res.string.mobile_data_toggle)).assertDoesNotExist()
     }
 
     // ---- photo access asked on Join (capability `join-event`) -----------------------------------------

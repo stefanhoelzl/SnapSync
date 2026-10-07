@@ -3,7 +3,6 @@ package app.snapsync.compose
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.UploadSealing
-import app.snapsync.model.transferNetworkOf
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
@@ -19,6 +18,7 @@ import app.snapsync.feature.upload.suppressionGate
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EdgeUploadRequestProvider
+import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.ports.PhotoGrantRead
@@ -76,6 +76,8 @@ sealed interface UploaderProcess {
 internal class UploadServices(
     /** The three-state membership read (capability `join-event`). Read fresh once per cycle. */
     val config: ConfigService,
+    /** The device's mobile-data choice (capability `mobile-data`), read as each upload job is created. */
+    val mobileData: MobileDataSetting,
     /**
      * The device identity. Its resolve MUST throw [SecureStoreUnavailable] while protected data is
      * unavailable (never mint, never return a placeholder); the implementation caches its first success,
@@ -177,7 +179,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         resources = library,
         gallery = ports.gallery,
         files = process.files,
-        network = { transferNetworkOf(ports.config.config.value) },
+        network = ports.mobileData::transferNetwork,
         sealing = UploadSealing(
             ports.eventKeys, FileCipher(process.crypto, process.files), ports.config, ports.deviceIdentity,
         ),

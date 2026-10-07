@@ -14,6 +14,7 @@ import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Upload
+import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.SuppressionService
@@ -133,6 +134,8 @@ private fun extensionServices(
     val config = ConfigService(process.files, process.clock)
     return UploadServices(
         config = config,
+        // The same shared choice the app's menu writes, read per job (capability `mobile-data`).
+        mobileData = MobileDataSetting(ports.preferences),
         deviceIdentity = identity,
         host = build.uploadHost,
         // Scoped to the joined event this process last read; each invocation re-reads the config first.

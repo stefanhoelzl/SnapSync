@@ -34,6 +34,9 @@ sealed interface UiIntent {
     data object MenuDismiss : UiIntent
     data object MenuReportBug : UiIntent
 
+    /** The app menu's mobile-data switch (capability `mobile-data`): the device's choice, applied as it is flipped. */
+    data class MobileData(val on: Boolean) : UiIntent
+
     /** One of the app menu's links, opened outside the app. */
     data class OpenLink(val link: AppLink) : UiIntent
 
@@ -50,7 +53,6 @@ sealed interface UiIntent {
     data class ShareOn(val on: Boolean) : UiIntent
     data class ReceiveOn(val on: Boolean) : UiIntent
     data class SaveToAlbum(val on: Boolean) : UiIntent
-    data class MobileData(val on: Boolean) : UiIntent
     data class RangePreset(val preset: RangeChoice) : UiIntent
 
     /** A custom range; a `null` bound keeps the one already picked (or the window's, if none was). */

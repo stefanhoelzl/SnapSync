@@ -47,7 +47,7 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * The event's **settings** (capability `manage-membership`), in a sheet over the joined screen: a joined member
- * re-opens the choices they made at join — share and receive, the capture range, the album, mobile data — and each
+ * re-opens the choices they made at join — share and receive, the capture range, the album — and each
  * change applies as it is made. There is no Save, Cancel or header: the sheet's drag handle is its only chrome, and
  * swiping it down, going back, or tapping the joined screen above it all call [onClose].
  *
