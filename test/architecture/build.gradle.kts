@@ -55,6 +55,9 @@ dependencies {
     // GatedPathPinTest drives the client's REAL ungated-path predicate against the backend's closed list.
     testImplementation(project(":adapter:generic:app"))
     testImplementation(libs.coroutines.test)
+    // PortGridTest reads the ports' compiled shapes — sealed subtypes, enum entries, handler bundles — by reflection:
+    // a text scan counts the generic `Reply<T>` as having no subtypes. Versioned by the Kotlin plugin.
+    testImplementation(kotlin("reflect"))
 }
 
 tasks.test {
