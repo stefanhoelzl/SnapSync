@@ -16,7 +16,7 @@
     "npm:@peculiar/x509@^2.1.0": "2.1.0",
     "npm:@sentry/deno@^10.76.0": "10.76.1",
     "npm:aws4fetch@^1.0.20": "1.0.20",
-    "npm:hono@^4.13.10": "4.13.10",
+    "npm:hono@^4.13.13": "4.13.13",
     "npm:jose@^6.2.12": "6.2.12",
     "npm:reflect-metadata@~0.2.2": "0.2.2"
   },
@@ -60,7 +60,7 @@
         "hono"
       ]
     },
-    "@hono/node-server@1.19.17_hono@4.13.10": {
+    "@hono/node-server@1.19.17_hono@4.13.13": {
       "integrity": "sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==",
       "dependencies": [
         "hono"
@@ -335,8 +335,8 @@
     "detect-libc@2.0.2": {
       "integrity": "sha512-UX6sGumvvqSaXgdKGUsgZWqcUyIXZ/vZTrlRT/iobiKhGL0zL4d3osHj3uqllWJK+i+sixDS/3COVEOFbupFyw=="
     },
-    "hono@4.13.10": {
-      "integrity": "sha512-dQuLsa5oO+47QVMVMaaD9cIv8ctmVtK1iRvwWngkfloFJMeFeuoUFDswIqZGxmGX3hrRzREgEArjkK9OgsQEhA=="
+    "hono@4.13.13": {
+      "integrity": "sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA=="
     },
     "jose@6.2.12": {
       "integrity": "sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw=="
@@ -409,7 +409,7 @@
       "npm:@peculiar/x509@^2.1.0",
       "npm:@sentry/deno@^10.76.0",
       "npm:aws4fetch@^1.0.20",
-      "npm:hono@^4.13.10",
+      "npm:hono@^4.13.13",
       "npm:jose@^6.2.12",
       "npm:reflect-metadata@~0.2.2"
     ]

@@ -44,7 +44,7 @@
   "imports": {
     "@bunny.net/edgescript-sdk": "npm:@bunny.net/edgescript-sdk@^0.13.0",
     "@libsql/client/web": "npm:@libsql/client@^0.18.0/web",
-    "hono": "npm:hono@^4.13.10",
+    "hono": "npm:hono@^4.13.13",
     "@sentry/deno": "npm:@sentry/deno@^10.76.0",
     "aws4fetch": "npm:aws4fetch@^1.0.20",
     "jose": "npm:jose@^6.2.12",
