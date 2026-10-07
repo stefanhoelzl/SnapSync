@@ -26,7 +26,6 @@ import {
 } from "./support/harness.ts";
 
 const V2_UNION = `/api/v2/events/${E}/files`;
-const V1_UNION = `/api/v1/events/${E}/files`;
 const redirectPath = (v: number, asset: string, role = "primary", device = D) =>
   `/api/v${v}/events/${E}/files/devices/${device}/${asset}/${role}`;
 const ORIGIN = "https://snapsync.stho.net"; // CONFIG.linkDomain, not loopback → https
@@ -94,11 +93,6 @@ Deno.test("redirect → 302 to a 7-day presign of the stored path, uncached, wit
   assertEquals(res.status, 302);
   assertPresigned(res.headers.get("location")!, await eventBytePath(E, D, "A", "primary"));
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
-  assertEquals(
-    (await bare(db).request(redirectPath(1, "A"))).status,
-    302,
-    "both versions serve it",
-  );
   db.close();
 });
 
@@ -127,7 +121,7 @@ Deno.test("redirect → a mutating method on its path stays gated", async () => 
 
 // ── urls and the cursor (D3) ──────────────────────────────────────────────────────────────────────
 
-Deno.test("urls → v2's default url is the stable address; urls=false omits it; v1 keeps its presign", async () => {
+Deno.test("urls → the default url is the stable address; urls=false omits it", async () => {
   const { db } = await eventWith(["A"]);
   const dflt = await (await app2(db)(V2_UNION)).json() as Asset[];
   assertEquals(dflt[0].resources[0].url, `${ORIGIN}${redirectPath(2, "A")}`);
@@ -139,11 +133,6 @@ Deno.test("urls → v2's default url is the stable address; urls=false omits it;
     "key",
     "role",
   ]);
-
-  const v1 = await (await bare(db).request(V1_UNION)).json() as Asset[];
-  assertPresigned(String(v1[0].resources[0].url), await eventBytePath(E, D, "A", "primary"));
-  const v1none = await (await bare(db).request(`${V1_UNION}?urls=false`)).json() as Asset[];
-  assertEquals(v1none[0].resources[0].url, undefined, "urls=false is additive on v1 too");
   db.close();
 });
 
@@ -198,12 +187,9 @@ Deno.test("reads → a verified token names the reader and its trigger; a delta 
   db.close();
 });
 
-Deno.test("reads → a browser's read is recorded anonymously; an unknown trigger is recorded as unknown", async () => {
+Deno.test("reads → a tokenless read is recorded anonymously; an unknown trigger is recorded as unknown", async () => {
   const { db } = await eventWith(["A"]);
-  assertEquals(
-    (await bare(db).request(V1_UNION, { headers: { "SnapSync-Trigger": "x" } })).status,
-    200,
-  );
+  assertEquals((await app2(db, { "SnapSync-Trigger": "x" })(V2_UNION)).status, 200);
   const log = await fetches(db);
   assertEquals(log.length, 1);
   assertEquals(log[0].device_id, null);

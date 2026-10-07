@@ -167,7 +167,7 @@ answer you can read:
 ```bash
 node ~/.claude/skills/ssh-runner/ssh-runner.ts exec $ID \
   'plutil -p artifacts/SnapSync.xcarchive/Products/Applications/SnapSync.app/Deployment.plist'
-# → "uploadBase" => "http://127.0.0.1:8080/api/v1"   ← your host, not snapsync.stho.net
+# → "uploadBase" => "http://127.0.0.1:8080/api/v2"   ← your host, not snapsync.stho.net
 ```
 
 On a running app the same fact is `GET /device/state` → `build.uploadBase` (load `rig-channel`).

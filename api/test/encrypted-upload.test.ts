@@ -36,7 +36,6 @@ const KEY_ID = encodeHex(await keyIdOf(EVENT_KEY));
 const AD = fileAssociatedData(E, D, "ASSET1", "primary");
 const BYTE_PATH = `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
 const EVENTLESS_BYTE_PATH = `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
-const V1_BYTE_PATH = `/api/v1/files/devices/${D}/ASSET1-primary.heic`;
 const PHOTO = Uint8Array.from({ length: 150_000 }, (_, i) => (i * 11 + 2) & 0xff);
 
 async function member(keyId: string | null) {
@@ -139,12 +138,12 @@ Deno.test("encrypted event → plaintext, or a file of another key, is refused 4
   db.close();
 });
 
-Deno.test("encrypted event → every route that files bytes under it refuses plaintext, old builds' included", async () => {
+Deno.test("encrypted event → every route that files bytes under it refuses plaintext, the event-less one included", async () => {
   const db = await member(KEY_ID);
   const { calls, fetchImpl } = recorder();
   const app = createApp({ config: CONFIG, db, fetch: fetchImpl });
   assertEquals((await app.request(EVENTLESS_BYTE_PATH, putting(PHOTO))).status, 422);
-  assertEquals((await app.request(V1_BYTE_PATH, { method: "PUT", body: PHOTO })).status, 422);
+  assertEquals((await app.request(BYTE_PATH, putting(PHOTO))).status, 422);
   assertEquals(calls.filter((c) => c.init.method === "PUT").length, 0);
   const file = await sealedOnDevice();
   assertEquals((await app.request(EVENTLESS_BYTE_PATH, putting(file))).status, 201);

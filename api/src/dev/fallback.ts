@@ -2,7 +2,7 @@
 // imports `src/dev/`, so none of this can ship).
 //
 // A `devices` row is created only by `POST /attest/token` (capability `privacy-security`: a row exists
-// iff the device has attested), and `PUT /api/v1/devices/<id>` — the push registration — UPDATEs that row,
+// iff the device has attested), and `PUT /api/v2/devices/<id>` — the push registration — UPDATEs that row,
 // answering 401 when there is none.
 //
 // On a physical device that is a first-launch round-trip: the 401 drops the token, the app attests for

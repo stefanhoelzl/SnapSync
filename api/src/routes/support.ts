@@ -366,8 +366,8 @@ export function enrollRefusal(c: Context, outcome: EnrollOutcome | Response): Re
 }
 
 /**
- * The app version this request declared, as a device row keeps it — or `null` off v2 (v1 builds declare
- * none, and only v2 runs the version gate that parses it) or when it is not {@link recordableVersion}.
+ * The app version this request declared, as a device row keeps it — or `null` off v2 (only v2 runs the
+ * version gate that parses it) or when it is not {@link recordableVersion}.
  */
 export function declaredAppVersion(c: Context): string | null {
   if (splitVersion(new URL(c.req.url).pathname).version !== 2) return null;

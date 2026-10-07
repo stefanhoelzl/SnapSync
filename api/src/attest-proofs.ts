@@ -1,12 +1,11 @@
 // The attestation proofs `/attest/token` and `/attest/renew` accept, and which verifier each goes to
-// (capability `privacy-security`). One place, so the two routes and the two API versions cannot disagree
-// about what a proof is.
+// (capability `privacy-security`). One place, so the two routes cannot disagree about what a proof is.
 //
 // WHAT TELLS THE PLATFORMS APART, and why it is two different things:
 //
-//   * AT ATTEST, the proof says what it is: v2's body carries `proof.format`. That only CHOOSES the
+//   * AT ATTEST, the proof says what it is: the body carries `proof.format`. That only CHOOSES the
 //     verifier — a proof claiming a format it is not fails that verifier — so the claim is never trusted,
-//     only tried. v1's body is frozen for the installed base and is App Attest by construction.
+//     only tried.
 //   * AT RENEW, the request says nothing: the stored row's `attest_platform` decides, which is what the
 //     attestation PROVED. The renewing client has no claim that could disagree with it.
 
@@ -27,9 +26,6 @@ export type MintProof =
 
 export type MintBody = { deviceId: string; challenge: string; proof: MintProof };
 
-/** The body shapes: v1's frozen flat App Attest body, and v2's typed `proof`. */
-export type MintShape = "flat" | "typed";
-
 const isString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 
 function typedProof(proof: unknown): MintProof | null {
@@ -46,15 +42,11 @@ function typedProof(proof: unknown): MintProof | null {
   return null;
 }
 
-/** The mint request in `shape`, or `null` — a `400`. */
-export function parseMintBody(body: unknown, shape: MintShape): MintBody | null {
+/** The mint request, `{deviceId, challenge, proof}`, or `null` — a `400`. */
+export function parseMintBody(body: unknown): MintBody | null {
   const b = body as Record<string, unknown> | null;
   if (!isString(b?.deviceId) || !validateUUID(b.deviceId) || !isString(b.challenge)) return null;
-  const proof = shape === "flat"
-    ? (isString(b.keyId) && isString(b.attestation)
-      ? { format: "apple-appattest" as const, keyId: b.keyId, attestation: b.attestation }
-      : null)
-    : typedProof(b.proof);
+  const proof = typedProof(b.proof);
   return proof ? { deviceId: b.deviceId, challenge: b.challenge, proof } : null;
 }
 

@@ -1,7 +1,7 @@
 // What belongs to no API version: the maintenance window, the root-mounted health route, the pure
 // lifecycle derivation, and the `devices` table's two independently-written column groups.
 //
-// Every version-scoped route lives in that version's own file (`v1.test.ts`, `v2.test.ts`). Nothing here
+// Every version-scoped route lives in that version's own file (`v2.test.ts`). Nothing here
 // may reference a `/api/vN` path except where the subject IS the prefix — the maintenance gate matches
 // `/api/*` deliberately, so its tests name versions to prove the prefix covers an unshipped one.
 
@@ -28,15 +28,16 @@ import {
   store,
   storeWithEvent,
   TOKEN,
+  V2,
   ZONE,
 } from "./support/harness.ts";
 
 // Two VERSIONED paths, named here on purpose. The maintenance gate's subject IS the `/api/*` prefix — it
-// matches by prefix precisely so a route added later cannot land ungated — so proving it covers a real v1
-// route, and an unshipped version, is the point of these tests rather than a leak of v1 detail into a
+// matches by prefix precisely so a route added later cannot land ungated — so proving it covers a real v2
+// route, and an unshipped version, is the point of these tests rather than a leak of v2 detail into a
 // version-neutral file.
-const BYTE_PATH = `/api/v1/files/devices/${D}/IMG_0001-photo.jpg`;
-const DEVLIST_PATH = `/api/v1/files/devices/${D}`;
+const BYTE_PATH = `/api/v2/files/devices/${D}/A/primary?filename=IMG_0001.HEIC`;
+const DEVLIST_PATH = `/api/v2/files/devices/${D}`;
 
 // ── The lifecycle derivation (capability `event-lifetime`) ───────────────────────────────────────────
 
@@ -95,12 +96,12 @@ Deno.test("window: a device-API request is refused, and touches nothing", async 
   db.close();
 });
 
-Deno.test("window: it is a PREFIX, so an unshipped /api/v2 is refused too", async () => {
-  // The property a closed list cannot have. `/api/v2` has no routes at all today; the point is that when
+Deno.test("window: it is a PREFIX, so an unshipped /api/v3 is refused too", async () => {
+  // The property a closed list cannot have. `/api/v3` has no routes at all today; the point is that when
   // it does, it is gated because of where it is mounted, not because someone remembered to list it.
   const db = await store();
   const res = await windowOpen({ db, fetch: recorder().fetchImpl }).request(
-    `/api/v2/events/${E}`,
+    `/api/v3/events/${E}`,
     { headers: { authorization: `Bearer ${TOKEN}` } },
   );
   assertEquals(res.status, 503);
@@ -114,7 +115,7 @@ Deno.test("window: maintenance wins over the token gate", async () => {
   const open = await windowOpen({ db, fetch: recorder().fetchImpl }).request(DEVLIST_PATH);
   assertEquals(open.status, 503);
   const closed = await createRealApp({ config: CONFIG, db, fetch: recorder().fetchImpl })
-    .request(DEVLIST_PATH);
+    .request(DEVLIST_PATH, { headers: V2 });
   assertEquals(closed.status, 401);
   db.close();
 });
@@ -156,6 +157,7 @@ Deno.test("window: with the flag off, the device API is untouched", async () => 
   const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
     body: "bytes",
+    headers: V2,
   });
   assertEquals(res.status, 201);
   assertEquals(calls.filter((c) => c.init.method === "PUT").length, 1);

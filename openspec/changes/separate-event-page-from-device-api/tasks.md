@@ -51,17 +51,17 @@ One PR. Each numbered group below is one commit, in this order (design.md, Migra
 
 ## 2. Retire v1 (commit 2)
 
-- [ ] 2.1 Replace the `/api/v1` mount with one middleware, placed with the version gate, that answers every
+- [x] 2.1 Replace the `/api/v1` mount with one middleware, placed with the version gate, that answers every
   `/api/v1/*` request `426 {error:"app too old", minAppVersion}` with `NO_CACHE`. Verify with a test that
   GET `/api/v1/events/<existing id>`, PUT on a v1 byte path and POST `/api/v1/attest/token` all answer `426`,
   never `404`.
-- [ ] 2.2 Delete `api/src/routes/v1.ts` and `api/test/v1.test.ts`. Remove `attestRoutes`' v1 variant (the flat
+- [x] 2.2 Delete `api/src/routes/v1.ts` and `api/test/v1.test.ts`. Remove `attestRoutes`' v1 variant (the flat
   body, `401` on a stale challenge), the union's `version === 1` presign branch, and `db.ts`'s `legacy` publish
   mode and its resource upsert. Narrow `ApiVersion` to `2`. Verify: `cd api && deno task check && deno task
   test && deno lint` pass, with every v1 case removed or re-expressed on v2 in `attest.test.ts`, `app.test.ts`,
   `version.test.ts`, `app-version.test.ts`, `union-read.test.ts`, `encrypted-upload.test.ts`, `fcm.test.ts`
   and `dev/fallback.test.ts`.
-- [ ] 2.3 Move `legacyKeyFor` to `api/src/object-names.ts` (with its tests), delete `identityFromLegacyKey`, then
+- [x] 2.3 Move `legacyKeyFor` to `api/src/object-names.ts` (with its tests), delete `identityFromLegacyKey`, then
   delete `legacy-v1.ts` and `legacy-v1.test.ts`. Verify: `grep -rn "legacy-v1" api/` prints nothing, and the
   api tests pass.
 - [ ] 2.4 Sweep the remaining v1 references: `api/src/dev/serve.ts`, `api/src/dev/fallback.ts`, `api/src/db.ts`

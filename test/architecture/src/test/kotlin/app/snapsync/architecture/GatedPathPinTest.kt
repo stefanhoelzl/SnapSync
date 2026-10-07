@@ -75,7 +75,7 @@ class GatedPathPinTest {
         assertTrue(isGatedRequest("POST", "/web/events/3f2c0000-0000-4000-8000-00000000e91a/photos"))
         assertTrue(isGatedRequest("GET", "/web/events/E1/photos/x"))
         // `/attest/` is a device route: it arrives version-prefixed, under every method.
-        assertFalse(isGatedRequest("POST", "/api/v1/attest/renew"))
+        assertFalse(isGatedRequest("POST", "/api/v2/attest/renew"))
         assertFalse(isGatedRequest("POST", "/api/v2/attest/token"))
         assertFalse(isGatedRequest("GET", "/api/v2/attest/challenge"))
         assertFalse(isGatedRequest("OPTIONS", "/api/v2/events"))

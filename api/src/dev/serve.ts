@@ -27,7 +27,7 @@
 //
 //     THE FALLBACK ALSO FILLS AN ABSENT ENROLMENT, and must. A `devices` row is created only by
 //     `POST /attest/token` (capability `privacy-security`: a row exists iff the device has attested),
-//     and `PUT /api/v1/devices/<id>` — the push registration — now UPDATEs that row and answers 401 when
+//     and `PUT /api/v2/devices/<id>` — the push registration — now UPDATEs that row and answers 401 when
 //     there is none. On a SIMULATOR that is unrecoverable rather than a first-launch round-trip: App
 //     Attest does not exist there (`DCAppAttestService.isSupported` is false), so the app never attests,
 //     `DeviceAttestation.refresh` returns early without trying, and the registration would 401 forever.

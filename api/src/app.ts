@@ -5,13 +5,15 @@
 //
 // THIS FILE holds the three gates (maintenance, version, token) and the composition; the routes live in
 // `routes/*.ts` as factories over one set of dependencies — `site.ts` (the root routes), `attest.ts` (the
-// token issuers), `shared.ts` (what every version serves), `v1.ts` and `v2.ts` (what only one does), and
+// token issuers), `shared.ts` and `v2.ts` (the device API), `web.ts` (the event page's read), and
 // `support.ts` (the device binding, the refusals and the event gate every route shares).
 //
 // VERSIONED PREFIX (`docs/deployment.md`): every device-API route below is served under the
-// prefix `/api/v1` — the paths are written that way here, and that is the one shape they answer at. The
-// web/link routes (`/`, `/join`, the AASA) stay at the ROOT only, never under `/api/v1`. The routing is
-// version-parametric: a future `/api/v2` is one more mount in `createApp`.
+// prefix `/api/v2` — the paths are written that way here, and that is the one shape they answer at. `/api/v1`
+// is RETIRED: every request to it is answered `426`, never routed (decision record
+// `changes/separate-event-page-from-device-api`). The web/link routes (`/`, `/join`, the AASA, the event page's
+// read) stay at the ROOT only, never under `/api/vN`. The routing is version-parametric: a future `/api/v3` is
+// one more mount in `createApp`.
 //
 // ── WHERE STATE LIVES ─────────────────────────────────────────────────────────────────────────────
 //
@@ -35,11 +37,13 @@
 //
 //   * the three `/attest/*` issuers — self-authenticating; they cannot require the token they mint.
 //   * `OPTIONS` on any path — the pull zone may answer the preflight itself, so the script cannot gate it.
-//   * `GET`/`HEAD` on exactly `/`, `/join` and the AASA — static, source-owned, read no storage.
+//   * `GET`/`HEAD` on exactly `/`, `/join`, `/join/<id>` and the AASA — the site's pages.
+//   * `GET`/`HEAD` on exactly `/web/events/<id>/photos` — the event page's read: a browser cannot attest,
+//     and possession of the eventId IS the read capability.
 //   * `GET`/`HEAD` on `/health` — the post-deploy probe runs before any credential exists.
-//   * `GET`/`HEAD` on `/api/v1/events/<id>` and `/api/v1/events/<id>/files` — the no-app download page
-//     holds no attestation, and possession of the eventId IS the read capability. Every non-GET method on
-//     those paths stays gated.
+//   * `GET`/`HEAD` on `/api/v2/events/<id>` and `/api/v2/events/<id>/files` — app builds read them without a
+//     token, possession of the eventId being the read capability. Every non-GET method on those paths stays
+//     gated.
 //
 // A TOKEN ACTS ONLY FOR ITS OWN DEVICE: every route naming a device id in its path refuses (403) any id
 // but the one the token was minted for (`actsFor`). Device ids are public — the union lists them — so a
@@ -50,77 +54,52 @@
 // per resource would be paid on every photo. A route that additionally needs the device's RECORD reads it
 // itself, after the gate has passed; the gate never does.
 //
-//   GET /api/v1/attest/challenge
+//   GET /api/v2/attest/challenge
 //     → a stateless, HMAC-signed, time-bounded nonce. Writes NOTHING.
-//   POST /api/v1/attest/token
+//   POST /api/v2/attest/token
 //     → verifies an App Attest attestation (chain → Apple's root, nonce, app-id hash, counter, aaguid),
 //       records the attested key AND the minted token's expiry as the device's row, then mints a 30-day
 //       bearer token. That record IS the device's enrolment. PERSISTS BEFORE MINTING: a token handed out
 //       against a record we failed to write is a credential nothing knows about → 502, mint nothing.
-//   POST /api/v1/attest/renew
+//   POST /api/v2/attest/renew
 //     → verifies a local Secure-Enclave ASSERTION against that stored key — no Apple round-trip, because
 //       re-attestation is the throttled path — advances the recorded expiry, THEN mints. 401 when no
 //       record is on file (attest afresh); 502 when the store cannot be read or written, because absence
 //       and "could not ask" have different remedies and must not collapse.
-//   Under /api/v2 both issuers answer a stale challenge `409 stale challenge` instead of v1's `401`
-//   (see `attestIssuers`), and the mint takes a typed `proof` — `{format: "apple-appattest", keyId,
+//   Both issuers answer a stale challenge `409 stale challenge`, and the mint takes a typed `proof` — `{format: "apple-appattest", keyId,
 //   attestation}` or `{format: "android-key", chain}` (an Android Keystore key attestation,
 //   `android-attest.ts`) — whose format chooses the verifier; renewal verifies by the platform the stored
-//   row PROVED (`attest_platform`), an App Attest assertion or an Android signature. v1 stays flat and
-//   App Attest only.
+//   row PROVED (`attest_platform`), an App Attest assertion or an Android signature.
 //
-//   POST /api/v1/events
+//   POST /api/v2/events
 //     → mints an event: INSERTs the `events` row, stamping `capacity` and the `lifetimeSeconds` DURATION
 //       and validating the creator's `endsAt` against the configured window maximum (capability
 //       `event-lifetime`); returns {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
-//   GET /api/v1/events/:eventId
+//   GET /api/v2/events/:eventId
 //     → the event row with the DERIVED `deletesAt`; 404 when absent. Never deletes on touch, even past
 //       the deadline. UNGATED (GET/HEAD only).
-//   PATCH /api/v1/events/:eventId
+//   PATCH /api/v2/events/:eventId
 //     → renames (capability `manage-membership`): the ONLY write to an existing event row, and it sets `name`
 //       ALONE — every other column is write-once, which is why the statement is spelled out in `db.ts`
 //       rather than composed. No ownership check (there is no owner); the token gate is the whole
 //       authorization.
-//   PUT /api/v1/devices/:deviceId
+//   PUT /api/v2/devices/:deviceId
 //     → the push registration (capability `receiving-photos`): UPDATEs the device's push columns and
 //       NEVER inserts. 401 when it affects no row — the token verified, but we hold no attestation for
 //       this device. The shipped client recovers unaided: the 401 drops its token, it attests (which
 //       creates the row), and re-sends the registration when the new credential arrives. A 201 here would
 //       be a silent absence — the device would believe it is reachable while no push could reach it.
-//   POST /api/v1/events/:eventId/notify
-//     → a fixed SILENT (content-available) push to every PRESENT member (members who left are skipped).
-//       GATED on the event row (404/502). Members come from one query, each member's token from its row;
-//       the fan-out is best-effort — a member with no registered token is skipped and a per-token failure
-//       never fails the request. Bare 202; 502 only if the member read fails.
-//   PUT /api/v1/files/devices/:deviceId/:filename
-//     → streams the request body into ONE bunny native Storage PUT, then BEST-EFFORT records the resource
-//       row as uploaded (a failure there never changes the response — the response is the storage
-//       outcome). Requires the token but reads NO event: bytes are device-partitioned and
-//       event-independent, uploaded once and linked into events by reference. The path's device id must
-//       be the one the token was minted for (403 otherwise — `actsFor`), like every route naming a device.
-//       The OS performs this PUT and DOES carry the header (verified on device). There is no download GET here; the listing hands out a presigned S3 URL.
-//   GET /api/v1/files/devices/:deviceId
-//     → the device's uploaded resources, from ONE query — no storage LIST. Each entry is
-//       `{ filename, url }`, where `filename` is the STORED OBJECT KEY (what the rejoin reconciler matches
-//       its ledger against, capability `photo-sharing`) and `url` is a presigned S3 GET.
-//       `Cache-Control: no-store, no-cache, max-age=0` (time-limited urls; see NO_CACHE — the pull zone
-//       honors `no-cache`, not `no-store`).
-//   PUT /api/v1/events/:eventId/devices/:deviceId
-//     → publishes the device manifest. GATED on existence AND on CAPACITY by ONE conditional statement
-//       (capability `event-lifetime`): a device never enrolled is refused 409 once `capacity` distinct ids
-//       have ever enrolled — leaving frees no slot, a rejoin reuses its own — and a zero-row outcome is
-//       disambiguated into 409-vs-404 by a follow-up read rather than collapsed. Capacity is the ONLY
-//       refusal; enrollment is never closed by time, however long after `endsAt` it arrives. The write is
-//       ONE ATOMIC BATCH: a membership that had left → sharing, the membership's assets REPLACED with exactly what the body
-//       lists (an omitted asset is removed), each named resource upserted with `uploaded` MONOTONE.
-//   DELETE /api/v1/events/:eventId/devices/:deviceId
+//   PUT /api/v2/events/:eventId/devices/:deviceId · PUT …/manifest · the byte PUTs · the device listings
+//     → `routes/v2.ts`: enrolment (gated on capacity), the ordered manifest publish, the byte uploads and the
+//       per-device listings — each explained where it is defined, and tabled in `docs/architecture.md`.
+//   DELETE /api/v2/events/:eventId/devices/:deviceId
 //     → LEAVE (capability `manage-membership`): the membership becomes `done` or `left` (`?received=true`
 //       is the device's word that it holds every photo of the others). GATED on the event row (404/502),
 //       idempotent, and NON-DESTRUCTIVE — the assets are RETAINED, so the union keeps serving what the
 //       device shared. No reap here and no leave-time GC. When this was the last member still present the
 //       event becomes EMPTY and the nightly sweep reclaims it on its next run; after the end, the leave of
 //       the last member still `sharing` closes the event.
-//   GET /api/v1/events/:eventId/files
+//   GET /api/v2/events/:eventId/files
 //     → the event-wide UNION, as ONE query joining the event's assets to their resources across EVERY
 //       membership, present or gone (a member who left keeps contributing what it already shared). An asset
 //       naming a resource with no recorded upload is dropped — the PRIMARY completeness mechanism, since
@@ -154,18 +133,13 @@
 //
 // ── THE BYTE ROUTE ────────────────────────────────────────────────────────────────────────────────
 //
-// The per-device byte WRITE route is defined on a child Hono (`byteFile`, `routes/v1.ts`) and mounted under
-// `/files/devices/:deviceId/:filename` via app.route(), so PUT (upload) and OPTIONS share it.
-// `deviceId`/`filename` are Hono's decoded path params (typed `string | undefined` through a mount, hence
-// the guard); the filename is re-encoded per-segment when building the bunny URL, so the stored object is
-// the real filename and keys stay flat. Config is injected (validated at startup). Upload invariants:
-// pass-through only (never buffer/hash), faithful outcome (2xx only on confirmed store), last-write-wins.
-// There is NO download route: the listing's `url` is a presigned S3 GET the device fetches directly from
-// bunny's S3 endpoint (the short-read integrity check moves to the client).
+// The byte WRITE routes are `routes/v2.ts`'s: the resource's identity is its path, its bytes land at the event's
+// own path, and the upload invariants hold — pass-through only (never buffer/hash), faithful outcome (2xx only
+// on confirmed store), last-write-wins. Downloads start at the download redirect, which presigns per download.
 
 import { type Context, Hono } from "hono";
 import { AwsClient } from "aws4fetch";
-import { APP_VERSION_HEADER, compareVersions, splitVersion } from "./version.ts";
+import { APP_VERSION_HEADER, compareVersions, isRetiredVersion, splitVersion } from "./version.ts";
 import { BUILD_SHA, type Config } from "./config.ts";
 import { createPushSender } from "./push.ts";
 import { verifyToken } from "./attest.ts";
@@ -176,7 +150,6 @@ import { sharedRoutes } from "./routes/shared.ts";
 import { siteRoutes } from "./routes/site.ts";
 import { WEB_PHOTOS_PATH, webRoutes } from "./routes/web.ts";
 import { NO_CACHE, type RouteDeps } from "./routes/support.ts";
-import { v1Routes } from "./routes/v1.ts";
 import { v2Routes } from "./routes/v2.ts";
 
 // Re-exported so existing importers (tests, callers) keep their `from "./app.ts"` imports working.
@@ -334,8 +307,17 @@ export function createApp(
   // middleware for mounted sub-apps, so anything registered on the v2 mount would run AFTER the token
   // gate, which is precisely the order this exists to avoid.
   //
-  // v1 is exempt. It is spoken by builds that predate this header and cannot be updated to send it, so
-  // requiring it there would refuse the entire install base at once.
+  // v1 IS RETIRED (decision record `changes/separate-event-page-from-device-api`, D6): every `/api/v1` request
+  // — what builds older than 0.4 still speak — is answered `426`, the version gate's own refusal, and never a
+  // `404`. Those builds read a `404` on the event read as a DELETED event, one of the two witnesses of their
+  // self-leave, so a retirement answered `404` would look like deletion; a `426` is a failure they retry, and
+  // touches nothing on the phone. Registered first, so no later gate or route sees a v1 path at all.
+  app.use("*", async (c, next) => {
+    if (!isRetiredVersion(new URL(c.req.url).pathname)) return await next();
+    c.header("Cache-Control", NO_CACHE);
+    return c.json({ error: "app too old", minAppVersion: config.minAppVersion }, 426);
+  });
+
   app.use("*", async (c, next) => {
     const { version, path } = splitVersion(new URL(c.req.url).pathname);
     if (version !== 2) return await next();
@@ -380,11 +362,11 @@ export function createApp(
   //     fallback the iOS uploader depends on.
   app.use("*", async (c, next) => {
     const method = c.req.method;
-    // Device-API routes are served under a versioned prefix (`/api/v1`, `docs/deployment.md`),
+    // Device-API routes are served under a versioned prefix (`/api/v2`, `docs/deployment.md`),
     // and Hono does NOT strip the mount prefix from the path accessors — so normalize a leading `/api/vN`
     // away HERE, once, before the closed-list checks below, which are written in un-prefixed terms. This is
     // deliberately version-agnostic: a further `/api/vN` mount is gated identically with no change here.
-    // `/api/v1` → `/`, `/api/v2/attest/x` → `/attest/x`. The split is SHARED with the version gate above
+    // `/api/v2` → `/`, `/api/v2/attest/x` → `/attest/x`. The split is SHARED with the version gate above
     // (`version.ts`) rather than copied — two copies of "what counts as a version prefix" would drift in
     // silence, since nothing fails when they disagree; a request simply gets gated by one and not the
     // other.
@@ -395,7 +377,7 @@ export function createApp(
     // cannot be made to send one, and `/join`, whose entire audience is people who have no app and so no
     // attestation. These three (`/`, `/join`, the AASA) are exact-path and GET/HEAD-only — never a prefix,
     // never a mutating method — and read no storage, so serving them unauthenticated grows neither the bill
-    // nor the storage this gate protects. They are served at the ROOT only, never under `/api/v1`; the
+    // nor the storage this gate protects. They are served at the ROOT only, never under `/api/vN`; the
     // normalization above is what lets `/attest/*` (a device route, so it arrives prefixed) AND the two
     // event READS added below — also device routes — be matched here on the normalized `path`.
     // `/` and the site's fingerprinted assets under `/_astro/*` are the browser-facing site (capability
@@ -477,22 +459,13 @@ export function createApp(
   // The gate (`app.use("*")`) runs for the mount (verified: Hono runs parent middleware for mounted
   // sub-apps) and normalizes the `/api/vN` prefix, so the ungated `/attest/*` set holds under it.
   //
-  // Each version's table is CLOSED: the shared router carries what both serve, and each version's own
-  // router carries what only it does — so a v1-only path under `/api/v2` (`…/notify`) and a v2-only path
-  // under `/api/v1` (`…/manifest`) are both 404. Gated by the two `app.use("*")` middlewares above, which
-  // resolve the `/api/vN` prefix through one shared splitter, so a further version needs no change to
-  // either. The two token issuers differ by version only in how a stale challenge is refused and in the
-  // mint body's shape (`routes/attest.ts`).
-  const shared = sharedRoutes(deps);
-  const v1 = new Hono();
-  v1.route("/", shared);
-  v1.route("/", attestRoutes(deps, 401, "flat"));
-  v1.route("/", v1Routes(deps));
+  // The version's table is CLOSED: `shared.ts` carries the routes any version would serve alike, `v2.ts` what
+  // only v2 does, and the token issuers are `attest.ts` — so a path in none of them is `404`. v1 is retired
+  // (answered `426` above, never routed), so there is one mount today; a further version is one more.
   const v2 = new Hono();
-  v2.route("/", shared);
-  v2.route("/", attestRoutes(deps, 409, "typed"));
+  v2.route("/", sharedRoutes(deps));
+  v2.route("/", attestRoutes(deps));
   v2.route("/", v2Routes(deps));
-  app.route("/api/v1", v1);
   app.route("/api/v2", v2);
   return app;
 }
