@@ -107,6 +107,18 @@ android {
             if (rigEnabled) signingConfig = signingConfigs.getByName("debug")
         }
     }
+    // ---- Android Lint, gating `./gradlew build` ------------------------------------------------------------------
+    //
+    // Play's own release recommendations (outdated SDKs, edge-to-edge) have no API, so the build runs the nearest local
+    // equivalent instead: lint over the store build's variant and every module it links (`checkDependencies`), where
+    // any warning fails. No baseline — a finding is fixed, or suppressed AT ITS SITE with the reason beside it.
+    lint {
+        checkDependencies = true
+        warningsAsErrors = true
+        abortOnError = true
+        // targetSdk deliberately tracks Play's current requirement (`libs.versions.toml`), not the newest SDK.
+        disable += "OldTargetApi"
+    }
     // ---- The control channel (`:test:rig`), contained at COMPILE TIME --------------------------------------------
     //
     // `-Psnapsync.rig=true` adds BOTH the module and the source directory it contributes; without the property it
@@ -159,3 +171,6 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.androidx.activity.compose)
 }
+
+// The lint gate above runs with the canonical check, over the release variant — the one the store receives.
+tasks.named("check") { dependsOn("lintRelease") }
