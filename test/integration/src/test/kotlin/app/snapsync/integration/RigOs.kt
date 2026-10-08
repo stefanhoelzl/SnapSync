@@ -30,6 +30,20 @@ class OsRecord(private val json: JsonObject) {
 
     /** Whether the app has the photo library's selection observer open. */
     val selectionObserved: Boolean get() = json.getValue("selectionObserved").jsonPrimitive.boolean
+
+    /** How many times the app presented the limited-library picker. */
+    val pickersShown: Int get() = json.int("pickersShown")
+
+    private val systemUi get() = json.getValue("systemUi").jsonObject
+
+    /** Every text the app handed the share sheet, in order. */
+    val shared: List<String> get() = systemUi.getValue("shared").jsonArray.map { it.jsonPrimitive.content }
+
+    /** Every URL the app asked the platform to open, in order. */
+    val opened: List<String> get() = systemUi.getValue("opened").jsonArray.map { it.jsonPrimitive.content }
+
+    /** How many times the app opened its Settings page. */
+    val settingsOpened: Int get() = systemUi.int("settingsOpened")
     val heartbeatsScheduled: Int get() = json.int("heartbeatsScheduled")
 
     /** The heartbeat the operating system holds now, as `"busy"`/`"idle"` — `null` when none is pending. */

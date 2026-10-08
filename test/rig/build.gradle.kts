@@ -123,6 +123,8 @@ kotlin {
         // locally by `:test:edge`, as the second backend choice.
         jvmMain.dependencies {
             implementation(project(":app:jvm"))
+            // `HttpBackend`, behind `VersionedHttpBackend` — the `deno` backend's port.
+            implementation(project(":adapter:generic:app"))
             implementation(project(":test:edge"))
             implementation(project(":domain:feature"))
             implementation(libs.ktor.client.core)

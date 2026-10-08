@@ -19,6 +19,7 @@ import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.Layer
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
@@ -40,6 +41,7 @@ import app.snapsync.ports.Completion
 import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
@@ -64,7 +66,11 @@ import kotlin.time.Duration.Companion.seconds
  * The device is a **live stateful stack** that cannot be un-deposited, so presets build a **fresh** app over fresh
  * mocks and bump [generation]; the root keys the phone pane on it.
  */
-class WorldInspectorController(private val scope: CoroutineScope) {
+class WorldInspectorController(
+    private val scope: CoroutineScope,
+    /** The composition lane [scope] runs on. */
+    private val lane: CoroutineDispatcher,
+) {
 
     // ---- the current app + its device (rebuilt on preset) ------------------------------------------
 
@@ -329,7 +335,15 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
             apnsEnvironment = "sandbox",
         )
-        return JvmApp(scope, JvmMocks()) { device -> device.adapters(build, attests = true) }
+        val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Ignored, network = null)
+        return JvmApp(scope, lane, mocks) { device ->
+            device.adapters(
+                build,
+                attests = true,
+                backend = device.backend.port(build.declaredVersion),
+                logSinks = emptyList(),
+            )
+        }
     }
 
     /**
@@ -337,7 +351,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      * shows from then on), the app becomes active, and the share sheet's hand-offs are echoed to the clipboard.
      */
     private fun start() {
-        app.host
+        app.composed.host
         mocks.screen.operator.live()
         mocks.lifecycle.operator.foreground()
         mocks.library.operator.requestAnswer = if (armedGrants) GalleryAccess.GRANTED else GalleryAccess.DENIED

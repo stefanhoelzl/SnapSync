@@ -23,10 +23,14 @@ class FileSystemMock {
     internal val shared = SnapshotMap<String, ByteArray>()
     internal val private = SnapshotMap<String, ByteArray>()
     internal val denied = SnapshotMap<Pair<FileArea, String>, Unit>()
+    internal val undeletable = SnapshotMap<Pair<FileArea, String>, Unit>()
 
     /** A process's face. The upload extension reaches only the shared area: pass `privateArea = false`. */
-    fun port(privateArea: Boolean = true): Files =
-        InMemoryFiles(mapOf(FileArea.SHARED to shared, FileArea.PRIVATE to private.takeIf { privateArea }), denied.keys)
+    fun port(privateArea: Boolean = true): Files = InMemoryFiles(
+        mapOf(FileArea.SHARED to shared, FileArea.PRIVATE to private.takeIf { privateArea }),
+        denied.keys,
+        undeletable.keys,
+    )
 
     val operator: FileSystemOperator = FileSystemOperator(this)
 }
@@ -68,6 +72,11 @@ class FileSystemOperator internal constructor(private val disk: FileSystemMock) 
     }
 
     fun isDenied(area: FileArea, path: String): Boolean = (area to path) in disk.denied
+
+    /** Make a file's delete fail ([FileResult.Denied]) while it stays readable and writable — or deletable again. */
+    fun failDeletes(area: FileArea, path: String, failing: Boolean = true) {
+        if (failing) disk.undeletable[area to path] = Unit else disk.undeletable.remove(area to path)
+    }
 }
 
 /**

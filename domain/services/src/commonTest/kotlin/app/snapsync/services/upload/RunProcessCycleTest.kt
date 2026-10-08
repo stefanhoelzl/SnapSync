@@ -1,17 +1,21 @@
 package app.snapsync.services.upload
 
 import app.snapsync.model.CycleResult
+import app.snapsync.services.CapturingLogWriter
+import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 /**
  * One OS-driven `process()` invocation (`runProcessCycle`, capability `background-upload`) never
  * throws: the extension root hands its result across the ObjC boundary, where an escaping throwable
  * aborts the process instead of failing the cycle. Every throw degrades to `FAILED`, reported through
- * the hook for where it happened; the requeue rule itself is `RequeueWhilePendingTest`'s.
+ * the hook for where it happened; the requeue rule itself is `RequeueWhilePendingTest`'s. The logging overload — the
+ * extension's `process()` — writes each outcome at its severity.
  */
 class RunProcessCycleTest {
 
@@ -81,5 +85,35 @@ class RunProcessCycleTest {
         for ((result, answer) in expected) {
             assertEquals(answer, runProcessCycle(run = { result }, pending = { 0 }), "$result")
         }
+    }
+
+    // ---- the logging overload --------------------------------------------------------------------------
+
+    private val log = CapturingLogWriter()
+
+    private fun logged(): List<Pair<Severity, String>> = log.lines
+
+    @Test
+    fun `a finished cycle is logged at Info`() = runTest {
+        assertEquals(CycleResult.COMPLETED, runProcessCycle({ CycleResult.COMPLETED }, { 0 }, log.logger()))
+        assertEquals(listOf(Severity.Info to "process: cycle finished — COMPLETED"), logged())
+    }
+
+    @Test
+    fun `a failing cycle is logged at Error and answers FAILED`() = runTest {
+        assertEquals(CycleResult.FAILED, runProcessCycle({ error("cycle") }, { 0 }, log.logger()))
+        assertEquals(listOf(Severity.Error to "process cycle failed"), logged())
+    }
+
+    @Test
+    fun `pending rows log the requeue`() = runTest {
+        assertEquals(CycleResult.PROCESSING, runProcessCycle({ CycleResult.COMPLETED }, { 3 }, log.logger()))
+        assertTrue(Severity.Info to "process: 3 pending — requesting re-invocation" in logged(), "${logged()}")
+    }
+
+    @Test
+    fun `a throwing pending read is logged as a late failure`() = runTest {
+        assertEquals(CycleResult.FAILED, runProcessCycle({ CycleResult.COMPLETED }, { error("ledger") }, log.logger()))
+        assertEquals(Severity.Error to "process failed after the cycle — reporting FAILED", logged().last())
     }
 }

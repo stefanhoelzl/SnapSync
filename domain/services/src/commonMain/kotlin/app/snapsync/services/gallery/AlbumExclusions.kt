@@ -1,11 +1,10 @@
-package app.snapsync.compose
+package app.snapsync.services.gallery
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.gallery.GalleryAlbums
 import co.touchlab.kermit.Logger
 
 /**
@@ -39,7 +38,7 @@ enum class AlbumLookupFailure { AdmitOnDoubt, FailCycle }
  * The empty set is the honest answer, not a fallback: the denylist is a subtraction and the policy admits on
  * doubt.
  */
-internal suspend fun denylistedAlbumMembers(
+suspend fun denylistedAlbumMembers(
     manager: GalleryAlbums,
     cutoff: CaptureCutoff,
     grant: GalleryAccess,

@@ -1,6 +1,7 @@
 package app.snapsync.services.upload
 
 import app.snapsync.model.CycleResult
+import co.touchlab.kermit.Logger
 
 /**
  * The OS-driven tier's pending→re-invocation rule (capability `background-upload`; drained from
@@ -66,3 +67,17 @@ suspend fun runProcessCycle(
         onLateFailure(t)
         CycleResult.FAILED
     }
+
+/**
+ * [runProcessCycle] with every outcome logged by [log] — the extension's `process()`: a finished cycle at `Info`, a
+ * failed one or a late failure at `Error` (each then reported `FAILED`), and a requeue at `Info`.
+ */
+suspend fun runProcessCycle(run: suspend () -> CycleResult, pending: suspend () -> Int, log: Logger): CycleResult =
+    runProcessCycle(
+        run = run,
+        pending = pending,
+        onCycleFinished = { log.i { "process: cycle finished — $it" } },
+        onCycleFailed = { log.e(it) { "process cycle failed" } },
+        onRequeue = { open -> log.i { "process: $open pending — requesting re-invocation" } },
+        onLateFailure = { log.e(it) { "process failed after the cycle — reporting FAILED" } },
+    )

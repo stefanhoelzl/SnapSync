@@ -8,7 +8,7 @@ import app.snapsync.feature.download.DownloadArm
  */
 internal fun AppCore.downloadArm(): DownloadArm = DownloadArm(
     // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
-    enabled = { services.config.config.value?.direction?.includesDownload },
+    enabled = services.config::downloadsEnabled,
     // Read fresh at each reconcile: a background wake has no screen's read-model (capability `sync-status`).
     keyHeld = { !services.eventKeys.lostFor(services.config.config.value) },
 )

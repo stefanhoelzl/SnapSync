@@ -17,6 +17,7 @@ import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.invocation
 import app.snapsync.model.outcome
+import app.snapsync.model.recordingRefusal
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,14 +105,14 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     // instrumentation exists to eliminate.
     override fun share(url: String, title: String) =
         detachedOnCoreLane("tap.share", result = { h: Handoff -> "$h" }) {
-            tapLog.recordingRefusal("tap.share", ports.systemUi.share(url, title))
+            ports.systemUi.share(url, title).recordingRefusal(tapLog, "tap.share")
         }
 
     // Leaving the app for the store page (capability `app-update-required`) — UI lane and
     // instrumented, like every other platform-surface command.
     override fun openLink(url: String) =
         detachedOnCoreLane("tap.openLink", result = { h: Handoff -> "$h" }) {
-            tapLog.recordingRefusal("tap.openLink", ports.systemUi.openUrl(url))
+            ports.systemUi.openUrl(url).recordingRefusal(tapLog, "tap.openLink")
         }
 
     // The permission user-taps (capability `photo-access`), bound to the gallery here so presentation
@@ -190,14 +191,4 @@ internal fun AppCore.userQueriesFor(): UserQueries = object : UserQueries {
 
     override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
         awaitingOnCoreLane("query.shareableCount") { loadShareableCount(cutoff, until) }
-}
-
-/**
- * Records a hand-off to the platform that did not happen. Nothing acts on a [Handoff], but a refusal is logged at
- * `Error`, because the user then tapped and nothing happened — on the update-required screen, to the only remedy the
- * screen offers (`docs/architecture.md`, "Absence is never silent"). `Error` is what reaches the operator from a
- * production build (capability `privacy-security`).
- */
-private fun Logger.recordingRefusal(name: String, handoff: Handoff): Handoff = handoff.also {
-    if (it is Handoff.Refused) e { "$name: nothing was handed off — ${it.reason}" }
 }

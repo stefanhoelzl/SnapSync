@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
+import app.snapsync.model.awayFor
 import app.snapsync.ports.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +28,7 @@ class ForegroundLife internal constructor(private val clock: Clock) {
 
     /** The app came back: one more return, and how long it was away (none on a cold launch). */
     internal fun cameBack() {
-        val away = leftAt.getAndUpdate { null }?.let { clock.now() - it }
+        val away = awayFor(leftAt.getAndUpdate { null }, clock.now())
         latest.update { ForegroundReturn(it.count + 1, away) }
     }
 }

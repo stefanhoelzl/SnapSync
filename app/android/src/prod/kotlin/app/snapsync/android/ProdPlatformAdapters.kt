@@ -1,7 +1,7 @@
 package app.snapsync.android
 
 import app.snapsync.android.link.AndroidInstallReferrer
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.dev.InertDevControls
 import co.touchlab.kermit.Logger
 
@@ -12,9 +12,9 @@ import co.touchlab.kermit.Logger
  * reporter is the real one, which starts only on a build that carries a destination — a distributed one. It reads the
  * invite a Play install carried, through the real links adapter.
  */
-internal fun platformAdapters(root: SnapSyncRoot, real: DevicePorts): PlatformAdapters = PlatformAdapters(
+internal fun platformAdapters(root: SnapSyncRoot, real: AppDevicePorts): PlatformAdapters = PlatformAdapters(
     devControls = InertDevControls,
-    ui = real.lazies.ui,
+    ui = real.ui,
     ports = real,
     bootLines = listOf("[boot] adapters = all real"),
     afterLaunch = {},

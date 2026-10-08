@@ -15,6 +15,8 @@ import app.snapsync.model.extensionRegistrable
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.upload.ExtensionRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -222,6 +224,26 @@ class UploadTransitionsTest {
         w.clear()
         w.transitions.onLaunch()
         assertEquals(listOf("arm"), w.log, "a present record is left alone — its in-flight jobs survive a launch")
+    }
+
+    @Test
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) // runCurrent on the test scheduler
+    fun `following the grant reconciles the launch first then delivers only real changes`() = runTest {
+        val w = World(grant = GalleryAccess.GRANTED)
+        val changes = mutableListOf<GalleryAccess>()
+
+        val following = launch { w.transitions.followGrant { changes += it } }
+        runCurrent()
+        assertEquals(listOf("register", "arm"), w.log, "the launch reconcile ran")
+        assertEquals(emptyList(), changes, "the launch-time value replayed is not a change")
+
+        w.grant = GalleryAccess.LIMITED
+        runCurrent()
+        w.grant = GalleryAccess.GRANTED
+        runCurrent()
+        following.cancel()
+
+        assertEquals(listOf(GalleryAccess.LIMITED, GalleryAccess.GRANTED), changes)
     }
 
     // ---- the rig switch ---------------------------------------------------------------------------------

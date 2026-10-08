@@ -7,14 +7,18 @@ import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.CadenceFacts
 import app.snapsync.feature.upload.TailRunner
 import app.snapsync.feature.upload.TailTrigger
-import app.snapsync.model.GalleryAccess
+import app.snapsync.feature.upload.heartbeatWake
+import app.snapsync.feature.upload.thenTail
+import app.snapsync.feature.upload.thenTailWhen
+import app.snapsync.model.contained
 import app.snapsync.model.invocation
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EntryContext
+import app.snapsync.services.crash.FootprintSampler
+import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.wake.Heartbeat
 import app.snapsync.services.wake.OsCompletions
+import app.snapsync.services.wake.WakeHold
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -41,9 +45,11 @@ class AppTail internal constructor(
     /** The process's entry-point seam, which the tail's lines carry. */
     private val entryContext: EntryContext,
     private val downloads: () -> DownloadController,
+    /** What the photo grant means now — the walk runs under a full one only. */
+    private val galleryAccess: GalleryAccessState,
     /** The app's admission as a Boolean — whether a completion may request the top-up. */
     private val mayCreate: () -> Boolean,
-    /** What the heartbeat's re-arm reads after a tail — see [cadenceFactsOf]. */
+    /** What the heartbeat's re-arm reads after a tail — see `cadenceFacts`. */
     private val cadenceFacts: () -> CadenceFacts,
     /** The in-process ledger-counts re-read, run after a tail unit only while foregrounded. */
     private val refreshCounts: suspend () -> Unit,
@@ -55,6 +61,12 @@ class AppTail internal constructor(
     private val finish: suspend (TailTrigger) -> Unit,
 ) {
     private val foreground = AtomicBoolean(false)
+
+    /** The app's memory readings, taken only while it is not foregrounded — see [FootprintSampler]. */
+    private val footprints = FootprintSampler(
+        services.ports.processInfo,
+        services.process.footprints,
+    ) { foreground.load() }
 
     /** The app uploader, resolved at first use — it owns a process-lifetime background session on a device. */
     private val uploader: AppUploader get() = appUploader()
@@ -69,20 +81,14 @@ class AppTail internal constructor(
     /** The one tail runner of this process. */
     val runner: TailRunner by lazy {
         TailRunner(
-            // Each import runs as its own job the drain awaits — unless the tail's time is up or another request is
-            // due, when the wait gives way and the import runs on, claimed (capability `receiving-photos`, "A stalled
-            // import blocks no other work"). An import that throws surfaces at the await that sees it — held as a
-            // `Result`, so a throw nobody awaits any more cannot fail the composition scope it runs in.
+            // Each import runs as its own job on the composition scope, which the drain awaits unless interrupted.
             importStaged = { signal ->
-                downloads().importReady(signal::stopRequested) { import ->
-                    val job = scope.async { runCatchingCancellable { import() } }
-                    if (signal.awaitUnlessInterrupted(job)) job.await().getOrThrow()
-                }
+                downloads().importReady(signal::stopRequested) { import -> signal.awaitImport(scope, import) }
             },
             topUp = { stop -> uploader.topUp(stop) },
             walkAndPublish = { stop -> uploader.walkAndPublish(stop) },
             // Exactly a full grant: under a partial one the tail reads no library (capability `photo-access`).
-            walkPermitted = { services.ports.photoAccess.permission.value == GalleryAccess.GRANTED },
+            walkPermitted = { galleryAccess.full },
             mayCreate = mayCreate,
             foregrounded = { foreground.load() },
             refreshStatus = refreshCounts,
@@ -109,39 +115,40 @@ class AppTail internal constructor(
      */
     fun requestDetached(trigger: TailTrigger) {
         val hold = hold("tail($trigger)")
-        scope.launch { hold.thenTail(trigger) }
+        scope.launch { handTo(hold, trigger) }
     }
 
     /** A hold on the process's background time for [label], whose expiry stops this tail. */
-    internal fun hold(label: String): WakeHold =
-        WakeHold(label, services.ports.backgroundTime, runner, services.log, finish, settling = ::settling)
+    internal fun hold(label: String): WakeHold = WakeHold(
+        label,
+        services.ports.backgroundTime,
+        stopTail = runner::stop,
+        log = services.log,
+        settling = { footprints.record("after $it") },
+    )
+
+    /** Hand [trigger]'s tail to the runner under [hold] — see `thenTail`. */
+    internal suspend fun handTo(hold: WakeHold, trigger: TailTrigger) = hold.thenTail(trigger, runner, finish)
+
+    /** [handTo] for a wake that joins the tail only when [joins] — see `thenTailWhen`. */
+    internal suspend fun handToWhen(joins: Boolean, hold: WakeHold, trigger: TailTrigger) =
+        hold.thenTailWhen(joins, trigger, runner, finish)
+
+    /** Read the app's own memory footprint at [moment] — see [FootprintSampler]. */
+    internal fun recordFootprint(moment: String) = footprints.record(moment)
 
     /**
-     * Read the app's own memory footprint into the trail the next process-metric report carries (capability
-     * `privacy-security`) — at [moment], as the app enters the background or a wake's work ends there. Only in the
-     * background: that is where the platform ends a process for memory, and the last reading before a suspension is
-     * the one a report about that suspension needs, so foreground readings would only push it out of the trail.
+     * The heartbeat wake's hand-over — it holds no [WakeHold] of its own: its tail, then the end-of-wake step, unless
+     * the OS's time is already up ([released]). See `heartbeatWake`.
      */
-    internal fun recordFootprint(moment: String) {
-        if (foreground.load()) return
-        services.ports.processInfo.memoryFootprint()?.let { services.process.footprints.record(moment, it) }
-    }
-
-    private fun settling(label: String) = recordFootprint("after $label")
-
-    /**
-     * The heartbeat wake's hand-over — it holds no [WakeHold] of its own: its tail, then the end-of-wake step. A tail
-     * that fails is contained, and so is the step; the next wake runs both again.
-     */
-    internal suspend fun heartbeatThenFinish(id: String) {
-        runCatchingCancellable { runner.request(TailTrigger.HEARTBEAT) }
-            .onFailure { services.log.w(it) { "runWake($id): its tail failed" } }
-        runCatchingCancellable { finish(TailTrigger.HEARTBEAT) }
-            .onFailure {
-                services.log.w(it) { "runWake($id): the end-of-wake step failed; the next wake runs it again" }
-            }
-        recordFootprint("after runWake($id)")
-    }
+    internal suspend fun heartbeat(label: String, released: () -> Boolean) = heartbeatWake(
+        label,
+        released,
+        runner,
+        finish,
+        services.log,
+        settling = { footprints.record("after $label") },
+    )
 
     /**
      * The seam the membership transitions drive (capability `background-upload`): an arm requests the tail — detached,
@@ -184,25 +191,9 @@ class AppTail internal constructor(
     internal suspend fun onSelectionChanged() = services.log.invocation(entryContext, "onSelectionChanged") {
         // Held from before its own work to its tail's end, like any in-process request (see [requestDetached]).
         val hold = hold("onSelectionChanged")
-        runCatchingCancellable { uploader.walkAndPublish { false } }
-            .onFailure { services.log.w(it) { "the selection change's discovery failed; its tail still runs" } }
-        hold.thenTail(TailTrigger.SELECTION_CHANGE)
+        services.log.contained("the selection change's discovery failed; its tail still runs") {
+            uploader.walkAndPublish { false }
+        }
+        handTo(hold, TailTrigger.SELECTION_CHANGE)
     }
-}
-
-/**
- * What the heartbeat's re-arm reads of [core] after a tail (capability `receiving-photos`; decision record
- * `changes/timely-background-receiving`, D1, D3) — read fresh each time. The OS uploader counts as confirmed only when
- * it may be registered here (a full grant, an OS that carries it, the dev pin not off) **and** the OS's own answer says
- * it is: whether registering is allowed says nothing about whether it happened.
- */
-internal fun cadenceFactsOf(core: AppCore): CadenceFacts {
-    val config = core.services.config.config.value
-    return CadenceFacts(
-        joined = config != null,
-        ended = config != null && core.services.config.hasEnded(config),
-        shares = config?.direction?.includesUpload == true,
-        fullGrant = core.ports.photoAccess.permission.value == GalleryAccess.GRANTED,
-        osUploaderConfirmed = core.extensionRegistrableNow() && core.extensionRegistration.isRegistered() == true,
-    )
 }

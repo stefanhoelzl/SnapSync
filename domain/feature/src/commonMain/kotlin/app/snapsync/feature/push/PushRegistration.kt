@@ -87,6 +87,14 @@ class PushRegistration(
         }
     }
 
+    /**
+     * Re-PUT the delivered push token on join, whatever the last-registered record holds (capability `receiving-photos`:
+     * a join publishes unconditionally); a no-op before the OS has delivered one.
+     */
+    suspend fun reRegister(source: PushTokenSource) {
+        source.token.value?.let { register(PushEndpoint(source.kind, it, source.env)) }
+    }
+
     private suspend fun publish(token: PushEndpoint, key: String?) {
         runCatchingCancellable { publisher.publish(token) }.getOrElse { Result.failure(it) }
             .onSuccess {

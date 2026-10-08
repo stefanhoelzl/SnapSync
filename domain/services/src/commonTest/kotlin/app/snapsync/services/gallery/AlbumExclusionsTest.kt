@@ -1,4 +1,4 @@
-package app.snapsync.compose
+package app.snapsync.services.gallery
 
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
@@ -15,7 +15,6 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.GalleryReader
-import app.snapsync.services.gallery.GalleryAlbums
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -81,7 +80,7 @@ class AlbumExclusionsTest {
         grant: GalleryAccess,
         onFailure: AlbumLookupFailure,
         log: Logger,
-    ) = app.snapsync.compose.denylistedAlbumMembers(GalleryAlbums(library), cutoff, grant, onFailure, log)
+    ) = app.snapsync.services.gallery.denylistedAlbumMembers(GalleryAlbums(library), cutoff, grant, onFailure, log)
 
     private val cutoff = captureCutoff("2026-06-01T00:00:00Z")
     private val log = Logger.withTag("AlbumExclusionsTest")

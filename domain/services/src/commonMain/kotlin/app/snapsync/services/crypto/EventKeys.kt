@@ -14,6 +14,7 @@ import app.snapsync.ports.DevControls
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.secure.persist
 import app.snapsync.services.secure.readExisting
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -93,6 +94,21 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
 
     /** Whether [membership]'s event key is [KeyPresence.Lost] — what stops both directions. */
     fun lostFor(membership: EventConfig?): Boolean = presenceFor(membership) == KeyPresence.Lost
+
+    /**
+     * Keep [linkKey] as the joined event's key — only when the device has LOST the key of [membership] and [linkKey] is
+     * that event's own (capability `join-event`, "Reopening the current event's invite changes nothing") — and answer
+     * whether it was kept, running [onRestored] first when it was. A keep the store refuses is logged by [log] and
+     * answers `false`.
+     */
+    fun restoreLost(linkKey: String, membership: EventConfig?, log: Logger, onRestored: () -> Unit): Boolean {
+        val opens = lostKeyIdOf(membership)?.let { it == idOf(linkKey) } == true
+        val kept = opens && runCatchingCancellable { keep(linkKey) }
+            .onFailure { log.w { "the reopened invite's key could not be kept: $it" } }
+            .isSuccess
+        if (kept) onRestored()
+        return kept
+    }
 
     /** [membership]'s key id while its key is lost, else `null` — what a reopened invite must name to restore it. */
     fun lostKeyIdOf(membership: EventConfig?): String? = membership?.keyId?.takeIf { lostFor(membership) }

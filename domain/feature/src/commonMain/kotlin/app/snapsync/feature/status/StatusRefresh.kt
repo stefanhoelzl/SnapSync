@@ -81,6 +81,14 @@ class StatusRefresh(
         // CHEAP LOCAL READS FIRST — the rule this class is named for. Both counts gate the screen out of
         // its neutral first frame; the walk below is the slow one, and it must not arrive alone.
         refreshCheapLocalReads()
+        refreshTotal()
+    }
+
+    /**
+     * The library half alone — recount `N` under the membership's policy: what a selection change runs, whose
+     * snapshot the read seam then answers from. Nothing while unjoined; a failed policy read leaves `N` as it was.
+     */
+    suspend fun refreshTotal() {
         val config = configSource.config.value ?: return
         // NO GRANT CHECK. The read seam answers both halves — where candidates come from AND whether an
         // admitted set can be stated at all — and a gate here would restate the second half. It used to,

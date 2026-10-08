@@ -9,11 +9,13 @@ import app.snapsync.ports.Files
  * The honest in-memory [Files]: one map of path → bytes per area, the maps being the caller's own cells (initial
  * state by constructor, per the fake-honesty rule). An area mapped to `null` is unreachable — every operation
  * answers [FileResult.AreaUnavailable] — and a path in [denied] is a present file this process may not touch,
- * answering [FileResult.Denied] and never absence.
+ * answering [FileResult.Denied] and never absence. A path in [undeletable] is readable and writable, but its delete is
+ * [FileResult.Denied] — a file the platform will not remove.
  */
 internal class InMemoryFiles(
     private val areas: Map<FileArea, MutableMap<String, ByteArray>?>,
     private val denied: Set<Pair<FileArea, String>>,
+    private val undeletable: Set<Pair<FileArea, String>> = emptySet(),
 ) : Files {
 
     private fun <T> at(area: FileArea, path: String, op: (MutableMap<String, ByteArray>) -> FileResult<T>): FileResult<T> {
@@ -55,8 +57,13 @@ internal class InMemoryFiles(
             FileResult.Ok(Unit)
         }
 
-    override fun delete(area: FileArea, path: String): FileResult<Unit> =
-        at(area, path) { files -> if (files.remove(path) != null) FileResult.Ok(Unit) else FileResult.NotFound }
+    override fun delete(area: FileArea, path: String): FileResult<Unit> = at(area, path) { files ->
+        when {
+            (area to path) in undeletable -> FileResult.Denied("$area/$path cannot be deleted")
+            files.remove(path) != null -> FileResult.Ok(Unit)
+            else -> FileResult.NotFound
+        }
+    }
 
     /** Existence is not content: a denied file still exists, as a platform `stat` answers for a protected one. */
     override fun exists(area: FileArea, path: String): FileResult<Boolean> =

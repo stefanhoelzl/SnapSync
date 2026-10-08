@@ -358,4 +358,23 @@ class PushRegistrationTest {
         assertEquals(1, client.calls.size, "the join trigger re-sends whatever it cannot key")
         assertNull(record.loadLastRegistered(), "a registration it cannot key is never recorded as accepted")
     }
+
+    // ── the join's re-registration (capability `receiving-photos`: a join publishes unconditionally) ──
+
+    @Test
+    fun a_re_registration_before_any_token_publishes_nothing() = runTest {
+        val client = FakePushTokenPublisher()
+        registration(client).reRegister(PushTokenSource("apns", "sandbox"))
+        assertTrue(client.calls.isEmpty())
+    }
+
+    @Test
+    fun a_re_registration_publishes_the_delivered_token_even_when_unchanged() = runTest {
+        val client = FakePushTokenPublisher()
+        val reg = registration(client)
+        val source = PushTokenSource("fcm", "project-1").apply { deliver("TOKEN") }
+        reg.reRegister(source)
+        reg.reRegister(source)
+        assertEquals(List(2) { PushEndpoint("fcm", "TOKEN", "project-1") }, client.calls)
+    }
 }

@@ -304,4 +304,24 @@ class ReceivedPhotoAdoptionTest {
         adoption.ensureAdopted(cfg)
         assertEquals(2, world.unionReads, "a failed pass settles nothing, so the next drain runs it again")
     }
+
+    // ── the app's answer to a grant: adopt first, then let the drain import (design `mark-received-photos`, D4) ──
+
+    @Test
+    fun a_usable_grant_while_joined_adopts_and_answers_usable() = runTest {
+        val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-A", ref("A"))))
+        assertTrue(world.adoption(me).ensureAdoptedUnder(usable = true, joined = cfg))
+        assertEquals(listOf<Pair<Long?, UnionTrigger>>(null to UnionTrigger.GRANT), world.unionTriggers)
+        assertTrue(world.store.isSettled(ref("A")))
+    }
+
+    @Test
+    fun an_unusable_grant_or_no_membership_adopts_nothing_and_answers_usable() = runTest {
+        val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-A", ref("A"))))
+        val adoption = world.adoption(me)
+        assertFalse(adoption.ensureAdoptedUnder(usable = false, joined = cfg))
+        assertTrue(adoption.ensureAdoptedUnder(usable = true, joined = null))
+        assertEquals(0, world.unionReads)
+        assertFalse(world.store.isSettled(ref("A")))
+    }
 }

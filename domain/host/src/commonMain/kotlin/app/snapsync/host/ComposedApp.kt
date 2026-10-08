@@ -24,6 +24,7 @@ import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -76,6 +77,8 @@ class ComposedApp internal constructor(
  */
 fun snapSyncHost(
     scope: CoroutineScope,
+    /** The composition lane [scope] runs on — named by the root, which owns that thread (see `AppCore.coreLane`). */
+    lane: CoroutineDispatcher,
     ports: AppPorts,
     /**
      * The one cutoff formatter of this process — built by the root, which read the device zone once, and handed to
@@ -83,14 +86,8 @@ fun snapSyncHost(
      */
     cutoffFormatter: CutoffFormatter,
 ): ComposedApp {
-    // The process first — inside `snapSyncApp`, before anything else in the graph can fail. A minted event routes into
-    // the host's join gate, so create and a scanned QR take one gate; the host is assembled by the time one is minted.
-    lateinit var composed: ComposedApp
-    val core = snapSyncApp(
-        scope,
-        ports,
-        onEventMinted = { eventId, linkKey -> composed.host.onEventCreated(eventId, linkKey) },
-    )
+    // The process first — inside `snapSyncApp`, before anything else in the graph can fail.
+    val core = snapSyncApp(scope, lane, ports)
     val process = core.process
     val log = process.logger("app")
     // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much
@@ -103,7 +100,7 @@ fun snapSyncHost(
     ports.download.listen(core.events.downloadHandlers)
     ports.appUpload.listen(core.events.uploadHandlers)
     core.installCompositionSubscriptions()
-    composed = ComposedApp(core, process, cutoffFormatter) {
+    val composed = ComposedApp(core, process, cutoffFormatter) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
         // The network's return resumes the app's work while it is in front (capability `sync-status`).
@@ -136,6 +133,9 @@ fun snapSyncHost(
         scope.launch { host.container.stateFlow.collect(ports.ui::show) }
         host
     }
+    // A minted event routes into the host's join gate, so create and a scanned QR take one gate: collected from
+    // composition on, so the host is assembled by the time the first one — a tap's — is minted.
+    scope.launch { core.mintedEvents.collect { composed.host.onEventCreated(it.eventId, it.linkKey) } }
     listenToEntries(composed, process, ports, log)
     // Asked at every launch, a background one included (capability `receiving-photos`, "Registration timing"): the
     // answer arrives through the push handlers just registered, and asking is how a rotated token is learned.

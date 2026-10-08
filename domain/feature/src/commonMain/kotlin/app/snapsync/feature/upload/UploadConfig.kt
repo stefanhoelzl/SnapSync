@@ -157,6 +157,10 @@ enum class UploadAdmission {
 
     /** This process may not create now: settle narrowly, publish nothing. */
     Withheld,
+    ;
+
+    /** Whether this answer lets the uploader create — what a completion's top-up request reads. */
+    val admits: Boolean get() = this == Admit
 }
 
 /**

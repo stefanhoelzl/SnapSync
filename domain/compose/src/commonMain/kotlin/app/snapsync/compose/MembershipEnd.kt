@@ -2,8 +2,6 @@ package app.snapsync.compose
 
 import app.snapsync.feature.membership.EventCompletion
 import app.snapsync.feature.upload.TailTrigger
-import app.snapsync.model.EventConfig
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.leave.PendingLeaves
 
 /**
@@ -42,57 +40,23 @@ class MembershipEnd internal constructor(private val core: AppCore) {
     }
 
     /**
-     * The end of every wake whose tail covered the whole pass (capabilities `receiving-photos` and `manage-membership`;
-     * decision record `changes/timely-background-receiving`, D4–D5): first the **bounded photo check** — the union
-     * read, at most once an hour per event, so others' photos arrive when no push does — then the event-completion
-     * step, whose read of the event's state is bounded the same way unless [trigger] is one that asks the event anyway:
-     * a push (the close is announced by one), an opening, a join.
-     *
-     * An arm's tail runs no photo check: an arm is requested from inside a join or a reconfigure, which read the union
-     * in their own work, and the tail can end before that read has stamped the hour — one union read too many per join.
+     * The end of every wake whose tail covered the whole pass — [EventCompletion.endOfWake], with [trigger]'s own
+     * facts:
+     * whether it runs the bounded photo check (the download arm's union read), and whether its read of the event's
+     * state is bounded.
      */
     suspend fun endOfWake(trigger: TailTrigger) {
-        core.services.config.config.value?.eventId?.takeIf { trigger != TailTrigger.ARM }?.let { eventId ->
-            runCatchingCancellable { core.downloadController.reconcileIfDue(eventId) }
-                .onFailure { core.services.log.w(it) { "the bounded photo check failed; the next wake runs it again" } }
+        completion.endOfWake(trigger.checksPhotos, trigger.boundsEventRead) { eventId ->
+            core.downloadController.reconcileIfDue(eventId)
         }
-        completion.finish(bounded = trigger !in ASKS_THE_EVENT)
     }
 
     /**
-     * The backend-leave effect: recorded first (replacing the leave command's own record with [received]), then every
-     * outstanding leave is sent. One the backend does not confirm stays recorded, and the next wake's [completion]
-     * sends it again — a finished event is deleted once everyone has LEFT, so a lost leave is no longer harmless.
+     * The backend-leave effect: a re-join asks the event at once, so its bounded background checks start over; then
+     * the leave is recorded and every outstanding one sent ([PendingLeaves.leave]).
      */
     suspend fun notifyLeave(eventId: String, received: Boolean) {
-        // A re-join asks the event at once: its bounded background checks start over.
         core.services.eventChecks.clear(eventId)
-        pendingLeaves.record(eventId, received)
-        val outstanding = pendingLeaves.deliverAll()
-        if (outstanding > 0) {
-            core.services.log.i { "leave of $eventId not confirmed yet — $outstanding retried on the next wake" }
-        }
-    }
-
-    /**
-     * Whether this device holds every photo of the others in the membership [left] describes — what every leave tells
-     * the backend (capability `manage-membership`). A membership that does not receive has nothing to wait for.
-     */
-    suspend fun everythingReceived(left: EventConfig): Boolean =
-        !left.direction.includesDownload || core.downloadController.holdsEveryForeignPhoto(left.eventId)
-
-    /**
-     * The backend leave of a switch's previous membership — still the saved one when it runs — saying whether it had
-     * everything, as every leave does: only after its range has ended, and a doubt is a no.
-     */
-    suspend fun notifySwitchLeave(eventId: String) {
-        val previous = core.services.config.config.value?.takeIf { it.eventId == eventId }
-        val received = previous != null && core.services.config.hasEnded(previous) &&
-            runCatchingCancellable { everythingReceived(previous) }.getOrDefault(false)
-        notifyLeave(eventId, received)
+        pendingLeaves.leave(eventId, received)
     }
 }
-
-/** The triggers whose own reason is to ask the event now — their end-of-wake read of its state is not bounded. */
-private val ASKS_THE_EVENT =
-    setOf(TailTrigger.SILENT_PUSH, TailTrigger.FOREGROUND, TailTrigger.NETWORK, TailTrigger.ARM)

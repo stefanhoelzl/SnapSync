@@ -5,6 +5,7 @@ import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EntryScope
+import app.snapsync.model.EventConfig
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.PlannedAsset
@@ -154,11 +155,16 @@ class DownloadController(
         arm.enabled() != true || holdsEveryForeignPhoto(eventId)
 
     /**
-     * [everythingReceived] for a membership that receives, asked without the joined configuration — what a leave asks
-     * once it has cleared that configuration (capability `manage-membership`): every foreign asset the event serves is
-     * settled here and nothing waits to download or import. A union that cannot be read answers `false`. A FULL read
-     * too, for the same reason: doubt must not report a member that lacks photos as having everything.
+     * [everythingReceived] for the membership [membership] describes, asked without the joined configuration — what a
+     * leave asks once it has cleared that configuration (capability `manage-membership`): every foreign asset the event
+     * serves is settled here and nothing waits to download or import. A membership that does not receive has nothing to
+     * wait for. A union that cannot be read answers `false`. A FULL read too, for the same reason: doubt must not report
+     * a member that lacks photos as having everything.
      */
+    suspend fun holdsEverythingFor(membership: EventConfig): Boolean =
+        !membership.direction.includesDownload || holdsEveryForeignPhoto(membership.eventId)
+
+    /** [holdsEverythingFor]'s answer for a membership that receives. */
     suspend fun holdsEveryForeignPhoto(eventId: String): Boolean {
         val assets = union.union(eventId, null, UnionTrigger.LEAVE_CHECK).getOrElse { return false }.assets
         val foreign = assets.filter { it.deviceId != myDeviceId }.map { AssetRef(it.deviceId, it.assetId) }

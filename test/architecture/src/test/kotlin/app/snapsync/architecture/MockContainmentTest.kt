@@ -19,8 +19,8 @@ import kotlin.test.fail
  *    `-Psnapsync.rig=true` (`if (rigEnabled)`);
  *  - nothing else a shipped root links — the closure of their main project dependencies, rig lines excluded — reaches
  *    any of them;
- *  - no production Kotlin imports a mock's package: the one type a production root composes over, `DevicePorts`, is
- *    `:domain:compose`'s, so the prod adapter set reaches no mock by construction.
+ *  - no production Kotlin imports a mock's package: the types a production root composes over, `AppDevicePorts` and
+ *    `ExtensionDevicePorts`, are `:domain:compose`'s, so the prod adapter set reaches no mock by construction.
  *
  * The rig's own hook directories live under `test/` and are compiled into the roots only under the same switch.
  */

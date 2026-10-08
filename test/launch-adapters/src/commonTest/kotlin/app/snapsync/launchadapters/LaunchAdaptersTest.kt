@@ -1,6 +1,7 @@
 package app.snapsync.launchadapters
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
+import app.snapsync.compose.ExtensionDevicePorts
 import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.MockDevice
@@ -9,8 +10,12 @@ import app.snapsync.model.CycleResult
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.Clock
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.Files
+import app.snapsync.ports.NetworkMonitor
+import app.snapsync.ports.SystemUi
+import app.snapsync.ports.Ui
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -121,8 +126,7 @@ class LaunchAdaptersTest {
         val built = mutableListOf<String>()
         val real = MockDevice()
         val ports = chosen.ports(
-            root = AdapterProcess.APP,
-            real = DevicePorts(
+            appDevice(
                 clock = lazy {
                     built += "clock"
                     real.clock.port()
@@ -138,9 +142,9 @@ class LaunchAdaptersTest {
             ),
         )
         chosen.device.clock.operator.now = Instant.parse("2026-01-01T00:00:00Z")
-        assertEquals(Instant.parse("2026-01-01T00:00:00Z"), ports.clock.now())
-        assertTrue(ports.ui.toString().isNotEmpty())
-        ports.systemUi.openSettings()
+        assertEquals(Instant.parse("2026-01-01T00:00:00Z"), ports.clock.value.now())
+        assertTrue(ports.ui.value.toString().isNotEmpty())
+        ports.systemUi.value.openSettings()
         assertEquals(listOf("systemUi"), built, "a mocked system's real adapter is never built")
         assertEquals(1, real.systemUi.operator.settingsOpened.value, "a real system reaches the real adapter")
         assertEquals("9.9", chosen.device.declaredVersion.value, "the backend mock hears the build's own version")
@@ -152,12 +156,13 @@ class LaunchAdaptersTest {
         write(AdapterFiles.CHOICE, "network=mock\n")
         val mocked = assertIs<LaunchAdapters.Chosen>(launch())
         val real = MockDevice().also { it.connectivity.operator.access = NetworkAccess.Online(restricted = false) }
-        val ports = mocked.ports(
-            root = AdapterProcess.APP,
-            real = DevicePorts(network = lazy { real.connectivity.port() }),
-        )
+        val ports = mocked.ports(appDevice(network = lazy { real.connectivity.port() }))
         mocked.device.connectivity.operator.access = NetworkAccess.Blocked
-        assertEquals(NetworkAccess.Blocked, ports.network.watch().first(), "a mocked network answers the mock's lever")
+        assertEquals(
+            NetworkAccess.Blocked,
+            ports.network.value.watch().first(),
+            "a mocked network answers the mock's lever",
+        )
         assertEquals(listOf(MockedSystem.NETWORK), mocked.save(), "the lever's value is kept for the next launch")
         assertEquals(
             NetworkAccess.Blocked,
@@ -166,13 +171,10 @@ class LaunchAdaptersTest {
 
         write(AdapterFiles.CHOICE, "clock=mock\n")
         val unmocked = assertIs<LaunchAdapters.Chosen>(launch())
-        val realPorts = unmocked.ports(
-            root = AdapterProcess.APP,
-            real = DevicePorts(network = lazy { real.connectivity.port() }),
-        )
+        val realPorts = unmocked.ports(appDevice(network = lazy { real.connectivity.port() }))
         assertEquals(
             NetworkAccess.Online(restricted = false),
-            realPorts.network.watch().first(),
+            realPorts.network.value.watch().first(),
             "a real network reaches the real adapter",
         )
     }
@@ -202,13 +204,12 @@ class LaunchAdaptersTest {
                 "downloads=mock\nlibrary=mock\npush=mock\nextension-registry=mock\n",
         )
         val chosen = assertIs<LaunchAdapters.Chosen>(launch(AdapterProcess.EXTENSION))
-        val ports = chosen.ports(DevicePorts(), AdapterProcess.EXTENSION)
+        val ports = chosen.ports(extensionDevice())
         assertEquals(
             FileResult.AreaUnavailable,
-            ports.files.read(FileArea.PRIVATE, "x"),
+            ports.files.value.read(FileArea.PRIVATE, "x"),
             "the extension reaches only the shared area",
         )
-        assertEquals(false, ports.integrity.isAvailable(), "App Attest does not exist in the extension")
     }
 
     @Test
@@ -244,4 +245,32 @@ class LaunchAdaptersTest {
     private companion object {
         const val FRESH = "00000000-0000-4000-9000-0000000000f1"
     }
+
+    /** An app's real ports, each failing if built — but the ones a test hands in. */
+    private fun appDevice(
+        clock: Lazy<Clock> = unbuilt("clock"),
+        network: Lazy<NetworkMonitor> = unbuilt("network"),
+        systemUi: Lazy<SystemUi> = unbuilt("systemUi"),
+        ui: Lazy<Ui> = unbuilt("ui"),
+    ) = AppDevicePorts(
+        clock = clock, crypto = unbuilt("crypto"), crashReporter = unbuilt("crashReporter"), files = unbuilt("files"),
+        databases = unbuilt("databases"), preferences = unbuilt("preferences"), secureStore = unbuilt("secureStore"),
+        platformDeviceId = unbuilt("platformDeviceId"), integrity = unbuilt("integrity"),
+        processInfo = unbuilt("processInfo"), network = network, deviceConditions = unbuilt("deviceConditions"),
+        backend = unbuilt("backend"), backgroundTime = unbuilt("backgroundTime"), wake = unbuilt("wake"),
+        extensionRegistry = unbuilt("extensionRegistry"), gallery = unbuilt("gallery"),
+        photoAccess = unbuilt("photoAccess"), appUpload = unbuilt("appUpload"), download = unbuilt("download"),
+        systemUi = systemUi, lifecycle = unbuilt("lifecycle"), links = unbuilt("links"),
+        pushNotifications = unbuilt("pushNotifications"), ui = ui,
+    )
+
+    /** An extension's real ports, each failing if built. */
+    private fun extensionDevice() = ExtensionDevicePorts(
+        clock = unbuilt("clock"), crypto = unbuilt("crypto"), crashReporter = unbuilt("crashReporter"),
+        files = unbuilt("files"), databases = unbuilt("databases"), preferences = unbuilt("preferences"),
+        secureStore = unbuilt("secureStore"), platformDeviceId = unbuilt("platformDeviceId"),
+        galleryReader = unbuilt("galleryReader"), cycleUpload = unbuilt("cycleUpload"), backend = unbuilt("backend"),
+    )
+
+    private fun <T> unbuilt(port: String): Lazy<T> = lazy { error("the real $port was built") }
 }

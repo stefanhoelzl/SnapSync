@@ -183,6 +183,7 @@ flowchart LR
   test_launch_adapters --> domain_model
   test_launch_adapters --> domain_ports
   test_rig --> adapter_android
+  test_rig --> adapter_generic_app
   test_rig --> adapter_generic_mock
   test_rig --> adapter_ios_app_only
   test_rig --> adapter_ios_ext_safe

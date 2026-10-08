@@ -4,11 +4,15 @@ import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
 import app.snapsync.model.KeyPresence
+import app.snapsync.model.SecureSlot
+import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
+import app.snapsync.ports.SecureStore
 import app.snapsync.services.crypto.EventKeys
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runCurrent
@@ -99,5 +103,37 @@ class KeyPresenceTest {
         rereads.tryEmit(Unit)
         runCurrent()
         assertEquals(KeyPresence.Held, presence.value, "a reread sees the kept key")
+    }
+
+    @Test
+    fun a_reopened_invite_restores_only_the_lost_key_of_the_joined_event() {
+        val keys = EventKeys(crypto, inMemorySecureStore())
+        val minted = keys.mint()
+        var restored = 0
+        val log = Logger.withTag("KeyPresenceTest")
+
+        assertFalse(
+            keys.restoreLost(keys.mint().linkKey, config(minted.keyId), log) { restored++ },
+            "another event's key",
+        )
+        assertFalse(keys.restoreLost(minted.linkKey, null, log) { restored++ }, "no membership")
+        assertEquals(0, restored)
+
+        assertTrue(keys.restoreLost(minted.linkKey, config(minted.keyId), log) { restored++ })
+        assertEquals(1, restored, "a kept key resumes the work it stopped")
+        assertEquals(KeyPresence.Held, keys.presenceFor(config(minted.keyId)))
+        assertFalse(keys.restoreLost(minted.linkKey, config(minted.keyId), log) { restored++ }, "held is not lost")
+    }
+
+    @Test
+    fun a_lost_key_the_store_refuses_to_keep_is_not_restored() {
+        val refusing = object : SecureStore by inMemorySecureStore() {
+            override fun write(slot: SecureSlot, value: String): WriteOutcome = WriteOutcome.Failed("locked")
+        }
+        val keys = EventKeys(crypto, refusing)
+        val minted = keys.mint()
+        var restored = false
+        assertFalse(keys.restoreLost(minted.linkKey, config(minted.keyId), Logger.withTag("t")) { restored = true })
+        assertFalse(restored)
     }
 }

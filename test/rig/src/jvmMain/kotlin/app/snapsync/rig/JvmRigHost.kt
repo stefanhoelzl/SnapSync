@@ -73,9 +73,9 @@ class JvmRigHost private constructor(
             val rig = withContext(lane) { compose(scope, backend, lane) }
             val bound = CompletableDeferred<Int>()
             val server = RigServer(
-                core = { rig.app.core },
+                core = { rig.app.composed.core },
                 // Read per request, never captured: a relaunch replaces the app, and its host with it.
-                host = { rig.app.host },
+                host = { rig.app.composed.host },
                 hooks = jvmHooks(rig, publishBoundPort = {
                     bound.complete(it)
                 }, reportBindFailure = { bound.completeExceptionally(BindFailed(port, it)) }),
@@ -121,7 +121,7 @@ class JvmRigHost private constructor(
                 store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
                 apnsEnvironment = "sandbox",
             )
-            val app = JvmApp(scope, mocks) { device ->
+            val app = JvmApp(scope, lane, mocks) { device ->
                 device.adapters(
                     build,
                     attests = backend.attests,
@@ -184,11 +184,12 @@ class JvmRigHost private constructor(
                         excluded = emptyMap(),
                     ),
                 ),
+                // The platform's own UI is a mock here, so the hand-off taps a device host excludes are driven too.
                 userCommands = userCommands(
                     dispatch = { mocks.screen.operator.tap(it) },
-                    state = { rig.app.host.container.stateFlow.value },
-                ),
-                excludedUserCommands = excludedUserCommands(),
+                    state = { rig.app.composed.host.container.stateFlow.value },
+                ) + handOffUserCommands { mocks.screen.operator.tap(it) },
+                excludedUserCommands = excludedUserCommands() - HAND_OFF_EXCLUSIONS,
                 deviceCommands = jvmDeviceCommands(rig),
                 readGallery = rig.world.mockGalleryReader(),
                 osExtensionEnabled = { null },
@@ -241,7 +242,7 @@ internal class JvmRig(
      * is collected. Done at start, and again after every relaunch, whose new app no screen has been built for.
      */
     fun showScreen() {
-        app.host
+        app.composed.host
         mocks.screen.operator.live()
     }
 }

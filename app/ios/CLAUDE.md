@@ -87,8 +87,8 @@ is no per-root cycle or feature assembly any more.
 - **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
   `SupervisorJob` scope on its own composition lane (outlives Compose recomposition). Builds `AppPorts` —
   ports and nothing else (`PortBundleTest`): the process's `ProcessPorts` with its `IosBuildInfo`, the App-Group
-  storage ports, PhotoKit, the generic HTTP backend, the entry ports — and calls `snapSyncHost(scope, ports,
-  formatter)`, whose first act sets the process up (crash reporting first) and which builds every service over the
+  storage ports, PhotoKit, the generic HTTP backend, the entry ports — and calls `snapSyncHost(scope, lane, ports,
+  formatter)` (the lane its scope runs on), whose first act sets the process up (crash reporting first) and which builds every service over the
   ports; the lazily composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
   into `StatusContainerHost`. **The scope carries a `CoroutineExceptionHandler`** — its one
   non-negotiable member: a `SupervisorJob` isolates siblings from each other but does **nothing**

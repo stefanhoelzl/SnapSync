@@ -1,10 +1,16 @@
 package app.snapsync.services.leave
 
 import app.snapsync.mock.inMemoryFiles
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
+import app.snapsync.ports.Files
+import app.snapsync.services.CapturingLogWriter
 import app.snapsync.services.backend.LeaveNotifier
+import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The leaves the backend has not confirmed (capability `event-lifetime`, "A leave made offline still counts"), over the
@@ -104,5 +110,59 @@ class PendingLeavesTest {
         leaves.record("E")
         assertEquals(1, leaves.deliverAll())
         assertEquals(true, leaves.received("E"))
+    }
+
+    @Test
+    fun `a confirmed leave is recorded delivered and forgotten in silence`() = runTest {
+        val log = CapturingLogWriter()
+        val leaves = PendingLeaves(inMemoryFiles(shared = shared), notifier, log.logger())
+        leaves.leave("E", received = true)
+        assertEquals(listOf("E" to true), answers)
+        assertEquals(emptySet(), leaves.outstanding())
+        assertTrue(log.lines.isEmpty(), "${log.lines}")
+    }
+
+    @Test
+    fun `an unconfirmed leave stays recorded and says it is retried`() = runTest {
+        refused += "E"
+        val log = CapturingLogWriter()
+        val leaves = PendingLeaves(inMemoryFiles(shared = shared), notifier, log.logger())
+        leaves.leave("E", received = false)
+        assertEquals(setOf("E"), leaves.outstanding())
+        assertTrue(
+            log.lines.any { (severity, line) -> severity == Severity.Info && "1 retried on the next wake" in line },
+            "${log.lines}",
+        )
+    }
+
+    @Test
+    fun `an unreadable record answers from the leaves this process still owes`() = runTest {
+        val log = CapturingLogWriter()
+        val denied = mutableSetOf(FileArea.SHARED to "membership/pending-leaves.txt")
+        val leaves = PendingLeaves(inMemoryFiles(shared = shared, denied = denied), notifier, log.logger())
+        leaves.record("E", received = true)
+        assertEquals(setOf("E"), leaves.outstanding())
+        assertEquals(true, leaves.received("E"))
+        assertTrue(
+            log.lines.any { (severity, line) -> severity == Severity.Warn && "unreadable" in line },
+            "${log.lines}",
+        )
+    }
+
+    @Test
+    fun `a refused write is logged and the leave stays owed by this process`() = runTest {
+        val log = CapturingLogWriter()
+        val refusing = object : Files by inMemoryFiles(shared = shared) {
+            override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> =
+                FileResult.Failed("ENOSPC")
+        }
+        val leaves = PendingLeaves(refusing, notifier, log.logger())
+        leaves.record("E")
+        assertTrue(shared.isEmpty(), "nothing reached the record")
+        assertEquals(setOf("E"), leaves.outstanding(), "the leave is held in memory")
+        assertTrue(
+            log.lines.any { (severity, line) -> severity == Severity.Warn && "not written" in line },
+            "${log.lines}",
+        )
     }
 }

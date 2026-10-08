@@ -2,7 +2,8 @@
 
 package app.snapsync.launchadapters
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
+import app.snapsync.compose.ExtensionDevicePorts
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockState
 import app.snapsync.mock.MockedSystem
@@ -89,12 +90,11 @@ sealed interface LaunchAdapters {
     ) : LaunchAdapters {
         private val written = mutableMapOf<MockedSystem, String>()
 
-        /**
-         * [real] with every mocked system's ports swapped for its mock's faces — [root]'s faces: the upload extension's
-         * root reaches only the shared files, has no App Attest, and reports to a channel nobody observes, in its own
-         * process and inside the app alike.
-         */
-        fun ports(real: DevicePorts, root: AdapterProcess): DevicePorts = chosenPorts(real.lazies, choice, device, root)
+        /** [real] with every mocked system's ports swapped for its mock's faces — see [chosenAppPorts]. */
+        fun ports(real: AppDevicePorts): AppDevicePorts = chosenAppPorts(real, choice, device)
+
+        /** The extension's [real] with every mocked system's ports swapped — see [chosenExtensionPorts]. */
+        fun ports(real: ExtensionDevicePorts): ExtensionDevicePorts = chosenExtensionPorts(real, choice, device)
 
         /**
          * Write every mocked system's state that changed since the last write — each file whole and atomically. Only the
@@ -113,8 +113,11 @@ sealed interface LaunchAdapters {
         }
     }
 
-    /** What [root] composes over: [real], with this launch's mocked systems swapped in — [real] itself when none are. */
-    fun portsFor(real: DevicePorts, root: AdapterProcess): DevicePorts = (this as? Chosen)?.ports(real, root) ?: real
+    /** What the app composes over: [real], with this launch's mocked systems swapped in — [real] itself when none are. */
+    fun portsFor(real: AppDevicePorts): AppDevicePorts = (this as? Chosen)?.ports(real) ?: real
+
+    /** What the extension composes over — [portsFor]'s twin. */
+    fun portsFor(real: ExtensionDevicePorts): ExtensionDevicePorts = (this as? Chosen)?.ports(real) ?: real
 
     companion object {
         private val loaded = AtomicReference<LaunchAdapters?>(null)

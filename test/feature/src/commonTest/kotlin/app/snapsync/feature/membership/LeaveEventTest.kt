@@ -255,4 +255,53 @@ class LeaveEventTest {
         ).leave()
         assertEquals(app.snapsync.model.SecureStoreRead.Absent, store.read(app.snapsync.model.SecureSlots.EVENT_KEY))
     }
+
+    // ── A switch's leave of the previous membership says whether it had everything (capability `manage-membership`) ──
+
+    /** What [LeaveEvent.notifySwitchLeave] for [eventId] sent, with [saved] the saved membership. */
+    private suspend fun kotlinx.coroutines.test.TestScope.switchLeave(
+        saved: EventConfig?,
+        eventId: String,
+        everythingReceived: suspend (EventConfig) -> Boolean,
+    ): List<Pair<String, Boolean>> {
+        val sent = mutableListOf<Pair<String, Boolean>>()
+        LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
+            config = configService(saved, membershipFiles()),
+            stopUploads = {},
+            notifyLeave = { id, received -> sent += id to received },
+            scope = backgroundScope,
+            everythingReceived = everythingReceived,
+            pendingLeaves = inertPendingLeaves(),
+        ).notifySwitchLeave(eventId)
+        return sent
+    }
+
+    @Test
+    fun `a switch leave of an event that is not the saved one says no without asking`() = runTest {
+        var asked = false
+        val ask: suspend (EventConfig) -> Boolean = {
+            asked = true
+            true
+        }
+        assertEquals(listOf("E12" to false), switchLeave(ended("OTHER"), "E12", ask))
+        assertEquals(listOf("E12" to false), switchLeave(null, "E12", ask))
+        assertFalse(asked)
+    }
+
+    @Test
+    fun `a switch leave before the saved event ended says no`() = runTest {
+        assertEquals(listOf("E13" to false), switchLeave(joined("E13"), "E13") { true })
+    }
+
+    @Test
+    fun `a switch leave after the end says what the downloads answer`() = runTest {
+        assertEquals(listOf("E14" to true), switchLeave(ended("E14"), "E14") { true })
+        assertEquals(listOf("E14" to false), switchLeave(ended("E14"), "E14") { false })
+    }
+
+    @Test
+    fun `a doubt about the downloads makes a switch leave a no`() = runTest {
+        assertEquals(listOf("E15" to false), switchLeave(ended("E15"), "E15") { throw RuntimeException("unreadable") })
+    }
 }

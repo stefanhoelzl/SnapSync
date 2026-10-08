@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.TestLedger
@@ -38,6 +39,8 @@ import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.wake.EventCheck
 import app.snapsync.services.wake.EventChecks
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -120,7 +123,7 @@ class EventCompletionTest {
                 listOf(LedgerEntry("${asset.value}-primary.heic", asset, LedgerState.REQUESTED)),
             )
 
-        fun TestScope.completion() = EventCompletion(
+        fun TestScope.completion(log: Logger = Logger.withTag("EventCompletion")) = EventCompletion(
             config = config,
             refresh = MembershipRefresh(config, leave()),
             leaveEvent = leave(),
@@ -140,6 +143,7 @@ class EventCompletionTest {
                 received
             },
             checks = checks,
+            log = log,
         )
 
         fun TestScope.leave() = LeaveEvent(
@@ -378,5 +382,45 @@ class EventCompletionTest {
         val w = World(now = "2026-07-14T00:00:00Z", leavesFiles = throwing).apply { answer = details(closed = true) }
         assertEquals(CompletionOutcome.LEFT, with(w) { completion() }.finish())
         assertNull(w.config.config.value)
+    }
+
+    // ---- the end of a whole-pass wake: the bounded photo check, then the step (`changes/timely-background-receiving`, D4) ----
+
+    @Test
+    fun `a wake that checks photos runs the check for the joined event and then the step`() = runTest {
+        val w = World(now = "2026-07-12T00:00:00Z")
+        val checked = mutableListOf<String>()
+        val outcome = with(w) { completion() }.endOfWake(checksPhotos = true, bounded = false) { checked += it }
+        assertEquals(listOf("E"), checked)
+        assertEquals(CompletionOutcome.NOT_ENDED, outcome)
+    }
+
+    @Test
+    fun `a wake that does not check photos runs no check`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z")
+        val checked = mutableListOf<String>()
+        val outcome = with(w) { completion() }.endOfWake(checksPhotos = false, bounded = false) { checked += it }
+        assertEquals(emptyList(), checked)
+        assertEquals(CompletionOutcome.WAITING, outcome)
+    }
+
+    @Test
+    fun `an unjoined wake runs no photo check`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z", initial = null)
+        val checked = mutableListOf<String>()
+        val outcome = with(w) { completion() }.endOfWake(checksPhotos = true, bounded = false) { checked += it }
+        assertEquals(emptyList(), checked)
+        assertEquals(CompletionOutcome.NOT_JOINED, outcome)
+    }
+
+    @Test
+    fun `a failing photo check is logged and the step still runs`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply { answer = details(closed = true) }
+        val recorder = CapturingLogWriter()
+        val outcome = with(w) { completion(recorder.logger()) }
+            .endOfWake(checksPhotos = true, bounded = false) { error("the union read failed") }
+        assertEquals(CompletionOutcome.LEFT, outcome)
+        assertEquals(1, w.fetches)
+        assertTrue(recorder.lines.any { (severity, line) -> severity == Severity.Warn && "photo check failed" in line })
     }
 }

@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import co.touchlab.kermit.Logger
+
 /**
  * What became of something this app handed to the platform (the `SystemUi` port).
  *
@@ -21,3 +23,13 @@ sealed interface Handoff {
  * result"): [UNKNOWN] is its own answer, never folded into either of the others.
  */
 enum class Availability { AVAILABLE, UNAVAILABLE, UNKNOWN }
+
+/**
+ * Records a hand-off to the platform that did not happen, and answers it unchanged. Nothing acts on a [Handoff], but a
+ * refusal is logged at `Error` by [log] as [name]'s, because the user then tapped and nothing happened — on the
+ * update-required screen, to the only remedy the screen offers (`docs/architecture.md`, "Absence is never silent").
+ * `Error` is what reaches the operator from a production build (capability `privacy-security`).
+ */
+fun Handoff.recordingRefusal(log: Logger, name: String): Handoff = also {
+    if (it is Handoff.Refused) log.e { "$name: nothing was handed off — ${it.reason}" }
+}

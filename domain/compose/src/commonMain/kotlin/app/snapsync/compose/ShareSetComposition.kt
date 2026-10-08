@@ -53,14 +53,12 @@ internal fun receivedPhotoAdoptionFor(
 )
 
 /**
- * The app's answer to a changed photo grant. A grant that became usable while joined first recognises the photos an
- * earlier install received (capability `receiving-photos`) — BEFORE the uploads are armed and the staged downloads
- * imported, because a reinstall's rejoin always provisions with the access dialog still open (design
- * `mark-received-photos`, D4). A top-level extension because `AppCore` is measured (see [shareSetLoadFor]).
+ * The app's answer to a changed photo grant: the received photos an earlier install left are recognised first
+ * ([ReceivedPhotoAdoption.ensureAdoptedUnder]), then the uploads follow the grant. A top-level extension because
+ * `AppCore` is measured (see [shareSetLoadFor]).
  */
 internal suspend fun AppCore.onGrantChanged(permission: GalleryAccess) {
-    val joined = services.config.config.value?.takeIf { permission.grantsPhotoAccess }
-    joined?.let { receivedPhotoAdoption.ensureAdopted(it) }
+    receivedPhotoAdoption.ensureAdoptedUnder(permission.grantsPhotoAccess, services.config.config.value)
     uploadTransitions.onPermissionChanged()
 }
 
@@ -68,11 +66,8 @@ internal suspend fun AppCore.onGrantChanged(permission: GalleryAccess) {
  * Whether the download drain may import now (capability `receiving-photos`): only under a usable grant, and only once
  * the joined membership's received photos have been recognised — which this runs, so every import path waits for it.
  */
-internal suspend fun AppCore.importsReady(): Boolean {
-    val usable = ports.photoAccess.permission.value.grantsPhotoAccess
-    if (usable) services.config.config.value?.let { receivedPhotoAdoption.ensureAdopted(it) }
-    return usable
-}
+internal suspend fun AppCore.importsReady(): Boolean =
+    receivedPhotoAdoption.ensureAdoptedUnder(galleryAccess.usable, services.config.config.value)
 
 /**
  * Entering a new membership (capabilities `join-event`, `photo-sharing`, `receiving-photos`): the order is
@@ -85,6 +80,6 @@ internal fun AppCore.membershipEntry(notifyLeave: suspend (eventId: String) -> U
     notifyLeave = notifyLeave,
     loadShareSet = { eventId -> shareSetLoad.load(eventId) },
     adoptReceived = { cfg -> receivedPhotoAdoption.adopt(cfg) },
-    saveConfig = { cfg -> services.config.save(cfg) },
+    saveConfig = saveConfig,
     startUploads = { uploadTransitions.onJoin() },
 )

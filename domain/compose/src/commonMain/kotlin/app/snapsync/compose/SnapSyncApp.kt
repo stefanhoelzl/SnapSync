@@ -4,11 +4,13 @@ import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.feature.creation.readmodel.MintedEvent
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.membership.JoinEvent
+import app.snapsync.feature.membership.JoinUnion
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.membership.MembershipRefresh
@@ -32,6 +34,7 @@ import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
+import app.snapsync.feature.upload.cadenceFacts
 import app.snapsync.flow.Background
 import app.snapsync.flow.Foreground
 import app.snapsync.flow.Provision
@@ -45,7 +48,6 @@ import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.SelectionSnapshot
@@ -56,9 +58,7 @@ import app.snapsync.model.VersionRefusal
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.invocation
-import app.snapsync.model.resourcesFrom
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.selectionPhotos
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
@@ -89,6 +89,8 @@ import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.EventKeyMinting
 import app.snapsync.services.downloads.DownloadJobs
+import app.snapsync.services.downloads.ImportMarkers
+import app.snapsync.services.gallery.AlbumLookupFailure
 import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryAlbums
@@ -96,24 +98,22 @@ import app.snapsync.services.gallery.GalleryAssetPresence
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
+import app.snapsync.services.gallery.LatestSelection
 import app.snapsync.services.gallery.PermissionAwareAssetPresence
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
+import app.snapsync.services.gallery.denylistedAlbumMembers
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.upload.OsDrivenRegistration
 import app.snapsync.services.version.AppVersionGate
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.dropWhile
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.coroutines.ContinuationInterceptor
-import kotlin.coroutines.CoroutineContext
 
 /**
  * **The app process's ports** — everything the app-graph composition consumes, and nothing but ports ([Port]; spec
@@ -211,11 +211,19 @@ class AppPorts(
  */
 class AppCore internal constructor(
     internal val scope: CoroutineScope,
+    /**
+     * The **composition lane** [scope] runs on (`docs/architecture.md`, law "Dispatcher lanes are fixed by the
+     * composition") — named by the root, never derived, so no composition can be built without one.
+     *
+     * Commands need it explicitly because the composition scope does NOT govern them: the presentation container
+     * launches an `intent { }` on an unconfined dispatcher, so a command's synchronous prefix runs on whichever thread
+     * fired it — the main thread, for a tap. A `suspend` function that never actually suspends (synchronous PhotoKit
+     * XPC behind a `suspend` signature is exactly that shape) then runs to completion there.
+     */
+    internal val coreLane: CoroutineDispatcher,
     /** What the process set up before this core existed — its crash reporting already started. */
     val process: ProcessServices,
     internal val ports: AppPorts,
-    /** Where a minted event goes — the host zone's join gate, so create and a scanned QR take one gate. */
-    private val onEventMinted: suspend (eventId: String, linkKey: String?) -> Unit,
 ) {
 
     /** This process's services over [ports] — built here, never by a root (see [AppServices]). */
@@ -289,7 +297,7 @@ class AppCore internal constructor(
         PermissionAwareCandidateSource(
             permission = galleryAccess.grant,
             walk = GalleryCandidateSource(ports.gallery),
-            selection = latestSelectionSnapshot,
+            selection = selection.snapshot,
         )
     }
 
@@ -303,7 +311,7 @@ class AppCore internal constructor(
         PermissionAwareAssetPresence(
             permission = galleryAccess.grant,
             library = GalleryAssetPresence(ports.gallery),
-            selection = latestSelectionSnapshot,
+            selection = selection.snapshot,
         )
     }
 
@@ -358,7 +366,7 @@ class AppCore internal constructor(
     // Download progress for the joined screen's received count and download arrow, scoped to the joined event
     // (capabilities `receiving-photos`, `sync-status`).
     val downloadStatusSource: StoreDownloadStatusSource by lazy {
-        StoreDownloadStatusSource(services.downloadStore, currentEvent = { services.config.config.value?.eventId })
+        StoreDownloadStatusSource(services.downloadStore, currentEvent = services.config::activeEventId)
     }
 
     // Background byte transfers → durable staging. The queue, bounded window, and cancellation
@@ -399,12 +407,8 @@ class AppCore internal constructor(
             presence = assetPresence,
             // The import-time album: the membership's opt-in gate is the coordinator's rule (capability
             // `event-album`); this only reads the current membership's facts.
-            eventAlbum = {
-                services.config.config.value?.let { albumCoordinator.albumIdFor(it.eventId, it.saveToAlbum) }
-            },
-            onImportedIntoAlbum = { album ->
-                services.config.config.value?.let { albumCoordinator.onImportedInto(it.eventId, album) }
-            },
+            eventAlbum = { albumCoordinator.albumIdFor(services.config.config.value) },
+            onImportedIntoAlbum = { album -> albumCoordinator.onImportedInto(services.config.config.value, album) },
             stagedBytes = services.stagedBytes,
             myDeviceId = services.deviceIdentity.deviceId(),
             arm = downloadArm(),
@@ -471,7 +475,7 @@ class AppCore internal constructor(
 
     /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads (capability
      *  `background-upload`, "The delegate records the terminal fact before it returns"). */
-    val appMayCreate: () -> Boolean = { appUploadAdmission() == UploadAdmission.Admit }
+    val appMayCreate: () -> Boolean = { appUploadAdmission().admits }
 
     // The upload arm (capability `background-upload`): what each membership transition does to the two
     // uploaders. Stateless — every decision is derived from the registration fact, the grant and whether a
@@ -505,7 +509,7 @@ class AppCore internal constructor(
             stopUploads = { uploadTransitions.onLeave() },
             scope = scope,
             notifyLeave = membershipEnd::notifyLeave,
-            everythingReceived = membershipEnd::everythingReceived,
+            everythingReceived = downloadController::holdsEverythingFor,
             pendingLeaves = membershipEnd.pendingLeaves,
             keys = services.eventKeys,
         )
@@ -571,6 +575,14 @@ class AppCore internal constructor(
         backend.directory.fetch(eventId).toJoinLoad()
     }
 
+    // Every event this device mints, emitted once the backend answered: the host zone collects it into its join gate —
+    // the SAME gate a scanned QR takes (capability `photo-sharing`) — from its composition on, before any tap can
+    // create one, and nothing else does.
+    private val minted = MutableSharedFlow<MintedEvent>()
+
+    /** Every event this device mints, for the host zone's join gate. */
+    val mintedEvents: SharedFlow<MintedEvent> get() = minted
+
     /** The create-event status the use-case drives and the container reads (same instance). */
     val creationStatus = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
 
@@ -595,7 +607,7 @@ class AppCore internal constructor(
         CreateEvent(
             client = backend.creation,
             status = creationStatus,
-            onMinted = onEventMinted,
+            onMinted = { eventId, linkKey -> minted.emit(MintedEvent(eventId, linkKey)) },
             minting = EventKeyMinting(services.eventKeys, ports.devControls),
         )
     }
@@ -628,11 +640,8 @@ class AppCore internal constructor(
     }
 
     // ---- Selection-driven reads under a partial grant (capability `photo-access`) -----------
-    // The latest selection snapshot (set only by the selection subscription below). The walk-vs-snapshot
-    // decision is DERIVED per read from current permission + this cell, so it has exactly one owner and
-    // no stored mode can go stale across a permission flip. `null` is "not read yet", which is NOT an empty
-    // selection: it derives `SelectionScope.Unread`, and the app's upload admission withholds on it.
-    private val latestSelectionSnapshot = MutableStateFlow<List<Resource>?>(null)
+    /** The latest selection snapshot, set only by the selection subscription below — see [LatestSelection]. */
+    private val selection = LatestSelection()
 
     // The gallery's selection snapshots, handed over by its `onChanged` handler. CONFLATED: each is the whole
     // selection, so an unconsumed older one is superseded — and one that arrives before the collector below runs
@@ -640,24 +649,18 @@ class AppCore internal constructor(
     private val selectionChanges = Channel<SelectionSnapshot>(Channel.CONFLATED)
 
     /** What the gallery tells this core — registered by the host zone's `listen` (see [galleryHandlers]). */
-    val galleryHandlers: GalleryHandlers = galleryHandlers(services.downloadStore, services.log, selectionChanges)
+    val galleryHandlers: GalleryHandlers =
+        galleryHandlers(ImportMarkers(services.downloadStore, services.log), selectionChanges)
 
     /** What the operating system's wakes and transfer sessions tell this core — see [AppEvents]. */
     val events: AppEvents = AppEvents(this)
 
     /**
-     * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports).
-     *
-     * The two inputs are this composition's to hold — the permission port's current value and the
-     * snapshot cell above — and the derivation over them is `model/`'s
-     * [app.snapsync.model.selectionScope], which is where the rule about what a partial-grant member
-     * may upload at all belongs. A call and not a value because the answer changes between cycles.
+     * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports): the permission
+     * port's current value over the snapshot cell — see [LatestSelection.scopeUnder]. A call and not a value because
+     * the answer changes between cycles.
      */
-    fun selectionScope(): SelectionScope =
-        // Fully qualified, not imported: the member and the `model/` function share a name deliberately
-        // (this IS that derivation, over inputs only the composition holds), and a bare call would read
-        // as recursion to anyone who did not check the arity.
-        app.snapsync.model.selectionScope(ports.photoAccess.permission.value, latestSelectionSnapshot.value)
+    fun selectionScope(): SelectionScope = selection.scopeUnder(ports.photoAccess.permission.value)
 
     /**
      * The one derivation, for this composition's status readers (capability `photo-sharing`).
@@ -701,7 +704,7 @@ class AppCore internal constructor(
      * under a FULL grant: under `LIMITED` the album structure is unreadable, so the lookup could only ever
      * answer the empty set it now answers without the round-trip.
      */
-    private suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<AssetId> =
+    internal suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<AssetId> =
         // The app tier admits on doubt: a failed lookup must never drop a real photo from the total.
         denylistedAlbumMembers(
             albumManager,
@@ -762,10 +765,10 @@ class AppCore internal constructor(
             // nothing in flight to settle).
             uploadOwnWork = {
                 events.uploadTransfer.releaseUnclaimedStaging()
-                services.config.config.value?.eventId?.let { storedUploadSettle.settle(it) }
+                storedUploadSettle.settleJoined(services.config.activeEventId())
             },
             refreshStatus = { statusRefresh.run() },
-            activeEventId = { services.config.config.value?.eventId },
+            activeEventId = services.config::activeEventId,
             fetchEventDetails = fetchEventDetails,
             refreshAttestation = { attestation.refresh() },
         )
@@ -800,8 +803,16 @@ class AppCore internal constructor(
             appUploader = { appUploader },
             entryContext = process.entryContext,
             downloads = { downloadController },
+            galleryAccess = galleryAccess,
             mayCreate = appMayCreate,
-            cadenceFacts = { cadenceFactsOf(this) },
+            cadenceFacts = {
+                cadenceFacts(
+                    services.config,
+                    ports.photoAccess.permission.value,
+                    extensionRegistrableNow(),
+                    extensionRegistration,
+                )
+            },
             refreshCounts = { ledgerCounts.refresh() },
             finish = { trigger -> membershipEnd.endOfWake(trigger) },
         )
@@ -813,46 +824,21 @@ class AppCore internal constructor(
             // `receiving-photos`): one union read per join.
             reconcileDownloads = { downloadController.reconcile(it, UnionTrigger.JOIN, known = joinUnion.take(it)) },
             albumCoordinator = albumCoordinator,
-            activeEventId = { services.config.config.value?.eventId },
+            activeEventId = services.config::activeEventId,
             // The order is `MembershipEntry`'s rule; the backend leave is awaited here, unlike the leave command's.
-            enterMembership = membershipEntry(membershipEnd::notifySwitchLeave)::enter,
-            saveConfig = { cfg -> services.config.save(cfg) },
+            enterMembership = membershipEntry(leaveEvent::notifySwitchLeave)::enter,
+            saveConfig = saveConfig,
             refreshStatus = { statusRefresh.run() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
             // parameter, and album creation works under a LIMITED grant (measured — capability
             // `photo-access`).
             hasUsableAccess = { ports.photoAccess.permission.value.grantsPhotoAccess },
-            registerPush = { pushRegistration.reRegister(services) },
+            registerPush = { pushRegistration.reRegister(services.pushTokens) },
         )
     }
 
-    /**
-     * The **composition lane** this graph's scope runs on, taken from the scope itself rather than
-     * named, so the two can never disagree (`docs/architecture.md`, law "Dispatcher lanes are
-     * fixed by the composition").
-     *
-     * Commands need it explicitly because the composition scope does NOT govern them: the
-     * presentation container launches an `intent { }` on an unconfined dispatcher, so a command's
-     * synchronous prefix runs on whichever thread fired it — the main thread, for a tap. A `suspend`
-     * function that never actually suspends (synchronous PhotoKit XPC behind a `suspend` signature is
-     * exactly that shape) then runs to completion there.
-     *
-     * **A `check`, never a default lane**: the decorators may not supply one, and a default degrades silently —
-     * `withContext(EmptyCoroutineContext)` changes dispatcher not at all, so every awaited tap would run to
-     * completion on the thread that fired it, the main thread, including `sendDiagnostics`' ~700 KB log read.
-     *
-     * Unreachable today: every composition supplies one — the iOS shell's dedicated composition lane, the
-     * full-stack harness's `newSingleThreadContext`, `runBlocking`'s event loop under the world runners,
-     * `runTest`'s scheduler. The failure this converts is therefore the NEXT composition's, caught at
-     * assembly rather than as a main-thread stall nobody attributes (`docs/architecture.md`, "Absence is
-     * never silent"; "Dispatcher lanes are fixed by the composition").
-     */
-    internal val coreLane: CoroutineContext =
-        checkNotNull(scope.coroutineContext[ContinuationInterceptor]) {
-            "the composition scope carries no dispatcher: user commands would run on whatever thread " +
-                "fired them, which for an awaited tap is the main thread (law \"Dispatcher lanes are " +
-                "fixed by the composition\" — the composition names the lane, and no default may)"
-        }
+    /** Persist the whole membership — the one save a join's entry and a re-provision of the joined event share. */
+    internal val saveConfig: suspend (EventConfig) -> Unit = { cfg -> services.config.save(cfg) }
 
     /** The user-tap command bundle — see [userCommandsFor]. */
     val userCommands: UserCommands by lazy { userCommandsFor() }
@@ -865,7 +851,7 @@ class AppCore internal constructor(
 
     /** How many photos a partial grant's selection holds, for a bug report — the snapshot cell is this core's. */
     internal fun selectionPhotosNow(): Fact<Int> =
-        selectionPhotos(ports.photoAccess.permission.value, latestSelectionSnapshot.value)
+        selection.photosUnder(ports.photoAccess.permission.value)
 
     /**
      * Install the **port-state-transition subscriptions** on the permission StateFlow (spec
@@ -885,18 +871,10 @@ class AppCore internal constructor(
      * them: it opens on every start ([installCompositionSubscriptions]).
      */
     fun installPermissionSubscriptions() {
-        scope.launch {
-            // Launch first, then real changes only: the value the launch reconciled against is not a
-            // transition, and a change that lands during the launch reconcile is still delivered (the prefix
-            // dropped is exactly the launch-time value). The transitions decide everything else.
-            val atLaunch = ports.photoAccess.permission.value
-            uploadTransitions.onLaunch()
-            ports.photoAccess.permission
-                .dropWhile { it == atLaunch }
-                .collect { onGrantChanged(it) }
-        }
+        // The launch reconcile, then real changes only — see `UploadTransitions.followGrant`.
+        scope.launch { uploadTransitions.followGrant { onGrantChanged(it) } }
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.
-        scope.launchAlbumGrantSubscription(services, albumCoordinator, albumGather)
+        scope.launchAlbumGrantSubscription(services, albumGather)
         scope.launch {
             // THE ONE ADJUDICATION CALL SITE (capability `receiving-photos`). Once per process, here, and
             // nowhere else — not in `reconcile`, not in `importReady`, not in `onResourceStaged`. Only a
@@ -908,16 +886,10 @@ class AppCore internal constructor(
             // sequence: the requirement is that the presence source can answer when the sweep asks, and a
             // convention the shell has to honour is not a guarantee.
             //
-            // Under a PARTIAL grant the answer comes from `latestSelectionSnapshot`, which is null until the
-            // observer's first emission and yields UNKNOWN for every row until then. With one sweep per
-            // process and no re-arm, a sweep that ran first would defer every inherited row to the next
-            // launch — and on a URLSession-driven relaunch that never foregrounds, potentially every launch.
-            // So under that grant it waits for the snapshot rather than asking a question the source cannot
-            // answer yet. If the emission never comes the sweep never runs, which costs the same deferral
-            // without the wasted lookup.
-            if (ports.photoAccess.permission.value == GalleryAccess.LIMITED) {
-                latestSelectionSnapshot.filterNotNull().first()
-            }
+            // With one sweep per process and no re-arm, a sweep that ran before a partial grant's selection was read
+            // would defer every inherited row to the next launch — and on a URLSession-driven relaunch that never
+            // foregrounds, potentially every launch. So it waits until the presence source can answer.
+            selection.awaitAnswerable(ports.photoAccess.permission.value)
             downloadController.sweepInterruptedImports()
         }
     }
@@ -933,8 +905,8 @@ class AppCore internal constructor(
      * is published from that wake, never deferred to the next foreground. It is cheap there because the
      * registration publishes only on a changed (`token`, `env`, `deviceId`) triple, a join, or a fresh credential.
      *
-     * **Idempotent: once per process.** Any second call — a host assembly after a background start, or any other
-     * path — installs nothing, so a delivered token is published at most once.
+     * **Once per process, by construction:** its one caller is the host zone's composition, which runs once per
+     * process — so a delivered token is published at most once.
      *
      * **ATTEST FIRST.** `PUT /devices/<id>` is gated, and on a fresh install the APNs token can arrive
      * before this device has attested at all — measured on the SE2, where that `PUT` took a `401`.
@@ -962,9 +934,7 @@ class AppCore internal constructor(
      * on an SE2 / iOS 26.6.2: a background start reads the selection and raises no limited-library prompt (decision
      * record `changes/timely-background-receiving`, D6).
      */
-    @OptIn(ExperimentalAtomicApi::class)
     fun installCompositionSubscriptions() {
-        if (!compositionSubscriptionsInstalled.compareAndSet(expectedValue = false, newValue = true)) return
         scope.launch {
             runCatchingCancellable { attestation.ensureFresh() }
             pushRegistration.run(services.pushTokens, attestation.tokenChanged)
@@ -975,9 +945,8 @@ class AppCore internal constructor(
             // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
             // `refresh` recounts N over the very same snapshot — no second library read on this path, and
             // no snapshot-specific entry point for the total to drift through.
-            for (snapshot in selectionChanges) {
-                latestSelectionSnapshot.value = resourcesFrom(snapshot.assets)
-                services.config.config.value?.let { cfg -> gallery.refresh(selectionPolicyForMembership(cfg)) }
+            selection.follow(selectionChanges) {
+                statusRefresh.refreshTotal()
                 // Its own work — the snapshot-fed discovery → manifest — then the tail (① and ② from the snapshot).
                 tail.onSelectionChanged()
             }
@@ -985,10 +954,6 @@ class AppCore internal constructor(
         // The selection observer opens here and nowhere else — on composition, so a background start reads it too.
         ports.gallery.observeChanges(true)
     }
-
-    /** Whether [installCompositionSubscriptions] has installed its subscriptions in this process. */
-    @OptIn(ExperimentalAtomicApi::class)
-    private val compositionSubscriptionsInstalled = AtomicBoolean(false)
 
     /** The device's push registration (capability `receiving-photos`) — see [pushRegistrationFor]. */
     val pushRegistration: PushRegistration by lazy { pushRegistrationFor(services, backend.pushTokens) }
@@ -1001,10 +966,7 @@ class AppCore internal constructor(
  *
  * Its FIRST act is the process's (`snapSyncProcess` over [AppPorts.process]): crash reporting starts before anything
  * else in the graph can fail, and no root can compose an app in a process that has not set it up — no root calls it.
- * [onEventMinted] is the host zone's join gate, where a minted event goes.
+ * [lane] is the composition lane [scope] runs on, named by the root ([AppCore.coreLane]).
  */
-fun snapSyncApp(
-    scope: CoroutineScope,
-    ports: AppPorts,
-    onEventMinted: suspend (eventId: String, linkKey: String?) -> Unit,
-): AppCore = AppCore(scope, snapSyncProcess(ports.process), ports, onEventMinted)
+fun snapSyncApp(scope: CoroutineScope, lane: CoroutineDispatcher, ports: AppPorts): AppCore =
+    AppCore(scope, lane, snapSyncProcess(ports.process), ports)

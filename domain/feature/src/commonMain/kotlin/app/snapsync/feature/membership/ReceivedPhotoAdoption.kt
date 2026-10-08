@@ -83,6 +83,17 @@ class ReceivedPhotoAdoption(
         if (settledFor != cfg.eventId) settle(cfg, UnionTrigger.GRANT)
     }
 
+    /**
+     * The app's answer to a photo grant (capability `receiving-photos`): a grant that is [usable] while [joined] first
+     * recognises the photos an earlier install received — BEFORE the uploads are armed and the staged downloads
+     * imported, because a reinstall's rejoin always provisions with the access dialog still open (design
+     * `mark-received-photos`, D4). Answers [usable], so the download drain may import only once this has run.
+     */
+    suspend fun ensureAdoptedUnder(usable: Boolean, joined: EventConfig?): Boolean {
+        joined?.takeIf { usable }?.let { ensureAdopted(it) }
+        return usable
+    }
+
     private suspend fun settle(cfg: EventConfig, trigger: UnionTrigger) {
         try {
             if (adoptOrFail(cfg, trigger)) settledFor = cfg.eventId

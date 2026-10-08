@@ -117,3 +117,20 @@ inline fun Logger.bestEffort(name: String, block: () -> Unit): Boolean =
     runCatchingCancellable(block)
         .onFailure { w(it) { "best-effort step failed: $name" } }
         .isSuccess
+
+/**
+ * Run [block] as a **contained** step: a failure is logged at `Warn` as [failure] and swallowed, cancellation is
+ * rethrown. The shape every wake's "its own work failed; its tail still runs" takes. Not `inline`, unlike
+ * [bestEffort]: a composition calls it, and the failure arm then lives here, where it is tested, rather than being
+ * copied into a caller that holds no branch.
+ */
+suspend fun Logger.contained(failure: String, block: suspend () -> Unit) {
+    runCatchingCancellable { block() }.onFailure { w(it) { failure } }
+}
+
+/**
+ * [block]'s answer, or `null` when it failed — the failure logged at `Warn` as [failure], cancellation rethrown (law
+ * "Absence is never silent": a collapse to `null` is always logged). Not `inline`, for [contained]'s reason.
+ */
+suspend fun <T> Logger.orNullLogged(failure: String, block: suspend () -> T): T? =
+    runCatchingCancellable { block() }.onFailure { w(it) { failure } }.getOrNull()

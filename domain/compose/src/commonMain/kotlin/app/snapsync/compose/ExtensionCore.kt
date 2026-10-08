@@ -5,7 +5,7 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.invocation
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.model.orNullLogged
 import app.snapsync.ports.Backend
 import app.snapsync.ports.Databases
 import app.snapsync.ports.EntryContext
@@ -24,8 +24,10 @@ import app.snapsync.services.backend.CredentialedBackend
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.SuppressionService
+import app.snapsync.services.gallery.AlbumLookupFailure
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
+import app.snapsync.services.gallery.denylistedAlbumMembers
 import app.snapsync.services.identity.AttestState
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
@@ -125,11 +127,10 @@ private fun extensionServices(
     // Non-throwing: the store is unreadable before the first unlock since boot, and this runs on a background wake. A
     // null token is a `401`, which is retryable; the collapse is logged, never silent (law "Absence is never silent").
     val token: suspend () -> String? = {
-        runCatchingCancellable { attestStore.token() }
-            .onFailure { log.w(it) { "attest token unreadable — proceeding unauthenticated (expect 401)" } }
-            .getOrNull()
+        log.orNullLogged("attest token unreadable — proceeding unauthenticated (expect 401)") { attestStore.token() }
     }
     val albums = GalleryAlbums(ports.gallery)
+    val grant = PhotoGrantRead { ports.gallery.access() }
     val build = ports.process.build
     val config = ConfigService(process.files, process.clock)
     return UploadServices(
@@ -145,15 +146,17 @@ private fun extensionServices(
         discovery = GalleryDiscovery(ports.gallery),
         // This process's own grant read (capability `background-upload`, "The extension withholds its cycle without a
         // full grant"): the OS invokes a surviving registration under a partial grant too, and this is what stops it.
-        process = UploaderProcess.Extension(PhotoGrantRead { ports.gallery.access() }),
+        process = UploaderProcess.Extension(grant),
         // Unrestricted, stated: the extension never reads the library under a partial grant — its admission withholds
         // before any read.
         selectionScope = { SelectionScope.Unrestricted },
         manifestStore = DeviceManifestService(process.files),
         manifestPublisher = extensionBackend(ports.backend, attestStore, identity).manifest,
         suppression = SuppressionService(ports.databases),
-        albumManager = albums,
-        albumLookupFailure = AlbumLookupFailure.FailCycle,
+        // A failed denylisted-album lookup fails the cycle here; the next invocation retries.
+        albumExclusions = { cutoff ->
+            denylistedAlbumMembers(albums, cutoff, grant.current(), AlbumLookupFailure.FailCycle, log)
+        },
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(
             albums,
@@ -200,10 +203,7 @@ internal fun extensionHandlers(
                     cycle().run()
                 },
                 pending = { services.ledger.aggregates().pending },
-                onCycleFinished = { log.i { "process: cycle finished — $it" } },
-                onCycleFailed = { log.e(it) { "process cycle failed" } },
-                onRequeue = { open -> log.i { "process: $open pending — requesting re-invocation" } },
-                onLateFailure = { log.e(it) { "process failed after the cycle — reporting FAILED" } },
+                log = log,
             )
         }
     },

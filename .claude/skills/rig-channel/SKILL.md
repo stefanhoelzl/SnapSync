@@ -310,6 +310,9 @@ curl -X POST $B/user/leave
 # setRange?[range=wholeEvent|fromNow][&cutoff=…Z][&until=…Z]  (sets the form, commits nothing; cutoff/until = a custom range),
 # mobileData?on=true|false  (the device's choice, as the menu's switch flips it — with or without an event; UiState.mobileData reads it),
 # sendDiagnostics?note=&screen=  (a rig build of the app carries no DSN: it SAVES the report to Documents/diagnostic-report.json, sends nothing)
+# JVM HOST ONLY — the hand-offs a device host excludes (only a finger brings the person back), recorded by the mocked
+# platform UI and read back in /device/os-record (systemUi.shared/opened/settingsOpened, pickersShown):
+# shareInvite, openLink?link=WEBSITE|PRIVACY_POLICY, openSettings, choosePhotos
 ```
 
 ⚠️ **`create` is non-idempotent** — every call mints a **new** backend event. There is no launch variable
@@ -554,7 +557,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
 - The **operator levers** (on the app host, only for the systems its adapter choice mocks): `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
   finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=&event=]`, `device/backend/offline?on=`, `device/permission?status=`,
-  `device/import/fail-next`, `device/membership/unreadable?on=`,
+  `device/import/fail-next`, `device/membership/unreadable?on=`, `device/membership/undeletable?on=`,
   `device/downloads/stage[?status=502][&drained=true][&bytes=motion-photo]` (the OS finishes every in-flight
   download, then optionally reports the session's events drained; `bytes=motion-photo` makes what each brought a real
   Google motion photo — the mocked session otherwise leaves a fixed 16×16 JPEG, whatever was uploaded), `device/album/place?album=&asset=`, `device/album/hold-adds?on=`,

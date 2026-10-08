@@ -2,7 +2,9 @@ package app.snapsync.feature.upload
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class UploadConfigTest {
 
@@ -26,5 +28,11 @@ class UploadConfigTest {
     fun missing_or_blank_host_skips() {
         assertNull(buildUploadConfig(eventId, null))
         assertNull(buildUploadConfig(eventId, ""))
+    }
+
+    @Test
+    fun only_an_admission_admits() {
+        assertTrue(UploadAdmission.Admit.admits)
+        assertFalse(UploadAdmission.Withheld.admits)
     }
 }

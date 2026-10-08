@@ -2,26 +2,17 @@ package app.snapsync.compose
 
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
-import app.snapsync.feature.upload.CycleGate
-import app.snapsync.feature.upload.JoinedMembership
+import app.snapsync.feature.upload.CycleGateRead
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SelectionScopedDiscovery
 import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.feature.upload.cycleGate
 import app.snapsync.feature.upload.extensionAdmission
-import app.snapsync.feature.upload.suppressionGate
-import app.snapsync.model.ConfigRead
-import app.snapsync.model.DeviceIdentityAbsent
+import app.snapsync.model.AssetId
+import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EdgeUploadRequestProvider
-import app.snapsync.model.EventConfig
-import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.hasEnded
-import app.snapsync.model.instantToCutoff
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.Upload
@@ -31,7 +22,6 @@ import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.downloads.SuppressionSource
-import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
@@ -48,21 +38,17 @@ import co.touchlab.kermit.Logger
  * a port, and the rule applied to it (`extensionAdmission`) lives here rather than in the extension's root —
  * which is what used to hold both, as an inline lambda reading PhotoKit.
  *
- * Both carry the process's [grant], because one read of the membership's policy needs it beyond the admission:
- * the denylisted-album lookup is asked only under a full grant (see [denylistedAlbumMembers]).
  */
 sealed interface UploaderProcess {
-    /** This process's current photo grant — a status read, never a request. */
-    val grant: PhotoGrantRead
-
     /** Whether THIS process may create now (capability `background-upload`), read once per gate. */
     fun admission(): UploadAdmission
 
-    class App(private val admit: () -> UploadAdmission, override val grant: PhotoGrantRead) : UploaderProcess {
+    class App(private val admit: () -> UploadAdmission) : UploaderProcess {
         override fun admission() = admit()
     }
 
-    class Extension(override val grant: PhotoGrantRead) : UploaderProcess {
+    /** The extension, admitting on its own [grant] read — a status read, never a request. */
+    class Extension(private val grant: PhotoGrantRead) : UploaderProcess {
         override fun admission() = extensionAdmission(grant.current())
     }
 }
@@ -132,10 +118,11 @@ internal class UploadServices(
     val manifestPublisher: ManifestPublisher,
     /** Echo-suppression (capability `receiving-photos`): required, no default (`background-upload`). */
     val suppression: SuppressionSource,
-    /** The album port the policy's denylisted-album read goes through (capability `photo-sharing`). */
-    val albumManager: GalleryAlbums,
-    /** How this tier answers a failed denylisted-album lookup — see [AlbumLookupFailure]. */
-    val albumLookupFailure: AlbumLookupFailure,
+    /**
+     * The policy's denylisted-album read (capability `photo-sharing`): this tier's `denylistedAlbumMembers` over its
+     * own grant read and its own `AlbumLookupFailure` answer.
+     */
+    val albumExclusions: suspend (CaptureCutoff) -> Set<AssetId>,
     /** Event-album placement (capability `event-album`). */
     val albumCoordinator: AlbumCoordinator,
     /** The attestation bearer token, read per request. Required: `{ null }` must be stated, not inherited. */
@@ -200,7 +187,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         )
     }
     return UploadCycle(
-        readGate = { readGate(ports) },
+        readGate = cycleGateRead(ports)::read,
         // Bytes go to the joined event (/events/<eventId>/files/devices/<deviceId>/…), which owns them
         // (change `per-event-storage-layout`).
         engineFor = { config ->
@@ -238,8 +225,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
                 manifestVersion = manifestVersion,
                 // Settled once the event's range has ended: the discovery this hook follows ran just now, after the
                 // end, so every in-range photo is declared (capability `photo-sharing`). One fresh read, like the gate.
-                settled = (ports.config.read() as? ConfigRead.Joined)?.config
-                    ?.hasEnded(instantToCutoff(process.clock.now())) == true,
+                settled = ports.config.freshReadHasEnded(),
             )
         },
         // The cycle applies the membership's opt-in (it arrived with the gate).
@@ -247,97 +233,15 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
     )
 }
 
-/**
- * THE ENTRY-GATE TRANSLATION (capability `background-upload`, "The upload cycle owns its entry
- * decision") — one implementation over the ports, where three per-root copies used to live. It is
- * **port-pure**: one fresh [ConfigService.read] per cycle, the identity probe, the host read, and the
- * root's admission answer — and deliberately nothing else.
- *
- * It does not refresh the UI-facing membership `StateFlow`: the app-driven tier's copy once did, and the extension's
- * semantics won (decision record `changes/archive/2026-07-17-establish-shared-composition`, D1).
- */
-private suspend fun readGate(ports: UploadServices): CycleGate {
-    val gate = readEntryGate(ports)
-    // Last, and only for an admitted cycle: the extension opens the download store read-only here, so a
-    // process that may not create never opens it (capability `receiving-photos`).
-    return if (gate is CycleGate.Run) suppressionGate(gate, ports.suppression.readiness()) else gate
-}
-
-/** The gate from the membership, the identity and the admission — everything but the suppression read. */
-private suspend fun readEntryGate(ports: UploadServices): CycleGate {
-    // The manifest version FIRST — before the membership, and so before the policy and the rows the manifest
-    // is projected from (capability `background-upload`). Every change that could alter the projection
-    // advances it, so a change this cycle's projection misses happened after this read and carries a higher
-    // version. Unreadable (a locked device's protected ledger) is "I could not look", like the config.
-    val version = runCatchingCancellable { ports.ledger.manifestVersion() }
-    val read = ports.config.read()
-    // The identity probe — an unresolvable id is "I could not look", never "no id", so it belongs
-    // on the unreadable side of the roll-up. Every outcome needs the id: the reconciler and the
-    // manifest producer each close over it, so even the leave-side branch touches it.
-    //
-    // `DeviceIdentityAbsent` joins `SecureStoreUnavailable` here, and the two are handled identically on
-    // purpose. It means the lookup succeeded, found nothing, and this process may not mint (the upload
-    // extension — capability `photo-sharing`). Both are "proceed with no identity", and proceeding
-    // is exactly what must not happen: an invented id partitions this device's bytes away from its own
-    // manifest. Anything else still propagates — a genuine fault must not be silently downgraded to a
-    // skipped cycle.
-    val identityFailure = runCatchingCancellable { ports.deviceIdentity.deviceId() }
-        .onFailure { if (it !is SecureStoreUnavailable && it !is DeviceIdentityAbsent) throw it }
-        .exceptionOrNull()
-    val idReadable = identityFailure == null
-    val payload = (read as? ConfigRead.Joined)?.config
-    return cycleGate(
-        configReadable = read !is ConfigRead.Unavailable && idReadable && version.isSuccess,
-        membership = payload?.let {
-            JoinedMembership(
-                eventId = it.eventId,
-                // A supplier, not a value: the derivation reads two ports and this translation must stay
-                // port-pure. Closing over them is not calling them (capability `background-upload`).
-                policy = {
-                    selectionPolicyFor(
-                        config = it,
-                        suppressedAssetIds = { ports.suppression.suppressedLocalIds() },
-                        albumExcludedAssetIds = { cutoff ->
-                            denylistedAlbumMembers(
-                                ports.albumManager,
-                                cutoff,
-                                ports.process.grant.current(),
-                                ports.albumLookupFailure,
-                                ports.log,
-                            )
-                        },
-                    )
-                },
-                saveToAlbum = it.saveToAlbum,
-                manifestVersion = version.getOrDefault(0L),
-            )
-        },
-        host = ports.host,
-        admission = admissionFor(ports, payload),
-        // The forensics for a skip: the decision is made in shared code that cannot see WHY the
-        // read failed, and an unreadable config is invisible on a device except through this string.
-        skipDetail = skipDetail(read, identityFailure, version.exceptionOrNull()),
-    )
-}
-
-/**
- * Whether this process may create now. Each root states its own answer — the app from resolution, the extension from
- * its own grant read. A LOST event key withholds in both: nothing is walked, staged, sealed or published until the
- * invite brings it back (capability `sync-status`), where an unreadable one still runs and withholds at each seal.
- */
-private fun admissionFor(ports: UploadServices, membership: EventConfig?): UploadAdmission =
-    if (ports.eventKeys.lostFor(membership)) UploadAdmission.Withheld else ports.process.admission()
-
-/** The skip line [readGate] hands the cycle: which read failed, and how. */
-private fun skipDetail(read: ConfigRead, identityFailure: Throwable?, versionFailure: Throwable?): String =
-    "protected data unavailable (config: " +
-        "${(read as? ConfigRead.Unavailable)?.detail}, deviceId readable=${identityFailure == null}" +
-        // Naming WHICH identity failure occurred is the difference between "the device is locked,
-        // this will pass" and "this process has no identity and may not create one", which need
-        // opposite reactions from whoever reads the log.
-        when (identityFailure) {
-            is DeviceIdentityAbsent -> ", deviceId absent and unmintable here"
-            is SecureStoreUnavailable -> ", deviceId unreadable (${identityFailure.detail})"
-            else -> ""
-        } +
-        (if (versionFailure != null) ", manifest version unreadable ($versionFailure)" else "") + ")"
+/** The cycle's entry gate over [ports] — see [CycleGateRead]. */
+private fun cycleGateRead(ports: UploadServices) = CycleGateRead(
+    ledger = ports.ledger,
+    config = ports.config,
+    identity = ports.deviceIdentity,
+    suppression = ports.suppression,
+    host = ports.host,
+    // Each root states its own answer — the app from resolution, the extension from its own grant read.
+    admission = ports.process::admission,
+    eventKeys = ports.eventKeys,
+    albumExclusions = ports.albumExclusions,
+)

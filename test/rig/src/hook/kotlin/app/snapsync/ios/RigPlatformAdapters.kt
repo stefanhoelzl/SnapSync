@@ -2,7 +2,7 @@
 
 package app.snapsync.ios
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.contract.appDeviceContracts
 import app.snapsync.contract.extension.extensionContractEntries
@@ -70,7 +70,7 @@ import platform.Foundation.writeToFile
  * and leaves the channel's server to start once the root is up ([startWhenReady]); `SnapSyncRoot.app` and `.host` are
  * passed as **thunks**, and the first request that needs the graph finds it composed.
  */
-internal fun platformAdapters(real: DevicePorts): PlatformAdapters {
+internal fun platformAdapters(real: AppDevicePorts): PlatformAdapters {
     val launch = rigLaunch(real)
     startWhenReady { startRig(launch) }
     return PlatformAdapters(
@@ -149,7 +149,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     ),
     readGallery = galleryReader(launch, core = { SnapSyncRoot.app }),
     // The registration the app runs over — the adapter choice's, where it mocks it.
-    osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.ports.extensionRegistry }),
+    osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.ports.extensionRegistry.value }),
     // The path decision (and its `null` case) lives in `:test:rig`; this side supplies only the write,
     // which has no branch to make. `Documents/` rather than the App Group deliberately: a simulator host
     // reads it with `xcrun simctl get_app_container <dev> app.snapsync data`, and the device tooling

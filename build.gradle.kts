@@ -138,6 +138,10 @@ val appShellSources = files(
     // roots stops being true the moment a module is added, and nothing tells you — the forge shell was missing from
     // it, and from `KotlinShellGuardTest.shellSourceRoots`, until the complexity-budgets change measured the tree.
     "domain/host/src",
+    // The shared composition (`snapSyncApp`, `snapSyncExtension`, `uploadCycle`): the wiring graph every root reaches
+    // through the host. It constructs and connects; every decision it once held is a feature's or a service's, unit
+    // tested there, and this gate keeps it that way (`docs/architecture.md`, "One shared composition").
+    "domain/compose/src",
     // The JVM root (`JvmApp`): the same composition as the iOS root, for the JVM test equipment. Wiring only by the
     // same definition, so gated as a shell — the levers it must not grow are the mocks' operator faces.
     "app/jvm/src",

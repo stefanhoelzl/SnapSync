@@ -5,7 +5,6 @@ import app.snapsync.feature.upload.WalkOutcome
 import app.snapsync.model.CycleResult
 import app.snapsync.model.invocation
 import app.snapsync.ports.PhotoGrantRead
-import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
 
 /**
@@ -34,6 +33,9 @@ internal class AppUploader(private val core: AppCore) {
      */
     private val grant = PhotoGrantRead { core.ports.gallery.access() }
 
+    /** The attestation bearer every request carries, read per request from the core's attestation service. */
+    private val token: suspend () -> String? = { core.attestation.token() }
+
     /**
      * The cycle — assembled by the SHARED composition `uploadCore` (`docs/architecture.md`, "One shared composition"):
      * the entry-gate translation, the device-manifest producer (on this tier the APP is its sole writer, and without
@@ -46,10 +48,7 @@ internal class AppUploader(private val core: AppCore) {
             UploadServices(
                 appVersion = build.appVersion,
                 eventKeys = app.eventKeys,
-                process = UploaderProcess.App(
-                    core.appUploadAdmission,
-                    PhotoGrantRead { ports.photoAccess.permission.value },
-                ),
+                process = UploaderProcess.App(core.appUploadAdmission),
                 // The THREE-state membership read, never the core's StateFlow (capability `join-event`).
                 config = app.config,
                 mobileData = app.mobileData,
@@ -74,12 +73,12 @@ internal class AppUploader(private val core: AppCore) {
                 suppression = app.downloadStore,
                 // Denylisted-album membership, scoped by the cutoff — the SAME admit-on-doubt answer the own-device
                 // status total gets, so the two consumers of the policy cannot diverge.
-                albumManager = GalleryAlbums(ports.gallery),
-                albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
+                albumExclusions = core::albumExclusionsWhenReadable,
                 albumCoordinator = core.albumCoordinator,
-                token = { core.attestation.token() },
-                // A retry's request re-reads the store of record (the extension may have cleared a rejected token).
-                freshToken = { core.attestation.freshToken() },
+                token = token,
+                // The app's transports offer no retry — a failed transfer is recorded FAILED and the next top-up
+                // creates it afresh — so no request is ever minted for one here: a retry's credential is the same read.
+                freshToken = token,
                 log = log,
             ),
         )

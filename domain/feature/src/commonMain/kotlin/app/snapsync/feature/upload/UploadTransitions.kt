@@ -1,12 +1,14 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.EntryScope
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.invocation
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.upload.ExtensionRegistration
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.flow.dropWhile
 
 /**
  * What the membership transitions do to the app's uploader (capability `background-upload`, "Membership transitions
@@ -98,6 +100,20 @@ class UploadTransitions(
      */
     suspend fun onReconfigure() = log.invocation(entryContext, "uploads.onReconfigure") {
         if (joined()) armIfUsable()
+    }
+
+    /**
+     * The upload **launch reconcile**, then every real change of the photo grant handed to [onChanged] (capability
+     * `background-upload`, "Launch reconciles by comparison; only a join forces the repair"). Launch first, then real
+     * changes only: the value the launch reconciled against is not a transition — riding the `StateFlow`'s replay would
+     * fire a "permission change" on every UI launch, forcing the extension's re-registration and wiping its in-flight
+     * jobs — and a change that lands during the launch reconcile is still delivered (the prefix dropped is exactly the
+     * launch-time value). Returns only when the grant's flow completes, which a `StateFlow` never does.
+     */
+    suspend fun followGrant(onChanged: suspend (GalleryAccess) -> Unit) {
+        val atLaunch = photoAccess.grant.value
+        onLaunch()
+        photoAccess.grant.dropWhile { it == atLaunch }.collect { onChanged(it) }
     }
 
     /** A real change of the photo grant — never the permission `StateFlow`'s replayed first value. */

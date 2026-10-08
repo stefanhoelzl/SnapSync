@@ -6,7 +6,7 @@ import android.net.Uri
 import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.compose.AppCore
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFacts
@@ -54,7 +54,7 @@ import kotlin.time.Clock
 class AndroidRigLaunch internal constructor(
     val launch: LaunchAdapters.Chosen,
     /** What the app composes over: the root's real adapters, with the choice's mocked systems swapped in. */
-    val ports: DevicePorts,
+    val ports: AppDevicePorts,
     val controls: RigDevControls,
     val ui: RigUi,
     /** What the operator levers move: the mocked device. */
@@ -75,7 +75,7 @@ class AndroidRigLaunch internal constructor(
 }
 
 /** Build the launch over the root's [real] adapters; [uploadBase] is the real backend's, the build's resolved one. */
-fun androidRigLaunch(real: DevicePorts, uploadBase: String): AndroidRigLaunch {
+fun androidRigLaunch(real: AppDevicePorts, uploadBase: String): AndroidRigLaunch {
     val facts = AdapterFacts(
         osDrivenUpload = false,
         appVersion = SERVED_VERSION,
@@ -84,20 +84,20 @@ fun androidRigLaunch(real: DevicePorts, uploadBase: String): AndroidRigLaunch {
         whenAbsent = ANDROID_DEFAULT,
         absentSystems = ANDROID_ABSENT_SYSTEMS,
     )
-    val launch = when (val read = LaunchAdapters.load(real.files, AdapterProcess.APP, facts)) {
+    val launch = when (val read = LaunchAdapters.load(real.files.value, AdapterProcess.APP, facts)) {
         is LaunchAdapters.Chosen -> read
         is LaunchAdapters.Refused -> error(
             "the adapter choice was refused, so nothing is composed: " + read.reasons.joinToString("; "),
         )
         LaunchAdapters.AllReal -> error("an Android launch always has a choice: no adapters file is $ANDROID_DEFAULT")
     }
-    if (real.files.exists(FileArea.SHARED, AdapterFiles.CHOICE) == FileResult.Ok(true)) keepSaving(launch)
+    if (real.files.value.exists(FileArea.SHARED, AdapterFiles.CHOICE) == FileResult.Ok(true)) keepSaving(launch)
     val device = launch.device
     val mocked = launch.choice.mocked
-    val ports = launch.portsFor(real, AdapterProcess.APP)
+    val ports = launch.portsFor(real)
     val controls = RigDevControls()
     val world = launchWorld(device, mocked, ports, controls, mockBase = MOCK_BASE, realBackend = REAL_BACKEND)
-    return AndroidRigLaunch(launch, ports, controls, RigUi(ports.lazies.ui), world, real.files, uploadBase)
+    return AndroidRigLaunch(launch, ports, controls, RigUi(ports.ui), world, real.files.value, uploadBase)
 }
 
 /**
@@ -167,7 +167,7 @@ private fun AndroidRigLaunch.hooks(
     transferBinding = "mock",
     // The platform calls the app's entry points on the main thread, so the rig does too.
     mainLane = Dispatchers.Main,
-    deviceLog = LogTailService(ports.files)::tail,
+    deviceLog = LogTailService(ports.files.value)::tail,
     triggerGroups = mapOf(
         "app" to TriggerGroup(
             lane = Dispatchers.Main,

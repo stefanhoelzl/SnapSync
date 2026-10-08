@@ -1,6 +1,6 @@
 package app.snapsync.android
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.Ui
 
@@ -16,7 +16,7 @@ internal class PlatformAdapters(
     /** The platform's UI, as this build registers it — decorated for the channel on a rig build. */
     val ui: Lazy<Ui>,
     /** The ports this launch composes over. */
-    val ports: DevicePorts,
+    val ports: AppDevicePorts,
     /** What this build adds to the process's boot banner. */
     val bootLines: List<String>,
     /** What this build starts once the root has composed — the control channel, on a rig build. */

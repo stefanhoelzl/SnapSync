@@ -53,6 +53,14 @@ class PushTailGuardTest {
         assertFalse(guard.joinsTail("E"), "a guard that held its first answer would wake the tail for a left event")
     }
 
+    @Test
+    fun a_push_payload_joins_the_tail_only_when_it_names_the_active_event() {
+        val guard = PushTailGuard(membership("E"))
+        assertTrue(guard.joinsTail(mapOf<Any?, Any?>("eventId" to "E", "seq" to 3L)))
+        assertFalse(guard.joinsTail(mapOf<Any?, Any?>("eventId" to "OTHER")), "another event's push")
+        assertFalse(guard.joinsTail(mapOf<Any?, Any?>("seq" to 3L)), "a push that names no event")
+    }
+
     private fun membership(eventId: String?): ConfigService = configService(eventId?.let(::config))
 
     private fun config(eventId: String) =

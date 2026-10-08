@@ -1,6 +1,6 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.ExtensionDevicePorts
 import app.snapsync.contract.extension.ContractRunningExtensionHost
 import app.snapsync.extension.IosExtensionHost
 import app.snapsync.launchadapters.AdapterFacts
@@ -25,11 +25,11 @@ internal fun extensionHost(inner: IosExtensionHost): ExtensionHost =
     chosenExtensionHost(ContractRunningExtensionHost(inner), LaunchAdapters.alreadyRead())
 
 /** The extension root's ports: [real], with the launch-time adapters' mocked systems swapped in. */
-internal fun extensionPorts(real: DevicePorts): DevicePorts = launch(real).portsFor(real, AdapterProcess.EXTENSION)
+internal fun extensionPorts(real: ExtensionDevicePorts): ExtensionDevicePorts = launch(real).portsFor(real)
 
 /** The OS-driven upload mechanism exists wherever this process does, so its registration is one a mock can model. */
-private fun launch(real: DevicePorts): LaunchAdapters =
-    LaunchAdapters.load(real.files, AdapterProcess.EXTENSION, extensionFacts)
+private fun launch(real: ExtensionDevicePorts): LaunchAdapters =
+    LaunchAdapters.load(real.files.value, AdapterProcess.EXTENSION, extensionFacts)
 
 private val extensionFacts = AdapterFacts(
     osDrivenUpload = true,

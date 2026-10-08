@@ -1,6 +1,6 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.ExtensionDevicePorts
 import app.snapsync.extension.IosExtensionHost
 import app.snapsync.ports.ExtensionHost
 
@@ -12,4 +12,4 @@ import app.snapsync.ports.ExtensionHost
 internal fun extensionHost(inner: IosExtensionHost): ExtensionHost = inner
 
 /** A production extension's ports: its real adapters, as they are. A rig build takes its launch-time adapters' instead. */
-internal fun extensionPorts(real: DevicePorts): DevicePorts = real
+internal fun extensionPorts(real: ExtensionDevicePorts): ExtensionDevicePorts = real

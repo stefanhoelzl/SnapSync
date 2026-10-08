@@ -52,6 +52,17 @@ class PendingLeaves(
      * Send every recorded leave; each the backend confirms is removed. One that fails stays for the next wake. Answers
      * how many are still outstanding.
      */
+    /**
+     * The backend leave of [eventId]: recorded first (replacing any earlier record of it with [received]), then every
+     * outstanding leave is sent. One the backend does not confirm stays recorded, and the next wake sends it again — a
+     * finished event is deleted once everyone has LEFT, so a lost leave is no longer harmless.
+     */
+    suspend fun leave(eventId: String, received: Boolean) {
+        record(eventId, received)
+        val outstanding = deliverAll()
+        if (outstanding > 0) log.i { "leave of $eventId not confirmed yet — $outstanding retried on the next wake" }
+    }
+
     suspend fun deliverAll(): Int {
         val outstanding = mutex.withLock { read().orEmpty() + unwritten }
         if (outstanding.isEmpty()) return 0

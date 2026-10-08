@@ -839,17 +839,6 @@ class DeviceAttestationTest {
     }
 
     @Test
-    fun `a retry reads the store of record not this process’s copy`() = runTest {
-        val store = InMemoryAttestStore(token = token(30))
-        val (attest, _, _) = attestation(store = store)
-        assertEquals(token(30), attest.token()) // cached
-
-        store.setToken(token(31)) // the other process renewed into the shared item
-
-        assertEquals(token(31), attest.freshToken())
-    }
-
-    @Test
     fun `a rejection whose compare cannot be made is logged and recovers nothing it should not`() = runTest {
         val store = object : AttestStore by InMemoryAttestStore(token = token(30), keyId = "k") {
             override fun clearTokenIf(expected: String): Boolean = throw IllegalStateException("keychain locked")

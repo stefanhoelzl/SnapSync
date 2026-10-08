@@ -175,6 +175,7 @@ edge :test:launch-adapters :domain:compose
 edge :test:launch-adapters :domain:model
 edge :test:launch-adapters :domain:ports
 edge :test:rig :adapter:android
+edge :test:rig :adapter:generic:app
 edge :test:rig :adapter:generic:mock
 edge :test:rig :adapter:ios:app-only
 edge :test:rig :adapter:ios:ext-safe
