@@ -50,6 +50,7 @@ class KeyLostTest {
         config: EventConfig = ENCRYPTED,
         permission: GalleryAccess = GalleryAccess.GRANTED,
         restored: MutableList<String> = mutableListOf(),
+        keeps: Boolean = true,
     ) = StatusContainerHost(
         StatusSources(
             Sync(),
@@ -61,7 +62,7 @@ class KeyLostTest {
         queries = noQueries,
         commands = restoringCommands { key ->
             restored += key
-            true
+            keeps
         },
         cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
         diagnostics = testDiagnostics(),
@@ -118,6 +119,18 @@ class KeyLostTest {
             runCurrent()
             assertEquals(listOf(LINK_KEY), restored)
             assertEquals(null, (host.container.stateFlow.value.layer as Layer.Joined).pendingSwitch, "no join screen")
+        }
+    }
+
+    @Test
+    fun `an invite carrying another key is offered and refused and the key stays lost`() = runTest {
+        val restored = mutableListOf<String>()
+        val host = host(KeyPresence.Lost, restored = restored, keeps = false)
+        driving(host) {
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)))
+            runCurrent()
+            assertEquals(listOf(LINK_KEY), restored, "the core is asked, and keeps only the event's own key")
+            assertEquals(SyncHealth.KeyLost, host.health())
         }
     }
 
