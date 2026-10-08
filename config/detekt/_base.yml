@@ -60,8 +60,8 @@ complexity:
     # reached only by a runner. Counting them makes the rule measure how many behaviours a suite pins,
     # which points the ratchet the wrong way — the gate then resists exactly what it should invite.
     #
-    # Measured: `LedgerStoreContract` (then in `:test:world`, `:test:contracts` since) is 46 functions, 44 of them `@Test` and the other
-    # two private builders. Its real surface is two. It crossed the `harness` ceiling by growing four
+    # Measured: `LedgerStoreContract` (then in `:test:world`; its scenarios are `LedgerServiceTest`'s since) was 46 functions, 44 of them
+    # `@Test` and the other two private builders. Its real surface was two. It crossed the `harness` ceiling by growing four
     # test cases, and every future test would have cost another ceiling bump justified by this same
     # paragraph — a ratchet that has to be re-argued on a schedule is not one.
     #
