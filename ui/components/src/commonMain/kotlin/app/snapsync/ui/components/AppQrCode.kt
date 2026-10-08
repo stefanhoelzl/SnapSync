@@ -24,7 +24,7 @@ import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 private val CardCaption = Color(0xFF5B6472)
 
 /**
- * Renders [content] as a scannable QR with an optional [caption] beneath it, both on a single white
+ * Renders [content] as a scannable QR with its [caption] beneath it, both on a single white
  * "pass" card (a quiet-zone margin around the code). Semantic: the call site passes only the encoded
  * string and the caption text — the QR module pattern, sizing, card, and caption treatment are owned
  * here, and the QR-rendering library never leaves this module.
@@ -33,7 +33,7 @@ private val CardCaption = Color(0xFF5B6472)
  * reliably, so the skin never inverts it.
  */
 @Composable
-fun AppQrCode(content: String, caption: String? = null) {
+fun AppQrCode(content: String, caption: String) {
     Surface(color = Color.White, shape = RoundedCornerShape(26.dp)) {
         // As narrow as the code: the caption wraps beneath it rather than widening the card. A one-line
         // caption set the card's width, so a longer one grew the white margin around the code.
@@ -49,17 +49,15 @@ fun AppQrCode(content: String, caption: String? = null) {
                 contentDescription = null,
                 modifier = Modifier.size(196.dp),
             )
-            if (caption != null) {
-                Text(
-                    text = caption,
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 0.1.sp,
-                    ),
-                    color = CardCaption,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            Text(
+                text = caption,
+                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.1.sp,
+                ),
+                color = CardCaption,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

@@ -26,14 +26,14 @@ import androidx.compose.ui.window.DialogProperties
 
 /**
  * A semantic confirm/cancel dialog, drawn as an **iOS-style alert**. The call site passes only the [title]
- * text, an optional [body] line, the two button labels, and the [onConfirm] / [onDismiss] callbacks — the
+ * text, a [body] line, the two button labels, and the [onConfirm] / [onDismiss] callbacks — the
  * dialog's visual form is the skin's. It is a narrow (~270dp) **centre-aligned** card: a bold centred title,
  * a muted centred body, then a hairline, then the two actions **stacked full-width** and separated by a
  * hairline — the confirm on top, and the **cancel bold at the bottom** (the iOS convention: the safe,
  * emphasised way out sits last). Dismissing via the scrim or back gesture routes to [onDismiss], identical
  * to cancel.
  *
- * The [title] is a short question; the optional [body] states, in one muted line, the consequence of
+ * The [title] is a short question; the [body] states, in one muted line, the consequence of
  * confirming.
  *
  * For an **irreversible** confirmation use [AppDestructiveConfirmDialog] instead — a distinct component,
@@ -93,7 +93,7 @@ private class DialogAction(val label: String, val kind: DialogActionKind, val on
 @Composable
 private fun ConfirmDialogScaffold(
     title: String,
-    body: String?,
+    body: String,
     onDismiss: () -> Unit,
     actions: List<DialogAction>,
 ) {
@@ -122,14 +122,12 @@ private fun ConfirmDialogScaffold(
                         color = scheme.onSurface,
                         textAlign = TextAlign.Center,
                     )
-                    if (body != null) {
-                        Text(
-                            text = body,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = scheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
+                    Text(
+                        text = body,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
                 }
                 HorizontalDivider(color = scheme.outlineVariant)
                 actions.forEachIndexed { index, action ->
@@ -180,12 +178,10 @@ private fun DialogActionButton(action: DialogAction) {
  * One holder because all three dialogs in this design system declare the same four — two confirms and a
  * text prompt — and the quartet always travels together: a dialog with a confirm label and no cancel
  * label, or a title supplied without its body, is not a thing this system builds.
- *
- * [body] is nullable because a question that needs no elaboration should not be padded with one.
  */
 class DialogCopy(
     val title: String,
     val confirmLabel: String,
     val cancelLabel: String,
-    val body: String? = null,
+    val body: String,
 )

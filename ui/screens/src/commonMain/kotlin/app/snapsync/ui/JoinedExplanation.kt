@@ -19,7 +19,6 @@ import app.snapsync.ui.components.CaptionLink
 import app.snapsync.ui.components.ExplainAction
 import app.snapsync.ui.components.ExplainState
 import app.snapsync.ui.components.ExplainSubject
-import app.snapsync.ui.components.EyebrowTone
 import app.snapsync.ui.components.appDateRangeLabel
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.allow_full_access
@@ -71,7 +70,7 @@ internal fun Explanation(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            AppEyebrow(stringResource(Res.string.explain_eyebrow), EyebrowTone.Accent)
+            AppEyebrow(stringResource(Res.string.explain_eyebrow))
         }
         if (!state.closed) {
             SharingRow(
