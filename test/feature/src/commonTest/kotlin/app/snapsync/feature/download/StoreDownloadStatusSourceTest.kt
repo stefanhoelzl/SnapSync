@@ -6,6 +6,8 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
+import app.snapsync.ports.DbOpen
+import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -21,6 +23,29 @@ class StoreDownloadStatusSourceTest {
     @Test
     fun before_a_refresh_it_is_un_read_rather_than_a_counted_empty_union() {
         val source = StoreDownloadStatusSource(DownloadService(inMemoryDatabases()), currentEvent = { "E1" })
+
+        assertEquals(DownloadProgress.UNREAD, source.progress.value)
+    }
+
+    @Test
+    fun with_no_membership_a_refresh_reads_nothing_and_it_stays_un_read() = runTest {
+        val source = StoreDownloadStatusSource(DownloadService(inMemoryDatabases()), currentEvent = { null })
+
+        source.refresh()
+
+        assertEquals(DownloadProgress.UNREAD, source.progress.value)
+    }
+
+    @Test
+    fun a_store_that_cannot_be_read_never_turns_un_read_into_a_counted_zero() = runTest {
+        // Keep-last-good: a failed read must neither throw (it would cancel the foreground's siblings) nor publish
+        // a placeholder the screen would take for "nothing to receive".
+        val unreadable = DownloadService(
+            inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("store unreadable"))),
+        )
+        val source = StoreDownloadStatusSource(unreadable, currentEvent = { "E1" })
+
+        source.refresh()
 
         assertEquals(DownloadProgress.UNREAD, source.progress.value)
     }

@@ -9,9 +9,12 @@ import app.snapsync.feature.support.downloadJobs
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AdoptedAsset
+import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.PlannedResource
@@ -123,9 +126,13 @@ class DownloadControllerTest {
 
         private val never = CompletableDeferred<Unit>()
 
+        /** The event album each import was asked to file into, in order. */
+        val albums = mutableListOf<AlbumId?>()
+
         override suspend fun import(request: ImportRequest): ImportResult {
             val ref = request.ref
             attempted += ref
+            albums += request.album
             val forThisRef = attempted.count { it == ref }
             check(forThisRef <= attemptCap) {
                 "imported ${ref.sourceAssetId} $forThisRef times (cap $attemptCap) — the drain is " +
@@ -182,6 +189,8 @@ class DownloadControllerTest {
         checks: EventChecks = EventChecks(inMemoryPreferences(), now = { NOW }),
         readyToImport: suspend () -> Boolean = { true },
         keyHeld: () -> Boolean = { true },
+        eventAlbum: suspend () -> AlbumId? = { null },
+        onImportedIntoAlbum: suspend (AlbumId) -> Unit = {},
     ): DownloadController {
         val staging = StagingService(disk)
         return DownloadController(
@@ -192,8 +201,8 @@ class DownloadControllerTest {
                 staging,
             ),
             GalleryImporter(importer, staging), presence,
-            eventAlbum = { null },
-            onImportedIntoAlbum = {},
+            eventAlbum = eventAlbum,
+            onImportedIntoAlbum = onImportedIntoAlbum,
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,
@@ -1655,6 +1664,215 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         c.onLeaveOrSwitch()
         assertEquals(null, store.union.cursor("event"))
+    }
+
+    // ---- the remaining edges: what each refusal and each concurrent move leaves behind ----
+
+    /** [inner], except that the staging directory cannot be listed — a permission the platform withdrew. */
+    private class UnlistableStaging(private val inner: Files) : Files by inner {
+        override fun list(area: FileArea, directory: String): FileResult<List<String>> =
+            FileResult.Denied("$directory is not readable")
+    }
+
+    /** Stage both of [id]'s resources at `/<id>-p` and `/<id>-l`. */
+    private suspend fun DownloadController.stageBoth(id: String) {
+        val ref = AssetRef("DEVICE-A", AssetId(id))
+        onResourceStaged(ref, "$id-primary.heic", "/$id-p")
+        onResourceStaged(ref, "$id-live.mov", "/$id-l")
+    }
+
+    @Test
+    fun a_download_still_pending_keeps_the_member_though_the_union_no_longer_lists_it() = runTest {
+        // A delta never prunes, so a photo withdrawn between two deltas can still be planned here: the union's own
+        // photos all settled is not everything received while that download is still waiting.
+        val store = DownloadService(inMemoryDatabases())
+        val union = FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R")))
+        val c = controller(union, store = store)
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.stageBoth("Q")
+        c.importReady()
+
+        union.assets = listOf(asset("DEVICE-A", "Q"))
+        assertFalse(c.holdsEveryForeignPhoto("event"), "R's download is still pending")
+    }
+
+    @Test
+    fun a_known_union_is_whole_so_even_a_delta_trigger_prunes_what_it_no_longer_lists() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val union = FakeUnion(listOf(asset("DEVICE-A", "KEPT"), asset("DEVICE-A", "GONE")), position = 2)
+        val c = controller(union, store = store)
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+
+        c.reconcile("event", UnionTrigger.PUSH, known = UnionPage(listOf(asset("DEVICE-A", "KEPT")), 3))
+
+        assertEquals(1, union.calls, "the known page is planned without a read")
+        assertEquals(setOf("KEPT"), store.pendingDownloads().mapTo(mutableSetOf()) { it.ref.sourceAssetId.value })
+    }
+
+    @Test
+    fun a_full_read_frees_the_staged_bytes_of_a_photo_withdrawn_before_it_arrived() = runTest {
+        val staged = disk("/GONE-p")
+        val union = FakeUnion(listOf(asset("DEVICE-A", "KEPT"), asset("DEVICE-A", "GONE")))
+        val c = controller(union, disk = staged)
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.onResourceStaged(AssetRef("DEVICE-A", AssetId("GONE")), "GONE-primary.heic", "/GONE-p")
+
+        union.assets = listOf(asset("DEVICE-A", "KEPT"))
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+
+        assertEquals(listOf("/GONE-p"), staged.released)
+        assertTrue(staged.shared.isEmpty(), "a withdrawn photo's half-download is not kept")
+    }
+
+    @Test
+    fun a_withdrawn_photos_bytes_that_cannot_be_freed_still_leave_the_prune_standing() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val union = FakeUnion(listOf(asset("DEVICE-A", "KEPT"), asset("DEVICE-A", "GONE")))
+        val c = controller(union, store = store, disk = ThrowingDeletes(disk("/GONE-p")))
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.onResourceStaged(AssetRef("DEVICE-A", AssetId("GONE")), "GONE-primary.heic", "/GONE-p")
+
+        union.assets = listOf(asset("DEVICE-A", "KEPT"))
+        c.reconcile("event", UnionTrigger.FOREGROUND) // must not throw
+
+        assertEquals(setOf("KEPT"), store.pendingDownloads().mapTo(mutableSetOf()) { it.ref.sourceAssetId.value })
+    }
+
+    @Test
+    fun a_staging_no_row_takes_is_answered_unrecorded_and_its_file_discarded() = runTest {
+        // The transfer outran a leave's prune: nothing will ever reference the file.
+        val staged = disk("/stray")
+        val c = controller(FakeUnion(emptyList()), disk = staged)
+
+        assertFalse(c.onResourceStaged(AssetRef("DEVICE-A", AssetId("LEFT")), "LEFT-primary.heic", "/stray"))
+        assertEquals(listOf("/stray"), staged.released)
+        assertTrue(staged.shared.isEmpty())
+    }
+
+    @Test
+    fun an_unrecorded_staging_whose_discard_fails_is_still_answered_unrecorded() = runTest {
+        val c = controller(FakeUnion(emptyList()), disk = ThrowingDeletes(disk("/stray")))
+
+        assertFalse(c.onResourceStaged(AssetRef("DEVICE-A", AssetId("LEFT")), "LEFT-primary.heic", "/stray"))
+    }
+
+    @Test
+    fun an_import_is_filed_into_the_event_album_and_reported_only_once_it_landed() = runTest {
+        val importer = FakeImporter().also { it.failNext = true }
+        val reported = mutableListOf<AlbumId>()
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))),
+            importer = importer,
+            eventAlbum = { "ALBUM-1" },
+            onImportedIntoAlbum = { reported += it },
+        )
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.stageBoth("Q")
+
+        c.importReady()
+        assertTrue(reported.isEmpty(), "a failed import put nothing into the album")
+
+        importer.failNext = false
+        c.importReady()
+        assertEquals(listOf<AlbumId?>("ALBUM-1", "ALBUM-1"), importer.albums, "each import is asked into the album")
+        assertEquals(listOf("ALBUM-1"), reported, "and the album learns of the one that landed")
+    }
+
+    @Test
+    fun a_consumed_failure_on_a_row_whose_creation_was_submitted_is_never_settled_unimportable() = runTest {
+        // The change block wrote its marker, then the library reported a consumed failure. A creation WAS submitted,
+        // so the guarded settle matches nothing: the row is left for adjudication, its marker still suppressing it.
+        val store = DownloadService(inMemoryDatabases())
+        val importer = FakeImporter().also {
+            it.markerStore = store
+            it.failNext = true
+            it.failConsumingResources = true
+        }
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.stageBoth("Q")
+
+        c.importReady()
+
+        assertFalse(store.isSettled(ref), "not judged unimportable")
+        assertEquals(setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds(), "its marker still holds it out")
+    }
+
+    @Test
+    fun a_present_verdict_with_no_staged_resources_settles_and_releases_nothing() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val staged = RecordingFiles()
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))),
+            store = store,
+            presence = InMemoryAssetPresence(present = MutableStateFlow(setOf(AssetId("FIRST-COPY")))),
+            disk = staged,
+        )
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        store.dropResources(ref)
+        store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
+
+        c.sweepInterruptedImports()
+
+        assertTrue(store.isSettled(ref), "the library holds it: settled against its marker")
+        assertTrue(staged.released.isEmpty(), "and with nothing staged, nothing reaches the disk")
+    }
+
+    @Test
+    fun an_import_whose_staged_bytes_cannot_be_freed_still_lands_and_keeps_them_findable() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val importer = FakeImporter()
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))),
+            store = store,
+            importer = importer,
+            disk = ThrowingDeletes(disk("/Q-p", "/Q-l")),
+        )
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.stageBoth("Q")
+
+        c.importReady() // must not throw
+
+        assertEquals(listOf(ref), importer.imported)
+        assertTrue(store.isSettled(ref), "freeing disk is never worth failing an import over")
+        assertEquals(listOf("/Q-l", "/Q-p"), store.stagedPathsOfImportedAssets().sorted(), "the reclaim retries them")
+    }
+
+    @Test
+    fun an_unlistable_staging_directory_sweeps_nothing_and_the_reclaim_still_runs() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val stray = "$DOWNLOAD_STAGING_DIR/DEVICE-A/stray"
+        val files = disk("/Q-p", "/Q-l", stray)
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, disk = UnlistableStaging(files))
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        store.markStaged(ref, "Q-primary.heic", "/Q-p")
+        store.markStaged(ref, "Q-live.mov", "/Q-l")
+        store.markImported(ref, AssetId("LOCAL-Q"))
+
+        c.releaseSettledBytes()
+
+        assertEquals(setOf("/Q-l", "/Q-p"), files.released.toSet(), "an imported photo's bytes are freed")
+        assertTrue(stray in files.shared, "a listing never read is not a listing of nothing")
+    }
+
+    @Test
+    fun a_leave_whose_staged_bytes_cannot_be_freed_still_drops_its_rows() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))),
+            store = store,
+            disk = ThrowingDeletes(disk("/Q-p")),
+        )
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.onResourceStaged(AssetRef("DEVICE-A", AssetId("Q")), "Q-primary.heic", "/Q-p")
+
+        c.onLeaveOrSwitch() // must not throw
+
+        assertTrue(store.pendingDownloads().isEmpty(), "the left event's downloads are gone")
     }
 
     private companion object {
