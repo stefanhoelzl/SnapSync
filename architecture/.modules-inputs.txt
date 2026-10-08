@@ -150,6 +150,7 @@ edge :test:architecture :domain:feature
 edge :test:architecture :domain:model
 edge :test:architecture :domain:ports
 edge :test:architecture :domain:services
+edge :test:architecture :test:contracts
 edge :test:contracts :domain:model
 edge :test:contracts :domain:ports
 edge :test:contracts :domain:services
