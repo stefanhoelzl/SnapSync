@@ -80,7 +80,9 @@ internal fun RangePickerDialog(
     PickerDialogShell(
         title = title,
         onDismiss = onDismiss,
-        onConfirm = { end?.let { onConfirm(range.from, it) } },
+        onConfirm = {
+            end?.let { onConfirm(range.from, it) }
+        },
         confirmEnabled = end != null,
     ) {
         if (presets.isNotEmpty()) PresetChips(presets)

@@ -96,7 +96,9 @@ fun AppTextPromptSheet(
     ModalBottomSheet(
         // Busy refuses the scrim and the swipe-down as firmly as it refuses the cancel button: a request
         // in flight has no honest cancellation, so there is one answer for every dismissal route.
-        onDismissRequest = { if (!field.busy) onDismiss() },
+        onDismissRequest = {
+            if (!field.busy) onDismiss()
+        },
         // Full height, so the content is laid out from the top and the keyboard cannot reach the
         // actions. See the note above: this is the load-bearing half of keyboard avoidance, not a
         // presentation preference.
@@ -147,7 +149,9 @@ fun AppTextPromptSheet(
                 onClick = { onConfirm(written) },
                 enabled = submittable && !field.busy,
             )
-            SecondaryButton(label = copy.cancelLabel, onClick = { if (!field.busy) onDismiss() })
+            SecondaryButton(label = copy.cancelLabel, onClick = {
+                if (!field.busy) onDismiss()
+            })
         }
     }
 }

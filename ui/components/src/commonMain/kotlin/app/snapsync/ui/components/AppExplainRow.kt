@@ -127,7 +127,10 @@ private fun captionText(caption: String, link: CaptionLink?) = buildAnnotatedStr
             textDecoration = TextDecoration.Underline,
         ),
     )
-    withLink(LinkAnnotation.Clickable(tag = link.text, styles = style) { link.onClick() }) { append(link.text) }
+    val clickable = LinkAnnotation.Clickable(tag = link.text, styles = style) {
+        link.onClick()
+    }
+    withLink(clickable) { append(link.text) }
     append(caption.substring(at + link.text.length))
 }
 

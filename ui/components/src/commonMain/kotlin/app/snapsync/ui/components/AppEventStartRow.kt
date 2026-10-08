@@ -44,10 +44,9 @@ internal fun formatStart(value: LocalDateTime): String = LocalDateFormats.curren
 @Composable
 fun appDateRangeLabel(start: LocalDateTime, end: LocalDateTime?, today: LocalDate): String {
     val dates = LocalDateFormats.current
-    val lastDay = end?.let { lastDayOf(start, it) }
+    if (end == null) return stringResource(Res.string.date_range_open, dates.day(start.date, withYear = false))
+    val lastDay = lastDayOf(start, end)
     return when {
-        end == null || lastDay == null ->
-            stringResource(Res.string.date_range_open, dates.day(start.date, withYear = false))
         lastDay == start.date -> {
             val from = dates.format(start, "jm")
             val until = dates.format(end, "jm")
