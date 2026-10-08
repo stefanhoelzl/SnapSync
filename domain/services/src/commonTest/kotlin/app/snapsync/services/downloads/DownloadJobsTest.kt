@@ -115,7 +115,7 @@ class DownloadJobsTest {
         }
     }
 
-    private class Harness(scope: CoroutineScope) {
+    private class Harness(scope: CoroutineScope, adopts: Boolean = true) {
         val transport = FakeDownload()
         val staged = mutableListOf<Triple<AssetRef, String, String>>()
 
@@ -127,7 +127,7 @@ class DownloadJobsTest {
 
         val jobs = DownloadJobs(
             scope = scope,
-            staging = StagingService(AcceptingFiles),
+            staging = StagingService(AcceptingFiles(adopts)),
             download = transport,
             onStaged = { ref, key, path -> deliver(ref, key, path) },
             network = { network },
@@ -280,6 +280,7 @@ class DownloadJobsTest {
         assertTrue(TransferOutcome(200, -1L, 0L).mayBeStaged(), "unknown length is not a short read")
         assertTrue(TransferOutcome(null, -1L, 10L).mayBeStaged(), "unknown status is not a failure")
         assertTrue(TransferOutcome(299, -1L, 10L).mayBeStaged(), "2xx boundary")
+        assertFalse(TransferOutcome(199, -1L, 10L).mayBeStaged(), "below 2xx")
     }
 
     // ---- the regression: cancellation must not destroy the transport -------------------------------
@@ -471,6 +472,8 @@ class DownloadJobsTest {
     fun a_malformed_description_decodes_to_null_and_stages_nothing() = runTest {
         assertNull(decodeTag("only-one-field"))
         assertNull(decodeTag("two\nfields"))
+        assertNull(decodeTag("DEVICE-A\nASSET-1\na-primary.heic\nEVENT\nfifth"), "more fields than any build wrote")
+        assertNull(decodeTag("DEVICE-A\nnot/an/asset\na-primary.heic\nEVENT"), "not an asset id")
 
         val h = Harness(this)
         h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
@@ -665,7 +668,8 @@ class DownloadJobsTest {
      * land is `StagingService`'s own test's subject (`StagingServiceStageTest`). Its [locate] answers a path under
      * `/abs/`, so a relative staged path is told apart from a platform one.
      */
-    private object AcceptingFiles : Files {
+    /** The shared area, taking every finished body over — or none, while [adopts] is off (a locked device). */
+    private class AcceptingFiles(private val adopts: Boolean = true) : Files {
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.NotFound
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = FileResult.NotFound
         override fun readRange(
@@ -680,7 +684,8 @@ class DownloadJobsTest {
         override fun exists(area: FileArea, path: String): FileResult<Boolean> = FileResult.Ok(false)
         override fun locate(area: FileArea, path: String): FileResult<String> = FileResult.Ok("/abs/$path")
         override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = FileResult.NotFound
-        override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = FileResult.Ok(Unit)
+        override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> =
+            if (adopts) FileResult.Ok(Unit) else FileResult.Denied("locked")
         override fun list(area: FileArea, directory: String): FileResult<List<String>> = FileResult.Ok(emptyList())
     }
 
@@ -698,6 +703,17 @@ class DownloadJobsTest {
             h.staged.single().third,
             "no platform path reaches the store",
         )
+    }
+
+    @Test
+    fun `a finished body the shared area cannot take is not delivered and is downloaded again later`() = runTest {
+        val h = Harness(backgroundScope, adopts = false)
+        h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
+        runCurrent()
+
+        h.transport.finish(h.transport.started.single().description)
+        runCurrent()
+        assertTrue(h.staged.isEmpty())
     }
 }
 

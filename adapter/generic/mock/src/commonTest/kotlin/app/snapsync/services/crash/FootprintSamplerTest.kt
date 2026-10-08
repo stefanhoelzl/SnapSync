@@ -52,4 +52,11 @@ class FootprintSamplerTest {
         assertEquals(emptyMap(), trail.fields())
         assertTrue(privateFiles.isEmpty())
     }
+
+    @Test
+    fun `a reading the private area cannot keep is lost without failing the moment`() {
+        val unkept = FootprintTrail(inMemoryFiles(private = null), fixedClock(Instant.fromEpochSeconds(0)))
+        FootprintSampler(Reading(MemoryFootprint(footprintBytes = 64L shl 20)), unkept) { false }.record("push")
+        assertEquals(emptyMap(), unkept.fields())
+    }
 }

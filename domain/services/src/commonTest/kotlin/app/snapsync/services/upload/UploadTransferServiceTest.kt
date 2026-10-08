@@ -20,6 +20,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
+import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadJobState
@@ -147,7 +148,12 @@ class UploadTransferServiceTest {
     }
 
     /** The shared area as a set of paths, located under `/shared/` — or unreachable when [reachable] is off. */
-    private class SharedArea(private val reachable: Boolean = true, private val deletable: Boolean = true) : Files {
+    private class SharedArea(
+        private val reachable: Boolean = true,
+        private val deletable: Boolean = true,
+        /** Paths the listing names that are gone by the time they are deleted — another path released them. */
+        private val vanishing: Set<String> = emptySet(),
+    ) : Files {
         val files = mutableSetOf<String>()
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.NotFound
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = FileResult.NotFound
@@ -160,6 +166,7 @@ class UploadTransferServiceTest {
         override fun append(area: FileArea, path: String, bytes: ByteArray) = FileResult.Ok(Unit).also { files += path }
         override fun write(area: FileArea, path: String, bytes: ByteArray) = FileResult.Ok(Unit).also { files += path }
         override fun delete(area: FileArea, path: String): FileResult<Unit> = when {
+            !reachable -> FileResult.AreaUnavailable
             !deletable -> FileResult.Denied("locked")
             files.remove(path) -> FileResult.Ok(Unit)
             else -> FileResult.NotFound
@@ -172,7 +179,7 @@ class UploadTransferServiceTest {
         override fun list(area: FileArea, directory: String): FileResult<List<String>> =
             if (reachable) {
                 FileResult.Ok(
-                    files.filter { it.startsWith("$directory/") }.sorted(),
+                    (files + vanishing).filter { it.startsWith("$directory/") }.sorted(),
                 )
             } else {
                 FileResult.AreaUnavailable
@@ -182,16 +189,22 @@ class UploadTransferServiceTest {
     private fun row(key: String, state: LedgerState = LedgerState.REQUESTED) =
         LedgerEntry(key = key, assetId = AssetId("A"), state = state, destinationPath = destination)
 
-    private fun job(state: UploadJobState, path: String? = destination, source: UploadSource? = null, tag: String? = null) =
-        UploadJob(
-            handle = "job",
-            tag = tag,
-            destinationPath = path,
-            contentType = "image/jpeg",
-            state = state,
-            error = null,
-            source = source,
-        )
+    private fun job(
+        state: UploadJobState,
+        path: String? = destination,
+        source: UploadSource? = null,
+        tag: String? = null,
+        contentType: String? = "image/jpeg",
+        error: UploadError? = null,
+    ) = UploadJob(
+        handle = "job",
+        tag = tag,
+        destinationPath = path,
+        contentType = contentType,
+        state = state,
+        error = error,
+        source = source,
+    )
 
     private fun service(
         upload: Upload,
@@ -385,6 +398,15 @@ class UploadTransferServiceTest {
     }
 
     @Test
+    fun `a held resource of a job that kept no type is re-created with the generic one`() = runTest {
+        val upload = ScriptedUpload(
+            terminal = listOf(job(UploadJobState.FAILED, source = UploadSource.Resource("own"), contentType = null)),
+        )
+        val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
+        assertEquals("application/octet-stream", service(upload, record).drainTerminals().single().contentType)
+    }
+
+    @Test
     fun `a failure whose photo left is recorded and not handed up`() = runTest {
         val upload = ScriptedUpload(terminal = listOf(job(UploadJobState.FAILED)))
         val record = Record(mutableMapOf(destination to row("A-primary.jpg", state = LedgerState.COMPLETED)))
@@ -469,5 +491,107 @@ class UploadTransferServiceTest {
         val upload = ScriptedUpload(inFlight = listOf(job(UploadJobState.PENDING, tag = null)))
         service(upload).cancelAll()
         assertEquals(listOf("cancel(null)"), upload.calls)
+    }
+
+    @Test
+    fun `a drained job on a route this build cannot map is acknowledged and reported and a pruned one is not recorded`() =
+        runTest {
+            val upload = ScriptedUpload(
+                terminal = listOf(
+                    job(UploadJobState.FAILED, path = "/not/a/byte/route"),
+                    job(UploadJobState.SUCCEEDED, path = "/api/v2/files/devices/D/GONE/primary"),
+                ),
+            )
+            val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
+            assertTrue(service(upload, record).drainTerminals().isEmpty())
+            assertTrue(record.terminals.isEmpty(), "neither job is a row's")
+            assertEquals(2, upload.calls.count { it.startsWith("acknowledge") })
+        }
+
+    @Test
+    fun `an offered retry carries the resource the platform still holds and a file-sourced one carries none`() = runTest {
+        val upload = ScriptedUpload(
+            offered = listOf(
+                job(UploadJobState.FAILED, source = UploadSource.Resource("own")),
+                job(UploadJobState.FAILED, source = UploadSource.File("/shared/upload-staging/A-primary.jpg")),
+            ),
+        )
+        val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
+        assertEquals(listOf<Any?>("own", null), service(upload, record).fetchRetryJobs().map { it.data })
+    }
+
+    @Test
+    fun `a success the platform still holds the resource of is recorded and not handed up`() = runTest {
+        val upload = ScriptedUpload(
+            terminal = listOf(job(UploadJobState.SUCCEEDED, source = UploadSource.Resource("own"))),
+        )
+        val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
+        assertTrue(service(upload, record).drainTerminals().isEmpty())
+        assertEquals(listOf("A-primary.jpg" to TerminalOutcome.COMPLETED), record.terminals)
+    }
+
+    @Test
+    fun `a re-created failure reports the type it was created with - else the live photo's - else a generic one`() =
+        runTest {
+            assertEquals("image/heic", reCreatedType(stored = "image/heic", live = "image/jpeg"))
+            assertEquals("image/jpeg", reCreatedType(stored = null, live = "image/jpeg"))
+            assertEquals("application/octet-stream", reCreatedType(stored = null, live = ""))
+        }
+
+    private suspend fun reCreatedType(stored: String?, live: String): String {
+        val resource = Resource("A-primary.jpg", AssetId("A"), live, emptyMap(), "handle")
+        val upload = ScriptedUpload(terminal = listOf(job(UploadJobState.FAILED, contentType = stored)))
+        val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
+        return service(
+            upload,
+            record,
+            Resources(mapOf("A-primary.jpg" to resource)),
+        ).drainTerminals().single().contentType
+    }
+
+    @Test
+    fun `a retry passes over an offered job whose row is gone to the one that is its key's`() = runTest {
+        val upload = ScriptedUpload(
+            offered = listOf(
+                job(UploadJobState.FAILED, path = "/api/v2/files/devices/D/GONE/primary"),
+                job(UploadJobState.FAILED),
+            ),
+        )
+        val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
+        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), Unit)
+        service(upload, record).retryJob(
+            app.snapsync.model.PlatformUploadJob("A-primary.jpg", "image/jpeg", null, null),
+            UploadRequest(url, emptyMap(), resource),
+        )
+        assertEquals(listOf("retry($destination -> $url)"), upload.calls)
+    }
+
+    @Test
+    fun `a failed end is recorded whatever the platform said of it`() {
+        val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
+        val failed = job(UploadJobState.FAILED, tag = "A-primary.jpg", error = UploadError.Http(500))
+        assertTrue(service(ScriptedUpload(), record).recordFinished(failed))
+        assertEquals(listOf("A-primary.jpg" to TerminalOutcome.FAILED), record.terminals)
+    }
+
+    @Test
+    fun `an unclaimed staged upload file already gone when the sweep reaches it is no failure`() = runTest {
+        val files = SharedArea(vanishing = setOf("upload-staging/B-primary.jpg")).apply {
+            this.files += "upload-staging/C-primary.jpg"
+        }
+        service(ScriptedUpload(accepts = UploadSourceKind.FILE), files = files).releaseUnclaimedStaging()
+        assertTrue(files.files.isEmpty())
+    }
+
+    @Test
+    fun `an ended transfer is recorded even when its staged file cannot go now`() {
+        // A locked area keeps the file (the next sweep releases it); an unavailable one has nothing to release.
+        for (files in listOf(SharedArea(deletable = false), SharedArea(reachable = false))) {
+            files.files += "upload-staging/A-primary.jpg"
+            val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
+            val transfer = service(ScriptedUpload(accepts = UploadSourceKind.FILE), record, files = files)
+            assertTrue(transfer.recordFinished(job(UploadJobState.SUCCEEDED, tag = "A-primary.jpg")))
+            assertEquals(setOf("upload-staging/A-primary.jpg"), files.files)
+        }
     }
 }

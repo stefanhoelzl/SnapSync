@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -133,6 +134,22 @@ class OsCompletionsTest {
         wake.cancel()
         wake.join()
         assertEquals(listOf("wake-A"), h.released)
+    }
+
+    @Test
+    fun `a handler whose answer throws counts as released on either path`() = runTest {
+        val completions = OsCompletions("test")
+        val refusing = completionOf { error("the platform refused the answer") }
+
+        val expired = completions.adopt(refusing)
+        assertFailsWith<IllegalStateException> { expired.releaseOnExpiry("test expiry") }
+        assertTrue(expired.isReleased, "never answered twice")
+        expired.awaitRelease()
+
+        val afterWork = completions.adopt(refusing)
+        assertFailsWith<IllegalStateException> { completions.releaseAfter { } }
+        assertTrue(afterWork.isReleased)
+        afterWork.awaitRelease()
     }
 }
 

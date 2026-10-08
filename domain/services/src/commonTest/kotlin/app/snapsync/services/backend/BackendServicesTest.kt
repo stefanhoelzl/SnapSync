@@ -68,9 +68,35 @@ class BackendServicesTest {
             meta(endsAt = null),
             meta(deletesAt = null),
             meta(startsAt = "garbage"),
+            meta(endsAt = "garbage"),
+            meta(deletesAt = "garbage"),
         )) {
             assertEquals(EventLookup.Failed, servicesAnswering(reply).directory.fetch("E"), "$reply")
         }
+    }
+
+    /** Presence is the fact (capability `event-lifetime`): a completed event is closed too, whatever its record says. */
+    @Test
+    fun a_served_read_says_whether_the_event_closed_and_completed() = runTest {
+        suspend fun completion(closedAt: String?, completedAt: String?) = assertIs<EventLookup.Found>(
+            servicesAnswering(
+                Reply.Ok(
+                    EventMeta(
+                        "E",
+                        "Party",
+                        null,
+                        "2026-07-01T00:00:00Z",
+                        "2026-07-08T00:00:00Z",
+                        "2026-07-31T00:00:00Z",
+                        closedAt = closedAt,
+                        completedAt = completedAt,
+                    ),
+                ),
+            ).directory.fetch("E"),
+        ).completion.let { it.closed to it.completed }
+        assertEquals(false to false, completion(closedAt = null, completedAt = null))
+        assertEquals(true to false, completion(closedAt = "2026-07-09T00:00:00Z", completedAt = null))
+        assertEquals(true to true, completion(closedAt = null, completedAt = "2026-07-10T00:00:00Z"))
     }
 
     @Test
@@ -156,6 +182,7 @@ class BackendServicesTest {
             "no echo is malformed",
         )
         assertEquals(RenameOutcome.Transient, servicesAnswering(offline).rename.rename("E", "n"))
+        assertEquals(RenameOutcome.Transient, servicesAnswering(Reply.Malformed("x")).rename.rename("E", "n"))
     }
 
     // ── membership ─────────────────────────────────────────────────────────────────────────────────
@@ -167,6 +194,8 @@ class BackendServicesTest {
         assertEquals(JoinResult.EVENT_NOT_FOUND, servicesAnswering(Reply.Refused(404, "")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(Reply.Refused(500, "")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(offline).join.join("E", "D"))
+        assertEquals(JoinResult.FAILED, servicesAnswering(Reply.Malformed("x")).join.join("E", "D"))
+        assertEquals(JoinResult.EVENT_CLOSED, servicesAnswering(Reply.Refused(410, "")).join.join("E", "D"))
         assertEquals(
             JoinResult.UNVERIFIED,
             servicesAnswering(Reply.Refused(401, "unattested")).join.join("E", "D"),
@@ -180,6 +209,18 @@ class BackendServicesTest {
         assertTrue(servicesAnswering(Reply.Ok(Unit)).manifest.publish("E", "D", manifest))
         assertEquals(false, servicesAnswering(Reply.Refused(409, "")).manifest.publish("E", "D", manifest))
         assertEquals(false, servicesAnswering(offline).manifest.publish("E", "D", manifest))
+        assertEquals(false, servicesAnswering(Reply.Malformed("x")).manifest.publish("E", "D", manifest))
+        assertEquals(false, servicesAnswering(Reply.Refused(502, "")).manifest.publish("E", "D", manifest))
+    }
+
+    /** A closed event's asset sets are fixed: its refusal is final, so it counts as published and is not re-sent. */
+    @Test
+    fun a_publish_refused_because_the_event_closed_is_recorded_as_done() = runTest {
+        val manifest = DeviceManifest("D", emptyList())
+        assertTrue(servicesAnswering(Reply.Refused(410, "")).manifest.publish("E", "D", manifest))
+        assertTrue(
+            servicesAnswering(Reply.Refused(409, """{"error":"closed"}""")).manifest.publish("E", "D", manifest),
+        )
     }
 
     @Test
@@ -237,6 +278,7 @@ class BackendServicesTest {
         val page = UnionPage(listOf(UnionAsset("D", AssetId("A"), "c", emptyList())), cursor = 7)
         suspend fun read(reply: Reply<*>) = servicesAnswering(reply).union.union("E", 3, UnionTrigger.PUSH)
         assertEquals(page, read(Reply.Ok(page)).getOrThrow())
+        assertEquals(page, servicesAnswering(Reply.Ok(page)).union.union("E", null, UnionTrigger.PUSH).getOrThrow())
         assertTrue(read(Reply.Refused(404, "")).isFailure)
         assertTrue(read(offline).isFailure)
     }

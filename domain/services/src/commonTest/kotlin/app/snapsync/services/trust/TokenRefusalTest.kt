@@ -30,6 +30,7 @@ class TokenRefusalTest {
     fun any_other_4xx_is_a_verdict_on_what_was_sent_and_a_5xx_no_verdict_at_all() {
         assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(400, "bad body"))
         assertEquals(TokenOutcome.Unreachable, tokenRefusal(502, "write failed"))
+        assertEquals(TokenOutcome.Unreachable, tokenRefusal(304, ""), "below 4xx is no verdict either")
     }
 
     @Test

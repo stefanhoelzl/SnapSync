@@ -40,6 +40,9 @@ class WalkMemoTest {
         var tokenReads = 0
         var tokenAvailable = true
 
+        /** Off: the walk answers its candidates without claiming it enumerated the whole library. */
+        var authoritative = true
+
         /** Runs inside the next walk, after the memo read the token — a change landing mid-walk. */
         var duringWalk: (() -> Unit)? = null
         private var version = 0
@@ -55,7 +58,7 @@ class WalkMemoTest {
             if (!readable) return Discovery(emptyList(), fullEnumeration = false)
             return Discovery(
                 candidatesFromResources(assets.map(::resource)),
-                fullEnumeration = grant == GalleryAccess.GRANTED,
+                fullEnumeration = grant == GalleryAccess.GRANTED && authoritative,
             )
         }
 
@@ -232,6 +235,23 @@ class WalkMemoTest {
             "a stale token is reported at Error, which crash reporting sees: ${log.lines}",
         )
     }
+
+    @Test
+    fun `in shadow a walk that lost its authority under an unchanged token is reported though its ids agree`() =
+        runTest {
+            val log = CapturingLogWriter()
+            val library = Library(listOf("A"))
+            val memo = memo(library, WalkMemoUse.SHADOW, log)
+            memo.discover(policy("2026-01-01T00:00:00Z"))
+
+            library.authoritative = false
+            memo.discover(policy("2026-01-01T00:00:00Z"))
+
+            assertTrue(
+                log.lines.any { (severity, line) -> severity == Severity.Error && "fullEnumeration true→false" in line },
+                "${log.lines}",
+            )
+        }
 
     @Test
     fun `the resolve is never memoised`() = runTest {
