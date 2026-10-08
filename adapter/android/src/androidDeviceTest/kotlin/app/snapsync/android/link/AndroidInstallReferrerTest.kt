@@ -65,7 +65,7 @@ class AndroidInstallReferrerTest {
     }
 
     @Test
-    fun `an encrypted event's referrer is delivered as its whole invite`() {
+    fun `an encrypted events referrer is delivered as its whole invite`() {
         val key = encodeEventKey(ByteArray(EncryptedFileFormat.KEY_LENGTH))
         start(ReferrerAnswer.Referrer(invite.substringAfter('#') + "&k=$key"))
         assertEquals(listOf("$LINK_ORIGIN/join/11111111-1111-4111-8111-111111111111#k=$key"), delivered.map { it.url })
