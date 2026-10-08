@@ -61,6 +61,8 @@ class CoversTest {
 
     @Test
     fun `a clause with no declared cell is refused`() {
-        assertFailsWith<IllegalArgumentException> { Clause<GalleryAccess, Unit>("C", GalleryAccess.GRANTED, cells { }) { } }
+        assertFailsWith<IllegalArgumentException> {
+            Clause<GalleryAccess, Unit>("C", GalleryAccess.GRANTED, cells { }) { }
+        }
     }
 }

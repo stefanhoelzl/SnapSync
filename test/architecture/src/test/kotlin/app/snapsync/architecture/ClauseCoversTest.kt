@@ -35,7 +35,9 @@ class ClauseCoversTest {
 
     @Test
     fun `every clause declares at least one cell`() {
-        val bare = ContractCatalog.contracts.flatMap { c -> c.clauses.filter { it.covers.isEmpty() }.map { "${c.name} / ${it.id}" } }
+        val bare = ContractCatalog.contracts.flatMap { c ->
+            c.clauses.filter { it.covers.isEmpty() }.map { "${c.name} / ${it.id}" }
+        }
         if (bare.isNotEmpty()) {
             fail(
                 "these clauses declare no port-grid cell. A clause that pins no answer of a port is not a port clause — " +
