@@ -251,8 +251,8 @@ private fun reconfiguring(
 /** What the reduction would resolve [form] to against [membership]'s own window — stated, not re-derived. */
 private fun reconfigureResolved(membership: EventConfig, form: RangeForm): ResolvedRange {
     val f = fixedCutoff()
-    val windowStart = f.toLocal(membership.startsAt.at)!!
-    val windowEnd = f.toLocal(membership.endsAt.at)!!
+    val windowStart = f.toLocal(membership.startsAt)
+    val windowEnd = f.toLocal(membership.endsAt)
     val from = if (form.preset == RangeChoice.CUSTOM) form.customFrom ?: windowStart else windowStart
     val until = if (form.preset == RangeChoice.CUSTOM) form.customUntil ?: windowEnd else windowEnd
     return ResolvedRange(

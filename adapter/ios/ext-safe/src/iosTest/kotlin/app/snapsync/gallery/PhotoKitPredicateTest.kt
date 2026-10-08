@@ -97,9 +97,10 @@ class PhotoKitPredicateTest {
                     SelectionRule.NotEcho(setOf(AssetId("A"))),
                     SelectionRule.NotInDenylistedAlbum(setOf(AssetId("B"))),
                     // The floor is mandatory on the variant, so "only unexpressible rules" is reachable
-                    // only when the bound itself fails to parse and its clause drops. Same assertion,
-                    // same reason — the state is now expressed through the one door that still opens it.
-                    floor = captureCutoff("not-a-date"),
+                    // only when the bound itself fails to parse and its clause drops. A role holds a valid
+                    // instant by construction, so the one door still open is a shape the platform's parser
+                    // refuses: fractional seconds, which it does not read.
+                    floor = captureCutoff("2026-06-01T00:00:00.500Z"),
                 ),
             ),
             "an unexpressible rule must not yield a predicate — a partial one would look like a narrowing",
@@ -149,7 +150,8 @@ class PhotoKitPredicateTest {
         // A bound that cannot be parsed must not take the rest of the predicate with it — and must not
         // silently become "fetch nothing", which is the failure mode that hides as "sync is just slow".
         val predicate = predicateFor(
-            admitting(SelectionRule.ExcludeScreenshots, floor = captureCutoff("not-a-date")),
+            // A valid instant in a shape the platform's parser refuses (fractional seconds).
+            admitting(SelectionRule.ExcludeScreenshots, floor = captureCutoff("2026-06-01T00:00:00.500Z")),
         )!!
         assertTrue(predicate.predicateFormat.contains("mediaSubtypes"), "the other clauses survive")
         assertEquals(false, predicate.predicateFormat.contains("creationDate"))

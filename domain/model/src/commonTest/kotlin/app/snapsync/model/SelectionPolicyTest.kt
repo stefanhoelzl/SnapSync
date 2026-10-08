@@ -44,14 +44,14 @@ class SelectionPolicyTest {
 
     /**
      * The ids the ORIGIN rules exclude. Expressed as "everything the one admission did not admit", over a
-     * policy whose capture-date floor is empty (admitting every date) — so this matrix isolates the origin
+     * policy whose capture-date floor lies before every asset (admitting every date) — so this matrix isolates the origin
      * rules from the range, exactly as it did when they were a separate function.
      */
     private suspend fun excluded(resources: List<Resource>): Set<String> {
         val policy = SelectionPolicy(
             selectionRulesFor(
                 includesUpload = true,
-                cutoff = captureCutoff(""),
+                cutoff = captureCutoff("2000-01-01T00:00:00Z"),
                 ceiling = null,
                 suppressedAssetIds = { emptySet() },
                 albumExcludedAssetIds = { emptySet() },

@@ -110,11 +110,3 @@ internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> 
         customUntil = if (whole || untilAtCeiling) null else toLocal(membership.maxPhotoDate.at),
     )
 }
-
-/**
- * How far ahead the "no ceiling known yet" sentinel sits.
- *
- * Reached only when an event's end does not parse — every event carries one, so the sentinel exists to make
- * the resolution TOTAL rather than optional, at the widest safe reading.
- */
-internal const val NO_CEILING_YEARS = 100

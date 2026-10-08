@@ -1,6 +1,7 @@
 package app.snapsync.architecture
 
 import app.snapsync.contracts.CallLog
+import app.snapsync.model.CaptureDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -428,6 +429,8 @@ class ProxyCompletenessTest {
         fun dummy(type: KType): Any? {
             val k = type.classifier as? KClass<*> ?: return null
             return when {
+                // Every date role wraps a CaptureDate and refuses one that is not an instant; a port is called with real ones.
+                k == CaptureDate::class -> CaptureDate("2026-01-01T00:00:00Z")
                 k == String::class -> "d"
                 k == Int::class -> 0
                 k == Long::class -> 0L

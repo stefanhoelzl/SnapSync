@@ -177,12 +177,10 @@ private fun DirectionCount.label(done: StringResource, progress: StringResource,
 @Composable
 internal fun JoinedHeadingDetails(state: Layer.Joined, cutoff: CutoffFormatter) {
     AppHeadingStatement(stringResource(Res.string.joined_statement))
-    // An unparseable start cannot occur (the config decoder requires it); a line that cannot be drawn is
-    // left out rather than guessed.
-    val start = cutoff.toLocal(state.membership.startsAt.at) ?: return
+    val start = cutoff.toLocal(state.membership.startsAt)
     val range = appDateRangeLabel(
         start = start,
-        end = cutoff.toLocal(state.membership.endsAt.at),
+        end = cutoff.toLocal(state.membership.endsAt),
         today = cutoff.nowLocal().date,
     )
     AppDatesLine(range, state.timing.phrase())

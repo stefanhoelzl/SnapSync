@@ -11,8 +11,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.EventDetails
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinStage
 import app.snapsync.model.Layer
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.ScreenMessage
@@ -63,7 +63,6 @@ internal fun JoiningEventScreen(
     layer: Layer.JoiningEvent,
     actions: JoinActions,
 ) {
-    val phase = layer.phase
     Column(modifier = Modifier.fillMaxSize()) {
         // A rejected event link that arrived while this surface is open (capability `join-event`: the
         // self-clearing "not valid" message shows on whatever screen the user is on). Above the phase for the
@@ -79,38 +78,40 @@ internal fun JoiningEventScreen(
         }
         val online = network == null
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            // Two levels, and the nesting IS the type: the four phases that carry no event, then the loaded
-            // one dispatched on its step. Both `when`s are exhaustive, so a new phase or a new step fails the
-            // compile rather than falling through — and no branch reaches for details a phase might not have.
-            when (phase) {
-                JoinPhase.Loading -> LoadingPhase()
-                // The walls no retry moves — see [wallCopy].
-                JoinPhase.NotFound, JoinPhase.Closed, JoinPhase.WrongLink -> {
-                    val copy = wallCopy(phase)
-                    WallPhase(stringResource(copy.title), stringResource(copy.body), actions.onCancel)
+            // Two levels, and the nesting IS the type: the phases that carry no event, then the loaded one
+            // dispatched on its step. Every `when` is exhaustive, so a new phase or a new step fails the compile
+            // rather than falling through — and no branch reaches for details, or a range, a phase might not have.
+            when (val stage = layer.stage) {
+                is JoinStage.Unloaded -> when (val phase = stage.phase) {
+                    JoinPhase.Loading -> LoadingPhase()
+                    // The walls no retry moves — see [wallCopy].
+                    JoinPhase.NotFound, JoinPhase.Closed, JoinPhase.WrongLink -> {
+                        val copy = wallCopy(phase)
+                        WallPhase(stringResource(copy.title), stringResource(copy.body), actions.onCancel)
+                    }
+                    // Without a network the details load by themselves once it returns, so there is nothing to retry.
+                    JoinPhase.LoadFailed -> if (online) {
+                        LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
+                    } else {
+                        WaitingForNetworkPhase(actions.onCancel)
+                    }
                 }
-                // Without a network the details load by themselves once it returns, so there is nothing to retry.
-                JoinPhase.LoadFailed -> if (online) {
-                    LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
-                } else {
-                    WaitingForNetworkPhase(actions.onCancel)
-                }
-                is JoinPhase.Detailed -> when (phase.step) {
+                is JoinStage.Loaded -> when (stage.phase.step) {
                     // The one step that is a *decision surface* rather than a status-plus-actions surface, so it
                     // owns its whole layout instead of the scaffold every other step opts into.
                     JoinPhase.Detailed.Step.Ready -> ReadyLayout(
-                        state = readyState(phase.event, layer, online),
+                        state = readyState(stage, layer, online),
                         actions = ReadyActions(
                             participation = actions.participation,
                             onJoin = actions.onConfirm,
                             onCancel = actions.onCancel,
                         ),
                     )
-                    JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = phase.event.name)
+                    JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = stage.phase.event.name)
                     // Every way a commit can end badly, on ONE surface — see [BlockedStep].
                     JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.EventFull,
                     JoinPhase.Detailed.Step.DeviceRefused,
-                    -> BlockedStep(phase, actions, online)
+                    -> BlockedStep(stage.phase, actions, online)
                 }
             }
         }
@@ -287,15 +288,13 @@ private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
  */
 @Composable
 private fun readyState(
-    event: EventDetails,
+    stage: JoinStage.Loaded,
     layer: Layer.JoiningEvent,
     online: Boolean,
 ): ReadyState {
-    // Non-null by construction on a loaded phase: the reduction resolves the range wherever there is a
-    // window, and this surface renders only where there is one.
-    val range = layer.range ?: error("a loaded join phase always resolves a range")
+    val range = stage.range
     return ReadyState(
-        eventName = event.name,
+        eventName = stage.phase.event.name,
         // The switches come off the FORM, never back off `range.direction`: `directionOf` collapses both-off
         // to `DownloadOnly` as an inert placeholder, so deriving them there would render the receive switch
         // ON for a member who had turned both off.

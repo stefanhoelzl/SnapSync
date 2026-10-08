@@ -96,10 +96,10 @@ internal fun Explanation(
 /** The member's own shared range, as the dates line words a range — the same sentence before, during and after. */
 @Composable
 private fun sharedRange(membership: EventConfig, cutoff: CutoffFormatter): String {
-    val from = cutoff.toLocal(membership.minPhotoDate.at) ?: return ""
+    val from = cutoff.toLocal(membership.minPhotoDate)
     return appDateRangeLabel(
         start = from,
-        end = cutoff.toLocal(membership.maxPhotoDate.at),
+        end = cutoff.toLocal(membership.maxPhotoDate),
         today = cutoff.nowLocal().date,
     )
 }

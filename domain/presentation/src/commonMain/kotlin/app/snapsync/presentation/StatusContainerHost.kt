@@ -30,6 +30,7 @@ import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinStage
 import app.snapsync.model.JoinedSurface
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.Layer
@@ -59,7 +60,6 @@ import app.snapsync.model.VersionRefusal
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.decodeEventUrl
-import app.snapsync.model.details
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventTiming
 import app.snapsync.model.grantsPhotoAccess
@@ -206,11 +206,8 @@ class StatusContainerHost(
         startsAt: EventStart,
         endsAt: EventEnd,
     ): ResolvedRange {
-        val windowStart = cutoffFormatter.toLocal(startsAt.at) ?: cutoffFormatter.nowLocal()
-        // An end that does not parse falls back to a far-future sentinel, the widest safe reading, since the
-        // bounds only ever narrow from here.
-        val windowEnd = cutoffFormatter.toLocal(endsAt.at)
-            ?: LocalDateTime(windowStart.year + NO_CEILING_YEARS, 1, 1, 0, 0)
+        val windowStart = cutoffFormatter.toLocal(startsAt)
+        val windowEnd = cutoffFormatter.toLocal(endsAt)
         return form.resolve(
             windowStart = windowStart,
             windowEnd = windowEnd,
@@ -1259,14 +1256,16 @@ private fun unjoinedLayer(
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
     // lands here — a transient no-event, shown full-screen with a Retry).
     if (pending != null) {
-        val event = pending.phase.details
         return Layer.JoiningEvent(
             eventId = pending.eventId,
-            phase = pending.phase,
+            // Resolved only where there IS a window: the detail-less phases render no range row, so an absent
+            // resolution is the honest answer rather than one invented from `now`.
+            stage = when (val phase = pending.phase) {
+                is JoinPhase.Detailed ->
+                    JoinStage.Loaded(phase, resolveAgainst(form, phase.event.startsAt, phase.event.endsAt))
+                is JoinPhase.Eventless -> JoinStage.Unloaded(phase)
+            },
             form = form,
-            // Resolved only where there IS a window: the three detail-less phases render no range row,
-            // so an absent resolution is the honest answer rather than one invented from `now`.
-            range = event?.let { resolveAgainst(form, it.startsAt, it.endsAt) },
             // The same transient cell the create and joined layers read: a rejected link is rejected
             // wherever it arrives, including over an open join surface, and it touches the join not at all.
             notice = transient,

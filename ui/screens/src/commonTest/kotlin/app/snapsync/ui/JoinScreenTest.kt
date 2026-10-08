@@ -36,6 +36,7 @@ import app.snapsync.model.EventDetails
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinStage
 import app.snapsync.model.Layer
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.PendingSwitch
@@ -49,7 +50,6 @@ import app.snapsync.model.UiState
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
-import app.snapsync.model.details
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.presentation.CutoffFormatter
@@ -152,9 +152,11 @@ class JoinScreenTest {
     ) = UiState(
         Layer.JoiningEvent(
             eventId = "11111111-1111-4111-8111-111111111111",
-            phase = phase,
+            stage = when (phase) {
+                is JoinPhase.Detailed -> JoinStage.Loaded(phase, resolvedFor(phase, form).copy(shareCount = count))
+                is JoinPhase.Eventless -> JoinStage.Unloaded(phase)
+            },
             form = form,
-            range = resolvedFor(phase, form)?.copy(shareCount = count),
         ),
     )
 
@@ -178,11 +180,11 @@ class JoinScreenTest {
      * resolution rules here would make this file agree with the implementation by construction;
      * `RangeResolutionTest` is where those rules are actually checked.
      */
-    private fun resolvedFor(phase: JoinPhase, form: RangeForm): ResolvedRange? {
-        val event = phase.details ?: return null
+    private fun resolvedFor(phase: JoinPhase.Detailed, form: RangeForm): ResolvedRange {
+        val event = phase.event
         val f = fixedCutoff()
-        val windowStart = f.toLocal(event.startsAt.at)!!
-        val windowEnd = f.toLocal(event.endsAt.at)!!
+        val windowStart = f.toLocal(event.startsAt)
+        val windowEnd = f.toLocal(event.endsAt)
         val from = when (form.preset) {
             RangeChoice.WHOLE_EVENT -> windowStart
             RangeChoice.FROM_NOW -> f.nowLocal()

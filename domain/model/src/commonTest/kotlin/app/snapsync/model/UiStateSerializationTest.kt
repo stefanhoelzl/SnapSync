@@ -1,9 +1,11 @@
 package app.snapsync.model
 
 import kotlinx.datetime.LocalDateTime
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 /**
@@ -70,30 +72,59 @@ class UiStateSerializationTest {
             UiState(
                 Layer.JoiningEvent(
                     eventId = "11111111-1111-4111-8111-111111111111",
-                    phase = joinPhase(
-                        JoinPhase.Detailed.Step.Ready,
-                        EventDetails(
-                            "Anna's Birthday",
-                            eventStart("2026-07-06T00:00:00Z"),
-                            eventEnd("2026-07-13T00:00:00Z"),
-                            deletesAt("2026-08-05T00:00:00Z"),
+                    stage = JoinStage.Loaded(
+                        joinPhase(
+                            JoinPhase.Detailed.Step.Ready,
+                            EventDetails(
+                                "Anna's Birthday",
+                                eventStart("2026-07-06T00:00:00Z"),
+                                eventEnd("2026-07-13T00:00:00Z"),
+                                deletesAt("2026-08-05T00:00:00Z"),
+                            ),
                         ),
+                        range(ShareCount.Unavailable),
                     ),
                 ),
             ),
         )
         for (phase in listOf(JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed)) {
-            roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = phase)))
+            roundTrip(UiState(Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(phase))))
         }
         roundTrip(
-            UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, notice = ScreenMessage.INVALID_LINK)),
+            UiState(
+                Layer.JoiningEvent(
+                    eventId = "E",
+                    stage = JoinStage.Unloaded(JoinPhase.Loading),
+                    notice = ScreenMessage.INVALID_LINK,
+                ),
+            ),
         )
-        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, asksAccessOnJoin = true)))
         roundTrip(
-            UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.LoadFailed, network = NetworkNotice.OFFLINE)),
+            UiState(
+                Layer.JoiningEvent(
+                    eventId = "E",
+                    stage = JoinStage.Unloaded(JoinPhase.Loading),
+                    asksAccessOnJoin = true,
+                ),
+            ),
         )
         roundTrip(
-            UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, network = NetworkNotice.BLOCKED)),
+            UiState(
+                Layer.JoiningEvent(
+                    eventId = "E",
+                    stage = JoinStage.Unloaded(JoinPhase.LoadFailed),
+                    network = NetworkNotice.OFFLINE,
+                ),
+            ),
+        )
+        roundTrip(
+            UiState(
+                Layer.JoiningEvent(
+                    eventId = "E",
+                    stage = JoinStage.Unloaded(JoinPhase.Loading),
+                    network = NetworkNotice.BLOCKED,
+                ),
+            ),
         )
     }
 
@@ -163,9 +194,8 @@ class UiStateSerializationTest {
                 UiState(
                     Layer.JoiningEvent(
                         eventId = "E",
-                        phase = joinPhase(JoinPhase.Detailed.Step.Ready, details),
+                        stage = JoinStage.Loaded(joinPhase(JoinPhase.Detailed.Step.Ready, details), range(count)),
                         form = customForm,
-                        range = range(count),
                     ),
                 ),
             )
@@ -230,7 +260,9 @@ class UiStateSerializationTest {
             RangeForm(customUntil = LocalDateTime(2026, 7, 12, 18, 0)),
         )
         for (form in one) {
-            roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, form = form)))
+            roundTrip(
+                UiState(Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(JoinPhase.Loading), form = form)),
+            )
         }
         val overlays = listOf(Overlays(confirmingLeave = true), Overlays(renaming = true), Overlays(reportingBug = true)) +
             Overlays(menuOpen = true) + ReportOutcome.entries.map { Overlays(reportNotice = it) }
@@ -250,8 +282,10 @@ class UiStateSerializationTest {
             UiState(
                 Layer.JoiningEvent(
                     eventId = "E",
-                    phase = joinPhase(JoinPhase.Detailed.Step.Ready, details),
-                    range = range(ShareCount.Counting),
+                    stage = JoinStage.Loaded(
+                        joinPhase(JoinPhase.Detailed.Step.Ready, details),
+                        range(ShareCount.Counting),
+                    ),
                 ),
             ),
         )
@@ -263,9 +297,32 @@ class UiStateSerializationTest {
             assertNull(phase.details)
             assertNull(phase.step)
         }
-        val loaded = joinPhase(JoinPhase.Detailed.Step.Committing, details)
+        // Read through the phase, as the helpers' callers hold it — on a `Detailed` they would be its own members.
+        val loaded: JoinPhase = joinPhase(JoinPhase.Detailed.Step.Committing, details)
         assertEquals(JoinPhase.Detailed(details, JoinPhase.Detailed.Step.Committing), loaded)
         assertEquals(details, loaded.details)
         assertEquals(JoinPhase.Detailed.Step.Committing, loaded.step)
+    }
+
+    @Test
+    fun the_join_surface_reads_its_phase_from_the_stage_and_a_range_only_once_loaded() {
+        val unloaded = Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(JoinPhase.LoadFailed))
+        assertEquals(JoinPhase.LoadFailed, unloaded.phase)
+        assertNull(unloaded.range)
+        val ready = joinPhase(JoinPhase.Detailed.Step.Ready, details)
+        val loaded = Layer.JoiningEvent(eventId = "E", stage = JoinStage.Loaded(ready, range(ShareCount.Counting)))
+        assertEquals(ready, loaded.phase)
+        assertEquals(range(ShareCount.Counting), loaded.range)
+    }
+
+    @Test
+    fun a_stage_decoded_without_what_it_must_carry_is_refused_never_defaulted() {
+        // A loaded stage holds its range by construction; on the wire a client cannot hand the screen one without it.
+        val loaded = JoinStage.Loaded(joinPhase(JoinPhase.Detailed.Step.Ready, details), range(ShareCount.Counting))
+        val encoded = json.encodeToString(JoinStage.serializer(), loaded)
+        val withoutRange = encoded.replace(Regex(""","range":\{.*}}$"""), "}")
+        assertFailsWith<SerializationException> { json.decodeFromString(JoinStage.serializer(), withoutRange) }
+        val withoutPhase = """{"type":"app.snapsync.model.JoinStage.Unloaded"}"""
+        assertFailsWith<SerializationException> { json.decodeFromString(JoinStage.serializer(), withoutPhase) }
     }
 }
