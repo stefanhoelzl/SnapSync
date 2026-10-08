@@ -27,7 +27,7 @@ class AppExplainRowTest {
     fun `a caption's link is its own control and fires its action`() {
         var clicks = 0
         rule.setContent {
-            AppTheme {
+            AppTheme(platformDates) {
                 AppExplainRow(
                     subject = ExplainSubject.SHARING,
                     state = ExplainState.OFF,
@@ -45,7 +45,7 @@ class AppExplainRowTest {
     @Test
     fun `every subject renders in every state`() {
         rule.setContent {
-            AppTheme {
+            AppTheme(platformDates) {
                 androidx.compose.foundation.layout.Column {
                     for (subject in ExplainSubject.entries) for (state in ExplainState.entries) {
                         AppExplainRow(subject = subject, state = state, title = "$subject $state", caption = "caption")
@@ -63,7 +63,7 @@ class AppExplainRowTest {
         var dismissed = 0
         rule.setContent {
             CompositionLocalProvider(LocalDarkThemeOverride provides true) {
-                AppTheme {
+                AppTheme(platformDates) {
                     AppQrSheet(
                         title = "Join Anna's Birthday",
                         content = "https://snapsync.app/e/00000000-0000-0000-0000-000000000000",

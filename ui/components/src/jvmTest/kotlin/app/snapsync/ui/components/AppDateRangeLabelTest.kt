@@ -1,5 +1,6 @@
 package app.snapsync.ui.components
 
+import app.snapsync.model.DateFormats
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
@@ -14,7 +15,7 @@ class AppDateRangeLabelTest {
 
     private val today = LocalDate(2026, 7, 13)
 
-    private fun label(start: LocalDateTime, end: LocalDateTime?, formats: DateFormats = DateFormats("en-GB")) =
+    private fun label(start: LocalDateTime, end: LocalDateTime?, formats: DateFormats = dateFormats("en-GB")) =
         rendered(formats) { appDateRangeLabel(start, end, today) }
 
     @Test
@@ -70,7 +71,7 @@ class AppDateRangeLabelTest {
     fun `the dates follow the locale`() {
         assertEquals(
             "Mon, Jul 13 6:00 PM – 11:00 PM",
-            label(LocalDateTime(2026, 7, 13, 18, 0), LocalDateTime(2026, 7, 13, 23, 0), DateFormats("en-US"))
+            label(LocalDateTime(2026, 7, 13, 18, 0), LocalDateTime(2026, 7, 13, 23, 0), dateFormats("en-US"))
                 .let { if (it.startsWith("Today")) "Mon, Jul 13" + it.removePrefix("Today") else it },
         )
     }

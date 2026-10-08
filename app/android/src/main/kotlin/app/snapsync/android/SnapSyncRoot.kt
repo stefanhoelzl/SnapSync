@@ -5,6 +5,7 @@ import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
 import app.snapsync.android.buildinfo.AndroidBuildInfo
 import app.snapsync.android.crypto.AndroidCrypto
+import app.snapsync.android.dates.AndroidDateFormatting
 import app.snapsync.android.device.AndroidDeviceConditions
 import app.snapsync.android.download.AndroidDownload
 import app.snapsync.android.gallery.AndroidGallery
@@ -42,6 +43,7 @@ import app.snapsync.model.EntryScope
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.invocation
 import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.ScreenDates
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
@@ -73,7 +75,10 @@ class SnapSyncRoot(internal val application: Application) {
     internal val links: AndroidLinks by lazy { AndroidLinks(log) }
 
     /** The screen an activity pulls. */
-    internal val ui: AndroidUi by lazy { AndroidUi(cutoffFormatter, log) }
+    internal val ui: AndroidUi by lazy { AndroidUi(cutoffFormatter, screenDates, log) }
+
+    /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
+    private val screenDates: ScreenDates by lazy { ScreenDates(ports.dateFormatting.value::formats) }
 
     /**
      * The process's ONE cutoff formatter (capability `sync-status`): the zone read once from the process's clock; the
@@ -136,6 +141,8 @@ class SnapSyncRoot(internal val application: Application) {
         // The crash-reporting seat both platforms share (capability `privacy-security`). It starts only when the build
         // carries a destination — a distributed one — and is never touched otherwise.
         crashReporter = lazy { SentryCrashReporter() },
+        // ICU's CLDR data: how a date reads on the screen (`docs/architecture.md`, "Localization").
+        dateFormatting = lazy { AndroidDateFormatting() },
     )
 
     /** The adapters that differ between a production and a rig build, chosen at BUILD time. */

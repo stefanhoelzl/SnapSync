@@ -1,5 +1,6 @@
 package app.snapsync.ui.components
 
+import app.snapsync.model.DateFormats
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,7 +12,7 @@ import kotlin.test.assertEquals
  */
 class AppRangeLabelTest {
 
-    private fun label(from: LocalDateTime, until: LocalDateTime, formats: DateFormats = DateFormats("en-GB")) =
+    private fun label(from: LocalDateTime, until: LocalDateTime, formats: DateFormats = dateFormats("en-GB")) =
         rendered(formats) { appRangeLabel(from, until) }
 
     @Test
@@ -36,7 +37,7 @@ class AppRangeLabelTest {
     fun `the dates follow the locale`() {
         assertEquals(
             "Jul 14 – Jul 21, 2026",
-            label(LocalDateTime(2026, 7, 14, 0, 0), LocalDateTime(2026, 7, 21, 0, 0), DateFormats("en-US")),
+            label(LocalDateTime(2026, 7, 14, 0, 0), LocalDateTime(2026, 7, 21, 0, 0), dateFormats("en-US")),
         )
     }
 }

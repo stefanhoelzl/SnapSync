@@ -50,6 +50,9 @@ fun chosenAppPorts(real: AppDevicePorts, choice: AdapterChoice, device: MockDevi
         links = pick(MockedSystem.LINKS, real.links) { device.links.port() },
         pushNotifications = pick(MockedSystem.PUSH, real.pushNotifications) { device.pushService.port() },
         ui = pick(MockedSystem.SCREEN, real.ui) { device.screen.port() },
+        // No system of its own: the platform's CLDR data keeps no state, so the platform's always stand — the screen
+        // a rig build captures reads its dates as the phone writes them.
+        dateFormatting = real.dateFormatting,
     )
 }
 

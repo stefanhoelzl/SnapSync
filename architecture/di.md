@@ -28,6 +28,7 @@ Roots found:
 | `IosBuildInfo` | x | x | x |
 | `IosCrypto` | x | x | x |
 | `IosDatabases` | x | x | x |
+| `IosDateFormatting` | x | x | |
 | `IosDeviceConditions` | x | x | |
 | `IosDeviceIntegrity` | x | x | |
 | `IosDownload` | x | x | |
@@ -51,4 +52,5 @@ Roots found:
 | `ProcessPorts` | x | x | x |
 | `PublicNSLogSink` | x | x | x |
 | `SceneRecord` | x | x | |
+| `ScreenDates` | x | x | |
 | `SentryCrashReporter` | x | x | x |

@@ -77,6 +77,7 @@ tasks.test {
     inputs.files(
         fileTree(rootDir) {
             include("domain/**/src/**/*.kt")
+            include("ui/**/src/**/*.kt")
             include("capability/**/src/**/*.kt")
             include("app/**/src/**/*.kt")
             include("test/**/src/**/*.kt")

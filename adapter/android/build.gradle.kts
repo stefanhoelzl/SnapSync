@@ -26,6 +26,8 @@ kotlin {
             implementation(project(":ui:components"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
+            // The date formatting adapter's wall-clock values.
+            implementation(libs.kotlinx.datetime)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)

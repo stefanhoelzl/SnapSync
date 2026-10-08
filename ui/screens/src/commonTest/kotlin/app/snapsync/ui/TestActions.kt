@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import app.snapsync.model.DateFormats
 import app.snapsync.model.UiState
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.RangeChoiceActions
@@ -112,10 +113,17 @@ internal fun testRangeChoiceActions(
     onCustom: (LocalDateTime, LocalDateTime) -> Unit = { _, _ -> },
 ) = RangeChoiceActions(onPreset, onCustom)
 
+/**
+ * The platform's date formatting every screen test renders through. The screen tests run on the JVM only
+ * (`docs/testing.md`, "Where each test runs"), so its one real answer is the JVM adapter's, and a date is asserted as
+ * the suite's en-GB locale writes it.
+ */
+internal expect val testDates: (languageTag: String?) -> DateFormats
+
 /** The status screen with inert actions unless a test supplies its own. */
 @Composable
 internal fun TestStatusScreen(state: UiState, cutoff: CutoffFormatter, actions: StatusActions = testActions()) =
-    WithoutKeyboardInsets { StatusScreen(state = state, cutoff = cutoff, actions = actions) }
+    WithoutKeyboardInsets { StatusScreen(state = state, cutoff = cutoff, dateFormats = testDates, actions = actions) }
 
 /**
  * [content] laid out as if no soft keyboard were up — as it is on the JVM and the iOS simulator, which have none.

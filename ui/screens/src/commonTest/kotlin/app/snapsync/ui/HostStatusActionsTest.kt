@@ -280,6 +280,7 @@ class HostStatusActionsTest {
                     StatusScreen(
                         state = state,
                         cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
+                        dateFormats = testDates,
                         actions = statusActions(rig.host::onIntent),
                     )
                 }

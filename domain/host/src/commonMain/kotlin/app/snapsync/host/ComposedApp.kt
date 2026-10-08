@@ -14,6 +14,7 @@ import app.snapsync.model.forwardEventLink
 import app.snapsync.model.invocation
 import app.snapsync.model.redactEventKeys
 import app.snapsync.model.userActivityParams
+import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.UiHandlers
 import app.snapsync.presentation.CutoffFormatter
@@ -50,6 +51,8 @@ class ComposedApp internal constructor(
     val process: ProcessServices,
     /** The one cutoff formatter the status host and the screen rendering it share. */
     val cutoffFormatter: CutoffFormatter,
+    /** The platform's date formatting the screen renders through ([AppPorts.dateFormatting]). */
+    val dateFormatting: DateFormatting,
     private val assembleHost: () -> StatusContainerHost,
 ) {
     val host: StatusContainerHost by lazy(assembleHost)
@@ -100,7 +103,7 @@ fun snapSyncHost(
     ports.download.listen(core.events.downloadHandlers)
     ports.appUpload.listen(core.events.uploadHandlers)
     core.installCompositionSubscriptions()
-    val composed = ComposedApp(core, process, cutoffFormatter) {
+    val composed = ComposedApp(core, process, cutoffFormatter, ports.dateFormatting) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
         // The network's return resumes the app's work while it is in front (capability `sync-status`).

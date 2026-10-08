@@ -264,6 +264,12 @@ Where bindings live: beside their implementations.
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
+- `DateFormatting`: live on `JVM`, `IOS_SIM_KEXE` and `ANDROID_EMU` over each platform's real adapter — a skeleton's
+  order, names and hour cycle in a pinned locale, a bare language, and the device's own. A space in an answer compares
+  as a plain one (CLDR's no-break and narrow no-break spaces before `PM` differ by platform version). Its grid is one
+  cell, `formats → returns`: the `DateFormats` it hands over is a `model/` value, so its `format` is no cell of its
+  own. The `:ui:components` tests render through the real JVM adapter, so a label is asserted as a locale writes it;
+  the `:ui:screens` tests through it too (an `expect` whose one real `actual` is the JVM's: that suite runs on the JVM only).
 - `Crypto`: live on `JVM`, `IOS_SIM_KEXE` and `ANDROID_EMU` — published known-answer vectors only (RFC 4231 HMAC, the GCM
   specification's AES-256 test cases), so every platform computes what the others do. The encrypted file format framed
   over it is not a contract: both its halves are held to `test/vectors/encrypted-file.json` (the Kotlin one by

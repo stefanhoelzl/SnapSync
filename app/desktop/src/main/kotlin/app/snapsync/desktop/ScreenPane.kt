@@ -7,6 +7,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
+import app.snapsync.ports.DateFormatting
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalDarkThemeOverride
@@ -22,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 fun ScreenPane(
     shown: StateFlow<UiState?>,
     cutoffFormatter: CutoffFormatter,
+    /** The app's date formatting — the one its screen renders through. */
+    dateFormatting: DateFormatting,
     onIntent: (UiIntent) -> Unit,
     // Test-only theme override for the phone pane, as the design system takes it.
     darkThemeOverride: Boolean? = null,
@@ -29,8 +32,14 @@ fun ScreenPane(
     val state by shown.collectAsState()
     PhoneFrame {
         CompositionLocalProvider(LocalDarkThemeOverride provides darkThemeOverride) {
-            state?.let { StatusScreen(state = it, cutoff = cutoffFormatter, actions = statusActions(onIntent)) }
-                ?: Text("the app has shown nothing yet")
+            state?.let {
+                StatusScreen(
+                    state = it,
+                    cutoff = cutoffFormatter,
+                    dateFormats = dateFormatting::formats,
+                    actions = statusActions(onIntent),
+                )
+            } ?: Text("the app has shown nothing yet")
         }
     }
 }

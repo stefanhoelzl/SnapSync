@@ -13,6 +13,7 @@ import app.snapsync.config.bakedUploadBase
 import app.snapsync.config.iosBootLines
 import app.snapsync.crypto.IosCrypto
 import app.snapsync.databases.IosDatabases
+import app.snapsync.dates.IosDateFormatting
 import app.snapsync.device.IosDeviceConditions
 import app.snapsync.download.IosDownload
 import app.snapsync.files.IosFiles
@@ -43,6 +44,7 @@ import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.ScreenDates
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.protection.IosProcessInfo
 import app.snapsync.push.IosPushNotifications
@@ -164,11 +166,14 @@ object SnapSyncRoot {
         CutoffFormatter(now = ports.clock.value::now, zone = ports.clock.value.timeZone())
     }
 
+    /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
+    private val screenDates: ScreenDates by lazy { ScreenDates(ports.dateFormatting.value::formats) }
+
     /** What this process knows about its scenes — shared by the UI and the lifecycle adapters, on the main thread. */
     private val sceneRecord: SceneRecord by lazy { SceneRecord() }
 
     /** The Compose scene SwiftUI hosts (`:adapter:ios:ui`). */
-    internal val ui: IosUi by lazy { IosUi(sceneRecord, cutoffFormatter, log) }
+    internal val ui: IosUi by lazy { IosUi(sceneRecord, cutoffFormatter, screenDates, log) }
 
     /** The app's foreground life: `didBecomeActive` / `willResignActive`, observed once the graph registers. */
     internal val lifecycle: IosLifecycle by lazy { IosLifecycle(sceneRecord, log) }
@@ -265,6 +270,8 @@ object SnapSyncRoot {
         links = lazy { links },
         pushNotifications = lazy { pushNotifications },
         ui = lazy { ui },
+        // Foundation's CLDR data: how a date reads on the screen (`docs/architecture.md`, "Localization").
+        dateFormatting = lazy { IosDateFormatting() },
     )
 
     /**

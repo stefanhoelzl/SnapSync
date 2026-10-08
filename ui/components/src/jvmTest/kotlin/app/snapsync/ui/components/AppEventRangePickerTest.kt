@@ -191,7 +191,7 @@ class AppEventRangePickerTest {
 
     private fun setPicker(endTime: EndTimeGuide = EndTimeGuide.NONE) {
         rule.setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) {
+            CompositionLocalProvider(LocalReduceMotion provides true, LocalDateFormats provides dateFormats(null)) {
                 AppEventRangePicker(
                     range = range,
                     bounds = TEN_DAYS,

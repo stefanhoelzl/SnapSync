@@ -64,6 +64,7 @@ import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Databases
+import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
@@ -203,6 +204,9 @@ class AppPorts(
     /** The device's power, battery, thermal state and background allowance — read only for a bug report
      *  (capability `privacy-security`). */
     val deviceConditions: DeviceConditions,
+    /** The platform's date formatting — how a date reads on the screen; the core formats no date
+     *  (`docs/architecture.md`, "Localization"). The screen renders through it, and only the app has one. */
+    val dateFormatting: DateFormatting,
 )
 
 /**

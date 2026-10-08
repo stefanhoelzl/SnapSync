@@ -12,6 +12,7 @@ import app.snapsync.model.UiState
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.ScreenDates
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.statusActions
@@ -41,11 +42,13 @@ import platform.UIKit.systemBackgroundColor
  * does the scene exist" rule stays in tested Kotlin rather than in a Swift conditional.
  *
  * [cutoff] is the process's one formatter — the same instance the status host reduces with — so the screen and the
- * host render one capture date one way.
+ * host render one capture date one way. [dates] is the process's date formatting, the screen's every date read through
+ * it.
  */
 class IosUi(
     private val record: SceneRecord,
     private val cutoff: CutoffFormatter,
+    private val dates: ScreenDates,
     private val log: Logger,
 ) : Ui {
     private val shown = MutableStateFlow<UiState?>(null)
@@ -95,7 +98,9 @@ class IosUi(
         return ComposeUIViewController {
             val state by shown.collectAsState()
             CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
-                state?.let { StatusScreen(state = it, cutoff = cutoff, actions = actions) }
+                state?.let {
+                    StatusScreen(state = it, cutoff = cutoff, dateFormats = dates::formats, actions = actions)
+                }
             }
         }
     }
