@@ -22,6 +22,7 @@ import java.nio.file.Files as Nio
  */
 class JvmFiles(private val shared: File?, private val private: File?) : Files {
 
+    /** [path] under [area]'s directory — always a child of it, so a resolved file always has a parent. */
     private fun resolve(area: FileArea, path: String): File? =
         when (area) {
             FileArea.SHARED -> shared
@@ -56,13 +57,13 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
         }
 
     override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = io(area, path) { file ->
-        file.parentFile?.mkdirs()
+        file.parentFile.mkdirs()
         file.appendBytes(bytes)
         FileResult.Ok(Unit)
     }
 
     override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = io(area, path) { file ->
-        file.parentFile?.mkdirs()
+        file.parentFile.mkdirs()
         val temp = File(file.parentFile, ".${file.name}.tmp")
         temp.writeBytes(bytes)
         Nio.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
@@ -108,7 +109,7 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
 
     private fun moveReplacing(source: File, destination: File): FileResult<Unit> {
         if (!source.exists()) return FileResult.NotFound
-        destination.parentFile?.mkdirs()
+        destination.parentFile.mkdirs()
         Nio.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
         return FileResult.Ok(Unit)
     }
@@ -125,7 +126,8 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
                     } else {
                         FileResult.NotFound
                     }
-                is AccessDeniedException, is SecurityException -> FileResult.Denied(
+                // No `SecurityException`: the JDK this runs on has no security manager to throw one (JEP 486).
+                is AccessDeniedException -> FileResult.Denied(
                     "${failure::class.simpleName}: ${failure.message}",
                 )
                 else -> FileResult.Failed("${failure::class.simpleName}: ${failure.message}")

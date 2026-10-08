@@ -52,9 +52,11 @@ class JdbcDatabases(private val directory: File) : Databases {
         return DbOpen.Opened(driver)
     }
 
+    // `PRAGMA user_version` answers exactly one row holding an integer on every SQLite database, a new one's being 0.
     private fun userVersion(driver: SqlDriver): Long =
         driver.executeQuery(null, "PRAGMA user_version", { cursor ->
-            QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L)
+            cursor.next()
+            QueryResult.Value(cursor.getLong(0)!!)
         }, 0).value
 
     private fun url(file: File) = "jdbc:sqlite:${file.absolutePath}"

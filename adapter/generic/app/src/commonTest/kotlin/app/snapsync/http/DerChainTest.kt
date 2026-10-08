@@ -25,4 +25,15 @@ class DerChainTest {
         assertFailsWith<IllegalArgumentException> { derElements(short + long.copyOf(long.size - 1)) }
         assertFailsWith<IllegalArgumentException> { derElements(byteArrayOf(0x30)) }
     }
+
+    @Test
+    fun bytes_that_are_not_whole_der_elements_are_refused() {
+        val refused = mapOf(
+            "a high tag number" to byteArrayOf(0x1f, 0x01, 0x00),
+            "a long form with no length bytes" to byteArrayOf(0x30, 0x80.toByte()),
+            "a long form wider than any certificate" to byteArrayOf(0x30, 0x84.toByte(), 0, 0, 0, 1, 0),
+            "a long form cut inside its length" to byteArrayOf(0x30, 0x82.toByte(), 0x01),
+        )
+        refused.forEach { (what, bytes) -> assertFailsWith<IllegalArgumentException>(what) { derElements(bytes) } }
+    }
 }

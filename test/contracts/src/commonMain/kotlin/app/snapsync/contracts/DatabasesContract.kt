@@ -21,6 +21,12 @@ enum class DatabasesState {
     /** It exists at [DatabasesContract.Old]'s version, holding one row ([DatabasesContract.enterOld]). */
     OLD,
 
+    /**
+     * It exists at [DatabasesContract.Newer]'s version — a later build's database, as a downgrade leaves it
+     * ([DatabasesContract.enterNewer]).
+     */
+    NEWER,
+
     /** A file of that name exists and is not a database — the stand-in for "exists, cannot be opened". */
     UNOPENABLE,
 }
@@ -72,7 +78,22 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             )
     }
 
-    /** The row [enterOld] and [enterCurrent] leave behind. */
+    /** A later build's version, a column past [Current]: what a downgraded app finds. Never migrated to. */
+    object Newer : SqlSchema<QueryResult.Value<Unit>> {
+        override val version = 3L
+        override fun create(driver: SqlDriver) = QueryResult.Value(
+            driver.execute(
+                null,
+                "CREATE TABLE probe (id INTEGER PRIMARY KEY, v TEXT NOT NULL, w TEXT, x TEXT)",
+                0,
+            ).let { },
+        )
+
+        override fun migrate(driver: SqlDriver, oldVersion: Long, newVersion: Long, vararg callbacks: AfterVersion) =
+            QueryResult.Value(Unit)
+    }
+
+    /** The row [enterOld], [enterCurrent] and [enterNewer] leave behind. */
     const val KEPT = "kept"
 
     /** Enter [DatabasesState.OLD]: create [NAME] at [Old] with one row, then close it. */
@@ -80,6 +101,9 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
 
     /** Enter [DatabasesState.CURRENT]: create [NAME] at [Current] with one row, then close it. */
     fun enterCurrent(databases: Databases) = seed(databases, Current)
+
+    /** Enter [DatabasesState.NEWER]: create [NAME] at [Newer] with one row, then close it. */
+    fun enterNewer(databases: Databases) = seed(databases, Newer)
 
     private fun seed(databases: Databases, schema: SqlSchema<QueryResult.Value<Unit>>) {
         val opened = databases.open(NAME, schema, readOnly = false)
@@ -151,6 +175,13 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             val driver = databases.opened(Current, readOnly = false)
             assertEquals(KEPT, driver.kept(), "a re-open is not a re-create")
             driver.close()
+        }
+
+        clause("NEWER_READ_ONLY_FAILS_NEVER_OPENS", DatabasesState.NEWER) { databases ->
+            assertIs<DbOpen.Failed>(
+                databases.open(NAME, Current, readOnly = true),
+                "a reader of a later build's schema cannot know what its rows mean",
+            )
         }
 
         clause("UNOPENABLE_READ_ONLY_FAILS_NEVER_MISSING", DatabasesState.UNOPENABLE) { databases ->

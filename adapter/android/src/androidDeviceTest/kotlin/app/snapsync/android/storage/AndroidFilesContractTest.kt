@@ -31,6 +31,10 @@ class AndroidFilesContractTest {
                     "both areas are app-private directories, always reachable",
                 )
             }
+            // Not entered yet: the JVM binding holds that clause (the contracts track extends it here).
+            if (state == FilesState.DENIED_DIRECTORY) {
+                return Entered.Unreachable("an unlistable directory is not entered here yet")
+            }
             val shared = newTempDirectory()
             val private = newTempDirectory()
             val files = AndroidFiles(sharedRoot = shared, privateRoot = private)
@@ -41,7 +45,7 @@ class AndroidFilesContractTest {
                     files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
                     revokeAllAccess(File(shared, path))
                 }
-                FilesState.EMPTY, FilesState.UNAVAILABLE -> Unit
+                FilesState.EMPTY, FilesState.UNAVAILABLE, FilesState.DENIED_DIRECTORY -> Unit
             }
             return Entered.Ready(files) {
                 restoreOwnerAccess(File(shared, path))

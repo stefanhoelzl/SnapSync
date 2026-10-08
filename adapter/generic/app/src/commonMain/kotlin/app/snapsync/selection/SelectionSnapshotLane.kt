@@ -107,11 +107,11 @@ class SelectionSnapshotLane<F : Any, C : Any, S>(
     init {
         scope.launch(lane) {
             // A change handler may drain the Changes queued behind it and stop at the first item that is not one;
-            // that item is handed back here and handled next, so nothing is reordered or lost.
+            // that item is handed back here and handled next, so nothing is reordered or lost. [work] is never
+            // closed: the loop ends only with [scope].
             var carried: LaneWork<C>? = null
             while (true) {
-                val item = carried ?: work.receiveCatching().getOrNull() ?: break
-                carried = handle(item)
+                carried = handle(carried ?: work.receive())
             }
         }
         scope.launch {
