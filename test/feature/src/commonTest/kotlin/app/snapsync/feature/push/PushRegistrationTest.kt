@@ -5,11 +5,14 @@ package app.snapsync.feature.push
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.Files
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.backend.PushTokenPublisher
@@ -329,5 +332,30 @@ class PushRegistrationTest {
         job.cancel()
 
         assertEquals(listOf(PushEndpoint("apns", "EARLY", "sandbox")), client.calls)
+    }
+
+    @Test
+    fun a_registration_record_that_throws_is_read_as_none_and_the_delivery_publishes() = runTest {
+        // Doubt about what the backend accepted re-sends: an extra PUT is harmless, a missed one loses every push.
+        val throwing = object : Files by inMemoryFiles() {
+            override fun read(area: FileArea, path: String): FileResult<ByteArray> = error("the store threw")
+        }
+        val client = FakePushTokenPublisher()
+
+        PushRegistration(client, PushRegistrationRecord(throwing), identity)
+            .registerIfChanged(PushEndpoint("apns", "T", "sandbox"))
+
+        assertEquals(listOf(PushEndpoint("apns", "T", "sandbox")), client.calls)
+    }
+
+    @Test
+    fun a_join_with_an_unreadable_identity_still_publishes_and_records_nothing() = runTest {
+        val client = FakePushTokenPublisher()
+        secureStore.locked = true
+
+        registration(client).register(PushEndpoint("apns", "T", "sandbox"))
+
+        assertEquals(1, client.calls.size, "the join trigger re-sends whatever it cannot key")
+        assertNull(record.loadLastRegistered(), "a registration it cannot key is never recorded as accepted")
     }
 }

@@ -99,4 +99,13 @@ class LedgerCountsSourceTest {
             source.counts.value,
         )
     }
+
+    @Test
+    fun a_settable_source_holds_what_it_was_told_and_a_refresh_reads_nothing_over_it() = runTest {
+        val source = MutableLedgerCountsSource()
+        source.set(done = setOf(AssetId("d1")), pending = setOf(AssetId("p1")))
+        source.refresh()
+        assertEquals(LedgerCounts(done = setOf(AssetId("d1")), pending = setOf(AssetId("p1"))), source.counts.value)
+        assertTrue(source.counts.value.read, "a stated value is a read one")
+    }
 }

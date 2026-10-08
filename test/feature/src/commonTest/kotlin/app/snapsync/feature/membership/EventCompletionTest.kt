@@ -6,6 +6,7 @@ import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.inertPendingLeaves
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
@@ -15,6 +16,8 @@ import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLookup
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.ManifestResource
@@ -25,9 +28,13 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.ports.DbOpen
+import app.snapsync.ports.Files
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.leave.PendingLeaves
+import app.snapsync.services.ledger.LEDGER_DB_NAME
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.wake.EventCheck
 import app.snapsync.services.wake.EventChecks
@@ -81,17 +88,23 @@ class EventCompletionTest {
     ).encodeToJson()
 
     /** One scenario's world, over the real services: what the backend answers, what was published, what is pending. */
-    private inner class World(private val now: String, initial: EventConfig? = joined) {
+    private inner class World(
+        private val now: String,
+        initial: EventConfig? = joined,
+        recorded: String? = manifest(final = true),
+        val ledger: LedgerService = TestLedger().service,
+        leavesFiles: Files = inMemoryFiles(),
+    ) {
         val writes = ConfigWrites()
         val config = writes.service(initial, fixedClock(Instant.parse(now)))
         var answer: EventLookup = details()
-        val manifestRecord = DeviceManifestService(inMemoryFiles()).apply { saveLastUploaded(manifest(final = true)) }
-        val ledger = TestLedger().service
+        val manifestRecord = DeviceManifestService(inMemoryFiles()).apply { recorded?.let(::saveLastUploaded) }
         var received = true
         var fetches = 0
         var finalPublishes = 0
+        var publishFails = false
         val leavesSent = mutableListOf<String>()
-        val pendingLeaves = PendingLeaves(inMemoryFiles(), { id, _ ->
+        val pendingLeaves = PendingLeaves(leavesFiles, { id, _ ->
             leavesSent += id
             Result.success(Unit)
         })
@@ -115,7 +128,10 @@ class EventCompletionTest {
             manifestRecord = manifestRecord,
             ledger = ledger,
             pendingLeaves = pendingLeaves,
-            publishFinal = { finalPublishes++ },
+            publishFinal = {
+                finalPublishes++
+                if (publishFails) error("the manifest publish failed")
+            },
             everythingReceived = { received },
             checks = checks,
         )
@@ -288,5 +304,56 @@ class EventCompletionTest {
         assertEquals(CompletionOutcome.NOT_ENDED, with(w) { completion() }.finish(bounded = true))
         assertEquals(0, w.fetches)
         assertTrue(w.checks.due(EventCheck.CLOSE, joined.eventId), "and no time was stamped")
+    }
+
+    // ---- every doubt resolves toward staying joined, and the step never throws ------------------------------------
+
+    @Test
+    fun `a device that never recorded a published manifest settles its share once more`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z", recorded = null).apply { answer = details(closed = true) }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+        assertEquals(1, w.finalPublishes)
+        assertEquals("E", w.config.config.value?.eventId, "no settled share is no leave")
+    }
+
+    @Test
+    fun `a failing settle still reads the event and keeps the member`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply {
+            manifestRecord.saveLastUploaded(manifest(final = false))
+            publishFails = true
+            answer = details(closed = true)
+        }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+        assertEquals(1, w.fetches, "the failed settle costs the wake nothing else")
+        assertEquals(true, w.config.config.value?.closed, "the close is still recorded")
+    }
+
+    @Test
+    fun `a failing settle never stops a completed event from ending the membership`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply {
+            manifestRecord.saveLastUploaded(manifest(final = false))
+            publishFails = true
+            answer = details(closed = true, completed = true)
+        }
+        assertEquals(CompletionOutcome.LEFT, with(w) { completion() }.finish())
+        assertNull(w.config.config.value)
+    }
+
+    @Test
+    fun `an unreadable upload ledger keeps the member of a closed event`() = runTest {
+        val unopenable = TestLedger(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked")))).service
+        val w = World(now = "2026-07-14T00:00:00Z", ledger = unopenable).apply { answer = details(closed = true) }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+        assertEquals("E", w.config.config.value?.eventId)
+    }
+
+    @Test
+    fun `a pending-leave record that throws does not stop the end-of-wake step`() = runTest {
+        val throwing = object : Files by inMemoryFiles() {
+            override fun read(area: FileArea, path: String): FileResult<ByteArray> = error("the store threw")
+        }
+        val w = World(now = "2026-07-14T00:00:00Z", leavesFiles = throwing).apply { answer = details(closed = true) }
+        assertEquals(CompletionOutcome.LEFT, with(w) { completion() }.finish())
+        assertNull(w.config.config.value)
     }
 }

@@ -23,9 +23,12 @@ import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.deletesAt
+import app.snapsync.ports.DbOpen
 import app.snapsync.services.backend.EventUnionSource
+import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.MarkedPhotoLookup
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -249,5 +252,56 @@ class ReceivedPhotoAdoptionTest {
         world.adoption(me).adopt(cfg)
         assertFalse(world.store.isSettled(ref("A")), "its import's own confirmation settles it")
         assertEquals(setOf(AssetId("L-NEW")), world.store.suppressedLocalIds())
+    }
+
+    @Test
+    fun a_token_two_union_refs_share_adopts_neither_and_each_downloads_as_it_would_have() = runTest {
+        // Two refs of one union whose 50-bit marks collide (found by search: FNV-1a over `<device>/<asset>`).
+        val first = ref("Ad9277fb904762a23")
+        val second = ref("Af622a483290f54cf")
+        assertEquals(ReceivedPhotoName.token(first), ReceivedPhotoName.token(second), "the fixture's precondition")
+        val world = World(Result.success(unionOf(first, second)), listOf(received("L-X", first)))
+
+        world.adoption(me).adopt(cfg)
+
+        assertTrue(world.store.settledAmong(listOf(first, second)).isEmpty(), "an ambiguous mark names neither")
+        assertTrue(world.store.suppressedLocalIds().isEmpty())
+    }
+
+    @Test
+    fun a_union_that_never_answers_settles_once_its_wait_runs_out() = runTest {
+        var reads = 0
+        val world = World(Result.success(emptyList()), listOf(received("L-A", ref("A"))))
+        val adoption = ReceivedPhotoAdoption(
+            EventUnionSource { _, _, _ ->
+                reads++
+                awaitCancellation()
+            },
+            world.store,
+            world.lookup,
+            world.store::adoptAll,
+            testIdentity(me),
+        )
+        adoption.adopt(cfg)
+        adoption.ensureAdopted(cfg)
+        assertEquals(1, reads, "an unreachable union settles the pass rather than holding every import")
+        assertTrue(world.store.suppressedLocalIds().isEmpty())
+    }
+
+    @Test
+    fun a_download_store_that_cannot_open_fails_the_pass_quietly_and_a_later_drain_asks_again() = runTest {
+        val unopenable = DownloadService(inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("locked"))))
+        val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-A", ref("A"))))
+        val adoption = ReceivedPhotoAdoption(
+            world.unionSource,
+            unopenable,
+            world.lookup,
+            unopenable::adoptAll,
+            testIdentity(me),
+        )
+        adoption.adopt(cfg) // the earlier events' purge fails, then the pass itself: neither throws
+        assertEquals(1, world.unionReads, "the pass ran past the failed purge")
+        adoption.ensureAdopted(cfg)
+        assertEquals(2, world.unionReads, "a failed pass settles nothing, so the next drain runs it again")
     }
 }

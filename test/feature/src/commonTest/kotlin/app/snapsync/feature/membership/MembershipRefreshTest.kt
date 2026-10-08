@@ -128,6 +128,15 @@ class MembershipRefreshTest {
         assertNull(config.saved)
     }
 
+    @Test
+    fun `a wrong-link answer is inconclusive and stores nothing`() = runTest {
+        // A refresh reads without a link, so a key verdict says nothing about whether the event is still there.
+        val config = Membership(joined)
+        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(config).refresh("E", JoinLoad.WrongLink))
+        assertNull(config.saved)
+        assertEquals(joined, config.config.value)
+    }
+
     // ── The two-witness absence verdict (capability `manage-membership`) ───────────────────────────────────
     //
     // ABSENT is the ONE destructive answer, and reaching it needs a definitive `NotFound` AND the
@@ -233,6 +242,20 @@ class MembershipRefreshTest {
             "E",
             JoinLoad.Found(counted.name, STARTS, ENDS, DELETES, EventCompletionState(false, false, MemberCounts(3, 1))),
         )
+        assertNull(config.saved)
+    }
+
+    @Test
+    fun `a closed answer for an already-closed membership saves nothing`() = runTest {
+        val config = Membership(joined.copy(closed = true))
+        val closed = JoinLoad.Found(
+            joined.name,
+            STARTS,
+            ENDS,
+            DELETES,
+            EventCompletionState(closed = true, completed = false),
+        )
+        assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", closed))
         assertNull(config.saved)
     }
 }

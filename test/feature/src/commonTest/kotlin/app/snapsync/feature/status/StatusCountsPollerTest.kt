@@ -8,6 +8,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.CandidateSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.advanceTimeBy
@@ -167,6 +168,46 @@ class StatusCountsPollerTest {
         advanceTimeBy(6.seconds)
         runCurrent()
         assertEquals(3, source.refreshes, "the loop survives the throwing first tick and keeps polling")
+        poller.stop()
+    }
+
+    @Test
+    fun `the default cadence is the declared two-second staleness bound`() = runTest {
+        val source = CountingSource()
+        val poller = StatusCountsPoller(backgroundScope, { source.refresh() })
+
+        poller.start()
+        advanceTimeBy(1.9.seconds)
+        runCurrent()
+        assertEquals(0, source.refreshes)
+        advanceTimeBy(0.1.seconds)
+        runCurrent()
+        assertEquals(1, source.refreshes, "a change reaches the screen within one cadence")
+        poller.stop()
+    }
+
+    @Test
+    fun `a poll ended by a stray cancellation is started afresh at the next start`() = runTest {
+        // A refresh that leaks a `CancellationException` (an inner timeout's, say) ends the loop it is rethrown
+        // from; start is a no-op only while a poll is still live, so the next foreground entry revives it.
+        var refreshes = 0
+        val poller = StatusCountsPoller(
+            backgroundScope,
+            {
+                refreshes++
+                if (refreshes == 1) throw CancellationException("a leaked timeout")
+            },
+            cadence = 2.seconds,
+        )
+
+        poller.start()
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        assertEquals(1, refreshes, "the loop ended at its first tick")
+        poller.start()
+        advanceTimeBy(4.seconds)
+        runCurrent()
+        assertEquals(3, refreshes, "a dead poll is not mistaken for a live one")
         poller.stop()
     }
 }
