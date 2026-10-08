@@ -36,8 +36,8 @@ enum class JoinCommit {
 /**
  * The **user-tap command bundle** (`docs/architecture.md`, "Commands cross one door"): the
  * commands the status screen can fire, so every user tap crosses the same door the OS-callback
- * triggers do. Seated in `model/`: the bundle is pure vocabulary — a record of
- * command callables with inert defaults — and `model/` is the one zone both `compose/` (which
+ * triggers do. Seated in `model/`: the bundle is pure vocabulary — an interface, like a port, so it carries
+ * no code of its own — and `model/` is the one zone both `compose/` (which
  * builds the live instance) and `:domain:presentation` (which receives it by constructor) may name;
  * the armed presentation gate forbids presentation referencing `flow/`, and `flow/` itself may
  * keep importing `model/`. Live instances are still **built and decorated only in `compose/`**
@@ -49,10 +49,9 @@ enum class JoinCommit {
  * (`StatusContainerHost`'s `loadJoinDetails`) stays an injected read — it returns a value the gate
  * reduces on, so it is a query, not a command.
  *
- * No field has a default (law "Function-typed parameters have no defaults in production", capability
- * `docs/architecture.md`): a host that builds this bundle states every command, so one it forgets does not
- * compile — an inert default is how a hand-built bundle ships a "Choose more photos" button that does
- * nothing.
+ * No command has a default body (law "Function-typed parameters have no defaults in production",
+ * `docs/architecture.md`): an implementation states every command, so one it forgets does not compile — an
+ * inert default is how a hand-built bundle ships a "Choose more photos" button that does nothing.
  *
  * - [leave] — leave the configured event: cancel in-flight downloads, stop the producer, clear the
  *   config, notify the backend (capability `manage-membership`).
@@ -103,32 +102,45 @@ enum class JoinCommit {
  *   (capability `join-event`, "Reopening the current event's invite changes nothing"): answers whether it was kept —
  *   only the event's own key, only while it is lost — and sharing and receiving resume at once.
  */
-class UserCommands(
-    val leave: suspend () -> Unit,
-    val create: (name: String, startsAt: EventStart, endsAt: EventEnd) -> Unit,
-    val commitJoin: suspend (JoinChoice) -> JoinCommit,
-    val share: (url: String, title: String) -> Unit,
-    val requestAccess: () -> Unit,
-    val openSettings: () -> Unit,
-    val openLink: (url: String) -> Unit,
-    val choosePhotos: () -> Unit,
-    val reconfigure: suspend (
+interface UserCommands {
+    suspend fun leave()
+
+    fun create(name: String, startsAt: EventStart, endsAt: EventEnd)
+
+    suspend fun commitJoin(choice: JoinChoice): JoinCommit
+
+    fun share(url: String, title: String)
+
+    fun requestAccess()
+
+    fun openSettings()
+
+    fun openLink(url: String)
+
+    fun choosePhotos()
+
+    suspend fun reconfigure(
         eventId: String,
         direction: Direction,
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
-    ) -> ReconfigureOutcome,
-    val rename: (eventId: String, name: String) -> Unit,
+    ): ReconfigureOutcome
+
+    fun rename(eventId: String, name: String)
+
     /**
      * Suspending, unlike the other latch-driven commands: the screen fires this **after** consuming a
      * terminal status and may start the next rename immediately, so the clear has to have happened by
      * the time the call returns. Detaching it opened a window where a second rename began with the
      * previous `Succeeded` still latched.
      */
-    val resetRename: suspend () -> Unit,
-    val sendDiagnostics: suspend (note: String, context: ReportContext) -> ReportOutcome,
+    suspend fun resetRename()
+
+    suspend fun sendDiagnostics(note: String, context: ReportContext): ReportOutcome
+
     /** The device's mobile-data choice, from the app menu (capability `mobile-data`): answers whether it was saved. */
-    val setMobileData: suspend (on: Boolean) -> Boolean,
-    val restoreEventKey: suspend (linkKey: String) -> Boolean,
-)
+    suspend fun setMobileData(on: Boolean): Boolean
+
+    suspend fun restoreEventKey(linkKey: String): Boolean
+}

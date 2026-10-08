@@ -41,9 +41,9 @@ class CommandLaneTest {
         .firstOrNull { it.path.endsWith(nameEnd) }
         ?: fail("expected to find $nameEnd")
 
-    /** A bundle's declared fields — `val <name>: <type>` in its `model/` type. */
+    /** A bundle's declared members — `fun <name>(` in its `model/` interface. */
     private fun declared(type: String): List<String> =
-        Regex("""^\s{4}val (\w+):""", RegexOption.MULTILINE)
+        Regex("""^\s{4}(?:suspend )?fun (\w+)\(""", RegexOption.MULTILINE)
             .findAll(file("/domain/model/src/commonMain/kotlin/app/snapsync/model/$type.kt").text)
             .map { it.groupValues[1] }
             .toList()
@@ -54,22 +54,27 @@ class CommandLaneTest {
         "UserQueries" to "UserCommandsComposition.kt",
     )
 
-    /** The `<type>(...)` argument block in the one place the bundle is built. */
+    /** The `object : <type> { ... }` body in the one place the bundle is built. */
     private fun built(type: String): String {
         val text = file("/domain/compose/src/commonMain/kotlin/app/snapsync/compose/${builtIn.getValue(type)}").text
-        val start = text.indexOf("$type(")
+        val opener = "object : $type {"
+        val start = text.indexOf(opener)
         assertTrue(start >= 0, "compose/ no longer builds a $type bundle — this gate is stale")
-        val close = KotlinDecls.closing(text, start + type.length) ?: fail("unbalanced $type( block in ${builtIn.getValue(type)}")
+        val open = start + opener.length - 1
+        val close = KotlinDecls.closing(text, open) ?: fail("unbalanced $opener block in ${builtIn.getValue(type)}")
         return text.substring(start, close + 1)
     }
+
+    /** One member override at the indentation the bundle is written with. */
+    private fun member(name: String = "\\w+") = Regex("""\n {4}override (?:suspend )?fun ($name)\(""")
 
     /** The fields of [type] built through none of [allowed]. */
     private fun undecorated(type: String, allowed: List<String>): List<String> {
         val bundle = built(type)
-        // Split into per-argument chunks at the argument indentation the bundle is written with, so a
-        // decorator naming one field cannot vouch for its neighbour.
-        val chunks = Regex("""\n {4}(\w+) = """).findAll(bundle).toList()
-        assertTrue(chunks.isNotEmpty(), "no arguments parsed from the $type( block")
+        // Split into per-member chunks at the member indentation the bundle is written with, so a
+        // decorator naming one member cannot vouch for its neighbour.
+        val chunks = member().findAll(bundle).toList()
+        assertTrue(chunks.isNotEmpty(), "no members parsed from the $type bundle")
         return chunks.mapIndexedNotNull { index, match ->
             val to = chunks.getOrNull(index + 1)?.range?.first ?: bundle.length
             val body = bundle.substring(match.range.first, to)
@@ -102,7 +107,7 @@ class CommandLaneTest {
     fun `the gate sees every command and query the bundles declare`() {
         listOf("UserCommands", "UserQueries").forEach { type ->
             val bundle = built(type)
-            val missing = declared(type).filterNot { Regex("""\n {4}$it = """).containsMatchIn(bundle) }
+            val missing = declared(type).filterNot { member(it).containsMatchIn(bundle) }
             assertTrue(
                 missing.isEmpty(),
                 "declared in $type but not built in compose/, so the lane gate never sees them: $missing",
