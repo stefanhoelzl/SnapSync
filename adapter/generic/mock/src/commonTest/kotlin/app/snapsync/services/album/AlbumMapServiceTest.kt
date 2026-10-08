@@ -78,4 +78,38 @@ class AlbumMapServiceTest {
         assertNull(service.get("E"))
         assertFalse(service.filled("E"))
     }
+
+    @Test
+    fun `a put replaces that event's album and keeps every other event's`() {
+        val values = mutableMapOf<String, String>()
+        AlbumMapService(inMemoryPreferences(values)).apply {
+            put("E", "album-1")
+            put("F", "album-f")
+        }
+
+        AlbumMapService(inMemoryPreferences(values)).put("E", "album-2")
+
+        assertEquals("album-2", AlbumMapService(inMemoryPreferences(values)).get("E"))
+        assertEquals("album-f", AlbumMapService(inMemoryPreferences(values)).get("F"), "a re-join reuses its album")
+    }
+
+    /** A cache miss, never a raise: the importer then creates the album again and the next write heals the map. */
+    @Test
+    fun `a corrupt map is healed by the next put`() {
+        val values = mutableMapOf(ALBUM_MAP_KEY to "not json")
+
+        AlbumMapService(inMemoryPreferences(values)).put("E", "album-1")
+
+        assertEquals("album-1", AlbumMapService(inMemoryPreferences(values)).get("E"))
+    }
+
+    @Test
+    fun `corrupt filled marks read as unfilled - and the next mark heals them`() {
+        val values = mutableMapOf(ALBUM_MAP_KEY to """{"E":"album-1"}""", ALBUM_FILLED_KEY to "not json")
+        assertFalse(AlbumMapService(inMemoryPreferences(values)).filled("E"))
+
+        AlbumMapService(inMemoryPreferences(values)).markFilled("E")
+
+        assertTrue(AlbumMapService(inMemoryPreferences(values)).filled("E"))
+    }
 }

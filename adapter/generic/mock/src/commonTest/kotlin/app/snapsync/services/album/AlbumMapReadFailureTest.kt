@@ -2,9 +2,11 @@ package app.snapsync.services.album
 
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.PrefRead
+import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -16,7 +18,16 @@ class AlbumMapReadFailureTest {
 
     private class ReadFailing(private val inner: Preferences) : Preferences by inner {
         var failReads = false
-        override fun get(key: String): PrefRead = if (failReads) PrefRead.Unavailable("forced") else inner.get(key)
+
+        /** Only these keys fail, when [failReads] is off; a write to one of [refuseWrites] is refused. */
+        var failKeys = emptySet<String>()
+        var refuseWrites = emptySet<String>()
+
+        override fun get(key: String): PrefRead =
+            if (failReads || key in failKeys) PrefRead.Unavailable("forced") else inner.get(key)
+
+        override fun set(key: String, value: String): WriteOutcome =
+            if (key in refuseWrites) WriteOutcome.Failed("forced") else inner.set(key, value)
     }
 
     private val values = mutableMapOf<String, String>()
@@ -51,5 +62,31 @@ class AlbumMapReadFailureTest {
         assertEquals("album-a", service().get("A"))
         service().put("B", "album-b")
         assertEquals("album-b", service().get("B"))
+    }
+
+    @Test
+    fun `unreadable filled marks read as unfilled - and a new album leaves them as they were`() {
+        service().apply {
+            put("A", "album-a")
+            markFilled("A")
+        }
+
+        prefs.failKeys = setOf(ALBUM_FILLED_KEY)
+        assertFalse(service().filled("A"), "a mark that cannot be read places nothing as filled")
+        service().put("A", "album-a2")
+        prefs.failKeys = emptySet()
+
+        assertEquals("album-a2", service().get("A"), "the album itself is stored")
+        assertTrue(service().filled("A"), "the marks it could not read were not rewritten")
+    }
+
+    @Test
+    fun `a filled mark that cannot be stored is not believed`() {
+        service().put("A", "album-a")
+
+        prefs.refuseWrites = setOf(ALBUM_FILLED_KEY)
+        service().markFilled("A")
+
+        assertFalse(service().filled("A"))
     }
 }
