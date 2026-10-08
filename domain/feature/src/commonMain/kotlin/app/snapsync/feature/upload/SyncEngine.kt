@@ -56,7 +56,9 @@ class SyncEngine(
      * the dispatch seam.
      */
     suspend fun handle(event: SyncEvent): SyncDecision = when (event) {
-        is SyncEvent.ResourceChanged -> decide(event.resource).also { if (it is SyncDecision.Upload) logWork("Upload", it) }
+        is SyncEvent.ResourceChanged -> decide(
+            event.resource,
+        ).also { if (it is SyncDecision.Upload) logWork("Upload", it) }
         is SyncEvent.UploadFailed -> handle(event)
         is SyncEvent.UploadStarted -> started(event.request).also {
             log.i { "started key=${event.request.resource.filename}" }

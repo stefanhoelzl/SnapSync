@@ -204,7 +204,14 @@ class CollectDiagnosticDump(
     private suspend fun readDevice(): Map<String, String> = coroutineScope {
         val access = async { bounded("network") { network.watch().first() } }
         // One read: its failure is every fact's.
-        val reading = async { bounded("device conditions", { conditions.read() }, { it }, DeviceConditionsReading::failed) }
+        val reading = async {
+            bounded(
+                "device conditions",
+                { conditions.read() },
+                { it },
+                DeviceConditionsReading::failed,
+            )
+        }
         val app = runCatchingCancellable { appFacts() }.getOrElse { failure ->
             reasonOf(failure).let { AppFacts(Fact.Failed(it), Fact.Failed(it), Fact.Failed(it), Fact.Failed(it)) }
         }
@@ -247,9 +254,22 @@ class CollectDiagnosticDump(
         bounded(what, read, { Fact.Known(it) }, { Fact.Failed(it) })
 
     /** [read] answered as [known] of its value, or as [failed] of why not — it threw, or took longer than [readTimeout]. */
-    private suspend fun <T : Any, R> bounded(what: String, read: suspend () -> T, known: (T) -> R, failed: (String) -> R): R =
+    private suspend fun <T : Any, R> bounded(
+        what: String,
+        read: suspend () -> T,
+        known: (T) -> R,
+        failed: (String) -> R,
+    ): R =
         runCatchingCancellable { withTimeoutOrNull(readTimeout) { read() } }.fold(
-            onSuccess = { value -> if (value != null) known(value) else failed("the $what read timed out after $readTimeout") },
+            onSuccess = { value ->
+                if (value != null) {
+                    known(
+                        value,
+                    )
+                } else {
+                    failed("the $what read timed out after $readTimeout")
+                }
+            },
             onFailure = { failed(reasonOf(it)) },
         )
 

@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.confirmedGone
 import app.snapsync.services.config.ConfigService
@@ -89,21 +90,26 @@ class MembershipRefresh(
                 leaveEvent.leave()
                 RefreshOutcome.COMPLETED
             } else {
-                var next = current
-                // Name CONVERGENCE on the served name — not a fill for a membership that lacks one:
-                // every membership carries a name (capability `join-event`, no decode default), so this
-                // arm exists so a diverged persisted name can still be repaired toward the backend's
-                // value. It is the only path by which that could ever happen. An unchanged name saves
-                // nothing.
-                if (current.name != fetched.name) next = next.copy(name = fetched.name)
-                // The completion state (capability `event-lifetime`). Closing is final, so a stale answer can never
-                // reopen a membership's closed event; the counts are the waiting line's and simply follow the server.
-                if (fetched.completion.closed && !current.closed) next = next.copy(closed = true)
-                fetched.completion.members?.let { if (it != current.members) next = next.copy(members = it) }
-                if (next != current) configSource.save(next)
-                if (next.closed) RefreshOutcome.CLOSED else RefreshOutcome.REFRESHED
+                converge(current, fetched)
             }
         }
+    }
+
+    /** Fold a found, not-completed event's details into [current] — saved only when something changed. */
+    private suspend fun converge(current: EventConfig, fetched: JoinLoad.Found): RefreshOutcome {
+        var next = current
+        // Name CONVERGENCE on the served name — not a fill for a membership that lacks one:
+        // every membership carries a name (capability `join-event`, no decode default), so this
+        // arm exists so a diverged persisted name can still be repaired toward the backend's
+        // value. It is the only path by which that could ever happen. An unchanged name saves
+        // nothing.
+        if (current.name != fetched.name) next = next.copy(name = fetched.name)
+        // The completion state (capability `event-lifetime`). Closing is final, so a stale answer can never
+        // reopen a membership's closed event; the counts are the waiting line's and simply follow the server.
+        if (fetched.completion.closed && !current.closed) next = next.copy(closed = true)
+        fetched.completion.members?.let { if (it != current.members) next = next.copy(members = it) }
+        if (next != current) configSource.save(next)
+        return if (next.closed) RefreshOutcome.CLOSED else RefreshOutcome.REFRESHED
     }
 }
 

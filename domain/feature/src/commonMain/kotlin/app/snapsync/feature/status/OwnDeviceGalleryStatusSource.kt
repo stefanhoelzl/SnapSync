@@ -120,7 +120,11 @@ class OwnDeviceGalleryStatusSource(
         //   • NOT READABLE       → publish nothing (below)
         //   • a thrown walk      → publish nothing (the `runCatching` arm)
         val counted = runCatchingCancellable {
-            EventPhotoSet.readable(policy, source::candidates)?.let { set -> set.assets().mapTo(mutableSetOf()) { it.facts.assetId } }
+            EventPhotoSet.readable(policy, source::candidates)?.let { set ->
+                set.assets().mapTo(mutableSetOf()) {
+                    it.facts.assetId
+                }
+            }
         }
         counted.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed walk: `runCatchingCancellable` rethrows it, so it never lands
