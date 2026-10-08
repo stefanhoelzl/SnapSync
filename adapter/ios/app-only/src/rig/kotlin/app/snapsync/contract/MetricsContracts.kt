@@ -5,6 +5,7 @@ package app.snapsync.contract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Divergence
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
@@ -13,6 +14,7 @@ import app.snapsync.contracts.ProcessMetricsContract
 import app.snapsync.contracts.ProcessMetricsState
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.logging.documentsDirectory
 import app.snapsync.metrics.MetricKitApi
 import app.snapsync.metrics.MetricKitProcessMetrics
@@ -160,10 +162,10 @@ private class DeviceMetricsBinding(
     override val kind = BindingKind.Live
     override val reaches = setOf(ProcessMetricsState.PROVIDER_DELIVERS)
 
-    override fun create(state: ProcessMetricsState, clauseId: String): Entered<ProcessMetrics> {
+    override fun create(state: ProcessMetricsState, clauseId: String, log: CallLog): Entered<ProcessMetrics> {
         if (state !in reaches) return Entered.Unreachable("an iOS app has a provider; $state runs on another process")
         recorder.open(clauseId)
-        return Entered.Ready(MetricKitProcessMetrics(RecordingMetricKitApi(metricKit, recorder)))
+        return Entered.Ready(MetricKitProcessMetrics(RecordingMetricKitApi(metricKit, recorder)).recorded(log))
     }
 }
 

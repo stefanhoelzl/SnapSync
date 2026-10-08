@@ -2,11 +2,13 @@ package app.snapsync.extension
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.ExtensionHostContract
 import app.snapsync.contracts.ExtensionHostState
 import app.snapsync.contracts.ExtensionHostUnderTest
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import co.touchlab.kermit.Logger
 import kotlin.test.Test
@@ -22,13 +24,18 @@ class IosExtensionHostContractTest {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(ExtensionHostState.INVOKABLE)
-        override fun create(state: ExtensionHostState, clauseId: String): Entered<ExtensionHostUnderTest> {
-            val host = IosExtensionHost(Logger.withTag("contract"))
+        override fun create(
+            state: ExtensionHostState,
+            clauseId: String,
+            log: CallLog,
+        ): Entered<ExtensionHostUnderTest> {
+            // The OS's two calls reach the bare adapter, which no port call carries; the clause sees the port's proxy.
+            val bare = IosExtensionHost(Logger.withTag("contract"))
             return Entered.Ready(
                 ExtensionHostUnderTest(
-                    host,
-                    host::deliverProcess,
-                    host::deliverTerminate,
+                    bare.recorded(log),
+                    bare::deliverProcess,
+                    bare::deliverTerminate,
                 ) { it.processingResultRawValue() },
             )
         }

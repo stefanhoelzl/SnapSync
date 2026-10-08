@@ -8,11 +8,13 @@ import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Divergence
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.ports.BackgroundTime
 import co.touchlab.kermit.Logger
 import platform.darwin.DISPATCH_QUEUE_PRIORITY_DEFAULT
@@ -92,7 +94,7 @@ internal class DeviceBackgroundTimeBinding(
     override val kind = BindingKind.Live
     override val reaches = setOf(BackgroundTimeState.TIME_RUNS_OUT)
 
-    override fun create(state: BackgroundTimeState, clauseId: String): Entered<BackgroundTime> {
+    override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> {
         // A state this host does not present in this run: the app's time remaining runs live on the simulator app.
         if (state !in reaches) {
             return Entered.Unreachable(
@@ -104,7 +106,7 @@ internal class DeviceBackgroundTimeBinding(
             IosBackgroundTime(
                 Logger.withTag("contract"),
                 RecordingBackgroundTimeApi(SystemBackgroundTimeApi, recorder),
-            ),
+            ).recorded(log),
         )
     }
 }

@@ -2,6 +2,7 @@ package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Divergence
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
@@ -10,6 +11,7 @@ import app.snapsync.contracts.SharePresenterState
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
@@ -33,13 +35,14 @@ class RelaunchReplayContractTest {
         override val kind = BindingKind.Replay
         override val reaches = setOf(UploadState.RELAUNCHED_WITH_EVENTS)
 
-        override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
             if (state !in reaches) return Entered.Unreachable("this recording holds a relaunch; $state runs live")
             return replayerFor(RECORDINGS, recordingName(UploadContract.name, host, null), clauseId) { replayer ->
                 val api = ReplayingUploadSessionApi(replayer)
                 relaunchedUpload(
                     api,
                     handler = {},
+                    log = log,
                     // The system's relaunch is the block's first event: the replay hands it over where the device did.
                     beforeDeliver = {
                         val due = replayer.takeEvents()
@@ -58,7 +61,7 @@ class RelaunchReplayContractTest {
         override val kind = BindingKind.Replay
         override val reaches = setOf(SharePresenterState.NO_WINDOW)
 
-        override fun create(state: SharePresenterState, clauseId: String): Entered<SystemUi> {
+        override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> {
             if (state !in reaches) {
                 return Entered.Unreachable(
                     "this recording holds a windowless launch; $state runs live",
@@ -70,7 +73,7 @@ class RelaunchReplayContractTest {
                 clauseId,
             ) { replayer ->
                 Entered.Ready(
-                    IosSystemUi(SystemUrlOpenerApi, ReplayingShareSheetApi(replayer)),
+                    IosSystemUi(SystemUrlOpenerApi, ReplayingShareSheetApi(replayer)).recorded(log),
                     dispose = replayer::assertExhausted,
                 )
             }

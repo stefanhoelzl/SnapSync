@@ -64,12 +64,13 @@ internal fun attestStoreInState(
     val keyId = SecureSlot(service = SERVICE, account = "$clauseId.keyid", shared = true)
     secure.delete(token)
     secure.delete(keyId)
-    val store = AttestState(secure, tokenSlot = token, keyIdSlot = keyId).recorded(log)
+    val bare = AttestState(secure, tokenSlot = token, keyIdSlot = keyId)
+    // Entering the state is the binding's, not the clause's: through the bare store, so it satisfies no claim.
     if (state == AttestStoreState.HOLDING) {
-        store.setKeyId(AttestStoreContract.seedKeyId(clauseId))
-        store.setToken(AttestStoreContract.seedToken(clauseId))
+        bare.setKeyId(AttestStoreContract.seedKeyId(clauseId))
+        bare.setToken(AttestStoreContract.seedToken(clauseId))
     }
-    return Entered.Ready(store) {
+    return Entered.Ready(bare.recorded(log)) {
         secure.delete(token)
         secure.delete(keyId)
         afterDispose()

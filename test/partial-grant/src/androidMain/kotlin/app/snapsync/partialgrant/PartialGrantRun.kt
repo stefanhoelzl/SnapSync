@@ -12,6 +12,7 @@ import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.GalleryChange
 import app.snapsync.contracts.GalleryContract
@@ -21,6 +22,7 @@ import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
 import kotlinx.coroutines.CoroutineScope
@@ -46,12 +48,13 @@ internal class PartialGrantRun {
         override val kind = BindingKind.Live
         override val reaches = setOf(GalleryState.PARTIAL)
 
-        override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
+        override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
             if (state !in reaches) return Entered.Unreachable("this APK holds a partial grant, and only that")
             check(holds(SELECTION) && !holds(Manifest.permission.READ_MEDIA_IMAGES)) { "this APK holds no partial grant" }
             val selection = setOf(seedOwnPhoto(clauseId))
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            return Entered.Ready(GalleryChange(AndroidGallery(context, permission(), scope), selection) {}) {}
+            val adapter = AndroidGallery(context, permission(), scope).recorded(log)
+            return Entered.Ready(GalleryChange(adapter, selection) {}) {}
         }
     }
 
@@ -60,9 +63,9 @@ internal class PartialGrantRun {
         override val kind = BindingKind.Live
         override val reaches = setOf(PhotoAccessState.PARTIAL)
 
-        override fun create(state: PhotoAccessState, clauseId: String): Entered<PhotoAccess> {
+        override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
             if (state !in reaches) return Entered.Unreachable("this APK holds a partial grant, and only that")
-            return Entered.Ready(PhotoAccess(permission()))
+            return Entered.Ready(PhotoAccess(permission().recorded(log)))
         }
     }
 

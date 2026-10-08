@@ -58,9 +58,10 @@ class AttestContractBindingsTest {
 
         override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> = when (state) {
             AttestStoreState.INACCESSIBLE -> Entered.Unreachable("the in-memory store models no unreadable Keychain")
-            AttestStoreState.EMPTY -> Entered.Ready(inMemoryAttestStore())
+            AttestStoreState.EMPTY -> Entered.Ready(inMemoryAttestStore().recorded(log))
             AttestStoreState.HOLDING, AttestStoreState.HOLDING_CONTESTED -> Entered.Ready(
-                inMemoryAttestStore(AttestStoreContract.seedToken(clauseId), AttestStoreContract.seedKeyId(clauseId)),
+                inMemoryAttestStore(AttestStoreContract.seedToken(clauseId), AttestStoreContract.seedKeyId(clauseId))
+                    .recorded(log),
             )
         }
     }
@@ -101,7 +102,7 @@ class AttestContractBindingsTest {
 
         override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
             if (state in reaches) {
-                Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)))
+                Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)).recorded(log))
             } else {
                 Entered.Unreachable("the double accounts a footprint and is held available")
             }

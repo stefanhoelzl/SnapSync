@@ -2,10 +2,12 @@ package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ProcessMetricsContract
 import app.snapsync.contracts.ProcessMetricsState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.metrics.MetricKitProcessMetrics
@@ -25,11 +27,11 @@ class ProcessMetricsReplayContractTest {
         override val kind = BindingKind.Replay
         override val reaches = setOf(ProcessMetricsState.PROVIDER_DELIVERS)
 
-        override fun create(state: ProcessMetricsState, clauseId: String): Entered<ProcessMetrics> {
+        override fun create(state: ProcessMetricsState, clauseId: String, log: CallLog): Entered<ProcessMetrics> {
             if (state !in reaches) return Entered.Unreachable("an iOS app has a provider; $state is another process's")
             return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
                 Entered.Ready(
-                    MetricKitProcessMetrics(ReplayingMetricKitApi(replayer)),
+                    MetricKitProcessMetrics(ReplayingMetricKitApi(replayer)).recorded(log),
                     dispose = replayer::assertExhausted,
                 )
             }

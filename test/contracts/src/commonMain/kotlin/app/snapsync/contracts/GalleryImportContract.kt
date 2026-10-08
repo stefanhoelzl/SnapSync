@@ -114,7 +114,6 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             covers = cells {
                 on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
                 on<Gallery> {
-                    answers(Gallery::listen).returns()
                     calls(GalleryHandlers::onImportPlaceholder, AssetRef::class, AssetId::class)
                     calls(GalleryHandlers::onImportSettled, AssetRef::class, ImportResult.Imported::class)
                 }

@@ -214,7 +214,7 @@ class SimAppSharePresenterBinding : Binding<SharePresenterState, SystemUi> {
 
     override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> =
         if (state in reaches) {
-            Entered.Ready(IosSystemUi(), dispose = ::dismissPresented)
+            Entered.Ready(IosSystemUi().recorded(log), dispose = ::dismissPresented)
         } else {
             Entered.Unreachable("the rig drives the simulator app in the foreground, its window built")
         }

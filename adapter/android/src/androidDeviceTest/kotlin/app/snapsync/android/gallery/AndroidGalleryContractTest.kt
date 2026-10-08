@@ -72,6 +72,10 @@ class AndroidGalleryContractTest {
             val ids: Set<AssetId> = when (state) {
                 GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES ->
                     return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
+                GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED ->
+                    return Entered.Unreachable(
+                        "this binding holds the full grant: a grant short of it is another APK's",
+                    )
                 GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
                     return Entered.Unreachable(
                         "an Android album is the folder a photo lives in, not a collection: FolderAlbumContract",
@@ -85,7 +89,7 @@ class AndroidGalleryContractTest {
                     MediaStoreSeeder.seed("Pictures/${GalleryReaderContract.title(clauseId)}/", date)
             }
             MediaStoreSeeder.grantFull()
-            val reader = AndroidGalleryReader(context, permission()::current)
+            val reader = AndroidGalleryReader(context, permission()::current).recorded(log)
             val scratch = File(context.cacheDir, "export-$clauseId").apply { mkdirs() }
             val files = ClauseFiles({ File(scratch, it).absolutePath }, { File(it).takeIf(File::exists)?.readBytes() })
             return Entered.Ready(SeededLibrary(reader, ids, files)) {

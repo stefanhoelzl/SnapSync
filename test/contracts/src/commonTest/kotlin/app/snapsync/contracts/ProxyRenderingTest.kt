@@ -13,7 +13,7 @@ import app.snapsync.model.WakeTrigger
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.Backend
-import app.snapsync.ports.Completion
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Files
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.SecureStore
@@ -44,7 +44,7 @@ class ProxyRenderingTest {
         }.recorded(log)
         store.read(SecureSlot("s", "a", shared = false))
         val grant = PhotoGrantRead { GalleryAccess.LIMITED }.recorded(log)
-        grant.current()
+        grant.access()
         val files = object : Files by UnusedFiles {
             override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.Ok(ByteArray(0))
         }.recorded(log)
@@ -58,7 +58,7 @@ class ProxyRenderingTest {
 
         val declared = cells {
             on<SecureStore>().answers(SecureStore::read).with(SecureStoreRead.Absent::class)
-            on<PhotoGrantRead>().answers(PhotoGrantRead::current).with(GalleryAccess.LIMITED)
+            on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.LIMITED)
             on<Files>().answers(Files::read).withGenericLeaf(FileResult.Ok::class)
             on<Backend>().answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
             on<AttestStore>().answers(AttestStore::token).with(null)
@@ -86,7 +86,7 @@ class ProxyRenderingTest {
         )
         told.onWake(
             WakeId.LibraryChanged,
-            object : Completion {
+            object : ExpiringCompletion {
                 override fun complete() = Unit
                 override fun onExpired(action: () -> Unit) {
                     expired = action
@@ -98,10 +98,10 @@ class ProxyRenderingTest {
         val declared = cells {
             on<Wake> {
                 answers(Wake::listen).returns()
-                calls(WakeHandlers::onWake, WakeId.LibraryChanged, Completion::class)
-                handle<Completion>().answers(Completion::complete).returns()
-                handle<Completion>().answers(Completion::onExpired).returns()
-                handle<Completion>().callsBack(Completion::onExpired, "action")
+                calls(WakeHandlers::onWake, WakeId.LibraryChanged, ExpiringCompletion::class)
+                handle<ExpiringCompletion>().answers(ExpiringCompletion::complete).returns()
+                handle<ExpiringCompletion>().answers(ExpiringCompletion::onExpired).returns()
+                handle<ExpiringCompletion>().callsBack(ExpiringCompletion::onExpired, "action")
             }
         }.cells
         assertEquals(declared.toSet(), log.cells)

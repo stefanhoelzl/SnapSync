@@ -72,7 +72,7 @@ class LiveEdgeContractsTest {
                 { BackendContract.seed(state, clauseId, it) },
             ) { client, base, seeded ->
                 val address = if (state == BackendState.NO_BACKEND) closedLoopbackAddress() else base
-                HttpBackend(client, address, seeded.identity.appVersion)
+                HttpBackend(client, address, seeded.identity.appVersion).recorded(log)
             }
             if (state != BackendState.ATTESTABLE || entered !is Entered.Ready) return entered
             // The local rig trusts any attestation: a software chain, as an emulator presents, is what it accepts.
@@ -95,7 +95,7 @@ class LiveEdgeContractsTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(BackendState.UNREADABLE_SUCCESS)
 
-        override fun create(state: BackendState, clauseId: String): Entered<EdgeSubject<Backend>> {
+        override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<Backend>> {
             if (state !in reaches) return Entered.Unreachable("a wire fixture is no backend: it answers one thing")
             val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
                 createContext("/") { exchange ->
@@ -106,7 +106,7 @@ class LiveEdgeContractsTest {
                 start()
             }
             val client = HttpClient(CIO)
-            val port = HttpBackend(client, "http://127.0.0.1:${server.address.port}", SERVED_APP_VERSION)
+            val port = HttpBackend(client, "http://127.0.0.1:${server.address.port}", SERVED_APP_VERSION).recorded(log)
             val seeded = Seeded(eventId = Uuid.random().toString(), deviceId = Uuid.random().toString())
             return Entered.Ready(EdgeSubject(port, seeded)) {
                 client.close()

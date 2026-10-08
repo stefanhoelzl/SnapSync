@@ -44,14 +44,14 @@ class IosFilesContractTest {
         )
 
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
-            if (state == FilesState.UNAVAILABLE) return Entered.Ready(IosFiles())
+            if (state == FilesState.UNAVAILABLE) return Entered.Ready(IosFiles().recorded(log))
             val shared = newTempDirectory()
             val private = newTempDirectory()
-            val files = IosFiles(sharedRoot = shared, privateRoot = private).recorded(log)
+            val bare = IosFiles(sharedRoot = shared, privateRoot = private)
             val path = FilesContract.path(clauseId)
             val directory = "$shared/${FilesContract.directory(clauseId)}"
             if (state != FilesState.EMPTY && state != FilesState.LOOPED_LINK) {
-                files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
+                bare.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
             }
             when (state) {
                 FilesState.DENIED -> chmod("$shared/$path", NO_PERMISSIONS)
@@ -64,7 +64,7 @@ class IosFilesContractTest {
                 }
                 FilesState.EMPTY, FilesState.HOLDING, FilesState.UNAVAILABLE -> Unit
             }
-            return Entered.Ready(files) {
+            return Entered.Ready(bare.recorded(log)) {
                 chmod(directory, OWNER_ALL)
                 chmod("$shared/$path", OWNER_READ_WRITE)
                 removeDirectory(shared)

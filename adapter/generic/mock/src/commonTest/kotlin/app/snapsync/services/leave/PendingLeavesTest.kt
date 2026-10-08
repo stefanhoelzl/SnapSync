@@ -1,6 +1,7 @@
 package app.snapsync.services.leave
 
 import app.snapsync.mock.inMemoryFiles
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.ports.Files
@@ -153,7 +154,7 @@ class PendingLeavesTest {
     fun `a refused write is logged and the leave stays owed by this process`() = runTest {
         val log = CapturingLogWriter()
         val refusing = object : Files by inMemoryFiles(shared = shared) {
-            override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> =
+            override fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> =
                 FileResult.Failed("ENOSPC")
         }
         val leaves = PendingLeaves(refusing, notifier, log.logger())

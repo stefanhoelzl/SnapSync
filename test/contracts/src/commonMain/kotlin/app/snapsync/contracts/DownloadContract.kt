@@ -33,6 +33,9 @@ enum class DownloadState {
      * the wake open on — which the binding can see end once released ([DownloadUnderTest.wakeEnded]).
      */
     WAKES_TO_DELIVER,
+
+    /** Any network, on a platform whose queue refuses, as it is asked, a URL it cannot fetch (Android's DownloadManager). */
+    REFUSES_UNFETCHABLE,
 }
 
 /**
@@ -381,6 +384,26 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
             assertEquals(DownloadEvent.Completed(tag, null), owner.events.last(), "it runs once the network allows it")
             assertEquals(200, owner.events.filterIsInstance<DownloadEvent.Finished>().single().facts.statusCode)
+        }
+
+        clause(
+            "AN_UNFETCHABLE_URL_IS_NOT_STARTED",
+            DownloadState.REFUSES_UNFETCHABLE,
+            covers = cells {
+                on<Download>().answers(Download::start).with(StartResult.NotStarted)
+            },
+        ) { subject ->
+            val id = "AN_UNFETCHABLE_URL_IS_NOT_STARTED"
+            val owner = ClauseDownloadHandlers(subject.readTemp)
+            val download = subject.open()
+            download.listen(owner.handlers)
+            assertEquals(
+                StartResult.NotStarted,
+                download.start("ftp://contract.invalid/$id", "d-$id", TransferNetwork.ANY),
+                "a scheme the queue cannot fetch is refused as it is asked, never started to fail later",
+            )
+            transferSettle()
+            assertEquals(emptyList(), owner.events, "a transfer never started tells its owner nothing")
         }
 
         clause(

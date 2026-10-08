@@ -2,6 +2,7 @@ package app.snapsync.logging
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.EntryContextContract
 import app.snapsync.contracts.EntryContextState
@@ -9,6 +10,7 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.LogSinkContract
 import app.snapsync.contracts.LogSinkState
 import app.snapsync.contracts.WrittenLog
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.EntryContext
 import app.snapsync.testsupport.newTempDirectory
@@ -26,9 +28,9 @@ class IosLoggingContractTest {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(EntryContextState.AMBIENT)
-        override fun create(state: EntryContextState, clauseId: String): Entered<EntryContext> =
+        override fun create(state: EntryContextState, clauseId: String, log: CallLog): Entered<EntryContext> =
             if (state in reaches) {
-                Entered.Ready(IosEntryContext)
+                Entered.Ready(IosEntryContext.recorded(log))
             } else {
                 Entered.Unreachable("an iOS process tags every line with its entry point")
             }
@@ -38,11 +40,11 @@ class IosLoggingContractTest {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(LogSinkState.READABLE)
-        override fun create(state: LogSinkState, clauseId: String): Entered<WrittenLog> {
+        override fun create(state: LogSinkState, clauseId: String, log: CallLog): Entered<WrittenLog> {
             val dir = newTempDirectory()
             val path = "$dir/debug.log"
             return Entered.Ready(
-                WrittenLog(FileLogSink(path)) { readTextFile(path).orEmpty() },
+                WrittenLog(FileLogSink(path).recorded(log)) { readTextFile(path).orEmpty() },
             ) { removeDirectory(dir) }
         }
     }

@@ -13,6 +13,7 @@ import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
@@ -21,9 +22,17 @@ import app.snapsync.ports.WakeHandlers
 
 /**
  * The [Completion] handle an adapter hands its owner, recorded under the port handing it out ([r] is that port's
- * `Completion` recorder): what the owner calls on it, and the expiry action the adapter calls back.
+ * `Completion` recorder): what the owner calls on it.
  */
 internal class CompletionProxy(private val inner: Completion, private val r: Recorder) : Completion {
+    override fun complete() = r.returns("complete", inner.complete())
+}
+
+/** The [ExpiringCompletion] a wake hands its owner: [CompletionProxy]'s release, and the expiry action called back. */
+internal class ExpiringCompletionProxy(
+    private val inner: ExpiringCompletion,
+    private val r: Recorder,
+) : ExpiringCompletion {
     override fun complete() = r.returns("complete", inner.complete())
     override fun onExpired(action: () -> Unit) = r.returns(
         "onExpired",
@@ -62,10 +71,6 @@ internal class DownloadProxy(private val inner: Download, log: CallLog) : Downlo
                 onCompleted = { tag, error ->
                     r.called("handlers.onCompleted", Recorder.arg(tag, "String"), Recorder.arg(error, "String"))
                     handlers.onCompleted(tag, error)
-                },
-                onInvalidated = {
-                    r.called("handlers.onInvalidated")
-                    handlers.onInvalidated()
                 },
                 onBackgroundEvents = { completion ->
                     r.called("handlers.onBackgroundEvents", Recorder.arg(completion, "Completion"))
@@ -130,8 +135,8 @@ internal class WakeProxy(private val inner: Wake, log: CallLog) : Wake {
         inner.listen(
             WakeHandlers(
                 onWake = { id, completion ->
-                    r.called("handlers.onWake", Recorder.arg(id), Recorder.arg(completion, "Completion"))
-                    handlers.onWake(id, CompletionProxy(completion, r.handle("Completion")))
+                    r.called("handlers.onWake", Recorder.arg(id), Recorder.arg(completion, "ExpiringCompletion"))
+                    handlers.onWake(id, ExpiringCompletionProxy(completion, r.handle("ExpiringCompletion")))
                 },
             ),
         ),

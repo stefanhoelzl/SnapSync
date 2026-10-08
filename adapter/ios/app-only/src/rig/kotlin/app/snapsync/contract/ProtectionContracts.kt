@@ -3,12 +3,14 @@ package app.snapsync.contract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.protection.IosProcessInfo
 import app.snapsync.protection.ProtectedDataApi
@@ -51,7 +53,7 @@ internal class DeviceLockedProcessInfoBinding(private val recorder: Recorder) : 
     override val reaches = setOf(ProcessInfoState.LOCKED)
     override val precondition = LOCKED
 
-    override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> {
+    override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> {
         // A state this host does not present in this run: the unlocked ones run live on the simulator app.
         if (state !in reaches) {
             return Entered.Unreachable(
@@ -59,7 +61,7 @@ internal class DeviceLockedProcessInfoBinding(private val recorder: Recorder) : 
             )
         }
         recorder.open(clauseId)
-        return Entered.Ready(IosProcessInfo(RecordingProtectedDataApi(SystemProtectedDataApi, recorder)))
+        return Entered.Ready(IosProcessInfo(RecordingProtectedDataApi(SystemProtectedDataApi, recorder)).recorded(log))
     }
 }
 

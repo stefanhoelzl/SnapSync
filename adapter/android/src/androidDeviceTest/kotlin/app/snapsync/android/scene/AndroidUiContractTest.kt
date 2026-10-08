@@ -30,20 +30,29 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.v2.runAndroidComposeUiTest
+import app.snapsync.android.dates.AndroidDateFormatting
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.UiContract
 import app.snapsync.contracts.UiStateForContract
 import app.snapsync.contracts.UiUnderTest
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DeviceRefusal
+import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.EventStart
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinPhase
@@ -52,6 +61,7 @@ import app.snapsync.model.Layer
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.RangeChoice
 import app.snapsync.model.ReconfigureOutcome
+import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.StoreKind
@@ -67,8 +77,10 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.ports.Ui
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.ScreenDates
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
@@ -182,13 +194,20 @@ private fun str(res: StringResource): String = runBlocking { getString(res) }
  */
 class AndroidUiContractTest {
 
-    private val ui = AndroidUi(CUTOFF, Logger.withTag("contract"))
+    private val ui = AndroidUi(CUTOFF, ScreenDates(AndroidDateFormatting()::formats), Logger.withTag("contract"))
+
+    /**
+     * [ui] as the clause's call log sees it: what the tour shows each state through, since showing is the clause's own
+     * act. The activity's pull of the screen ([AndroidUi.content]) is no port call, so it stays on [ui].
+     */
+    @Volatile
+    private var port: Ui = ui
 
     /** The container the screen currently shows; [react] reduces into it. */
     @Volatile
     private var current: Rig? = null
 
-    /** The last state [ui] was shown — what the screen renders once it is idle. */
+    /** The last state [port] was shown — what the screen renders once it is idle. */
     @Volatile
     private var shown: UiState? = null
 
@@ -196,14 +215,19 @@ class AndroidUiContractTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(UiStateForContract.TOURABLE)
-        override fun create(state: UiStateForContract, clauseId: String): Entered<UiUnderTest> = Entered.Ready(
-            UiUnderTest(
-                ui = ui,
-                react = { intent -> current?.host?.onIntent(intent) },
-                tour = { checkNotNull(screenTest) { "the tour runs inside the activity's UI test" }.tour() },
-            ),
-            dispose = { current?.scope?.cancel() },
-        )
+        override fun create(state: UiStateForContract, clauseId: String, log: CallLog): Entered<UiUnderTest> {
+            port = ui.recorded(log)
+            return Entered.Ready(
+                UiUnderTest(
+                    ui = port,
+                    react = { intent -> current?.host?.onIntent(intent) },
+                    tour = {
+                        checkNotNull(screenTest) { "the tour runs inside the activity's UI test" }.tour()
+                    },
+                ),
+                dispose = { current?.scope?.cancel() },
+            )
+        }
     }
 
     @Test
@@ -252,23 +276,48 @@ class AndroidUiContractTest {
             ),
             scope = scope,
             cutoffFormatter = CUTOFF,
-            commands = UserCommands(
-                leave = { this.config.value = null },
-                create = { _, _, _ -> },
-                commitJoin = { JoinCommit.Failed },
-                share = { _, _ -> },
-                requestAccess = {},
-                openSettings = {},
-                openLink = {},
-                choosePhotos = {},
-                reconfigure = { _, _, _, _, _ -> ReconfigureOutcome.Saved },
-                rename = { _, _ -> },
-                resetRename = {},
-                sendDiagnostics = { _, _ -> ReportOutcome.SENT },
-                setMobileData = { true },
-                restoreEventKey = { false },
-            ),
-            queries = UserQueries(loadJoinDetails = { id, _ -> details(id) }, shareableCount = { _, _ -> null }),
+            commands = object : UserCommands {
+                override suspend fun leave() {
+                    this@Rig.config.value = null
+                }
+
+                override fun create(name: String, startsAt: EventStart, endsAt: EventEnd) = Unit
+
+                override suspend fun commitJoin(choice: JoinChoice) = JoinCommit.Failed
+
+                override fun share(url: String, title: String) = Unit
+
+                override fun requestAccess() = Unit
+
+                override fun openSettings() = Unit
+
+                override fun openLink(url: String) = Unit
+
+                override fun choosePhotos() = Unit
+
+                override suspend fun reconfigure(
+                    eventId: String,
+                    direction: Direction,
+                    minPhotoDate: CaptureCutoff,
+                    maxPhotoDate: CaptureCeiling,
+                    saveToAlbum: Boolean,
+                ) = ReconfigureOutcome.Saved
+
+                override fun rename(eventId: String, name: String) = Unit
+
+                override suspend fun resetRename() = Unit
+
+                override suspend fun sendDiagnostics(note: String, context: ReportContext) = ReportOutcome.SENT
+
+                override suspend fun setMobileData(on: Boolean) = true
+
+                override suspend fun restoreEventKey(linkKey: String) = false
+            },
+            queries = object : UserQueries {
+                override suspend fun loadJoinDetails(eventId: String, linkKey: String?) = details(eventId)
+
+                override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
+            },
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
         )
     }
@@ -280,7 +329,7 @@ class AndroidUiContractTest {
         current = rig
         rig.scope.launch {
             rig.host.container.stateFlow.collect {
-                ui.show(it)
+                port.show(it)
                 shown = it
             }
         }

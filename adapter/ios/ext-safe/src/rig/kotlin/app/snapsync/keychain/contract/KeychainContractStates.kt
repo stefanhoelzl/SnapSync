@@ -66,10 +66,11 @@ internal fun keychainInState(
     check(slot.service == SERVICE && slot.shared) { "the contract's slot moved off the recorded address: $slot" }
     val bare = IosSecureStore(keychain)
     val store = bare.recorded(log)
-    store.delete(slot)
+    // Entering the state is the binding's, not the clause's: through the bare store, so it satisfies no claim.
+    bare.delete(slot)
     val seed = SecureStoreContract.seedValue(clauseId)
     when (state) {
-        SecureStoreState.HOLDING_BACKGROUND_READABLE -> store.write(slot, seed)
+        SecureStoreState.HOLDING_BACKGROUND_READABLE -> bare.write(slot, seed)
         SecureStoreState.HOLDING_RESTRICTED -> legacyItem(clauseId, seed).let { item ->
             keychain.add(item)
             CFRelease(item)

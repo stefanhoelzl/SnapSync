@@ -81,6 +81,8 @@ class PhotoContractBindingsTest {
                     seededLibrary(GalleryReaderContract.name, clauseId)
                 GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER, GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->
                     return Entered.Unreachable("the in-memory library has no folders: all of it is the default gallery")
+                GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED ->
+                    return Entered.Unreachable("the double keeps no record of having asked")
                 GalleryReaderState.NO_GRANT, GalleryReaderState.GRANTED_EMPTY_WINDOW, GalleryReaderState.REFUSING_WRITES -> MutableStateFlow(
                     emptyList(),
                 )
@@ -115,7 +117,7 @@ class PhotoContractBindingsTest {
             }
             val library = MutableStateFlow<List<RawAsset>>(emptyList())
             val deliveries = ImportDeliveries()
-            val importer = inMemoryGallery(library).apply { listen(deliveries.handlers) }
+            val importer = inMemoryGallery(library).recorded(log).apply { listen(deliveries.handlers) }
             val observed = object : ImportedLibrary {
                 override suspend fun captureDate(id: AssetId): String? =
                     library.value.firstOrNull { it.facts.assetId == id }?.creationDate
@@ -156,7 +158,7 @@ class PhotoContractBindingsTest {
             val seeded = library.value.mapTo(linkedSetOf()) { it.assetId }
             // The seeded photos are this app's own saves, as the emulator binding's are: the ones it may move.
             mock.state.ownImports += seeded
-            val gallery = mock.port().apply { listen(ImportDeliveries().handlers) }
+            val gallery = mock.port().recorded(log).apply { listen(ImportDeliveries().handlers) }
             val staged = {
                 listOf(
                     StagedResource(

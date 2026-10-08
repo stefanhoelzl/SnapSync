@@ -3,11 +3,13 @@ package app.snapsync.android.logging
 import app.snapsync.android.storage.newTempDirectory
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.LogSinkContract
 import app.snapsync.contracts.LogSinkState
 import app.snapsync.contracts.WrittenLog
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import java.io.File
 import kotlin.test.Test
@@ -19,10 +21,11 @@ class AndroidLogSinkContractTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(LogSinkState.READABLE)
-        override fun create(state: LogSinkState, clauseId: String): Entered<WrittenLog> {
+        override fun create(state: LogSinkState, clauseId: String, log: CallLog): Entered<WrittenLog> {
             val dir = newTempDirectory()
             val file = File(dir, "debug.log")
-            return Entered.Ready(WrittenLog(FileLogSink(file)) { file.takeIf(File::exists)?.readText().orEmpty() }) {
+            val sink = FileLogSink(file).recorded(log)
+            return Entered.Ready(WrittenLog(sink) { file.takeIf(File::exists)?.readText().orEmpty() }) {
                 dir.deleteRecursively()
             }
         }

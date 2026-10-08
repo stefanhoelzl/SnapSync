@@ -5,8 +5,10 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.BuildInfoContract
 import app.snapsync.contracts.BuildInfoState
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.BuildInfo
 import kotlin.test.Test
@@ -37,9 +39,9 @@ class AndroidBuildInfoContractTest {
             BuildInfoState.UNREPORTED_AND_UNLISTED,
             BuildInfoState.ON_ANDROID,
         )
-        override fun create(state: BuildInfoState, clauseId: String): Entered<BuildInfo> =
+        override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
             if (state in reaches) {
-                Entered.Ready(build(distributed = state == BuildInfoState.REPORTING_AND_LISTED))
+                Entered.Ready(build(distributed = state == BuildInfoState.REPORTING_AND_LISTED).recorded(log))
             } else {
                 Entered.Unreachable("an Android process has its package for a bundle, and no OS-driven uploader")
             }

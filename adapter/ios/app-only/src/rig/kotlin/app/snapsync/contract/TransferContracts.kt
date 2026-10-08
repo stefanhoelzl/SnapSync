@@ -233,7 +233,10 @@ class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunPara
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
     override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> =
-        if (state == DownloadState.RESTRICTED_NETWORK) {
+        if (state == DownloadState.REFUSES_UNFETCHABLE) {
+            // NSURL takes an ftp URL, and the session starts it: the refusal is Android's queue's.
+            Entered.Unreachable("a URLSession starts what NSURL parses, and fails it later")
+        } else if (state == DownloadState.RESTRICTED_NETWORK) {
             Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
         } else if (state == DownloadState.WAKES_TO_DELIVER) {
             // The simulator target's session is the default one, which delivers in-process and never relaunches the app.

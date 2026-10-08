@@ -39,7 +39,7 @@ class AndroidSystemUiContractTest {
         override val reaches = setOf(SharePresenterState.PRESENTABLE)
         override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> =
             if (state in reaches) {
-                Entered.Ready(systemUi())
+                Entered.Ready(systemUi().recorded(log))
             } else {
                 Entered.Unreachable(
                     "Android starts the sheet as a task of its own: there is always somewhere to present it",
@@ -65,9 +65,9 @@ class AndroidSystemUiContractTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(ExtensionRegistryState.NO_MECHANISM)
-        override fun create(state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> =
+        override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> =
             if (state in reaches) {
-                Entered.Ready(AndroidExtensionRegistry)
+                Entered.Ready(AndroidExtensionRegistry.recorded(log))
             } else {
                 Entered.Unreachable("Android has no upload extension, so no record and no grant to refuse it under")
             }
@@ -77,10 +77,10 @@ class AndroidSystemUiContractTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(AppSettingsState.SHOWABLE)
-        override fun create(state: AppSettingsState, clauseId: String): Entered<ShownSettings> =
+        override fun create(state: AppSettingsState, clauseId: String, log: CallLog): Entered<ShownSettings> =
             Entered.Ready(
                 ShownSettings(
-                    ui = systemUi(),
+                    ui = systemUi().recorded(log),
                     // The resumed activity is what the screen shows: Settings' own package, on this app's details page.
                     settingsInFront = { SETTINGS_PACKAGE in resumedActivity() },
                     leave = { deviceShell("input keyevent KEYCODE_HOME") },

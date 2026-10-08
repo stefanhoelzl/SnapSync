@@ -5,6 +5,7 @@ package app.snapsync.contract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Clause
 import app.snapsync.contracts.Contract
 import app.snapsync.contracts.Divergence
@@ -20,6 +21,7 @@ import app.snapsync.contracts.SharePresenterState
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
@@ -226,17 +228,19 @@ private class ReplayingUploadSession(private val replayer: Replayer, private val
 // ---- the subject ---------------------------------------------------------------------------------------------------
 
 /**
- * The URLSession uploader over [api] in the relaunched state, listened to by the binding; [deliver] hands it the
- * relaunch with [handler] — the system's completion handler on a device, nothing on a replay. Shared by the device
- * binding and its replay, so both make identical calls.
+ * The URLSession uploader over [api] in the relaunched state, listened to by the binding through its recording proxy
+ * on [log]; [deliver] hands the bare adapter the relaunch with [handler] — the system's completion handler on a device,
+ * nothing on a replay. Shared by the device binding and its replay, so both make identical calls.
  */
 internal fun relaunchedUpload(
     api: UploadSessionApi,
     handler: () -> Unit,
+    log: CallLog,
     beforeDeliver: () -> Unit = {},
     afterDispose: () -> Unit = {},
 ): Entered<UploadUnderTest> {
-    val platform = IosUrlSessionUploadPlatform(Logger.withTag("contract"), CONTRACT_SESSION, cap = 4, api = api)
+    val bare = IosUrlSessionUploadPlatform(Logger.withTag("contract"), CONTRACT_SESSION, cap = 4, api = api)
+    val platform = bare.recorded(log)
     val ended = AtomicReference<List<UploadJob>>(emptyList())
     val handedOver = AtomicReference<List<Completion>>(emptyList())
     val drains = AtomicInt(0)
@@ -258,7 +262,8 @@ internal fun relaunchedUpload(
             relaunch = Relaunch(
                 deliver = {
                     beforeDeliver()
-                    platform.handleEvents(handler)
+                    // The OS's relaunch, which no port call carries: handed to the bare adapter.
+                    bare.handleEvents(handler)
                 },
                 handedOver = { handedOver.load() },
                 drains = { drains.load() },
@@ -284,7 +289,7 @@ internal class DeviceRelaunchedUploadBinding(
     override val kind = BindingKind.Live
     override val reaches = setOf(UploadState.RELAUNCHED_WITH_EVENTS)
 
-    override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+    override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
         if (state !in reaches) {
             return Entered.Unreachable(
                 "this run records a relaunch; $state runs live on the simulator app",
@@ -296,6 +301,7 @@ internal class DeviceRelaunchedUploadBinding(
         return relaunchedUpload(
             RecordingUploadSessionApi(SystemUploadSessionApi(Logger.withTag("contract")), recorder),
             handler,
+            log,
         )
     }
 }
@@ -328,7 +334,7 @@ internal class DeviceNoWindowShareBinding(private val recorder: Recorder) : Bind
     override val kind = BindingKind.Live
     override val reaches = setOf(SharePresenterState.NO_WINDOW)
 
-    override fun create(state: SharePresenterState, clauseId: String): Entered<SystemUi> {
+    override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> {
         if (state !in reaches) {
             return Entered.Unreachable(
                 "this run is a background launch; $state runs live on the simulator app",
@@ -339,7 +345,9 @@ internal class DeviceNoWindowShareBinding(private val recorder: Recorder) : Bind
         // adapter's answer, recorded.
         if (!appInBackground()) return Entered.Unreachable("the app was brought to the front during the relaunch")
         recorder.open(clauseId)
-        return Entered.Ready(IosSystemUi(SystemUrlOpenerApi, RecordingShareSheetApi(SystemShareSheetApi, recorder)))
+        return Entered.Ready(
+            IosSystemUi(SystemUrlOpenerApi, RecordingShareSheetApi(SystemShareSheetApi, recorder)).recorded(log),
+        )
     }
 }
 

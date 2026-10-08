@@ -10,6 +10,12 @@ enum class PhotoAccessState {
     /** Undetermined or denied: the two answers the app treats alike. */
     NO_GRANT,
 
+    /** No grant, and the process never asked for one — on a platform that keeps its own record of having asked. */
+    NEVER_ASKED,
+
+    /** No grant, and the process asked and was refused — on a platform that keeps its own record of having asked. */
+    REFUSED,
+
     /** A full grant. */
     GRANTED,
 
@@ -50,6 +56,28 @@ object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAcces
                 status == GalleryAccess.NOT_DETERMINED || status == GalleryAccess.DENIED,
                 "a process holding no grant reads undetermined or denied, got $status",
             )
+        }
+
+        clause(
+            "NEVER_ASKED_READS_UNDETERMINED",
+            PhotoAccessState.NEVER_ASKED,
+            covers = cells {
+                on<PhotoAccessStatusSource>()
+                    .emits(PhotoAccessStatusSource::permission)
+                    .with(GalleryAccess.NOT_DETERMINED)
+            },
+        ) { access ->
+            assertEquals(GalleryAccess.NOT_DETERMINED, access.status.permission.value, "never asked is still undecided")
+        }
+
+        clause(
+            "REFUSED_READS_DENIED",
+            PhotoAccessState.REFUSED,
+            covers = cells {
+                on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
+            },
+        ) { access ->
+            assertEquals(GalleryAccess.DENIED, access.status.permission.value, "asked and refused is denied")
         }
 
         clause(

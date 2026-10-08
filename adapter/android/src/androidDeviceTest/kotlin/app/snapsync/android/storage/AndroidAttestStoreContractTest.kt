@@ -4,8 +4,10 @@ import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.AttestStore
 import app.snapsync.services.identity.AttestState
@@ -29,7 +31,7 @@ class AndroidAttestStoreContractTest {
             AttestStoreState.HOLDING_CONTESTED,
         )
 
-        override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> {
+        override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> {
             deleteKey()
             val dir = newTempDirectory()
             val store = AttestState(AndroidSecureStore(dir, TEST_ALIAS))
@@ -44,7 +46,7 @@ class AndroidAttestStoreContractTest {
                 }
                 AttestStoreState.EMPTY -> Unit
             }
-            return Entered.Ready(store) {
+            return Entered.Ready(store.recorded(log)) {
                 restoreOwnerAccess(dir)
                 dir.deleteRecursively()
                 deleteKey()

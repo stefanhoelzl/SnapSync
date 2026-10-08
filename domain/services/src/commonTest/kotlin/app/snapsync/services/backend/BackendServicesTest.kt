@@ -194,7 +194,6 @@ class BackendServicesTest {
         assertEquals(JoinResult.EVENT_NOT_FOUND, servicesAnswering(Reply.Refused(404, "")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(Reply.Refused(500, "")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(offline).join.join("E", "D"))
-        assertEquals(JoinResult.FAILED, servicesAnswering(Reply.Malformed("x")).join.join("E", "D"))
         assertEquals(JoinResult.EVENT_CLOSED, servicesAnswering(Reply.Refused(410, "")).join.join("E", "D"))
         assertEquals(
             JoinResult.UNVERIFIED,
@@ -209,7 +208,6 @@ class BackendServicesTest {
         assertTrue(servicesAnswering(Reply.Ok(Unit)).manifest.publish("E", "D", manifest))
         assertEquals(false, servicesAnswering(Reply.Refused(409, "")).manifest.publish("E", "D", manifest))
         assertEquals(false, servicesAnswering(offline).manifest.publish("E", "D", manifest))
-        assertEquals(false, servicesAnswering(Reply.Malformed("x")).manifest.publish("E", "D", manifest))
         assertEquals(false, servicesAnswering(Reply.Refused(502, "")).manifest.publish("E", "D", manifest))
     }
 

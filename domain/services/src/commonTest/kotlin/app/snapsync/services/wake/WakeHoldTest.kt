@@ -175,5 +175,4 @@ class WakeHoldTest {
 /** A [Completion] that runs [onComplete] when completed. */
 private fun completionOf(onComplete: () -> Unit): Completion = object : Completion {
     override fun complete() = onComplete()
-    override fun onExpired(action: () -> Unit) = Unit
 }
