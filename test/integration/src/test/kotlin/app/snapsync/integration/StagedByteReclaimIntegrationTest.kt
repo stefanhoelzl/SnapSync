@@ -11,8 +11,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * The staged-byte backlog reclaim, driven through the **trigger** rather than through the method
  * (capability `receiving-photos`, requirement "Staged bytes are released only once their row is settled").
  *
- * `DownloadController.releaseSettledBytes()` was built, spec'd, and pinned at the store layer by
- * `DownloadStoreContract` — and never called from anywhere. Every one of those checks stayed green while
+ * `DownloadController.releaseSettledBytes()` was built, spec'd, and pinned at the store layer (then the
+ * `DownloadStoreContract`, now `DownloadServiceTest`) — and never called from anywhere. Every one of those checks stayed green while
  * the leak they describe ran on every install that predates per-asset release: a received photo stored
  * twice, once as the library asset and once as a staged file the OS never reclaims. So these tests
  * deliberately do **not** reach the method. They fire the operating system's foreground entry — the same

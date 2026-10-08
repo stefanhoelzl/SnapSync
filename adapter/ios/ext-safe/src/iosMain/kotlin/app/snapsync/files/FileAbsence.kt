@@ -38,10 +38,11 @@ private const val POSIX_EACCES: Long = 13L
  * unknown error into the absent class would recreate the false-leave bug this whole seam exists to
  * prevent, which is why the `else` arm answers `false` rather than guessing.
  *
- * **What runs, and what is only believed.** `ConfigStoreContract` drives the real store through this
+ * **What runs, and what is only believed.** The `Files` contract drives the real adapter through this
  * classifier on the simulator's test executable: a missing file (`NSCocoaErrorDomain` 260, underlying
- * `ENOENT`) reads as not joined, and a present file the process may not read (257, underlying `EACCES`,
- * measured 2026-09-23) reads as unreadable. The locked-since-boot read itself — 257 over `EPERM`, per
+ * `ENOENT`) is `NotFound` (`EMPTY_READ_IS_NOT_FOUND`), and a present file the process may not read (257,
+ * underlying `EACCES`, measured 2026-09-23) is `Denied`, never `NotFound` (`DENIED_IS_NEVER_NOT_FOUND`); the
+ * config service's suite then holds that only `NotFound` reads as not joined. The locked-since-boot read itself — 257 over `EPERM`, per
  * Apple's data-protection contract — is reachable by no host a test can run on (the simulator implements
  * no data protection, and the rig drives only an unlocked app), so it is not a contract clause: this
  * paragraph is where that belief lives, with its evidence (`docs/architecture.md`).

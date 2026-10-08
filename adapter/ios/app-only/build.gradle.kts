@@ -54,9 +54,8 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
-            // The contract bindings of this module's adapters (`docs/architecture.md`): the live
-            // `StagedBytesContract` binding beside `IosStagedBytes`, and the photo-library contracts over
-            // the grant-aware composition production calls.
+            // The contract bindings of this module's adapters (`docs/architecture.md`): the photo-library
+            // contracts over the grant-aware composition production calls.
             implementation(project(":test:contracts"))
             implementation(project(":domain:compose"))
             // The transfer contracts record into the real ledger, which is a service over the `Databases` adapter.

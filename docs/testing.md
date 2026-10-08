@@ -176,9 +176,24 @@ differently from the system it stands in for. **The contract code is the specifi
 doc or spec restates its clauses. This section covers the testing mechanics. Which ports are contracted,
 and why that matters for architecture, is in `docs/architecture.md`.
 
-**Only ports have contracts.** The entry ports' handlers deliberately have none: they are pinned by rig tests over
-the JVM root (section 7) rather than by clauses. A format a port's answers are framed into is not a port: the
-encrypted file format is held to shared reference vectors instead (below, `Crypto`).
+**Only ports have contracts, and a contract's subject IS the port.** A service built over a port is never a
+subject, even when the service is all a caller ever sees of the port: its rules are tested over the mocks
+(section 5), which are bound to the same contracts as the real adapters, so the mocks' fidelity is held where the
+adapters' is. (Eight contracts once took a service as subject — the ledger, the download store and six App-Group
+stores; their scenarios now live in those services' suites.) The entry ports'
+handlers deliberately have none: they are pinned by rig tests over the JVM root (section 7) rather than by clauses.
+A format a port's answers are framed into is not a port: the encrypted file format is held to shared reference
+vectors instead (below, `Crypto`).
+
+**Every statement runs on every SQLite.** The services' SQL is tested over the `Databases` mock, which is real
+SQLite — but the JVM's, and the mock suites run on the JVM only. What each platform's own SQLite makes of the
+production schemas is `DatabasesContract`'s schema clauses (`SchemaClauses.kt`): for `ledger.db` and
+`downloads.db`, every statement SQLDelight generates runs through the port (each read as it is, each write in a
+rolled-back transaction with the reads inside it), and a database created at its first shipped version migrates to
+the shape a fresh one has and then runs them all again. They assert that a statement RUNS, never what it answers —
+that is the services'. The statement list is generated from SQLDelight's own output (`generateSchemaStatements`,
+`SchemaStatementsTask` in `build-logic`) with a fixture per argument type, so a query added to a `.sq` file is run
+with nothing to remember, and a type with no fixture fails the build naming it.
 
 Decision record: `changes/archive/2026-09-22-establish-port-contracts`. Later extensions are listed at the
 end of this section.
@@ -212,16 +227,11 @@ Where bindings live: beside their implementations.
   statuses and bodies — because what they MEAN is the services' decision above the port, tested beside those
   services (`CredentialedBackendTest`, `BackendServicesTest`). A binding enters states through the backend's public
   surface: `EdgeSetup` over HTTP, `PortSetup` through the port itself for a backend with no HTTP surface.
-- The live backend, and the JVM `Databases` adapter with the storage services bound through it: `:adapter:generic:app`
-  `jvmTest`. The storage services live in `:domain:services`, but their contracts (`LedgerStore`, `DownloadStore`)
-  are bound **through** the service over each platform's real `Databases` adapter, beside that adapter: a
-  `:domain:*` build file names no module, and the contract is a claim about the service over the real database.
-- The JVM `Files` adapter, and the file-backed services' contracts (config, manifest, push record, staging, log tail)
-  through the services over it: `:adapter:generic:app` `jvmTest` — so every `build` runs them, not only CI's simulator job.
-- The iOS `Databases`, `Files` and `Preferences` adapters, and the storage services through them on Kotlin/Native:
-  `:adapter:ios:ext-safe` tests.
-- The Android `Files`, `Databases`, `Preferences` and `SecureStore` adapters, and the config, staging, ledger and
-  download services through them on ART: `:adapter:android`'s device tests (`src/androidDeviceTest`), on `ANDROID_EMU`.
+- The live backend, and the JVM `Databases` and `Files` adapters: `:adapter:generic:app` `jvmTest` — so every
+  `build` runs them, not only CI's simulator job.
+- The iOS `Databases`, `Files` and `Preferences` adapters on Kotlin/Native: `:adapter:ios:ext-safe` tests.
+- The Android `Files`, `Databases`, `Preferences` and `SecureStore` adapters on ART: `:adapter:android`'s device tests
+  (`src/androidDeviceTest`), on `ANDROID_EMU` — the only place the production schemas meet Android's SQLite.
   The Android module has no `commonTest` — every binding there needs the platform — so the convention plugin declares
   the device test for a module with `src/androidDeviceTest` too.
 - `DeviceIntegrity` on Android: its AVAILABLE clauses run live on `ANDROID_EMU` (a key is made, attested, named and
@@ -283,10 +293,11 @@ Where bindings live: beside their implementations.
   the real `SharedPreferences` (`AndroidInstallReferrerTest`). It is no port and has no contract — the Links port's
   promise is unchanged. What the real Play client answers on a Play-installed build is reachable only once the listing
   is public (production launch), and is checked then by hand.
-- The storage services' fake-driven tests (their answers to what no contract state enters): `:adapter:generic:mock`
-  `commonTest`, over the storage mocks — where the services' contracts are bound over the mocks too
-  (`StoreContractBindingsTest`, `AppGroupStoreContractBindingsTest`, `ConfigStoreContractBindingTest`), so the mocks
-  every feature test stands on are held to the platform adapters' clauses.
+- The storage services' suites — their rules, their migrations (each entered at its version through the
+  `Databases` port, so the service's own open runs the chain) and their answers to every port failure:
+  `:adapter:generic:mock` `commonTest` (`services/`), over the storage mocks, which `DatabasesMockContractBindingTest`
+  and `StorageMockContractBindingsTest` hold to the platform adapters' clauses. `LedgerWriter`, a feature over the
+  ledger, is `:test:feature`'s (`LedgerWriterTest`).
 - Keychain and App-Group stores: `:adapter:ios:ext-safe` tests.
 - Simulator-app PhotoKit and URLSession: `:adapter:ios:app-only` `src/rig`.
 
