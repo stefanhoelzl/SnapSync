@@ -10,6 +10,8 @@ compose-material-icons = "1.7.3"
 foojay = "1.0.0"
 jdk = "25"
 orbit = "12.0.1"
+# The zero coverage gate reads compiled classes to recognise compiler glue by its shape (`CoverageZero`, build-logic).
+asm = "9.9.1"
 coroutines = "1.11.0"
 sqldelight = "2.4.1"
 kermit = "2.2.0"
@@ -63,6 +65,7 @@ androidx-sqlite = "2.7.1"
 androidx-compose = "1.12.1"
 
 [libraries]
+asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }

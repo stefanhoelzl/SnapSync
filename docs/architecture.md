@@ -443,8 +443,12 @@ branch. A module is in one of two states, and its `plugins {}` block says which.
   be applied together, so switching is one visible edit. `snapsync.coverage` with no floor block MEASURES only — the
   wiring modules below, until they are bounded.
 
-**What the zero gate excuses: Compose glue, and only on declaration lines.** The Compose compiler attributes its
-generated glue — restart groups, the `$changed`/`$default` bits, `skipToGroupEnd`, `updateScope` — to the declaration
+**What the zero gate excuses: compiler-generated glue, recognised by its shape.** One category: code a compiler
+emits that no input can reach. Nothing a person wrote is ever excused, there is no opt-in annotation or comment
+marker, and a shape joins only as code in `CoverageZero` with tests pinning both what it excuses and what it must not.
+Every excusal is printed by the task, so the glue's growth stays visible. The shapes today:
+
+*Compose declaration glue, only on declaration lines.* The Compose compiler attributes its generated glue — restart groups, the `$changed`/`$default` bits, `skipToGroupEnd`, `updateScope` — to the declaration
 lines of a `@Composable` function, from `fun` through the body's opening `{`. Those lines' misses are excused and
 counted; the task prints, per module, how many lines, instructions and branches it excused, so growth is visible. A
 body line is never excused. `@Composable` itself is the mark: there is no opt-in annotation and no comment marker.
@@ -452,13 +456,25 @@ Composable **lambdas** carry no excusable glue — measured 2026-10-07, every mi
 someone wrote (`if (body != null)`, `when (cause)`). The declaration ranges come from a source scan (bracket-balanced,
 so a function-type parameter's `->` or a default value's `=` ends nothing), **checked against the bytecode**: every
 composable method in the report must match a scanned declaration in the same file and the reverse, or the gate fails.
-A scanner that misreads a signature therefore breaks the build rather than excusing the wrong lines. The gate also
+A scanner that misreads a signature therefore breaks the build rather than excusing the wrong lines.
+
+*kotlinx-serialization's zero-mask missing-field check.* In a `@Serializable` class whose every field has a default,
+the plugin's deserialization constructor still opens with `if ((0 & seen) != 0) throwMissingFieldException(…)`: the
+required-field mask is the constant 0, so no document can take that branch. It is recognised in the **bytecode** — a
+constructor taking a `SerializationConstructorMarker` whose code opens `iconst_0; iload_1; iand; ifeq` and whose
+skipped block ends in the plugin's throw — and only that block's instructions and its one branch are excused, on the
+class's header line; whatever else the line misses still fails. A class with a required field has a non-zero mask,
+and is never excused: its check is real, and a test that leaves the field out reaches it. The task prints each site.
+
+The gate also
 refuses a report whose per-line counts do not add up to its own totals, so a Kover upgrade that moves the counts fails
 loudly instead of passing vacuously. Logic: `build-logic`'s `CoverageZero` (tested by `CoverageZeroTest`, which the
 root `check` runs).
 
 **Inline functions need no exemption.** Kover credits inlined execution back to the inline function's own source
-lines; an uncovered inline helper is untested, not unmeasurable.
+lines; an uncovered inline helper is untested, not unmeasurable. An inline body with many branches is still awkward to
+measure — the branches a test reaches through one copy were not credited together with another copy's (`invocation`,
+2026-10-08) — so keep such decisions in an ordinary function the inline one calls (`logEntered`/`logReturned`).
 
 **Credit is unit-only, with one placed exception.**
 - Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:mock`, `:test:feature`, `:ui:screens`,
