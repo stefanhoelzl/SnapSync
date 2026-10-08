@@ -75,6 +75,19 @@ class CalendarDragTest {
     }
 
     @Test
+    fun `a quick flick that jumps a day and lifts lands on that day`() {
+        range = placed(10, 12)
+        setPicker()
+        rule.onNodeWithContentDescription("Thursday, 12 March 2026").performTouchInput {
+            down(center)
+            cells(2, 0) // one event, past the slop and onto Saturday the 14th
+            up()
+        }
+        rule.waitForIdle()
+        assertEquals(march(14), range.endDay)
+    }
+
+    @Test
     fun `a tap on an end without moving picks that day`() {
         setPicker()
         rule.onNodeWithContentDescription("Tuesday, 10 March 2026").performClick()
