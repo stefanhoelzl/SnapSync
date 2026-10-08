@@ -28,7 +28,11 @@ import kotlin.time.Duration.Companion.seconds
 fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {
     val host = JvmRigHost.start("mock")
     try {
-        RigClient("http://127.0.0.1:${host.port}").use { Rig(it).body() }
+        RigClient("http://127.0.0.1:${host.port}").use { client ->
+            // Mocked time only, never the wall clock: every test starts inside the default event window, and one
+            // that needs another moment moves the clock itself.
+            Rig(client).apply { device("clock/advance", "to" to Rig.NOW) }.body()
+        }
     } finally {
         host.close()
     }
@@ -120,6 +124,9 @@ class Rig(val client: RigClient) {
         /** The default event window: 30 days, containing [PHOTO_DATE]. Local date-times, as the create form takes. */
         const val WINDOW_START = "2026-05-15T00:00:00"
         const val WINDOW_END = "2026-06-14T00:00:00"
+
+        /** Where every test's mocked clock starts: inside the default window, on the day [PHOTO_DATE] was taken. */
+        const val NOW = "2026-06-01T12:00:00Z"
 
         /** A cutoff before any capture date, so a gallery read under it lists the whole library. */
         const val WHOLE_LIBRARY = "1970-01-01T00:00:00Z"

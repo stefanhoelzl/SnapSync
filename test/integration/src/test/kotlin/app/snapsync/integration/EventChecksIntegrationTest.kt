@@ -48,6 +48,7 @@ class EventChecksIntegrationTest {
 
     @Test
     fun after_the_end_heartbeats_read_the_event_at_most_once_an_hour_and_a_push_always() = rigTest {
+        device("clock/advance", "to" to DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         // A second member that never settles keeps the event open, so this one stays joined to be woken.
         foreignDevice("DEV-F", "FQ")
@@ -102,6 +103,7 @@ class EventChecksIntegrationTest {
 
         const val SHORT_START = "2026-05-15T00:00:00"
         const val SHORT_END = "2026-05-20T00:00:00"
+        const val DURING = "2026-05-16T12:00:00Z"
         const val AFTER_THE_END = "2026-05-22T00:00:00Z"
         const val AFTER_THE_END_PLUS_10_MIN = "2026-05-22T00:10:00Z"
     }

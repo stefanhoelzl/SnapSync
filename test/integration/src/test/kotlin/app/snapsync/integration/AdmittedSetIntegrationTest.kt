@@ -69,6 +69,7 @@ class AdmittedSetIntegrationTest {
         addPhoto("IN", date = inWindow)
         addPhoto("AFTER", date = postCeiling)
 
+        device("clock/advance", "to" to "2026-07-06T12:00:00Z") // the event is running, both photos taken
         create(startsAt = "2026-06-10T00:00:00", endsAt = "2026-07-09T00:00:00")
         assertEquals(2, awaitShareCount())
         val event = join()
