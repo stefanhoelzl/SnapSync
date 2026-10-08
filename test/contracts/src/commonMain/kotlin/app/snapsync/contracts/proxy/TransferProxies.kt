@@ -40,7 +40,10 @@ fun Download.recorded(log: CallLog): Download = DownloadProxy(this, log)
 internal class DownloadProxy(private val inner: Download, log: CallLog) : Download {
     private val r = log.recorder("Download")
 
-    override fun start(url: String, tag: String, network: TransferNetwork) = r.answer("start", inner.start(url, tag, network))
+    override fun start(url: String, tag: String, network: TransferNetwork) = r.answer(
+        "start",
+        inner.start(url, tag, network),
+    )
     override suspend fun cancelAll() = r.returns("cancelAll", inner.cancelAll())
 
     override fun listen(handlers: DownloadHandlers) = r.returns(

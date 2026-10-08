@@ -355,9 +355,12 @@ system it stands in for. The contract code **is** the specification of a port's 
 - **Every clause declares the port-grid cells it covers** (`covers = cells { … }`, typed references), and
   every declared cell is one the grid derives from `:domain:ports`. `ClauseCoversTest` enforces this
   (`docs/testing.md`, "Every clause declares the cells it covers").
-- **Every grid cell is covered or an open cell**: declared by a clause that runs against something real,
+- **Every grid cell is covered or an open cell**: declared outright by a clause that runs against something real,
   or listed in the committed `test/contracts/open-cells.txt`, which may only shrink. `ClauseCoversTest`
   enforces this too, so new port surface without a clause fails the build (`docs/testing.md`, "Open cells").
+- **A declared cell must occur.** Each binding wraps its implementation in the port's recording proxy, and
+  the runner fails a clause whose declared cell never occurred during its body, on every host it runs.
+  `ProxyCompletenessTest` holds every proxy to the grid (`docs/testing.md`, "A declared cell must occur").
 - Hosts CI cannot reach are **recorded at the OS boundary** on a device (through the rig, under
   `-Psnapsync.rig=true`) into `test/contracts/recordings/<Contract>@<HOST>[.<GRANT>|.<PRECONDITION>].rec`, and
   **replayed** against the current adapter on every build. An adapter recorded this way routes its OS

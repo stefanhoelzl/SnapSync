@@ -66,7 +66,10 @@ fun LogSink.recorded(log: CallLog): LogSink = LogSinkProxy(this, log)
 internal class LogSinkProxy(private val inner: LogSink, log: CallLog) : LogSink {
     private val r = log.recorder("LogSink")
 
-    override fun write(severity: Severity, tag: String, line: String) = r.returns("write", inner.write(severity, tag, line))
+    override fun write(severity: Severity, tag: String, line: String) = r.returns(
+        "write",
+        inner.write(severity, tag, line),
+    )
 }
 
 /** [NetworkMonitor] as its clause's [CallLog] sees it: every emission is an answer. */

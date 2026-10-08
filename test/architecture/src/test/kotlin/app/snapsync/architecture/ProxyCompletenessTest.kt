@@ -29,7 +29,6 @@ import kotlin.reflect.jvm.isAccessible
 import kotlin.reflect.jvm.javaGetter
 import kotlin.reflect.jvm.javaMethod
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -54,7 +53,9 @@ class ProxyCompletenessTest {
     fun `every grid port has a proxy`() {
         val missing = PortGrid.ports.filter { proxyClass(it) == null }.map { it.simpleName }
         if (missing.isNotEmpty()) {
-            fail("these ports have no recording proxy ($PROXY_PACKAGE.<Port>Proxy, constructed as (adapter, CallLog)): $missing")
+            fail(
+                "these ports have no recording proxy ($PROXY_PACKAGE.<Port>Proxy, constructed as (adapter, CallLog)): $missing",
+            )
         }
     }
 
@@ -65,25 +66,40 @@ class ProxyCompletenessTest {
             (listOf(port) + via).flatMap { through ->
                 if (proxyClass(through) == null) return@flatMap emptyList()
                 PortGrid.cells.filter { it.port == port.simpleName }.mapNotNull { cell ->
-                    val problem = runCatching { Driver(through).check(cell.text) }.getOrElse { "${it::class.simpleName}: ${it.message}" }
+                    val problem = runCatching {
+                        Driver(
+                            through,
+                        ).check(cell.text)
+                    }.getOrElse { "${it::class.simpleName}: ${it.message}" }
                     problem?.let { "${cell.text} (through ${through.simpleName}Proxy): $it" }
                 }
             }
         }
-        if (failures.isNotEmpty()) fail("a proxy does not record these cells as the grid writes them:\n  " + failures.joinToString("\n  "))
+        if (failures.isNotEmpty()) {
+            fail(
+                "a proxy does not record these cells as the grid writes them:\n  " + failures.joinToString("\n  "),
+            )
+        }
     }
 
     @Test
     fun `every proxy names exactly its port's declared throws`() {
         val wrong = PortGrid.ports.mapNotNull { port ->
             val proxy = proxyClass(port) ?: return@mapNotNull null
-            val declared = ownMembers(port).mapNotNull { m ->
+            val declared = allMembers(port).mapNotNull { m ->
                 val types = (m as? KFunction<*>)?.javaMethod?.exceptionTypes.orEmpty()
                 types.singleOrNull()?.let { m.name to it.kotlin }
             }.toMap()
+
             @Suppress("UNCHECKED_CAST")
-            val named = (proxy.companionObjectInstance?.let { c -> c::class.memberProperties.firstOrNull { it.name == "THROWS" }?.getter?.call(c) }
-                as Map<String, KClass<*>>?).orEmpty()
+            val named = (
+                proxy.companionObjectInstance?.let { c ->
+                    c::class.memberProperties.firstOrNull {
+                        it.name == "THROWS"
+                    }?.getter?.call(c)
+                }
+                    as Map<String, KClass<*>>?
+                ).orEmpty()
             if (named == declared) null else "${port.simpleName}Proxy names $named, the port declares $declared"
         }
         if (wrong.isNotEmpty()) fail(wrong.joinToString("\n"))
@@ -121,7 +137,10 @@ class ProxyCompletenessTest {
             val member = member(through, p.name)
             if (p.param != null) {
                 var action: Any? = null
-                answers[javaName(member)] = { args -> action = args[paramIndex(member, p.param)]; dummy(member.returnType) }
+                answers[javaName(member)] = { args ->
+                    action = args[paramIndex(member, p.param)]
+                    dummy(member.returnType)
+                }
                 callMember(proxy(), member)
                 invokeFunction(action!!, member.parameters.first { it.name == p.param }.type, p.args!!)
             } else {
@@ -129,23 +148,26 @@ class ProxyCompletenessTest {
             }
         }
 
+        /**
+         * Throws the member's declared type through [call], then a throw of another type and a cancellation, which must
+         * pass unrecorded.
+         */
+        private fun throws(member: KCallable<*>, call: () -> Any?) {
+            val declared = (member as KFunction<*>).javaMethod!!.exceptionTypes.single()
+            val raises = listOf(allocate(declared) as Throwable, AssertionError("not the declared type"), CancellationException("cancelled"))
+            raises.forEachIndexed { i, raised ->
+                val before = log.cells
+                answers[javaName(member)] = { throw raised }
+                runCatching { call() }
+                check(i == 0 || log.cells == before) { "an undeclared throw was recorded: ${log.cells - before}" }
+            }
+        }
+
         /** Answers [variant] from [member] (a value, or a throw of the declared type), then reads it through [call]. */
         private fun drive(member: KCallable<*>, variant: String, call: () -> Any?) {
             val type = member.returnType
             val k = type.classifier as? KClass<*>
-            if (variant == "throws") {
-                val declared = (member as KFunction<*>).javaMethod!!.exceptionTypes.single()
-                answers[javaName(member)] = { throw allocate(declared) as Throwable }
-                runCatching { call() }
-                // A throw of another type, or a cancellation, passes unrecorded; the cell is already in the log once.
-                val before = log.cells
-                answers[javaName(member)] = { throw AssertionError("not the declared type") }
-                runCatching { call() }
-                answers[javaName(member)] = { throw CancellationException("cancelled") }
-                runCatching { call() }
-                check(log.cells == before) { "an undeclared throw was recorded: ${log.cells - before}" }
-                return
-            }
+            if (variant == "throws") return throws(member, call)
             when {
                 k != null && k.isSubclassOf(StateFlow::class) -> {
                     answers[javaName(member)] = { MutableStateFlow(valueOf(type.arguments.single().type!!, variant)) }
@@ -176,7 +198,10 @@ class ProxyCompletenessTest {
             val member = member(handleType, p.name)
             if (p.param != null) {
                 var action: Any? = null
-                handleAnswers[javaName(member)] = { args -> action = args[paramIndex(member, p.param)]; Unit }
+                handleAnswers[javaName(member)] = { args ->
+                    action = args[paramIndex(member, p.param)]
+                    Unit
+                }
                 callMember(wrapped, member)
                 invokeFunction(action!!, member.parameters.first { it.name == p.param }.type, p.args!!)
             } else {
@@ -194,11 +219,21 @@ class ProxyCompletenessTest {
                 return callMember(proxy(), producer)!!
             }
             val bundle = listenAndHear()
-            val field = bundle::class.memberProperties.first { f -> handlerArgTypes(bundle::class, f.name).any { it.classifier == handleType } }
+            val field = bundle::class.memberProperties.first { f ->
+                handlerArgTypes(bundle::class, f.name).any {
+                    it.classifier == handleType
+                }
+            }
             val types = handlerArgTypes(bundle::class, field.name)
             var got: Any? = null
             heardFields[field.name] = { args -> got = args[types.indexOfFirst { it.classifier == handleType }] }
-            invoke(field.getter.call(bundle)!!, types.map { if (it.classifier == handleType) handle else dummy(it) }, isSuspend(field.returnType))
+            invoke(
+                field.getter.call(bundle)!!,
+                types.map {
+                    if (it.classifier == handleType) handle else dummy(it)
+                },
+                isSuspend(field.returnType),
+            )
             return got!!
         }
 
@@ -206,13 +241,19 @@ class ProxyCompletenessTest {
 
         /** Listens through the proxy with a bundle of doubles, and answers the WRAPPED bundle the adapter was handed. */
         private fun listenAndHear(): Any {
-            answers["listen"] = { args -> heard = args[0]; Unit }
+            answers["listen"] = { args ->
+                heard = args[0]
+                Unit
+            }
             val listen = allMembers(through).first { it.name == "listen" }
             val bundleType = PortGrid.handlerBundle(through)!!
             val ctor = bundleType.primaryConstructor!!
             val ours = ctor.callBy(
                 ctor.parameters.associateWith { param ->
-                    functionDouble(param.type) { args -> heardFields[param.name]?.invoke(args); null }
+                    functionDouble(param.type) { args ->
+                        heardFields[param.name]?.invoke(args)
+                        null
+                    }
                 },
             )
             callMember(proxy(), listen, listOf(ours))
@@ -252,10 +293,10 @@ class ProxyCompletenessTest {
         fun proxyClass(port: KClass<*>): KClass<*>? = runCatching {
             Class.forName("$PROXY_PACKAGE.${port.simpleName}Proxy").kotlin
         }.getOrNull()?.takeIf { cls ->
-            port.isSuperclassOf(cls) && cls.primaryConstructor?.parameters?.map { it.type.classifier } == listOf(port, CallLog::class)
+            port.isSuperclassOf(cls) && cls.primaryConstructor?.parameters?.map {
+                it.type.classifier
+            } == listOf(port, CallLog::class)
         }
-
-        fun ownMembers(port: KClass<*>) = port.members.filter { it.isAbstract && it.name != "listen" }
 
         fun allMembers(type: KClass<*>): List<KCallable<*>> = type.members.filter { it.isAbstract }
 
@@ -316,7 +357,15 @@ class ProxyCompletenessTest {
             // A handler's answer is the core's, so a double answers null: a type-checked `Unit` would fail a handler whose
             // answer is a nullable value (`onEvent`), and `null` passes every reference type's cast.
             return Proxy.newProxyInstance(fn.classLoader, arrayOf(fn)) { self, method, args ->
-                if (method.declaringClass == Any::class.java) objectMethod(self, method, args) else body(args.orEmpty().toList().take(callbackArgTypes(type).size))
+                if (method.declaringClass == Any::class.java) {
+                    objectMethod(
+                        self,
+                        method,
+                        args,
+                    )
+                } else {
+                    body(args.orEmpty().toList().take(callbackArgTypes(type).size))
+                }
             }
         }
 
@@ -326,11 +375,29 @@ class ProxyCompletenessTest {
          */
         fun double(type: KClass<*>, configured: (String) -> ((Array<Any?>) -> Any?)?): Any {
             val returns = allMembers(type).associate { javaName(it) to it.returnType }
-            return Proxy.newProxyInstance(type.java.classLoader, arrayOf(type.java), InvocationHandler { self, method, args ->
-                if (method.declaringClass == Any::class.java) return@InvocationHandler objectMethod(self, method, args)
-                val answer = configured(method.name)
-                if (answer != null) answer(args?.let { arrayOf<Any?>(*it) } ?: emptyArray()) else returns[method.name]?.let(::dummy) ?: Unit
-            })
+            return Proxy.newProxyInstance(
+                type.java.classLoader,
+                arrayOf(type.java),
+                InvocationHandler { self, method, args ->
+                    if (method.declaringClass == Any::class.java) {
+                        return@InvocationHandler objectMethod(
+                            self,
+                            method,
+                            args,
+                        )
+                    }
+                    val answer = configured(method.name)
+                    if (answer != null) {
+                        answer(
+                            args?.let {
+                                arrayOf<Any?>(*it)
+                            } ?: emptyArray(),
+                        )
+                    } else {
+                        returns[method.name]?.let(::dummy) ?: Unit
+                    }
+                },
+            )
         }
 
         fun objectMethod(self: Any, method: Method, args: Array<out Any?>?): Any? = when (method.name) {
@@ -369,7 +436,10 @@ class ProxyCompletenessTest {
                 k.isSealed -> instance(leaves(k).first())
                 k.java.isInterface -> double(k) { null }
                 // A value class is unboxed at a typed call, so its one field must be real.
-                k.isValue -> k.primaryConstructor!!.let { c -> c.isAccessible = true; c.call(dummy(c.parameters.single().type)) }
+                k.isValue -> k.primaryConstructor!!.let { c ->
+                    c.isAccessible = true
+                    c.call(dummy(c.parameters.single().type))
+                }
                 else -> instance(k)
             }
         }
@@ -377,11 +447,21 @@ class ProxyCompletenessTest {
         fun instance(k: KClass<*>): Any = k.objectInstance ?: allocate(k.java)
 
         fun allocate(c: Class<*>): Any {
-            val unsafe = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
+            val unsafe = Class.forName(
+                "sun.misc.Unsafe",
+            ).getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
             return unsafe.javaClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, c)
         }
 
-        fun leaves(k: KClass<*>): List<KClass<*>> = k.sealedSubclasses.flatMap { if (it.isSealed) leaves(it) else listOf(it) }
+        fun leaves(k: KClass<*>): List<KClass<*>> = k.sealedSubclasses.flatMap {
+            if (it.isSealed) {
+                leaves(
+                    it,
+                )
+            } else {
+                listOf(it)
+            }
+        }
 
         fun relativeName(k: KClass<*>): String = k.qualifiedName!!.removePrefix(k.java.`package`.name + ".")
     }

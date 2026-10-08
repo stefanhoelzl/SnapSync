@@ -3,12 +3,12 @@ package app.snapsync.contracts
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.ports.Clock
 import kotlinx.datetime.TimeZone
-import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 private enum class Toy { ON, OFF }
 
@@ -48,7 +48,13 @@ private class ToyBinding(
 private fun unrecorded(reaches: Set<Toy>, answer: (Toy) -> Entered<Switch>) = ToyBinding(reaches) { s, _ -> answer(s) }
 
 private fun honest(reaches: Set<Toy>) = ToyBinding(reaches) { s, log ->
-    if (s in reaches) Entered.Ready(Switch(s == Toy.ON, FixedClock.recorded(log))) else Entered.Unreachable("toy cannot be $s")
+    if (s in reaches) {
+        Entered.Ready(
+            Switch(s == Toy.ON, FixedClock.recorded(log)),
+        )
+    } else {
+        Entered.Unreachable("toy cannot be $s")
+    }
 }
 
 /** A one-clause contract over [covers] whose body reads the clock [reads] times. */
@@ -106,7 +112,11 @@ class RunnerTest {
             override val host = Host.IOS_DEVICE_APP
             override val kind = BindingKind.Replay
             override val reaches = setOf(Toy.ON)
-            override fun create(state: Toy, clauseId: String, log: CallLog) = Entered.Ready(Replayer(clauseId, emptyList()))
+            override fun create(
+                state: Toy,
+                clauseId: String,
+                log: CallLog,
+            ) = Entered.Ready(Replayer(clauseId, emptyList()))
         }
         assertIs<Outcome.Diverged>(run(contract, binding).single().outcome)
     }
@@ -121,7 +131,8 @@ class RunnerTest {
 
     @Test
     fun `verify fails once with the whole table`() {
-        val wrong = ToyBinding(setOf(Toy.ON, Toy.OFF)) { _, log -> Entered.Ready(Switch(false, FixedClock.recorded(log))) }
+        val wrong =
+            ToyBinding(setOf(Toy.ON, Toy.OFF)) { _, log -> Entered.Ready(Switch(false, FixedClock.recorded(log))) }
         val error = assertFailsWith<AssertionError> { verify(ToyContract, wrong) }
         val message = error.message.orEmpty()
         assertTrue("1 of 2 clauses failed" in message, message)
@@ -148,7 +159,10 @@ class RunnerTest {
     fun `a declared cell that never occurred is Failed naming it`() {
         val bare = unrecorded(setOf(Toy.ON, Toy.OFF)) { s -> Entered.Ready(Switch(s == Toy.ON)) }
         val results = run(ToyContract, bare)
-        assertTrue(results.all { it.outcome == Outcome.Failed("declared Clock.now → returns never occurred") }, results.table())
+        assertTrue(
+            results.all { it.outcome == Outcome.Failed("declared Clock.now → returns never occurred") },
+            results.table(),
+        )
     }
 
     @Test
