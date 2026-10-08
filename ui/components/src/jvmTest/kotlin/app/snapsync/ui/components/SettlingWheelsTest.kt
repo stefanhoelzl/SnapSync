@@ -79,9 +79,18 @@ class SettlingWheelsTest {
         rule.onNode(hasText("13") and hasAnyAncestor(hasContentDescription(HOUR)), useUnmergedTree = true)
             .performClick()
         rule.waitForIdle()
-        // Animated, the scroll's own end reports the row as well as the tap: every rule a settle feeds is idempotent.
-        assertEquals(setOf(13), settled.toSet())
+        assertEquals(listOf(13), settled, "reported once, by the tap, not again by its scroll's end")
         rule.onNodeWithContentDescription(HOUR, useUnmergedTree = true).assert(reading("13"))
+    }
+
+    @Test
+    fun `after a tap, a drag still settles where the host left it`() {
+        setWheels(reduceMotion = false)
+        rule.onNode(hasText("13") and hasAnyAncestor(hasContentDescription(HOUR)), useUnmergedTree = true)
+            .performClick()
+        rule.waitForIdle()
+        drag(HOUR) { rows(-2) } // from 13 up to 15
+        assertEquals(listOf(13, 15), settled)
     }
 
     @Test
