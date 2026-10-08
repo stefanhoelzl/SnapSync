@@ -32,6 +32,7 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.step
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -266,9 +267,21 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `a count whose read fails is unavailable and the container keeps working`() {
-        return onHost(queries = counting { _, _ -> error("download store unreadable") }) { host ->
+        // Unavailable is also where the count starts, and the state flow drops the Counting in between, so a wait on the
+        // state alone passes before the read ran. The read is awaited itself, then Unavailable is the failure's answer.
+        val asked = CompletableDeferred<Unit>()
+        return onHost(
+            queries = counting { _, _ ->
+                asked.complete(Unit)
+                error("download store unreadable")
+            },
+        ) { host ->
             host.surfaces.onOpenReconfigure()
-            host.stateWhere("an unavailable count") { it.reconfigureCount() == ShareCount.Unavailable }
+            host.stateWhere("the reconfigure surface") { it.reconfigureCount() != null }
+            withTimeout(5.seconds) { asked.await() }
+            withTimeout(5.seconds) {
+                while (host.container.stateFlow.value.reconfigureCount() != ShareCount.Unavailable) delay(10)
+            }
             // Still alive: a later intent lands.
             host.form.onSaveToAlbum(true)
             host.stateWhere("the album edit") {
