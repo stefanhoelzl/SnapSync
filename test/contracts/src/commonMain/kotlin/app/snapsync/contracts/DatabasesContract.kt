@@ -33,7 +33,9 @@ enum class DatabasesState {
  * `OldSchema` instead; and a database that exists but cannot be opened is `Failed` on both paths — never
  * `Missing`, which a reader would take for "nothing was ever written".
  *
- * The contract brings its own two-version schema, so a clause needs nothing from production's databases. A
+ * Its probe clauses bring their own two-version schema, so they need nothing from production's databases; the
+ * schema clauses ([schemaClauses]) run every statement of production's two, so each platform's SQLite is held to
+ * them. A
  * binding enters [DatabasesState.CURRENT] and [DatabasesState.OLD] through the port itself ([enterCurrent],
  * [enterOld]) in a directory of its own; [DatabasesState.UNOPENABLE] needs a platform file write, the binding's.
  */
@@ -103,6 +105,7 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
     }
 
     override val clauses = clauses {
+        schemaClauses()
 
         clause("ABSENT_READ_WRITE_CREATES_IT", DatabasesState.ABSENT) { databases ->
             val driver = databases.opened(Current, readOnly = false)
