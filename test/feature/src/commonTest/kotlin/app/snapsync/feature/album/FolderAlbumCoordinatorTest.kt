@@ -19,6 +19,7 @@ import app.snapsync.services.gallery.GalleryAlbums
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -123,5 +124,32 @@ class FolderAlbumCoordinatorTest {
         assertNull(library.operator.folderOf(own), "the member's own photo stays in the camera folder")
         assertEquals(album, library.operator.folderOf(received), "the received photo moved into the album")
         assertTrue(store.filled(event), "a move that landed fills the album")
+    }
+
+    @Test
+    fun `a filled album that still holds its photos keeps receiving them`() = runTest {
+        val album = assertNotNull(ensure())
+        receive("R1", coordinator.albumIdFor(event, saveToAlbum = true))
+        assertTrue(store.filled(event))
+
+        assertEquals(album, coordinator.albumIdFor(event, saveToAlbum = true))
+    }
+
+    @Test
+    fun `an import into an album that is no longer the event's fills nothing`() = runTest {
+        // A recreation raced the import: the photo landed in the old album, which is not the one to watch.
+        assertNotNull(ensure())
+        coordinator.onImportedInto(event, "an-older-album")
+        assertFalse(store.filled(event))
+    }
+
+    @Test
+    fun `filing nothing, or filing with no album yet, fills nothing`() = runTest {
+        coordinator.placeReceived(event, listOf(receive("R1", album = null)))
+        assertFalse(store.filled(event), "no album was ever created")
+
+        assertNotNull(ensure())
+        coordinator.placeReceived(event, emptyList())
+        assertFalse(store.filled(event), "an empty batch moves nothing")
     }
 }

@@ -218,4 +218,16 @@ class RenameEventTest {
         assertEquals("Ana's 30th", client.sentName)
         assertEquals(1, client.calls)
     }
+
+    @Test
+    fun `a rename while one is in flight is ignored — nothing is sent and nothing is saved`() = runTest {
+        val store = ConfigWrites()
+        val client = FakeRename(RenameOutcome.Renamed("Ana's 30th"))
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.InFlight)
+        drive(Membership(current()), store, client, status)
+
+        assertEquals(0, client.calls)
+        assertNull(store.saved)
+        assertEquals(RenameStatus.InFlight, status.value, "the running rename still owns the status")
+    }
 }

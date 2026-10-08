@@ -134,6 +134,18 @@ class JoinEventTest {
     }
 
     @Test
+    fun `an event gone by the enrollment is a failed join and commits nothing`() = runTest {
+        val provisioned = mutableListOf<EventConfig>()
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_NOT_FOUND, provisioned = provisioned)
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            )
+
+        assertEquals(JoinOutcome.EnrollFailed, outcome)
+        assertTrue(provisioned.isEmpty())
+    }
+
+    @Test
     fun `an enrollment refused for this phone's credential is unverified and commits nothing`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
         val outcome = joinEvent(config = null, enrollResult = JoinResult.UNVERIFIED, provisioned = provisioned)

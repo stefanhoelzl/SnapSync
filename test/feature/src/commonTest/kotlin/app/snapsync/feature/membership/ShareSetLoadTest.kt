@@ -4,12 +4,15 @@ import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.StoredResource
+import app.snapsync.ports.DbOpen
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
+import app.snapsync.services.ledger.LEDGER_DB_NAME
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
@@ -152,6 +155,18 @@ class ShareSetLoadTest {
         val ledger = leftovers()
         ShareSetLoad(FakeFiles(Result.success(emptyList())), ledger.service, unreadableIdentity()).load(eventId)
         assertKeptOnlyTheJoinedEvent(ledger)
+    }
+
+    @Test
+    fun `a ledger that cannot be opened is an error not a failed join`() = runTest {
+        val recorder = CapturingLogWriter()
+        val ledger = TestLedger(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked"))), joined = eventId)
+        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")))))
+
+        ShareSetLoad(files, ledger.service, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)
+
+        assertEquals(listOf(Severity.Error), recorder.severities, "the load returns, having said why it seeded nothing")
+        assertTrue(ledger.eventsHeld().isEmpty())
     }
 
     private suspend fun assertKeptOnlyTheJoinedEvent(ledger: TestLedger) {

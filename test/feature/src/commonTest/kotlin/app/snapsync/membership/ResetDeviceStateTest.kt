@@ -15,8 +15,11 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.TransferNetwork
+import app.snapsync.ports.Databases
+import app.snapsync.ports.DbOpen
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.settings.MobileDataSetting
@@ -33,12 +36,12 @@ import kotlin.test.assertTrue
 class ResetDeviceStateTest {
 
     /** The REAL services, over in-memory SQLite and an in-memory shared area; [configFiles] is the membership file. */
-    private class Fixture {
+    private class Fixture(downloadsDb: Databases? = null) {
         val configFiles = RecordingFiles()
         val config: ConfigService = configService(null, configFiles)
         private val databases = inMemoryDatabases()
         val ledger = LedgerService(databases) { LEDGER_EVENT }
-        val downloads = DownloadService(databases)
+        val downloads = DownloadService(downloadsDb ?: databases)
         val mobileData = MobileDataSetting(inMemoryPreferences())
 
         /**
@@ -139,5 +142,19 @@ class ResetDeviceStateTest {
 
         assertEquals(0, f.ledger.aggregates().completed, "the ledger clear still ran")
         assertTrue(f.downloadsReset, "the download reset still ran")
+    }
+
+    @Test
+    fun `a download store that cannot be read still lets every other step run`() = runTest {
+        // The kept-imports count is read for the log line only: unreadable, it is reported unknown, never fatal.
+        val f = Fixture(downloadsDb = inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("locked"))))
+        f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", AssetId("asset-1"), LedgerState.COMPLETED))
+        f.mobileData.set(false)
+
+        f.reset().reset()
+
+        assertEquals(0, f.ledger.aggregates().completed, "the ledger is cleared")
+        assertTrue(f.configFiles.configCleared, "the config is cleared")
+        assertTrue(f.mobileData.allowed.value, "the mobile-data choice is reset")
     }
 }

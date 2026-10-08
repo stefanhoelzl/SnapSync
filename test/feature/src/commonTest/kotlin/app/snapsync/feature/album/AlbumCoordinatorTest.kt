@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -25,6 +26,8 @@ private class FakeAlbumManager(
     var createResult: String? = "album-1",
     var existingIds: MutableSet<String> = mutableSetOf(),
     private val failAdd: Boolean = false,
+    /** What the library answers an add it does not throw on. */
+    private val addOutcome: WriteOutcome = WriteOutcome.Ok,
 ) : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
     var createCount = 0
     val added = mutableListOf<Pair<String, List<AssetId>>>()
@@ -40,7 +43,7 @@ private class FakeAlbumManager(
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
         if (failAdd) error("boom")
         added.add(album to assets.toList())
-        return WriteOutcome.Ok
+        return addOutcome
     }
 }
 
@@ -153,5 +156,27 @@ class AlbumCoordinatorTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"), failAdd = true)
         val store = albumMap().apply { put(event, "album-X") }
         AlbumCoordinator(GalleryAlbums(manager), store).place(event, listOf(AssetId("A_L0_1"))) // must not throw
+    }
+
+    @Test
+    fun `place never throws when the library refuses the add`() = runTest {
+        val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"), addOutcome = WriteOutcome.Failed("no"))
+        val store = albumMap().apply { put(event, "album-X") }
+        AlbumCoordinator(GalleryAlbums(manager), store).place(event, listOf(AssetId("A_L0_1"))) // must not throw
+        assertEquals(1, manager.added.size, "the add was asked once, and its refusal ends it")
+    }
+
+    @Test
+    fun `received photos are added to a collection, which has no filled state`() = runTest {
+        // Only a folder album turns "emptied" into "deleted"; a collection is never marked filled.
+        val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
+        val store = albumMap().apply { put(event, "album-X") }
+        val coordinator = AlbumCoordinator(GalleryAlbums(manager), store)
+
+        coordinator.placeReceived(event, listOf(AssetId("R_L0_1")))
+        coordinator.onImportedInto(event, "album-X")
+
+        assertEquals(listOf("album-X" to listOf(AssetId("R_L0_1"))), manager.added)
+        assertFalse(store.filled(event))
     }
 }

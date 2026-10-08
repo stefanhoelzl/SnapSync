@@ -4,7 +4,10 @@ package app.snapsync.feature.status
 
 import app.snapsync.mock.NetworkMock
 import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.NetworkMonitor
 import app.snapsync.services.network.NetworkReadings
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -116,5 +119,24 @@ class NetworkWatchTest {
         network.operator.access = NetworkAccess.Online(restricted = false)
         runCurrent()
         assertEquals(1, returns.size, "one watch, one return")
+    }
+
+    @Test
+    fun a_watch_whose_readings_ended_is_watched_afresh_at_the_next_start() = runTest {
+        // A monitor's stream may end; start is a no-op only while a previous watch is still live.
+        var watches = 0
+        val ending = object : NetworkMonitor {
+            override fun watch(): Flow<NetworkAccess> = flow {
+                watches++
+                emit(if (watches == 1) NetworkAccess.Online(restricted = false) else NetworkAccess.Blocked)
+            }
+        }
+        val watch = NetworkWatch(backgroundScope, NetworkReadings(ending))
+        watch.start()
+        runCurrent()
+        watch.start()
+        advanceTimeBy(6.seconds)
+        assertEquals(2, watches)
+        assertEquals(NetworkAccess.Blocked, watch.access.value, "the fresh watch is followed")
     }
 }

@@ -239,6 +239,14 @@ class AlbumGatherTest {
     }
 
     @Test
+    fun `a gather after the membership ended gathers nothing`() = runTest {
+        val r = rig(cfg = null)
+        r.own("OWN", "2026-09-10T00:00:00Z")
+        r.gather.gather("E2")
+        assertTrue(r.manager.calls.isEmpty())
+    }
+
+    @Test
     fun `a gather without usable photo access gathers nothing`() = runTest {
         val r = rig(granted = false)
         r.own("OWN", "2026-09-10T00:00:00Z")
