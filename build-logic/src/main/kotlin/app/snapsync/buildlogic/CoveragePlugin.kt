@@ -46,7 +46,7 @@ class CoveragePlugin : Plugin<Project> {
 
 /**
  * The ZERO gate (`docs/architecture.md`, "Coverage"): the module's Kover report may miss no instruction and no branch,
- * outside the declaration lines of a `@Composable` function ([CoverageZero] decides). Same measurement as
+ * outside compiler-generated glue recognised by its shape ([CoverageZero] decides). Same measurement as
  * `snapsync.coverage`, which it replaces — applying both is refused, so switching a module is one visible edit: this
  * plugin id in, the `coverageFloors { }` block out.
  */
@@ -55,7 +55,7 @@ class CoverageZeroPlugin : Plugin<Project> {
         val kover = measure(project, "snapsync.coverage")
         val gate = project.tasks.register("coverageZero", CoverageZeroTask::class.java) {
             group = "verification"
-            description = "Fails on any instruction or branch Kover reports missed, outside @Composable declaration glue."
+            description = "Fails on any instruction or branch Kover reports missed, outside compiler-generated glue."
             dependsOn("koverXmlReport")
             modulePath.set(project.path)
             report.set(kover.reports.total.xml.xmlFile)
@@ -66,6 +66,9 @@ class CoverageZeroPlugin : Plugin<Project> {
                     exclude("*Test/**", "test/**")
                 },
             )
+            // The JVM classes the report measures, read for glue the bytecode shows. Taken from the compile tasks
+            // themselves, so the gate depends on them rather than reading a directory something else happens to fill.
+            classes.from(project.tasks.matching { it.name == "compileKotlinJvm" || it.name == "compileKotlin" })
             verdict.set(project.layout.buildDirectory.file("reports/coverage-zero/verdict.txt"))
         }
         project.pluginManager.withPlugin("lifecycle-base") { project.tasks.named("check") { dependsOn(gate) } }
@@ -102,18 +105,30 @@ abstract class CoverageZeroTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sources: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val classes: ConfigurableFileCollection
+
     @get:OutputFile
     abstract val verdict: RegularFileProperty
 
     @TaskAction
     fun judge() {
-        val v = CoverageZero.judge(report.get().asFile.readText(), CoverageZero.index(sources.files))
+        val classFiles = classes.files.flatMap { root -> root.walkTopDown().filter { it.extension == "class" }.toList() }
+        val glue = CoverageZero.serializationGlue(classFiles.map { it.readBytes() })
+        val v = CoverageZero.judge(report.get().asFile.readText(), CoverageZero.index(sources.files), glue)
         val summary = "${modulePath.get()}: ${v.misses.size} missed line(s); excused ${v.excused.lines} @Composable " +
-            "declaration line(s) — ${v.excused.instructions} instruction(s), ${v.excused.branches} branch(es)"
+            "declaration line(s) — ${v.excused.instructions} instruction(s), ${v.excused.branches} branch(es) — and " +
+            "${v.excusedGlue.size} serialization zero-mask check(s)"
         logger.lifecycle(summary)
+        // Every excused glue site by name, so what the gate lets through is read, not just counted.
+        val sites = v.excusedGlue.map {
+            "  excused ${it.file}:${it.line}  ${it.instructions} instr / ${it.branches} branch  ${it.site} (zero-mask check)"
+        }
+        sites.forEach { logger.lifecycle(it) }
         val detail = v.mismatches.map { "  scan/bytecode: $it" } +
             v.misses.map { "  ${it.file}:${it.line}  missed ${it.instructions} instr / ${it.branches} branch  ${it.text}" }
-        verdict.get().asFile.writeText((listOf(summary) + detail).joinToString("\n", postfix = "\n"))
+        verdict.get().asFile.writeText((listOf(summary) + sites + detail).joinToString("\n", postfix = "\n"))
         if (!v.passes) {
             throw GradleException(
                 "$summary — the zero gate allows none (`docs/architecture.md`, \"Coverage\"):\n" + detail.joinToString("\n"),
