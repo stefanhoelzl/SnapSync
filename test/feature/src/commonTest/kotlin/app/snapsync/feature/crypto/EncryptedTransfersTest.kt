@@ -60,8 +60,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -279,7 +279,9 @@ class EncryptedTransfersTest {
         val opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files)
         repeat(5) { attempt ->
             receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
-            assertFalse(opening.open(AssetRef(DEVICE_A, AssetId(ASSET)), KEY, EVENT, "os-tmp/$attempt", "staged/$attempt"))
+            assertFalse(
+                opening.open(AssetRef(DEVICE_A, AssetId(ASSET)), KEY, EVENT, "os-tmp/$attempt", "staged/$attempt"),
+            )
         }
         assertTrue(receiver.files.operations.none { it.startsWith("write") && it.contains("staged/") })
     }

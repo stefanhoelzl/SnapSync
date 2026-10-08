@@ -3,12 +3,11 @@ package app.snapsync.services.crypto
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Hmac
+import app.snapsync.model.KeyPresence
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.decodeEventKey
 import app.snapsync.model.encodeEventKey
-import app.snapsync.model.EventConfig
-import app.snapsync.model.KeyPresence
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.DevControls
@@ -18,8 +17,8 @@ import app.snapsync.services.secure.readExisting
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
@@ -69,7 +68,11 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
      * `null` for a plain one or while the store cannot be read (a locked device, a lost key), so an invite never
      * carries a key that is not the event's — and an encrypted event's invite is then not offered at all.
      */
-    fun inviteKeyOf(membership: StateFlow<EventConfig?>, rereads: Flow<Unit>, scope: CoroutineScope): StateFlow<String?> =
+    fun inviteKeyOf(
+        membership: StateFlow<EventConfig?>,
+        rereads: Flow<Unit>,
+        scope: CoroutineScope,
+    ): StateFlow<String?> =
         combine(membership, rereads.onStart { emit(Unit) }) { config, _ ->
             config?.keyId?.let { runCatchingCancellable { linkKey() }.getOrNull() }
         }.stateIn(scope, SharingStarted.Eagerly, null)
@@ -98,7 +101,11 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
      * [presenceFor] over [membership], re-read whenever the membership changes and whenever [rereads] emits — a
      * foreground, a key kept from a reopened invite.
      */
-    fun presenceOf(membership: StateFlow<EventConfig?>, rereads: Flow<Unit>, scope: CoroutineScope): StateFlow<KeyPresence> =
+    fun presenceOf(
+        membership: StateFlow<EventConfig?>,
+        rereads: Flow<Unit>,
+        scope: CoroutineScope,
+    ): StateFlow<KeyPresence> =
         combine(membership, rereads.onStart { emit(Unit) }) { config, _ -> presenceFor(config) }
             .stateIn(scope, SharingStarted.Eagerly, KeyPresence.Unknown)
 

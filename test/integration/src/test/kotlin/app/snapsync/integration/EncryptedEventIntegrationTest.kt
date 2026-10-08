@@ -92,7 +92,11 @@ class EncryptedEventIntegrationTest {
         awaitState { it.joined != null && it.joined?.health != SyncHealth.KeyLost }
         assertEquals(settingsBefore, state().ready, "the membership's settings are unchanged")
         assertEquals(null, state().joined?.pendingSwitch, "no join screen")
-        assertEquals(invite, awaitState { it.joined?.inviteUrl != null }.joined!!.inviteUrl, "the whole invite is offered again")
+        assertEquals(
+            invite,
+            awaitState { it.joined?.inviteUrl != null }.joined!!.inviteUrl,
+            "the whole invite is offered again",
+        )
         awaitAppUploads(1)
         downloadAll()
         assertTrue(gallery().census.total >= 2, "the other member's photo arrived beside the own one")

@@ -91,6 +91,8 @@ import app.snapsync.ui.components.resources.cannot_verify_title_modified
 import app.snapsync.ui.components.resources.cannot_verify_title_not_genuine
 import app.snapsync.ui.components.resources.cannot_verify_title_unverifiable
 import app.snapsync.ui.components.resources.date_range_today
+import app.snapsync.ui.components.resources.key_lost_detail
+import app.snapsync.ui.components.resources.key_lost_title
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
 import app.snapsync.ui.components.resources.range_end_pick_time
@@ -99,8 +101,6 @@ import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.status_in_sync
 import app.snapsync.ui.components.resources.status_inactive
-import app.snapsync.ui.components.resources.key_lost_detail
-import app.snapsync.ui.components.resources.key_lost_title
 import app.snapsync.ui.components.resources.status_not_started
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending

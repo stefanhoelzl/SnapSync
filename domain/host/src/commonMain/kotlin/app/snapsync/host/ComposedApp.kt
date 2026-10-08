@@ -3,7 +3,6 @@ package app.snapsync.host
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.ProcessServices
-import app.snapsync.presentation.EventKeyView
 import app.snapsync.compose.devHandlers
 import app.snapsync.compose.installNetworkReturns
 import app.snapsync.compose.lifecycleHandlers
@@ -19,6 +18,7 @@ import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.UiHandlers
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.EventKeyView
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources

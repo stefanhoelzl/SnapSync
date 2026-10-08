@@ -9,15 +9,15 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.services.crypto.EventKeys
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
 
 /**
  * Whether this device holds the joined event's key (capability `sync-status`): a plain event needs none, a kept key of
@@ -29,9 +29,13 @@ class KeyPresenceTest {
     private val crypto = fakeCrypto()
 
     private fun config(keyId: String?) = EventConfig(
-        "11111111-1111-4111-8111-111111111111", "Party", captureCutoff("2026-07-06T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"), keyId = keyId,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        "11111111-1111-4111-8111-111111111111",
+        "Party",
+        captureCutoff("2026-07-06T00:00:00Z"),
+        maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+        keyId = keyId,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     @Test
@@ -45,7 +49,11 @@ class KeyPresenceTest {
     fun the_events_own_key_is_held_and_its_absence_is_lost() {
         val keys = EventKeys(crypto, inMemorySecureStore())
         val minted = keys.mint()
-        assertEquals(KeyPresence.Lost, keys.presenceFor(config(minted.keyId)), "a joined encrypted event with no key kept")
+        assertEquals(
+            KeyPresence.Lost,
+            keys.presenceFor(config(minted.keyId)),
+            "a joined encrypted event with no key kept",
+        )
         keys.keep(minted.linkKey)
         assertEquals(KeyPresence.Held, keys.presenceFor(config(minted.keyId)))
     }

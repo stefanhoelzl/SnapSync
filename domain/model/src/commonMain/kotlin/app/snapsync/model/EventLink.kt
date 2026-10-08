@@ -162,7 +162,7 @@ fun inviteLinkFromInstallReferrer(referrer: String): String? {
 
 /** This payload carrying [key], or as it is when there is none. */
 private fun EventLinkPayload.withKey(key: String?): EventLinkPayload =
-    if (key == null) this else EventLinkPayload(eventId, autoJoin, minPhotoDate, maxPhotoDate, direction, saveToAlbum, key)
+    key?.let { EventLinkPayload(eventId, autoJoin, minPhotoDate, maxPhotoDate, direction, saveToAlbum, it) } ?: this
 
 private fun fail(reason: String) = ConfigDecodeResult.Failure(reason)
 

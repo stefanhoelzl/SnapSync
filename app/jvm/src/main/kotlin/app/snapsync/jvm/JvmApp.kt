@@ -9,7 +9,6 @@ import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncExtension
-import app.snapsync.crypto.JcaCrypto
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.identity.NoPlatformDeviceId

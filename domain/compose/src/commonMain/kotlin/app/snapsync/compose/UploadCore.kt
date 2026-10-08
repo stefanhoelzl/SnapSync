@@ -15,9 +15,9 @@ import app.snapsync.feature.upload.suppressionGate
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.EdgeUploadRequestProvider
+import app.snapsync.model.EventConfig
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.EventConfig
 import app.snapsync.model.hasEnded
 import app.snapsync.model.instantToCutoff
 import app.snapsync.model.runCatchingCancellable

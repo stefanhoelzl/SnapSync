@@ -1,6 +1,5 @@
 package app.snapsync.desktop
 
-import app.snapsync.model.SecureSlots
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
+import app.snapsync.model.SecureSlots
 import app.snapsync.model.UploadError
 
 /**
@@ -361,7 +361,9 @@ private fun RefuseAttestationLever(controller: WorldInspectorController, snap: I
 private fun OneShotLevers(controller: WorldInspectorController) {
     OutlinedButton(
         onClick = {
-            controller.lever("armed: next foreign import will fail (non-terminal)") { library.operator.imports.failNextImport = true }
+            controller.lever("armed: next foreign import will fail (non-terminal)") {
+                library.operator.imports.failNextImport = true
+            }
         },
     ) { Text("Arm import failure") }
     // The joined event's key gone while the membership stays (capability `sync-status`) — what a restore onto a new
