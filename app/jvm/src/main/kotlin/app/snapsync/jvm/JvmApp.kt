@@ -18,7 +18,6 @@ import app.snapsync.presentation.CutoffFormatter
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlin.time.Clock
 
 /**
  * **The JVM root** (`docs/testing.md`, "The JVM root"): the app composed on the JVM exactly as `SnapSyncRoot` composes
@@ -35,8 +34,6 @@ import kotlin.time.Clock
  * - **One JVM, two processes.** The app and the upload extension are both composed here, each over its own process
  *   ports (the extension's files reach only the shared area; its crash channel is one nobody observes), and each
  *   builds its own services over the one device's storage — as the two processes do over the App Group.
- * - **The screen's "now" is the wall clock**, while the core reads the launch's [JvmDevice.clock], so a status screen
- *   renders dates a person would see.
  */
 class JvmApp<D>(
     /** The caller's scope, which owns every launch's work: the app runs under a child job of it. */
@@ -170,8 +167,8 @@ class JvmApp<D>(
             build = ports.build.port(),
         )
 
-        /** The zone is read once from the launch's clock; "now" is the wall clock (see the class's deviations). */
+        /** Both from the launch's clock, as a phone's root builds it: the zone read once, "now" on every ask. */
         private fun cutoffFormatter(): CutoffFormatter =
-            CutoffFormatter(now = Clock.System::now, zone = ports.device.clock.timeZone())
+            CutoffFormatter(now = ports.device.clock::now, zone = ports.device.clock.timeZone())
     }
 }

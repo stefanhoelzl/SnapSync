@@ -16,6 +16,7 @@ class HeartbeatCadenceIntegrationTest {
     @Test
     fun a_full_grant_sharer_keeps_looking_until_the_end_and_then_idles() = rigTest {
         permission("GRANTED")
+        device("clock/advance", "to" to DURING)
         createAndJoin("direction" to "upload", startsAt = SHORT_START, endsAt = SHORT_END)
         // A second member that never settles keeps the event open after its end, so this one stays joined.
         foreignDevice("DEV-F", "FQ")
@@ -71,6 +72,9 @@ class HeartbeatCadenceIntegrationTest {
         const val IDLE = "idle"
         const val SHORT_START = "2026-05-15T00:00:00"
         const val SHORT_END = "2026-05-20T00:00:00"
+
+        /** Inside [SHORT_START]..[SHORT_END]: the event is running. */
+        const val DURING = "2026-05-16T12:00:00Z"
 
         /** After [SHORT_END], and long before the event's deadline. */
         const val AFTER_THE_END = "2026-05-22T00:00:00Z"

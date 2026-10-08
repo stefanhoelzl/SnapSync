@@ -610,12 +610,13 @@ caller may put the real `api/` behind the backend port instead (`VersionedHttpBa
 death**: the running app's collectors and launches end, and a new app is composed over a fresh set of port faces over the
 same durable state. It is wiring only — no lever, no test DSL — and gated as a shell.
 
-Its stated deviations from the phone:
+Its stated deviation from the phone:
 - both processes live in one JVM: the app and the extension each set their own process up over their own process ports
   (the extension's files reach only the shared area, its crash channel is one nobody observes), and a process that
   supplies no log sinks leaves Kermit's JVM-global writer list alone — the rig's JVM host hands the app's process its
-  recorder, which is how `/device/logs` reads the app's log back;
-- the screen's "now" is the wall clock, while the core reads the launch's `Clock`.
+  recorder, which is how `/device/logs` reads the app's log back.
+
+The screen's "now" is the launch's `Clock`, like the core's: a test runs on mocked time only, never the wall clock.
 
 **Both uploaders run, as on a phone.** The app's uploader is the real one over the mocked transfer session
 (`UploadSessionMock`: a `URLSession`'s shape — four live transfers, no free retry, each end reported to the app as it
