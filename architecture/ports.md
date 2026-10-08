@@ -111,7 +111,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RenameState` | `:domain:model` | `:domain:model` Failed, Idle, InFlight, Succeeded | no |
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
 | `Reply` | `:domain:model` | `:domain:model` Malformed, Ok, Refused, Unreachable; `:test:control` Done, Failed, Refused | yes |
-| `ResourceBatch` | `:domain:model` | — | no |
+| `ResourceBatch` | `:domain:model` | `:domain:model` RecordingBatch | no |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:feature` LockableSecureStore | yes |
 | `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
@@ -142,6 +142,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `UploadSeal` | `:domain:services` | `:domain:services` Plain, Sealed, Withheld | no |
 | `UploadSource` | `:domain:model` | `:domain:model` File, Resource | no |
 | `UploaderProcess` | `:domain:compose` | `:domain:compose` App, Extension | no |
+| `UserCommands` | `:domain:model` | — | no |
+| `UserQueries` | `:domain:model` | — | no |
 | `Verdict` | `:domain:feature` | `:domain:feature` Clear, Leave, Settle | no |
 | `Wake` | `:domain:ports` | `:adapter:android` AndroidWake; `:adapter:generic:mock` InMemoryWake; `:adapter:ios:app-only` IosWake; `:domain:services` RecordingWake | yes |
 | `WakeTrigger` | `:domain:model` | `:domain:model` After, LibraryChange | no |

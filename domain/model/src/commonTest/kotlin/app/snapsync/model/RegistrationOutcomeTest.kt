@@ -84,6 +84,10 @@ class RegistrationOutcomeTest {
         )
         assertEquals(RegistrationOutcome.DisableRefusedByGrant, outcome)
         assertTrue(
+            outcome.message.startsWith("extension disable refused under a partial photo grant (3311)"),
+            outcome.message,
+        )
+        assertTrue(
             outcome.severity < Severity.Error,
             "switching Photos to Limited Access is a supported user action, and the arm attempts this " +
                 "disable on every membership-lifecycle action taken under that grant — at Error each one " +
@@ -183,11 +187,30 @@ class RegistrationOutcomeTest {
     }
 
     @Test
+    fun `a failed disable with no code is loud not taken for an expected one`() {
+        val outcome = registrationOutcome(enabling = false, ok = false, errorDomain = null, errorCode = null)
+        assertEquals(RegistrationOutcome.Failed(enabling = false, domain = null, code = null), outcome)
+    }
+
+    @Test
+    fun `a failure naming its domain but no code says which half is missing`() {
+        val outcome = registrationOutcome(
+            enabling = true,
+            ok = false,
+            errorDomain = "PHPhotosErrorDomain",
+            errorCode = null,
+        )
+        assertTrue(outcome.message.contains("PHPhotosErrorDomain:no code"), outcome.message)
+    }
+
+    @Test
     fun `a platform without the extension answers unsupported in both directions and quietly`() {
         for (enabling in listOf(true, false)) {
             val outcome = registrationOutcome(enabling, RegistrationAnswer.Unsupported)
             assertEquals(RegistrationOutcome.Unsupported(enabling), outcome)
             assertEquals(Severity.Debug, outcome.severity, "every join below iOS 26.1 reaches this")
+            val direction = if (enabling) "enable" else "disable"
+            assertTrue(outcome.message.startsWith("extension $direction not applicable"), outcome.message)
         }
     }
 

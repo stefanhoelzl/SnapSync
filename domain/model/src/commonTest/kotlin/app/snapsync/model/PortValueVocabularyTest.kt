@@ -11,7 +11,7 @@ import kotlin.test.assertSame
 class PortValueVocabularyTest {
 
     @Test
-    fun `a create outcome is one of five distinct answers, the created one compared by its event`() {
+    fun `a create outcome is one of five distinct answers the created one compared by its event`() {
         assertEveryCaseDistinct(
             listOf(
                 CreateOutcome.Created("event", "Picnic"),
@@ -55,7 +55,7 @@ class PortValueVocabularyTest {
     }
 
     @Test
-    fun `a wake was scheduled, refused with a detail, or is unsupported`() {
+    fun `a wake was scheduled refused with a detail or is unsupported`() {
         assertEveryCaseDistinct(
             listOf(ScheduleResult.Scheduled, ScheduleResult.Refused("too many"), ScheduleResult.Unsupported),
         ) {
@@ -69,7 +69,7 @@ class PortValueVocabularyTest {
     }
 
     @Test
-    fun `the suppression view is ready, on an older schema, or unavailable with a detail`() {
+    fun `the suppression view is ready on an older schema or unavailable with a detail`() {
         assertEveryCaseDistinct(
             listOf(
                 SuppressionReadiness.Ready,

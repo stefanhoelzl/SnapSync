@@ -56,6 +56,11 @@ class ProcessMetricsTest {
     }
 
     @Test
+    fun `an empty key adds no separator so it never yields a key starting with a dot`() {
+        assertEquals(mapOf("a" to "1"), flattenToDottedKeys(mapOf("" to mapOf("a" to 1))))
+    }
+
+    @Test
     fun `a null leaf is dropped rather than rendered as the string null`() {
         // "null" would be indistinguishable from a platform that really reported that text, and
         // absence already has a defined meaning for a report.
@@ -219,6 +224,14 @@ class ProcessMetricsTest {
         // An unknown cannot show the exit was the platform's alone.
         assertEquals(BACKGROUND_MEMORY_PRESSURE_EXIT, memoryPressure(null)?.reason)
         assertEquals(BACKGROUND_MEMORY_PRESSURE_EXIT, memoryPressure("9 furlongs")?.reason)
+        assertEquals(BACKGROUND_MEMORY_PRESSURE_EXIT, memoryPressure("unknown")?.reason)
+    }
+
+    @Test
+    fun `a footprint is read in any decimal unit the platform renders it in`() {
+        assertEquals(null, memoryPressure("100000 KB"))
+        assertEquals(null, memoryPressure("100 MB"))
+        assertEquals(BACKGROUND_MEMORY_PRESSURE_EXIT, memoryPressure("151 MB")?.reason)
     }
 
     @Test
@@ -239,6 +252,14 @@ class ProcessMetricsTest {
             ),
         )
         assertEquals(listOf("backgroundExitData.cumulativeMemoryResourceLimitExitCount"), crossed.map { it.reason })
+    }
+
+    @Test
+    fun `a counter the platform wrote unreadably is not a crossing`() {
+        assertEquals(
+            null,
+            crossing(report("$PROCESS_EXIT_PREFIX.foregroundExitData.cumulativeAppWatchdogExitCount" to "many")),
+        )
     }
 
     @Test
@@ -297,14 +318,25 @@ class ProcessMetricsTest {
     }
 
     @Test
+    fun `a bucket without a readable count is not evidence`() {
+        val end = "$HANG_HISTOGRAM_PREFIX.histogramValue.0.bucketEnd" to "5000 ms"
+        assertTrue(crossing(report(end)) == null)
+        assertTrue(crossing(report(end, "$HANG_HISTOGRAM_PREFIX.histogramValue.0.bucketCount" to "some")) == null)
+    }
+
+    @Test
     fun `seconds are understood as well as milliseconds`() {
         assertTrue(crossing(report(*hangBucket(0, 1, "3 sec"))) != null)
+        assertTrue(crossing(report(*hangBucket(0, 1, "2 s"))) != null)
+        assertTrue(crossing(report(*hangBucket(0, 1, "1.5 sec"))) != null)
+        assertTrue(crossing(report(*hangBucket(0, 1, "0.5 sec"))) == null)
     }
 
     @Test
     fun `an unparseable duration does not testify either way`() {
         // It must not read as a small number and silently suppress a crossing.
         assertTrue(crossing(report(*hangBucket(0, 1, "9 furlongs"))) == null)
+        assertTrue(crossing(report(*hangBucket(0, 1, "long"))) == null)
     }
 
     @Test

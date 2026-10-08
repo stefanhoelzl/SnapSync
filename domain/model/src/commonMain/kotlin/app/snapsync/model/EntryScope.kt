@@ -64,12 +64,11 @@ inline fun <T> Logger.invocation(
 ): T {
     val owned = scope.enter(name)
     val start = TimeSource.Monotonic.markNow()
-    logAt(severity) { "→ $name" + if (params.isEmpty()) "" else "($params)" }
+    logEntered(severity, name, params)
     try {
         val value = block()
         val ms = start.elapsedNow().inWholeMilliseconds
-        val rendered = result(value)
-        logAt(severity) { "← $name" + (if (rendered.isEmpty()) "" else " = $rendered") + " (${ms}ms)" }
+        logReturned(severity, name, result(value), ms)
         return value
     } catch (t: Throwable) {
         val ms = start.elapsedNow().inWholeMilliseconds
@@ -79,6 +78,19 @@ inline fun <T> Logger.invocation(
         scope.exit(owned)
     }
 }
+
+/**
+ * [invocation]'s entry line. Out of line, unlike [invocation], whose body is copied into every caller: the line's
+ * shape and its level check are one function, built and measured once.
+ */
+@PublishedApi
+internal fun Logger.logEntered(severity: Severity, name: String, params: String) =
+    logAt(severity) { "→ $name" + if (params.isEmpty()) "" else "($params)" }
+
+/** [invocation]'s success line, out of line for the reason [logEntered] is. */
+@PublishedApi
+internal fun Logger.logReturned(severity: Severity, name: String, rendered: String, ms: Long) =
+    logAt(severity) { "← $name" + (if (rendered.isEmpty()) "" else " = $rendered") + " (${ms}ms)" }
 
 /**
  * Emit [message] at [severity] — the level-dispatch [invocation] needs, kept here so an entry point

@@ -32,7 +32,7 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
                     RESOURCE_META_IS_SCREEN_RECORDING to asset.facts.isScreenRecording.toString(),
                     RESOURCE_META_IS_VIDEO to asset.facts.isVideo.toString(),
                     RESOURCE_META_IS_EDITED to asset.facts.isEdited.toString(),
-                    RESOURCE_META_PIXEL_AREA to (asset.facts.pixelArea?.toString() ?: ""),
+                    RESOURCE_META_PIXEL_AREA to asset.facts.pixelArea.let { if (it == null) "" else it.toString() },
                 ),
                 data = raw.handle,
             )

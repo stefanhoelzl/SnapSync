@@ -169,7 +169,7 @@ private fun suspendedFootprintWithinCeiling(report: ProcessMetricReport): Boolea
  * same posture as [millisOf]. Decimal units, as the platform's information-storage measurements are.
  */
 private fun kilobytesOf(raw: String?): Long? {
-    val text = raw?.trim() ?: return null
+    val text = (raw ?: return null).trim()
     val number = text.takeWhile { it.isDigit() || it == '.' }
     val amount = number.toDoubleOrNull() ?: return null
     return when (text.removePrefix(number).trim()) {
@@ -193,8 +193,9 @@ private fun hangReasons(report: ProcessMetricReport): List<String> {
         .filter { it.startsWith("$HANG_HISTOGRAM_PREFIX.") && it.endsWith(".bucketEnd") }
         .map { it.removeSuffix(".bucketEnd") }
     val crossed = buckets.filter { bucket ->
-        val count = report.fields["$bucket.bucketCount"]?.trim()?.toLongOrNull() ?: 0L
-        val end = millisOf(report.fields["$bucket.bucketEnd"])
+        val count = report.fields["$bucket.bucketCount"]?.let { it.trim().toLongOrNull() } ?: 0L
+        // The bucket was found by its end's key, so its end is there.
+        val end = millisOf(report.fields.getValue("$bucket.bucketEnd"))
         count > 0L && end != null && end >= HANG_CEILING_MS
     }
     return if (crossed.isEmpty()) emptyList() else listOf("appHangAtOrAbove${HANG_CEILING_MS}ms")
@@ -206,8 +207,8 @@ private fun hangReasons(report: ProcessMetricReport): List<String> {
  * Returning `null` rather than guessing is load-bearing: an unrecognised unit must not silently read
  * as a small number and suppress a crossing. An unparseable duration simply does not testify.
  */
-private fun millisOf(raw: String?): Long? {
-    val text = raw?.trim() ?: return null
+private fun millisOf(raw: String): Long? {
+    val text = raw.trim()
     val number = text.takeWhile { it.isDigit() || it == '.' }
     val amount = number.toDoubleOrNull() ?: return null
     return when (text.removePrefix(number).trim()) {

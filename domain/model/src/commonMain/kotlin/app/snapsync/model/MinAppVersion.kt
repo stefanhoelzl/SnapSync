@@ -34,5 +34,4 @@ fun minAppVersionFromRefusal(body: String): String? =
         .getOrNull()
         .let { it as? JsonPrimitive }
         ?.takeIf { it.isString }
-        ?.content
-        ?.takeIf { it.isNotBlank() }
+        ?.let { field -> field.content.takeIf { it.isNotBlank() } }

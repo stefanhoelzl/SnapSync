@@ -36,4 +36,10 @@ class ExtensionRegistrableTest {
         assertTrue(extensionRegistrable(true, GalleryAccess.GRANTED, UploaderPin(app = false)))
         assertTrue(extensionRegistrable(true, GalleryAccess.GRANTED, UploaderPin()))
     }
+
+    @Test
+    fun `the dump names the extension beside the app only where the OS carries it`() {
+        assertEquals("app+extension", uploadersCarried(osSupportsOsDrivenUpload = true))
+        assertEquals("app", uploadersCarried(osSupportsOsDrivenUpload = false))
+    }
 }

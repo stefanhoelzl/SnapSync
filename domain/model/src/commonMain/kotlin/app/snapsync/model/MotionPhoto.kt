@@ -67,7 +67,8 @@ fun motionPhotoStill(jpeg: ByteArray, videoLength: Long): ByteArray? {
     val existing = segments.firstOrNull { it.isXmp(jpeg) }
     if (existing == null) {
         val insertAt = segments.takeWhile { it.marker == APP0 || it.isExif(jpeg) }.lastOrNull()?.end ?: SOI_LENGTH
-        val segment = JpegSegments.xmpSegment(MotionPhoto.packet(videoLength)) ?: return null
+        // A fresh packet is a few hundred bytes: it always fits one segment, unlike a merged one below.
+        val segment = JpegSegments.xmpSegmentOf(MotionPhoto.packet(videoLength).encodeToByteArray())
         return jpeg.copyOfRange(0, insertAt) + segment + jpeg.copyOfRange(insertAt, jpeg.size)
     }
     val packet = jpeg.copyOfRange(existing.payloadStart + XMP_HEADER.size, existing.end).decodeToString()
@@ -125,11 +126,11 @@ private fun legacyOffset(xmp: String): Long? = property(xmp, "MicroVideoOffset")
 
 /** A camera-namespace property in attribute form (`GCamera:Name="1"`) or element form (`<Camera:Name>1</…>`). */
 private fun property(xmp: String, name: String): Long? =
-    Regex("\\w+:$name\\s*=\\s*\"(-?\\d+)\"").find(xmp)?.groupValues?.get(1)?.toLongOrNull()
-        ?: Regex("<\\w+:$name>\\s*(-?\\d+)\\s*</").find(xmp)?.groupValues?.get(1)?.toLongOrNull()
+    Regex("\\w+:$name\\s*=\\s*\"(-?\\d+)\"").find(xmp)?.let { it.groupValues[1].toLongOrNull() }
+        ?: Regex("<\\w+:$name>\\s*(-?\\d+)\\s*</").find(xmp)?.let { it.groupValues[1].toLongOrNull() }
 
 private fun attribute(element: String, name: String): String? =
-    Regex("\\b$name\\s*=\\s*\"([^\"]*)\"").find(element)?.groupValues?.get(1)
+    Regex("\\b$name\\s*=\\s*\"([^\"]*)\"").find(element)?.let { it.groupValues[1] }
 
 /** The JPEG segments this codec reads and writes: the ones before the image data. */
 internal object JpegSegments {
@@ -162,9 +163,14 @@ internal object JpegSegments {
 
     /** An APP1 XMP segment holding [packet], or null when it does not fit one segment. */
     fun xmpSegment(packet: String): ByteArray? {
-        val payload = XMP_HEADER + packet.encodeToByteArray()
+        val bytes = packet.encodeToByteArray()
+        return if (XMP_HEADER.size + bytes.size + 2 > MAX_SEGMENT_LENGTH) null else xmpSegmentOf(bytes)
+    }
+
+    /** An APP1 XMP segment holding [packet], which the caller knows fits one segment. */
+    fun xmpSegmentOf(packet: ByteArray): ByteArray {
+        val payload = XMP_HEADER + packet
         val length = payload.size + 2
-        if (length > MAX_SEGMENT_LENGTH) return null
         return byteArrayOf(0xFF.toByte(), APP1.toByte(), (length shr 8).toByte(), length.toByte()) + payload
     }
 

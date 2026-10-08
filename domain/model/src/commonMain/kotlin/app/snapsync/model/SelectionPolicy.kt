@@ -262,9 +262,9 @@ sealed interface SelectionRule {
      * Declared rather than inferred: a caller that tested for [DenyAll] by identity would silently miss a
      * second always-refusing rule added later, and the consequence of missing one is not a wrong admitted
      * set (the conjunction still refuses) but a cycle that does a library's worth of work to discover it
-     * contributes nothing.
+     * contributes nothing. No default, so every rule states it — a new one cannot leave it unsaid.
      */
-    val deniesEverything: Boolean get() = false
+    val deniesEverything: Boolean
 
     /**
      * The membership contributes **nothing** — its participation direction excludes upload
@@ -291,6 +291,7 @@ sealed interface SelectionRule {
      */
     data class CaptureAfter(val cutoff: CaptureCutoff) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.creationDate >= cutoff.at
+        override val deniesEverything: Boolean get() = false
     }
 
     /**
@@ -299,15 +300,18 @@ sealed interface SelectionRule {
      */
     data class CaptureBefore(val ceiling: CaptureCeiling) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.creationDate <= ceiling.at
+        override val deniesEverything: Boolean get() = false
     }
 
     /** Exact, perfect recall, and the highest-frequency exclusion. */
     data object ExcludeScreenshots : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = !facts.isScreenshot
+        override val deniesEverything: Boolean get() = false
     }
 
     data object ExcludeScreenRecordings : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = !facts.isScreenRecording
+        override val deniesEverything: Boolean get() = false
     }
 
     /**
@@ -317,6 +321,7 @@ sealed interface SelectionRule {
      */
     data class MinImageArea(val minArea: Long) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.isVideo || admitsByArea(facts, minArea)
+        override val deniesEverything: Boolean get() = false
     }
 
     /**
@@ -326,6 +331,7 @@ sealed interface SelectionRule {
      */
     data class MinVideoArea(val minArea: Long) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = !facts.isVideo || admitsByArea(facts, minArea)
+        override val deniesEverything: Boolean get() = false
     }
 
     /**
@@ -335,6 +341,7 @@ sealed interface SelectionRule {
      */
     data class NotEcho(val suppressedAssetIds: Set<AssetId>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in suppressedAssetIds
+        override val deniesEverything: Boolean get() = false
     }
 
     /**
@@ -345,6 +352,7 @@ sealed interface SelectionRule {
      */
     data class NotInDenylistedAlbum(val excludedAssetIds: Set<AssetId>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in excludedAssetIds
+        override val deniesEverything: Boolean get() = false
     }
 }
 

@@ -149,7 +149,8 @@ interface Candidate {
 fun candidatesFromResources(resources: List<Resource>): List<Candidate> {
     val byAsset = resources.groupBy { it.assetId }
     return factsFromResources(resources).map { facts ->
-        HeldCandidate(facts, byAsset[facts.assetId].orEmpty())
+        // Every fact came from these resources, so its asset has a group.
+        HeldCandidate(facts, byAsset.getValue(facts.assetId))
     }
 }
 

@@ -77,5 +77,5 @@ object ReceivedPhotoName {
 
     /** The token a marked [filename] carries (its rightmost mark, lowercased), or `null` for an unmarked name. */
     fun tokenOf(filename: String): String? =
-        markPattern.findAll(filename).lastOrNull()?.groupValues?.get(1)?.lowercase()
+        markPattern.findAll(filename).lastOrNull()?.let { it.groupValues[1].lowercase() }
 }

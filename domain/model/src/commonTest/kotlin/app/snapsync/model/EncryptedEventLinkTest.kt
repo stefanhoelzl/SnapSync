@@ -34,19 +34,22 @@ class EncryptedEventLinkTest {
                 eventId,
                 autoJoin = true,
                 minPhotoDate = "2026-07-01T00:00:00Z",
+                maxPhotoDate = "2026-07-08T00:00:00Z",
                 direction = "upload",
                 saveToAlbum = false,
                 key = text,
             )
         val url = encodeEventUrl(payload)
         assertEquals(
-            "$LINK_ORIGIN/join/$eventId#k=$text&autoJoin=true&minPhotoDate=2026-07-01T00:00:00Z&direction=upload&saveToAlbum=false",
+            "$LINK_ORIGIN/join/$eventId#k=$text&autoJoin=true&minPhotoDate=2026-07-01T00:00:00Z" +
+                "&maxPhotoDate=2026-07-08T00:00:00Z&direction=upload&saveToAlbum=false",
             url,
         )
         val decoded = assertIs<ConfigDecodeResult.Success>(decodeEventUrl(url)).payload
         assertEquals(text, decoded.key)
         assertEquals(true, decoded.autoJoin)
         assertEquals("2026-07-01T00:00:00Z", decoded.minPhotoDate)
+        assertEquals("2026-07-08T00:00:00Z", decoded.maxPhotoDate)
         assertEquals("upload", decoded.direction)
         assertEquals(false, decoded.saveToAlbum)
     }

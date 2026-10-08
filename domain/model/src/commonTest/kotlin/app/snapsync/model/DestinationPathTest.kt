@@ -36,6 +36,11 @@ class DestinationPathTest {
     }
 
     @Test
+    fun a_url_without_a_scheme_is_read_from_its_start() {
+        assertEquals("/files/a", destinationPathOf("/files/a?sig=1"))
+    }
+
+    @Test
     fun a_port_in_the_authority_does_not_start_the_path() {
         // The local rig is `http://127.0.0.1:8080/…`; a colon-seeking parser cuts this in the wrong place.
         assertEquals("/api/v2/files", destinationPathOf("http://127.0.0.1:8080/api/v2/files"))

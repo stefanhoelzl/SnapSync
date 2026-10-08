@@ -38,7 +38,7 @@ class BestEffortTest {
     }
 
     @Test
-    fun `below Warn the failure is still answered, only unsaid`() {
+    fun `below Warn the failure is still answered only unsaid`() {
         val quiet = CapturingLogWriter()
         val logger = Logger(StaticConfig(minSeverity = Severity.Error, logWriterList = listOf(quiet)), "test")
 

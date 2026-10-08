@@ -86,6 +86,12 @@ class UniversalLinkActivityTest {
     }
 
     @Test
+    fun `the enter line names the activity type and only whether a url came`() {
+        assertEquals("type=$browsingWeb url=present", userActivityParams(browsingWeb, link))
+        assertEquals("type=«none» url=«absent»", userActivityParams(null, null))
+    }
+
+    @Test
     fun `every outcome renders a compact log summary`() {
         // The summaries are what an entry point's exit line carries, so they are part of the
         // diagnostic contract rather than incidental formatting.
