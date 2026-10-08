@@ -455,12 +455,26 @@ Every excusal is printed by the task, so the glue's growth stays visible. The sh
 *Compose declaration glue, only on declaration lines.* The Compose compiler attributes its generated glue — restart groups, the `$changed`/`$default` bits, `skipToGroupEnd`, `updateScope` — to the declaration
 lines of a `@Composable` function, from `fun` through the body's opening `{`. Those lines' misses are excused and
 counted; the task prints, per module, how many lines, instructions and branches it excused, so growth is visible. A
-body line is never excused. `@Composable` itself is the mark: there is no opt-in annotation and no comment marker.
-Composable **lambdas** carry no excusable glue — measured 2026-10-07, every miss inside one of `:ui:*`'s 67 is a branch
-someone wrote (`if (body != null)`, `when (cause)`). The declaration ranges come from a source scan (bracket-balanced,
+body line is excused only by the two shapes below. `@Composable` itself is the mark: there is no opt-in annotation and no comment marker.
+Composable **lambdas'** own restart glue never shows as a miss — measured 2026-10-07, every miss inside one of
+`:ui:*`'s 67 is a branch someone wrote (`if (body != null)`, `when (cause)`). The declaration ranges come from a source scan (bracket-balanced,
 so a function-type parameter's `->` or a default value's `=` ends nothing), **checked against the bytecode**: every
 composable method in the report must match a scanned declaration in the same file and the reverse, or the gate fails.
 A scanner that misreads a signature therefore breaks the build rather than excusing the wrong lines.
+
+*A remembered lambda's arms, on body lines.* A lambda literal in a composable body is cached, and the cache's test — the
+`$changed` mask checks (read through the compiler's `$dirty` copy) and `Composer.changed`/`changedInstance`, feeding one
+stored boolean — takes its other arms only on a recomposition, which no screen test performs. The gate reads the shape
+from the bytecode and allows the line at most that shape's instructions and two arms per jump; any more fails. Because
+the allowance is an upper bound, it is withheld from a line that also holds a user branch, or code of another method the
+report does not list as run in full. Kover leaves a lambda whose body sits on its caller's line out of its method list
+while counting that body in the line (measured 2026-10-08), so **a lambda's body goes on its own line** — there an unrun
+body is a miss of its own. The gate's failure says so.
+
+*The dead arm of an exhaustive `when`, on body lines.* Kotlin ends a `when` over a sealed or enum subject with a
+`NoWhenBranchMatchedException` no value reaches; inside a composable the compiler wraps it in a replace group. Kover
+filters the throw, but not the group calls or a conditional jump into the block (a sealed `when`'s last `is` arm). The
+allowance is exact: those instructions, and one arm per such jump.
 
 *kotlinx-serialization's zero-mask missing-field check.* In a `@Serializable` class whose every field has a default,
 the plugin's deserialization constructor still opens with `if ((0 & seen) != 0) throwMissingFieldException(…)`: the
@@ -472,8 +486,8 @@ and is never excused: its check is real, and a test that leaves the field out re
 
 The gate also
 refuses a report whose per-line counts do not add up to its own totals, so a Kover upgrade that moves the counts fails
-loudly instead of passing vacuously. Logic: `build-logic`'s `CoverageZero` (tested by `CoverageZeroTest`, which the
-root `check` runs).
+loudly instead of passing vacuously. Logic: `build-logic`'s `CoverageZero` and `ComposeGlue` (tested by
+`CoverageZeroTest` and `ComposeGlueTest`, which the root `check` runs).
 
 **Inline functions need no exemption.** Kover credits inlined execution back to the inline function's own source
 lines; an uncovered inline helper is untested, not unmeasurable. An inline body with many branches is still awkward to

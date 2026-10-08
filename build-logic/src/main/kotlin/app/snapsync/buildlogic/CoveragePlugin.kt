@@ -115,14 +115,22 @@ abstract class CoverageZeroTask : DefaultTask() {
     @TaskAction
     fun judge() {
         val classFiles = classes.files.flatMap { root -> root.walkTopDown().filter { it.extension == "class" }.toList() }
-        val glue = CoverageZero.serializationGlue(classFiles.map { it.readBytes() })
-        val v = CoverageZero.judge(report.get().asFile.readText(), CoverageZero.index(sources.files), glue)
+        val bytes = classFiles.map { it.readBytes() }
+        val glue = CoverageZero.serializationGlue(bytes)
+        val v = CoverageZero.judge(
+            report.get().asFile.readText(),
+            CoverageZero.index(sources.files),
+            glue,
+            composeGlue = ComposeGlue.scan(bytes),
+        )
         val summary = "${modulePath.get()}: ${v.misses.size} missed line(s); excused ${v.excused.lines} @Composable " +
-            "declaration line(s) — ${v.excused.instructions} instruction(s), ${v.excused.branches} branch(es) — and " +
-            "${v.excusedGlue.size} serialization zero-mask check(s)"
+            "declaration line(s) — ${v.excused.instructions} instruction(s), ${v.excused.branches} branch(es) — " +
+            "${v.composeGlue.size} body line(s) of Compose glue and ${v.excusedGlue.size} serialization zero-mask check(s)"
         logger.lifecycle(summary)
         // Every excused glue site by name, so what the gate lets through is read, not just counted.
-        val sites = v.excusedGlue.map {
+        val sites = v.composeGlue.map {
+            "  excused ${it.file}:${it.line}  ${it.instructions} instr / ${it.branches} branch  (${it.shapes})"
+        } + v.excusedGlue.map {
             "  excused ${it.file}:${it.line}  ${it.instructions} instr / ${it.branches} branch  ${it.site} (zero-mask check)"
         }
         sites.forEach { logger.lifecycle(it) }

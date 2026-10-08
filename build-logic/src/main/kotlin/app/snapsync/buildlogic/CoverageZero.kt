@@ -21,9 +21,11 @@ import javax.xml.parsers.DocumentBuilderFactory
  *
  * - **Compose declaration glue**: the declaration lines of a `@Composable` function, from `fun` through the body's
  *   opening `{` (or an expression body's `=`). The Compose compiler attributes its glue there — restart groups, the
- *   `$changed`/`$default` bits, `skipToGroupEnd`, `updateScope` — and no test can reach all of it. A body line is never
- *   excused, and composable LAMBDAS carry no excusable glue (measured 2026-10-07: every miss inside one of `:ui:*`'s 67
- *   is a real branch).
+ *   `$changed`/`$default` bits, `skipToGroupEnd`, `updateScope` — and no test can reach all of it. Composable LAMBDAS'
+ *   own restart glue never shows as a miss (measured 2026-10-07: every miss inside one of `:ui:*`'s 67 is a real
+ *   branch).
+ * - **Compose body-line glue** ([ComposeGlue]): a remembered lambda's validity arms, and the dead arm of an exhaustive
+ *   `when` inside a composable — read from the bytecode, each as an allowance the line's misses must fit inside.
  * - **kotlinx-serialization's zero-mask missing-field check** ([serializationGlue]): in a `@Serializable` class whose
  *   every field has a default, the plugin's deserialization constructor still opens with `if ((0 & seen) != 0)
  *   throwMissingFieldException(…)`. The mask is the constant 0, so the throw cannot happen. Recognised in the BYTECODE,
@@ -47,6 +49,8 @@ object CoverageZero {
         val excused: Tally,
         val mismatches: List<String>,
         val excusedGlue: List<Glue> = emptyList(),
+        /** The body lines excused by [ComposeGlue]'s two shapes, each printed so the glue's growth stays visible. */
+        val composeGlue: List<GlueLine> = emptyList(),
     ) {
         val passes: Boolean get() = misses.isEmpty() && mismatches.isEmpty()
     }
@@ -61,6 +65,9 @@ object CoverageZero {
      */
     data class Glue(val file: String, val line: Int, val instructions: Int, val branches: Int, val site: String)
 
+    /** A body line [ComposeGlue] excused: which shape(s), and the misses it held. */
+    data class GlueLine(val file: String, val line: Int, val shapes: String, val instructions: Int, val branches: Int)
+
     /** A scanned `@Composable` declaration: the function's simple name and its declaration lines (1-based). */
     data class Declaration(val name: String, val lines: IntRange)
 
@@ -71,8 +78,15 @@ object CoverageZero {
      * `<package path>/<file name>` exactly as the report names a source file. A key with several files is ambiguous
      * and excuses nothing.
      */
-    fun judge(report: String, sources: Map<String, List<List<String>>>, glue: List<Glue> = emptyList()): Verdict {
+    fun judge(
+        report: String,
+        sources: Map<String, List<List<String>>>,
+        glue: List<Glue> = emptyList(),
+        composeGlue: Map<String, Map<Int, ComposeGlue.LineGlue>> = emptyMap(),
+    ): Verdict {
         val root = parse(report)
+        val fullyRun = fullyRun(root)
+        val composeLines = mutableListOf<GlueLine>()
         val misses = mutableListOf<Miss>()
         val mismatches = mutableListOf<String>()
         var excused = Tally(0, 0, 0)
@@ -113,17 +127,54 @@ object CoverageZero {
                             if (mi == 0 && mb == 0) continue
                         }
                     }
+                    val body = composeGlue[key]?.get(nr)
+                    val shapes = body?.let { bodyGlue(it, mi, mb, fullyRun) }
                     if (nr in declarationLines) {
                         excused = Tally(excused.lines + 1, excused.instructions + mi, excused.branches + mb)
+                    } else if (shapes != null) {
+                        composeLines += GlueLine(key, nr, shapes, mi, mb)
                     } else {
-                        misses += Miss(key, nr, mi, mb, lines?.getOrNull(nr - 1)?.trim().orEmpty())
+                        val text = lines?.getOrNull(nr - 1)?.trim().orEmpty()
+                        misses += Miss(key, nr, mi, mb, text + body?.let { sameLineHint(it, fullyRun) }.orEmpty())
                     }
                 }
             }
         }
         mismatches += shapeProblems(root)
-        return Verdict(misses, excused, mismatches, excusedGlue)
+        return Verdict(misses, excused, mismatches, excusedGlue, composeLines)
     }
+
+    /**
+     * Whether [ComposeGlue]'s allowance on a body line holds its [mi]/[mb] misses, and under which shapes. The
+     * remembered-lambda allowance counts only where no user branch shares the line in a composable method and every
+     * other method with code there is one the report lists as run in full ([fullyRun]). A method the report does NOT
+     * list still has its lines counted — Kover leaves out a lambda whose body sits on its caller's line, yet counts that
+     * body in the line's totals (measured 2026-10-08, `:ui:screens`) — so such a line cannot tell an unrun body from
+     * the cache's arms, and is never excused: the lambda's body goes on its own line, where an unrun one is a miss.
+     */
+    private fun bodyGlue(g: ComposeGlue.LineGlue, mi: Int, mb: Int, fullyRun: Set<ComposeGlue.MethodRef>): String? {
+        val remembered = g.remembered.takeIf { !g.userBranch && g.otherMethods.all { it in fullyRun } }
+            ?: ComposeGlue.Allowance.NONE
+        val allowed = remembered + g.deadArm
+        if (mi > allowed.instructions || mb > allowed.branches) return null
+        return listOfNotNull(
+            "remembered lambda".takeIf { remembered != ComposeGlue.Allowance.NONE },
+            "dead when arm".takeIf { g.deadArm != ComposeGlue.Allowance.NONE },
+        ).joinToString(" + ").ifEmpty { null }
+    }
+
+    /** Why a remembered lambda's line was not excused, where the reason is a body the report cannot vouch for. */
+    private fun sameLineHint(g: ComposeGlue.LineGlue, fullyRun: Set<ComposeGlue.MethodRef>): String? =
+        "   [a remembered lambda's body on its line, which Kover does not list as run: move the body to its own line]"
+            .takeIf { g.remembered != ComposeGlue.Allowance.NONE && !g.userBranch && g.otherMethods.any { it !in fullyRun } }
+
+    /** The methods the report lists with no instruction or branch missed. */
+    private fun fullyRun(root: Element): Set<ComposeGlue.MethodRef> =
+        root.children("package").flatMap { it.children("class") }.flatMap { cls ->
+            cls.children("method").filter { m ->
+                m.children("counter").none { it.getAttribute("type") in setOf("INSTRUCTION", "BRANCH") && it.int("missed") > 0 }
+            }.map { ComposeGlue.MethodRef(cls.getAttribute("name"), it.getAttribute("name"), it.getAttribute("desc")) }
+        }.toSet()
 
     private const val MARKER = "Lkotlinx/serialization/internal/SerializationConstructorMarker;)V"
     private const val PLUGIN_EXCEPTIONS = "kotlinx/serialization/internal/PluginExceptionsKt"
