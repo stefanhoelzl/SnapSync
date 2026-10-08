@@ -3,6 +3,7 @@ package app.snapsync.ui.components
 import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
@@ -39,7 +40,8 @@ class SettlingWheelsTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private var hour by mutableStateOf<Int?>(12)
+    private var hour by mutableIntStateOf(12)
+    private var blank by mutableStateOf(false)
     private val settled = mutableListOf<Int>()
 
     @Test
@@ -61,7 +63,7 @@ class SettlingWheelsTest {
 
     @Test
     fun `a blank wheel dragged away and back to its anchor settles on it`() {
-        hour = null
+        blank = true
         setWheels()
         drag(HOUR) {
             rows(-1)
@@ -127,13 +129,14 @@ class SettlingWheelsTest {
                 Row {
                     SettlingTimeWheels(
                         caption = WheelCaption("Starts", hour = HOUR, minute = MINUTE),
-                        hour = hour,
+                        hour = hour.takeUnless { blank },
                         minute = 0,
                         anchor = LocalTime(9, 0),
                         allowed = FROM_TEN,
                         onHour = {
                             settled += it
                             hour = maxOf(it, 10)
+                            blank = false
                         },
                         onMinute = {},
                     )
