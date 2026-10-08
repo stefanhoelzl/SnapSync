@@ -131,18 +131,14 @@ class DeviceAttestation(
      */
     override suspend fun rejected(sent: String): String? {
         onRejected(sent)
-        refresh()
-        return runCatchingCancellable { token() }.getOrNull()?.takeIf { it != sent }
+        return runCatchingCancellable { refreshed() }.getOrNull()?.takeIf { it != sent }
     }
 
     /**
      * No token is held and a user is waiting (create, join): attempt one [refresh] — which also publishes its verdict,
      * so the screen learns of a refusal from this very tap — and answer what it obtained.
      */
-    override suspend fun missing(): String? {
-        refresh()
-        return runCatchingCancellable { token() }.getOrNull()
-    }
+    override suspend fun missing(): String? = runCatchingCancellable { refreshed() }.getOrNull()
 
     /**
      * The backend REJECTED [sentToken] (a `401` from a gated route to a request that carried it). Drop it if the
@@ -221,8 +217,8 @@ class DeviceAttestation(
 
     /**
      * Refresh the token if it is stale. Safe to call at every wake: it is a no-op on a fresh token, and it
-     * never throws — attestation failure is reduced to `false` and surfaced by the caller, never propagated
-     * into a background wake it would crash.
+     * never throws for a failed attestation — that is reduced to `false` and surfaced by the caller, never propagated
+     * into a background wake it would crash. A store of record that cannot be read throws, as for [refresh].
      *
      * Returns whether a usable (fresh) token is in the store afterwards.
      */
@@ -279,7 +275,9 @@ class DeviceAttestation(
      * Refresh the token if it is stale, and publish what that says about [attested].
      *
      * Called at every wake — launch, foreground, silent push, each `BGTask` — through the trigger flows.
-     * Non-throwing, like [ensureFresh]: a background wake must not die because attestation failed.
+     * A failed attestation never throws, like [ensureFresh]: a background wake must not die because attestation
+     * failed. A token that cannot be READ at all — the store of record locked — does, as every call's token read does;
+     * the trigger flows contain it.
      *
      * **The clear on entry is load-bearing, not tidiness.** It brackets the *attempt*: from here until
      * this call returns, the last wake's verdict is gone and only this attempt's answer can be shown. It
@@ -293,6 +291,11 @@ class DeviceAttestation(
      * screen. Design record: `changes/archive/2026-08-25-correct-attestation-health-surfacing` D2/D4.
      */
     suspend fun refresh() {
+        refreshed()
+    }
+
+    /** [refresh], answering the token it judged by — the one a recovering call retries with. */
+    private suspend fun refreshed(): String? {
         _attested.value = true
         _refusal.value = null
         // A refresh that reports `false` still leaves a *working* device fine if the stored token is usable — it was
@@ -300,8 +303,10 @@ class DeviceAttestation(
         val attempt = runCatchingCancellable { refreshing.withLock { refreshLocked() } }.getOrDefault(
             Attempt(fresh = false),
         )
-        _attested.value = attempt.fresh || !isUnusable(token())
+        val held = token()
+        _attested.value = attempt.fresh || !isUnusable(held)
         _refusal.value = attempt.refusal
+        return held
     }
 
     private suspend fun refreshLocked(): Attempt {
