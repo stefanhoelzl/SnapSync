@@ -4,12 +4,16 @@ import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 
 /**
  * The create screen's range rules (capability `create-event`): the end is chosen in two steps and neither
@@ -268,5 +272,82 @@ class EventRangeTest {
             "10 on the start's day is before 18:04",
         )
         assertFalse(hourOnly.dragEndTo(LocalDate(2026, 7, 6), THIRTY_DAYS).untilHour != null)
+    }
+
+    // ---- a start the chosen end holds back ----
+
+    @Test
+    fun `on a thirty-day range the start cannot move earlier on its day`() {
+        val month = fresh.pickDay(LocalDate(2026, 8, 5), THIRTY_DAYS).endAt(18, 4)
+        assertFalse(month.fromAllowed(LocalTime(17, 0), THIRTY_DAYS), "the range would be longer than 30 days")
+        assertEquals(START, month.settleFromHour(17, THIRTY_DAYS).from)
+    }
+
+    @Test
+    fun `an end hour chosen alone holds the start between its minutes and the window`() {
+        val sameDay = fresh.pickDay(TODAY, THIRTY_DAYS).settleUntilHour(19, THIRTY_DAYS)
+        assertTrue(sameDay.fromAllowed(LocalTime(18, 30), THIRTY_DAYS))
+        assertFalse(sameDay.fromAllowed(LocalTime(20, 0), THIRTY_DAYS), "no minute of 19 is after 20:00")
+        val month = fresh.pickDay(LocalDate(2026, 8, 5), THIRTY_DAYS).settleUntilHour(18, THIRTY_DAYS)
+        assertFalse(month.fromAllowed(LocalTime(17, 0), THIRTY_DAYS), "every minute of 18 is past the window")
+    }
+
+    @Test
+    fun `with the end time blank the start keeps the last day inside the window across a clock change`() {
+        // The window is measured in instants, as the app measures it: on 25 Oct 2026 Berlin's clocks go back an
+        // hour, so 30 days from 00:30 on 1 Oct end at 23:30 on the 30th.
+        val berlin = TimeZone.of("Europe/Berlin")
+        val instants = RangeBounds.lastingAtMost { from ->
+            from.toInstant(berlin).plus(30.days).toLocalDateTime(berlin)
+        }
+        val range = EventRange(from = LocalDateTime(2026, 10, 1, 18, 4)).pickDay(LocalDate(2026, 10, 31), instants)
+        assertEquals(LocalDate(2026, 10, 31), range.endDay)
+        assertFalse(range.fromAllowed(LocalTime(0, 30), instants), "the 31st is out of reach from 00:30")
+        assertTrue(range.fromAllowed(LocalTime(1, 30), instants))
+    }
+
+    @Test
+    fun `a complete range outside its window is not valid`() {
+        val pastTheEvent = EventRange(
+            LocalDateTime(2026, 7, 20, 18, 0),
+            LocalDate(2026, 7, 26),
+            LocalTime(18, 0),
+            endPending = false,
+        )
+        assertFalse(pastTheEvent.isValid(EVENT))
+        val beforeTheEvent = EventRange(
+            LocalDateTime(2026, 7, 20, 17, 0),
+            LocalDate(2026, 7, 21),
+            LocalTime(18, 0),
+            endPending = false,
+        )
+        assertFalse(beforeTheEvent.isValid(EVENT))
+        assertFalse(fresh.isValid(THIRTY_DAYS), "an end time still blank is no range yet")
+    }
+
+    @Test
+    fun `with no valid end on a same-day range the minute wheel fills nothing`() {
+        val late = EventRange(from = LocalDateTime(2026, 7, 6, 23, 59))
+        assertEquals(late, late.fillUntilHour(NOW_HOUR, THIRTY_DAYS))
+        assertEquals(late, late.settleUntilMinute(30, THIRTY_DAYS, NOW_HOUR))
+    }
+
+    @Test
+    fun `settling the From minute keeps the start's hour`() {
+        assertEquals(LocalDateTime(2026, 7, 6, 18, 30), fresh.settleFromMinute(30, THIRTY_DAYS).from)
+    }
+
+    @Test
+    fun `a join range restarted on the event's last day has no end time to settle on`() {
+        // Until its last day is placed the new range ends where it starts: 18:00 on the 25th, the event's end.
+        val lastDay = WHOLE_EVENT.pickDay(LocalDate(2026, 7, 25), EVENT)
+        assertEquals(lastDay, lastDay.settleUntilHour(17, EVENT))
+    }
+
+    @Test
+    fun `a join range restarted on the event's first day has no start time to settle on`() {
+        // Its end is 18:00 on the 20th, the event's start: no start on that day is both in the event and before it.
+        val firstDay = WHOLE_EVENT.pickDay(LocalDate(2026, 7, 20), EVENT)
+        assertEquals(firstDay, firstDay.settleFromHour(19, EVENT))
     }
 }
