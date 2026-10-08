@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.Serializable
 
@@ -63,6 +64,8 @@ data class ResolvedRange(
     val commitEnabled: Boolean,
     /** "From now" is offered only while the present is inside the event window. */
     val nowAvailable: Boolean,
+    /** The device's date when this was resolved — the day the range calendar marks as today. */
+    val today: LocalDate,
     /**
      * How many of the member's own photos the chosen range would share (capability `join-event`).
      * Computed by the container over the user-query bundle — never by the screen — and carried here so the

@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,6 +34,7 @@ class AppMenuTest {
             direction = Direction.Both,
             commitEnabled = true,
             nowAvailable = true,
+            today = LocalDate(2026, 7, 6),
             shareCount = ShareCount.Unavailable,
         )
         val offered = listOf(

@@ -273,6 +273,7 @@ private fun reconfigureResolved(membership: EventConfig, form: RangeForm): Resol
         direction = if (form.shareOn && form.receiveOn) Direction.Both else Direction.DownloadOnly,
         commitEnabled = form.shareOn || form.receiveOn,
         nowAvailable = true,
+        today = windowStart.date,
     )
 }
 

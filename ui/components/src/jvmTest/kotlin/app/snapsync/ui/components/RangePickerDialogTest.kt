@@ -112,6 +112,7 @@ class RangePickerDialogTest {
                     initial = initial,
                     bounds = WINDOW,
                     title = "Which photos to share",
+                    today = NOT_IN_MARCH,
                     presets = listOf(RangePresetChip("Whole event", selected = true) { chosen = "whole" }),
                     onDismiss = {},
                     onConfirm = { f, u -> confirmed = f to u },

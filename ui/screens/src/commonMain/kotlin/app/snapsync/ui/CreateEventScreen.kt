@@ -135,6 +135,7 @@ internal fun CreateEventScreen(
                     // The truthfulness line: this window is the event's capture-date bound (capability
                     // `photo-sharing`) — stated once, where it is set — and the one limit on it.
                     note = stringResource(Res.string.create_window_note, EVENT_WINDOW_MAX_DAYS),
+                    today = cutoff.nowLocal().date,
                     currentHour = { cutoff.nowLocal().hour },
                     endTime = EndTimeGuide(showRequests = endTimeRequests, onPickEndTime = guide.toEndTime),
                     onChange = draft::choose,

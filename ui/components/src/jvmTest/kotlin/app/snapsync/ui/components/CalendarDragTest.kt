@@ -182,6 +182,7 @@ class CalendarDragTest {
                     range = range,
                     bounds = TWO_MONTHS,
                     note = "note",
+                    today = NOT_IN_MARCH,
                     currentHour = { 15 },
                     onChange = { range = it },
                 )

@@ -208,6 +208,7 @@ class JoinScreenTest {
             direction = directionFor(form),
             commitEnabled = form.shareOn || form.receiveOn,
             nowAvailable = f.nowCutoff() >= event.startsAt.at && f.nowCutoff() <= event.endsAt.at,
+            today = f.nowLocal().date,
         )
     }
 
