@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputEventHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
 import kotlinx.datetime.DateTimeUnit
@@ -40,7 +41,7 @@ internal fun Modifier.rangeDrags(
 ): Modifier {
     val current by rememberUpdatedState(range)
     val emit by rememberUpdatedState(onChange)
-    return pointerInput(visibleMonth) {
+    val drags = PointerInputEventHandler {
         val month = MonthLayout(visibleMonth)
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
@@ -59,6 +60,7 @@ internal fun Modifier.rangeDrags(
             }
         }
     }
+    return pointerInput(visibleMonth, drags)
 }
 
 /**
@@ -74,12 +76,12 @@ private suspend fun AwaitPointerEventScope.dragEndpoint(
     current: () -> EventRange,
     emit: (EventRange) -> Unit,
 ) {
-    var handle: Handle? = null
+    var firstMove = Offset.Zero
     val moved = awaitTouchSlopOrCancellation(pointer) { change, overSlop ->
-        handle = whichHandle(current(), pressed, overSlop)
+        firstMove = overSlop
         change.consume()
     } ?: return
-    val held = handle ?: return
+    val held = whichHandle(current(), pressed, firstMove)
     drag(moved.id) { change ->
         month.dayAt(change.position, size)?.let { day ->
             emit(if (held == Handle.START) current().dragStartTo(day, bounds) else current().dragEndTo(day, bounds))

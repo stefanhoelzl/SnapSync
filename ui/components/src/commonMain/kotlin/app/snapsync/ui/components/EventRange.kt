@@ -81,12 +81,10 @@ internal fun EventRange.settleUntilHour(hour: Int, bounds: RangeBounds): EventRa
  * The Until minute wheel started moving while the hour is blank: the hour fills with [currentHour] — the
  * clock's — or the nearest hour that has a valid minute. An hour already chosen is kept.
  */
-internal fun EventRange.fillUntilHour(currentHour: Int, bounds: RangeBounds): EventRange =
-    if (untilHour != null) {
-        this
-    } else {
-        nearestHour(currentHour) { untilAllowed(it, bounds) }?.let { copy(untilHour = it) } ?: this
-    }
+internal fun EventRange.fillUntilHour(currentHour: Int, bounds: RangeBounds): EventRange {
+    val hour = untilHour ?: nearestHour(currentHour) { untilAllowed(it, bounds) } ?: return this
+    return copy(untilHour = hour)
+}
 
 /**
  * The Until minute wheel settled on [minute]. With the hour still blank (a tap rather than a drag) it fills as
@@ -97,9 +95,10 @@ internal fun EventRange.settleUntilMinute(minute: Int, bounds: RangeBounds, curr
     return settleUntil(hour, minute, bounds)
 }
 
-private fun EventRange.settleUntil(hour: Int, minute: Int, bounds: RangeBounds): EventRange =
-    nearestTime(hour, minute) { untilAllowed(it, bounds) }
-        ?.let { copy(untilHour = it.hour, untilMinute = it.minute) } ?: this
+private fun EventRange.settleUntil(hour: Int, minute: Int, bounds: RangeBounds): EventRange {
+    val time = nearestTime(hour, minute) { untilAllowed(it, bounds) } ?: return this
+    return copy(untilHour = time.hour, untilMinute = time.minute)
+}
 
 /** The From hour wheel settled on [hour]; the minutes are kept where they stay valid. */
 internal fun EventRange.settleFromHour(hour: Int, bounds: RangeBounds): EventRange =
@@ -109,5 +108,7 @@ internal fun EventRange.settleFromHour(hour: Int, bounds: RangeBounds): EventRan
 internal fun EventRange.settleFromMinute(minute: Int, bounds: RangeBounds): EventRange =
     settleFrom(from.hour, minute, bounds)
 
-private fun EventRange.settleFrom(hour: Int, minute: Int, bounds: RangeBounds): EventRange =
-    nearestTime(hour, minute) { fromAllowed(it, bounds) }?.let { copy(from = LocalDateTime(from.date, it)) } ?: this
+private fun EventRange.settleFrom(hour: Int, minute: Int, bounds: RangeBounds): EventRange {
+    val time = nearestTime(hour, minute) { fromAllowed(it, bounds) } ?: return this
+    return copy(from = LocalDateTime(from.date, time))
+}

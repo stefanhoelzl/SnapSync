@@ -61,7 +61,7 @@ private fun EventRange.restartAt(day: LocalDate, bounds: RangeBounds): EventRang
 
 /** The start moved to [day] at its clock time, never before the earliest start. */
 private fun EventRange.startOn(day: LocalDate, bounds: RangeBounds): LocalDateTime =
-    LocalDateTime(day, from.time).let { start -> bounds.earliest?.let { maxOf(start, it) } ?: start }
+    LocalDateTime(day, from.time).let { start -> maxOf(start, bounds.earliest ?: start) }
 
 private fun EventRange.placeEnd(day: LocalDate, bounds: RangeBounds): EventRange =
     copy(endDay = day.coerceIn(from.date, bounds.latestEnd(from).date), endPending = false).keepValidTime(bounds)
