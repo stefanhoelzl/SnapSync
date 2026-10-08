@@ -60,6 +60,9 @@ kotlin {
             // `HttpClient` is in `EdgeSetup`'s constructor, so it is API; the JSON is only read and built.
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
+            // The recording proxies (`proxy/`) implement every port, so they name the types its signatures carry.
+            implementation(libs.kermit)
+            implementation(libs.kotlinx.datetime)
         }
         // kotlin-test's @Test on JVM comes from a framework artifact the Kotlin plugin attaches to TEST
         // compilations only; the bindings' JVM test tasks run JUnit 4.

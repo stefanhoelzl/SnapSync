@@ -120,7 +120,8 @@ internal object PortGrid {
         if (inZone && !Port::class.isSuperclassOf(k) && !k.isSealed) handles += k
     }
 
-    private fun handlerBundle(port: KClass<*>): KClass<*>? =
+    /** The handler bundle an event port ([Listenable]) is listened to with, or `null` for a port that is not one. */
+    fun handlerBundle(port: KClass<*>): KClass<*>? =
         port.allSupertypes.firstOrNull {
             it.classifier == Listenable::class
         }?.arguments?.single()?.type?.classifier as? KClass<*>

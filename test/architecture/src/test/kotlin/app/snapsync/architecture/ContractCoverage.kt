@@ -89,7 +89,8 @@ internal object ContractCoverage {
     }
 
     /**
-     * The grid cells COVERED: declared by a clause that [isReal]. The one reading the open-cells list
+     * The grid cells COVERED: declared OUTRIGHT by a clause that [isReal] — a cell in a clause's one-of group is a weak
+     * claim, held apart in `oneOf`. The one reading the open-cells list
      * ([openCellsFile]) is held to — a claim that should count for less (a mock-only one, a weak one) is excluded here
      * and nowhere else.
      */

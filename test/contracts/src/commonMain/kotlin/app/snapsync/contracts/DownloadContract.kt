@@ -329,9 +329,9 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             "UNUSABLE_URL_NEVER_FINISHES",
             DownloadState.READY,
             covers = cells {
-                on<Download> {
-                    answers(Download::start).with(StartResult.Started)
-                    answers(Download::start).with(StartResult.NotStarted)
+                oneOf {
+                    on<Download>().answers(Download::start).with(StartResult.Started)
+                    on<Download>().answers(Download::start).with(StartResult.NotStarted)
                 }
             },
         ) { subject ->

@@ -15,8 +15,10 @@ import kotlinx.coroutines.test.runTest
  * BEFORE the body executes. That is deliberate — a skip operation inside a body is how an earlier attempt
  * came to report an unexercised clause as `Passed`.
  *
- * [covers] is the port-grid cells the clause exercises, rendered ([cells]) — at least one: a clause that pins no answer
- * of a port is not a port clause (`docs/testing.md`, "Every clause declares the cells it covers").
+ * [covers] is the port-grid cells the clause exercises, rendered ([cells]) — at least one, outright or in a one-of group:
+ * a clause that pins no answer of a port is not a port clause (`docs/testing.md`, "Every clause declares the cells it
+ * covers"). The runner checks each declared cell OCCURRED ([CallLog]); [oneOf] holds the groups of which at least one
+ * must.
  */
 class Clause<K : Enum<K>, T>(
     val id: String,
@@ -24,10 +26,14 @@ class Clause<K : Enum<K>, T>(
     covers: Covers,
     val body: suspend TestScope.(subject: T) -> Unit,
 ) {
+    /** The cells claimed outright: each must occur. */
     val covers: List<String> = covers.cells
 
+    /** The one-of groups: at least one cell of each must occur, and a cell claimed only here is a WEAK claim. */
+    val oneOf: List<List<String>> = covers.oneOf
+
     init {
-        require(this.covers.isNotEmpty()) { "clause $id declares no cell it covers" }
+        require(this.covers.isNotEmpty() || oneOf.isNotEmpty()) { "clause $id declares no cell it covers" }
     }
 }
 
@@ -102,8 +108,12 @@ interface Binding<K : Enum<K>, T> {
      * A FRESH [T] already in [state], or [Entered.Unreachable] naming why this host cannot produce it.
      * [clauseId] is the clause about to run: addresses and seeded values derive from it, and a recording
      * binding opens that clause's block with it.
+     *
+     * [log] is the clause's [CallLog]. The binding wraps its adapter in the port's recording proxy over it BEFORE
+     * anything else (`adapter.recorded(log)`, [app.snapsync.contracts.proxy]) and builds [T] over the proxy only — a
+     * binding that hands the clause the bare adapter fails its own clauses, since their declared cells never occur.
      */
-    fun create(state: K, clauseId: String): Entered<T>
+    fun create(state: K, clauseId: String, log: CallLog): Entered<T>
 }
 
 sealed interface Entered<out T> {

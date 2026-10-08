@@ -65,4 +65,27 @@ class CoversTest {
             Clause<GalleryAccess, Unit>("C", GalleryAccess.GRANTED, cells { }) { }
         }
     }
+
+    @Test
+    fun `a one-of group renders apart from the outright claims`() {
+        val covers = cells {
+            on<PhotoGrantRead>().answers(PhotoGrantRead::current).with(GalleryAccess.GRANTED)
+            oneOf {
+                on<PhotoGrantRead>().answers(PhotoGrantRead::current).with(GalleryAccess.NOT_DETERMINED)
+                on<PhotoGrantRead>().answers(PhotoGrantRead::current).with(GalleryAccess.DENIED)
+            }
+        }
+        assertEquals(listOf("PhotoGrantRead.current → GalleryAccess.GRANTED"), covers.cells)
+        assertEquals(
+            listOf(listOf("PhotoGrantRead.current → GalleryAccess.NOT_DETERMINED", "PhotoGrantRead.current → GalleryAccess.DENIED")),
+            covers.oneOf,
+        )
+    }
+
+    @Test
+    fun `a one-of group of one cell is refused`() {
+        assertFailsWith<IllegalArgumentException> {
+            cells { oneOf { on<PhotoGrantRead>().answers(PhotoGrantRead::current).with(GalleryAccess.DENIED) } }
+        }
+    }
 }
