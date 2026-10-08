@@ -12,14 +12,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 
 /**
- * A text input — the app's first. Semantic, appearance-free: it carries the current [value], a change
- * callback, a [placeholder], an [enabled] flag, a [maxLength] cap, a [singleLine] mode, and an optional
- * [errorText] shown beneath the field; no colors, shapes, text styles, or `Modifier` in the
- * signature, and the Material 3 text-field containment lives inside the component (design-system
- * containment rule). The cap is enforced here — input that would exceed [maxLength] is refused (the
- * callback is not invoked), so callers never see an over-length value. A disabled field never invokes
- * [onValueChange] (Material 3 swallows the edit). When [errorText] is non-null the field renders its
- * error treatment with the message beneath it.
+ * A text input — the app's first. Semantic, appearance-free: it carries the current [value], a change callback,
+ * a [placeholder], an [enabled] flag, a [maxLength] cap and a [singleLine] mode; no colors, shapes, text styles,
+ * or `Modifier` in the signature, and the Material 3 text-field containment lives inside the component
+ * (design-system containment rule). The cap is enforced here — input that would exceed [maxLength] is refused
+ * (the callback is not invoked), so callers never see an over-length value. A disabled field never invokes
+ * [onValueChange] (Material 3 swallows the edit). It has no error state: a failure is a banner, never a reddened
+ * field (`AppTextPromptSheet`).
  *
  * [singleLine] defaults to `true`, so every existing call site is unchanged. A multi-line field wraps
  * and shows several lines at rest, which is what a written account needs — one line would scroll the
@@ -37,7 +36,6 @@ fun AppTextField(
     enabled: Boolean = true,
     maxLength: Int = Int.MAX_VALUE,
     singleLine: Boolean = true,
-    errorText: String? = null,
     focusRequester: FocusRequester? = null,
 ) {
     OutlinedTextField(
@@ -46,8 +44,6 @@ fun AppTextField(
         placeholder = { Text(placeholder) },
         enabled = enabled,
         singleLine = singleLine,
-        isError = errorText != null,
-        supportingText = errorText?.let { { Text(it) } },
         shape = RoundedCornerShape(14.dp),
         modifier = if (singleLine) {
             Modifier.fillMaxWidth()

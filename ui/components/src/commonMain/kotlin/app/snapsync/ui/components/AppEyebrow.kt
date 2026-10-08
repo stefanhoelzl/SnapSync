@@ -35,21 +35,15 @@ fun eyebrowTextStyle(): TextStyle =
  * section labels). Extracted as a standalone `App*` so the joined layer can name its QR ("SHARE THIS
  * EVENT") in the same voice, rather than each surface re-deriving the treatment inline.
  *
- * The [tone] carries the one design-time choice: [EyebrowTone.Accent] for a purpose the user acts on
- * (the text-safe brand accent, [appAccentText]), [EyebrowTone.Muted] for a quiet section label
- * (onSurfaceVariant). Appearance-free otherwise — the caller passes only text and rank.
+ * It names a purpose the user acts on, so it reads in the text-safe brand accent ([appAccentText]).
+ * Appearance-free otherwise — the caller passes only the text.
  */
-enum class EyebrowTone { Accent, Muted }
-
 @Composable
-fun AppEyebrow(text: String, tone: EyebrowTone = EyebrowTone.Muted) {
+fun AppEyebrow(text: String) {
     Text(
         text = text.uppercase(),
         style = eyebrowTextStyle(),
-        color = when (tone) {
-            EyebrowTone.Accent -> appAccentText()
-            EyebrowTone.Muted -> MaterialTheme.colorScheme.onSurfaceVariant
-        },
+        color = appAccentText(),
         textAlign = TextAlign.Center,
     )
 }

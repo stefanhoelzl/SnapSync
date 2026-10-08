@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
  * pre-filled value, an error slot, and a busy state, and a second near-identical overlay would have been
  * two components for one meaning. The inventory grows demand-driven with the screens that need it.
  *
- * Semantic and appearance-free like every `App*` component: a [title], an optional [body] line naming
+ * Semantic and appearance-free like every `App*` component: a [title], a [body] line naming
  * what the value is for, a [placeholder] for the input, an [initialValue] it opens carrying, a
  * [maxLength], the two action labels, an optional [error], a [busy] flag, [onConfirm] receiving what was
  * written, and [onDismiss]. No colors, shapes, text styles, `Modifier`, or content slot in the
@@ -134,13 +134,11 @@ fun AppTextPromptSheet(
                 singleLine = false,
                 enabled = !field.busy,
             )
-            if (copy.body != null) {
-                Text(
-                    text = copy.body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = copy.body,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+            )
             // The remote rejection, above the actions and never on the field.
             if (field.error != null) {
                 AppErrorBanner(text = field.error)

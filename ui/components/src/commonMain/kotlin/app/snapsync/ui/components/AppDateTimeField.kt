@@ -59,7 +59,7 @@ internal const val WHEEL_DISTANT_ALPHA = 0.25f
 /**
  * The range picker as a dialog (capabilities `join-event`, `manage-membership`): the same [RangeEditor] the
  * create screen shows inline — calendar, gestures, wheels, rules — inside a pane-centred card with a [title],
- * optional [presets] as chips on top, and Cancel / OK. The join and settings surfaces open it on the range
+ * its [presets] as chips on top, and Cancel / OK. The join and settings surfaces open it on the range
  * already chosen ([initial], complete), so the first tap on a day starts a new range and narrowing an end is
  * a drag of that end. [bounds] hold it to the event's window.
  *
@@ -86,7 +86,7 @@ internal fun RangePickerDialog(
             }
         },
     ) {
-        if (presets.isNotEmpty()) PresetChips(presets)
+        PresetChips(presets)
         // A join or settings range always has its end time, so the clock's hour is never needed to fill one.
         RangeEditor(range, bounds, currentHour = { range.from.hour }) { range = it }
     }
