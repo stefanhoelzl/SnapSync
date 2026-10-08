@@ -28,8 +28,9 @@ import org.jetbrains.compose.resources.stringResource
  * question below the fold and left the answer controls competing for what was left.
  */
 @Composable
-fun AppEventHeaderCompact(title: String) =
+fun AppEventHeaderCompact(title: String) {
     AppIdentityHeader(stringResource(Res.string.invited_eyebrow), title, subtitle = null)
+}
 
 /**
  * The **compact host header** for the create-event surface: the SnapSync mark as its app-icon badge,
@@ -46,8 +47,9 @@ fun AppEventHeaderCompact(title: String) =
  * hierarchy are owned here.
  */
 @Composable
-fun AppEventHeaderHost(title: String, subtitle: String) =
+fun AppEventHeaderHost(title: String, subtitle: String) {
     AppIdentityHeader(eyebrow = null, title = title, subtitle = subtitle)
+}
 
 /**
  * The shape both headers above are, and the one any other surface needing identity-plus-a-statement

@@ -178,7 +178,9 @@ private fun RangeCalendar(range: EventRange, bounds: RangeBounds, onChange: (Eve
             rangeStart = range.from.date,
             rangeEnd = range.endDay,
             bounds = CalendarBounds(today, floor = bounds.earliest?.date, ceiling = range.lastPickableDay(bounds)),
-            onPick = { onChange(range.pickDay(it, bounds)) },
+            onPick = {
+                onChange(range.pickDay(it, bounds))
+            },
         )
     }
 }
@@ -206,9 +208,15 @@ private fun RangeTimes(
             hour = range.from.hour,
             minute = range.from.minute,
             anchor = range.from.time,
-            allowed = { range.fromAllowed(it, bounds) },
-            onHour = { onChange(range.settleFromHour(it, bounds)) },
-            onMinute = { onChange(range.settleFromMinute(it, bounds)) },
+            allowed = {
+                range.fromAllowed(it, bounds)
+            },
+            onHour = {
+                onChange(range.settleFromHour(it, bounds))
+            },
+            onMinute = {
+                onChange(range.settleFromMinute(it, bounds))
+            },
         )
         SettlingTimeWheels(
             caption = WheelCaption(
@@ -219,11 +227,19 @@ private fun RangeTimes(
             hour = range.untilHour,
             minute = range.untilMinute,
             anchor = range.from.time,
-            allowed = { range.untilAllowed(it, bounds) },
-            onHour = { onChange(range.settleUntilHour(it, bounds)) },
-            onMinute = { onChange(range.settleUntilMinute(it, bounds, currentHour())) },
+            allowed = {
+                range.untilAllowed(it, bounds)
+            },
+            onHour = {
+                onChange(range.settleUntilHour(it, bounds))
+            },
+            onMinute = {
+                onChange(range.settleUntilMinute(it, bounds, currentHour()))
+            },
             // Moving the minutes with the hour blank means "this hour": the clock's (capability `create-event`).
-            onMinuteDragStart = { if (range.untilHour == null) onChange(range.fillUntilHour(currentHour(), bounds)) },
+            onMinuteDragStart = {
+                if (range.untilHour == null) onChange(range.fillUntilHour(currentHour(), bounds))
+            },
             highlight = highlight,
         )
     }

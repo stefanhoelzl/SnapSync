@@ -43,33 +43,39 @@ fun AppFooterTextActions(content: @Composable RowScope.() -> Unit) {
 
 /** Shares the event's invite link: the share glyph, in the accent colour. */
 @Composable
-fun RowScope.ShareTextAction(label: String, onClick: () -> Unit) =
+fun RowScope.ShareTextAction(label: String, onClick: () -> Unit) {
     FooterTextAction(label, Icons.Filled.Share, appAccentText(), onClick)
+}
 
 /** Shows the event's QR code: the QR glyph, in the accent colour. */
 @Composable
-fun RowScope.QrTextAction(label: String, onClick: () -> Unit) =
+fun RowScope.QrTextAction(label: String, onClick: () -> Unit) {
     FooterTextAction(label, Icons.Filled.QrCode, appAccentText(), onClick)
+}
 
 /** Opens the event's settings: the settings glyph, in the accent colour. */
 @Composable
-fun RowScope.SettingsTextAction(label: String, onClick: () -> Unit) =
+fun RowScope.SettingsTextAction(label: String, onClick: () -> Unit) {
     FooterTextAction(label, Icons.Filled.Settings, appAccentText(), onClick)
+}
 
 /** Leaves the event: the exit glyph, in the error colour, because leaving is destructive. */
 @Composable
-fun RowScope.LeaveTextAction(label: String, onClick: () -> Unit) =
+fun RowScope.LeaveTextAction(label: String, onClick: () -> Unit) {
     FooterTextAction(label, Icons.AutoMirrored.Filled.Logout, MaterialTheme.colorScheme.error, onClick)
+}
 
 /** Joins the event: the check glyph, in the accent colour; [enabled] false while the join cannot go ahead. */
 @Composable
-fun RowScope.JoinTextAction(label: String, onClick: () -> Unit, enabled: Boolean) =
+fun RowScope.JoinTextAction(label: String, onClick: () -> Unit, enabled: Boolean) {
     FooterTextAction(label, Icons.Filled.Check, appAccentText(), onClick, enabled)
+}
 
 /** Leaves a surface without committing it: the close glyph, in the quiet text colour. */
 @Composable
-fun RowScope.CancelTextAction(label: String, onClick: () -> Unit) =
+fun RowScope.CancelTextAction(label: String, onClick: () -> Unit) {
     FooterTextAction(label, Icons.Filled.Close, MaterialTheme.colorScheme.onSurfaceVariant, onClick)
+}
 
 @Composable
 private fun RowScope.FooterTextAction(
