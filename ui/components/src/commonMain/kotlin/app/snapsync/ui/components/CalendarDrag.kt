@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputEventHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
@@ -82,12 +83,16 @@ private suspend fun AwaitPointerEventScope.dragEndpoint(
         change.consume()
     } ?: return
     val held = whichHandle(current(), pressed, firstMove)
-    drag(moved.id) { change ->
+    val follow = { change: PointerInputChange ->
         month.dayAt(change.position, size)?.let { day ->
             emit(if (held == Handle.START) current().dragStartTo(day, bounds) else current().dragEndTo(day, bounds))
         }
         change.consume()
     }
+    // The movement that crossed the slop is a move like any after it: a quick flick that lifts on its next event
+    // still lands where the finger went.
+    follow(moved)
+    drag(moved.id, follow)
 }
 
 private fun whichHandle(range: EventRange, pressed: LocalDate, overSlop: Offset): Handle = when {
