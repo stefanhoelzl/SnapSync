@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.wheel_not_set
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
@@ -105,6 +106,13 @@ internal fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
     val centerIndex by remember { derivedStateOf { centeredRow(listState, rowPx, count) } }
     return centerIndex
 }
+
+/**
+ * Whether a wheel coming to rest on [rest] is the host's choice: a row other than its value, or — after a drag of a
+ * blank wheel — its anchor too, since landing back there still means "this one".
+ */
+private fun chosenRest(rest: Int, wheel: WheelSpec, dragged: Boolean): Boolean =
+    rest != wheel.value || (dragged && wheel.blank)
 
 /** The row on the reading line: the first visible row, or the next once it is more than half scrolled past. */
 private fun centeredRow(listState: LazyListState, rowPx: Float, count: Int): Int {
@@ -212,6 +220,8 @@ private fun SettlingWheel(
     val dragStarted by rememberUpdatedState(onDragStart)
     var dragged by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // A tapped row settles itself once its scroll ends; until then the scroll's own end is not a host's rest.
+    var tap by remember { mutableStateOf<Job?>(null) }
 
     suspend fun moveTo(index: Int) {
         if (reduceMotion) listState.scrollToItem(index) else listState.animateScrollToItem(index)
@@ -238,7 +248,8 @@ private fun SettlingWheel(
             // Read directly, not through [center]: a collector must not wait for recomposition.
             val rest = centeredRow(listState, rowPx, wheel.count)
             when {
-                rest != current.value || (dragged && current.blank) -> {
+                tap?.isActive == true -> Unit
+                chosenRest(rest, current, dragged) -> {
                     moveTo(rest)
                     cameToRest(rest)
                 }
@@ -254,7 +265,7 @@ private fun SettlingWheel(
     }
 
     WheelList(listState, wheel, showBlank = wheel.blank && !dragged, center, allowed, reduceMotion) { index ->
-        scope.launch {
+        tap = scope.launch {
             moveTo(index)
             cameToRest(index)
         }
