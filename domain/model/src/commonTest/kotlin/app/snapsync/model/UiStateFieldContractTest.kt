@@ -49,6 +49,7 @@ class UiStateFieldContractTest {
         direction = Direction.UploadOnly,
         commitEnabled = true,
         nowAvailable = true,
+        today = at.date,
         shareCount = ShareCount.Ready(3),
     )
 
@@ -203,6 +204,7 @@ class UiStateFieldContractTest {
             direction = Direction.Both,
             commitEnabled = true,
             nowAvailable = false,
+            today = at.date,
         )
         assertEquals(ShareCount.Counting, resolved.shareCount)
     }

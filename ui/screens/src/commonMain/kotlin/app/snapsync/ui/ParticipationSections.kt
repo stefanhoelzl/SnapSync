@@ -153,7 +153,7 @@ class ParticipationState(
     val saveToAlbum: Boolean get() = form.saveToAlbum
     val albumKind: AlbumKind get() = form.albumKind
     val choices: RangeChoices get() = RangeChoices(form.preset, range.from, range.until)
-    val window: RangeWindow get() = RangeWindow(range.windowStart, range.windowEnd, range.nowAvailable)
+    val window: RangeWindow get() = RangeWindow(range.windowStart, range.windowEnd, range.nowAvailable, range.today)
 }
 
 /** Everything the participation surface can ask for. */

@@ -296,5 +296,6 @@ class ScreenWordsTest {
         direction = app.snapsync.model.Direction.Both,
         commitEnabled = true,
         nowAvailable = true,
+        today = LocalDate(2026, 7, 6),
     )
 }

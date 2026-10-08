@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -174,6 +175,7 @@ class UiStateSerializationTest {
         direction = Direction.UploadOnly,
         commitEnabled = true,
         nowAvailable = false,
+        today = LocalDate(2026, 7, 7),
         shareCount = count,
     )
 

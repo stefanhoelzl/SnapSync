@@ -34,6 +34,7 @@ import androidx.compose.ui.window.PopupProperties
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.picker_cancel
 import app.snapsync.ui.components.resources.picker_save
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
 import org.jetbrains.compose.resources.stringResource
@@ -71,6 +72,7 @@ internal fun RangePickerDialog(
     initial: EventRange,
     bounds: RangeBounds,
     title: String,
+    today: LocalDate,
     presets: List<RangePresetChip>,
     onDismiss: () -> Unit,
     onConfirm: (from: LocalDateTime, until: LocalDateTime) -> Unit,
@@ -88,7 +90,7 @@ internal fun RangePickerDialog(
     ) {
         PresetChips(presets)
         // A join or settings range always has its end time, so the clock's hour is never needed to fill one.
-        RangeEditor(range, bounds, currentHour = { range.from.hour }) { range = it }
+        RangeEditor(range, bounds, today, currentHour = { range.from.hour }) { range = it }
     }
 }
 

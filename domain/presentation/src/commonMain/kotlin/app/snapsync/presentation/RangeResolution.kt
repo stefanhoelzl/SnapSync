@@ -37,6 +37,7 @@ internal fun RangeForm.resolve(
         direction = directionOf(shareOn, receiveOn),
         commitEnabled = shareOn || receiveOn,
         nowAvailable = nowAvailable,
+        today = nowLocal.date,
         shareCount = shareCount,
     )
 }

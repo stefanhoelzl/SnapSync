@@ -42,11 +42,8 @@ import kotlinx.coroutines.delay
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
-import kotlinx.datetime.todayIn
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Clock
 
 /**
  * The event's date range, picked inline on the create screen (capability `create-event`): a summary of both
@@ -62,7 +59,8 @@ import kotlin.time.Clock
  * While the end time is incomplete, its summary is a tap target that calls [onPickEndTime]; each increment of
  * [showEndTime] brings the time wheels into view and briefly outlines the Until wheels (capability
  * `create-event`, "The next missing step leads to where it is done"). Starting to move the Until minutes with
- * the hour blank fills the hour from [currentHour] — the clock's, which this module does not read.
+ * the hour blank fills the hour from [currentHour] — the clock's, which this module does not read — and the
+ * calendar marks [today], the clock's date.
  *
  * Appearance-free like the rest of the design system's API: the caller hands over values and callbacks only.
  */
@@ -71,6 +69,7 @@ fun AppEventRangePicker(
     range: EventRange,
     bounds: RangeBounds,
     note: String,
+    today: LocalDate,
     currentHour: () -> Int,
     endTime: EndTimeGuide = EndTimeGuide.NONE,
     onChange: (EventRange) -> Unit,
@@ -83,7 +82,7 @@ fun AppEventRangePicker(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RangeEditor(range, bounds, currentHour, endTime, onChange)
+            RangeEditor(range, bounds, today, currentHour, endTime, onChange)
             Text(text = note, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
     }
@@ -110,12 +109,13 @@ class EndTimeGuide(val showRequests: Int, val onPickEndTime: (() -> Unit)?) {
 internal fun RangeEditor(
     range: EventRange,
     bounds: RangeBounds,
+    today: LocalDate,
     currentHour: () -> Int,
     endTime: EndTimeGuide = EndTimeGuide.NONE,
     onChange: (EventRange) -> Unit,
 ) {
     RangeEnds(range, endTime.onPickEndTime)
-    RangeCalendar(range, bounds, onChange)
+    RangeCalendar(range, bounds, today, onChange)
     RangeTimes(range, bounds, currentHour, endTime.showRequests, onChange)
 }
 
@@ -161,8 +161,7 @@ private fun RowScope.RangeEnd(
 }
 
 @Composable
-private fun RangeCalendar(range: EventRange, bounds: RangeBounds, onChange: (EventRange) -> Unit) {
-    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
+private fun RangeCalendar(range: EventRange, bounds: RangeBounds, today: LocalDate, onChange: (EventRange) -> Unit) {
     var visibleMonth by remember {
         mutableStateOf(LocalDate(range.from.year, range.from.month.ordinal.plus(1), 1))
     }

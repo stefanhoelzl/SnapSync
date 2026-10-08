@@ -91,6 +91,7 @@ class AppEventRangeHighlightTest {
                     range = EventRange(from = LocalDateTime(2026, 3, 10, 9, 0)),
                     bounds = TEN_DAYS,
                     note = "note",
+                    today = NOT_IN_MARCH,
                     currentHour = { 15 },
                     endTime = EndTimeGuide(showRequests = requests, onPickEndTime = null),
                     onChange = {},

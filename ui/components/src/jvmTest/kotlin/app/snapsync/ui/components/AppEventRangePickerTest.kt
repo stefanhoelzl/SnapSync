@@ -232,6 +232,7 @@ class AppEventRangePickerTest {
                     range = range,
                     bounds = TEN_DAYS,
                     note = "note",
+                    today = NOT_IN_MARCH,
                     currentHour = { CLOCK_HOUR },
                     endTime = endTime,
                     onChange = { range = it },

@@ -52,6 +52,7 @@ import app.snapsync.ui.resources.report_not_sent
 import app.snapsync.ui.resources.report_problem
 import app.snapsync.ui.resources.report_saved
 import app.snapsync.ui.resources.report_sent
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -88,6 +89,7 @@ class AppMenuScreenTest {
         direction = Direction.Both,
         commitEnabled = true,
         nowAvailable = true,
+        today = LocalDate(2026, 7, 6),
     )
 
     @Test
