@@ -4,9 +4,11 @@ import app.snapsync.contracts.BackendContract
 import app.snapsync.contracts.BackendState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.EdgeSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.http.HttpBackend
 import app.snapsync.ports.Backend
@@ -47,9 +49,9 @@ class LiveEdgeContractsTest {
             BackendState.ENDED_BESIDE_A_SETTLED_MEMBER,
         )
 
-        override fun create(state: BackendState, clauseId: String): Entered<EdgeSubject<Backend>> =
+        override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<Backend>> =
             LiveEdge.enter({ BackendContract.seed(state, clauseId, it) }) { client, base, seeded ->
-                HttpBackend(client, base, seeded.identity.appVersion)
+                HttpBackend(client, base, seeded.identity.appVersion).recorded(log)
             }
     }
 

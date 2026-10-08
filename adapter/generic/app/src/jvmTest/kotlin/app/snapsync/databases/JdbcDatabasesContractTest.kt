@@ -2,10 +2,12 @@ package app.snapsync.databases
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DatabasesContract
 import app.snapsync.contracts.DatabasesState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.Databases
 import java.io.File
@@ -25,9 +27,9 @@ class JdbcDatabasesContractTest {
             DatabasesState.NEWER,
             DatabasesState.UNOPENABLE,
         )
-        override fun create(state: DatabasesState, clauseId: String): Entered<Databases> {
+        override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<Databases> {
             val dir = Files.createTempDirectory("databases-contract").toFile()
-            val databases = JdbcDatabases(dir)
+            val databases = JdbcDatabases(dir).recorded(log)
             when (state) {
                 DatabasesState.ABSENT -> Unit
                 DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)

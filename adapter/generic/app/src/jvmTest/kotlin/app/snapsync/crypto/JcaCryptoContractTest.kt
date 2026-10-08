@@ -2,10 +2,12 @@ package app.snapsync.crypto
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.CryptoContract
 import app.snapsync.contracts.CryptoState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.Crypto
 import kotlin.test.Test
@@ -17,7 +19,7 @@ class JcaCryptoContractTest {
         override val host = Host.JVM
         override val kind = BindingKind.Live
         override val reaches = setOf(CryptoState.READY)
-        override fun create(state: CryptoState, clauseId: String): Entered<Crypto> = Entered.Ready(JcaCrypto())
+        override fun create(state: CryptoState, clauseId: String, log: CallLog): Entered<Crypto> = Entered.Ready(JcaCrypto().recorded(log))
     }
 
     @Test

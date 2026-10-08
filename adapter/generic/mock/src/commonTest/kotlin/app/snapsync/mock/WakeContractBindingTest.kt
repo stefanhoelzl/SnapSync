@@ -2,11 +2,13 @@ package app.snapsync.mock
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
@@ -21,10 +23,10 @@ class WakeContractBindingTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(WakeState.EMPTY)
 
-        override fun create(state: WakeState, clauseId: String): Entered<ScheduledWakes> {
+        override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
             val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
             val pendingHeartbeats = { if (WakeId.Heartbeat in pending.value) 1 else 0 }
-            return Entered.Ready(ScheduledWakes(inMemoryWake(pending)) { pendingHeartbeats() })
+            return Entered.Ready(ScheduledWakes(inMemoryWake(pending).recorded(log)) { pendingHeartbeats() })
         }
     }
 

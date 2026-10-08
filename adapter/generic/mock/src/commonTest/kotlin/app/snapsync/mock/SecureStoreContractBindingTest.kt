@@ -2,10 +2,12 @@ package app.snapsync.mock
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
@@ -28,7 +30,7 @@ class SecureStoreContractBindingTest {
             SecureStoreState.HOLDING_RESTRICTED,
         )
 
-        override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
+        override fun create(state: SecureStoreState, clauseId: String, log: CallLog): Entered<SecureStore> {
             val slot = SecureStoreContract.slot(clauseId)
             val seed = SecureStoreContract.seedValue(clauseId)
             if (state == SecureStoreState.HOLDING_UNDER_A_LOST_KEY) {
@@ -49,7 +51,7 @@ class SecureStoreContractBindingTest {
                             mutableMapOf(slot to SecureStoreRead.Found(seed, StoredProtection.RESTRICTED)),
                         )
                     SecureStoreState.HOLDING_UNDER_A_LOST_KEY -> error("answered above")
-                },
+                }.recorded(log),
             )
         }
     }

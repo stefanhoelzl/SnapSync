@@ -4,6 +4,7 @@ import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DeviceConditionsContract
 import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.DeviceIntegrityContract
@@ -14,6 +15,7 @@ import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.Availability
 import app.snapsync.model.NetworkAccess
@@ -38,8 +40,8 @@ class AttestContractBindingsTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(DeviceIntegrityState.UNAVAILABLE, DeviceIntegrityState.AVAILABLE)
 
-        override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> =
-            Entered.Ready(inMemoryDeviceIntegrity(available = state == DeviceIntegrityState.AVAILABLE))
+        override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =
+            Entered.Ready(inMemoryDeviceIntegrity(available = state == DeviceIntegrityState.AVAILABLE).recorded(log))
     }
 
     @Test
@@ -50,11 +52,12 @@ class AttestContractBindingsTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(AttestStoreState.EMPTY, AttestStoreState.HOLDING)
 
-        override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> = when (state) {
+        override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> = when (state) {
             AttestStoreState.INACCESSIBLE -> Entered.Unreachable("the in-memory store models no unreadable Keychain")
-            AttestStoreState.EMPTY -> Entered.Ready(inMemoryAttestStore())
+            AttestStoreState.EMPTY -> Entered.Ready(inMemoryAttestStore().recorded(log))
             AttestStoreState.HOLDING -> Entered.Ready(
-                inMemoryAttestStore(AttestStoreContract.seedToken(clauseId), AttestStoreContract.seedKeyId(clauseId)),
+                inMemoryAttestStore(AttestStoreContract.seedToken(clauseId), AttestStoreContract.seedKeyId(clauseId))
+                    .recorded(log),
             )
         }
     }
@@ -73,9 +76,10 @@ class AttestContractBindingsTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(AttestStoreState.EMPTY, AttestStoreState.HOLDING)
 
-        override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> =
-            when (val entered = store.create(state, clauseId)) {
-                is Entered.Ready -> Entered.Ready(CachedAttestStore(entered.subject), entered.dispose)
+        override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> =
+            // The copy is the subject under contract, so it is the one recorded; the store behind it records nowhere.
+            when (val entered = store.create(state, clauseId, CallLog())) {
+                is Entered.Ready -> Entered.Ready(CachedAttestStore(entered.subject).recorded(log), entered.dispose)
                 else -> entered
             }
     }
@@ -88,8 +92,8 @@ class AttestContractBindingsTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
 
-        override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> =
-            Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)))
+        override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
+            Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)).recorded(log))
     }
 
     @Test
@@ -102,8 +106,8 @@ class AttestContractBindingsTest {
         override val reaches =
             setOf(NetworkState.ONLINE, NetworkState.RESTRICTED, NetworkState.OFFLINE, NetworkState.BLOCKED)
 
-        override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
-            Entered.Ready(inMemoryNetworkMonitor(MutableStateFlow(accessIn(state))))
+        override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
+            Entered.Ready(inMemoryNetworkMonitor(MutableStateFlow(accessIn(state))).recorded(log))
 
         private fun accessIn(state: NetworkState): NetworkAccess = when (state) {
             NetworkState.ONLINE -> NetworkAccess.Online(restricted = false)
@@ -124,8 +128,8 @@ class AttestContractBindingsTest {
         // At its defaults the double is an iPhone; Android's facts would need a knob turned, which a binding may not.
         override val reaches = setOf(DeviceConditionsState.IPHONE)
 
-        override fun create(state: DeviceConditionsState, clauseId: String): Entered<DeviceConditions> = when (state) {
-            DeviceConditionsState.IPHONE -> Entered.Ready(DeviceConditionsMock().port())
+        override fun create(state: DeviceConditionsState, clauseId: String, log: CallLog): Entered<DeviceConditions> = when (state) {
+            DeviceConditionsState.IPHONE -> Entered.Ready(DeviceConditionsMock().port().recorded(log))
             DeviceConditionsState.ANDROID -> Entered.Unreachable("the double opens as an iPhone")
         }
     }

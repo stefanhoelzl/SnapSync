@@ -2,6 +2,7 @@ package app.snapsync.mock
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DownloadContract
 import app.snapsync.contracts.DownloadState
 import app.snapsync.contracts.DownloadUnderTest
@@ -14,6 +15,7 @@ import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.model.StartResult
@@ -101,7 +103,7 @@ class TransferContractBindingsTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP, UploadState.RESTRICTED_NETWORK)
 
-        override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
             if (state in UploadContract.PRESENTED) {
                 return Entered.Unreachable("the upload queue mock settles a transfer at once and presents none later")
             }
@@ -127,7 +129,7 @@ class TransferContractBindingsTest {
             }
             return Entered.Ready(
                 UploadUnderTest(
-                    upload = networked,
+                    upload = networked.recorded(log),
                     base = base,
                     // The mocked photos carry `Unit` as their platform handle, as a device's carry a `PHAssetResource`.
                     usable = { UploadSource.Resource(Unit) },
@@ -191,7 +193,7 @@ class TransferContractBindingsTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(DownloadState.READY, DownloadState.RESTRICTED_NETWORK)
 
-        override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> {
+        override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {
             // The temporary files the mock hands over, as the network the binding plays filled them.
             val bodies = mutableMapOf<String, ByteArray>()
             var restricted = state == DownloadState.RESTRICTED_NETWORK
@@ -203,7 +205,7 @@ class TransferContractBindingsTest {
                         NetworkedDownload(
                             DownloadSessionMock(held = held, stored = { _, _ -> null }),
                             bodies,
-                        ).also { opened += it }
+                        ).also { opened += it }.recorded(log)
                     },
                     base = base,
                     readTemp = { bodies[it] },
