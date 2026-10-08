@@ -4,8 +4,10 @@ import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.BackgroundTime
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,8 +23,8 @@ class BackgroundTimeContractBindingTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
 
-        override fun create(state: BackgroundTimeState, clauseId: String): Entered<BackgroundTime> =
-            Entered.Ready(inMemoryBackgroundTime(MutableStateFlow(emptyList())))
+        override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
+            Entered.Ready(inMemoryBackgroundTime(MutableStateFlow(emptyList())).recorded(log))
     }
 
     @Test

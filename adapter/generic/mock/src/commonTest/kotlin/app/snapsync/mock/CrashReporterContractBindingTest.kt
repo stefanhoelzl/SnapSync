@@ -2,6 +2,7 @@ package app.snapsync.mock
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.CrashObservation
 import app.snapsync.contracts.CrashReporterContract
 import app.snapsync.contracts.CrashReporterState
@@ -10,6 +11,7 @@ import app.snapsync.contracts.DeliveredEvent
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
@@ -28,7 +30,7 @@ class CrashReporterContractBindingTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(CrashReporterState.NOT_STARTED, CrashReporterState.STARTED)
 
-        override fun create(state: CrashReporterState, clauseId: String): Entered<CrashReporterSubject> {
+        override fun create(state: CrashReporterState, clauseId: String, log: CallLog): Entered<CrashReporterSubject> {
             if (state == CrashReporterState.ON_THE_WIRE || state == CrashReporterState.ACROSS_A_RESTART) {
                 return Entered.Unreachable(
                     "the fake transmits nothing: what leaves a device is the SDK's serialization and the adapter's hooks",
@@ -56,7 +58,7 @@ class CrashReporterContractBindingTest {
                 }
             }
             return Entered.Ready(
-                CrashReporterSubject(inMemoryCrashReporter(started, dumps), CrashOptions("in-memory"), observe),
+                CrashReporterSubject(inMemoryCrashReporter(started, dumps).recorded(log), CrashOptions("in-memory"), observe),
             )
         }
     }

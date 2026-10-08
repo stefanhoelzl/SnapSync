@@ -4,10 +4,12 @@ import app.snapsync.contracts.BackendContract
 import app.snapsync.contracts.BackendState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.EdgeSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.PortSetup
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.DeviceFile
 import app.snapsync.ports.Backend
@@ -44,7 +46,7 @@ class BackendContractBindingTest {
             BackendState.ENDED_BESIDE_A_SETTLED_MEMBER,
         )
 
-        override fun create(state: BackendState, clauseId: String): Entered<EdgeSubject<Backend>> = runBlocking {
+        override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<Backend>> = runBlocking {
             val stored = mutableMapOf<Pair<String, String>, MutableSet<DeviceFile>>()
             val serving = inMemoryBackend(storedFiles = stored)
             val setup = PortSetup(serving, stored)
@@ -54,7 +56,7 @@ class BackendContractBindingTest {
             } else {
                 serving
             }
-            Entered.Ready(EdgeSubject(port, seeded, setup))
+            Entered.Ready(EdgeSubject(port.recorded(log), seeded, setup))
         }
     }
 

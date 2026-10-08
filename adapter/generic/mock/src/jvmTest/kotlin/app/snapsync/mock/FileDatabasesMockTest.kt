@@ -2,10 +2,12 @@ package app.snapsync.mock
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DatabasesContract
 import app.snapsync.contracts.DatabasesState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -34,7 +36,7 @@ class FileDatabasesMockTest {
                 DatabasesState.NEWER,
                 DatabasesState.UNOPENABLE,
             )
-        override fun create(state: DatabasesState, clauseId: String): Entered<Databases> {
+        override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<Databases> {
             val refusals = if (state == DatabasesState.UNOPENABLE) {
                 mapOf(
                     DatabasesContract.NAME to DbOpen.Failed("unopenable"),
@@ -42,7 +44,7 @@ class FileDatabasesMockTest {
             } else {
                 emptyMap()
             }
-            val databases = DatabasesMock(refusals, directory()).port()
+            val databases = DatabasesMock(refusals, directory()).port().recorded(log)
             when (state) {
                 DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)

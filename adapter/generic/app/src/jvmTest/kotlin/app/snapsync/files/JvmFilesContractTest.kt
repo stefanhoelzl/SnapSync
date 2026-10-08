@@ -2,16 +2,18 @@ package app.snapsync.files
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FilesContract
 import app.snapsync.contracts.FilesState
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Files
 import java.io.File
-import kotlin.test.Test
 import java.nio.file.Files as Nio
+import kotlin.test.Test
 
 /**
  * The `Files` contract against the real [JvmFiles], so every `./gradlew build` runs it beside its iOS binding (which
@@ -43,8 +45,8 @@ class JvmFilesContractTest {
             FilesState.DENIED_DIRECTORY,
             FilesState.UNAVAILABLE,
         )
-        override fun create(state: FilesState, clauseId: String): Entered<Files> {
-            if (state == FilesState.UNAVAILABLE) return Entered.Ready(unavailable())
+        override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
+            if (state == FilesState.UNAVAILABLE) return Entered.Ready(unavailable().recorded(log))
             val areas = Areas()
             val path = FilesContract.path(clauseId)
             when (state) {
@@ -59,7 +61,7 @@ class JvmFilesContractTest {
                 }
                 FilesState.EMPTY, FilesState.UNAVAILABLE -> Unit
             }
-            return Entered.Ready(areas.files, areas::dispose)
+            return Entered.Ready(areas.files.recorded(log), areas::dispose)
         }
     }
 

@@ -2,12 +2,14 @@ package app.snapsync.mock
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FilesContract
 import app.snapsync.contracts.FilesState
 import app.snapsync.contracts.PreferencesContract
 import app.snapsync.contracts.PreferencesState
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Files
@@ -21,7 +23,7 @@ class StorageMockContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED, FilesState.UNAVAILABLE)
-        override fun create(state: FilesState, clauseId: String): Entered<Files> {
+        override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
             // The double holds paths, not directories, so there is none to deny.
             if (state == FilesState.DENIED_DIRECTORY) return Entered.Unreachable("the double holds no directories")
             val path = FilesContract.path(clauseId)
@@ -35,7 +37,7 @@ class StorageMockContractBindingsTest {
                     )
                     FilesState.UNAVAILABLE -> inMemoryFiles(shared = null)
                     FilesState.DENIED_DIRECTORY -> error("returned Unreachable above")
-                },
+                }.recorded(log),
             )
         }
     }
@@ -44,14 +46,14 @@ class StorageMockContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(PreferencesState.EMPTY, PreferencesState.HOLDING)
-        override fun create(state: PreferencesState, clauseId: String): Entered<Preferences> = Entered.Ready(
+        override fun create(state: PreferencesState, clauseId: String, log: CallLog): Entered<Preferences> = Entered.Ready(
             when (state) {
                 PreferencesState.EMPTY -> inMemoryPreferences()
                 PreferencesState.HOLDING ->
                     inMemoryPreferences(
                         mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
                     )
-            },
+            }.recorded(log),
         )
     }
 
