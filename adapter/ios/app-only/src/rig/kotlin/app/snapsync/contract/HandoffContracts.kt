@@ -3,6 +3,7 @@ package app.snapsync.contract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Contract
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.ExtensionRegistryContract
@@ -15,6 +16,7 @@ import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.SharePresenterState
 import app.snapsync.contracts.WakeContract
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
@@ -70,9 +72,9 @@ internal class DeviceLinkOpenerBinding(private val recorder: Recorder) : Binding
     override val kind = BindingKind.Live
     override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
 
-    override fun create(state: LinkOpenerState, clauseId: String): Entered<SystemUi> {
+    override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> {
         recorder.open(clauseId)
-        return Entered.Ready(IosSystemUi(RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)))
+        return Entered.Ready(IosSystemUi(RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)).recorded(log))
     }
 }
 
@@ -148,8 +150,8 @@ class SimAppLinkOpenerBinding : Binding<LinkOpenerState, SystemUi> {
     override val kind = BindingKind.Live
     override val reaches = setOf(LinkOpenerState.UNCLAIMED)
 
-    override fun create(state: LinkOpenerState, clauseId: String): Entered<SystemUi> = when (state) {
-        LinkOpenerState.UNCLAIMED -> Entered.Ready(IosSystemUi())
+    override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> = when (state) {
+        LinkOpenerState.UNCLAIMED -> Entered.Ready(IosSystemUi().recorded(log))
         LinkOpenerState.CLAIMED -> Entered.Unreachable(SIM_APP_UNREACHABLE_CLAIMED)
     }
 }
@@ -163,8 +165,8 @@ class SimAppSharePresenterBinding : Binding<SharePresenterState, SystemUi> {
     override val kind = BindingKind.Live
     override val reaches = setOf(SharePresenterState.PRESENTABLE)
 
-    override fun create(state: SharePresenterState, clauseId: String): Entered<SystemUi> =
-        Entered.Ready(IosSystemUi(), dispose = ::dismissPresented)
+    override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> =
+        Entered.Ready(IosSystemUi().recorded(log), dispose = ::dismissPresented)
 }
 
 /** Dismisses whatever the key window's root controller presents. Called off the main queue, by the runner. */

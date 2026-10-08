@@ -8,6 +8,7 @@ import app.snapsync.background.SystemBackgroundTaskApi
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recorder
@@ -15,6 +16,7 @@ import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.logging.deviceDiagnosticEnvironment
@@ -124,9 +126,13 @@ internal class ReplayingBackgroundTaskApi(private val replayer: Replayer) : Back
  * cancels through the seam, so they are recorded and replayed like any other call. Shared by the device binding and its
  * replay, so both make identical calls. Disposal cancels again, leaving nothing pending; [afterDispose] runs last.
  */
-internal fun schedulerInState(tasks: BackgroundTaskApi, afterDispose: () -> Unit = {}): Entered<ScheduledWakes> {
+internal fun schedulerInState(
+    tasks: BackgroundTaskApi,
+    log: CallLog,
+    afterDispose: () -> Unit = {},
+): Entered<ScheduledWakes> {
     HEARTBEATS.forEach(tasks::cancel)
-    val wake = IosWake(Logger.withTag("contract"), tasks)
+    val wake = IosWake(Logger.withTag("contract"), tasks).recorded(log)
     return Entered.Ready(
         ScheduledWakes(wake) { tasks.pendingIdentifiers().count { it in HEARTBEATS } },
         dispose = {
@@ -142,9 +148,9 @@ internal class DeviceSchedulerBinding(private val recorder: Recorder) : Binding<
     override val kind = BindingKind.Live
     override val reaches = setOf(WakeState.EMPTY)
 
-    override fun create(state: WakeState, clauseId: String): Entered<ScheduledWakes> {
+    override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
         recorder.open(clauseId)
-        return schedulerInState(RecordingBackgroundTaskApi(SystemBackgroundTaskApi, recorder))
+        return schedulerInState(RecordingBackgroundTaskApi(SystemBackgroundTaskApi, recorder), log)
     }
 }
 

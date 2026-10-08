@@ -4,6 +4,7 @@ package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DownloadState
 import app.snapsync.contracts.DownloadUnderTest
 import app.snapsync.contracts.Entered
@@ -16,6 +17,7 @@ import app.snapsync.contracts.RunParameters
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.download.IosDownload
 import app.snapsync.gallery.IosGalleryReader
@@ -147,7 +149,7 @@ class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters
 
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
-    override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+    override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
         if (state in UploadContract.PRESENTED) return Entered.Unreachable(URL_SESSION_SETTLES_AT_ONCE)
         if (state == UploadState.RESTRICTED_NETWORK) return Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
         val base = fixture.require()
@@ -156,7 +158,7 @@ class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters
             log = Logger.withTag("contract"),
             sessionIdentifier = "app.snapsync.contract.upload.$clauseId",
             cap = CAP,
-        )
+        ).recorded(log)
         val ended = mutableListOf<UploadJob>()
         platform.listen(
             UploadHandlers(onFinished = {
@@ -219,13 +221,13 @@ class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunPara
 
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
-    override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> =
+    override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> =
         if (state == DownloadState.RESTRICTED_NETWORK) {
             Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
         } else {
             Entered.Ready(
                 DownloadUnderTest(
-                    open = { IosDownload(Logger.withTag("contract")) },
+                    open = { IosDownload(Logger.withTag("contract")).recorded(log) },
                     base = fixture.require(),
                     readTemp = { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() },
                 ),

@@ -2,11 +2,13 @@ package app.snapsync.permission
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.GalleryAccess
@@ -30,9 +32,9 @@ class PhotoKitNoGrantContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(PhotoAccessState.NO_GRANT)
 
-        override fun create(state: PhotoAccessState, clauseId: String): Entered<PhotoAccess> {
+        override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
             if (state != PhotoAccessState.NO_GRANT || !holdsNoGrant()) return Entered.Unreachable(unreachable)
-            val adapter = PhotoLibraryPermission()
+            val adapter = PhotoLibraryPermission().recorded(log)
             return Entered.Ready(PhotoAccess(adapter))
         }
     }

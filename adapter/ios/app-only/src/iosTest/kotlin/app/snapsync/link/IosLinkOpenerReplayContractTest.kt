@@ -4,10 +4,12 @@ import app.snapsync.contract.RECORDINGS
 import app.snapsync.contract.ReplayingUrlOpenerApi
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.LinkOpenerState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.ports.SystemUi
@@ -30,9 +32,12 @@ class IosLinkOpenerReplayContractTest {
         override val kind = BindingKind.Replay
         override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
 
-        override fun create(state: LinkOpenerState, clauseId: String): Entered<SystemUi> {
+        override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> {
             return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
-                Entered.Ready(IosSystemUi(ReplayingUrlOpenerApi(replayer)), dispose = replayer::assertExhausted)
+                Entered.Ready(
+                    IosSystemUi(ReplayingUrlOpenerApi(replayer)).recorded(log),
+                    dispose = replayer::assertExhausted,
+                )
             }
         }
     }

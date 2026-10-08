@@ -2,11 +2,13 @@ package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.ExtensionRegistryState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.ios.registry.ExtensionRegistrationApi
 import app.snapsync.ios.registry.PhotoKitExtensionRegistry
 import app.snapsync.ios.registry.PlatformWriteAnswer
@@ -55,7 +57,7 @@ internal class ReplayingRegistrationApi(private val replayer: Replayer) : Extens
     override fun isEnabled(): Boolean = replayer.answer(IS_ENABLED_CALL).toBooleanStrict()
 }
 
-private val log = Logger.withTag("RegistryContract")
+private val logger = Logger.withTag("RegistryContract")
 
 /**
  * The registry in [state], over [api]. The record is entered through the port's own write — recorded like any
@@ -65,6 +67,7 @@ private val log = Logger.withTag("RegistryContract")
 internal fun registryInState(
     api: ExtensionRegistrationApi,
     state: ExtensionRegistryState,
+    log: CallLog,
     afterDispose: () -> Unit = {},
 ): Entered<ExtensionRegistry> {
     when (state) {
@@ -73,7 +76,7 @@ internal fun registryInState(
         ExtensionRegistryState.UNDER_PARTIAL_GRANT -> Unit
     }
     // Recorded on an iOS 26.6 device, which carries the selector: replayed as such on whatever host replays it.
-    return Entered.Ready(PhotoKitExtensionRegistry(log, api, supported = true), dispose = afterDispose)
+    return Entered.Ready(PhotoKitExtensionRegistry(logger, api, supported = true).recorded(log), dispose = afterDispose)
 }
 
 internal const val REGISTRY_NEEDS_FULL_GRANT =
@@ -92,10 +95,10 @@ internal class DeviceRegistryGrantedBinding(private val recorder: Recorder) :
     override val grant = GalleryAccess.GRANTED
     override val reaches = setOf(ExtensionRegistryState.RECORD_ABSENT, ExtensionRegistryState.RECORD_PRESENT)
 
-    override fun create(state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> {
+    override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
         if (state !in reaches) return Entered.Unreachable(REGISTRY_NEEDS_PARTIAL_GRANT)
         recorder.open(clauseId)
-        return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state)
+        return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state, log)
     }
 }
 
@@ -110,9 +113,9 @@ internal class DeviceRegistryLimitedBinding(private val recorder: Recorder) :
     override val grant = GalleryAccess.LIMITED
     override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
 
-    override fun create(state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> {
+    override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
         if (state !in reaches) return Entered.Unreachable(REGISTRY_NEEDS_FULL_GRANT)
         recorder.open(clauseId)
-        return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state)
+        return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state, log)
     }
 }

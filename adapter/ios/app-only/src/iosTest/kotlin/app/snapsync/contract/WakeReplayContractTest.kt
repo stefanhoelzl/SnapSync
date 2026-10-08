@@ -2,11 +2,13 @@ package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import kotlin.test.Test
@@ -27,9 +29,9 @@ class WakeReplayContractTest {
         override val kind = BindingKind.Replay
         override val reaches = setOf(WakeState.EMPTY)
 
-        override fun create(state: WakeState, clauseId: String): Entered<ScheduledWakes> {
+        override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
             return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
-                schedulerInState(ReplayingBackgroundTaskApi(replayer), afterDispose = replayer::assertExhausted)
+                schedulerInState(ReplayingBackgroundTaskApi(replayer), log, afterDispose = replayer::assertExhausted)
             }
         }
     }
