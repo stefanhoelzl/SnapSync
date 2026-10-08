@@ -154,11 +154,12 @@ class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters
         if (state == UploadState.RESTRICTED_NETWORK) return Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
         val base = fixture.require()
         val contract = UploadContract.name
-        val platform = IosUrlSessionUploadPlatform(
+        val adapter = IosUrlSessionUploadPlatform(
             log = Logger.withTag("contract"),
             sessionIdentifier = "app.snapsync.contract.upload.$clauseId",
             cap = CAP,
-        ).recorded(log)
+        )
+        val platform = adapter.recorded(log)
         val ended = mutableListOf<UploadJob>()
         platform.listen(
             UploadHandlers(onFinished = {
@@ -201,8 +202,9 @@ class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters
                 ended = { ended.toList() },
                 objects = fixtureObjects(base),
             ),
-            // Held transfers end with their clause, not with the fixture's hold timeout.
-            dispose = { runEntry { platform.jobs(UploadJobSet.IN_FLIGHT).forEach { platform.cancel(it) } } },
+            // Held transfers end with their clause, not with the fixture's hold timeout — through the bare adapter, since
+            // the disposal is inside the clause's window and a cleanup `cancel` is not the clause's.
+            dispose = { runEntry { adapter.jobs(UploadJobSet.IN_FLIGHT).forEach { adapter.cancel(it) } } },
         )
     }
 
