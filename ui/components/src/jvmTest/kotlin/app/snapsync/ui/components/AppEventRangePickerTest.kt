@@ -28,6 +28,7 @@ import app.snapsync.ui.components.resources.range_end_pick_time
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
 import app.snapsync.ui.components.resources.wheel_start_hour
+import app.snapsync.ui.components.resources.wheel_start_minute
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -187,6 +188,41 @@ class AppEventRangePickerTest {
         setPicker()
         rule.onNodeWithContentDescription("Tuesday, 10 March 2026").assertIsSelected()
         rule.onNodeWithContentDescription("Monday, 9 March 2026").assertIsNotSelected()
+    }
+
+    @Test
+    fun `tapping a From row moves the start's hour or minute`() {
+        setPicker()
+        rule.onNode(
+            hasText("10") and hasAnyAncestor(hasContentDescription(str(Res.string.wheel_start_hour))),
+            useUnmergedTree = true,
+        )
+            .performClick()
+        rule.waitForIdle()
+        assertEquals(LocalDateTime(2026, 3, 10, 10, 0), range.from)
+        rule.onNode(
+            hasText("01") and hasAnyAncestor(hasContentDescription(str(Res.string.wheel_start_minute))),
+            useUnmergedTree = true,
+        )
+            .performClick()
+        rule.waitForIdle()
+        assertEquals(LocalDateTime(2026, 3, 10, 10, 1), range.from)
+    }
+
+    @Test
+    fun `dragging the Until minutes keeps an hour already chosen`() {
+        range = EventRange(LocalDateTime(2026, 3, 10, 9, 0), LocalDate(2026, 3, 12), untilHour = 11)
+        setPicker()
+        val minutes = rule.onNodeWithContentDescription(str(Res.string.wheel_end_minute), useUnmergedTree = true)
+        minutes.performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(0f, -height / 2f))
+        }
+        rule.waitForIdle()
+        assertEquals(11, range.untilHour, "the clock's hour fills only a blank hour")
+        minutes.performTouchInput { up() }
+        rule.waitForIdle()
+        assertEquals(11, range.until?.hour)
     }
 
     private fun setPicker(endTime: EndTimeGuide = EndTimeGuide.NONE) {

@@ -55,6 +55,6 @@ fun AppTextField(
             // Room for a few lines at rest, and a ceiling so a long account scrolls within the field
             // rather than growing the sheet under the keyboard.
             Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 160.dp)
-        }.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
+        }.then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
     )
 }

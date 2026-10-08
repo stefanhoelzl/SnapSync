@@ -17,7 +17,7 @@ import androidx.compose.ui.text.style.TextAlign
  */
 @Composable
 fun StatusHint(text: String, isError: Boolean = false, onClick: (() -> Unit)? = null) {
-    val tappable = onClick?.let { Modifier.clickable(role = Role.Button, onClick = it) } ?: Modifier
+    val tappable = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,

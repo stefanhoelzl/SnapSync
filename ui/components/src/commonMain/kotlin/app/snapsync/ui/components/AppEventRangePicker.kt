@@ -145,7 +145,7 @@ private fun RowScope.RangeEnd(
 ) {
     val scheme = MaterialTheme.colorScheme
     val align = if (alignEnd) TextAlign.End else TextAlign.Start
-    val tappable = onClick?.let { Modifier.clickable(role = Role.Button, onClick = it) } ?: Modifier
+    val tappable = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier
     Column(
         modifier = Modifier.weight(1f).then(tappable),
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,

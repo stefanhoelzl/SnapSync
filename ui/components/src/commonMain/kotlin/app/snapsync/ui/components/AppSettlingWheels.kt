@@ -102,13 +102,14 @@ internal fun SelectionBand() {
 @Composable
 internal fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
     val rowPx = with(LocalDensity.current) { WheelRowHeight.toPx() }
-    val centerIndex by remember {
-        derivedStateOf {
-            val settled = listState.firstVisibleItemScrollOffset / rowPx
-            (listState.firstVisibleItemIndex + settled.roundToInt()).coerceIn(0, count - 1)
-        }
-    }
+    val centerIndex by remember { derivedStateOf { centeredRow(listState, rowPx, count) } }
     return centerIndex
+}
+
+/** The row on the reading line: the first visible row, or the next once it is more than half scrolled past. */
+private fun centeredRow(listState: LazyListState, rowPx: Float, count: Int): Int {
+    val settled = listState.firstVisibleItemScrollOffset / rowPx
+    return (listState.firstVisibleItemIndex + settled.roundToInt()).coerceIn(0, count - 1)
 }
 
 /**
@@ -205,6 +206,7 @@ private fun SettlingWheel(
     val reduceMotion = LocalReduceMotion.current
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = wheel.value)
     val center = rememberCenteredRow(listState, wheel.count)
+    val rowPx = with(LocalDensity.current) { WheelRowHeight.toPx() }
     val current by rememberUpdatedState(wheel)
     val settle by rememberUpdatedState(onSettle)
     val dragStarted by rememberUpdatedState(onDragStart)
@@ -233,7 +235,8 @@ private fun SettlingWheel(
     }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.filter { !it }.collect {
-            val rest = centeredIndex(listState, wheel.count)
+            // Read directly, not through [center]: a collector must not wait for recomposition.
+            val rest = centeredRow(listState, rowPx, wheel.count)
             when {
                 rest != current.value || (dragged && current.blank) -> {
                     moveTo(rest)
@@ -256,14 +259,6 @@ private fun SettlingWheel(
             cameToRest(index)
         }
     }
-}
-
-/** The row on the reading line right now, read directly (a collector must not wait for recomposition). */
-private fun centeredIndex(listState: LazyListState, count: Int): Int {
-    val info = listState.layoutInfo
-    val row = info.visibleItemsInfo.firstOrNull()?.size?.takeIf { it > 0 } ?: return listState.firstVisibleItemIndex
-    val settled = listState.firstVisibleItemScrollOffset.toFloat() / row
-    return (listState.firstVisibleItemIndex + kotlin.math.round(settled).toInt()).coerceIn(0, count - 1)
 }
 
 @Composable
