@@ -15,13 +15,27 @@ import kotlin.reflect.KProperty1
  * the compile, and the architecture gate compares the rendered text with the grid it derives. The rendering is common
  * code on purpose — it runs identically on every host, and a run-time check of a declaration renders through it too.
  */
-class Covers internal constructor(val cells: List<String>)
+class Covers internal constructor(val cells: List<String>, val oneOf: List<List<String>>)
 
 /** Declares a clause's cells; at least one is required ([Clause] refuses an empty declaration). */
-fun cells(declare: CellsBuilder.() -> Unit): Covers = Covers(CellsBuilder().apply(declare).rendered.toList())
+fun cells(declare: CellsBuilder.() -> Unit): Covers =
+    CellsBuilder().apply(declare).let { Covers(it.rendered.toList(), it.groups.toList()) }
 
 class CellsBuilder internal constructor() {
     internal val rendered = mutableListOf<String>()
+    internal val groups = mutableListOf<List<String>>()
+
+    /**
+     * A group of answers of which ONE run sees at least one — a clause that accepts either honestly (a grant that reads
+     * `NOT_DETERMINED` or `DENIED`, a `start` that may or may not begin). The runner requires one of them to occur; a
+     * cell claimed only through groups is a WEAK claim, which does not count it as covered (`docs/testing.md`).
+     */
+    fun oneOf(declare: CellsBuilder.() -> Unit) {
+        val group = CellsBuilder().apply(declare)
+        require(group.groups.isEmpty()) { "a one-of group cannot nest another" }
+        require(group.rendered.size >= 2) { "a one-of group names at least two cells: ${group.rendered}" }
+        groups += group.rendered.toList()
+    }
 
     /**
      * The cells of port [P]. The port is a reified type parameter rather than read off a member reference: on
@@ -122,4 +136,16 @@ internal fun simpleNameOf(k: KClass<*>): String {
     val name = k.simpleName
     requireNotNull(name) { "a cell owner must be a named class: $k" }
     return name
+}
+
+/**
+ * The grid's name for a VALUE an adapter answered, as a recording proxy sees it at run time: `null`, a `Boolean`, an enum
+ * entry, or — for a sealed answer — the class of the instance, which is always a leaf. Rendered through the same
+ * [variantName] a declaration's class literal goes through, so declaration and observation agree on every host: the
+ * instance's `KClass` is the very class the literal names, on the JVM and Kotlin/Native alike. A member whose answer is
+ * neither sealed, enum, `Boolean` nor nullable is recorded as `returns` by its proxy, never through here.
+ */
+fun answerVariant(value: Any?): String = when (value) {
+    null, is Boolean, is Enum<*> -> variantName(value)
+    else -> relativeNameOf(value::class)
 }

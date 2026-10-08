@@ -12,9 +12,10 @@ fun <K : Enum<K>, T> run(contract: Contract<K, T>, binding: Binding<K, T>): List
 
 private fun <K : Enum<K>, T> runOne(clause: Clause<K, T>, binding: Binding<K, T>): Outcome {
     val declared = clause.state in binding.reaches
+    val log = CallLog()
     // Entering a state is part of the clause too: a replaying binding's seeding calls can diverge.
     val entered = try {
-        binding.create(clause.state, clause.id)
+        binding.create(clause.state, clause.id, log)
     } catch (t: Throwable) {
         return classify { throw t }
     }
@@ -28,6 +29,7 @@ private fun <K : Enum<K>, T> runOne(clause: Clause<K, T>, binding: Binding<K, T>
                 Outcome.NotRunHere(entered.reason)
             }
         is Entered.Ready -> {
+            log.open()
             val outcome = if (declared) {
                 execute(clause, entered.subject)
             } else {
@@ -36,9 +38,29 @@ private fun <K : Enum<K>, T> runOne(clause: Clause<K, T>, binding: Binding<K, T>
             // Disposal is part of the clause: a replaying binding checks there that every recorded call was
             // made, so a call the adapter silently STOPPED making diverges instead of replaying green.
             val disposal = classify { entered.dispose() }
-            if (outcome == Outcome.Passed) disposal else outcome
+            log.close()
+            when {
+                outcome != Outcome.Passed -> outcome
+                disposal != Outcome.Passed -> disposal
+                else -> occurred(clause, log.cells)
+            }
         }
     }
+}
+
+/**
+ * Whether what the clause DECLARES it covers occurred (`docs/testing.md`, "A declared cell must occur"): every cell it
+ * claims outright, and at least one cell of each of its one-of groups. A cell that occurred undeclared is ignored — a
+ * setup call inside a read clause is not a claim.
+ */
+private fun occurred(clause: Clause<*, *>, cells: Set<String>): Outcome {
+    val missing = clause.covers.filterNot { it in cells }
+    if (missing.isNotEmpty()) return Outcome.Failed("declared ${missing.joinToString("; ")} never occurred")
+    val unmet = clause.oneOf.filter { group -> group.none { it in cells } }
+    if (unmet.isNotEmpty()) {
+        return Outcome.Failed(unmet.joinToString("; ") { "none of ${it.joinToString(" | ")} occurred" })
+    }
+    return Outcome.Passed
 }
 
 private inline fun classify(block: () -> Unit): Outcome =

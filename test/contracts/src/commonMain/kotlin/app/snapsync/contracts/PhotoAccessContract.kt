@@ -34,9 +34,9 @@ object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAcces
             "NO_GRANT_READS_AS_NOT_GRANTED",
             PhotoAccessState.NO_GRANT,
             covers = cells {
-                on<PhotoAccessStatusSource> {
-                    emits(PhotoAccessStatusSource::permission).with(GalleryAccess.NOT_DETERMINED)
-                    emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
+                oneOf {
+                    on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.NOT_DETERMINED)
+                    on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
                 }
             },
         ) { access ->

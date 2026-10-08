@@ -1,8 +1,9 @@
 # The port-grid cells no clause covers yet (`docs/testing.md`, "Open cells").
 #
-# A cell is COVERED when a clause run against a real implementation on some host declares it. ClauseCoversTest
-# fails on a grid cell that is neither covered nor listed here, on a listed cell that is now covered, and on an
-# entry the grid does not hold. So this list only shrinks: write the clause, then delete its lines.
+# A cell is COVERED when a clause run against a real implementation on some host declares it outright; a claim
+# inside a one-of group is weak and covers nothing. ClauseCoversTest fails on a grid cell that is neither covered
+# nor listed here, on a listed cell that is now covered, and on an entry the grid does not hold. So this list only
+# shrinks: write the clause, then delete its lines.
 #
 # One cell per line, in the grid's own text (build/reports/port-grid/port-grid.txt), sorted.
 AttestStore.clearTokenIf → false
@@ -69,6 +70,7 @@ Download.Completion.onExpired.action()
 Download.handlers.onBackgroundEvents(Completion)
 Download.handlers.onEventsDrained()
 Download.handlers.onInvalidated()
+Download.start → StartResult.NotStarted
 EntryContext.current → null
 EntryContext.current → returns
 EntryContext.enter → false
@@ -115,7 +117,9 @@ Gallery.widenSelection → GalleryAccess.DENIED
 Gallery.widenSelection → GalleryAccess.GRANTED
 Gallery.widenSelection → GalleryAccess.LIMITED
 Gallery.widenSelection → GalleryAccess.NOT_DETERMINED
+GalleryReader.access → GalleryAccess.DENIED
 GalleryReader.access → GalleryAccess.LIMITED
+GalleryReader.access → GalleryAccess.NOT_DETERMINED
 GalleryReader.addToAlbum → WriteOutcome.Unsupported
 GalleryReader.albumMembers → GalleryRead.NotReadable
 GalleryReader.createAlbum → null
@@ -130,7 +134,9 @@ Lifecycle.listen → returns
 Links.handlers.onLink(LinkDelivery)
 Links.listen → returns
 LogSink.write → returns
+PhotoAccessStatusSource.permission → GalleryAccess.DENIED
 PhotoAccessStatusSource.permission → GalleryAccess.LIMITED
+PhotoAccessStatusSource.permission → GalleryAccess.NOT_DETERMINED
 PhotoGrantRead.current → GalleryAccess.DENIED
 PhotoGrantRead.current → GalleryAccess.GRANTED
 PhotoGrantRead.current → GalleryAccess.LIMITED

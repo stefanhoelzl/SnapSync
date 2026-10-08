@@ -20,27 +20,31 @@ import kotlin.test.fail
  * without a clause fails at once, and the list only shrinks.
  *
  * REPORTS the grid cells no clause claims, and — separately — the cells claimed only by clauses that run against no
- * real implementation on any host ([ContractCoverage.isReal]), in `build/reports/port-grid/clause-covers.txt`.
+ * real implementation on any host ([ContractCoverage.isReal]), and the cells claimed only WEAKLY, inside a clause's
+ * one-of groups — a weak claim does not cover a cell, since a run may see the group's other cell every time. All are
+ * written to `build/reports/port-grid/clause-covers.txt`.
  *
- * Declarations are trusted: nothing here checks a clause really drives the cell it names.
+ * Whether a declared cell really occurs is the runner's check, on every host a clause runs (`docs/testing.md`, "A declared
+ * cell must occur"); this gate holds the declarations to the grid.
  */
 class ClauseCoversTest {
 
     private val grid = PortGrid.cells.map { it.text }.toSet()
 
-    private class Claim(val contract: String, val clause: String, val cell: String, val real: Boolean)
+    private class Claim(val contract: String, val clause: String, val cell: String, val real: Boolean, val weak: Boolean)
 
     private val claims: List<Claim> = ContractCatalog.contracts.flatMap { contract ->
         contract.clauses.flatMap { clause ->
             val real = ContractCoverage.isReal(contract, clause)
-            clause.covers.map { Claim(contract.name, clause.id, it, real) }
+            clause.covers.map { Claim(contract.name, clause.id, it, real, weak = false) } +
+                clause.oneOf.flatten().map { Claim(contract.name, clause.id, it, real, weak = true) }
         }
     }
 
     @Test
     fun `every clause declares at least one cell`() {
         val bare = ContractCatalog.contracts.flatMap { c ->
-            c.clauses.filter { it.covers.isEmpty() }.map { "${c.name} / ${it.id}" }
+            c.clauses.filter { it.covers.isEmpty() && it.oneOf.isEmpty() }.map { "${c.name} / ${it.id}" }
         }
         if (bare.isNotEmpty()) {
             fail(
@@ -117,12 +121,13 @@ class ClauseCoversTest {
 
     @Test
     fun `the claims are reported`() {
-        val claimed = claims.filter { it.cell in grid }.groupBy { it.cell }
+        val claimed = claims.filter { it.cell in grid && !it.weak }.groupBy { it.cell }
         val real = claimed.filterValues { cs -> cs.any { it.real } }.keys
         val mockOnly = claimed.keys - real
-        val unclaimed = grid - claimed.keys
+        val weakOnly = claims.filter { it.cell in grid && it.weak && it.cell !in claimed }.groupBy { it.cell }
+        val unclaimed = grid - claimed.keys - weakOnly.keys
         val summary = "${grid.size} cells; ${claimed.size} claimed, ${real.size} via a real host, " +
-            "${mockOnly.size} mock only, ${unclaimed.size} unclaimed"
+            "${mockOnly.size} mock only, ${weakOnly.size} weak only, ${unclaimed.size} unclaimed"
         val out = File("build/reports/port-grid").apply { mkdirs() }
         File(out, "clause-covers.txt").writeText(
             buildString {
@@ -131,6 +136,11 @@ class ClauseCoversTest {
                 appendLine("# Claimed only by clauses no real implementation runs (mock only):")
                 mockOnly.sorted().forEach { cell ->
                     appendLine("  $cell  ← ${claimed.getValue(cell).joinToString { "${it.contract}/${it.clause}" }}")
+                }
+                appendLine()
+                appendLine("# Claimed only inside one-of groups (weak — not covered):")
+                weakOnly.keys.sorted().forEach { cell ->
+                    appendLine("  $cell  ← ${weakOnly.getValue(cell).joinToString { "${it.contract}/${it.clause}" }}")
                 }
                 appendLine()
                 appendLine("# Claimed by no clause:")

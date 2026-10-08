@@ -82,9 +82,11 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             "NO_GRANT_READS_NOTHING",
             GalleryReaderState.NO_GRANT,
             covers = cells {
+                oneOf {
+                    on<GalleryReader>().answers(GalleryReader::access).with(GalleryAccess.NOT_DETERMINED)
+                    on<GalleryReader>().answers(GalleryReader::access).with(GalleryAccess.DENIED)
+                }
                 on<GalleryReader> {
-                    answers(GalleryReader::access).with(GalleryAccess.NOT_DETERMINED)
-                    answers(GalleryReader::access).with(GalleryAccess.DENIED)
                     answers(GalleryReader::assets).with(GalleryRead.NotReadable::class)
                     answers(GalleryReader::assetsById).with(GalleryRead.NotReadable::class)
                     answers(GalleryReader::resources).with(GalleryRead.NotReadable::class)

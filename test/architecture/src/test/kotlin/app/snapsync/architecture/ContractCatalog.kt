@@ -20,7 +20,8 @@ import kotlin.test.assertTrue
  */
 internal object ContractCatalog {
 
-    class ClauseDecl(val id: String, val state: String, val covers: List<String>)
+    /** A clause as declared: [covers] the cells it claims outright, [oneOf] its one-of groups (weak claims). */
+    class ClauseDecl(val id: String, val state: String, val covers: List<String>, val oneOf: List<List<String>>)
 
     class ContractDecl(val name: String, val objectName: String, val stateEnum: String, val clauses: List<ClauseDecl>)
 
@@ -32,7 +33,7 @@ internal object ContractCatalog {
                 name = contract.name,
                 objectName = contract::class.simpleName!!,
                 stateEnum = state.simpleName!!,
-                clauses = contract.clauses.map { ClauseDecl(it.id, it.state.name, it.covers) },
+                clauses = contract.clauses.map { ClauseDecl(it.id, it.state.name, it.covers, it.oneOf) },
             )
         }.sortedBy { it.name }
     }
