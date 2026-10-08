@@ -4,6 +4,7 @@ import app.snapsync.model.DateFormats
 import app.snapsync.ports.DateFormatting
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** The one state a platform's formatting is in: its own CLDR data, on the device's own locale. */
 enum class DateFormattingState {
@@ -16,6 +17,9 @@ enum class DateFormattingState {
  * month name or an hour cycle, and each locale writes them its own way — so the design system spells out none of them.
  * A tag with a region is that locale whatever the device's; a bare language speaks that language; no tag is the
  * device's own locale.
+ *
+ * German's punctuation between a weekday and its day differs by platform, so that clause checks the names and their
+ * order, not the comma.
  *
  * A space inside an answer is compared as a plain space: CLDR puts a no-break or a narrow no-break space before `PM`
  * (and the platforms disagree on which, by version), which reads as a space. Every other character is compared as it is.
@@ -36,7 +40,13 @@ object DateFormattingContract : Contract<DateFormattingState, DateFormatting>("D
         clause("A_SKELETON_FOLLOWS_THE_LOCALES_ORDER_AND_NAMES", DateFormattingState.PLATFORM, covers = covers) {
             assertEquals("5 Oct 2026", it.formats("en-GB").reads("yMMMd"), "British English puts the day first")
             assertEquals("Oct 5, 2026", it.formats("en-US").reads("yMMMd"), "American English puts the month first")
-            assertEquals("Mo., 5. Okt.", it.formats("de-DE").reads("MMMEd"), "German names its own days and months")
+            // German's punctuation between the weekday and the day is the platform's ("Mo., 5. Okt." on the JVM,
+            // "Mo. 5. Okt." on iOS); its names and their order are not.
+            val german = it.formats("de-DE").reads("MMMEd")
+            assertTrue(
+                german.startsWith("Mo.") && german.endsWith("5. Okt."),
+                "German names its own days and months, the day before the month: '$german'",
+            )
         }
 
         clause("A_SKELETON_FOLLOWS_THE_LOCALES_HOUR_CYCLE", DateFormattingState.PLATFORM, covers = covers) {
