@@ -31,6 +31,7 @@ import app.snapsync.model.ReportContext
 import app.snapsync.model.StandbyBucket
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
+import app.snapsync.ports.DeviceConditions
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
@@ -80,7 +81,7 @@ class CollectDiagnosticDumpTest {
         downloads: DownloadService = DownloadService(inMemoryDatabases()),
         environment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
-        conditions: DeviceConditionsMock = DeviceConditionsMock(),
+        conditions: DeviceConditions = DeviceConditionsMock().port(),
         appFacts: () -> AppFacts = { APP_FACTS },
         mobileData: MobileDataSetting = MobileDataSetting(inMemoryPreferences()),
     ) = CollectDiagnosticDump(
@@ -102,7 +103,7 @@ class CollectDiagnosticDumpTest {
         permission = galleryAccess(MutableStateFlow(permission)),
         network = NetworkReadings(inMemoryNetworkMonitor(MutableStateFlow(network))),
         mobileData = mobileData,
-        conditions = DeviceConditionsReadings(conditions.port()),
+        conditions = DeviceConditionsReadings(conditions),
         appFacts = appFacts,
         uploadFacts = { mapOf("extension_registrable" to "false", "app_admission" to "Admit") },
         refusalFacts = { refusalFacts },
@@ -156,6 +157,18 @@ class CollectDiagnosticDumpTest {
         refusalFacts = refused
         val dump = collector().collect(NOTE, SCREEN)
         assertTrue(dump.state.keys.none { it.startsWith("attest_") }, "${dump.state.keys}")
+    }
+
+    @Test
+    fun `a refusal with no detail and no chain carries its reason alone`() = runTest {
+        refusalFacts = app.snapsync.model.RefusalFacts(
+            app.snapsync.model.DeviceRefusal.DEVICE_UNVERIFIABLE,
+            detail = null,
+            chain = null,
+        )
+        val dump = collector().collect(NOTE, SCREEN.copy(verification = true))
+        assertEquals("device-unverifiable", dump.state["attest_failure"])
+        assertTrue(dump.state.keys.none { it.startsWith("attest_chain") || it.startsWith("attest_root") })
     }
 
     @Test
@@ -260,7 +273,7 @@ class CollectDiagnosticDumpTest {
         conditions.operator.reading = DeviceConditionsMock.TYPICAL.copy(powerSaving = Fact.Known(true))
         val dump = collector(
             network = NetworkAccess.Online(restricted = true),
-            conditions = conditions,
+            conditions = conditions.port(),
         ).collect(NOTE, SCREEN)
 
         assertEquals("online_restricted", dump.state[DiagnosticKeys.NETWORK])
@@ -300,7 +313,7 @@ class CollectDiagnosticDumpTest {
             thermal = Fact.Failed("x".repeat(500)),
             standbyBucket = Fact.Known(StandbyBucket.RARE),
         )
-        val dump = collector(conditions = conditions).collect(NOTE, SCREEN)
+        val dump = collector(conditions = conditions.port()).collect(NOTE, SCREEN)
 
         assertEquals("failed (${"x".repeat(DIAGNOSTIC_FAILURE_REASON_CHARS)})", dump.state[DiagnosticKeys.THERMAL])
         assertEquals("rare", dump.state[DiagnosticKeys.STANDBY_BUCKET])
@@ -309,13 +322,53 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `a device read that never answers fails its facts and the report still goes`() = runTest {
         val conditions = DeviceConditionsMock().also { it.operator.holding = true }
-        val dump = collector(appLog = "app\n", conditions = conditions).collect(NOTE, SCREEN)
+        val dump = collector(appLog = "app\n", conditions = conditions.port()).collect(NOTE, SCREEN)
 
         val expected = "failed (the device conditions read timed out after ${CollectDiagnosticDump.DEFAULT_READ_TIMEOUT})"
         assertEquals(expected, dump.state[DiagnosticKeys.POWER_SAVING])
         assertEquals(expected, dump.state[DiagnosticKeys.THERMAL])
         assertEquals("online", dump.state[DiagnosticKeys.NETWORK], "the other reads are not held up by it")
         assertEquals("app\n", dump.appLog)
+    }
+
+    @Test
+    fun `a device read that throws fails its facts with the reason it gave`() = runTest {
+        val throwing = object : DeviceConditions {
+            override suspend fun read(): DeviceConditionsReading = error("battery service died")
+        }
+        val dump = collector(conditions = throwing).collect(NOTE, SCREEN)
+
+        assertEquals("failed (battery service died)", dump.state[DiagnosticKeys.POWER_SAVING])
+        assertEquals("failed (battery service died)", dump.state[DiagnosticKeys.THERMAL])
+    }
+
+    @Test
+    fun `a failure with no message is named by its type`() = runTest {
+        val throwing = object : DeviceConditions {
+            override suspend fun read(): DeviceConditionsReading = throw IllegalStateException()
+        }
+        val dump = collector(conditions = throwing).collect(NOTE, SCREEN)
+
+        assertEquals("failed (IllegalStateException)", dump.state[DiagnosticKeys.POWER_SAVING])
+    }
+
+    @Test
+    fun `a failure with neither a message nor a name is still written failed`() = runTest {
+        // An anonymous throwable has no simple name: the fact still reads failed, never absent.
+        val dump = collector(appFacts = { throw object : RuntimeException() {} }).collect(NOTE, SCREEN)
+
+        assertEquals("failed ()", dump.state[DiagnosticKeys.DEVICE_ID])
+    }
+
+    @Test
+    fun `every network access is named`() = runTest {
+        val named = listOf(
+            NetworkAccess.Online(restricted = true),
+            NetworkAccess.Offline,
+            NetworkAccess.Blocked,
+        ).map { collector(network = it).collect(NOTE, SCREEN).state[DiagnosticKeys.NETWORK] }
+
+        assertEquals(listOf("online_restricted", "offline", "blocked"), named)
     }
 
     @Test
@@ -366,7 +419,7 @@ class CollectDiagnosticDumpTest {
                 endsAt = eventEnd("2099-12-31T00:00:00Z"),
                 deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             ),
-            conditions = conditions,
+            conditions = conditions.port(),
             appFacts = { AppFacts(failed, failed, failed, failed) },
             environment = DiagnosticEnvironment(
                 appVersion = "10.20",
