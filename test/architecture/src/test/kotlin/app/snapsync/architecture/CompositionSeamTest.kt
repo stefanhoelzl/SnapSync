@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
  * are the I/O boundary named for the need"). Decision record: `changes/…/enforce-port-boundary`
  * (D1, D5, D9).
  *
- * `AppPorts`, `ExtensionPorts`, `ProcessPorts` and `DevicePorts` are where the shell hands the core
+ * `AppPorts`, `ExtensionPorts`, `ProcessPorts` and the device bundles are where the shell hands the core
  * everything it may not build itself — ports and nothing else since `PortBundleTest` holds them to it, so their
  * pinned inventories below are empty, and stay listed so a lambda slipping back in is seen here too.
  * Most of what crosses is a port, and a port is a *declared* boundary — a reader, and every gate that
@@ -60,7 +60,8 @@ class CompositionSeamTest {
         "AppPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt",
         "ExtensionPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt",
         "ProcessPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
-        "DevicePorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/DevicePorts.kt",
+        "AppDevicePorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/DevicePorts.kt",
+        "ExtensionDevicePorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/DevicePorts.kt",
     )
 
     /**
@@ -83,7 +84,7 @@ class CompositionSeamTest {
      * composition already holds" is not accepted for a value obtained by a platform read, however cached.
      */
     private val pins: Map<String, Map<String, String>> = mapOf(
-        // DELIBERATELY EMPTY, all four, and that is the entry rather than an omission: a composition bundle holds
+        // DELIBERATELY EMPTY, all five, and that is the entry rather than an omission: a composition bundle holds
         // ports and nothing else (`PortBundleTest`). What used to be pinned here — the app uploader's factory, the
         // minted-event hook, the cycle's token and selection reads — is built by the composition itself now, and
         // pinned below as the constructor seam it became. A bundle whose inventory is empty must still be listed, or
@@ -94,7 +95,8 @@ class CompositionSeamTest {
         // An iOS or Android root's real adapters, one `Lazy` PORT each — the bundle its build's adapter set hands back,
         // a launch-time adapters' on a rig build (`docs/testing.md`). A lazy is a port built on first use, not a lambda
         // the core calls.
-        "DevicePorts" to emptyMap(),
+        "AppDevicePorts" to emptyMap(),
+        "ExtensionDevicePorts" to emptyMap(),
     )
 
     /**
@@ -114,10 +116,17 @@ class CompositionSeamTest {
             "the membership's ONE selection-policy derivation, built in compose/ over the download store and the " +
             "album port — a sibling the gather may not name (feature-blindness)",
         "CreateEvent.onMinted" to
-            "hands the minted event to AppCore.onEventMinted, which routes it into this core's join gate",
-        "AppCore.onEventMinted" to
-            "the host zone's join gate (StatusContainerHost.onEventCreated), handed in by snapSyncHost — a re-entry " +
-            "into this same graph so create and a scanned QR take one gate, not two. Nothing leaves the process",
+            "emits the minted event on AppCore.mintedEvents, which the host zone collects into this core's join gate " +
+            "(StatusContainerHost.onEventCreated) — a re-entry into this same graph so create and a scanned QR take " +
+            "one gate, not two. Nothing leaves the process",
+        "CycleGateRead.admission" to
+            "UploaderProcess.admission: the app's from its own core (grant, selection scope, rig pin — in-process " +
+            "state), the extension's from a PhotoGrantRead PORT through extensionAdmission",
+        "CycleGateRead.albumExclusions" to
+            "UploadServices.albumExclusions, the tier's denylisted-album read — the gallery services over the Gallery port",
+        "UploadServices.albumExclusions" to
+            "denylistedAlbumMembers over the tier's GalleryAlbums service and its own grant read: the app's " +
+            "AppCore.albumExclusionsWhenReadable (admit on doubt), the extension's FailCycle answer",
         "AppTail.appUploader" to
             "this core's own app uploader (AppCore.appUploader), resolved at first use — deferred construction, " +
             "since the uploader reads the graph the tail belongs to; its platform touches are its Upload port's",
@@ -238,10 +247,6 @@ class CompositionSeamTest {
         "AppTail.finish" to
             "this core's own end-of-wake step (MembershipEnd.endOfWake: the bounded photo check, then EventCompletion.finish), " +
             "run after the tail rather than inside it",
-        "WakeHold.finish" to "AppTail.finish, forwarded to each wake's hold — the same end-of-wake step",
-        "WakeHold.settling" to
-            "this core's own footprint reading (AppTail.recordFootprint, given the wake's label) — it reaches the ProcessInfo " +
-            "port and the FootprintTrail service in AppTail itself; the hold only says when",
         "EventCompletion.publishFinal" to
             "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
         "EventCompletion.everythingReceived" to
@@ -381,7 +386,13 @@ class CompositionSeamTest {
      */
     @Test
     fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
-        val floors = mapOf("AppPorts" to 20, "ExtensionPorts" to 9, "ProcessPorts" to 7, "DevicePorts" to 20)
+        val floors = mapOf(
+            "AppPorts" to 20,
+            "ExtensionPorts" to 9,
+            "ProcessPorts" to 7,
+            "AppDevicePorts" to 20,
+            "ExtensionDevicePorts" to 10,
+        )
         floors.forEach { (bundle, floor) ->
             assertTrue(
                 params(bundle).size >= floor,

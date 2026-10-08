@@ -2,7 +2,7 @@
 
 package app.snapsync.rig
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
@@ -42,7 +42,7 @@ private val log = Logger.withTag("rig")
 class RigLaunch internal constructor(
     val launch: LaunchAdapters,
     /** What the app composes over: the real adapters, with the adapter choice's mocked systems swapped in. */
-    val ports: DevicePorts,
+    val ports: AppDevicePorts,
     val controls: RigDevControls,
     val ui: RigUi,
     /** What the operator levers move: the mocked device — an idle one, for a launch that mocks nothing. */
@@ -81,24 +81,24 @@ class RigLaunch internal constructor(
  * scheduled would otherwise launch a process with none. A mocked wake also cancels that real request, so the real
  * operating system stops waking a run whose wakes the channel plays.
  */
-fun rigLaunch(real: DevicePorts): RigLaunch {
+fun rigLaunch(real: AppDevicePorts): RigLaunch {
     val launch = LaunchAdapters.load(
-        real.files,
+        real.files.value,
         AdapterProcess.APP,
         AdapterFacts(osCarriesUploadExtension(), appMarketingVersion(), ::randomDeviceId),
     )
     val chosen = launch as? LaunchAdapters.Chosen
     val mocked = chosen?.choice?.mocked.orEmpty()
     if (launch is LaunchAdapters.Refused || MockedSystem.WAKE in mocked) {
-        real.wake.listen(WakeHandlers(onWake = { _, completion -> completion.complete() }))
-        if (MockedSystem.WAKE in mocked) real.wake.cancel(WakeId.Heartbeat)
+        real.wake.value.listen(WakeHandlers(onWake = { _, completion -> completion.complete() }))
+        if (MockedSystem.WAKE in mocked) real.wake.value.cancel(WakeId.Heartbeat)
     }
     chosen?.let(::keepSaving)
-    val ports = launch.portsFor(real, AdapterProcess.APP)
+    val ports = launch.portsFor(real)
     val controls = RigDevControls()
     val device = chosen?.device ?: MockDevice()
     val world = launchWorld(device, mocked, ports, controls, mockBase = bakedUploadBase(), realBackend = REAL_BACKEND)
-    return RigLaunch(launch, ports, controls, RigUi(ports.lazies.ui), world, real.files)
+    return RigLaunch(launch, ports, controls, RigUi(ports.ui), world, real.files.value)
 }
 
 /**

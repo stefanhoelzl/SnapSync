@@ -6,6 +6,7 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigRead
+import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
 import app.snapsync.model.FileArea
@@ -200,6 +201,36 @@ class ConfigServiceTest {
     }
 
     /** A `Files` whose every answer is [answer] — a platform failure class the mock has no lever for. */
+    // ---- the reads the composition takes ---------------------------------------------------------------------
+
+    private fun joined(config: EventConfig) = service(holding(encodeConfigFile(config)))
+
+    @Test
+    fun `a device that is not joined has no active event arms no download and has not ended`() {
+        val service = service(inMemoryFiles())
+        assertNull(service.activeEventId())
+        assertNull(service.downloadsEnabled(), "not joined is neither yes nor no")
+        assertFalse(service.freshReadHasEnded())
+    }
+
+    @Test
+    fun `a joined membership answers its event and whether it receives`() {
+        assertEquals(SEED.eventId, joined(SEED).activeEventId())
+        assertEquals(true, joined(SEED.copy(direction = Direction.Both)).downloadsEnabled())
+        assertEquals(false, joined(SEED.copy(direction = Direction.UploadOnly)).downloadsEnabled())
+    }
+
+    @Test
+    fun `a fresh read says whether the joined range has ended`() {
+        assertFalse(joined(SEED).freshReadHasEnded())
+        assertTrue(joined(SEED.copy(endsAt = EventEnd(CaptureDate("2026-06-01T00:00:00Z")))).freshReadHasEnded())
+    }
+
+    @Test
+    fun `an unreadable config has not ended`() {
+        assertFalse(service(Answering(FileResult.Denied("locked"))).freshReadHasEnded())
+    }
+
     private class Answering(private val answer: FileResult<Nothing>) : Files {
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = answer
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = answer

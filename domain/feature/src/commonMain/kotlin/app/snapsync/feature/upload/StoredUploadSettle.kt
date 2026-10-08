@@ -48,6 +48,11 @@ class StoredUploadSettle(
     private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("StoredUploadSettle"),
 ) {
+    /** [settle] against the joined event [eventId] — nothing while not joined, when nothing is in flight to settle. */
+    suspend fun settleJoined(eventId: String?) {
+        eventId?.let { settle(it) }
+    }
+
     /** Settle against what the backend stores for this device in [eventId], the joined event. */
     suspend fun settle(eventId: String) {
         try {

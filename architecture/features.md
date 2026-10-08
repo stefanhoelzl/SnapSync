@@ -12,8 +12,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/creation`
 
-- files: `CreateEvent.kt`, `CreationStatus.kt`, `ForegroundReturn.kt`
-- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `ForegroundReturn (class)`
+- files: `CreateEvent.kt`, `CreationStatus.kt`, `ForegroundReturn.kt`, `MintedEvent.kt`
+- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `ForegroundReturn (class)`, `MintedEvent (class)`
 
 ## `feature/diagnostics`
 
@@ -27,8 +27,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `EventCompletion.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `ReceivedPhotoAdoption.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `Steps.kt`, `SwitchDecision.kt`
-- top-level types: `CompletionOutcome (class)`, `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventCompletion (class)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `ReceivedPhotoAdoption (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `ResetDeviceState (class)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
+- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `EventCompletion.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `JoinUnion.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `ReceivedPhotoAdoption.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `Steps.kt`, `SwitchDecision.kt`
+- top-level types: `CompletionOutcome (class)`, `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventCompletion (class)`, `JoinEvent (class)`, `JoinOutcome (class)`, `JoinUnion (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `ReceivedPhotoAdoption (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `ResetDeviceState (class)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
 
 ## `feature/push`
 
@@ -42,6 +42,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `HeartbeatCadence.kt`, `LedgerWriter.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`
-- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `PushTailGuard (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailSignal (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkOutcome (interface)`
+- files: `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `TailWakes.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`
+- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `PushTailGuard (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailSignal (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkOutcome (interface)`
 

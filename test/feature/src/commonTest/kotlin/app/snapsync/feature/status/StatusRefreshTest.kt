@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.configService
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
@@ -17,11 +18,14 @@ import app.snapsync.model.eventEnd
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.CandidateSource
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -73,9 +77,11 @@ class StatusRefreshTest {
         source: CandidateSource = OneAsset(),
         activeConfig: EventConfig? = config,
         policyFor: suspend (EventConfig) -> SelectionPolicy = { policy() },
+        gallery: OwnDeviceGalleryStatusSource? = null,
+        log: Logger = Logger.withTag("status"),
     ): Pair<MutableList<String>, StatusRefresh> {
         val steps = mutableListOf<String>()
-        val gallery = OwnDeviceGalleryStatusSource(
+        val walked = gallery ?: OwnDeviceGalleryStatusSource(
             object : CandidateSource {
                 override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
                     steps += "walk"
@@ -88,13 +94,14 @@ class StatusRefreshTest {
                 steps += "ledger"
                 LedgerCounts(done = setOf(AssetId("d1")), pending = emptySet())
             },
-            gallery = gallery,
+            gallery = walked,
             refreshDownloadLine = { steps += "downloads" },
             configSource = membership(activeConfig),
             policyFor = { cfg ->
                 steps += "policy"
                 policyFor(cfg)
             },
+            log = log,
         )
         return steps to refresh
     }
@@ -197,6 +204,40 @@ class StatusRefreshTest {
         // crash reporter on production builds — for an ordinary teardown.
         val (_, refresh) = harness(policyFor = { throw CancellationException("scope torn down") })
         assertFailsWith<CancellationException> { refresh.run() }
+    }
+
+    // ---- the library half alone: what a selection change runs ----
+
+    @Test
+    fun `the total alone recounts N without the cheap reads`() = runTest {
+        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
+        val (steps, refresh) = harness(gallery = gallery)
+        refresh.refreshTotal()
+        assertEquals(listOf("policy"), steps, "neither cheap read runs")
+        assertEquals(setOf(AssetId("A")), gallery.admitted.value)
+    }
+
+    @Test
+    fun `the total alone while unjoined counts nothing`() = runTest {
+        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
+        val (steps, refresh) = harness(activeConfig = null, gallery = gallery)
+        refresh.refreshTotal()
+        assertEquals(emptyList(), steps)
+        assertNull(gallery.admitted.value, "N stays not counted")
+    }
+
+    @Test
+    fun `the total alone under a failed policy read is logged and keeps N`() = runTest {
+        val gallery = OwnDeviceGalleryStatusSource(OneAsset()).apply { refresh(policy()) }
+        val recorder = CapturingLogWriter()
+        val (_, refresh) = harness(
+            policyFor = { error("album lookup blew up") },
+            gallery = gallery,
+            log = recorder.logger(),
+        )
+        refresh.refreshTotal() // must NOT throw
+        assertEquals(setOf(AssetId("A")), gallery.admitted.value, "N keeps what it last honestly held")
+        assertTrue(recorder.lines.any { (severity, line) -> severity == Severity.Error && "N not refreshed" in line })
     }
 }
 

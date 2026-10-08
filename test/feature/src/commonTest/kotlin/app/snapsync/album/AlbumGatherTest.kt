@@ -56,13 +56,20 @@ class AlbumGatherTest {
     /** The photo library's album surface at the port, recording every add; [failingCall]'s add throws. */
     private class RecordingAlbumManager(
         private val failingCall: Int? = null,
+        /** Whether an album may be created — only the grant's ensure ([AlbumGather.onAccessChanged]) creates one. */
+        private val creates: Boolean = false,
     ) : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
         val calls = mutableListOf<List<AssetId>>()
+        val created = mutableListOf<String>()
 
         /** When set, every add waits for it — a gather holding its lock. */
         var gate: CompletableDeferred<Unit>? = null
         val added: Set<AssetId> get() = calls.flatten().toSet()
-        override suspend fun createAlbum(title: String): AlbumId? = error("the gather never creates an album")
+        override suspend fun createAlbum(title: String): AlbumId? {
+            check(creates) { "the gather never creates an album" }
+            created += title
+            return "CREATED-$title"
+        }
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
             GalleryRead.Read(ids.map { AlbumRecord(it, "Trip") })
         override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
@@ -99,6 +106,7 @@ class AlbumGatherTest {
         val ledger = LedgerService(databases) { LEDGER_EVENT }
         val downloads = DownloadService(databases)
         val grant = MutableStateFlow(if (granted) GalleryAccess.GRANTED else GalleryAccess.DENIED)
+        val albums = AlbumMapService(inMemoryPreferences()).apply { put("E2", "ALBUM-2") }
         val gather = AlbumGather(
             configSource = config,
             ledger = ledger,
@@ -113,7 +121,7 @@ class AlbumGatherTest {
             photoAccess = galleryAccess(grant),
             coordinator = AlbumCoordinator(
                 GalleryAlbums(manager),
-                AlbumMapService(inMemoryPreferences()).apply { put("E2", "ALBUM-2") },
+                albums,
                 kind = kind,
             ),
             scope = scope,
@@ -145,7 +153,8 @@ class AlbumGatherTest {
         failingCall: Int? = null,
         granted: Boolean = true,
         kind: AlbumKind = AlbumKind.COLLECTION,
-    ) = Rig(cfg, RecordingAlbumManager(failingCall), granted, this, kind)
+        creates: Boolean = false,
+    ) = Rig(cfg, RecordingAlbumManager(failingCall, creates), granted, this, kind)
 
     @Test
     fun `a photo carried over from an earlier event is gathered when this window admits it`() = runTest {
@@ -310,5 +319,36 @@ class AlbumGatherTest {
         r.gather.onAccessObserved(usable = true)
         advanceUntilIdle()
         assertTrue(r.manager.calls.isEmpty())
+    }
+
+    // ---- the grant subscription: the album is ensured, then the emission judged ----
+
+    @Test
+    fun `a usable emission while joined ensures the album and then judges the emission`() = runTest {
+        val r = rig(cfg = config(eventId = "E3"), creates = true)
+        r.own("OWN", "2026-09-10T00:00:00Z")
+        r.gather.onAccessChanged(usable = false)
+        r.gather.onAccessChanged(usable = true)
+        advanceUntilIdle()
+        assertEquals(listOf("Trip"), r.manager.created, "the album-less membership's album is created once")
+        assertEquals("CREATED-Trip", r.albums.get("E3"))
+        assertEquals(setOf(AssetId("OWN")), r.manager.added, "access became usable, so a gather ran into it")
+    }
+
+    @Test
+    fun `an unusable emission ensures no album`() = runTest {
+        val r = rig(cfg = config(eventId = "E3"), creates = true)
+        r.gather.onAccessChanged(usable = false)
+        advanceUntilIdle()
+        assertTrue(r.manager.created.isEmpty())
+        assertEquals(null, r.albums.get("E3"))
+    }
+
+    @Test
+    fun `a usable emission with no membership ensures no album`() = runTest {
+        val r = rig(cfg = null, creates = true)
+        r.gather.onAccessChanged(usable = true)
+        advanceUntilIdle()
+        assertTrue(r.manager.created.isEmpty())
     }
 }

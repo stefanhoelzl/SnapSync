@@ -1,7 +1,8 @@
 package app.snapsync.architecture
 
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.compose.AppPorts
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.ExtensionDevicePorts
 import app.snapsync.compose.ExtensionPorts
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.ports.Port
@@ -16,7 +17,8 @@ import kotlin.test.assertTrue
  * **A composition bundle holds ports and nothing else** (`docs/architecture.md`, "One shared composition"; law "Ports
  * are the I/O boundary named for the need").
  *
- * The roots hand their compositions ports — [AppPorts], [ExtensionPorts], [ProcessPorts], [DevicePorts] — and the
+ * The roots hand their compositions ports — [AppPorts], [ExtensionPorts], [ProcessPorts], [AppDevicePorts],
+ * [ExtensionDevicePorts] — and the
  * compositions build every service, read every build constant from the `BuildInfo` port, and leave the main thread to
  * the platform-UI adapters. A service, a constant, a lambda or a dispatcher in a bundle is something a root decided for
  * the core, and the drift this gate exists to end: `AppPorts` once carried a dozen root-built services, the build's
@@ -24,7 +26,7 @@ import kotlin.test.assertTrue
  * graph and nothing said so.
  *
  * Read by reflection over the compiled bundles, so what it checks is what the compiler built: each constructor
- * parameter is a [Port], a `List` of ports (a process's log sinks), a `Lazy` port ([DevicePorts]' first-use adapters),
+ * parameter is a [Port], a `List` of ports (a process's log sinks), a `Lazy` port (the device bundles' first-use adapters),
  * or one of these bundles nested ([ProcessPorts] inside the app's and the extension's).
  *
  * And the other direction: every interface in `:domain:ports` extends [Port], so "a port" is a checkable fact rather
@@ -36,7 +38,8 @@ class PortBundleTest {
         AppPorts::class.java,
         ExtensionPorts::class.java,
         ProcessPorts::class.java,
-        DevicePorts::class.java,
+        AppDevicePorts::class.java,
+        ExtensionDevicePorts::class.java,
     )
 
     /** Interfaces in `:domain:ports` that are NOT ports — each a handle or a value a port hands over. */
@@ -69,7 +72,8 @@ class PortBundleTest {
             AppPorts::class.java to 20,
             ExtensionPorts::class.java to 9,
             ProcessPorts::class.java to 7,
-            DevicePorts::class.java to 20,
+            AppDevicePorts::class.java to 20,
+            ExtensionDevicePorts::class.java to 10,
         )
         floors.forEach { (bundle, floor) ->
             val count = primaryConstructor(bundle).parameterCount

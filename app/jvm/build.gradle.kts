@@ -9,9 +9,10 @@
 // A support module: never linked into a shipped binary (`ModuleSetTest`'s SUPPORT group).
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    // Coverage MEASUREMENT, no floor yet (`docs/architecture.md`, "Coverage"): a wiring module, credited by the
-    // integration surface (the root build file's edges); its first numbers are being taken, and its bound comes later.
-    id("snapsync.coverage")
+    // Coverage at ZERO (`docs/architecture.md`, "Coverage"; `snapsync.coverage-zero`): no instruction or branch may be
+    // missed. A wiring module: credited by the integration surface (the root build file's edges), and holding no
+    // decision for it to miss (`detektAppShell`).
+    id("snapsync.coverage-zero")
 }
 
 kotlin {

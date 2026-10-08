@@ -1,6 +1,6 @@
 package app.snapsync.android
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.rig.androidRigLaunch
 import app.snapsync.rig.start
 
@@ -16,7 +16,7 @@ import app.snapsync.rig.start
  * Called while `SnapSyncRoot` initializes: the root's members are reached only through the thunks, after it has
  * composed.
  */
-internal fun platformAdapters(root: SnapSyncRoot, real: DevicePorts): PlatformAdapters {
+internal fun platformAdapters(root: SnapSyncRoot, real: AppDevicePorts): PlatformAdapters {
     val launch = androidRigLaunch(real, uploadBase = BuildConfig.UPLOAD_BASE)
     return PlatformAdapters(
         devControls = launch.controls,

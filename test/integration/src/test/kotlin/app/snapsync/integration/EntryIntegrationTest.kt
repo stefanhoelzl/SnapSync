@@ -217,6 +217,9 @@ class EntryIntegrationTest {
         device("uploaders", "app" to "off")
         device("selection/change", "assets" to "A")
         eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == setOf("A") }
+        // The selection change's own tail holds background time until it ends; it must end while the uploader is off,
+        // or its top-up — running after the switch below — creates what this precondition says was not created.
+        awaitOs { it.backgroundTimeHolds.isEmpty() }
         // Back on, with A never discovered: under a partial grant only the selection's own read discovers.
         device("uploaders", "app" to "on")
         assertEquals(0, appUploads().created, "precondition: nothing was created")

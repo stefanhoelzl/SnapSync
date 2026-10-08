@@ -81,8 +81,8 @@ class JvmRootBootsColdTest {
         assertTrue(rootFile.isFile, "JVM root boots-cold gate: JvmApp.kt moved — re-point the scan")
         val code = ZoneGates.stripComments(rootFile.readText())
         assertTrue(
-            Regex("""\bval core: AppCore\b""").containsMatchIn(code),
-            "JvmApp.kt no longer declares `core` — the gate is stale",
+            Regex("""\bval composed: ComposedApp\b""").containsMatchIn(code),
+            "JvmApp.kt no longer declares `composed` — the gate is stale",
         )
         val eager = eagerCoreAccesses(code)
         assertTrue(

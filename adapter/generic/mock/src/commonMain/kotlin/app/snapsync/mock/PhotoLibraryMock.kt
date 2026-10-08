@@ -95,6 +95,9 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     /** Whether the running process's selection observer is open (composition opens it, on every start). */
     val observing: Boolean get() = state.listener?.observing == true
 
+    /** How many times the app presented the limited-library picker — the person's answer arrives as [changeSelection]. */
+    val pickersShown: Int get() = state.pickersShown
+
     /**
      * The person's selection under a partial grant is now [assets] — delivered whole, with its resources, to the running
      * process's observer, as the real observer delivers one. Fails loudly when no observer is open, rather than doing
@@ -237,6 +240,9 @@ internal class LibraryState(
 
     val imports = ImportScript()
     val selection = MutableStateFlow<List<RawAsset>?>(null)
+
+    /** How many times the app presented the limited-library picker. */
+    @Volatile var pickersShown: Int = 0
     val answers: LibraryChangeAnswers = answers ?: imports.answers
 
     @Volatile var listener: Listener? = null

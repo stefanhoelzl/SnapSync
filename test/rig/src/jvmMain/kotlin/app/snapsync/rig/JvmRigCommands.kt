@@ -43,8 +43,8 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
         pin = { rig.mocks.devControls.operator.pin },
         setPin = { rig.mocks.devControls.operator.pin = it },
         osSupportsOsDrivenUpload = { false },
-        permission = { rig.app.core.photoPermission.value },
-        reconcile = { rig.app.core.uploadTransitions.onOverrideChanged() },
+        permission = { rig.app.composed.core.photoPermission.value },
+        reconcile = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },
     ),
     "gallery/seed" to seedCommand { n, kind -> rig.world.seedMockLibrary(n, kind) },
     // Process death and a cold foreground launch: the new app's host is assembled — its subscriptions installed, the
@@ -93,7 +93,8 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
  */
 internal fun joinedEventId(rig: JvmRig): String? {
     val screenBuilt = rig.mocks.screen.operator.shown.value != null
-    return (if (screenBuilt) rig.app.host.container.stateFlow.value.layer as? Layer.Joined else null)?.membership?.eventId
+    val shown = if (screenBuilt) rig.app.composed.host.container.stateFlow.value.layer as? Layer.Joined else null
+    return shown?.membership?.eventId
         ?: (ConfigService(rig.mocks.disk.port(), rig.mocks.clock.port()).read() as? ConfigRead.Joined)?.config?.eventId
 }
 

@@ -1,6 +1,6 @@
 package app.snapsync.ios
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.Ui
 
@@ -20,7 +20,7 @@ internal class PlatformAdapters(
      */
     val ui: Lazy<Ui>,
     /** The ports this launch composes over: the root's real adapters in production. */
-    val ports: DevicePorts,
+    val ports: AppDevicePorts,
     /** Compose the graph at launch — [compose] itself in production; nothing on a rig launch whose adapter choice was refused. */
     val launch: (compose: () -> Unit) -> Unit,
     /** What this build adds to the process's boot banner: nothing in production. */

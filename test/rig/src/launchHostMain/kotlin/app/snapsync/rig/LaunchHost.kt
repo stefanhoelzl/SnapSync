@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterParse
@@ -45,7 +45,7 @@ private val log = Logger.withTag("rig")
 internal fun launchWorld(
     device: MockDevice,
     mocked: Set<MockedSystem>,
-    ports: DevicePorts,
+    ports: AppDevicePorts,
     controls: RigDevControls,
     mockBase: String,
     realBackend: String,
@@ -63,8 +63,10 @@ internal fun launchWorld(
     operatorRefusal = { realBackend },
     version = device.declaredVersion.takeIf { MockedSystem.BACKEND in mocked },
     os = PlayedOs(device) { it in mocked },
-    ownDeviceId = { (ports.secureStore.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
-    joinedEventId = { (ConfigService(ports.files, ports.clock).read() as? ConfigRead.Joined)?.config?.eventId },
+    ownDeviceId = { (ports.secureStore.value.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
+    joinedEventId = {
+        (ConfigService(ports.files.value, ports.clock.value).read() as? ConfigRead.Joined)?.config?.eventId
+    },
     setInviteLinkHints = { controls.hints = it },
     setEncryptsNewEvents = { controls.encrypts = it },
 )

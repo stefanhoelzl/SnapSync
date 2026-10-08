@@ -649,7 +649,7 @@ The hosts differ only in the hook they hand the server. They never differ in a r
 encoding. Both bind loopback only.
 
 **On the app host the rig is an adapter set, chosen at build time.** The root builds its real adapters as one lazy
-bundle (`DevicePorts`, `:domain:compose`) and calls `platformAdapters(real, …)`, which a rig build compiles from
+bundle (`AppDevicePorts`, `:domain:compose`) and calls `platformAdapters(real, …)`, which a rig build compiles from
 `:test:rig`'s hook directory instead of the app's `src/prod`: the ports are the launch-time adapters' (below), the UI is
 decorated (`RigUi`, which forwards everything to the screen it wraps), the development controls are the channel's
 (`RigDevControls`: the per-uploader switch, invite-link hints, the reset), and the server starts once the root has

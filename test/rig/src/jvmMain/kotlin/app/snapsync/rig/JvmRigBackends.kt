@@ -1,7 +1,6 @@
 package app.snapsync.rig
 
 import app.snapsync.jvm.JvmMocks
-import app.snapsync.jvm.VersionedHttpBackend
 import app.snapsync.liveedge.LiveEdge
 import app.snapsync.mock.BackendOperator
 import app.snapsync.mock.DeclaredVersion

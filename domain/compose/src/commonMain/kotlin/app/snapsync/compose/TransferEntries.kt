@@ -101,7 +101,7 @@ internal fun AppCore.onTransferEvents(session: String, trigger: TailTrigger, ado
             services.log.i { "onBackgroundTransfers(session=$session): protectedData=$protectedData" }
             prelude()
             handover.awaitRelease()
-            wake.thenTail(trigger)
+            tail.handTo(wake, trigger)
         }
         Unit
     }

@@ -79,6 +79,28 @@ class StoredUploadSettleTest {
     }
 
     @Test
+    fun `settling the joined event settles against it`() = runTest {
+        val files = listing("A-primary.heic")
+        val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
+
+        StoredUploadSettle(files, ledger, identity).settleJoined(eventId)
+
+        assertEquals(eventId, files.lastEventId)
+        assertEquals(LedgerState.COMPLETED, ledger.get("A-primary.heic")?.state)
+    }
+
+    @Test
+    fun `while not joined nothing is settled and no request is made`() = runTest {
+        val files = listing("A-primary.heic")
+        val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
+
+        StoredUploadSettle(files, ledger, identity).settleJoined(null)
+
+        assertEquals(0, files.calls)
+        assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
+    }
+
+    @Test
     fun `nothing pending means no request`() = runTest {
         val files = listing("A-primary.heic")
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.COMPLETED)

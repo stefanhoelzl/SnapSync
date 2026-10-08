@@ -74,6 +74,7 @@ object RigVocabulary {
         "device/uploads/complete",
         "device/import/fail-next",
         "device/membership/unreadable",
+        "device/membership/undeletable",
         "device/permission",
         "device/downloads/stage",
         "device/album/place",

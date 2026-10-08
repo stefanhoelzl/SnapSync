@@ -1,10 +1,8 @@
 package app.snapsync.compose
 
-import app.snapsync.model.ImportResult
 import app.snapsync.model.SelectionSnapshot
 import app.snapsync.ports.GalleryHandlers
-import app.snapsync.services.downloads.DownloadService
-import co.touchlab.kermit.Logger
+import app.snapsync.services.downloads.ImportMarkers
 import kotlinx.coroutines.channels.SendChannel
 
 /**
@@ -13,28 +11,15 @@ import kotlinx.coroutines.channels.SendChannel
  * background wake finds them. Building them builds no feature:
  *
  *  - `onChanged` only hands the snapshot to the core's conflated [selection] channel, which host assembly consumes;
- *  - the import handlers are the [downloads] store's guarded marker writes, persisted inline on the platform's
- *    delivering thread — the placeholder inside the change block, the settle from the completion, which runs even
- *    when the requester is gone.
+ *  - the import handlers are the download store's guarded marker writes ([ImportMarkers]), persisted inline on the
+ *    platform's delivering thread — the placeholder inside the change block, the settle from the completion, which
+ *    runs even when the requester is gone.
  */
 internal fun galleryHandlers(
-    downloads: DownloadService,
-    log: Logger,
+    markers: ImportMarkers,
     selection: SendChannel<SelectionSnapshot>,
 ): GalleryHandlers = GalleryHandlers(
     onChanged = { snapshot -> selection.trySend(snapshot) },
-    onImportPlaceholder = { ref, id ->
-        // `false`: the row was pruned out from under this import, so the asset being created has no suppression
-        // handle and this device would upload a downloaded photo back into the event (capability
-        // `receiving-photos`). Error, so it reaches crash reporting: this line is the only evidence.
-        if (!downloads.recordCreatedLocalId(ref, id)) {
-            log.e { "import: marker $id for ${ref.sourceAssetId} landed on NO ROW — its row was pruned mid-import" }
-        }
-    },
-    onImportSettled = { ref, outcome ->
-        when (outcome) {
-            is ImportResult.Imported -> downloads.confirmCreatedLocalId(ref, outcome.createdLocalId)
-            is ImportResult.Failed -> outcome.placeholder?.let { downloads.clearCreatedLocalId(ref, it) }
-        }
-    },
+    onImportPlaceholder = markers::placeholder,
+    onImportSettled = markers::settled,
 )

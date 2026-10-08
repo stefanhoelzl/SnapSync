@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.model.AppLink
 import app.snapsync.model.Direction
 import app.snapsync.model.Layer
 import app.snapsync.model.RangeChoice
@@ -130,6 +131,22 @@ private fun rangeChoices(params: Map<String, String>): List<UiIntent> = buildLis
 
 private fun toLocalWallClock(iso: String): LocalDateTime =
     Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault())
+
+/**
+ * The taps a device host excludes because each hands the app to the platform's own UI — the share sheet, a browser, the
+ * Settings app, the limited-library picker — which only a finger brings back. A host whose platform UI is a mock (the
+ * JVM host) records the hand-off and nothing leaves, so there they are driven like any tap; `/device/os-record` reports
+ * what the platform was handed. `openLink` names its link (`link=WEBSITE|PRIVACY_POLICY`).
+ */
+fun handOffUserCommands(dispatch: (UiIntent) -> Unit): Map<String, RigUserCommand> = mapOf(
+    "shareInvite" to RigUserCommand { dispatch(UiIntent.ShareInvite) },
+    "openLink" to RigUserCommand { params -> dispatch(UiIntent.OpenLink(AppLink.valueOf(params["link"].orEmpty()))) },
+    "openSettings" to RigUserCommand { dispatch(UiIntent.OpenSettings) },
+    "choosePhotos" to RigUserCommand { dispatch(UiIntent.ChoosePhotos) },
+)
+
+/** The device hosts' exclusions [handOffUserCommands] drives where the platform's UI is a mock. */
+val HAND_OFF_EXCLUSIONS: Set<String> = setOf("onShareInvite", "onOpenLink", "onOpenSettings", "onChoosePhotos")
 
 fun excludedUserCommands(): Map<String, String> = mapOf(
     "onRequestPermission" to

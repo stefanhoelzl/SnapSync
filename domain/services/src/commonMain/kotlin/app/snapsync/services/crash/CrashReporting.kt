@@ -11,6 +11,7 @@ import app.snapsync.model.PLATFORM_TAG
 import app.snapsync.model.PROCESS_METRIC_CONTEXT
 import app.snapsync.model.PROCESS_TAG
 import app.snapsync.model.ProcessMetricReport
+import app.snapsync.model.ReportDestination
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.model.crashDist
 import app.snapsync.model.diagnosticDumpEvent
@@ -53,6 +54,10 @@ class CrashReporting(
 
     /** Whether this build carries a reporting destination. Constant for the process. */
     val isConfigured: Boolean get() = dsn != null
+
+    /** Where a bug report goes on this build (capability `privacy-security`): sent where it reports, else kept here. */
+    val reportDestination: ReportDestination
+        get() = if (isConfigured) ReportDestination.DEVELOPER else ReportDestination.THIS_DEVICE
 
     private var started = false
 

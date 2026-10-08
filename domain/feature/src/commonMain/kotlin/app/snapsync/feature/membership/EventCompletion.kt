@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.contained
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventDirectory
@@ -59,6 +60,23 @@ class EventCompletion(
     private val checks: EventChecks,
     private val log: Logger = Logger.withTag("EventCompletion"),
 ) {
+
+    /**
+     * The end of every wake whose tail covered the whole pass (capabilities `receiving-photos` and `manage-membership`;
+     * decision record `changes/timely-background-receiving`, D4–D5): first — when [checksPhotos] — the **bounded photo
+     * check** for the joined event ([photoCheck], the union read at most once an hour per event, so others' photos arrive
+     * when no push does), contained; then [finish], [bounded] as the wake's trigger says.
+     */
+    suspend fun endOfWake(
+        checksPhotos: Boolean,
+        bounded: Boolean,
+        photoCheck: suspend (eventId: String) -> Unit,
+    ): CompletionOutcome {
+        config.activeEventId()?.takeIf { checksPhotos }?.let { eventId ->
+            log.contained("the bounded photo check failed; the next wake runs it again") { photoCheck(eventId) }
+        }
+        return finish(bounded)
+    }
 
     /**
      * Run the end-of-wake step — see the class. [bounded] for a wake that is not a push, an opening or a join: it reads

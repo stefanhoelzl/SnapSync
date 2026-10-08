@@ -4,8 +4,8 @@ import app.snapsync.attest.IosDeviceIntegrity
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
 import app.snapsync.compose.AppCore
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.compose.AppPorts
-import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.config.IosBuildInfo
@@ -161,7 +161,7 @@ object SnapSyncRoot {
      * clock's: the system's own on every production build, and an adapter choice's mocked clock wherever one fixes it.
      */
     private val cutoffFormatter: CutoffFormatter by lazy {
-        CutoffFormatter(now = ports.clock::now, zone = ports.clock.timeZone())
+        CutoffFormatter(now = ports.clock.value::now, zone = ports.clock.value.timeZone())
     }
 
     /** What this process knows about its scenes — shared by the UI and the lifecycle adapters, on the main thread. */
@@ -217,12 +217,12 @@ object SnapSyncRoot {
     private val backendHost: String by lazy { bakedUploadBase() }
 
     /**
-     * This process's ports onto the device's systems, as its REAL adapters (`DevicePorts`): each built on first use.
+     * This process's ports onto the device's systems, as its REAL adapters (`AppDevicePorts`): each built on first use.
      * What the graph composes over is what the build's adapter set hands back ([adapters]) — these on a production
      * build, and on a rig build the launch-time adapters', where a mocked system's are its mock's (`docs/testing.md`,
      * "Launch-time adapters").
      */
-    private val real: DevicePorts = DevicePorts(
+    private val real: AppDevicePorts = AppDevicePorts(
         clock = lazyOf(SystemClock),
         // CryptoKit's AES-GCM, CommonCrypto's HMAC and the Security framework's generator.
         crypto = lazy { IosCrypto() },
@@ -279,7 +279,7 @@ object SnapSyncRoot {
      * What this launch composes over. `internal` for the rig's contributed hook, which reads the registration and the
      * files the app actually runs over — an adapter choice's, where it mocks them. Not exported to the ObjC header.
      */
-    internal val ports: DevicePorts get() = adapters.ports
+    internal val ports: AppDevicePorts get() = adapters.ports
 
     /**
      * This process's per-process ports: its crash reporter, its log sinks and boot banner, its process metrics, its
@@ -288,16 +288,16 @@ object SnapSyncRoot {
      */
     private val processPorts: ProcessPorts by lazy {
         ProcessPorts(
-            crashReporter = ports.crashReporter,
+            crashReporter = ports.crashReporter.value,
             processMetrics = processMetrics,
             // A public NSLog sink AND a file sink. NSLog is redacted as `<private>` on current iOS (dynamic format
             // strings are private), so the file (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the
             // reliable channel. The app's log stays in its OWN Documents — it can read it without help, so relocating
             // it would break every pull command and buy nothing (capability `privacy-security`).
             logSinks = listOf(PublicNSLogSink(), FileLogSink(appLogDestination().path)),
-            files = ports.files,
-            clock = ports.clock,
-            crypto = ports.crypto,
+            files = ports.files.value,
+            clock = ports.clock.value,
+            crypto = ports.crypto.value,
             entryContext = IosEntryContext,
             build = IosBuildInfo(
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
@@ -349,6 +349,7 @@ object SnapSyncRoot {
     private val composed: ComposedApp by lazy {
         snapSyncHost(
             scope = scope,
+            lane = compositionLane,
             cutoffFormatter = cutoffFormatter,
             ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),
         )

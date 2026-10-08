@@ -13,6 +13,8 @@ import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.ImportRequest
@@ -22,6 +24,10 @@ import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionResource
 import app.snapsync.model.UnionTrigger
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryImport
@@ -435,6 +441,33 @@ class DownloadControllerTest {
         val union = FakeUnion(listOf(asset("DEVICE-A", "Q")))
         assertTrue(controller(union, downloadEnabled = { false }).everythingReceived("event"))
         assertFalse(controller(FakeUnion(emptyList(), ok = false)).everythingReceived("event"))
+    }
+
+    /** A membership of "event" in [direction] — what a leave asks about once the joined configuration is gone. */
+    private fun membership(direction: Direction) = EventConfig(
+        eventId = "event",
+        name = "Party",
+        minPhotoDate = captureCutoff("2026-06-01T00:00:00Z"),
+        endsAt = eventEnd("2026-07-01T00:00:00Z"),
+        maxPhotoDate = captureCeiling("2026-07-01T00:00:00Z"),
+        deletesAt = deletesAt("2026-08-01T00:00:00Z"),
+        direction = direction,
+    )
+
+    @Test
+    fun a_membership_that_does_not_receive_holds_everything_without_reading_the_union() = runTest {
+        val union = FakeUnion(listOf(asset("DEVICE-A", "Q")))
+        assertTrue(controller(union).holdsEverythingFor(membership(Direction.UploadOnly)))
+        assertEquals(0, union.calls)
+    }
+
+    @Test
+    fun a_membership_that_receives_holds_everything_only_once_every_foreign_photo_is_here() = runTest {
+        val union = FakeUnion(listOf(asset("DEVICE-A", "Q")))
+        assertFalse(controller(union).holdsEverythingFor(membership(Direction.Both)), "the foreign photo is missing")
+        assertEquals(listOf<Pair<Long?, UnionTrigger>>(null to UnionTrigger.LEAVE_CHECK), union.reads)
+        val onlyMine = controller(FakeUnion(listOf(asset(myDevice, "MINE"))))
+        assertTrue(onlyMine.holdsEverythingFor(membership(Direction.DownloadOnly)), "own photos never count")
     }
 
     @Test

@@ -18,10 +18,10 @@ Roots found:
 
 | Constructed type | SnapSyncRoot | SnapSyncRoot | UploadExtensionRoot |
 |---|---|---|---|
+| `AppDevicePorts` | x | x | |
 | `BackgroundSessions` | x | x | |
 | `CutoffFormatter` | x | x | |
-| `DevicePorts` | x | x | x |
-| `ExtensionPorts` | | | x |
+| `ExtensionDevicePorts` | | | x |
 | `FileLogSink` | x | x | x |
 | `HttpBackend` | x | x | x |
 | `IosBackgroundTime` | x | x | |

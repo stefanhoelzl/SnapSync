@@ -1,7 +1,7 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.compose.ComposedExtension
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.ExtensionDevicePorts
 import app.snapsync.compose.ExtensionPorts
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
@@ -66,12 +66,12 @@ object UploadExtensionRoot {
     private val log = Logger.withTag("UploadExtension")
 
     /**
-     * This process's ports onto the device's systems, as its REAL adapters (`DevicePorts`), each built on first use —
+     * This process's ports onto the device's systems, as its REAL adapters (`ExtensionDevicePorts`), each built on first use —
      * and [device], what its cycle composes over: these on a production build, and on a rig build the launch-time adapters',
      * where a mocked system's are its mock's (`extensionPorts()`, from `src/entries` or the rig's source;
      * `docs/testing.md`, "Launch-time adapters").
      */
-    private val real: DevicePorts = DevicePorts(
+    private val real: ExtensionDevicePorts = ExtensionDevicePorts(
         clock = lazyOf(SystemClock),
         // CryptoKit's AES-GCM, CommonCrypto's HMAC and the Security framework's generator.
         crypto = lazy { IosCrypto() },
@@ -100,7 +100,7 @@ object UploadExtensionRoot {
         backend = lazy { HttpBackend(darwinHttpClient(), bakedUploadBase(), appMarketingVersion()) },
     )
 
-    private val device: DevicePorts = extensionPorts(real)
+    private val device: ExtensionDevicePorts = extensionPorts(real)
 
     /**
      * The operating system's invocations of this extension (`:adapter:ios:ext-safe`), and the port the composition
@@ -120,16 +120,16 @@ object UploadExtensionRoot {
      * No process metrics: MetricKit hands reports out roughly daily, and this process lives for one invocation.
      */
     internal val composed: ComposedExtension = snapSyncExtension(
-        ExtensionPorts(
+        device.extensionPorts(
             process = ProcessPorts(
-                crashReporter = device.crashReporter,
+                crashReporter = device.crashReporter.value,
                 processMetrics = NoProcessMetrics,
                 // A public NSLog sink AND a file sink: NSLog is redacted as `<private>` on current iOS (dynamic format
                 // strings are private), so the file is the reliable channel for reading the extension's logs on device.
                 logSinks = listOf(PublicNSLogSink(), FileLogSink(logDestination.path)),
-                files = device.files,
-                clock = device.clock,
-                crypto = device.crypto,
+                files = device.files.value,
+                clock = device.clock.value,
+                crypto = device.crypto.value,
                 entryContext = IosEntryContext,
                 build = IosBuildInfo(
                     // This process exists only where the OS carries the OS-driven mechanism (iOS ≥26.1).
@@ -140,15 +140,6 @@ object UploadExtensionRoot {
                     bootLines = iosBootLines("extension", listOf(logDestination.bannerLine)),
                 ),
             ),
-            // The App-Group databases: the ledger, shared with the app (either process may open it read-write and
-            // migrate it), and the app's download store, opened READ-ONLY as the echo-suppression view.
-            databases = device.databases,
-            preferences = device.preferences,
-            secureStore = device.secureStore,
-            platformDeviceId = device.platformDeviceId,
-            gallery = device.galleryReader,
-            upload = device.cycleUpload,
-            backend = device.backend,
             host = extensionHost(host),
         ),
     )

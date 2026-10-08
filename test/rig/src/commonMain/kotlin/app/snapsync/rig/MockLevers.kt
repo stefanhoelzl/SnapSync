@@ -636,6 +636,16 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
             CommandResult.ok("""{"membershipUnreadable":$on}""")
         },
     ),
+    // The membership file stays readable and writable but cannot be deleted — a leave whose clear fails, so the app
+    // stays joined to the event it tried to leave.
+    "membership/undeletable" to mocked(
+        MockedSystem.FILES,
+        RigCommand { params, _ ->
+            val on = flag(params, "on")
+            device.disk.operator.failDeletes(FileArea.SHARED, CONFIG_FILE_NAME, on)
+            CommandResult.ok("""{"membershipUndeletable":$on}""")
+        },
+    ),
     // The operating system's wall clock, as the core reads it. `to` is an ISO instant.
     "clock/advance" to mocked(
         MockedSystem.CLOCK,

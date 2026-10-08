@@ -1,27 +1,12 @@
 package app.snapsync.jvm
 
 import app.snapsync.crypto.JcaCrypto
-import app.snapsync.http.HttpBackend
 import app.snapsync.mock.BuildInfoMock
-import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.CreateEventRequest
-import app.snapsync.model.DeviceFile
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.EventCreated
-import app.snapsync.model.EventMeta
-import app.snapsync.model.EventRenamed
 import app.snapsync.model.InviteLinkHints
-import app.snapsync.model.MintRequest
-import app.snapsync.model.PushEndpoint
-import app.snapsync.model.RenewRequest
-import app.snapsync.model.Reply
-import app.snapsync.model.UnionPage
-import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.Backend
 import app.snapsync.ports.LogSink
-import io.ktor.client.HttpClient
 
 /**
  * **The device as mocks**, for the JVM root — the durable state a [JvmApp] over mocks keeps across a relaunch: the
@@ -29,19 +14,20 @@ import io.ktor.client.HttpClient
  */
 class JvmMocks(
     ownDeviceId: String = DEFAULT_DEVICE_ID,
-    inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
-    network: UploadNetwork? = null,
+    inviteLinkHints: InviteLinkHints,
+    network: UploadNetwork?,
 ) : MockDevice(ownDeviceId, inviteLinkHints, network) {
 
     /**
      * One launch's adapters over these mocks. [attests] is whether the app process has App Attest (a simulator has
-     * not); [backend] is the backend port — the mock's own face by default, or one reaching the real `api/`.
+     * not); [backend] is the backend port — the mock's own face, or one reaching the real `api/`; [logSinks] where the
+     * app process's log lines go (see [JvmDevice.logSinks]).
      */
     fun adapters(
         build: BuildInfoMock,
         attests: Boolean,
-        backend: Backend = this.backend.port(build.declaredVersion),
-        logSinks: List<LogSink> = emptyList(),
+        backend: Backend,
+        logSinks: List<LogSink>,
     ): JvmAdapters =
         JvmAdapters(
             build = build,
@@ -88,49 +74,4 @@ class JvmMocks(
         /** The device id a mocked device carries unless told otherwise. */
         const val DEFAULT_DEVICE_ID: String = MockDevice.DEFAULT_DEVICE_ID
     }
-}
-
-/**
- * The backend port over HTTP for a build whose declared version an operator may change in place: the production
- * [HttpBackend] over [client], rebuilt per call around the version [declared] holds now. It holds no state, so that is
- * all it costs; every answer is `HttpBackend`'s.
- */
-class VersionedHttpBackend(
-    private val client: HttpClient,
-    private val base: String,
-    private val declared: DeclaredVersion,
-) : Backend {
-    private fun http() = HttpBackend(client, base, declared.value.orEmpty())
-
-    override suspend fun challenge(): Reply<String> = http().challenge()
-    override suspend fun mintToken(req: MintRequest): Reply<String> = http().mintToken(req)
-    override suspend fun renewToken(req: RenewRequest): Reply<String> = http().renewToken(req)
-    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = http().createEvent(
-        token,
-        req,
-    )
-    override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = http().getEvent(token, eventId)
-    override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> =
-        http().renameEvent(token, eventId, name)
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
-        http().joinEvent(token, eventId, deviceId)
-    override suspend fun publishManifest(
-        token: String?,
-        eventId: String,
-        deviceId: String,
-        manifest: DeviceManifest,
-    ): Reply<Unit> = http().publishManifest(token, eventId, deviceId, manifest)
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
-        http().leaveEvent(token, eventId, deviceId, received)
-    override suspend fun eventFiles(
-        token: String?,
-        eventId: String,
-        cursor: Long?,
-        trigger: UnionTrigger,
-    ): Reply<UnionPage> =
-        http().eventFiles(token, eventId, cursor, trigger)
-    override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
-        http().deviceFiles(token, eventId, deviceId)
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
-        http().putDeviceConfig(token, deviceId, push)
 }

@@ -5,8 +5,13 @@ import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetId
+import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
@@ -53,6 +58,17 @@ private fun albumMap() = AlbumMapService(inMemoryPreferences())
 class AlbumCoordinatorTest {
 
     private val event = "e1"
+
+    /** The joined membership of [event], saving to its album. */
+    private val joined = EventConfig(
+        eventId = event,
+        name = "Party",
+        minPhotoDate = captureCutoff("2026-09-01T00:00:00Z"),
+        endsAt = eventEnd("2026-09-30T00:00:00Z"),
+        maxPhotoDate = captureCeiling("2026-09-30T00:00:00Z"),
+        deletesAt = deletesAt("2026-10-30T00:00:00Z"),
+        saveToAlbum = true,
+    )
 
     @Test
     fun `ensureAlbum creates and stores when absent`() = runTest {
@@ -178,5 +194,14 @@ class AlbumCoordinatorTest {
 
         assertEquals(listOf("album-X" to listOf(AssetId("R_L0_1"))), manager.added)
         assertFalse(store.filled(event))
+    }
+
+    @Test
+    fun `the joined membership's imports file into its album and none file while unjoined`() = runTest {
+        val store = albumMap().apply { put(event, "album-X") }
+        val coordinator = AlbumCoordinator(GalleryAlbums(FakeAlbumManager()), store)
+        assertEquals("album-X", coordinator.albumIdFor(joined))
+        assertNull(coordinator.albumIdFor(joined.copy(saveToAlbum = false)), "the opt-in rule still holds")
+        assertNull(coordinator.albumIdFor(null))
     }
 }

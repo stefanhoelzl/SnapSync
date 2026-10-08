@@ -98,4 +98,15 @@ class LeaveEvent(
             }
         }
     }
+
+    /**
+     * The backend leave of a switch's previous membership [eventId] — still the saved one when it runs — saying whether
+     * it had everything, as every leave does: only after its range has ended, and a doubt is a no.
+     */
+    suspend fun notifySwitchLeave(eventId: String) {
+        val previous = config.config.value?.takeIf { it.eventId == eventId }
+        val received = previous != null && config.hasEnded(previous) &&
+            runCatchingCancellable { everythingReceived(previous) }.getOrDefault(false)
+        notifyLeave(eventId, received)
+    }
 }

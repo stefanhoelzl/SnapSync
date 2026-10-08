@@ -5,7 +5,11 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -51,4 +55,60 @@ class TailSignalTest {
             stalled.complete(Unit)
             assertTrue(again.await())
         }
+
+    @OptIn(ExperimentalAtomicApi::class)
+    private fun signal(
+        stopped: () -> Boolean = { false },
+        interrupt: CompletableDeferred<Unit> = CompletableDeferred(),
+    ) =
+        TailSignal(stopped, AtomicReference(interrupt))
+
+    @Test
+    fun `an import that completes is awaited and returns once it has`() = runTest {
+        var imported = false
+
+        signal().awaitImport(this) { imported = true }
+
+        assertTrue(imported)
+    }
+
+    @Test
+    fun `an import that fails rethrows its failure to the awaiting unit`() = runTest {
+        val thrown = assertFailsWith<IllegalStateException> {
+            signal().awaitImport(this) { error("the transaction failed") }
+        }
+        assertEquals("the transaction failed", thrown.message)
+    }
+
+    @Test
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) // runCurrent on the test scheduler
+    fun `a stopped tail does not await its import which runs on claimed`() = runTest {
+        val stalled = CompletableDeferred<Unit>()
+        var imported = false
+
+        signal(stopped = { true }).awaitImport(backgroundScope) {
+            stalled.await()
+            imported = true
+        }
+
+        assertFalse(imported, "returned without awaiting the import")
+        stalled.complete(Unit)
+        runCurrent()
+        assertTrue(imported, "the import was left running, not cancelled")
+    }
+
+    @Test
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) // runCurrent on the test scheduler
+    fun `a joining request interrupts the wait on a stalled import`() = runTest {
+        var started = false
+
+        signal(interrupt = CompletableDeferred(Unit)).awaitImport(backgroundScope) {
+            started = true
+            CompletableDeferred<Unit>().await() // a transaction that never reports
+        }
+
+        // Returning at all is the point: the transaction never reports, so a wait that held would never end.
+        runCurrent()
+        assertTrue(started, "the import was left running, not cancelled")
+    }
 }

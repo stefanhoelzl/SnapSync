@@ -9,8 +9,10 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.wake.Heartbeat
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
@@ -94,7 +96,26 @@ enum class TailTrigger(val scope: TailScope, val rearms: Boolean) {
      * foreground it arrived in owns the heartbeat's re-arm.
      */
     DOWNLOAD_STAGED(TailScope.IMPORT, rearms = false),
+    ;
+
+    /**
+     * Whether the end of this trigger's wake runs the **bounded photo check** (capabilities `receiving-photos` and
+     * `manage-membership`; decision record `changes/timely-background-receiving`, D4–D5). An arm's tail runs none: an arm
+     * is requested from inside a join or a reconfigure, which read the union in their own work, and the tail can end
+     * before that read has stamped the hour — one union read too many per join.
+     */
+    val checksPhotos: Boolean get() = this != ARM
+
+    /**
+     * Whether the end-of-wake read of the event's state is **bounded** to once an hour — every trigger but one whose own
+     * reason is to ask the event now: a push (the close is announced by one), an opening, a returned network, a join.
+     */
+    val boundsEventRead: Boolean get() = this !in ASKS_THE_EVENT
 }
+
+/** The triggers whose own reason is to ask the event now — their end-of-wake read of its state is not bounded. */
+private val ASKS_THE_EVENT =
+    setOf(TailTrigger.SILENT_PUSH, TailTrigger.FOREGROUND, TailTrigger.NETWORK, TailTrigger.ARM)
 
 /**
  * What the tail hands its import unit (①): Apple's stop, and the one wait a unit may give up on.
@@ -127,6 +148,17 @@ class TailSignal internal constructor(
         // Consumed: a later wait waits again, unless the stop that interrupted it still holds.
         if (!finished) interrupts.compareAndSet(gate, CompletableDeferred())
         return finished
+    }
+
+    /**
+     * Run [import] as its own job on [scope] and await it ([awaitUnlessInterrupted]) — unless the tail's time is up or
+     * another request is due, when the wait gives way and the import runs on, claimed (capability `receiving-photos`, "A
+     * stalled import blocks no other work"). An import that throws surfaces here when awaited — held as a `Result`, so
+     * a throw nobody awaits any more cannot fail the scope it runs in.
+     */
+    suspend fun awaitImport(scope: CoroutineScope, import: suspend () -> Unit) {
+        val job = scope.async { runCatchingCancellable { import() } }
+        if (awaitUnlessInterrupted(job)) job.await().getOrThrow()
     }
 }
 

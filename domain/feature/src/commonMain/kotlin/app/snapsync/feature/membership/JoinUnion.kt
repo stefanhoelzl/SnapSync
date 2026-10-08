@@ -1,4 +1,4 @@
-package app.snapsync.compose
+package app.snapsync.feature.membership
 
 import app.snapsync.model.UnionPage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.update
  * the union once. Nothing offered (the adoption's read failed or timed out, or a re-provision of the joined event ran
  * no adoption) leaves the reconcile to read its own.
  */
-internal class JoinUnion {
+class JoinUnion {
     private class Held(val eventId: String, val page: UnionPage? = null)
 
     private val held = MutableStateFlow<Held?>(null)

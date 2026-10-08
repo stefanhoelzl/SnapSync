@@ -15,10 +15,9 @@ import app.snapsync.ports.ProcessMetrics
 import app.snapsync.services.crash.CrashReporting
 import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.crash.ProcessAccount
+import app.snapsync.services.logs.ProcessLogWriters
 import app.snapsync.services.logs.SinkLogWriter
-import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
-import co.touchlab.kermit.StaticConfig
 
 /**
  * The ports every process has exactly one of, whatever it composes afterwards (`docs/architecture.md`, "One
@@ -79,29 +78,18 @@ class ProcessServices internal constructor(
     /** The process's one entry-point seam. */
     val entryContext: EntryContext,
     /**
-     * The process's Kermit writers: every line to the [ProcessPorts.logSinks], and — where the build reports —
-     * into the crash channel. Installed by [snapSyncProcess] where the process owns the global logger; the control
-     * channel re-installs them after pointing Kermit elsewhere for a while.
+     * The process's Kermit writers: every line to the [ProcessPorts.logSinks], and — where the build reports — into the
+     * crash channel. Installed by [snapSyncProcess] where the process owns the global logger ([ProcessLogWriters]).
      */
-    val logWriters: List<LogWriter>,
+    private val logging: ProcessLogWriters,
     /** What the running build is — see [ProcessPorts.build]. */
     val build: BuildInfo,
-    /** Whether this process installed [logWriters] as Kermit's global list — see [ProcessPorts.logSinks]. */
-    private val ownsGlobalLogger: Boolean,
 ) {
-    /**
-     * A logger over THIS process's writers, for the composition's own lines. Where the process owns the global list
-     * that is the same list; where it does not (a JVM "process"), the lines reach the process's own sinks AND whatever
-     * the VM logs to, so a composition's line is never lost to a writer list another composition replaced.
-     */
-    fun logger(tag: String): Logger {
-        val writers = if (ownsGlobalLogger) logWriters else logWriters + Logger.config.logWriterList
-        return Logger(StaticConfig(logWriterList = writers), tag)
-    }
+    /** A logger over THIS process's writers, for the composition's own lines — see [ProcessLogWriters.logger]. */
+    fun logger(tag: String): Logger = logging.logger(tag)
 
-    /** Where a bug report goes on this build (capability `privacy-security`): sent where it reports, else kept here. */
-    val reportDestination: ReportDestination
-        get() = if (crash.isConfigured) ReportDestination.DEVELOPER else ReportDestination.THIS_DEVICE
+    /** Where a bug report goes on this build (capability `privacy-security`) — [CrashReporting.reportDestination]. */
+    val reportDestination: ReportDestination get() = crash.reportDestination
 
     /** Which build this is, as the app menu shows it (capability `sync-status`). */
     val buildLabel: BuildLabel
@@ -125,13 +113,15 @@ class ProcessServices internal constructor(
 fun snapSyncProcess(ports: ProcessPorts): ProcessServices {
     val crash = CrashReporting(ports.crashReporter, ports.build, ports.entryContext, ports.files)
     ports.crashReporter.listen(CrashHandlers(onEvent = crash::shapeEvent, onBreadcrumb = crash::shapeCrumb))
-    val writers = listOfNotNull(SinkLogWriter(ports.logSinks, ports.entryContext), crash.logWriter)
-    val ownsGlobalLogger = ports.logSinks.isNotEmpty()
-    if (ownsGlobalLogger) Logger.setLogWriters(writers)
+    val logging = ProcessLogWriters(
+        listOfNotNull(SinkLogWriter(ports.logSinks, ports.entryContext), crash.logWriter),
+        ports.logSinks,
+    )
+    logging.install()
     val footprints = FootprintTrail(ports.files, ports.clock)
     val services = ProcessServices(
         crash, ProcessAccount(crash, footprints), footprints, ports.files, ports.clock, ports.crypto,
-        ports.entryContext, writers, ports.build, ownsGlobalLogger,
+        ports.entryContext, logging, ports.build,
     )
     val boot = services.logger("process")
     ports.build.bootLines.forEach { line -> boot.i { line } }

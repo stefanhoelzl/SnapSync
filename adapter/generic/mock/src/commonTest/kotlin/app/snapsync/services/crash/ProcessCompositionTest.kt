@@ -14,6 +14,7 @@ import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpResult
 import app.snapsync.model.NON_REDACTED_TAG
 import app.snapsync.model.ProcessMetricReport
+import app.snapsync.model.ReportDestination
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.MetricHandlers
@@ -70,7 +71,8 @@ class ProcessCompositionTest {
         val process = process(dsn = "https://key@ingest/1")
         assertTrue(started.value, "reporting starts as the process's first act")
         assertTrue(process.crash.isConfigured)
-        assertEquals(2, process.logWriters.size, "the sinks' writer and the crash channel's")
+        assertEquals(ReportDestination.DEVELOPER, process.crash.reportDestination, "a report is sent where it reports")
+        assertNotNull(process.crash.logWriter, "the log is routed into the crash channel")
     }
 
     @Test
@@ -78,9 +80,9 @@ class ProcessCompositionTest {
         val process = process(dsn = null)
         assertFalse(started.value, "no destination, no channel — and no connection ever opened")
         assertFalse(process.crash.isConfigured)
-        assertEquals(
-            1,
-            process.logWriters.size,
+        assertEquals(ReportDestination.THIS_DEVICE, process.crash.reportDestination, "a report is kept on the phone")
+        assertNull(
+            process.crash.logWriter,
             "only the sinks' writer: a build that reports nowhere never constructs the crash one",
         )
     }
@@ -317,5 +319,20 @@ class ProcessCompositionTest {
         )
         assertNull(options.release)
         assertEquals(mapOf("platform" to "ios"), options.tags)
+    }
+
+    @Test
+    fun a_blank_process_identifier_carries_no_process_tag() {
+        val options = startedWith(BuildInfoMock(dsn = "https://key@ingest/1", processId = " "))
+        assertEquals(mapOf("platform" to "ios"), options.tags)
+    }
+
+    @Test
+    fun a_build_that_reports_nowhere_describes_no_process() {
+        val reporter = Recording()
+        CrashReporting(reporter, BuildInfoMock(dsn = null).port(), NoEntryContext, inMemoryFiles())
+            .describeProcess(ProcessMetricReport(mapOf("timeStampBegin" to "x")))
+        assertNull(reporter.options, "no destination, no channel")
+        assertTrue(reporter.contexts.isEmpty(), "and no context set on it: ${reporter.contexts}")
     }
 }

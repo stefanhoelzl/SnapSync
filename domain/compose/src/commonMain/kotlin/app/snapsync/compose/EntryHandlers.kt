@@ -4,9 +4,9 @@ import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
+import app.snapsync.model.contained
+import app.snapsync.model.describe
 import app.snapsync.model.invocation
-import app.snapsync.model.pushEventId
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.EntryContext
@@ -44,9 +44,8 @@ fun lifecycleHandlers(core: AppCore, assembleHost: () -> Unit): LifecycleHandler
                 // entry line above reports the dispatch; the flow's own lines report its work.
                 core.scope.launch {
                     assembleHost()
-                    runCatchingCancellable { core.foregroundFlow.run() }
-                        .onFailure { log.w(it) { "the foreground flow failed; its tail still runs" } }
-                    wake.thenTail(TailTrigger.FOREGROUND)
+                    log.contained("the foreground flow failed; its tail still runs") { core.foregroundFlow.run() }
+                    core.tail.handTo(wake, TailTrigger.FOREGROUND)
                 }
                 ports.pushNotifications.register()
             }
@@ -83,9 +82,10 @@ fun installNetworkReturns(core: AppCore) {
             log.invocation(entry, "onNetworkReturned") {
                 val wake = core.tail.hold("onNetworkReturned")
                 core.scope.launch {
-                    runCatchingCancellable { core.foregroundFlow.run() }
-                        .onFailure { log.w(it) { "network returned: its foreground work failed; its tail still runs" } }
-                    wake.thenTail(TailTrigger.NETWORK)
+                    log.contained("network returned: its foreground work failed; its tail still runs") {
+                        core.foregroundFlow.run()
+                    }
+                    core.tail.handTo(wake, TailTrigger.NETWORK)
                 }
             }
         }
@@ -114,8 +114,8 @@ fun pushHandlers(core: AppCore): PushHandlers {
             }
         },
         onTokenFailure = { error: PlatformError? ->
-            log.invocation(entry, "onPushTokenFailure", params = "error=${error?.description}") {
-                log.w { "push registration failed — no silent pushes will arrive: ${error?.description}" }
+            log.invocation(entry, "onPushTokenFailure", params = "error=${error.describe()}") {
+                log.w { "push registration failed — no silent pushes will arrive: ${error.describe()}" }
             }
         },
         onMessage = { message: PushMessage, completion: Completion ->
@@ -143,8 +143,7 @@ private fun AppCore.silentPush(message: PushMessage, completion: Completion) {
         }
         // Only for the active event, read from the membership the flow just re-read: a push for another event, a left
         // one, none, or an unreadable membership wakes no tail (capability `receiving-photos`).
-        val joinsTail = pushEventId(message.payload)?.let(pushTailGuard::joinsTail) == true
-        if (joinsTail) wake.thenTail(TailTrigger.SILENT_PUSH) else wake.end()
+        tail.handToWhen(pushTailGuard.joinsTail(message.payload), wake, TailTrigger.SILENT_PUSH)
     }
 }
 
@@ -162,8 +161,6 @@ private fun AppCore.foregroundParams(): String =
  * best-effort — a failed prelude must not rob the wake of its tail, whose units read the membership themselves.
  */
 internal suspend fun AppCore.prelude() {
-    runCatchingCancellable { services.config.reload() }
-        .onFailure { services.log.w(it) { "prelude: the membership re-read failed" } }
-    runCatchingCancellable { attestation.refresh() }
-        .onFailure { services.log.w(it) { "prelude: the attestation refresh failed" } }
+    services.log.contained("prelude: the membership re-read failed") { services.config.reload() }
+    services.log.contained("prelude: the attestation refresh failed") { attestation.refresh() }
 }

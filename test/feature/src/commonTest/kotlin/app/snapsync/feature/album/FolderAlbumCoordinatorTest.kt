@@ -6,12 +6,17 @@ import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
+import app.snapsync.model.EventConfig
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.services.album.AlbumMapService
@@ -35,6 +40,17 @@ import kotlin.test.assertTrue
 class FolderAlbumCoordinatorTest {
 
     private val event = "e1"
+
+    /** The joined membership of [event], saving to its album. */
+    private val joined = EventConfig(
+        eventId = event,
+        name = "Party",
+        minPhotoDate = captureCutoff("2026-09-01T00:00:00Z"),
+        endsAt = eventEnd("2026-09-30T00:00:00Z"),
+        maxPhotoDate = captureCeiling("2026-09-30T00:00:00Z"),
+        deletesAt = deletesAt("2026-10-30T00:00:00Z"),
+        saveToAlbum = true,
+    )
     private val library = PhotoLibraryMock().apply { operator.albumKind = AlbumKind.FOLDER }
     private val gallery: Gallery = library.port().apply {
         listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
@@ -151,5 +167,14 @@ class FolderAlbumCoordinatorTest {
         assertNotNull(ensure())
         coordinator.placeReceived(event, emptyList())
         assertFalse(store.filled(event), "an empty batch moves nothing")
+    }
+
+    @Test
+    fun `an import settled for the joined membership fills its album and none fills while unjoined`() = runTest {
+        val album = assertNotNull(ensure())
+        coordinator.onImportedInto(null, album)
+        assertFalse(store.filled(event), "no membership, nothing filled")
+        coordinator.onImportedInto(joined, album)
+        assertTrue(store.filled(event))
     }
 }

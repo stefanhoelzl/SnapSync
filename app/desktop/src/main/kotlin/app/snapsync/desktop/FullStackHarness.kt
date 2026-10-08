@@ -71,10 +71,9 @@ fun WorldHarnessRoot() {
     // gate can see here because a UI-bound scope names no main-thread dispatcher. A serial, non-UI lane
     // mirrors the device shell, so this harness exercises the threading it claims to reproduce: it is the
     // only place presentation state produced off the UI thread meets the real graph without a device.
-    val scope = remember {
-        CoroutineScope(SupervisorJob() + newSingleThreadContext("harness-composition"))
-    }
-    val controller = remember { WorldInspectorController(scope) }
+    val lane = remember { newSingleThreadContext("harness-composition") }
+    val scope = remember { CoroutineScope(SupervisorJob() + lane) }
+    val controller = remember { WorldInspectorController(scope, lane) }
     // Phone-pane theme override (test equipment): default Light, and held OUTSIDE the
     // `key(generation)` block below so a preset (fresh app) does not reset it.
     var dark by remember { mutableStateOf(false) }

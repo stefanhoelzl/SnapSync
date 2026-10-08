@@ -212,7 +212,10 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         return state.access.value
     }
 
-    override suspend fun widenSelection(): GalleryAccess = state.access.value
+    override suspend fun widenSelection(): GalleryAccess {
+        state.pickersShown++
+        return state.access.value
+    }
 
     override suspend fun changeToken(): LibraryChangeToken = Token(state.library.value)
 

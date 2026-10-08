@@ -100,6 +100,20 @@ class AlbumGather(
         if (usable && wasUsable == false) start("grant", eventId)
     }
 
+    /**
+     * The app's grant subscription feeds every permission emission here (capability `event-album`): under [usable]
+     * access the joined membership's album is ensured first — the app is the sole album creator, and sync needs the same
+     * grant, so the album exists before the first synced photo; not an opt-in, so a launch's replay never brings back a
+     * folder album the member emptied — then [onAccessObserved] judges the emission. One collector for both, because a
+     * second would ensure the album concurrently with this one: two creations for one album-less membership.
+     */
+    suspend fun onAccessChanged(usable: Boolean) {
+        configSource.config.value?.takeIf { usable }?.let { cfg ->
+            coordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, optIn = false)
+        }
+        onAccessObserved(usable)
+    }
+
     suspend fun gather(eventId: String) = running.withLock {
         val cfg = configSource.config.value
         when {

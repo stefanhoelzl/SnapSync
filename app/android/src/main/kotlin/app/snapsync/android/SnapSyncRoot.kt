@@ -31,7 +31,7 @@ import app.snapsync.android.work.AndroidBackgroundTime
 import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
 import app.snapsync.compose.AppCore
-import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.AppDevicePorts
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
@@ -80,7 +80,7 @@ class SnapSyncRoot(internal val application: Application) {
      * status host reduces with it and the screen renders with it.
      */
     private val cutoffFormatter: CutoffFormatter by lazy {
-        CutoffFormatter(now = ports.clock::now, zone = ports.clock.timeZone())
+        CutoffFormatter(now = ports.clock.value::now, zone = ports.clock.value.timeZone())
     }
 
     /**
@@ -101,7 +101,7 @@ class SnapSyncRoot(internal val application: Application) {
     )
 
     /** This process's REAL adapters — the systems Android has one for — each built on first use. */
-    private val real: DevicePorts = DevicePorts(
+    private val real: AppDevicePorts = AppDevicePorts(
         clock = lazyOf(SystemClock),
         crypto = lazy { AndroidCrypto() },
         files = lazy { AndroidFiles(application) },
@@ -123,7 +123,7 @@ class SnapSyncRoot(internal val application: Application) {
         backgroundTime = lazy { AndroidBackgroundTime(application) },
         // Its transfers hold this launch's background time — the real one, or the mock a rig launch chose.
         appUpload = lazy {
-            AndroidUpload(application, ports.backgroundTime, unrestricted = awaitUnrestrictedNetwork(application))
+            AndroidUpload(application, ports.backgroundTime.value, unrestricted = awaitUnrestrictedNetwork(application))
         },
         download = lazy { AndroidDownload(application) },
         pushNotifications = lazy { AndroidPushNotifications(application, firebase) },
@@ -141,17 +141,17 @@ class SnapSyncRoot(internal val application: Application) {
     /** The adapters that differ between a production and a rig build, chosen at BUILD time. */
     private val adapters: PlatformAdapters = platformAdapters(this, real)
 
-    private val ports: DevicePorts get() = adapters.ports
+    private val ports: AppDevicePorts get() = adapters.ports
 
     /** This process's per-process ports — set up by the composition as its first act. */
     private val processPorts: ProcessPorts by lazy {
         ProcessPorts(
-            crashReporter = ports.crashReporter,
+            crashReporter = ports.crashReporter.value,
             processMetrics = NoProcessMetrics,
             logSinks = listOf(LogcatSink(), FileLogSink.forApp(application)),
-            files = ports.files,
-            clock = ports.clock,
-            crypto = ports.crypto,
+            files = ports.files.value,
+            clock = ports.clock.value,
+            crypto = ports.crypto.value,
             entryContext = NoEntryContext,
             build = AndroidBuildInfo(
                 appVersion = BuildConfig.APP_VERSION,
@@ -179,6 +179,7 @@ class SnapSyncRoot(internal val application: Application) {
     private val composed: ComposedApp by lazy {
         snapSyncHost(
             scope = scope,
+            lane = Dispatchers.Main,
             cutoffFormatter = cutoffFormatter,
             // The app's uploader transport is the only uploader Android has (no OS-driven tier).
             ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),

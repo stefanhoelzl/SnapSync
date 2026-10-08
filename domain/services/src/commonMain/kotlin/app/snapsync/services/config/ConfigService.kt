@@ -130,5 +130,20 @@ class ConfigService(
     fun hasEnded(config: EventConfig): Boolean = config.hasEnded(instantToCutoff(clock.now()))
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
+    /** The joined event's id, or `null` while not joined — the scope every per-event read takes. */
+    fun activeEventId(): String? = state.value?.eventId
+
+    /**
+     * Whether the membership receives others' photos — three-valued, no fallback (capability `receiving-photos`): `null`
+     * while not joined, so a caller arms nothing.
+     */
+    fun downloadsEnabled(): Boolean? = state.value?.let { it.direction.includesDownload }
+
+    /**
+     * Whether a fresh read finds a joined membership whose range has ended — what a manifest published now is settled by
+     * (capability `photo-sharing`). An unreadable config or none is "not ended".
+     */
+    fun freshReadHasEnded(): Boolean = read().joinedOrNull()?.let(::hasEnded) == true
+
     private fun ConfigRead.joinedOrNull(): EventConfig? = (this as? ConfigRead.Joined)?.config
 }

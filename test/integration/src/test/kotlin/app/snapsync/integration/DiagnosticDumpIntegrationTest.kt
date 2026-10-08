@@ -123,8 +123,11 @@ class DiagnosticDumpIntegrationTest {
         cycle()
         completeJobs(primaryKey("CAM"))
         cycle()
-        // Whatever the screen shows at the tap — the report's claim is "what the member saw", not a number.
-        val counts = awaitState { it.joined?.counts != null }.joined!!.counts!!
+        // Whatever the screen shows at the tap — the report's claim is "what the member saw", not a number. An opening
+        // refreshes the counts, so the completed upload is on the screen before it is read, and no later refresh can move
+        // it between this read and the tap.
+        foreground()
+        val counts = awaitState { (it.joined?.counts?.shared as? DirectionCount.Progress)?.done == 1 }.joined!!.counts!!
 
         sendDiagnostics(NOTE)
 

@@ -2,6 +2,7 @@ package app.snapsync.feature.album
 
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
+import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
@@ -118,6 +119,14 @@ class AlbumCoordinator(
      */
     fun onImportedInto(eventId: String, album: String) {
         if (kind == AlbumKind.FOLDER && store.get(eventId) == album) store.markFilled(eventId)
+    }
+
+    /** [albumIdFor] the [joined] membership — what an import files into; `null` while not joined. */
+    suspend fun albumIdFor(joined: EventConfig?): String? = joined?.let { albumIdFor(it.eventId, it.saveToAlbum) }
+
+    /** [onImportedInto] for the [joined] membership — nothing while not joined. */
+    fun onImportedInto(joined: EventConfig?, album: String) {
+        joined?.let { onImportedInto(it.eventId, album) }
     }
 
     /** Whether the member's own photos go into the album: only where it is a collection, never a folder. */

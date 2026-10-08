@@ -41,28 +41,10 @@ internal fun albumGather(
  * `AppCore.installPermissionSubscriptions` only — never on mere construction, so a cold background wake starts
  * nothing off the permission `StateFlow`'s replay.
  *
- * The app is the sole album creator, and sync needs the same grant, so the album exists before the first
- * synced photo — both processes then only ADD (capability `event-album`). Unconditional call: the
- * membership's opt-in gate is the coordinator's own guard. Usable access (`grantsPhotoAccess`): album
- * creation works under a LIMITED grant (measured — capability `photo-access`), so a limited member's
- * opted-in album exists before their first import lands.
- *
- * The album gather rides the SAME collector, after the ensure; the gather decides whether this emission is an
- * in-process grant. A second collector would ensure the album concurrently with this one — two creations for
- * one album-less membership.
+ * Every emission goes to [AlbumGather.onAccessChanged], which ensures the album and judges the emission in one
+ * collector. Usable access (`grantsPhotoAccess`): album creation works under a LIMITED grant (measured — capability
+ * `photo-access`), so a limited member's opted-in album exists before their first import lands.
  */
-internal fun CoroutineScope.launchAlbumGrantSubscription(
-    services: AppServices,
-    coordinator: AlbumCoordinator,
-    gather: AlbumGather,
-): Job = launch {
-    services.ports.photoAccess.permission.collect { status ->
-        if (status.grantsPhotoAccess) {
-            services.config.config.value?.let { cfg ->
-                // Not an opt-in: a launch's replay never brings back a folder album the member emptied.
-                coordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, optIn = false)
-            }
-        }
-        gather.onAccessObserved(status.grantsPhotoAccess)
-    }
+internal fun CoroutineScope.launchAlbumGrantSubscription(services: AppServices, gather: AlbumGather): Job = launch {
+    services.ports.photoAccess.permission.collect { status -> gather.onAccessChanged(status.grantsPhotoAccess) }
 }
