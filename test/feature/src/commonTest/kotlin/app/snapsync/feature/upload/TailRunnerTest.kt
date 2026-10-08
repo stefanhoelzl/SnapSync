@@ -84,6 +84,9 @@ class TailRunnerTest {
         /** Whether staged downloads are left for a later import — work remaining, to the re-arm. */
         var importsLeft = false
 
+        /** Whether reading what imports are left fails — the core's store unreadable. */
+        var importsUnreadable = false
+
         /** What the device is, to the re-arm: by default a joined full-grant member of an open event, iOS-like. */
         var facts = JOINED
         var active = 0
@@ -133,7 +136,10 @@ class TailRunnerTest {
         foregrounded = { units.foreground },
         refreshStatus = { units.refreshes++ },
         heartbeat = scheduler.heartbeat,
-        importsRemain = { units.importsLeft },
+        importsRemain = {
+            check(!units.importsUnreadable) { "download store unreadable" }
+            units.importsLeft
+        },
         cadenceFacts = { units.facts },
         leftover = { "" },
     )
@@ -387,6 +393,21 @@ class TailRunnerTest {
     }
 
     @Test
+    fun `unreadable staged imports count as none left`() = runTest {
+        // The same declining member as above, but whether imports wait cannot be read: the doubt does not keep the
+        // heartbeat busy, so the joined member idles exactly as one with nothing to import.
+        val units = Units().apply {
+            topUp = { CycleResult.SKIPPED }
+            walk = { WalkOutcome.Walked(CycleResult.SKIPPED, addedRows = false) }
+            importsLeft = true
+            importsUnreadable = true
+        }
+        val scheduler = Scheduler()
+        runner(units, scheduler).request(TailTrigger.SILENT_PUSH)
+        assertEquals(listOf(WakeCadence.IDLE), scheduler.cadences)
+    }
+
+    @Test
     fun `a declining tail with nothing left to import idles while joined and arms nothing once not`() = runTest {
         for ((facts, expected) in listOf(JOINED to listOf(WakeCadence.IDLE), NOT_JOINED to emptyList())) {
             val units = Units().apply {
@@ -457,6 +478,42 @@ class TailRunnerTest {
         units.ran.clear()
         assertEquals(TailOutcome(CycleResult.COMPLETED, cut = false), tail.request(TailTrigger.FOREGROUND))
         assertEquals(listOf("import", "topUp", "walk"), units.ran)
+    }
+
+    @Test
+    fun `a stop during a pass's last unit that drops a joiner's pass cuts the tail`() = runTest {
+        // Under a partial grant the top-up is the pass's last unit: the stop starts nothing further in it, but the
+        // joiner's pass it consumes is work that did not happen.
+        val units = Units().apply {
+            fullGrant = false
+            topUpGate = CompletableDeferred()
+        }
+        val tail = runner(units)
+        val first = async { tail.request(TailTrigger.HEARTBEAT) }
+        runCurrent()
+        val joiner = async { tail.request(TailTrigger.SILENT_PUSH) }
+        runCurrent()
+        tail.stop("test expiry")
+        units.topUpGate!!.complete(Unit)
+        assertEquals(TailOutcome(CycleResult.PROCESSING, cut = true), joiner.await())
+        first.await()
+        assertEquals(listOf("import", "topUp"), units.ran, "the joiner's pass never ran")
+    }
+
+    @Test
+    fun `a stop during a pass's last unit with no joiner cuts nothing`() = runTest {
+        // The unit in flight completes and nothing further was due, so the units' own answer stands.
+        val units = Units().apply {
+            fullGrant = false
+            topUpGate = CompletableDeferred()
+        }
+        val tail = runner(units)
+        val heartbeat = async { tail.request(TailTrigger.HEARTBEAT) }
+        runCurrent()
+        tail.stop("test expiry")
+        units.topUpGate!!.complete(Unit)
+        assertEquals(TailOutcome(CycleResult.COMPLETED, cut = false), heartbeat.await())
+        assertEquals(listOf("import", "topUp"), units.ran)
     }
 
     @Test

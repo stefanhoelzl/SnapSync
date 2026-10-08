@@ -109,12 +109,16 @@ class SyncEngine(
      * DISCOVERED or absent → fresh upload. DISCOVERED is a row the walk wrote, or one a failure returned,
      * for a resource with nothing in flight, so re-deriving it must answer `Work` exactly as an absent row
      * does — otherwise the state the cycle writes to remember its own backlog would suppress that backlog.
-     * Exhaustive with no `else`, so a new state fails to compile until it is classified here.
+     * Exhaustive with no `else`, so a new state fails to compile until it is classified here. The absent row is
+     * answered before the `when` rather than as one of its arms: over a nullable subject the compiler's fallback arm
+     * is measured as a branch no input can reach, and the zero coverage gate counts it (`docs/architecture.md`,
+     * "Coverage").
      */
-    private fun needsJob(state: LedgerState?): Boolean = when (state) {
-        LedgerState.COMPLETED, LedgerState.REQUESTED -> false
-        LedgerState.DISCOVERED, null -> true
-    }
+    private fun needsJob(state: LedgerState?): Boolean = state == null ||
+        when (state) {
+            LedgerState.COMPLETED, LedgerState.REQUESTED -> false
+            LedgerState.DISCOVERED -> true
+        }
 
     private suspend fun retry(failed: UploadRequest): SyncDecision {
         val resource = failed.resource

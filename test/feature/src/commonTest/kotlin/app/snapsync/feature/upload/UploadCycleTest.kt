@@ -131,6 +131,9 @@ class UploadCycleTest {
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
 
+        /** Every creation the cycle asked for, refused ones included. */
+        var createAttempts = 0
+
         /** Whether the cycle settled with the platform — the obligation a declined cycle still owes. */
         var drained = false
         var discoverPolicyArg: SelectionPolicy? = null
@@ -192,6 +195,7 @@ class UploadCycleTest {
             return Discovery(candidates, fullEnumeration)
         }
         override suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome {
+            createAttempts++
             if (failCreate) return UploadCreateOutcome.FAILED
             if (creates >= limitAfter) return UploadCreateOutcome.LIMIT_EXCEEDED
             creates++
@@ -2225,5 +2229,152 @@ class UploadCycleTest {
         ).run()
 
         assertEquals(emptyList(), placed.calls)
+    }
+
+    // ── Settle and top-up edges ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun a_skip_whose_root_supplied_no_forensics_still_says_why_it_skipped() = runTest {
+        val recorder = CapturingLogWriter()
+
+        val result = cycle(
+            TestLedger().service,
+            FakePlatform(discovered = listOf(resource("a"))),
+            readGate = { CycleGate.Skip("") },
+            log = recorder.logger("UploadCycleTest"),
+        ).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertTrue(
+            recorder.lines.any { it.first == Severity.Warn && "a required read failed" in it.second },
+            "an unreadable membership is visible on a device only through this line; logged: ${recorder.lines}",
+        )
+    }
+
+    @Test
+    fun a_top_up_whose_re_created_retry_the_platform_refused_reports_work_left() = runTest {
+        // The member raised their cutoff while this photo's upload was in flight: the ledger's work read no longer
+        // admits it, but the platform's spent retry is still re-created — and refused. Work remains either way.
+        val backend = TestLedger().service
+        LedgerWriter(backend).recordRequested(datedResource("old-primary.heic", "2025-06-01T10:00:00Z", "old"))
+        val platform = FakePlatform(
+            ackJobs = listOf(platformJob("old-primary.heic", UploadError.Network)),
+            ledger = backend,
+            limitAfter = 0,
+        )
+
+        val result = cycle(backend, platform).topUp { false }
+
+        assertEquals(CycleResult.PROCESSING, result, "the refused re-creation is work left")
+        assertEquals(1, platform.createAttempts, "the re-creation was asked once; the work read admits nothing")
+        assertEquals(LedgerState.DISCOVERED, backend.get("old-primary.heic")?.state)
+    }
+
+    @Test
+    fun a_top_up_over_rows_the_current_policy_no_longer_admits_creates_nothing_and_keeps_them() = runTest {
+        // The rows were admitted when the walk recorded them; the member has since raised their cutoff past them.
+        val backend = TestLedger().service
+        LedgerWriter(backend).recordDiscovered(listOf(resource("a"), resource("b")))
+        val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
+
+        val result = cycle(backend, platform, policy = admitting("2026-07-01T00:00:00Z")).topUp { false }
+
+        assertEquals(CycleResult.COMPLETED, result, "nothing it may create is left waiting")
+        assertEquals(0, platform.createAttempts)
+        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "an excluded row is kept, not deleted")
+        assertEquals(LedgerState.DISCOVERED, backend.get("b")?.state)
+    }
+
+    @Test
+    fun a_row_the_other_uploader_took_between_the_read_and_the_creation_is_not_created_again() = runTest {
+        // Both uploaders write the one shared ledger: the OS-driven one may create this row's job while this cycle
+        // resolves it. The engine reads the row again before minting, so no second job is created.
+        val backend = TestLedger().service
+        val a = resource("a")
+        LedgerWriter(backend).recordDiscovered(listOf(a))
+        val platform = FakePlatform(discovered = listOf(a))
+        val racing = object : UploadDiscovery by platform {
+            override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
+                LedgerWriter(backend).recordRequested(a)
+                return platform.resourcesFor(keys)
+            }
+        }
+
+        val result = cycle(backend, platform, library = racing).topUp { false }
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(0, platform.createAttempts, "the row was already in flight")
+        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+    }
+
+    @Test
+    fun a_failed_placement_of_healed_rows_still_dates_them() = runTest {
+        val backend = TestLedger().service
+        backend.resetTo(LEDGER_EVENT, listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
+        val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
+        val recorder = CapturingLogWriter()
+
+        val result = cycle(
+            backend,
+            platform,
+            placeInAlbum = { _, _ -> error("album boom") },
+            log = recorder.logger("UploadCycleTest"),
+        ).run()
+
+        assertEquals(CycleResult.COMPLETED, result, "placement is best-effort")
+        assertEquals(IN_SCOPE_DATE, backend.get("X-primary.heic")?.creationDate, "the walk still dated the row")
+        assertTrue(recorder.lines.any { it.first == Severity.Warn && "healed rows failed" in it.second })
+    }
+
+    @Test
+    fun a_retry_spent_failure_the_platform_reported_without_an_error_is_still_re_created() = runTest {
+        val backend = TestLedger().service
+        LedgerWriter(backend).recordRequested(resource("a"))
+        val platform = FakePlatform(ackJobs = listOf(platformJob("a", error = null)), ledger = backend)
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(listOf("a"), platform.created.map { it.filename })
+        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+    }
+
+    @Test
+    fun once_the_platform_refuses_a_re_creation_the_later_spent_retries_are_not_offered_to_it() = runTest {
+        val backend = TestLedger().service
+        val library = listOf(resource("a"), resource("b"), resource("c"))
+        library.forEach { LedgerWriter(backend).recordRequested(it) }
+        val platform = FakePlatform(
+            discovered = library,
+            ackJobs = library.map { platformJob(it.filename, UploadError.Network) },
+            ledger = backend,
+            limitAfter = 1,
+        )
+
+        val result = cycleOver(backend, platform).topUp { false }
+
+        assertEquals(CycleResult.PROCESSING, result)
+        assertEquals(listOf("a"), platform.created.map { it.filename })
+        // a created, b refused; c is adjudicated back to the work read but not offered — and the work read then stops
+        // at its own first refusal (b).
+        assertEquals(3, platform.createAttempts, "a, b, then the work read's first row; never c in the settle")
+        assertEquals(LedgerState.DISCOVERED, backend.get("c")?.state, "c waits in the work read")
+    }
+
+    @Test
+    fun a_re_creation_the_platform_fails_leaves_the_row_waiting_and_records_no_request() = runTest {
+        val backend = TestLedger().service
+        LedgerWriter(backend).recordRequested(resource("a"))
+        val platform = FakePlatform(
+            discovered = listOf(resource("a")),
+            ackJobs = listOf(platformJob("a", UploadError.Network)),
+            ledger = backend,
+            failCreate = true,
+        )
+
+        val result = cycleOver(backend, platform).topUp { false }
+
+        assertEquals(CycleResult.COMPLETED, result, "a failed creation is not the platform's limit")
+        assertTrue(platform.created.isEmpty())
+        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "write-after-act: no REQUESTED without a job")
     }
 }
