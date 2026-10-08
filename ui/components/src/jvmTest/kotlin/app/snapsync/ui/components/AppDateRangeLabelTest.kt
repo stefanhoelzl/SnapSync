@@ -52,14 +52,17 @@ class AppDateRangeLabelTest {
     }
 
     @Test
-    fun `an end at midnight closes the day before it`() {
-        // Ending "Tue 00:00" lasts through Monday: printing Tuesday would add a day nobody can take a photo in.
+    fun `an end at midnight shows the day it falls on`() {
+        // The range reads as chosen: an end at "Tue 00:00" is Tuesday.
         assertEquals(
-            "Sun 12 Jul – Mon 13 Jul",
+            "Sun 12 Jul – Tue 14 Jul",
             label(LocalDateTime(2026, 7, 12, 14, 0), LocalDateTime(2026, 7, 14, 0, 0)),
         )
-        // …and a party from 18:00 to midnight is a same-day event.
-        assertEquals("Today 18:00 – 00:00", label(LocalDateTime(2026, 7, 13, 18, 0), LocalDateTime(2026, 7, 14, 0, 0)))
+        // …so a party from 18:00 to the next midnight spans two days.
+        assertEquals(
+            "Mon 13 Jul – Tue 14 Jul",
+            label(LocalDateTime(2026, 7, 13, 18, 0), LocalDateTime(2026, 7, 14, 0, 0)),
+        )
     }
 
     @Test

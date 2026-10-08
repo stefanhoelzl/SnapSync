@@ -7,11 +7,9 @@ import app.snapsync.ui.components.resources.date_range_one_day
 import app.snapsync.ui.components.resources.date_range_open
 import app.snapsync.ui.components.resources.date_range_today
 import app.snapsync.ui.components.resources.date_span
-import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
-import kotlinx.datetime.minus
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -38,14 +36,14 @@ internal fun formatStart(value: LocalDateTime): String = LocalDateFormats.curren
  *
  * Every day names its month: CLDR has no portable month-less day (`Ed` reads `12 Sun` in en-US).
  *
- * An end at exactly midnight closes the day BEFORE it, so it is shown as that day: an event ending "Tue
- * 00:00" lasts through Monday, and printing Tuesday would add a day nobody can take a photo in.
+ * The range reads as it was chosen (capability `sync-status`): the last day is the day the end falls on, an end
+ * at midnight included — an event ending "Tue 00:00" shows Tuesday, as the create screen and the event page do.
  */
 @Composable
 fun appDateRangeLabel(start: LocalDateTime, end: LocalDateTime?, today: LocalDate): String {
     val dates = LocalDateFormats.current
     if (end == null) return stringResource(Res.string.date_range_open, dates.day(start.date, withYear = false))
-    val lastDay = lastDayOf(start, end)
+    val lastDay = end.date
     return when {
         lastDay == start.date -> {
             val from = dates.format(start, "jm")
@@ -61,12 +59,6 @@ fun appDateRangeLabel(start: LocalDateTime, end: LocalDateTime?, today: LocalDat
             stringResource(Res.string.date_span, dates.day(start.date, crossesYear), dates.day(lastDay, crossesYear))
         }
     }
-}
-
-/** The last day the event covers: an end at exactly midnight closes the day before it. */
-private fun lastDayOf(start: LocalDateTime, end: LocalDateTime): LocalDate {
-    val atMidnight = end.time == LocalTime(0, 0)
-    return if (atMidnight && end.date > start.date) end.date.minus(1, DateTimeUnit.DAY) else end.date
 }
 
 private fun DateFormats.day(day: LocalDate, withYear: Boolean): String =
