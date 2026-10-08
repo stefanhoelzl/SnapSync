@@ -26,11 +26,13 @@ interface Crypto : Port {
      * followed by its 16-byte tag. A [key] of any other length throws [IllegalArgumentException], here and in
      * [aesGcmOpen]: the platform ciphers would quietly run AES-128 or AES-192 under a 16- or 24-byte one.
      */
+    @Throws(IllegalArgumentException::class)
     fun aesGcmSeal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray
 
     /**
      * The plaintext [sealed] (ciphertext then tag) was sealed from under [key] and [nonce], or `null` when it does
      * not authenticate — a wrong key, a wrong nonce, or any changed byte.
      */
+    @Throws(IllegalArgumentException::class)
     fun aesGcmOpen(key: ByteArray, nonce: ByteArray, sealed: ByteArray): ByteArray?
 }

@@ -23,11 +23,24 @@ import kotlin.test.assertTrue
  * for any bytes — or over any challenge — fails here rather than passing by accident.
  */
 internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
-    clause("ATTEST_A_CHALLENGE_IS_ISSUED", BackendState.SERVING) { s ->
+    clause(
+        "ATTEST_A_CHALLENGE_IS_ISSUED",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::challenge).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertTrue(assertOk(s.port.challenge(), "the ungated challenge route answers").isNotBlank())
     }
 
-    clause("ATTEST_A_FORGED_ATTESTATION_IS_REFUSED", BackendState.SERVING) { s ->
+    clause(
+        "ATTEST_A_FORGED_ATTESTATION_IS_REFUSED",
+        BackendState.SERVING,
+        covers = cells {
+            on<Backend> {
+                answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
+                answers(Backend::mintToken).with(Reply.Refused::class)
+            }
+        },
+    ) { s ->
         val challenge = assertOk(s.port.challenge())
         val forged = "not an attestation".encodeToByteArray()
         assertIs<Reply.Refused>(
@@ -36,7 +49,16 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
         )
     }
 
-    clause("ATTEST_A_FORGED_ANDROID_KEY_ATTESTATION_IS_REFUSED", BackendState.SERVING) { s ->
+    clause(
+        "ATTEST_A_FORGED_ANDROID_KEY_ATTESTATION_IS_REFUSED",
+        BackendState.SERVING,
+        covers = cells {
+            on<Backend> {
+                answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
+                answers(Backend::mintToken).with(Reply.Refused::class)
+            }
+        },
+    ) { s ->
         val challenge = assertOk(s.port.challenge())
         // Shaped as a chain of one DER certificate, and not one: the Android verifier, not a body check, refuses it.
         val forged = byteArrayOf(0x30, 0x03, 0x02, 0x01, 0x00)
@@ -46,7 +68,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
         )
     }
 
-    clause("ATTEST_A_CHALLENGE_THE_BACKEND_NEVER_ISSUED_IS_REFUSED", BackendState.SERVING) { s ->
+    clause(
+        "ATTEST_A_CHALLENGE_THE_BACKEND_NEVER_ISSUED_IS_REFUSED",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::mintToken).with(Reply.Refused::class) },
+    ) { s ->
         val notIssued = "a-challenge-no-edge-issued"
         val overIt = "attestation:$KEY_ID:$notIssued".encodeToByteArray()
         assertIs<Reply.Refused>(
@@ -55,7 +81,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
         )
     }
 
-    clause("ATTEST_AN_UNATTESTED_DEVICE_CANNOT_RENEW", BackendState.SERVING) { s ->
+    clause(
+        "ATTEST_AN_UNATTESTED_DEVICE_CANNOT_RENEW",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::challenge).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         val challenge = assertOk(s.port.challenge())
         val assertion = "assertion:$KEY_ID:$challenge".encodeToByteArray()
         assertIsNot<Reply.Ok<*>>(

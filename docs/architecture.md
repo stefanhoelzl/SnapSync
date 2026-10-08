@@ -342,7 +342,7 @@ system it stands in for. The contract code **is** the specification of a port's 
 `openspec/` spec restates them.
 
 - **Contract** = a hand-written list of clause values in `:test:contracts` `commonMain` (id, required
-  state, body with `kotlin.test` assertions). Nothing records or generates an expectation.
+  state, the port-grid cells it covers, body with `kotlin.test` assertions). Nothing records or generates an expectation.
 - **Binding** = one implementation × one `Host` (`JVM`, `IOS_SIM_KEXE`, `IOS_SIM_APP`,
   `IOS_DEVICE_APP`, `IOS_DEVICE_PHOTOKIT_EXT`) × one kind (`Fake`, `Live`, `Replay`), declaring **as a
   literal** the states it reaches. It enters a state at construction or answers `Unreachable`. Bindings
@@ -352,6 +352,9 @@ system it stands in for. The contract code **is** the specification of a port's 
   every binding kind.
 - **Every clause runs against something real** on some host: a `Live` binding CI runs, or a committed
   device recording. `ContractCoverageTest` enforces this.
+- **Every clause declares the port-grid cells it covers** (`covers = cells { … }`, typed references), and
+  every declared cell is one the grid derives from `:domain:ports`. `ClauseCoversTest` enforces this
+  (`docs/testing.md`, "Every clause declares the cells it covers").
 - Hosts CI cannot reach are **recorded at the OS boundary** on a device (through the rig, under
   `-Psnapsync.rig=true`) into `test/contracts/recordings/<Contract>@<HOST>[.<GRANT>|.<PRECONDITION>].rec`, and
   **replayed** against the current adapter on every build. An adapter recorded this way routes its OS

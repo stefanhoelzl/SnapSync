@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.ports.Clock
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -10,10 +11,13 @@ private enum class Toy { ON, OFF }
 
 private class Switch(var on: Boolean)
 
+/** The toys bind no port; a clause must still declare a cell, so they borrow a real one. */
+private val TOY_COVERS = cells { on<Clock>().answers(Clock::now).returns() }
+
 private object ToyContract : Contract<Toy, Switch>("Toy") {
     override val clauses = listOf(
-        clause("ON_READS_ON", Toy.ON) { assertTrue(it.on) },
-        clause("OFF_READS_OFF", Toy.OFF) { assertTrue(!it.on) },
+        clause("ON_READS_ON", Toy.ON, TOY_COVERS) { assertTrue(it.on) },
+        clause("OFF_READS_OFF", Toy.OFF, TOY_COVERS) { assertTrue(!it.on) },
     )
 }
 
@@ -72,7 +76,7 @@ class RunnerTest {
     @Test
     fun `a divergence is Diverged and not Failed`() {
         val contract = object : Contract<Toy, Replayer>("Replay") {
-            override val clauses = listOf(clause("C", Toy.ON) { it.answer("unrecorded()") })
+            override val clauses = listOf(clause("C", Toy.ON, TOY_COVERS) { it.answer("unrecorded()") })
         }
         val binding = object : Binding<Toy, Replayer> {
             override val host = Host.IOS_DEVICE_APP
@@ -103,7 +107,7 @@ class RunnerTest {
     @Test
     fun `verify fails on an expired wait - it established nothing`() {
         val contract = object : Contract<Toy, Switch>("Waits") {
-            override val clauses = listOf(clause("C", Toy.ON) { throw WaitExpired(10) })
+            override val clauses = listOf(clause("C", Toy.ON, TOY_COVERS) { throw WaitExpired(10) })
         }
         val error = assertFailsWith<AssertionError> { verify(contract, honest(setOf(Toy.ON))) }
         val message = error.message.orEmpty()

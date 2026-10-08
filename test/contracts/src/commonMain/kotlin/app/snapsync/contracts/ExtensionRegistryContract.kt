@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationOutcome
 import app.snapsync.model.RegistrationState
 import app.snapsync.model.registrationOutcome
@@ -46,7 +47,16 @@ object ExtensionRegistryContract :
 
     override val clauses = clauses {
 
-        clause("ENABLE_CREATES_A_RECORD", ExtensionRegistryState.RECORD_ABSENT) { registry ->
+        clause(
+            "ENABLE_CREATES_A_RECORD",
+            ExtensionRegistryState.RECORD_ABSENT,
+            covers = cells {
+                on<ExtensionRegistry> {
+                    answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Answered::class)
+                    answers(ExtensionRegistry::isEnabled).with(RegistrationState.REGISTERED)
+                }
+            },
+        ) { registry ->
             assertEquals(
                 RegistrationOutcome.Applied(enabling = true),
                 registrationOutcome(true, registry.setEnabled(true)),
@@ -58,7 +68,16 @@ object ExtensionRegistryContract :
             )
         }
 
-        clause("DISABLE_REMOVES_A_RECORD", ExtensionRegistryState.RECORD_PRESENT) { registry ->
+        clause(
+            "DISABLE_REMOVES_A_RECORD",
+            ExtensionRegistryState.RECORD_PRESENT,
+            covers = cells {
+                on<ExtensionRegistry> {
+                    answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Answered::class)
+                    answers(ExtensionRegistry::isEnabled).with(RegistrationState.NOT_REGISTERED)
+                }
+            },
+        ) { registry ->
             assertEquals(
                 RegistrationOutcome.Applied(enabling = false),
                 registrationOutcome(false, registry.setEnabled(false)),
@@ -70,7 +89,13 @@ object ExtensionRegistryContract :
             )
         }
 
-        clause("DISABLE_WITH_NO_RECORD_IS_EXPECTED", ExtensionRegistryState.RECORD_ABSENT) { registry ->
+        clause(
+            "DISABLE_WITH_NO_RECORD_IS_EXPECTED",
+            ExtensionRegistryState.RECORD_ABSENT,
+            covers = cells {
+                on<ExtensionRegistry>().answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Answered::class)
+            },
+        ) { registry ->
             assertEquals(
                 RegistrationOutcome.NothingToDisable,
                 registrationOutcome(false, registry.setEnabled(false)),
@@ -78,11 +103,23 @@ object ExtensionRegistryContract :
             )
         }
 
-        clause("ENABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT", ExtensionRegistryState.UNDER_PARTIAL_GRANT) { registry ->
+        clause(
+            "ENABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT",
+            ExtensionRegistryState.UNDER_PARTIAL_GRANT,
+            covers = cells {
+                on<ExtensionRegistry>().answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Answered::class)
+            },
+        ) { registry ->
             assertEquals(RegistrationOutcome.EnableRefusedByGrant, registrationOutcome(true, registry.setEnabled(true)))
         }
 
-        clause("DISABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT", ExtensionRegistryState.UNDER_PARTIAL_GRANT) { registry ->
+        clause(
+            "DISABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT",
+            ExtensionRegistryState.UNDER_PARTIAL_GRANT,
+            covers = cells {
+                on<ExtensionRegistry>().answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Answered::class)
+            },
+        ) { registry ->
             assertEquals(
                 RegistrationOutcome.DisableRefusedByGrant,
                 registrationOutcome(false, registry.setEnabled(false)),

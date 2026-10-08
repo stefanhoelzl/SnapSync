@@ -1,6 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.ports.BackgroundTime
+import app.snapsync.ports.BackgroundTimeHold
 import kotlin.test.assertEquals
 
 /** The states the app's background time can be found in, as far as a clause cares. */
@@ -32,7 +33,13 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
 
     override val clauses = clauses {
 
-        clause("A_HOLD_IS_GRANTED_WHILE_TIME_REMAINS", BackgroundTimeState.TIME_REMAINS) { time ->
+        clause(
+            "A_HOLD_IS_GRANTED_WHILE_TIME_REMAINS",
+            BackgroundTimeState.TIME_REMAINS,
+            covers = cells {
+                on<BackgroundTime>().answers(BackgroundTime::begin).returns()
+            },
+        ) { time ->
             val expiries = Expiries()
             val hold = time.begin("contract.granted", expiries::fire)
             assertEquals(0, expiries.count, "a granted hold does not report an expiry as it begins")
@@ -41,7 +48,13 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
             hold.end()
         }
 
-        clause("A_SECOND_HOLD_IS_GRANTED_BESIDE_THE_FIRST", BackgroundTimeState.TIME_REMAINS) { time ->
+        clause(
+            "A_SECOND_HOLD_IS_GRANTED_BESIDE_THE_FIRST",
+            BackgroundTimeState.TIME_REMAINS,
+            covers = cells {
+                on<BackgroundTime>().answers(BackgroundTime::begin).returns()
+            },
+        ) { time ->
             val expiries = Expiries()
             val first = time.begin("contract.first", expiries::fire)
             val second = time.begin("contract.second", expiries::fire)
@@ -51,14 +64,29 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
             second.end()
         }
 
-        clause("AN_ENDED_HOLD_REPORTS_NO_EXPIRY", BackgroundTimeState.TIME_REMAINS) { time ->
+        clause(
+            "AN_ENDED_HOLD_REPORTS_NO_EXPIRY",
+            BackgroundTimeState.TIME_REMAINS,
+            covers = cells {
+                on<BackgroundTime>().handle<BackgroundTimeHold>().answers(BackgroundTimeHold::end).returns()
+            },
+        ) { time ->
             val expiries = Expiries()
             time.begin("contract.ended", expiries::fire).end()
             settle()
             assertEquals(0, expiries.count, "a hold ended before its time was up is never reported expired")
         }
 
-        clause("ENDING_TWICE_IS_QUIET", BackgroundTimeState.TIME_REMAINS) { time ->
+        clause(
+            "ENDING_TWICE_IS_QUIET",
+            BackgroundTimeState.TIME_REMAINS,
+            covers = cells {
+                on<BackgroundTime> {
+                    answers(BackgroundTime::begin).returns()
+                    handle<BackgroundTimeHold>().answers(BackgroundTimeHold::end).returns()
+                }
+            },
+        ) { time ->
             val expiries = Expiries()
             val hold = time.begin("contract.twice", expiries::fire)
             hold.end()

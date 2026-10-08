@@ -16,7 +16,11 @@ import kotlin.time.Instant
  * [BackendContract]'s clause list, a split for size only.
  */
 internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
-    clause("CREATE_A_VALID_EVENT_IS_CREATED", BackendState.SERVING) { s ->
+    clause(
+        "CREATE_A_VALID_EVENT_IS_CREATED",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::createEvent).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         val created =
             assertOk(
                 s.port.createEvent(s.token, CreateEventRequest("Anna's Birthday", SEEDED_STARTS_AT, SEEDED_ENDS_AT)),
@@ -25,14 +29,28 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         assertEquals("Anna's Birthday", created.name, "the backend echoes the name it stored")
     }
 
-    clause("CREATE_AN_ABSENT_END_IS_ACCEPTED", BackendState.SERVING) { s ->
+    clause(
+        "CREATE_AN_ABSENT_END_IS_ACCEPTED",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::createEvent).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertOk(
             s.port.createEvent(s.token, CreateEventRequest("No end", SEEDED_STARTS_AT, null)),
             "the backend supplies the end",
         )
     }
 
-    clause("CREATE_WITH_A_KEY_ID_IS_AN_ENCRYPTED_EVENT_AND_ONLY_THEN", BackendState.SERVING) { s ->
+    clause(
+        "CREATE_WITH_A_KEY_ID_IS_AN_ENCRYPTED_EVENT_AND_ONLY_THEN",
+        BackendState.SERVING,
+        covers = cells {
+            on<Backend> {
+                answers(Backend::createEvent).withGenericLeaf(Reply.Ok::class)
+                answers(Backend::createEvent).with(Reply.Refused::class)
+                answers(Backend::getEvent).withGenericLeaf(Reply.Ok::class)
+            }
+        },
+    ) { s ->
         // The encrypted file format (`docs/architecture.md`): the backend keeps the key's id, never the key.
         val keyId = "de30249b854310c8"
         val encrypted =
@@ -59,7 +77,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         )
     }
 
-    clause("CREATE_A_BLANK_NAME_IS_REFUSED_AS_THE_NAME", BackendState.SERVING) { s ->
+    clause(
+        "CREATE_A_BLANK_NAME_IS_REFUSED_AS_THE_NAME",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::createEvent).with(Reply.Refused::class) },
+    ) { s ->
         val refused =
             assertRefused(
                 BAD_REQUEST,
@@ -68,7 +90,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         assertFalse(WINDOW_FIELDS.any { it in refused.body }, "a refused name names no date field: ${refused.body}")
     }
 
-    clause("CREATE_AN_END_BEFORE_THE_START_IS_REFUSED_AS_THE_WINDOW", BackendState.SERVING) { s ->
+    clause(
+        "CREATE_AN_END_BEFORE_THE_START_IS_REFUSED_AS_THE_WINDOW",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::createEvent).with(Reply.Refused::class) },
+    ) { s ->
         val refused =
             assertRefused(
                 BAD_REQUEST,
@@ -80,7 +106,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         )
     }
 
-    clause("CREATE_A_WINDOW_LONGER_THAN_30_DAYS_IS_REFUSED_AS_THE_WINDOW", BackendState.SERVING) { s ->
+    clause(
+        "CREATE_A_WINDOW_LONGER_THAN_30_DAYS_IS_REFUSED_AS_THE_WINDOW",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::createEvent).with(Reply.Refused::class) },
+    ) { s ->
         val refused = assertRefused(
             BAD_REQUEST,
             s.port.createEvent(s.token, CreateEventRequest("Too long", SEEDED_STARTS_AT, "2030-02-15T00:00:00Z")),
@@ -91,7 +121,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         )
     }
 
-    clause("GET_AN_EXISTING_EVENT_IS_SERVED_WITH_ITS_WINDOW", BackendState.EVENT_EXISTS) { s ->
+    clause(
+        "GET_AN_EXISTING_EVENT_IS_SERVED_WITH_ITS_WINDOW",
+        BackendState.EVENT_EXISTS,
+        covers = cells { on<Backend>().answers(Backend::getEvent).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         val meta = assertOk(s.port.getEvent(null, s.seeded.eventId))
         assertEquals(s.seeded.event!!.name, meta.name)
         assertSameInstant(SEEDED_STARTS_AT, meta.startsAt, "the start the creator chose")
@@ -100,21 +134,37 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         assertSameInstant("2030-01-31T00:00:00Z", meta.deletesAt, "deletesAt is startsAt + 30 days")
     }
 
-    clause("GET_AN_UNKNOWN_EVENT_IS_NOT_FOUND", BackendState.NO_SUCH_EVENT) { s ->
+    clause(
+        "GET_AN_UNKNOWN_EVENT_IS_NOT_FOUND",
+        BackendState.NO_SUCH_EVENT,
+        covers = cells { on<Backend>().answers(Backend::getEvent).with(Reply.Refused::class) },
+    ) { s ->
         assertRefused(NOT_FOUND, s.port.getEvent(null, s.seeded.eventId), "absent is 404, which the app reads as gone")
     }
 
-    clause("GET_NEEDS_NO_CREDENTIAL", BackendState.FOREIGN_TOKEN) { s ->
+    clause(
+        "GET_NEEDS_NO_CREDENTIAL",
+        BackendState.FOREIGN_TOKEN,
+        covers = cells { on<Backend>().answers(Backend::getEvent).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertOk(s.port.getEvent(null, s.seeded.eventId), "the event read is authorized by the id alone")
     }
 
     // Public, but a token it is SENT is verified, so its 401 is a verdict on that token (decision record
     // `changes/separate-event-page-from-device-api`, D7).
-    clause("GET_A_SENT_TOKEN_THE_BACKEND_NEVER_ISSUED_IS_REFUSED", BackendState.FOREIGN_TOKEN) { s ->
+    clause(
+        "GET_A_SENT_TOKEN_THE_BACKEND_NEVER_ISSUED_IS_REFUSED",
+        BackendState.FOREIGN_TOKEN,
+        covers = cells { on<Backend>().answers(Backend::getEvent).with(Reply.Refused::class) },
+    ) { s ->
         assertRefused(UNAUTHORIZED, s.port.getEvent(s.token, s.seeded.eventId), "a sent token is checked")
     }
 
-    clause("A_REFUSED_BUILD_IS_TOLD_THE_MINIMUM", BackendState.VERSION_REFUSED) { s ->
+    clause(
+        "A_REFUSED_BUILD_IS_TOLD_THE_MINIMUM",
+        BackendState.VERSION_REFUSED,
+        covers = cells { on<Backend>().answers(Backend::getEvent).with(Reply.Refused::class) },
+    ) { s ->
         val refused =
             assertRefused(
                 UPGRADE_REQUIRED,
@@ -126,15 +176,27 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         assertTrue(Regex("""\d+\.\d+""").matches(minimum), "the minimum is an X.Y marketing version: $minimum")
     }
 
-    clause("RENAME_ANSWERS_THE_STORED_NAME", BackendState.EVENT_EXISTS) { s ->
+    clause(
+        "RENAME_ANSWERS_THE_STORED_NAME",
+        BackendState.EVENT_EXISTS,
+        covers = cells { on<Backend>().answers(Backend::renameEvent).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertEquals("Renamed", assertOk(s.port.renameEvent(s.token, s.seeded.eventId, "Renamed")).name)
     }
 
-    clause("RENAME_A_BLANK_NAME_IS_REFUSED", BackendState.EVENT_EXISTS) { s ->
+    clause(
+        "RENAME_A_BLANK_NAME_IS_REFUSED",
+        BackendState.EVENT_EXISTS,
+        covers = cells { on<Backend>().answers(Backend::renameEvent).with(Reply.Refused::class) },
+    ) { s ->
         assertRefused(BAD_REQUEST, s.port.renameEvent(s.token, s.seeded.eventId, "   "))
     }
 
-    clause("RENAME_AN_UNKNOWN_EVENT_IS_REFUSED", BackendState.NO_SUCH_EVENT) { s ->
+    clause(
+        "RENAME_AN_UNKNOWN_EVENT_IS_REFUSED",
+        BackendState.NO_SUCH_EVENT,
+        covers = cells { on<Backend>().answers(Backend::renameEvent).with(Reply.Refused::class) },
+    ) { s ->
         assertIs<Reply.Refused>(s.port.renameEvent(s.token, s.seeded.eventId, "Nobody"))
     }
 }

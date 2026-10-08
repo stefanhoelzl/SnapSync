@@ -1,18 +1,7 @@
 package app.snapsync.architecture
 
 import app.snapsync.ports.Listenable
-import app.snapsync.ports.Port
-import kotlinx.coroutines.flow.Flow
 import java.io.File
-import kotlin.coroutines.Continuation
-import kotlin.reflect.KCallable
-import kotlin.reflect.KClass
-import kotlin.reflect.KParameter
-import kotlin.reflect.KType
-import kotlin.reflect.full.allSupertypes
-import kotlin.reflect.full.declaredMemberProperties
-import kotlin.reflect.full.declaredMembers
-import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.full.isSuperclassOf
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -33,7 +22,8 @@ import kotlin.test.assertTrue
  *
  * Variants: a sealed type → each leaf subtype (`Reply.Ok`; the OUTER type of a generic only); an enum → each entry;
  * `Boolean` → `true`/`false`; a `Flow<T>` → T's; anything else → one `returns` cell, or its type name as an argument.
- * A nullable type adds `null`. Throws are not cells: errors are reduced into values (`docs/architecture.md`). A member
+ * A nullable type adds `null`. Errors are reduced into values (`docs/architecture.md`), so a throw is a cell only where
+ * the member DECLARES it (`@Throws`) — one `throws` cell, whatever it throws. A member
  * the interface itself implements (a default body) is not the adapter's answer and is not a cell; a member inherited
  * from another port is counted under the port declaring it, except a generic base's ([Listenable.listen]), counted
  * under every port that binds it.
@@ -49,14 +39,8 @@ import kotlin.test.assertTrue
  */
 class PortGridTest {
 
-    private class Cell(val port: String, val text: String, val member: String, val variants: List<String>)
-
-    private val ports: List<KClass<*>> = portInterfaces()
-        .map { Class.forName("$PORTS_PACKAGE.$it").kotlin }
-        .filter { Port::class.isSuperclassOf(it) && it != Port::class && it.typeParameters.isEmpty() }
-        .sortedBy { it.simpleName }
-
-    private val cells: List<Cell> = ports.flatMap(::cellsOf).sortedBy { it.text }
+    private val ports = PortGrid.ports
+    private val cells = PortGrid.cells
 
     @Test
     fun `the port grid is written`() {
@@ -104,13 +88,14 @@ class PortGridTest {
     }
 
     @Test
-    fun `the grid expands a generic sealed return, an enum, a nullable and a handle`() {
+    fun `the grid expands a generic sealed return, an enum, a nullable, a handle and a declared throw`() {
         val texts = cells.map { it.text }.toSet()
         val canaries = listOf(
             "Backend.challenge → Reply.Unreachable",
             "SecureStore.read → SecureStoreRead.Unavailable",
             "LibraryChangeTokenRead.changeToken → null",
             "Wake.Completion.complete → returns",
+            "AttestStore.token → throws",
         )
         val missing = canaries - texts
         assertTrue(missing.isEmpty(), "port grid: expected cells are missing, so the variant expansion broke: $missing")
@@ -124,97 +109,12 @@ class PortGridTest {
         assertTrue(bare.isEmpty(), "port grid: event ports with no handler cell — the handler bundle read broke: $bare")
     }
 
-    // ---- derivation -----------------------------------------------------------------------------------------
-
-    private fun cellsOf(port: KClass<*>): List<Cell> {
-        val name = port.simpleName!!
-        val handles = mutableSetOf<KClass<*>>()
-        val own = ownedMembers(port).flatMap { memberCells(name, name, it, handles) }
-        val handlers = handlerBundle(port)?.let { bundle ->
-            bundle.declaredMemberProperties.sortedBy { it.name }.flatMap { f ->
-                callbackCells(name, "$name.handlers.${f.name}", f.name, f.returnType, handles)
-            }
-        }.orEmpty()
-        val handed = handles.sortedBy { it.simpleName }.flatMap { h ->
-            ownedMembers(h).flatMap { memberCells(name, "$name.${h.simpleName}", it, mutableSetOf()) }
-        }
-        return own + handlers + handed
-    }
-
-    /** The abstract members [type] answers for itself: declared here, or inherited from a non-port or generic port base. */
-    private fun ownedMembers(type: KClass<*>): List<KCallable<*>> {
-        val bases = type.allSupertypes.mapNotNull { it.classifier as? KClass<*> }
-            .filter { it != Any::class && it != Port::class && !(Port::class.isSuperclassOf(it) && it.typeParameters.isEmpty()) }
-        return (listOf(type) + bases).flatMap { it.declaredMembers }.filter { it.isAbstract }.sortedBy { it.name }
-    }
-
-    private fun memberCells(port: String, owner: String, member: KCallable<*>, handles: MutableSet<KClass<*>>): List<Cell> {
-        noteHandle(member.returnType, handles)
-        val returns = variants(member.returnType, plain = RETURNS).map {
-            Cell(port, "$owner.${member.name} → $it", member.name, listOf(it))
-        }
-        val callbacks = member.parameters.filter { it.kind == KParameter.Kind.VALUE && isFunction(it.type) }
-            .flatMap { callbackCells(port, "$owner.${member.name}.${it.name}", member.name, it.type, handles) }
-        return returns + callbacks
-    }
-
-    /** One cell per crossing of the variants of every argument the adapter passes a callback of [type]. */
-    private fun callbackCells(
-        port: String,
-        prefix: String,
-        member: String,
-        type: KType,
-        handles: MutableSet<KClass<*>>,
-    ): List<Cell> {
-        val args = type.arguments.dropLast(1).mapNotNull { it.type }
-            .filterNot { (it.classifier as? KClass<*>) == Continuation::class }
-        args.forEach { noteHandle(it, handles) }
-        val crossed = args.fold(listOf(emptyList<String>())) { acc, arg ->
-            val vs = variants(arg, plain = (arg.classifier as? KClass<*>)?.simpleName ?: arg.toString())
-            acc.flatMap { done -> vs.map { done + it } }
-        }
-        return crossed.map { Cell(port, "$prefix(${it.joinToString(", ")})", member.substringAfterLast('.'), it) }
-    }
-
-    private fun variants(type: KType, plain: String): List<String> {
-        val k = type.classifier as? KClass<*>
-        val base = when {
-            k == null -> listOf(plain)
-            k == Boolean::class -> listOf("true", "false")
-            k.isSubclassOf(Flow::class) -> variants(type.arguments.single().type!!, plain)
-            k.java.isEnum -> k.java.enumConstants.map { "${k.simpleName}.${(it as Enum<*>).name}" }
-            k.isSealed -> leaves(k).map(::relativeName)
-            else -> listOf(plain)
-        }
-        return if (type.isMarkedNullable) base + "null" else base
-    }
-
-    private fun leaves(k: KClass<*>): List<KClass<*>> =
-        k.sealedSubclasses.flatMap { if (it.isSealed) leaves(it) else listOf(it) }.sortedBy { it.qualifiedName }
-
-    private fun relativeName(k: KClass<*>): String = k.qualifiedName!!.removePrefix(k.java.`package`.name + ".")
-
-    private fun isFunction(type: KType): Boolean =
-        (type.classifier as? KClass<*>)?.let { Function::class.isSuperclassOf(it) } == true
-
-    /** A non-port, non-sealed interface of the ports zone that a port hands over: a handle, whose members are cells too. */
-    private fun noteHandle(type: KType, handles: MutableSet<KClass<*>>) {
-        val k = type.classifier as? KClass<*> ?: return
-        val inZone = k.java.isInterface && k.java.packageName == PORTS_PACKAGE
-        if (inZone && !Port::class.isSuperclassOf(k) && !k.isSealed) handles += k
-    }
-
-    private fun handlerBundle(port: KClass<*>): KClass<*>? =
-        port.allSupertypes.firstOrNull {
-            it.classifier == Listenable::class
-        }?.arguments?.single()?.type?.classifier as? KClass<*>
-
     // ---- estimate -------------------------------------------------------------------------------------------
 
-    private fun looksCovered(cell: Cell, text: String): Boolean {
+    private fun looksCovered(cell: PortGrid.Cell, text: String): Boolean {
         if (!Regex("""\b${Regex.escape(cell.member)}\b""").containsMatchIn(text)) return false
         return cell.variants.all { v ->
-            v == RETURNS || v == "true" || v == "false" || v == "null" || v.firstOrNull()?.isUpperCase() != true ||
+            v == PortGrid.RETURNS || v == PortGrid.THROWS || v == "true" || v == "false" || v == "null" || v.firstOrNull()?.isUpperCase() != true ||
                 v.substringAfterLast('.').let { leaf -> Regex("""\b${Regex.escape(leaf)}\b""").containsMatchIn(text) }
         }
     }
@@ -230,20 +130,7 @@ class PortGridTest {
         }.toList()
     }
 
-    /** The top-level interfaces declared in `:domain:ports`, by simple name — the same read [PortBundleTest] makes. */
-    private fun portInterfaces(): Set<String> {
-        val dir = File(SourceScan.repoRoot, "domain/ports/src/commonMain/kotlin/app/snapsync/ports")
-        assertTrue(dir.isDirectory, "port grid: $dir is gone — re-point the scan")
-        return dir.walk().filter { it.extension == "kt" }.flatMap { file ->
-            Regex("""^(?:sealed |fun )?interface\s+(\w+)""", RegexOption.MULTILINE).findAll(file.readText()).map {
-                it.groupValues[1]
-            }
-        }.toSet()
-    }
-
     private companion object {
-        const val PORTS_PACKAGE = "app.snapsync.ports"
-        const val RETURNS = "returns"
         const val CONTRACTS_DIR = "test/contracts/src/commonMain/kotlin/app/snapsync/contracts"
         val SUBJECT = Regex("""(?:Contract|ClauseList)<\w+,\s*(\w+)""")
         val SERVICE_IMPORT = Regex("""^import app\.snapsync\.services\.[\w.]*\.(\w+)$""", RegexOption.MULTILINE)

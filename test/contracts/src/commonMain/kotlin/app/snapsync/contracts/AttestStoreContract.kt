@@ -37,20 +37,48 @@ object AttestStoreContract : Contract<AttestStoreState, AttestStore>("AttestStor
 
     override val clauses = clauses {
 
-        clause("AN_UNREADABLE_TOKEN_IS_NOT_ABSENCE", AttestStoreState.INACCESSIBLE) { store ->
+        clause(
+            "AN_UNREADABLE_TOKEN_IS_NOT_ABSENCE",
+            AttestStoreState.INACCESSIBLE,
+            covers = cells { on<AttestStore>().answers(AttestStore::token).throws() },
+        ) { store ->
             assertFailsWith<SecureStoreUnavailable> { store.token() }
         }
 
-        clause("AN_UNREADABLE_KEY_ID_IS_NOT_ABSENCE", AttestStoreState.INACCESSIBLE) { store ->
+        clause(
+            "AN_UNREADABLE_KEY_ID_IS_NOT_ABSENCE",
+            AttestStoreState.INACCESSIBLE,
+            covers = cells { on<AttestStore>().answers(AttestStore::keyId).throws() },
+        ) { store ->
             assertFailsWith<SecureStoreUnavailable> { store.keyId() }
         }
 
-        clause("AN_EMPTY_STORE_HOLDS_NEITHER", AttestStoreState.EMPTY) { store ->
+        clause(
+            "AN_EMPTY_STORE_HOLDS_NEITHER",
+            AttestStoreState.EMPTY,
+            covers = cells {
+                on<AttestStore> {
+                    answers(AttestStore::token).with(null)
+                    answers(AttestStore::keyId).with(null)
+                }
+            },
+        ) { store ->
             assertNull(store.token())
             assertNull(store.keyId())
         }
 
-        clause("A_WRITTEN_CREDENTIAL_READS_BACK", AttestStoreState.EMPTY) { store ->
+        clause(
+            "A_WRITTEN_CREDENTIAL_READS_BACK",
+            AttestStoreState.EMPTY,
+            covers = cells {
+                on<AttestStore> {
+                    answers(AttestStore::setKeyId).returns()
+                    answers(AttestStore::setToken).returns()
+                    answers(AttestStore::token).returns()
+                    answers(AttestStore::keyId).returns()
+                }
+            },
+        ) { store ->
             val id = "A_WRITTEN_CREDENTIAL_READS_BACK"
             store.setKeyId(seedKeyId(id))
             store.setToken(seedToken(id))
@@ -58,19 +86,47 @@ object AttestStoreContract : Contract<AttestStoreState, AttestStore>("AttestStor
             assertEquals(seedKeyId(id), store.keyId())
         }
 
-        clause("A_HELD_CREDENTIAL_READS_BACK", AttestStoreState.HOLDING) { store ->
+        clause(
+            "A_HELD_CREDENTIAL_READS_BACK",
+            AttestStoreState.HOLDING,
+            covers = cells {
+                on<AttestStore> {
+                    answers(AttestStore::token).returns()
+                    answers(AttestStore::keyId).returns()
+                }
+            },
+        ) { store ->
             val id = "A_HELD_CREDENTIAL_READS_BACK"
             assertEquals(seedToken(id), store.token())
             assertEquals(seedKeyId(id), store.keyId())
         }
 
-        clause("CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID", AttestStoreState.HOLDING) { store ->
+        clause(
+            "CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID",
+            AttestStoreState.HOLDING,
+            covers = cells {
+                on<AttestStore> {
+                    answers(AttestStore::clearToken).returns()
+                    answers(AttestStore::token).with(null)
+                    answers(AttestStore::keyId).returns()
+                }
+            },
+        ) { store ->
             store.clearToken()
             assertNull(store.token(), "a rejected token is gone")
             assertEquals(seedKeyId("CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID"), store.keyId(), "the key renews it")
         }
 
-        clause("A_NEW_TOKEN_REPLACES_THE_HELD_ONE", AttestStoreState.HOLDING) { store ->
+        clause(
+            "A_NEW_TOKEN_REPLACES_THE_HELD_ONE",
+            AttestStoreState.HOLDING,
+            covers = cells {
+                on<AttestStore> {
+                    answers(AttestStore::setToken).returns()
+                    answers(AttestStore::token).returns()
+                }
+            },
+        ) { store ->
             store.setToken("renewed:A_NEW_TOKEN_REPLACES_THE_HELD_ONE")
             assertEquals("renewed:A_NEW_TOKEN_REPLACES_THE_HELD_ONE", store.token())
         }

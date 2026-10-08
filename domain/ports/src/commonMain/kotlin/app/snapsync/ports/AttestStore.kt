@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.model.SecureStoreUnavailable
+
 /**
  * Where the device token and its `keyId` live: a store that outlives the app install and stays
  * readable while the device is locked, addressable by **both** processes — the upload extension must
@@ -18,6 +20,7 @@ interface AttestStore : Port {
      * keeps `Absent` and `Unavailable` apart on purpose ("never mistaken for absence"). That
      * separation is what lets a caller treat null as "not attested yet" and mint.
      */
+    @Throws(SecureStoreUnavailable::class)
     fun token(): String?
 
     fun setToken(token: String)
@@ -28,6 +31,7 @@ interface AttestStore : Port {
      * Absence: as [token] — absent only; unreadable throws. The distinction matters more here than
      * anywhere: minting on a forged "absent" would burn a fresh Secure-Enclave attestation.
      */
+    @Throws(SecureStoreUnavailable::class)
     fun keyId(): String?
 
     fun setKeyId(keyId: String)

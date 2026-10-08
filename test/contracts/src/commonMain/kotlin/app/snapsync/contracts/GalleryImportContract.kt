@@ -73,7 +73,13 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
 
     override val clauses = clauses {
 
-        clause("IMPORT_LANDS_AT_ITS_CAPTURE_DATE", GalleryImportState.GRANTED_VALID_STAGED) { subject ->
+        clause(
+            "IMPORT_LANDS_AT_ITS_CAPTURE_DATE",
+            GalleryImportState.GRANTED_VALID_STAGED,
+            covers = cells {
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+            },
+        ) { subject ->
             val clauseId = "IMPORT_LANDS_AT_ITS_CAPTURE_DATE"
             val window = PhotoLibrary.window(name, clauseId)
             val result = subject.importer.import(
@@ -88,7 +94,13 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             assertEquals(MarkerState.CONFIRMED, subject.library.marker(ref(clauseId)))
         }
 
-        clause("AN_IMPORT_CARRIES_ITS_REFS_MARK", GalleryImportState.GRANTED_VALID_STAGED) { subject ->
+        clause(
+            "AN_IMPORT_CARRIES_ITS_REFS_MARK",
+            GalleryImportState.GRANTED_VALID_STAGED,
+            covers = cells {
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+            },
+        ) { subject ->
             val clauseId = "AN_IMPORT_CARRIES_ITS_REFS_MARK"
             val date = PhotoLibrary.window(name, clauseId).seedDate
             val result = subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null))
@@ -102,7 +114,13 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             )
         }
 
-        clause("A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET", GalleryImportState.GRANTED_VALID_STAGED) { subject ->
+        clause(
+            "A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET",
+            GalleryImportState.GRANTED_VALID_STAGED,
+            covers = cells {
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+            },
+        ) { subject ->
             val clauseId = "A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET"
             val date = PhotoLibrary.window(name, clauseId).seedDate
             val first =
@@ -122,7 +140,13 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             assertEquals(date, subject.library.captureDate(second.createdLocalId))
         }
 
-        clause("AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED", GalleryImportState.GRANTED_INVALID_STAGED) { subject ->
+        clause(
+            "AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED",
+            GalleryImportState.GRANTED_INVALID_STAGED,
+            covers = cells {
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Failed::class)
+            },
+        ) { subject ->
             val clauseId = "AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED"
             val date = PhotoLibrary.window(name, clauseId).seedDate
             val failed =

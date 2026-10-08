@@ -53,14 +53,32 @@ object FilesContract : Contract<FilesState, Files>("Files") {
 
     override val clauses = clauses {
 
-        clause("EMPTY_READ_IS_NOT_FOUND", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_READ_IS_NOT_FOUND",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::read).with(FileResult.NotFound::class)
+                    answers(Files::readTail).with(FileResult.NotFound::class)
+                }
+            },
+        ) { files ->
             FileArea.entries.forEach {
                 assertEquals(FileResult.NotFound, files.read(it, path("EMPTY_READ_IS_NOT_FOUND")), "$it")
                 assertEquals(FileResult.NotFound, files.readTail(it, path("EMPTY_READ_IS_NOT_FOUND"), SMALL), "$it")
             }
         }
 
-        clause("EMPTY_EXISTS_IS_FALSE_AND_DELETE_IS_NOT_FOUND", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_EXISTS_IS_FALSE_AND_DELETE_IS_NOT_FOUND",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::exists).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::delete).with(FileResult.NotFound::class)
+                }
+            },
+        ) { files ->
             val p = path("EMPTY_EXISTS_IS_FALSE_AND_DELETE_IS_NOT_FOUND")
             FileArea.entries.forEach {
                 assertEquals(FileResult.Ok(false), files.exists(it, p), "$it")
@@ -68,7 +86,17 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             }
         }
 
-        clause("EMPTY_WRITE_CREATES_ITS_DIRECTORIES_AND_READS_BACK", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_WRITE_CREATES_ITS_DIRECTORIES_AND_READS_BACK",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::write).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::read).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::exists).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             val p = path("EMPTY_WRITE_CREATES_ITS_DIRECTORIES_AND_READS_BACK")
             val bytes = seed("EMPTY_WRITE_CREATES_ITS_DIRECTORIES_AND_READS_BACK")
             FileArea.entries.forEach {
@@ -78,7 +106,17 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             }
         }
 
-        clause("EMPTY_RANGE_IS_NOT_FOUND_AND_APPEND_CREATES_ITS_DIRECTORIES", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_RANGE_IS_NOT_FOUND_AND_APPEND_CREATES_ITS_DIRECTORIES",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::readRange).with(FileResult.NotFound::class)
+                    answers(Files::append).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::read).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             val p = path("EMPTY_RANGE_IS_NOT_FOUND_AND_APPEND_CREATES_ITS_DIRECTORIES")
             FileArea.entries.forEach {
                 assertEquals(FileResult.NotFound, files.readRange(it, p, 0, SMALL), "$it")
@@ -92,7 +130,16 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             }
         }
 
-        clause("EMPTY_AN_EMPTY_FILE_IS_NOT_ABSENT", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_AN_EMPTY_FILE_IS_NOT_ABSENT",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::read).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::readTail).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             val p = path("EMPTY_AN_EMPTY_FILE_IS_NOT_ABSENT")
             files.write(FileArea.SHARED, p, ByteArray(0))
             assertEquals(0, assertIs<FileResult.Ok<ByteArray>>(files.read(FileArea.SHARED, p)).value.size)
@@ -103,7 +150,13 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertTrue(!tail.cut)
         }
 
-        clause("EMPTY_A_DIRECTORY_IS_NOT_A_FILE", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_A_DIRECTORY_IS_NOT_A_FILE",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files>().answers(Files::read).with(FileResult.Failed::class)
+            },
+        ) { files ->
             val id = "EMPTY_A_DIRECTORY_IS_NOT_A_FILE"
             FileArea.entries.forEach {
                 files.write(it, path(id), ByteArray(1))
@@ -114,7 +167,16 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             }
         }
 
-        clause("EMPTY_LOCATE_NAMES_EACH_AREA_APART", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_LOCATE_NAMES_EACH_AREA_APART",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::locate).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::exists).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             val p = path("EMPTY_LOCATE_NAMES_EACH_AREA_APART")
             val shared = assertIs<FileResult.Ok<String>>(files.locate(FileArea.SHARED, p)).value
             val private = assertIs<FileResult.Ok<String>>(files.locate(FileArea.PRIVATE, p)).value
@@ -123,7 +185,16 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.Ok(false), files.exists(FileArea.SHARED, p), "locating creates nothing")
         }
 
-        clause("HOLDING_READ_IS_THE_BYTES_AND_AREAS_ARE_APART", FilesState.HOLDING) { files ->
+        clause(
+            "HOLDING_READ_IS_THE_BYTES_AND_AREAS_ARE_APART",
+            FilesState.HOLDING,
+            covers = cells {
+                on<Files> {
+                    answers(Files::read).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::read).with(FileResult.NotFound::class)
+                }
+            },
+        ) { files ->
             val p = path("HOLDING_READ_IS_THE_BYTES_AND_AREAS_ARE_APART")
             assertContentEquals(
                 seed("HOLDING_READ_IS_THE_BYTES_AND_AREAS_ARE_APART"),
@@ -132,7 +203,11 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.NotFound, files.read(FileArea.PRIVATE, p), "the private area is another place")
         }
 
-        clause("HOLDING_READ_TAIL_TAKES_THE_END", FilesState.HOLDING) { files ->
+        clause(
+            "HOLDING_READ_TAIL_TAKES_THE_END",
+            FilesState.HOLDING,
+            covers = cells { on<Files>().answers(Files::readTail).withGenericLeaf(FileResult.Ok::class) },
+        ) { files ->
             val id = "HOLDING_READ_TAIL_TAKES_THE_END"
             val bytes = seed(id)
             val small = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(
@@ -147,7 +222,16 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertTrue(!whole.cut)
         }
 
-        clause("HOLDING_A_RANGE_IS_THE_BYTES_AT_ITS_OFFSET", FilesState.HOLDING) { files ->
+        clause(
+            "HOLDING_A_RANGE_IS_THE_BYTES_AT_ITS_OFFSET",
+            FilesState.HOLDING,
+            covers = cells {
+                on<Files> {
+                    answers(Files::readRange).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::readRange).with(FileResult.NotFound::class)
+                }
+            },
+        ) { files ->
             val id = "HOLDING_A_RANGE_IS_THE_BYTES_AT_ITS_OFFSET"
             val bytes = seed(id)
             fun range(
@@ -170,7 +254,16 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             )
         }
 
-        clause("HOLDING_APPEND_EXTENDS_THE_FILE", FilesState.HOLDING) { files ->
+        clause(
+            "HOLDING_APPEND_EXTENDS_THE_FILE",
+            FilesState.HOLDING,
+            covers = cells {
+                on<Files> {
+                    answers(Files::append).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::read).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             val id = "HOLDING_APPEND_EXTENDS_THE_FILE"
             assertEquals(FileResult.Ok(Unit), files.append(FileArea.SHARED, path(id), "tail".encodeToByteArray()))
             assertContentEquals(
@@ -179,7 +272,11 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             )
         }
 
-        clause("HOLDING_WRITE_REPLACES", FilesState.HOLDING) { files ->
+        clause(
+            "HOLDING_WRITE_REPLACES",
+            FilesState.HOLDING,
+            covers = cells { on<Files>().answers(Files::read).withGenericLeaf(FileResult.Ok::class) },
+        ) { files ->
             val p = path("HOLDING_WRITE_REPLACES")
             files.write(FileArea.SHARED, p, "short".encodeToByteArray())
             assertEquals(
@@ -188,14 +285,35 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             )
         }
 
-        clause("HOLDING_DELETE_REMOVES_IT", FilesState.HOLDING) { files ->
+        clause(
+            "HOLDING_DELETE_REMOVES_IT",
+            FilesState.HOLDING,
+            covers = cells {
+                on<Files> {
+                    answers(Files::delete).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::read).with(FileResult.NotFound::class)
+                    answers(Files::exists).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             val p = path("HOLDING_DELETE_REMOVES_IT")
             assertEquals(FileResult.Ok(Unit), files.delete(FileArea.SHARED, p))
             assertEquals(FileResult.NotFound, files.read(FileArea.SHARED, p))
             assertEquals(FileResult.Ok(false), files.exists(FileArea.SHARED, p))
         }
 
-        clause("DENIED_IS_NEVER_NOT_FOUND", FilesState.DENIED) { files ->
+        clause(
+            "DENIED_IS_NEVER_NOT_FOUND",
+            FilesState.DENIED,
+            covers = cells {
+                on<Files> {
+                    answers(Files::read).with(FileResult.Denied::class)
+                    answers(Files::readTail).with(FileResult.Denied::class)
+                    answers(Files::readRange).with(FileResult.Denied::class)
+                    answers(Files::exists).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             val p = path("DENIED_IS_NEVER_NOT_FOUND")
             assertIs<FileResult.Denied>(
                 files.read(FileArea.SHARED, p),
@@ -206,14 +324,37 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.Ok(true), files.exists(FileArea.SHARED, p), "it is there")
         }
 
-        clause("DENIED_DIRECTORY_LIST_IS_DENIED_NEVER_EMPTY", FilesState.DENIED_DIRECTORY) { files ->
+        clause(
+            "DENIED_DIRECTORY_LIST_IS_DENIED_NEVER_EMPTY",
+            FilesState.DENIED_DIRECTORY,
+            covers = cells {
+                on<Files>().answers(Files::list).with(FileResult.Denied::class)
+            },
+        ) { files ->
             assertIs<FileResult.Denied>(
                 files.list(FileArea.SHARED, directory("DENIED_DIRECTORY_LIST_IS_DENIED_NEVER_EMPTY")),
                 "a directory that could not be listed answered as empty reads as 'nothing was staged'",
             )
         }
 
-        clause("UNAVAILABLE_AREA_IS_NEITHER_FOUND_NOR_ABSENT", FilesState.UNAVAILABLE) { files ->
+        clause(
+            "UNAVAILABLE_AREA_IS_NEITHER_FOUND_NOR_ABSENT",
+            FilesState.UNAVAILABLE,
+            covers = cells {
+                on<Files> {
+                    answers(Files::read).with(FileResult.AreaUnavailable::class)
+                    answers(Files::readTail).with(FileResult.AreaUnavailable::class)
+                    answers(Files::readRange).with(FileResult.AreaUnavailable::class)
+                    answers(Files::write).with(FileResult.AreaUnavailable::class)
+                    answers(Files::append).with(FileResult.AreaUnavailable::class)
+                    answers(Files::delete).with(FileResult.AreaUnavailable::class)
+                    answers(Files::exists).with(FileResult.AreaUnavailable::class)
+                    answers(Files::locate).with(FileResult.AreaUnavailable::class)
+                    answers(Files::move).with(FileResult.AreaUnavailable::class)
+                    answers(Files::list).with(FileResult.AreaUnavailable::class)
+                }
+            },
+        ) { files ->
             val p = path("UNAVAILABLE_AREA_IS_NEITHER_FOUND_NOR_ABSENT")
             assertEquals(FileResult.AreaUnavailable, files.read(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.readTail(FileArea.SHARED, p, SMALL))
@@ -228,7 +369,11 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.AreaUnavailable, files.adopt("/handed/by/the/platform.bin", FileArea.SHARED, p))
         }
 
-        clause("EMPTY_LIST_IS_EVERY_FILE_BENEATH_AT_ANY_DEPTH", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_LIST_IS_EVERY_FILE_BENEATH_AT_ANY_DEPTH",
+            FilesState.EMPTY,
+            covers = cells { on<Files>().answers(Files::list).withGenericLeaf(FileResult.Ok::class) },
+        ) { files ->
             val dir = "contract/EMPTY_LIST_IS_EVERY_FILE_BENEATH_AT_ANY_DEPTH"
             val inside = listOf("$dir/a.bin", "$dir/deeper/b.bin", "$dir/deeper/still/c.bin")
             FileArea.entries.forEach {
@@ -248,7 +393,11 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             }
         }
 
-        clause("EMPTY_LIST_OF_A_MISSING_DIRECTORY_IS_EMPTY", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_LIST_OF_A_MISSING_DIRECTORY_IS_EMPTY",
+            FilesState.EMPTY,
+            covers = cells { on<Files>().answers(Files::list).withGenericLeaf(FileResult.Ok::class) },
+        ) { files ->
             FileArea.entries.forEach {
                 assertEquals(
                     FileResult.Ok(emptyList()),
@@ -258,7 +407,17 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             }
         }
 
-        clause("EMPTY_MOVE_REPLACES_AND_CREATES_ITS_DIRECTORIES", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_MOVE_REPLACES_AND_CREATES_ITS_DIRECTORIES",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::move).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::read).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::exists).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             val id = "EMPTY_MOVE_REPLACES_AND_CREATES_ITS_DIRECTORIES"
             val from = path(id)
             val to = "contract/$id/nested/moved.bin"
@@ -275,14 +434,29 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             }
         }
 
-        clause("EMPTY_MOVE_OF_NOTHING_IS_NOT_FOUND", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_MOVE_OF_NOTHING_IS_NOT_FOUND",
+            FilesState.EMPTY,
+            covers = cells { on<Files>().answers(Files::move).with(FileResult.NotFound::class) },
+        ) { files ->
             val id = "EMPTY_MOVE_OF_NOTHING_IS_NOT_FOUND"
             FileArea.entries.forEach {
                 assertEquals(FileResult.NotFound, files.move(it, path(id), "contract/$id/moved.bin"), "$it")
             }
         }
 
-        clause("EMPTY_ADOPT_TAKES_OVER_A_PLATFORM_FILE", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_ADOPT_TAKES_OVER_A_PLATFORM_FILE",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::locate).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::adopt).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::read).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::exists).withGenericLeaf(FileResult.Ok::class)
+                }
+            },
+        ) { files ->
             // A platform path the process was handed: this adapter's own located file stands for the OS's temp file.
             val id = "EMPTY_ADOPT_TAKES_OVER_A_PLATFORM_FILE"
             val handed = path(id)
@@ -295,7 +469,16 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.Ok(false), files.exists(FileArea.PRIVATE, handed), "the platform's file was moved")
         }
 
-        clause("EMPTY_ADOPT_OF_NOTHING_IS_NOT_FOUND", FilesState.EMPTY) { files ->
+        clause(
+            "EMPTY_ADOPT_OF_NOTHING_IS_NOT_FOUND",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::locate).withGenericLeaf(FileResult.Ok::class)
+                    answers(Files::adopt).with(FileResult.NotFound::class)
+                }
+            },
+        ) { files ->
             val id = "EMPTY_ADOPT_OF_NOTHING_IS_NOT_FOUND"
             val osPath = assertIs<FileResult.Ok<String>>(files.locate(FileArea.PRIVATE, path(id))).value
             assertEquals(FileResult.NotFound, files.adopt(osPath, FileArea.SHARED, "contract/$id/adopted.bin"))

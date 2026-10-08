@@ -38,7 +38,11 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
 
     override val clauses = clauses {
 
-        clause("HMAC_SHA256_IS_RFC_4231", CryptoState.READY) { crypto ->
+        clause(
+            "HMAC_SHA256_IS_RFC_4231",
+            CryptoState.READY,
+            covers = cells { on<Crypto>().answers(Crypto::hmacSha256).returns() },
+        ) { crypto ->
             assertContentEquals(
                 hex("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"),
                 crypto.hmacSha256(ByteArray(20) { 0x0b }, "Hi There".encodeToByteArray()),
@@ -60,7 +64,16 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
             assertEquals(32, crypto.hmacSha256(ByteArray(32), ByteArray(0)).size, "an empty message still MACs")
         }
 
-        clause("AES_256_GCM_IS_THE_SPECIFICATIONS_KNOWN_ANSWERS", CryptoState.READY) { crypto ->
+        clause(
+            "AES_256_GCM_IS_THE_SPECIFICATIONS_KNOWN_ANSWERS",
+            CryptoState.READY,
+            covers = cells {
+                on<Crypto> {
+                    answers(Crypto::aesGcmSeal).returns()
+                    answers(Crypto::aesGcmOpen).returns()
+                }
+            },
+        ) { crypto ->
             assertContentEquals(
                 hex("530f8afbc74536b9a963b4f1c4cb738b"),
                 crypto.aesGcmSeal(ByteArray(32), ByteArray(12), ByteArray(0)),
@@ -79,7 +92,11 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
             )
         }
 
-        clause("A_CHANGED_SEAL_NEVER_OPENS", CryptoState.READY) { crypto ->
+        clause(
+            "A_CHANGED_SEAL_NEVER_OPENS",
+            CryptoState.READY,
+            covers = cells { on<Crypto>().answers(Crypto::aesGcmOpen).with(null) },
+        ) { crypto ->
             fun flipped(at: Int) = GCM_SEALED.copyOf().also { it[at] = (it[at].toInt() xor 1).toByte() }
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, flipped(0)), "a changed ciphertext byte")
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, flipped(GCM_SEALED.size - 1)), "a changed tag byte")
@@ -89,7 +106,16 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, ByteArray(15)), "shorter than a tag")
         }
 
-        clause("A_KEY_THAT_IS_NOT_AES_256_IS_REFUSED", CryptoState.READY) { crypto ->
+        clause(
+            "A_KEY_THAT_IS_NOT_AES_256_IS_REFUSED",
+            CryptoState.READY,
+            covers = cells {
+                on<Crypto> {
+                    answers(Crypto::aesGcmSeal).throws()
+                    answers(Crypto::aesGcmOpen).throws()
+                }
+            },
+        ) { crypto ->
             assertFailsWith<IllegalArgumentException>("a 16-byte key would seal AES-128") {
                 crypto.aesGcmSeal(ByteArray(16), GCM_NONCE, GCM_PLAIN)
             }
@@ -98,7 +124,11 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
             }
         }
 
-        clause("RANDOM_BYTES_ARE_FRESH", CryptoState.READY) { crypto ->
+        clause(
+            "RANDOM_BYTES_ARE_FRESH",
+            CryptoState.READY,
+            covers = cells { on<Crypto>().answers(Crypto::randomBytes).returns() },
+        ) { crypto ->
             assertEquals(0, crypto.randomBytes(0).size)
             assertEquals(7, crypto.randomBytes(7).size)
             val draws = List(8) { crypto.randomBytes(32).toList() }

@@ -10,110 +10,24 @@ import kotlin.test.fail
  * `docs/architecture.md`, "The contract-coverage gate"; the rule itself: `docs/architecture.md`, "Every clause runs
  * against a real implementation on some host").
  *
- * A clause only the honest fake ever runs looks verified while nothing has compared it with reality. So the
- * gate derives, from source text and the committed recordings:
- *  - every contract (an `object` extending `Contract`, with the name it passes) and its `clause(...)` calls;
- *  - every binding (`: Binding<State, Port>`), its `kind`, `host` and literal `reaches = setOf(...)`;
- *  - every recording (`test/contracts/recordings/<Name>@<HOST>[.<GRANT>|.<PRECONDITION>].rec`) and its `[CLAUSE_ID]`
- *    blocks — a binding that declares `override val grant = GalleryAccess.X` (or `override val precondition = "X"`)
- *    counts only through that file;
- *
- * and fails any clause whose state no `Live` binding on a host CI runs declares reachable, and whose id no
- * `Replay` binding's recording holds. A host some `Replay` binding names is a RECORDED host — CI never runs it
- * — so a `Live` binding there (the device's own binding, which records) is not coverage: only its recording is.
- * Otherwise a device-only clause would count as covered the day its binding was written, before anyone ran it. That also closes the escape hatch: declaring a failing clause's state unreachable on its
- * only real host leaves the clause uncovered, and this fails.
- *
- * A host CI runs **in-app** — the simulator app — is visible here only through source, so a `Live` binding there
- * counts only when the in-app registry the `journeys (ios)` job runs names it: a `simulatorAppContract(<Contract>,
- * <BindingClass>(), …)` call. An unregistered one is run by nobody, and the gate fails naming it.
- *
- * Scope is derived, never listed ("Gates fail closed on novelty"), with ONE stated exclusion: the mechanism's
- * own self-tests under `test/contracts/src/commonTest`, whose toy bindings misdeclare on purpose to prove the
- * runner catches a lying binding. They are not port contracts and bind no port.
+ * A clause only the honest fake ever runs looks verified while nothing has compared it with reality. So this fails any
+ * clause that is not REAL by [ContractCoverage]'s reading — no `Live` binding on a host CI runs declares its state
+ * reachable, and no `Replay` binding's recording holds its id. That also closes the escape hatch: declaring a failing
+ * clause's state unreachable on its only real host leaves the clause uncovered, and this fails. The contracts and
+ * their clauses are [ContractCatalog]'s, loaded as values.
  */
 class ContractCoverageTest {
 
-    private val sources = SourceScan.kotlinFiles().filterNot { "/test/contracts/src/commonTest/" in it.path }
-
-    private class ContractDecl(val name: String, val stateEnum: String, val clauses: List<Pair<String, String>>, val file: String)
-
-    private class BindingDecl(
-        val file: String,
-        val name: String?,
-        val stateEnum: String,
-        val kind: String?,
-        val host: String?,
-        val reaches: Set<String>?,
-        val reachesRaw: String?,
-        val grant: String?,
-    )
-
-    // A contract's clauses are read from EVERY source, not only the file declaring it: a contract split for size
-    // declares its clauses in part files (`ClauseList<State, …>.someClauses()`), and a scan of the declaring file alone
-    // would see none of them. The state enum names the contract, so a clause belongs to the contract of its enum.
-    private val contracts: List<ContractDecl> = sources.flatMap { src ->
-        CONTRACT.findAll(src.text).map { m ->
-            val enum = m.groupValues[1]
-            val clauses = sources.flatMap { any -> CLAUSE.findAll(any.text).toList() }
-                .filter { it.groupValues[2] == enum }
-                .map { it.groupValues[1].replace("\\\"", "\"") to it.groupValues[3] }
-            ContractDecl(m.groupValues[2], enum, clauses, src.path)
-        }.toList()
-    }
-
-    private val bindings: List<BindingDecl> = sources.flatMap { src ->
-        val starts = BINDING.findAll(src.text).toList()
-        starts.mapIndexed { i, m ->
-            val body = src.text.substring(m.range.first, starts.getOrNull(i + 1)?.range?.first ?: src.text.length)
-            val raw = REACHES.find(body)?.groupValues?.get(1)
-            val enum = m.groupValues[2]
-            val tokens = raw?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
-            val parsed = tokens?.takeIf { t -> t.isNotEmpty() && t.all { STATE_REF.matches(it) && it.startsWith("$enum.") } }
-                ?.map { it.substringAfter('.') }?.toSet()
-            BindingDecl(
-                src.path,
-                m.groupValues[1].takeIf { it.isNotEmpty() },
-                m.groupValues[2],
-                KIND.find(body)?.groupValues?.get(1),
-                HOST.find(body)?.groupValues?.get(1),
-                parsed,
-                raw,
-                GRANT.find(body)?.groupValues?.get(1) ?: PRECONDITION.find(body)?.groupValues?.get(1),
-            )
-        }
-    }
-
-    /** The binding classes the simulator app's registry names — what the `journeys (ios)` job actually runs. */
-    private val registered: Set<String> = sources.flatMap { src ->
-        REGISTERED.findAll(src.text).map { it.groupValues[1] }.toList()
-    }.toSet()
-
-    /** Whether [b] is a `Live` binding CI runs: not on a recorded host, and registered if its host runs in-app. */
-    private fun runsLiveOnCi(b: BindingDecl, recordedHosts: Set<String>) =
-        b.kind == "Live" && b.host !in recordedHosts && (b.host !in IN_APP_CI_HOSTS || b.name in registered)
-
-    private val recordings: Map<String, Set<String>> = recordingsDir().listFiles { f -> f.extension == "rec" }
-        .orEmpty()
-        .associate { f ->
-            f.nameWithoutExtension to f.readLines().mapNotNull {
-                BLOCK.matchEntire(it)?.groupValues?.get(1)
-            }.toSet()
-        }
+    private val contracts = ContractCatalog.contracts
+    private val bindings = ContractCoverage.bindings
+    private val registered = ContractCoverage.registered
+    private val recordings = ContractCoverage.recordings
 
     @Test
     fun `every clause is reached by a real implementation on some host`() {
         val uncovered = contracts.flatMap { contract ->
-            val mine = bindings.filter { it.stateEnum == contract.stateEnum }
-            val recordedHosts = mine.filter { it.kind == "Replay" }.mapNotNull { it.host }.toSet()
-            contract.clauses.filter { (id, state) ->
-                val live = mine.any { runsLiveOnCi(it, recordedHosts) && it.reaches.orEmpty().contains(state) }
-                val replayed = mine.any { b ->
-                    b.kind == "Replay" && b.reaches.orEmpty().contains(state) &&
-                        recordings[recordingKey(contract.name, b)].orEmpty().contains(id)
-                }
-                !live && !replayed
-            }.map { (id, state) -> "${contract.name} / $id (state $state) — ${contract.file}" }
+            contract.clauses.filterNot { ContractCoverage.isReal(contract, it) }
+                .map { "${contract.name} / ${it.id} (state ${it.state}) — ${contract.objectName}" }
         }
         if (uncovered.isNotEmpty()) {
             fail(
@@ -140,7 +54,7 @@ class ContractCoverageTest {
 
     @Test
     fun `every binding on an in-app CI host is registered for the job that runs it`() {
-        val unregistered = bindings.filter { it.host in IN_APP_CI_HOSTS && it.name !in registered }
+        val unregistered = bindings.filter { it.host in ContractCoverage.IN_APP_CI_HOSTS && it.name !in registered }
             .map { "${it.name ?: "<anonymous object>"} (${it.host}) — ${it.file}" }
         if (unregistered.isNotEmpty()) {
             fail(
@@ -183,7 +97,7 @@ class ContractCoverageTest {
     @Test
     fun `every grant a recording is named for is declared by a binding of that contract and host`() {
         val expected = contracts.flatMap { c ->
-            bindings.filter { it.stateEnum == c.stateEnum && it.kind == "Replay" }.map { recordingKey(c.name, it) }
+            bindings.filter { it.stateEnum == c.stateEnum && it.kind == "Replay" }.map { ContractCoverage.recordingKey(c.name, it) }
         }.toSet()
         val undeclared = recordings.keys.filter { key -> '.' in key.substringAfter('@') && key !in expected }
         assertTrue(
@@ -212,7 +126,7 @@ class ContractCoverageTest {
     @Test
     fun `the scan finds the simulator app's registry`() {
         assertTrue(
-            registered.isNotEmpty() && bindings.any { it.host in IN_APP_CI_HOSTS && it.name in registered },
+            registered.isNotEmpty() && bindings.any { it.host in ContractCoverage.IN_APP_CI_HOSTS && it.name in registered },
             "no registered simulator-app binding found — the registry's form moved, or it emptied",
         )
     }
@@ -221,13 +135,9 @@ class ContractCoverageTest {
     fun `the scan finds recordings with blocks`() {
         assertTrue(
             recordings.values.any { it.isNotEmpty() },
-            "no recording with a [CLAUSE_ID] block under ${recordingsDir()} — a Replay binding covers nothing without one",
+            "no recording with a [CLAUSE_ID] block under ${ContractCoverage.recordingsDir()} — a Replay binding covers nothing without one",
         )
     }
-
-    /** The recording a binding counts through: `<Contract>@<HOST>`, suffixed `.<GRANT>` or `.<PRECONDITION>` where it declares one. */
-    private fun recordingKey(contract: String, b: BindingDecl): String =
-        "$contract@${b.host?.removePrefix("Host.")}" + (b.grant?.let { ".$it" } ?: "")
 
     /** Every host a platform's `currentHost` actual can answer, read off its source. */
     private fun currentHostActuals(): Set<String> =
@@ -236,29 +146,10 @@ class ContractCoverageTest {
             .flatMap { HOST_REF.findAll(it.readText()).map { m -> m.groupValues[1] } }
             .toSet()
 
-    private fun recordingsDir() = File(SourceScan.repoRoot, "test/contracts/recordings")
-
     private fun read(path: String) = File(SourceScan.repoRoot, path).readText()
 
     private companion object {
         const val HOST_FILE = "test/contracts/src/commonMain/kotlin/app/snapsync/contracts/Host.kt"
-
-        // Whitespace-tolerant inside the parentheses: ktlint wraps a long argument list one argument per line and ends
-        // it with a trailing comma, and a pattern that assumed one line would silently stop seeing those declarations.
-        val CONTRACT = Regex("""object\s+\w+\s*:\s*Contract<(\w+),\s*[\w.<>, ]+>\(\s*"([^"]+)",?\s*\)""")
-        val CLAUSE = Regex("""clause\(\s*"((?:[^"\\]|\\.)*)",\s*(\w+)\.(\w+),?\s*\)""")
-        val BINDING = Regex("""(?:object|class\s+(\w+)\s*(?:\([^)]*\))?)\s*:\s*Binding<(\w+),""")
-        val REGISTERED = Regex("""simulatorAppContract\(\s*\w+\s*,\s*(\w+)\(""")
-
-        /** Hosts CI runs inside the app, where only the in-app registry proves a binding is run at all. */
-        val IN_APP_CI_HOSTS = setOf("Host.IOS_SIM_APP")
-        val REACHES = Regex("""override val reaches\s*=\s*setOf\(([^)]*)\)""")
-        val KIND = Regex("""override val kind\s*=\s*BindingKind\.(\w+)""")
-        val HOST = Regex("""override val host\s*=\s*(Host\.\w+|currentHost)""")
-        val GRANT = Regex("""override val grant\s*=\s*GalleryAccess\.(\w+)""")
-        val PRECONDITION = Regex("""override val precondition\s*=\s*"(\w+)"""")
-        val STATE_REF = Regex("""\w+\.\w+""")
-        val BLOCK = Regex("""\[(.+)]""")
         val HOST_ENUM = Regex("""enum class Host \{(.*?)\n}""", RegexOption.DOT_MATCHES_ALL)
         val HOST_ENTRY = Regex("""\s*([A-Z][A-Z0-9_]*),?\s*""")
         val HOST_REF = Regex("""Host\.([A-Z][A-Z0-9_]*)""")

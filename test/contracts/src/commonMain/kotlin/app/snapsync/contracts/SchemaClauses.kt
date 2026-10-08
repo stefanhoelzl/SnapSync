@@ -194,13 +194,21 @@ internal fun ClauseList<DatabasesState, Databases>.schemaClauses() {
     listOf(LEDGER, DOWNLOADS).forEach { production ->
         val prefix = production.label.uppercase()
 
-        clause("${prefix}_SCHEMA_EVERY_STATEMENT_RUNS", DatabasesState.ABSENT) { databases ->
+        clause(
+            "${prefix}_SCHEMA_EVERY_STATEMENT_RUNS",
+            DatabasesState.ABSENT,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+        ) { databases ->
             val driver = databases.openedReadWrite("${production.label}.db", production.schema)
             runEveryStatement(production, driver)
             driver.close()
         }
 
-        clause("${prefix}_SCHEMA_MIGRATES_FROM_ITS_FIRST_VERSION", DatabasesState.ABSENT) { databases ->
+        clause(
+            "${prefix}_SCHEMA_MIGRATES_FROM_ITS_FIRST_VERSION",
+            DatabasesState.ABSENT,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+        ) { databases ->
             databases.openedReadWrite("migrated.db", firstVersionOf(production)).close()
             val migrated = databases.openedReadWrite("migrated.db", production.schema)
             val created = databases.openedReadWrite("created.db", production.schema)

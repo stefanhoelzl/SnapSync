@@ -12,6 +12,8 @@ import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.GalleryReader
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -49,18 +51,41 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
 
     override val clauses = clauses {
 
-        clause("A_FOLDER_LIBRARY_DECLARES_IT", FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED) { subject ->
+        clause(
+            "A_FOLDER_LIBRARY_DECLARES_IT",
+            FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::albumKind).with(AlbumKind.FOLDER)
+            },
+        ) { subject ->
             assertEquals(AlbumKind.FOLDER, subject.gallery.albumKind, "a library whose albums are folders says so")
         }
 
-        clause("TWO_ALBUMS_OF_ONE_TITLE_ARE_TWO_FOLDERS", FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED) { subject ->
+        clause(
+            "TWO_ALBUMS_OF_ONE_TITLE_ARE_TWO_FOLDERS",
+            FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::createAlbum).returns()
+            },
+        ) { subject ->
             val title = title("TWO_ALBUMS_OF_ONE_TITLE_ARE_TWO_FOLDERS")
             val first = assertNotNull(subject.gallery.createAlbum(title))
             val second = assertNotNull(subject.gallery.createAlbum(title))
             assertNotEquals(first, second, "two events of one name never share a folder, even while the first is empty")
         }
 
-        clause("AN_EMPTY_ALBUM_RESOLVES_ONCE_A_PHOTO_LANDS", FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED) { subject ->
+        clause(
+            "AN_EMPTY_ALBUM_RESOLVES_ONCE_A_PHOTO_LANDS",
+            FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::albumsById).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Ok::class)
+                    answers(GalleryReader::albumMembers).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
+        ) { subject ->
             val clauseId = "AN_EMPTY_ALBUM_RESOLVES_ONCE_A_PHOTO_LANDS"
             val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
             assertEquals(
@@ -81,6 +106,14 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
         clause(
             "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_IS_NO_CANDIDATE",
             FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::assets).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Ok::class)
+                    answers(GalleryReader::assetsById).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
         ) { subject ->
             val clauseId = "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_IS_NO_CANDIDATE"
             val policy = PhotoLibrary.policy(name, clauseId)
@@ -102,7 +135,18 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             assertTrue(leaked.isEmpty(), "a photo in an event album is never a candidate to share: $leaked")
         }
 
-        clause("AN_IMPORT_INTO_AN_ALBUM_LANDS_THERE", FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED) { subject ->
+        clause(
+            "AN_IMPORT_INTO_AN_ALBUM_LANDS_THERE",
+            FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::albumMembers).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::assetsById).withGenericLeaf(GalleryRead.Read::class)
+                }
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+            },
+        ) { subject ->
             val clauseId = "AN_IMPORT_INTO_AN_ALBUM_LANDS_THERE"
             val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
             val ref = AssetRef(sourceDeviceId = "contract-device", sourceAssetId = AssetId(clauseId))
@@ -116,7 +160,17 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
         }
 
         // Last, so no earlier clause's capture window moves.
-        clause("A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY", FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED) { subject ->
+        clause(
+            "A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY",
+            FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Ok::class)
+                    answers(GalleryReader::libraryAssets).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
+        ) { subject ->
             val clauseId = "A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY"
             val policy = PhotoLibrary.policy(name, clauseId)
             val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))

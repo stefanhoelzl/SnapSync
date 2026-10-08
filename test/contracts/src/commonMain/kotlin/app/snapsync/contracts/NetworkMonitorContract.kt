@@ -34,19 +34,43 @@ object NetworkMonitorContract : Contract<NetworkState, NetworkMonitor>("NetworkM
 
     override val clauses = clauses {
 
-        clause("A_CONNECTED_DEVICE_READS_ONLINE", NetworkState.ONLINE) { monitor ->
+        clause(
+            "A_CONNECTED_DEVICE_READS_ONLINE",
+            NetworkState.ONLINE,
+            covers = cells {
+                on<NetworkMonitor>().emits(NetworkMonitor::watch).with(NetworkAccess.Online::class)
+            },
+        ) { monitor ->
             assertEquals(NetworkAccess.Online(restricted = false), monitor.firstReading())
         }
 
-        clause("A_RESTRICTED_NETWORK_READS_ONLINE_AND_RESTRICTED", NetworkState.RESTRICTED) { monitor ->
+        clause(
+            "A_RESTRICTED_NETWORK_READS_ONLINE_AND_RESTRICTED",
+            NetworkState.RESTRICTED,
+            covers = cells {
+                on<NetworkMonitor>().emits(NetworkMonitor::watch).with(NetworkAccess.Online::class)
+            },
+        ) { monitor ->
             assertEquals(NetworkAccess.Online(restricted = true), monitor.firstReading())
         }
 
-        clause("A_DEVICE_WITHOUT_A_NETWORK_READS_OFFLINE", NetworkState.OFFLINE) { monitor ->
+        clause(
+            "A_DEVICE_WITHOUT_A_NETWORK_READS_OFFLINE",
+            NetworkState.OFFLINE,
+            covers = cells {
+                on<NetworkMonitor>().emits(NetworkMonitor::watch).with(NetworkAccess.Offline::class)
+            },
+        ) { monitor ->
             assertEquals(NetworkAccess.Offline, monitor.firstReading())
         }
 
-        clause("A_NETWORK_WITHHELD_FROM_THE_APP_READS_BLOCKED", NetworkState.BLOCKED) { monitor ->
+        clause(
+            "A_NETWORK_WITHHELD_FROM_THE_APP_READS_BLOCKED",
+            NetworkState.BLOCKED,
+            covers = cells {
+                on<NetworkMonitor>().emits(NetworkMonitor::watch).with(NetworkAccess.Blocked::class)
+            },
+        ) { monitor ->
             assertEquals(NetworkAccess.Blocked, monitor.firstReading())
         }
     }

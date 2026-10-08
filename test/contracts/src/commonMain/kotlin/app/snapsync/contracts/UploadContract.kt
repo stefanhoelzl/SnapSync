@@ -129,7 +129,13 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
 
     override val clauses = clauses {
 
-        clause("CREATE_UNUSABLE_SOURCE", UploadState.IDLE) { subject ->
+        clause(
+            "CREATE_UNUSABLE_SOURCE",
+            UploadState.IDLE,
+            covers = cells {
+                on<Upload>().answers(Upload::create).with(UploadCreateOutcome.FAILED)
+            },
+        ) { subject ->
             val id = "CREATE_UNUSABLE_SOURCE"
             val route = path(id, ACCEPT)
             assertEquals(
@@ -141,7 +147,17 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             assertNull(subject.objects.landed(route), "nothing was sent")
         }
 
-        clause("CREATE_LANDS_AND_ENDS_SUCCEEDED", UploadState.IDLE) { subject ->
+        clause(
+            "CREATE_LANDS_AND_ENDS_SUCCEEDED",
+            UploadState.IDLE,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::create).with(UploadCreateOutcome.CREATED)
+                    answers(Upload::jobs).returns()
+                    answers(Upload::acknowledge).with(ChangeOutcome.Applied::class)
+                }
+            },
+        ) { subject ->
             val id = "CREATE_LANDS_AND_ENDS_SUCCEEDED"
             val route = path(id, ACCEPT)
             assertEquals(
@@ -158,7 +174,16 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             assertEquals(ChangeOutcome.Applied, subject.upload.acknowledge(ended), "a presented end is acknowledged")
         }
 
-        clause("A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE", UploadState.RESTRICTED_NETWORK) { subject ->
+        clause(
+            "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE",
+            UploadState.RESTRICTED_NETWORK,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::create).with(UploadCreateOutcome.CREATED)
+                    answers(Upload::jobs).returns()
+                }
+            },
+        ) { subject ->
             val id = "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE"
             val lift = assertNotNull(subject.liftRestriction, "a binding that reaches a restricted network can lift it")
             val route = path(id, ACCEPT)
@@ -191,7 +216,13 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             ).filter { it.state == UploadJobState.SUCCEEDED }.forEach { subject.upload.acknowledge(it) }
         }
 
-        clause("CREATE_KEEPS_CONTENT_TYPE", UploadState.IDLE) { subject ->
+        clause(
+            "CREATE_KEEPS_CONTENT_TYPE",
+            UploadState.IDLE,
+            covers = cells {
+                on<Upload>().answers(Upload::create).with(UploadCreateOutcome.CREATED)
+            },
+        ) { subject ->
             val id = "CREATE_KEEPS_CONTENT_TYPE"
             val route = path(id, ACCEPT)
             assertEquals(
@@ -206,7 +237,16 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             )
         }
 
-        clause("REFUSED_NEVER_ENDS_SUCCEEDED", UploadState.IDLE) { subject ->
+        clause(
+            "REFUSED_NEVER_ENDS_SUCCEEDED",
+            UploadState.IDLE,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::create).with(UploadCreateOutcome.CREATED)
+                    answers(Upload::jobs).returns()
+                }
+            },
+        ) { subject ->
             val id = "REFUSED_NEVER_ENDS_SUCCEEDED"
             val route = path(id, REJECT)
             assertEquals(
@@ -221,7 +261,13 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             )
         }
 
-        clause("AT_CAP_DEFERS", UploadState.AT_CAP) { subject ->
+        clause(
+            "AT_CAP_DEFERS",
+            UploadState.AT_CAP,
+            covers = cells {
+                on<Upload>().answers(Upload::create).with(UploadCreateOutcome.LIMIT_EXCEEDED)
+            },
+        ) { subject ->
             val id = "AT_CAP_DEFERS"
             val route = path(id, ACCEPT, n = 0)
             assertEquals(
@@ -238,7 +284,16 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
          * upload. A retry that then SUCCEEDS has no clause: production retries to the identical destination, and a
          * fixture route answers one status for good (`TransferFixture`).
          */
-        clause("PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED", UploadState.PRESENTED_SUCCEEDED) { subject ->
+        clause(
+            "PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED",
+            UploadState.PRESENTED_SUCCEEDED,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::jobs).returns()
+                    answers(Upload::acknowledge).with(ChangeOutcome.Applied::class)
+                }
+            },
+        ) { subject ->
             val id = "PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED"
             val route = preparedRoute(id, UploadState.PRESENTED_SUCCEEDED)
             val presented =
@@ -250,7 +305,13 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             assertEquals(CONTENT_TYPE, subject.objects.landed(route)?.contentType, "the object landed under its type")
         }
 
-        clause("PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY", UploadState.PRESENTED_REFUSED_ONCE) { subject ->
+        clause(
+            "PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY",
+            UploadState.PRESENTED_REFUSED_ONCE,
+            covers = cells {
+                on<Upload>().answers(Upload::jobs).returns()
+            },
+        ) { subject ->
             val id = "PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY"
             val route = preparedRoute(id, UploadState.PRESENTED_REFUSED_ONCE)
             val offered = assertNotNull(
@@ -261,7 +322,16 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             assertEquals(CONTENT_TYPE, offered.contentType, "a retried transfer keeps the type it was created with")
         }
 
-        clause("PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED", UploadState.PRESENTED_RETRY_SPENT) { subject ->
+        clause(
+            "PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED",
+            UploadState.PRESENTED_RETRY_SPENT,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::jobs).returns()
+                    answers(Upload::acknowledge).with(ChangeOutcome.Applied::class)
+                }
+            },
+        ) { subject ->
             val id = "PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED"
             val route = preparedRoute(id, UploadState.PRESENTED_RETRY_SPENT)
             val presented = assertNotNull(

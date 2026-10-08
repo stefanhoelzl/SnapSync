@@ -78,7 +78,21 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
 
     override val clauses = clauses {
 
-        clause("NO_GRANT_READS_NOTHING", GalleryReaderState.NO_GRANT) { seeded ->
+        clause(
+            "NO_GRANT_READS_NOTHING",
+            GalleryReaderState.NO_GRANT,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::access).with(GalleryAccess.NOT_DETERMINED)
+                    answers(GalleryReader::access).with(GalleryAccess.DENIED)
+                    answers(GalleryReader::assets).with(GalleryRead.NotReadable::class)
+                    answers(GalleryReader::assetsById).with(GalleryRead.NotReadable::class)
+                    answers(GalleryReader::resources).with(GalleryRead.NotReadable::class)
+                    answers(GalleryReader::albums).with(GalleryRead.NotReadable::class)
+                    answers(GalleryReader::albumsById).with(GalleryRead.NotReadable::class)
+                }
+            },
+        ) { seeded ->
             val gallery = seeded.port
             val clauseId = "NO_GRANT_READS_NOTHING"
             val access = gallery.access()
@@ -94,16 +108,34 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.NotReadable, gallery.albumsById(setOf(absentAlbumId(clauseId))))
         }
 
-        clause("A_COLLECTION_LIBRARY_DECLARES_IT", GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS) { seeded ->
+        clause(
+            "A_COLLECTION_LIBRARY_DECLARES_IT",
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::albumKind).with(AlbumKind.COLLECTION)
+            },
+        ) { seeded ->
             // What the core places in an album follows the kind: a collection library also takes the member's own photos.
             assertEquals(AlbumKind.COLLECTION, seeded.port.albumKind, "a library whose albums are collections says so")
         }
 
-        clause("GRANTED_READS_GRANTED", GalleryReaderState.GRANTED_EMPTY_WINDOW) { seeded ->
+        clause(
+            "GRANTED_READS_GRANTED",
+            GalleryReaderState.GRANTED_EMPTY_WINDOW,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::access).with(GalleryAccess.GRANTED)
+            },
+        ) { seeded ->
             assertEquals(GalleryAccess.GRANTED, seeded.port.access())
         }
 
-        clause("ASSETS_RETURN_EVERY_SEEDED_ASSET", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause(
+            "ASSETS_RETURN_EVERY_SEEDED_ASSET",
+            GalleryReaderState.GRANTED_SEEDED,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::assets).withGenericLeaf(GalleryRead.Read::class)
+            },
+        ) { seeded ->
             val read = assertIs<GalleryRead.Read<*>>(seeded.port.assets(policy("ASSETS_RETURN_EVERY_SEEDED_ASSET")))
             val returned = seeded.port.assetIdsOf(read)
             assertEquals(SEED_COUNT, seeded.ids.size, "the binding seeded what the state promises")
@@ -113,7 +145,13 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("AN_EMPTY_WINDOW_IS_A_COUNTED_ZERO", GalleryReaderState.GRANTED_EMPTY_WINDOW) { seeded ->
+        clause(
+            "AN_EMPTY_WINDOW_IS_A_COUNTED_ZERO",
+            GalleryReaderState.GRANTED_EMPTY_WINDOW,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::assets).withGenericLeaf(GalleryRead.Read::class)
+            },
+        ) { seeded ->
             val clauseId = "AN_EMPTY_WINDOW_IS_A_COUNTED_ZERO"
             val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(
                 seeded.port.assets(policy(clauseId)),
@@ -123,7 +161,13 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertTrue(inWindow.isEmpty(), "nothing was seeded in this window, yet ${inWindow.size} came back")
         }
 
-        clause("A_NON_CONTRIBUTING_POLICY_READS_NOTHING", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause(
+            "A_NON_CONTRIBUTING_POLICY_READS_NOTHING",
+            GalleryReaderState.GRANTED_SEEDED,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::assets).withGenericLeaf(GalleryRead.Read::class)
+            },
+        ) { seeded ->
             val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(
                 seeded.port.assets(policy("A_NON_CONTRIBUTING_POLICY_READS_NOTHING", contributes = false)),
             )
@@ -133,7 +177,13 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("ASSETS_BY_ID_RETURN_EXACTLY_THE_ONES_STILL_THERE", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause(
+            "ASSETS_BY_ID_RETURN_EXACTLY_THE_ONES_STILL_THERE",
+            GalleryReaderState.GRANTED_SEEDED,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::assetsById).withGenericLeaf(GalleryRead.Read::class)
+            },
+        ) { seeded ->
             val asked = seeded.ids + absentAssetId("ASSETS_BY_ID_RETURN_EXACTLY_THE_ONES_STILL_THERE")
             val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(seeded.port.assetsById(asked))
             assertEquals(
@@ -143,7 +193,13 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("RESOURCES_BY_ID_CARRY_EACH_ORIGINAL", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause(
+            "RESOURCES_BY_ID_CARRY_EACH_ORIGINAL",
+            GalleryReaderState.GRANTED_SEEDED,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::resources).withGenericLeaf(GalleryRead.Read::class)
+            },
+        ) { seeded ->
             val asked = seeded.ids + absentAssetId("RESOURCES_BY_ID_CARRY_EACH_ORIGINAL")
             val read = assertIs<GalleryRead.Read<List<RawAsset>>>(seeded.port.resources(asked))
             assertEquals(
@@ -165,7 +221,16 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             }
         }
 
-        clause("READING_NOTHING_BY_ID_READS_NOTHING", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause(
+            "READING_NOTHING_BY_ID_READS_NOTHING",
+            GalleryReaderState.GRANTED_SEEDED,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::assetsById).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::resources).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
+        ) { seeded ->
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.assetsById(emptySet()))
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.resources(emptySet()))
         }
@@ -173,6 +238,13 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         clause(
             "A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED",
             GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::albumsById).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::albums).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
         ) { seeded ->
             val title = title("A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED")
             val id = assertNotNull(seeded.port.createAlbum(title))
@@ -182,14 +254,30 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertTrue(listed.value.any { it.id == id && it.title == title }, "the album is listed under its title")
         }
 
-        clause("AN_UNKNOWN_ALBUM_DOES_NOT_RESOLVE", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause(
+            "AN_UNKNOWN_ALBUM_DOES_NOT_RESOLVE",
+            GalleryReaderState.GRANTED_SEEDED,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::albumsById).withGenericLeaf(GalleryRead.Read::class)
+            },
+        ) { seeded ->
             assertEquals(
                 GalleryRead.Read(emptyList()),
                 seeded.port.albumsById(setOf(absentAlbumId("AN_UNKNOWN_ALBUM_DOES_NOT_RESOLVE"))),
             )
         }
 
-        clause("ADDED_ASSETS_ARE_MEMBERS", GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS) { seeded ->
+        clause(
+            "ADDED_ASSETS_ARE_MEMBERS",
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Ok::class)
+                    answers(GalleryReader::albumMembers).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
+        ) { seeded ->
             val clauseId = "ADDED_ASSETS_ARE_MEMBERS"
             val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
             assertEquals(WriteOutcome.Ok, seeded.port.addToAlbum(album, seeded.ids))
@@ -203,6 +291,12 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         clause(
             "MEMBERS_CAPTURED_BEFORE_SINCE_ARE_NOT_RETURNED",
             GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::albumMembers).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
         ) { seeded ->
             val clauseId = "MEMBERS_CAPTURED_BEFORE_SINCE_ARE_NOT_RETURNED"
             val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
@@ -217,13 +311,29 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         clause(
             "ADD_TO_A_MISSING_ALBUM_FAILS_AND_CREATES_NOTHING",
             GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Failed::class)
+                    answers(GalleryReader::albumsById).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
         ) { seeded ->
             val album = absentAlbumId("ADD_TO_A_MISSING_ALBUM_FAILS_AND_CREATES_NOTHING")
             assertIs<WriteOutcome.Failed>(seeded.port.addToAlbum(album, seeded.ids))
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.albumsById(setOf(album)), "adding never creates")
         }
 
-        clause("ADD_OF_A_MISSING_ASSET_IS_SKIPPED", GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS) { seeded ->
+        clause(
+            "ADD_OF_A_MISSING_ASSET_IS_SKIPPED",
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Ok::class)
+                    answers(GalleryReader::albumMembers).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
+        ) { seeded ->
             val clauseId = "ADD_OF_A_MISSING_ASSET_IS_SKIPPED"
             val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
             assertEquals(WriteOutcome.Ok, seeded.port.addToAlbum(album, seeded.ids + absentAssetId(clauseId)))
@@ -234,7 +344,17 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("A_FOLDER_IS_A_LISTED_ALBUM_OF_ITS_ASSETS", GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER) { seeded ->
+        clause(
+            "A_FOLDER_IS_A_LISTED_ALBUM_OF_ITS_ASSETS",
+            GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::albums).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::albumsById).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::albumMembers).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
+        ) { seeded ->
             val clauseId = "A_FOLDER_IS_A_LISTED_ALBUM_OF_ITS_ASSETS"
             val listed = assertIs<GalleryRead.Read<List<AlbumRecord>>>(seeded.port.albums())
             val album = assertNotNull(
@@ -252,6 +372,13 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         clause(
             "ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ",
             GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::assets).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::assetsById).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::resources).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
         ) { seeded ->
             val clauseId = "ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ"
             assertEquals(SEED_COUNT, seeded.ids.size, "the binding seeded what the state promises")

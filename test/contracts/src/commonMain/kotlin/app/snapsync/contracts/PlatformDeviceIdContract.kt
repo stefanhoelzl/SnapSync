@@ -30,12 +30,20 @@ object PlatformDeviceIdContract : Contract<PlatformDeviceIdState, PlatformDevice
 
     override val clauses = clauses {
 
-        clause("ANSWERING_IS_STABLE", PlatformDeviceIdState.ANSWERING) { platform ->
+        clause(
+            "ANSWERING_IS_STABLE",
+            PlatformDeviceIdState.ANSWERING,
+            covers = cells { on<PlatformDeviceId>().answers(PlatformDeviceId::stableId).returns() },
+        ) { platform ->
             val first = assertNotNull(platform.stableId(), "a platform that offers an id answers it")
             assertEquals(first, platform.stableId(), "a changed id is a new device to every event it is in")
         }
 
-        clause("ANSWERING_IS_A_CANONICAL_UUID", PlatformDeviceIdState.ANSWERING) { platform ->
+        clause(
+            "ANSWERING_IS_A_CANONICAL_UUID",
+            PlatformDeviceIdState.ANSWERING,
+            covers = cells { on<PlatformDeviceId>().answers(PlatformDeviceId::stableId).returns() },
+        ) { platform ->
             val id = assertNotNull(platform.stableId())
             assertTrue(
                 CANONICAL.matches(id),
@@ -43,7 +51,11 @@ object PlatformDeviceIdContract : Contract<PlatformDeviceIdState, PlatformDevice
             )
         }
 
-        clause("SILENT_IS_NULL", PlatformDeviceIdState.SILENT) { platform ->
+        clause(
+            "SILENT_IS_NULL",
+            PlatformDeviceIdState.SILENT,
+            covers = cells { on<PlatformDeviceId>().answers(PlatformDeviceId::stableId).with(null) },
+        ) { platform ->
             assertNull(platform.stableId(), "no id is null, so the identity service mints its own")
         }
     }

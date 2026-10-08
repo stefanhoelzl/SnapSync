@@ -13,15 +13,27 @@ import kotlin.test.assertTrue
 
 /** The two listings — the event-wide union and a device's own stored files. Part of [BackendContract]'s clause list. */
 internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
-    clause("UNION_AN_UNKNOWN_EVENT_IS_REFUSED", BackendState.NO_SUCH_EVENT) { s ->
+    clause(
+        "UNION_AN_UNKNOWN_EVENT_IS_REFUSED",
+        BackendState.NO_SUCH_EVENT,
+        covers = cells { on<Backend>().answers(Backend::eventFiles).with(Reply.Refused::class) },
+    ) { s ->
         assertIs<Reply.Refused>(s.union(), "absent is a refusal, never an empty union")
     }
 
-    clause("UNION_AN_EMPTY_EVENT_IS_EMPTY", BackendState.EVENT_EXISTS) { s ->
+    clause(
+        "UNION_AN_EMPTY_EVENT_IS_EMPTY",
+        BackendState.EVENT_EXISTS,
+        covers = cells { on<Backend>().answers(Backend::eventFiles).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertEquals(emptyList(), assertOk(s.union()).assets)
     }
 
-    clause("UNION_A_COMPLETE_ASSET_IS_LISTED_UNDER_ITS_DEVICE", BackendState.UNION_COMPLETE_ASSET) { s ->
+    clause(
+        "UNION_A_COMPLETE_ASSET_IS_LISTED_UNDER_ITS_DEVICE",
+        BackendState.UNION_COMPLETE_ASSET,
+        covers = cells { on<Backend>().answers(Backend::eventFiles).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         val asset = s.seeded.asset!!
         val listed = assertOk(s.union()).assets.single()
         assertEquals(s.seeded.deviceId, listed.deviceId)
@@ -35,7 +47,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
         assertTrue(resource.url.isNotBlank(), "a fetchable url")
     }
 
-    clause("UNION_AN_INCOMPLETE_ASSET_IS_OMITTED", BackendState.UNION_INCOMPLETE_ASSET) { s ->
+    clause(
+        "UNION_AN_INCOMPLETE_ASSET_IS_OMITTED",
+        BackendState.UNION_INCOMPLETE_ASSET,
+        covers = cells { on<Backend>().answers(Backend::eventFiles).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertEquals(emptyList(), assertOk(s.union()).assets, "never half a photo")
     }
 
@@ -44,6 +60,12 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     clause(
         "UNION_A_READ_FROM_ITS_POSITION_SERVES_ONLY_WHAT_WAS_GAINED_SINCE",
         BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS,
+        covers = cells {
+            on<Backend> {
+                answers(Backend::eventFiles).withGenericLeaf(Reply.Ok::class)
+                answers(Backend::publishManifest).withGenericLeaf(Reply.Ok::class)
+            }
+        },
     ) { s ->
         val (event, device) = s.seeded.eventId to s.seeded.deviceId
         assertOk(
@@ -76,6 +98,12 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     clause(
         "UNION_AN_ASSET_WITHDRAWN_AFTER_ITS_GAIN_IS_NOT_SERVED_FROM_BEFORE_IT",
         BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS,
+        covers = cells {
+            on<Backend> {
+                answers(Backend::eventFiles).withGenericLeaf(Reply.Ok::class)
+                answers(Backend::publishManifest).withGenericLeaf(Reply.Ok::class)
+            }
+        },
     ) { s ->
         val (event, device) = s.seeded.eventId to s.seeded.deviceId
         val position = assertOk(s.union()).cursor
@@ -92,22 +120,38 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     }
 
     // Public, but a token it is SENT is verified, so its 401 is a verdict on that token (D5).
-    clause("UNION_A_SENT_TOKEN_THE_BACKEND_NEVER_ISSUED_IS_REFUSED", BackendState.FOREIGN_TOKEN) { s ->
+    clause(
+        "UNION_A_SENT_TOKEN_THE_BACKEND_NEVER_ISSUED_IS_REFUSED",
+        BackendState.FOREIGN_TOKEN,
+        covers = cells { on<Backend>().answers(Backend::eventFiles).with(Reply.Refused::class) },
+    ) { s ->
         assertRefused(UNAUTHORIZED, s.port.eventFiles(s.token, s.seeded.eventId, null, UnionTrigger.FOREGROUND))
     }
 
-    clause("UNION_IS_SERVED_WITHOUT_A_TOKEN", BackendState.EVENT_EXISTS) { s ->
+    clause(
+        "UNION_IS_SERVED_WITHOUT_A_TOKEN",
+        BackendState.EVENT_EXISTS,
+        covers = cells { on<Backend>().answers(Backend::eventFiles).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertOk(s.port.eventFiles(null, s.seeded.eventId, null, UnionTrigger.FOREGROUND))
     }
 
-    clause("DEVICE_FILES_A_FRESH_DEVICE_HOLDS_NOTHING", BackendState.SERVING) { s ->
+    clause(
+        "DEVICE_FILES_A_FRESH_DEVICE_HOLDS_NOTHING",
+        BackendState.SERVING,
+        covers = cells { on<Backend>().answers(Backend::deviceFiles).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertEquals(emptyList(), assertOk(s.port.deviceFiles(s.token, s.seeded.eventId, s.seeded.deviceId)))
     }
 
     // The listing answers in identity terms — asset, role and a filename — and the app recomposes the storage key
     // from them. Only the filename's extension enters that key, so what the promise pins is the recomposition, not
     // which of the two names (capture name or storage key, both carrying the extension) the backend echoes.
-    clause("DEVICE_FILES_AN_UPLOAD_IS_LISTED_BY_ITS_IDENTITY", BackendState.DEVICE_UPLOADED) { s ->
+    clause(
+        "DEVICE_FILES_AN_UPLOAD_IS_LISTED_BY_ITS_IDENTITY",
+        BackendState.DEVICE_UPLOADED,
+        covers = cells { on<Backend>().answers(Backend::deviceFiles).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         val asset = s.seeded.asset!!
         val listed = assertOk(s.port.deviceFiles(s.token, s.seeded.eventId, s.seeded.deviceId)).single()
         assertEquals(asset.assetId, listed.assetId)
@@ -121,7 +165,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
 
     // Each event holds its own bytes (change `per-event-storage-layout`): the device marks every listed resource
     // uploaded, so a resource stored for one event listed under another would never reach that one.
-    clause("DEVICE_FILES_LISTS_ONLY_THE_EVENT_ASKED_ABOUT", BackendState.DEVICE_UPLOADED) { s ->
+    clause(
+        "DEVICE_FILES_LISTS_ONLY_THE_EVENT_ASKED_ABOUT",
+        BackendState.DEVICE_UPLOADED,
+        covers = cells { on<Backend>().answers(Backend::deviceFiles).withGenericLeaf(Reply.Ok::class) },
+    ) { s ->
         assertEquals(emptyList(), assertOk(s.port.deviceFiles(s.token, ANOTHER_EVENT, s.seeded.deviceId)))
     }
 }

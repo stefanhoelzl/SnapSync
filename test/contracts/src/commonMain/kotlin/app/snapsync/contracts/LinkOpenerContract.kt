@@ -31,12 +31,24 @@ object LinkOpenerContract : Contract<LinkOpenerState, SystemUi>("LinkOpener") {
 
     override val clauses = clauses {
 
-        clause("UNCLAIMED_URL_IS_REFUSED", LinkOpenerState.UNCLAIMED) { opener ->
+        clause(
+            "UNCLAIMED_URL_IS_REFUSED",
+            LinkOpenerState.UNCLAIMED,
+            covers = cells {
+                on<SystemUi>().answers(SystemUi::openUrl).with(Handoff.Refused::class)
+            },
+        ) { opener ->
             val answer = withinRealTime(HANDOFF_ANSWER_MILLIS) { opener.openUrl(UNCLAIMED_URL) }
             assertTrue(answer is Handoff.Refused, "a URL no app claims opens nothing, so it is refused; got $answer")
         }
 
-        clause("CLAIMED_URL_IS_ACCEPTED", LinkOpenerState.CLAIMED) { opener ->
+        clause(
+            "CLAIMED_URL_IS_ACCEPTED",
+            LinkOpenerState.CLAIMED,
+            covers = cells {
+                on<SystemUi>().answers(SystemUi::openUrl).with(Handoff.Accepted::class)
+            },
+        ) { opener ->
             val answer = withinRealTime(HANDOFF_ANSWER_MILLIS) { opener.openUrl(CLAIMED_URL) }
             assertEquals(Handoff.Accepted, answer, "a URL an app claims is handed to that app")
         }

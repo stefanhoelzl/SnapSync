@@ -30,7 +30,16 @@ object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAcces
 
     override val clauses = clauses {
 
-        clause("NO_GRANT_READS_AS_NOT_GRANTED", PhotoAccessState.NO_GRANT) { access ->
+        clause(
+            "NO_GRANT_READS_AS_NOT_GRANTED",
+            PhotoAccessState.NO_GRANT,
+            covers = cells {
+                on<PhotoAccessStatusSource> {
+                    emits(PhotoAccessStatusSource::permission).with(GalleryAccess.NOT_DETERMINED)
+                    emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
+                }
+            },
+        ) { access ->
             val status = access.status.permission.value
             assertTrue(
                 status == GalleryAccess.NOT_DETERMINED || status == GalleryAccess.DENIED,
@@ -38,7 +47,13 @@ object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAcces
             )
         }
 
-        clause("GRANTED_READS_GRANTED", PhotoAccessState.GRANTED) { access ->
+        clause(
+            "GRANTED_READS_GRANTED",
+            PhotoAccessState.GRANTED,
+            covers = cells {
+                on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.GRANTED)
+            },
+        ) { access ->
             assertEquals(GalleryAccess.GRANTED, access.status.permission.value)
         }
     }

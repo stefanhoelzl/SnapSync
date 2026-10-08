@@ -131,7 +131,11 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
     override val clauses = clauses {
         schemaClauses()
 
-        clause("ABSENT_READ_WRITE_CREATES_IT", DatabasesState.ABSENT) { databases ->
+        clause(
+            "ABSENT_READ_WRITE_CREATES_IT",
+            DatabasesState.ABSENT,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+        ) { databases ->
             val driver = databases.opened(Current, readOnly = false)
             driver.execute(null, "INSERT INTO probe (id, v, w) VALUES (1, '$KEPT', 'x')", 0)
             driver.close()
@@ -140,7 +144,11 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             again.close()
         }
 
-        clause("ABSENT_READ_ONLY_IS_MISSING_AND_CREATES_NOTHING", DatabasesState.ABSENT) { databases ->
+        clause(
+            "ABSENT_READ_ONLY_IS_MISSING_AND_CREATES_NOTHING",
+            DatabasesState.ABSENT,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Missing::class) },
+        ) { databases ->
             assertEquals(DbOpen.Missing, databases.open(NAME, Current, readOnly = true))
             assertEquals(
                 DbOpen.Missing,
@@ -149,14 +157,27 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             )
         }
 
-        clause("OLD_READ_WRITE_MIGRATES_KEEPING_ROWS", DatabasesState.OLD) { databases ->
+        clause(
+            "OLD_READ_WRITE_MIGRATES_KEEPING_ROWS",
+            DatabasesState.OLD,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+        ) { databases ->
             val driver = databases.opened(Current, readOnly = false)
             assertTrue(driver.hasColumnW(), "the migration ran")
             assertEquals(KEPT, driver.kept(), "a migration that loses rows loses every suppression handle")
             driver.close()
         }
 
-        clause("OLD_READ_ONLY_IS_OLD_SCHEMA_AND_MIGRATES_NOTHING", DatabasesState.OLD) { databases ->
+        clause(
+            "OLD_READ_ONLY_IS_OLD_SCHEMA_AND_MIGRATES_NOTHING",
+            DatabasesState.OLD,
+            covers = cells {
+                on<Databases> {
+                    answers(Databases::open).with(DbOpen.OldSchema::class)
+                    answers(Databases::open).with(DbOpen.Opened::class)
+                }
+            },
+        ) { databases ->
             assertEquals(DbOpen.OldSchema, databases.open(NAME, Current, readOnly = true))
             // Still at the old version: the old schema opens it as current, with its row, and without the column.
             val stillOld = databases.opened(Old, readOnly = true)
@@ -165,33 +186,55 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             stillOld.close()
         }
 
-        clause("CURRENT_READ_ONLY_OPENS_AND_READS", DatabasesState.CURRENT) { databases ->
+        clause(
+            "CURRENT_READ_ONLY_OPENS_AND_READS",
+            DatabasesState.CURRENT,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+        ) { databases ->
             val driver = databases.opened(Current, readOnly = true)
             assertEquals(KEPT, driver.kept())
             driver.close()
         }
 
-        clause("CURRENT_READ_WRITE_REOPENS_WITH_ITS_ROWS", DatabasesState.CURRENT) { databases ->
+        clause(
+            "CURRENT_READ_WRITE_REOPENS_WITH_ITS_ROWS",
+            DatabasesState.CURRENT,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+        ) { databases ->
             val driver = databases.opened(Current, readOnly = false)
             assertEquals(KEPT, driver.kept(), "a re-open is not a re-create")
             driver.close()
         }
 
-        clause("NEWER_READ_ONLY_FAILS_NEVER_OPENS", DatabasesState.NEWER) { databases ->
+        clause(
+            "NEWER_READ_ONLY_FAILS_NEVER_OPENS",
+            DatabasesState.NEWER,
+            covers = cells {
+                on<Databases>().answers(Databases::open).with(DbOpen.Failed::class)
+            },
+        ) { databases ->
             assertIs<DbOpen.Failed>(
                 databases.open(NAME, Current, readOnly = true),
                 "a reader of a later build's schema cannot know what its rows mean",
             )
         }
 
-        clause("UNOPENABLE_READ_ONLY_FAILS_NEVER_MISSING", DatabasesState.UNOPENABLE) { databases ->
+        clause(
+            "UNOPENABLE_READ_ONLY_FAILS_NEVER_MISSING",
+            DatabasesState.UNOPENABLE,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Failed::class) },
+        ) { databases ->
             assertIs<DbOpen.Failed>(
                 databases.open(NAME, Current, readOnly = true),
                 "an unreadable database answered as missing reads as 'nothing was ever downloaded'",
             )
         }
 
-        clause("UNOPENABLE_READ_WRITE_FAILS", DatabasesState.UNOPENABLE) { databases ->
+        clause(
+            "UNOPENABLE_READ_WRITE_FAILS",
+            DatabasesState.UNOPENABLE,
+            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Failed::class) },
+        ) { databases ->
             assertIs<DbOpen.Failed>(databases.open(NAME, Current, readOnly = false))
         }
     }
