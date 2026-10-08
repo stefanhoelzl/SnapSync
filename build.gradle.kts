@@ -89,8 +89,8 @@ subprojects {
 listOf(
     ":domain:model" to ":adapter:generic:mock",
     ":domain:ports" to ":adapter:generic:mock",
-    // The storage services' SQLite and file behaviour is measured beside the JVM adapters (a `:domain:*` build
-    // file names no module), and their fake-driven tests beside the mocks.
+    // The services' suites run beside the mocks; beside the JVM adapters runs the encrypted file format's cipher,
+    // held to Tink's reference implementation there (a `:domain:*` build file names no module).
     ":domain:services" to ":adapter:generic:app",
     ":domain:services" to ":adapter:generic:mock",
     ":domain:feature" to ":adapter:generic:mock",

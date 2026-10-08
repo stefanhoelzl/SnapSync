@@ -158,7 +158,6 @@ flowchart LR
   test_architecture --> domain_model
   test_architecture --> domain_ports
   test_architecture --> domain_services
-  test_contracts --> domain_feature
   test_contracts --> domain_model
   test_contracts --> domain_ports
   test_contracts --> domain_services

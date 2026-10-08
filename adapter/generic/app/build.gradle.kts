@@ -57,13 +57,12 @@ kotlin {
             }
         }
         // The contract bindings (`docs/architecture.md`). The contracts live in `:test:contracts`' commonMain.
-        // `:domain:services` is here, test-only, because the storage services' SQLite behaviour is measured over
-        // this module's real `JdbcDatabases` — a `:domain:*` build file names no module, so they cannot run there.
+        // `:domain:services` is here, test-only, for the encrypted file format: its cipher (`FileCipher`) is held to
+        // Tink's reference implementation, which only this JVM test source set links.
         named("jvmTest") {
             dependencies {
                 implementation(project(":test:contracts"))
                 implementation(project(":domain:services"))
-                implementation(libs.sqldelight.driver.sqlite)
                 // The backend contracts' live bindings talk to the real `api/` over a socket, through the one
                 // process lifecycle `:test:edge` holds for every JVM consumer of the real backend.
                 implementation(project(":test:edge"))
