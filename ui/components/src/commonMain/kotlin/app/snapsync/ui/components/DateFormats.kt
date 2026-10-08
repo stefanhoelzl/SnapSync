@@ -1,7 +1,9 @@
 package app.snapsync.ui.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.snapsync.model.DateFormats
 import app.snapsync.ui.components.resources.Res
@@ -24,5 +26,9 @@ val LocalDateFormats = staticCompositionLocalOf<DateFormats> {
 @Composable
 internal fun rememberDateFormats(formats: (languageTag: String?) -> DateFormats): DateFormats {
     val language = stringResource(Res.string.date_language)
-    return remember(language, formats) { formats(language) }
+    // Keyed on the platform as state rather than on the parameter itself: a parameter key makes the compiler test
+    // the caller's `$changed` bits in a shape the zero coverage gate does not recognise (`docs/architecture.md`,
+    // "Coverage").
+    val platform by rememberUpdatedState(formats)
+    return remember(language, platform) { platform(language) }
 }
