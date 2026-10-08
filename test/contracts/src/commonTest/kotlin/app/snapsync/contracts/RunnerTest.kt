@@ -185,7 +185,7 @@ class RunnerTest {
     }
 
     @Test
-    fun `a failing body is reported as itself, not as a missing cell`() {
+    fun `a failing body is reported as itself - not as a missing cell`() {
         val wrong = unrecorded(setOf(Toy.ON, Toy.OFF)) { Entered.Ready(Switch(false)) }
         val on = run(ToyContract, wrong).single { it.clauseId == "ON_READS_ON" }.outcome
         assertTrue(on is Outcome.Failed && "never occurred" !in on.message, on.render())

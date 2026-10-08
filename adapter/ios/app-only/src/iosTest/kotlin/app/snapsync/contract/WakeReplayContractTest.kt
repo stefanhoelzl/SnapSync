@@ -8,7 +8,6 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
-import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import kotlin.test.Test
