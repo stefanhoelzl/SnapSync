@@ -116,25 +116,6 @@ value class DeletesAt(val at: CaptureDate) : Comparable<DeletesAt> {
     override fun toString(): String = at.iso
 }
 
-/**
- * An instant that is **not** in the canonical shape: `createdAt`, which the backend mints with
- * `toISOString()` and therefore carries **milliseconds** (`…T10:00:00.182Z`).
- *
- * It is modelled — rather than left a bare `String` — precisely so it cannot be compared against or
- * assigned to any of the canonical roles above. A millisecond-bearing string sorts *before* the same
- * instant without them (`"…:00.182Z" < "…:00Z"`, since `.` is `0x2E` and `Z` is `0x5A`), which is the
- * dangerous direction: fed to the floor's `maxOf` clamp such a value reads as EARLIER and loses,
- * silently lowering the capture floor and admitting photos the member excluded. A lexicographic compare
- * that mixes the two shapes is wrong in a way no test using round instants would ever show. Nothing in
- * the client reads it; the type exists to keep it that way. (`BackendEventDirectory` is where the shape is
- * normalized at the wire boundary, for exactly this reason.)
- */
-@Serializable(with = MillisInstantSerializer::class)
-@JvmInline
-value class MillisInstant(val iso: String) {
-    override fun toString(): String = iso
-}
-
 /** The underlying canonical string of any capture-date role — for logging and wire encoding only. */
 val CaptureCutoff.iso: String get() = at.iso
 
@@ -197,6 +178,3 @@ internal object EventEndSerializer :
 
 internal object DeletesAtSerializer :
     IsoSerializer<DeletesAt>("app.snapsync.model.DeletesAt", ::deletesAt, { it.at.iso })
-
-internal object MillisInstantSerializer :
-    IsoSerializer<MillisInstant>("app.snapsync.model.MillisInstant", ::MillisInstant, MillisInstant::iso)

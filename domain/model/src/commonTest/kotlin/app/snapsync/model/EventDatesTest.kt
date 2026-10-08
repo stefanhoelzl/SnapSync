@@ -78,16 +78,4 @@ class EventDatesTest {
             json.parseToJsonElement(json.encodeToString(EventConfig.serializer(), decoded)),
         )
     }
-
-    @Test
-    fun `a millisecond-bearing instant is modelled apart from the canonical roles`() {
-        // `createdAt` is minted by the backend's `toISOString()` and carries milliseconds, which sort
-        // BEFORE the same instant without them ('.' is 0x2E, 'Z' is 0x5A). That is the dangerous
-        // direction: a millisecond-bearing value fed to the floor's `maxOf` clamp reads as EARLIER and
-        // therefore loses, silently lowering the capture floor and admitting photos the member excluded.
-        // Mixing the two shapes in one lexicographic compare is wrong in a way no test using round
-        // instants would ever show — hence a separate type that cannot reach a capture-date compare.
-        assertTrue("2026-07-06T14:32:11.182Z" < "2026-07-06T14:32:11Z")
-        assertEquals("2026-07-06T14:32:11.182Z", MillisInstant("2026-07-06T14:32:11.182Z").iso)
-    }
 }

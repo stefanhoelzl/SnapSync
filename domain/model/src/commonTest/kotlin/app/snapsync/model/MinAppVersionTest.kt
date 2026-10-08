@@ -38,6 +38,7 @@ class MinAppVersionTest {
             """{"minAppVersion":""}""", // present but blank — a version nobody could install
             """{"minAppVersion":"   "}""", // whitespace only
             """{"minAppVersion":4}""", // the right key, the wrong type
+            """{"minAppVersion":["0.4"]}""", // the right key, not even a scalar
         )) {
             assertNull(minAppVersionFromRefusal(body), "body was: $body")
         }

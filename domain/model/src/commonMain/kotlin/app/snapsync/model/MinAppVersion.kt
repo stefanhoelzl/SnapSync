@@ -1,13 +1,8 @@
 package app.snapsync.model
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-
-private val refusalJson = Json { ignoreUnknownKeys = true }
-
-@Serializable
-private class RefusalBody(@SerialName("minAppVersion") val minAppVersion: String? = null)
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 /**
  * The minimum version out of a `426 Upgrade Required` body, or `null` when it does not carry one
@@ -30,8 +25,14 @@ private class RefusalBody(@SerialName("minAppVersion") val minAppVersion: String
  * that would have printed it says "a newer version is needed" instead, which is true whatever the cause.
  * Nothing branches on this value other than that one sentence, so no cause absorbed here can produce a
  * different consequence than any other.
+ *
+ * One field read out of the object, not a class decoded: the body is only ever read, and a `@Serializable` class
+ * would bring a writer nothing calls.
  */
 fun minAppVersionFromRefusal(body: String): String? =
-    runCatchingCancellable { refusalJson.decodeFromString(RefusalBody.serializer(), body).minAppVersion }
+    runCatchingCancellable { Json.parseToJsonElement(body).jsonObject["minAppVersion"] }
         .getOrNull()
+        .let { it as? JsonPrimitive }
+        ?.takeIf { it.isString }
+        ?.content
         ?.takeIf { it.isNotBlank() }

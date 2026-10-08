@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -55,8 +56,12 @@ sealed interface ConfigFileDecode {
     data class Foreign(val reason: String) : ConfigFileDecode
 }
 
+/**
+ * The versioned envelope. [payload] is optional to READ (an envelope without one is [ConfigFileDecode.Unusable]) but
+ * always written: this build only ever writes an envelope that has one.
+ */
 @Serializable
-private class ConfigFileEnvelope(val v: Int, val payload: JsonElement? = null)
+private class ConfigFileEnvelope(val v: Int, @EncodeDefault val payload: JsonElement? = null)
 
 private val configFileJson = Json { ignoreUnknownKeys = true }
 
