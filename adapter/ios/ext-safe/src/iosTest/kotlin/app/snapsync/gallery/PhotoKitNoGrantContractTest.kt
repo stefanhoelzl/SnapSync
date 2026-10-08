@@ -2,11 +2,13 @@ package app.snapsync.gallery
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.GalleryReaderContract
 import app.snapsync.contracts.GalleryReaderState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.SeededLibrary
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.GalleryReader
@@ -35,9 +37,9 @@ class PhotoKitNoGrantContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(GalleryReaderState.NO_GRANT)
 
-        override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
+        override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
             if (state != GalleryReaderState.NO_GRANT || !holdsNoGrant()) return Entered.Unreachable(unreachable)
-            return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract"))))
+            return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))
         }
     }
 

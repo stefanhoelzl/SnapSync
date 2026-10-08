@@ -2,10 +2,12 @@ package app.snapsync.keychain
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.SecureStore
 import kotlin.test.Test
@@ -26,9 +28,9 @@ class IosSecureStoreContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(SecureStoreState.INACCESSIBLE)
 
-        override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> =
+        override fun create(state: SecureStoreState, clauseId: String, log: CallLog): Entered<SecureStore> =
             if (state == SecureStoreState.INACCESSIBLE) {
-                Entered.Ready(IosSecureStore())
+                Entered.Ready(IosSecureStore().recorded(log))
             } else {
                 Entered.Unreachable("unentitled test executable: securityd refuses every Keychain call (-25291)")
             }

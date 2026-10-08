@@ -2,10 +2,12 @@ package app.snapsync.keychain
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.SecureStore
 import app.snapsync.testsupport.newTempDirectory
@@ -32,9 +34,9 @@ class AppGroupFileSecureStoreContractTest {
             SecureStoreState.HOLDING_BACKGROUND_READABLE,
         )
 
-        override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
+        override fun create(state: SecureStoreState, clauseId: String, log: CallLog): Entered<SecureStore> {
             if (state == SecureStoreState.INACCESSIBLE) {
-                return Entered.Ready(AppGroupFileSecureStore(directory = null))
+                return Entered.Ready(AppGroupFileSecureStore(directory = null).recorded(log))
             }
             if (state == SecureStoreState.HOLDING_RESTRICTED) {
                 return Entered.Unreachable("a file store is always written background-readable")
@@ -51,7 +53,7 @@ class AppGroupFileSecureStoreContractTest {
                     SecureStoreContract.seedValue(clauseId),
                 )
             }
-            return Entered.Ready(AppGroupFileSecureStore(dir)) { removeDirectory(dir) }
+            return Entered.Ready(AppGroupFileSecureStore(dir).recorded(log)) { removeDirectory(dir) }
         }
     }
 

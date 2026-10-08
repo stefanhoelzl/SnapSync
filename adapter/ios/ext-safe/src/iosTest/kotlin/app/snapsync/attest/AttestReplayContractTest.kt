@@ -7,6 +7,7 @@ import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
@@ -39,10 +40,10 @@ class AttestReplayContractTest {
         override val kind = BindingKind.Replay
         override val reaches = setOf(DeviceIntegrityState.AVAILABLE)
 
-        override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> {
+        override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> {
             if (state !in reaches) return Entered.Unreachable("the app process on a device has App Attest")
             return replayerFor(RECORDINGS, KEY, clauseId) { replayer ->
-                integrityInState(ReplayingAppAttestApi(replayer), state, afterDispose = replayer::assertExhausted)
+                integrityInState(ReplayingAppAttestApi(replayer), state, log, afterDispose = replayer::assertExhausted)
             }
         }
     }
@@ -55,13 +56,14 @@ class AttestReplayContractTest {
         override val kind = BindingKind.Replay
         override val reaches = setOf(AttestStoreState.EMPTY, AttestStoreState.HOLDING)
 
-        override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> {
+        override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> {
             if (state !in reaches) return Entered.Unreachable("the entitled app runs unlocked")
             return replayerFor(RECORDINGS, STORE, clauseId) { replayer ->
                 attestStoreInState(
                     ReplayingKeychainApi(replayer),
                     state,
                     clauseId,
+                    log,
                     afterDispose = replayer::assertExhausted,
                 )
             }

@@ -4,18 +4,20 @@ package app.snapsync.files
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FilesContract
 import app.snapsync.contracts.FilesState
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Files
 import app.snapsync.testsupport.newTempDirectory
 import app.snapsync.testsupport.removeDirectory
+import kotlin.test.Test
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.posix.chmod
-import kotlin.test.Test
 
 /**
  * [FilesContract] against the real [IosFiles], two temp directories standing for the two areas. [FilesState.DENIED]
@@ -30,15 +32,15 @@ class IosFilesContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED, FilesState.UNAVAILABLE)
 
-        override fun create(state: FilesState, clauseId: String): Entered<Files> {
-            if (state == FilesState.UNAVAILABLE) return Entered.Ready(IosFiles())
+        override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
+            if (state == FilesState.UNAVAILABLE) return Entered.Ready(IosFiles().recorded(log))
             // Not entered yet: the JVM binding holds that clause (the contracts track extends it here).
             if (state == FilesState.DENIED_DIRECTORY) {
                 return Entered.Unreachable("an unlistable directory is not entered here yet")
             }
             val shared = newTempDirectory()
             val private = newTempDirectory()
-            val files = IosFiles(sharedRoot = shared, privateRoot = private)
+            val files = IosFiles(sharedRoot = shared, privateRoot = private).recorded(log)
             val path = FilesContract.path(clauseId)
             when (state) {
                 FilesState.HOLDING -> files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))

@@ -2,9 +2,11 @@
 
 package app.snapsync.keychain.contract
 
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.keychain.IosSecureStore
 import app.snapsync.keychain.KeychainApi
 import app.snapsync.keychain.SHARED_KEYCHAIN_ACCESS_GROUP
@@ -45,14 +47,16 @@ internal const val DEVICE_UNREACHABLE_INACCESSIBLE =
 private const val SERVICE = "app.snapsync.contract"
 
 /**
- * A fresh [IosSecureStore] over [keychain] in [state]. Starts with a delete — a clause is never allowed to see
- * an item a previous, interrupted run left behind — and deletes again on dispose. [afterDispose] runs last
- * (the replay binding checks the recording was exhausted there).
+ * A fresh [IosSecureStore] over [keychain] in [state], handed to the clause through its recording proxy over [log].
+ * Starts with a delete — a clause is never allowed to see an item a previous, interrupted run left behind — and
+ * deletes again on dispose, through the bare store: cleanup is not the clause's, so it must not satisfy a claim.
+ * [afterDispose] runs last (the replay binding checks the recording was exhausted there).
  */
 internal fun keychainInState(
     keychain: KeychainApi,
     state: SecureStoreState,
     clauseId: String,
+    log: CallLog,
     afterDispose: () -> Unit = {},
 ): Entered<SecureStore> {
     if (state == SecureStoreState.INACCESSIBLE) return Entered.Unreachable(DEVICE_UNREACHABLE_INACCESSIBLE)
@@ -60,7 +64,8 @@ internal fun keychainInState(
     // committed recording was taken at.
     val slot = SecureStoreContract.slot(clauseId)
     check(slot.service == SERVICE && slot.shared) { "the contract's slot moved off the recorded address: $slot" }
-    val store = IosSecureStore(keychain)
+    val bare = IosSecureStore(keychain)
+    val store = bare.recorded(log)
     store.delete(slot)
     val seed = SecureStoreContract.seedValue(clauseId)
     when (state) {
@@ -72,7 +77,7 @@ internal fun keychainInState(
         else -> Unit
     }
     return Entered.Ready(store) {
-        store.delete(slot)
+        bare.delete(slot)
         afterDispose()
     }
 }

@@ -2,6 +2,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.UploadContract
@@ -37,7 +38,7 @@ class IosPhotoKitUploadReplayContractTest {
             UploadState.PRESENTED_RETRY_SPENT,
         )
 
-        override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
             if (state !in reaches) return Entered.Unreachable(EXTENSION_ONLY_PRESENTED)
             return replayerFor(RECORDINGS, name, clauseId, recordedWhere = "inside the extension") { replayer ->
                 // The preparation the device made across operating-system calls, made again here in one go, in order.
@@ -53,6 +54,7 @@ class IosPhotoKitUploadReplayContractTest {
                     api = ReplayingUploadJobApi(replayer),
                     objects = replayingFixtureObjects(replayer),
                     photo = ReplayPhoto,
+                    log = log,
                     afterDispose = replayer::assertExhausted,
                 )
             }

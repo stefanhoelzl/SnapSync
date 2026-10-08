@@ -4,10 +4,12 @@ import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.IosSecureStore
 import app.snapsync.ports.AttestStore
@@ -32,9 +34,9 @@ class AttestContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(DeviceIntegrityState.UNAVAILABLE)
 
-        override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> =
+        override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =
             if (state == DeviceIntegrityState.UNAVAILABLE) {
-                Entered.Ready(IosDeviceIntegrity())
+                Entered.Ready(IosDeviceIntegrity().recorded(log))
             } else {
                 Entered.Unreachable("a simulator has no App Attest: DCAppAttestService.isSupported is false")
             }
@@ -48,9 +50,9 @@ class AttestContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(AttestStoreState.INACCESSIBLE)
 
-        override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> =
+        override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> =
             if (state == AttestStoreState.INACCESSIBLE) {
-                Entered.Ready(AttestState(IosSecureStore()))
+                Entered.Ready(AttestState(IosSecureStore()).recorded(log))
             } else {
                 Entered.Unreachable("unentitled test executable: securityd refuses every Keychain call (-25291)")
             }

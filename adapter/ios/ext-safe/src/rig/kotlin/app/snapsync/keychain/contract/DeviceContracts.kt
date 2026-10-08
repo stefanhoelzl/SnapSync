@@ -9,6 +9,7 @@ import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Contract
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
@@ -43,12 +44,12 @@ internal class DeviceKeychainBinding(private val recorder: Recorder) : Binding<S
         SecureStoreState.HOLDING_RESTRICTED,
     )
 
-    override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
+    override fun create(state: SecureStoreState, clauseId: String, log: CallLog): Entered<SecureStore> {
         // Opened only for a state this host presents: a block for a clause that never ran here would read,
         // to the coverage gate, as a real host having run it.
         if (state !in reaches) return Entered.Unreachable(DEVICE_UNREACHABLE_INACCESSIBLE)
         recorder.open(clauseId)
-        return keychainInState(RecordingKeychainApi(SystemKeychainApi, recorder), state, clauseId)
+        return keychainInState(RecordingKeychainApi(SystemKeychainApi, recorder), state, clauseId, log)
     }
 }
 
@@ -62,10 +63,10 @@ internal class DeviceIntegrityBinding(private val recorder: Recorder) : Binding<
     override val kind = BindingKind.Live
     override val reaches = setOf(DeviceIntegrityState.AVAILABLE)
 
-    override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> {
-        if (state !in reaches) return integrityInState(SystemAppAttestApi, state)
+    override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> {
+        if (state !in reaches) return integrityInState(SystemAppAttestApi, state, log)
         recorder.open(clauseId)
-        return integrityInState(RecordingAppAttestApi(SystemAppAttestApi, recorder), state)
+        return integrityInState(RecordingAppAttestApi(SystemAppAttestApi, recorder), state, log)
     }
 }
 
@@ -79,10 +80,10 @@ internal class DeviceAttestStoreBinding(private val recorder: Recorder) : Bindin
     override val kind = BindingKind.Live
     override val reaches = setOf(AttestStoreState.EMPTY, AttestStoreState.HOLDING)
 
-    override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> {
+    override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> {
         if (state !in reaches) return Entered.Unreachable(DEVICE_UNREACHABLE_INACCESSIBLE)
         recorder.open(clauseId)
-        return attestStoreInState(RecordingKeychainApi(SystemKeychainApi, recorder), state, clauseId)
+        return attestStoreInState(RecordingKeychainApi(SystemKeychainApi, recorder), state, clauseId, log)
     }
 }
 

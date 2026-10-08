@@ -7,6 +7,7 @@ import app.snapsync.contract.extension.landedAt
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Clause
 import app.snapsync.contracts.Contract
 import app.snapsync.contracts.Entered
@@ -18,6 +19,7 @@ import app.snapsync.contracts.Recording
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.contracts.runEntry
@@ -111,18 +113,19 @@ internal fun prepareCall(state: UploadState, clauseId: String, call: Int, api: U
     }
 }
 
-/** The subject for [state]'s clause: the queue over [api]. */
+/** The subject for [state]'s clause: the queue over [api], handed to the clause through its recording proxy over [log]. */
 internal fun photoKitUploadInState(
     state: UploadState,
     api: UploadJobApi,
     objects: FixtureObjects,
     photo: Any,
+    log: CallLog,
     afterDispose: () -> Unit = {},
 ): Entered<UploadUnderTest> {
     if (state !in UploadContract.PRESENTED) return Entered.Unreachable(EXTENSION_ONLY_PRESENTED)
     return Entered.Ready(
         UploadUnderTest(
-            upload = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api),
+            upload = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api).recorded(log),
             base = CONTRACT_UPLOAD_BASE,
             usable = { UploadSource.Resource(photo) },
             // A file, which the PhotoKit queue does not take: it uploads a library resource.
@@ -155,7 +158,7 @@ internal class ExtensionPhotoKitUploadBinding(private val recorder: Recorder) : 
     override val reaches =
         setOf(UploadState.PRESENTED_SUCCEEDED, UploadState.PRESENTED_REFUSED_ONCE, UploadState.PRESENTED_RETRY_SPENT)
 
-    override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+    override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
         recorder.resume(clauseId)
         return photoKitUploadInState(
             state = state,
@@ -164,6 +167,7 @@ internal class ExtensionPhotoKitUploadBinding(private val recorder: Recorder) : 
                 recorder,
             ) { route -> landedAt(route)?.let { Landed(it.ifEmpty { null }) } },
             photo = newestPhotoResource(),
+            log = log,
         )
     }
 }
