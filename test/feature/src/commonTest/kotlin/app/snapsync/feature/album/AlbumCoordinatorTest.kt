@@ -167,7 +167,7 @@ class AlbumCoordinatorTest {
     }
 
     @Test
-    fun `received photos are added to a collection, which has no filled state`() = runTest {
+    fun `received photos are added to a collection which has no filled state`() = runTest {
         // Only a folder album turns "emptied" into "deleted"; a collection is never marked filled.
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
         val store = albumMap().apply { put(event, "album-X") }
