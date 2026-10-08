@@ -106,6 +106,16 @@ class LogTailServiceTest {
         assertNull(service().tail(LogTailService.Process.EXTENSION, 4096))
     }
 
+    /** The rolled `.1` sibling is the log BEFORE the last roll: stale, and a dump that sent it would mislead. */
+    @Test
+    fun `only a rolled sibling reads as null`() = runTest {
+        private.put("debug.log.1", "\nthe app's previous log\n")
+        shared.put("ext-debug.log.1", "\nthe extension's previous log\n")
+
+        assertNull(service().tail(LogTailService.Process.APP, 4096))
+        assertNull(service().tail(LogTailService.Process.EXTENSION, 4096))
+    }
+
     @Test
     fun `an empty file reads as null`() = runTest {
         private.put("debug.log", "")

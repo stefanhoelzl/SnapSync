@@ -120,7 +120,7 @@ class LedgerService(
         val applied = queries.transactionWithResult {
             queries.recordUnlessSettled(
                 eventId, entry.key, entry.assetId, entry.state,
-                entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
+                entry.creationDate, wireOf(entry.role), entry.contentType, entry.originalFilename,
                 entry.destinationPath, DONE_STATES,
             )
             queries.changedRows().executeAsOne() > 0L
@@ -140,7 +140,7 @@ class LedgerService(
             entries.count { entry ->
                 queries.recordUnlessSettled(
                     eventId, entry.key, entry.assetId, entry.state,
-                    entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
+                    entry.creationDate, wireOf(entry.role), entry.contentType, entry.originalFilename,
                     entry.destinationPath, DONE_STATES,
                 )
                 queries.changedRows().executeAsOne() > 0L
@@ -199,7 +199,7 @@ class LedgerService(
         queries.backfillManifestDetail(
             eventId = eventId,
             creationDate = entry.creationDate,
-            role = entry.role?.wire ?: "",
+            role = wireOf(entry.role),
             contentType = entry.contentType,
             originalFilename = entry.originalFilename,
             key = entry.key,
@@ -314,7 +314,7 @@ class LedgerService(
             entries.forEach {
                 queries.insert(
                     eventId, it.key, it.assetId, it.state,
-                    it.creationDate, it.role?.wire ?: "", it.contentType, it.originalFilename,
+                    it.creationDate, wireOf(it.role), it.contentType, it.originalFilename,
                     it.destinationPath,
                 )
             }
@@ -359,6 +359,9 @@ class LedgerService(
     }
 
     /** `""` is the not-yet-enriched sentinel; every other value is a wire token the enum knows. */
+    /** A role's stored text; a row with no role stores the empty string, which [roleOrNull] reads back as none. */
+    private fun wireOf(role: ResourceRole?): String = if (role == null) "" else role.wire
+
     private fun roleOrNull(wire: String): ResourceRole? =
         ResourceRole.entries.firstOrNull { it.wire == wire }
 }

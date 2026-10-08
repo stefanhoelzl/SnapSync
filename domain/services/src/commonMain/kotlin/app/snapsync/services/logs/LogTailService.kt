@@ -34,7 +34,9 @@ class LogTailService(private val files: Files) {
             Process.APP -> FileArea.PRIVATE to APP_LOG_FILE_NAME
             Process.EXTENSION -> FileArea.SHARED to EXTENSION_LOG_FILE_NAME
         }
-        val tail = (files.readTail(area, name, maxBytes) as? FileResult.Ok)?.value ?: return null
+        val read = files.readTail(area, name, maxBytes)
+        if (read !is FileResult.Ok) return null
+        val tail = read.value
         if (tail.bytes.isEmpty()) return null
         // The log is UTF-8 text; a tail may start mid-codepoint, which decodes to a replacement char and is
         // discarded with the partial first line just below.

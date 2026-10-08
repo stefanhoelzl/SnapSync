@@ -54,14 +54,14 @@ class DownloadService(databases: Databases) : SuppressionSource {
     override suspend fun readiness(): SuppressionReadiness = SuppressionReadiness.Ready
 
     override suspend fun suppressedLocalIds(): Set<AssetId> =
-        q.suppressedLocalIds().executeAsList().mapNotNull { it }.toSet()
+        q.suppressedLocalIds().executeAsList().toSet()
 
     /**
      * The created local id of every imported photo of [eventId]'s union — the refs a reconcile of that event recorded,
      * and the photos adopted for it ([planAll], [adoptAll]). A photo two events share answers for both.
      */
     suspend fun importedLocalIdsOf(eventId: String): Set<AssetId> =
-        q.selectImportedLocalIdsOfEvent(eventId).executeAsList().mapNotNull { it }.toSet()
+        q.selectImportedLocalIdsOfEvent(eventId).executeAsList().toSet()
 
     /**
      * True if this foreign asset is **settled** — imported, or settled as permanently unimportable — so

@@ -31,8 +31,10 @@ class StagingServiceTest {
     }
 
     @Test
-    fun `locate hands out the platform path of a relative staged path`() {
+    fun `locate hands out the platform path of a relative staged path and creates nothing`() = runTest {
         assertEquals("mem:/shared/download-staging/a.heic", staging.locate("download-staging/a.heic"))
+        assertEquals(staging.locate("download-staging/a.heic"), staging.locate("download-staging/a.heic"))
+        assertFalse(staging.allPresent(listOf("download-staging/a.heic")), "naming a file does not make one")
     }
 
     /**
@@ -44,6 +46,46 @@ class StagingServiceTest {
         assertFailsWith<IllegalStateException> {
             StagingService(inMemoryFiles(shared = null)).locate("download-staging/a.heic")
         }
+    }
+
+    // ---- stage ------------------------------------------------------------------------------
+
+    @Test
+    fun `a finished download's bytes are taken over under their staged path`() = runTest {
+        val private = mutableMapOf("tmp/dl-1" to "bytes".encodeToByteArray())
+        val staging = StagingService(inMemoryFiles(shared = shared, private = private))
+
+        assertTrue(staging.stage("mem:/private/tmp/dl-1", "download-staging/a.heic"))
+
+        assertTrue(staging.allPresent(listOf("download-staging/a.heic")))
+        assertFalse("tmp/dl-1" in private, "the platform's temporary file was moved, not copied")
+    }
+
+    /** Not kept is not lost: the row stays planned and a later reconcile downloads the photo again. */
+    @Test
+    fun `bytes that could not be kept answer false`() {
+        assertFalse(
+            staging.stage("mem:/private/tmp/gone", "download-staging/a.heic"),
+            "the platform already removed it",
+        )
+        assertFalse(
+            StagingService(inMemoryFiles(shared = null)).stage("mem:/private/tmp/dl-1", "download-staging/a.heic"),
+        )
+    }
+
+    // ---- list -------------------------------------------------------------------------------
+
+    @Test
+    fun `list names every staged file and only those`() {
+        stage("download-staging/DEV-A/a.heic", "download-staging/b.mov", "eventconfig.json")
+
+        assertEquals(listOf("download-staging/DEV-A/a.heic", "download-staging/b.mov"), staging.list())
+    }
+
+    /** A sweep that read a failed listing as empty would find nothing to keep. */
+    @Test
+    fun `a listing that cannot be read is null - never empty`() {
+        assertEquals(null, StagingService(inMemoryFiles(shared = null)).list())
     }
 
     // ---- release ------------------------------------------------------------------------------
