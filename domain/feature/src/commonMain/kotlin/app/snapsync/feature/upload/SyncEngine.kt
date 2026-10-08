@@ -55,24 +55,18 @@ class SyncEngine(
      * Logs are diagnostics, never asserted: the decision methods stay pure, all logging lives here at
      * the dispatch seam.
      */
-    suspend fun handle(event: SyncEvent): SyncDecision {
-        if (event is SyncEvent.UploadFailed) {
-            log.w { "failed key=${event.request.resource.filename} error=${event.error}" }
+    suspend fun handle(event: SyncEvent): SyncDecision = when (event) {
+        is SyncEvent.ResourceChanged -> decide(event.resource).also { if (it is SyncDecision.Upload) logWork("Upload", it) }
+        is SyncEvent.UploadFailed -> handle(event)
+        is SyncEvent.UploadStarted -> started(event.request).also {
+            log.i { "started key=${event.request.resource.filename}" }
         }
-        val decision = when (event) {
-            is SyncEvent.ResourceChanged -> decide(event.resource)
-            is SyncEvent.UploadFailed -> retry(event.request)
-            is SyncEvent.UploadStarted -> started(event.request)
-        }
-        when (decision) {
-            is SyncDecision.Upload -> logWork("Upload", decision)
-            is SyncDecision.Retry -> logWork("Retry", decision)
-            SyncDecision.AlreadyUploaded -> when (event) {
-                is SyncEvent.UploadStarted -> log.i { "started key=${event.request.resource.filename}" }
-                else -> Unit
-            }
-        }
-        return decision
+    }
+
+    /** [handle] of a failure, typed by the policy: retry forever, so a failure always answers [SyncDecision.Retry]. */
+    suspend fun handle(event: SyncEvent.UploadFailed): SyncDecision.Retry {
+        log.w { "failed key=${event.request.resource.filename} error=${event.error}" }
+        return retry(event.request).also { logWork("Retry", it) }
     }
 
     private fun logWork(arm: String, decision: SyncDecision.Work) {
@@ -120,7 +114,7 @@ class SyncEngine(
             LedgerState.DISCOVERED -> true
         }
 
-    private suspend fun retry(failed: UploadRequest): SyncDecision {
+    private suspend fun retry(failed: UploadRequest): SyncDecision.Retry {
         val resource = failed.resource
         // The retry's credential comes from the store of record: the failure may be the `401` of a token another
         // process has renewed since this process last read it (capability `background-upload`).

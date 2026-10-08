@@ -17,9 +17,6 @@ data class DownloadProgress(
     /** Whether these counts came from a refresh at all. See [UNREAD]. */
     val read: Boolean = true,
 ) {
-    /** Nothing foreign to collect yet (the download direction is settled). */
-    val isEmpty: Boolean get() = total == 0
-
     companion object {
         /**
          * The value before any successful refresh: **un-read**, not an event with nothing to receive.

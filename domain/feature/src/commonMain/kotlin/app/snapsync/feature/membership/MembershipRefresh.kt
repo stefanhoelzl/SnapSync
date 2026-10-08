@@ -84,11 +84,10 @@ class MembershipRefresh(
             // The backend's POSITIVE word that the event finished and its photos are gone (capability
             // `manage-membership`): unlike a bare "not found" it cannot be manufactured by a missing row or a
             // misconfigured zone, so it needs no second witness — the membership ends at once, from any wake.
-            is JoinLoad.Found if fetched.completion.completed -> {
+            is JoinLoad.Found -> if (fetched.completion.completed) {
                 leaveEvent.leave()
                 RefreshOutcome.COMPLETED
-            }
-            is JoinLoad.Found -> {
+            } else {
                 var next = current
                 // Name CONVERGENCE on the served name — not a fill for a membership that lacks one:
                 // every membership carries a name (capability `join-event`, no decode default), so this
