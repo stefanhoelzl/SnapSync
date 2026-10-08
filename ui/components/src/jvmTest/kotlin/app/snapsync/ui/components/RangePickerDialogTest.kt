@@ -17,6 +17,7 @@ import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.picker_save
 import app.snapsync.ui.components.resources.share_range_title
 import app.snapsync.ui.components.resources.wheel_end_hour
+import app.snapsync.ui.components.resources.wheel_not_set
 import app.snapsync.ui.components.resources.wheel_start_hour
 import kotlinx.datetime.LocalDateTime
 import org.junit.Rule
@@ -117,5 +118,16 @@ class RangePickerDialogTest {
                 )
             }
         }
+    }
+
+    @Test
+    fun `a new range on the event's last day has no end time, and OK waits`() {
+        setDialog()
+        // Restarted at 18:00 on the 20th, the event's own end: no end on that day comes after the start.
+        rule.onNodeWithContentDescription("Friday, 20 March 2026").performClick()
+        rule.onNodeWithContentDescription("Friday, 20 March 2026").performClick()
+        rule.onNodeWithContentDescription(str(Res.string.wheel_end_hour), useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, str(Res.string.wheel_not_set)))
+        rule.onNodeWithText(str(Res.string.picker_save)).assertIsNotEnabled()
     }
 }
