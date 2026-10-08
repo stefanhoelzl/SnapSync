@@ -170,6 +170,12 @@ class DownloadControllerTest {
         shared = paths.associateWith { byteArrayOf(1) }.toMutableMap(),
     )
 
+    /** The event album as the controller sees it: the album an import is filed into, and the report once it landed. */
+    private class EventAlbumHooks(
+        val current: suspend () -> AlbumId? = { null },
+        val onImported: suspend (AlbumId) -> Unit = {},
+    )
+
     /**
      * The controller over the REAL download pieces: the store over in-memory SQLite, the jobs over the recorded
      * [download] port, and the staging area, the importer's locating and the byte release all over one [disk].
@@ -189,8 +195,7 @@ class DownloadControllerTest {
         checks: EventChecks = EventChecks(inMemoryPreferences(), now = { NOW }),
         readyToImport: suspend () -> Boolean = { true },
         keyHeld: () -> Boolean = { true },
-        eventAlbum: suspend () -> AlbumId? = { null },
-        onImportedIntoAlbum: suspend (AlbumId) -> Unit = {},
+        album: EventAlbumHooks = EventAlbumHooks(),
     ): DownloadController {
         val staging = StagingService(disk)
         return DownloadController(
@@ -201,8 +206,8 @@ class DownloadControllerTest {
                 staging,
             ),
             GalleryImporter(importer, staging), presence,
-            eventAlbum = eventAlbum,
-            onImportedIntoAlbum = onImportedIntoAlbum,
+            eventAlbum = album.current,
+            onImportedIntoAlbum = album.onImported,
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,
@@ -1763,8 +1768,7 @@ class DownloadControllerTest {
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))),
             importer = importer,
-            eventAlbum = { "ALBUM-1" },
-            onImportedIntoAlbum = { reported += it },
+            album = EventAlbumHooks(current = { "ALBUM-1" }, onImported = { reported += it }),
         )
         c.reconcile("event", UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
