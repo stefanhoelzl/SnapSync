@@ -70,9 +70,7 @@ import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 /**
@@ -163,13 +161,16 @@ class ScreenWordsTest {
         val from = LocalDateTime(2026, 7, 6, 12, 0)
         fun draft(name: String, endDay: LocalDate, until: LocalTime) =
             CreateDraft(name, EventRange(from, endDay, until, endPending = false))
-        assertTrue(createEnabled(draft("Party", from.date, LocalTime(13, 0)), cutoff))
-        assertFalse(createEnabled(draft(" ", from.date, LocalTime(13, 0)), cutoff), "no name")
-        assertFalse(createEnabled(CreateDraft("Party", EventRange(from)), cutoff), "no end")
+        assertEquals(
+            LocalDateTime(2026, 7, 6, 13, 0),
+            creatableEnd(draft("Party", from.date, LocalTime(13, 0)), cutoff),
+        )
+        assertNull(creatableEnd(draft(" ", from.date, LocalTime(13, 0)), cutoff), "no name")
+        assertNull(creatableEnd(CreateDraft("Party", EventRange(from)), cutoff), "no end")
         // What the picker cannot produce is still refused rather than submitted: an end before the start, or past the
         // event window (capability `create-event`).
-        assertFalse(createEnabled(draft("Party", from.date, LocalTime(11, 0)), cutoff), "inverted")
-        assertFalse(createEnabled(draft("Party", LocalDate(2026, 9, 6), LocalTime(13, 0)), cutoff), "too long")
+        assertNull(creatableEnd(draft("Party", from.date, LocalTime(11, 0)), cutoff), "inverted")
+        assertNull(creatableEnd(draft("Party", LocalDate(2026, 9, 6), LocalTime(13, 0)), cutoff), "too long")
     }
 
     @Test

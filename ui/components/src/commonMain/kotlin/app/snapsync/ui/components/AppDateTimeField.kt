@@ -80,10 +80,11 @@ internal fun RangePickerDialog(
     PickerDialogShell(
         title = title,
         onDismiss = onDismiss,
-        onConfirm = {
-            end?.let { onConfirm(range.from, it) }
+        onConfirm = end?.let { until ->
+            {
+                onConfirm(range.from, until)
+            }
         },
-        confirmEnabled = end != null,
     ) {
         if (presets.isNotEmpty()) PresetChips(presets)
         // A join or settings range always has its end time, so the clock's hour is never needed to fill one.
@@ -142,8 +143,7 @@ private fun PresetChips(presets: List<RangePresetChip>) {
 private fun PickerDialogShell(
     title: String,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-    confirmEnabled: Boolean,
+    onConfirm: (() -> Unit)?,
     content: @Composable () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -187,7 +187,6 @@ private fun PickerDialogShell(
                             PrimaryButton(
                                 label = stringResource(Res.string.picker_save),
                                 onClick = onConfirm,
-                                enabled = confirmEnabled,
                             )
                         }
                     }

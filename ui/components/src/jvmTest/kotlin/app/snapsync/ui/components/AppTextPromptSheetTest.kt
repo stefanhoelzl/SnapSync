@@ -1,5 +1,7 @@
 package app.snapsync.ui.components
 
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -49,7 +51,21 @@ class AppTextPromptSheetTest {
         assertEquals(0, dismissed)
     }
 
-    private fun setSheet(busy: Boolean) {
+    @Test
+    fun `while busy Save is unavailable even with a text worth sending`() {
+        setSheet(busy = true, submitUnchanged = true)
+        rule.onNodeWithText("Save").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `while idle a text worth sending can be saved`() {
+        var saved: String? = null
+        setSheet(busy = false, submitUnchanged = true, onConfirm = { saved = it })
+        rule.onNodeWithText("Save").assertIsEnabled().performClick()
+        assertEquals("Party", saved)
+    }
+
+    private fun setSheet(busy: Boolean, submitUnchanged: Boolean = false, onConfirm: (String) -> Unit = {}) {
         rule.setContent {
             AppTheme {
                 AppTextPromptSheet(
@@ -59,8 +75,13 @@ class AppTextPromptSheetTest {
                         cancelLabel = CANCEL,
                         body = "Everyone sees the new name.",
                     ),
-                    field = PromptField(placeholder = "Event name", initialValue = "Party", busy = busy),
-                    onConfirm = {},
+                    field = PromptField(
+                        placeholder = "Event name",
+                        initialValue = "Party",
+                        busy = busy,
+                        submitUnchanged = submitUnchanged,
+                    ),
+                    onConfirm = onConfirm,
                     onDismiss = { dismissed++ },
                 )
             }

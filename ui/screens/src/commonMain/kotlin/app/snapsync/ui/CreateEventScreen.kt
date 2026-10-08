@@ -82,7 +82,7 @@ private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWho
  * photos (capability `photo-sharing`). Create is disabled until [nextStep] is complete; a line ABOVE Create
  * names the next missing step — a button that leads to it: the name field, focused with the keyboard up, or
  * the end-time wheels, brought into view and outlined — and turns into the event's duration once there is
- * none. The picker cannot produce an inverted or over-long range, so the window guards in [createEnabled]
+ * none. The picker cannot produce an inverted or over-long range, so the window guards in [creatableEnd]
  * only restate it.
  *
  * A returned failure is a *submission* failure (the server was unreachable or rejected it), not the current
@@ -189,13 +189,14 @@ private fun CreateActions(
             is CreateStep.Complete -> null
         }
         StatusHint(nextStepLine(step, draft.range.from, cutoff).text(), onClick = toStep)
-        val complete = step as? CreateStep.Complete
+        val end = creatableEnd(draft, cutoff)
         PrimaryButton(
             label = stringResource(Res.string.create_button),
-            onClick = {
-                if (complete != null) callbacks.onCreateEvent(draft.name, draft.range.from, complete.until)
+            onClick = if (end != null && state.network == null) {
+                { callbacks.onCreateEvent(draft.name, draft.range.from, end) }
+            } else {
+                null
             },
-            enabled = createEnabled(draft, cutoff) && state.network == null,
         )
         val network = state.network
         if (network != null) {
@@ -229,12 +230,13 @@ internal fun nextStepLine(step: CreateStep, from: LocalDateTime, cutoff: CutoffF
 }
 
 /**
- * Create is enabled only for a complete draft. The window checks restate what the picker already cannot
- * produce (an inverted or over-long range), so a regression there is refused rather than submitted.
+ * The end a draft may be created with, or `null` while Create is not offered: only a complete draft has one. The
+ * window checks restate what the picker already cannot produce (an inverted or over-long range), so a regression
+ * there is refused rather than submitted.
  */
-internal fun createEnabled(draft: CreateDraft, cutoff: CutoffFormatter): Boolean {
-    val complete = draft.nextStep() as? CreateStep.Complete ?: return false
-    return draft.range.from < complete.until && cutoff.fitsEventWindow(draft.range.from, complete.until)
+internal fun creatableEnd(draft: CreateDraft, cutoff: CutoffFormatter): LocalDateTime? {
+    val complete = draft.nextStep() as? CreateStep.Complete ?: return null
+    return complete.until.takeIf { draft.range.from < it && cutoff.fitsEventWindow(draft.range.from, it) }
 }
 
 /**
