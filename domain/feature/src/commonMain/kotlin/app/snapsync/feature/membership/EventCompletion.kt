@@ -85,11 +85,9 @@ class EventCompletion(
         checks.stamp(EventCheck.CLOSE, eventId)
         when (refresh.refresh(eventId, directory.fetch(eventId).toJoinLoad())) {
             RefreshOutcome.COMPLETED, RefreshOutcome.ABSENT -> return CompletionOutcome.LEFT
-            RefreshOutcome.INCONCLUSIVE -> return CompletionOutcome.WAITING
-            RefreshOutcome.REFRESHED -> Unit
+            RefreshOutcome.INCONCLUSIVE, RefreshOutcome.REFRESHED -> return CompletionOutcome.WAITING
+            RefreshOutcome.CLOSED -> Unit
         }
-        val after = config.config.value
-        if (after?.eventId != eventId || !after.closed) return CompletionOutcome.WAITING
 
         val final = published(eventId)?.takeIf { it.final } ?: return CompletionOutcome.WAITING
         val declared = final.assets.mapTo(mutableSetOf()) { it.assetId }
@@ -98,6 +96,13 @@ class EventCompletion(
         if (!ownArrived) return CompletionOutcome.WAITING
         val received = runCatchingCancellable { everythingReceived(eventId) }.getOrDefault(false)
         if (!received) return CompletionOutcome.WAITING
+        // The reads above take time — the union's is a full one, over the network — and a member's own join or leave
+        // can land meanwhile. The leave tears down whatever is configured, so it runs only while that is still the
+        // membership this step found finished, never the one that replaced it.
+        if (config.config.value?.eventId != eventId) {
+            log.i { "event $eventId was left or replaced while its completion was checked — nothing to leave" }
+            return CompletionOutcome.WAITING
+        }
 
         log.i { "event $eventId is closed and this device has everything — leaving it" }
         leaveEvent.leave()
@@ -118,7 +123,10 @@ enum class CompletionOutcome {
     /** The event's range has not ended (or its end is not known yet): nothing can close. */
     NOT_ENDED,
 
-    /** Ended, and still waiting — for the others to settle, for the close, or for this device's own photos. */
+    /**
+     * Ended, and still waiting — for the others to settle, for the close, or for this device's own photos; or the
+     * membership was left or replaced while the step checked it, and there is nothing of it left to leave.
+     */
     WAITING,
 
     /** The membership ended: the event completed, or it closed and this device had everything. */
