@@ -3,9 +3,8 @@ plugins {
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
-    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
-    id("snapsync.coverage")
+    // The zero coverage gate (`docs/architecture.md`, "Coverage"): no instruction and no branch missed.
+    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
 }
@@ -137,54 +136,8 @@ kotlin {
     }
 }
 
-// Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes.
-// The crediting edge that lets `:adapter:generic:mock`'s feature tests count toward this module is
-// declared in the ROOT build file, not here: `ModuleSetTest` asserts this file names no module at
-// all, because that absence is the precondition for the platform-free compile error.
-//
-// ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
-//
-// A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
-// permitted to move in one direction only: UP. The destination is full coverage, and these numbers
-// are the distance still to travel.
-//
-// RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
-// stated forcing proof in that change's description, naming what makes the loss of coverage
-// unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
-// is deliberately NOT a proof. `docs/architecture.md` carries the same contract at the opposite
-// polarity - a ceiling that may only fall.
-//
-// TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves
-// every package above the floor; the PACKAGE FLOOR - "no package here is worse than this" - catches
-// one package rotting behind well-tested neighbours, which is the shape an untested class has.
-//
-// ENGINE: Kover's default, not JaCoCo. The two disagree by up to 26% on a single package's
-// denominator, so every number below is engine-specific and switching engines means re-seeding all
-// of them in that same change.
-//
-// Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
-//
-// ONE package now, so there is no floor rule here: the aggregate IS the floor. The old
-// `:domain package floor` measured eleven packages inside a single `:domain` module; the zone split
-// turned each of those zones into a module with an aggregate of its own, which is the same check
-// expressed by the module graph instead of by a grouping rule. `:domain:compose` is measured over the
-// integration surface rather than bounded here (`docs/architecture.md`, "Coverage").
-//
-// What remains uncovered is NOT a testing gap: it is the compiler output described on the floors below, which no
-// input reaches.
-//
-// A zero on a method can mean MISPLACED rather than untested. `SyncEngine.complete` read zero while
-// `SyncEngineTest` covered it from a module whose instrumentation was off and which credited
-// nothing. Before writing a test for an uncovered method, grep for one - a duplicate written to move a
-// number is worse than the gap it closes.
-coverageFloors {
-    aggregate(
-        // RAISED 85 -> 99 and 78 -> 99 (measured 99.8% / 99.4%) by the model-to-zero work. What still misses is
-        // the serialization plugin's missing-field check in the seven `@Serializable` classes whose every field has
-        // a default: emitted with a required-field mask of zero, so `(0 & seen) != 0` can never hold — 35
-        // instructions, 7 branches no input reaches. Until the programme decides how such compiler output is held,
-        // this module stays on floors rather than `snapsync.coverage-zero`.
-        instruction = 99,
-        branch = 99,
-    )
-}
+// Coverage (`docs/architecture.md`): at zero, under `snapsync.coverage-zero`. The crediting edges that let
+// `:adapter:generic:mock`'s and `:test:feature`'s tests count toward this module are declared in the ROOT build file,
+// not here: `ModuleSetTest` asserts this file names no module at all, because that absence is the precondition for the
+// platform-free compile error. What the gate excuses here is the serialization plugin's zero-mask missing-field check
+// in the `@Serializable` classes whose every field has a default; the task prints each one.
