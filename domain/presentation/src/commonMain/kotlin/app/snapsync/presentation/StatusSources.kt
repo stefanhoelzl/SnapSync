@@ -1,6 +1,5 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.KeyPresence
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.download.readmodel.DownloadProgress
@@ -10,6 +9,7 @@ import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.KeyPresence
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.StoreLink
 import app.snapsync.model.VersionRefusal

@@ -199,7 +199,12 @@ class TransferContractBindingsTest {
             val held: (TransferNetwork) -> Boolean = { rule -> restricted && rule == TransferNetwork.UNRESTRICTED_ONLY }
             return Entered.Ready(
                 DownloadUnderTest(
-                    open = { NetworkedDownload(DownloadSessionMock(held = held, stored = { _, _ -> null }), bodies).also { opened += it } },
+                    open = {
+                        NetworkedDownload(
+                            DownloadSessionMock(held = held, stored = { _, _ -> null }),
+                            bodies,
+                        ).also { opened += it }
+                    },
                     base = base,
                     readTemp = { bodies[it] },
                     liftRestriction = {

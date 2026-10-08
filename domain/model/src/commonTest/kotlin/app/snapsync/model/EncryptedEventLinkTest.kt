@@ -29,9 +29,20 @@ class EncryptedEventLinkTest {
 
     @Test
     fun `a keyed invite carries its development hints after its key and decodes back to them`() {
-        val payload = EventLinkPayload(eventId, autoJoin = true, minPhotoDate = "2026-07-01T00:00:00Z", direction = "upload", saveToAlbum = false, key = text)
+        val payload =
+            EventLinkPayload(
+                eventId,
+                autoJoin = true,
+                minPhotoDate = "2026-07-01T00:00:00Z",
+                direction = "upload",
+                saveToAlbum = false,
+                key = text,
+            )
         val url = encodeEventUrl(payload)
-        assertEquals("$LINK_ORIGIN/join/$eventId#k=$text&autoJoin=true&minPhotoDate=2026-07-01T00:00:00Z&direction=upload&saveToAlbum=false", url)
+        assertEquals(
+            "$LINK_ORIGIN/join/$eventId#k=$text&autoJoin=true&minPhotoDate=2026-07-01T00:00:00Z&direction=upload&saveToAlbum=false",
+            url,
+        )
         val decoded = assertIs<ConfigDecodeResult.Success>(decodeEventUrl(url)).payload
         assertEquals(text, decoded.key)
         assertEquals(true, decoded.autoJoin)
@@ -44,7 +55,11 @@ class EncryptedEventLinkTest {
     fun `an install referrer carrying k opens the event's whole invite`() {
         val payload = encodeEventUrl(EventLinkPayload(eventId)).substringAfter("#")
         assertEquals("$LINK_ORIGIN/join/$eventId#k=$text", inviteLinkFromInstallReferrer("$payload&k=$text"))
-        assertEquals(encodeEventUrl(EventLinkPayload(eventId)), inviteLinkFromInstallReferrer(payload), "no key, the plain invite")
+        assertEquals(
+            encodeEventUrl(EventLinkPayload(eventId)),
+            inviteLinkFromInstallReferrer(payload),
+            "no key, the plain invite",
+        )
         assertNull(inviteLinkFromInstallReferrer("$payload&k=${text.dropLast(1)}"), "a k that is no key is no invite")
     }
 

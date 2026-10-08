@@ -1,12 +1,13 @@
 package app.snapsync.integration
 
-import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.decodeEventUrl
+import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
+import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.rig.AssetView
+import kotlinx.serialization.json.jsonPrimitive
 
 // The protocol calls that make up a person's events and photos — joining, creating, leaving, the library.
 
@@ -78,7 +79,14 @@ suspend fun Rig.inviteLink(
     direction: String? = null,
     saveToAlbum: Boolean? = null,
 ): String = encodeEventUrl(
-    EventLinkPayload(eventId, autoJoin, minPhotoDate, direction = direction, saveToAlbum = saveToAlbum, key = keyOf(eventId)),
+    EventLinkPayload(
+        eventId,
+        autoJoin,
+        minPhotoDate,
+        direction = direction,
+        saveToAlbum = saveToAlbum,
+        key = keyOf(eventId),
+    ),
 )
 
 /** [eventId]'s key as its invite carries it, or `null` for a plain event. */

@@ -16,14 +16,9 @@ import app.snapsync.model.UserCommands
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
 import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.time.Instant
+import app.snapsync.model.eventEnd
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
@@ -31,6 +26,11 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
 import org.orbitmvi.orbit.test.testWithInternalState
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.time.Instant
 
 /**
  * A device that lost the joined event's key (capabilities `sync-status`, `join-event`): the status line asks for the
@@ -40,7 +40,9 @@ import org.orbitmvi.orbit.test.testWithInternalState
 class KeyLostTest {
 
     private class Sync : SyncStatusSource {
-        override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Ready(SyncProgress(0, 0, 0, 0, false, null)))
+        override val status: StateFlow<SyncStatus> = MutableStateFlow(
+            SyncStatus.Ready(SyncProgress(0, 0, 0, 0, false, null)),
+        )
     }
 
     private fun TestScope.host(
@@ -57,7 +59,10 @@ class KeyLostTest {
         ),
         backgroundScope,
         queries = noQueries,
-        commands = restoringCommands { key -> restored += key; true },
+        commands = restoringCommands { key ->
+            restored += key
+            true
+        },
         cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
         diagnostics = testDiagnostics(),
     )
@@ -145,7 +150,9 @@ class KeyLostTest {
         val inviteKey = MutableStateFlow<String?>(LINK_KEY)
         val host = StatusContainerHost(
             StatusSources(
-                Sync(), MutableStateFlow(GalleryAccess.GRANTED), MutableStateFlow(ENCRYPTED),
+                Sync(),
+                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(ENCRYPTED),
                 eventKey = EventKeyView(inviteKey = inviteKey, presence = MutableStateFlow(KeyPresence.Held)),
             ),
             backgroundScope,
@@ -156,7 +163,11 @@ class KeyLostTest {
         )
         driving(host) {
             val joined = { host.container.stateFlow.value.layer as Layer.Joined }
-            assertEquals(encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)), joined().inviteUrl, "the whole invite")
+            assertEquals(
+                encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)),
+                joined().inviteUrl,
+                "the whole invite",
+            )
             host.surfaces.onQrOpen()
             runCurrent()
             inviteKey.value = null
@@ -172,7 +183,11 @@ class KeyLostTest {
     /** The inert bundle, with [share] for the share sheet. */
     private fun sharingCommands(share: (String) -> Unit) = testCommands().let {
         UserCommands(
-            it.leave, it.create, it.commitJoin, { url, _ -> share(url) }, it.requestAccess, it.openSettings, it.openLink,
+            it.leave, it.create, it.commitJoin, { url, _ ->
+                share(
+                    url,
+                )
+            }, it.requestAccess, it.openSettings, it.openLink,
             it.choosePhotos, it.reconfigure, it.rename, it.resetRename, it.sendDiagnostics, it.setMobileData, it.restoreEventKey,
         )
     }
@@ -182,8 +197,12 @@ class KeyLostTest {
         val NOW: Instant = Instant.parse("2026-07-09T12:00:00Z")
         val LINK_KEY = encodeEventKey(ByteArray(32) { it.toByte() })
         val ENCRYPTED = EventConfig(
-            EVENT, "Party", captureCutoff("2026-07-06T00:00:00Z"), maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
-            endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            EVENT,
+            "Party",
+            captureCutoff("2026-07-06T00:00:00Z"),
+            maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+            endsAt = eventEnd("2099-12-31T00:00:00Z"),
+            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             keyId = "0123456789abcdef",
         )
     }

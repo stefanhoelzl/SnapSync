@@ -31,6 +31,7 @@ import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinedSurface
+import app.snapsync.model.KeyPresence
 import app.snapsync.model.Layer
 import app.snapsync.model.MobileDataState
 import app.snapsync.model.NetworkAccess
@@ -86,7 +87,6 @@ import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
 import org.orbitmvi.orbit.orbitContainer
-import app.snapsync.model.KeyPresence
 
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
@@ -915,7 +915,9 @@ class StatusContainerHost(
     /** The joined event's reopened invite, offered to give its lost key back — kept only if it is the event's own. */
     private suspend fun restoreKey(eventId: String, linkKey: String) {
         val kept = commands.restoreEventKey(linkKey)
-        log("join gate: the reopened invite of $eventId ${if (kept) "gave its lost key back" else "did not open it — nothing changed"}")
+        log(
+            "join gate: the reopened invite of $eventId ${if (kept) "gave its lost key back" else "did not open it — nothing changed"}",
+        )
     }
 
     /** Retry the details fetch after a transient load failure. */

@@ -180,7 +180,10 @@ class CryptoServicesEdgesTest {
         membership.value = config(minted.keyId)
         runCurrent()
         assertEquals(minted.linkKey, invite.value)
-        val locked = EventKeys(crypto, inMemorySecureStore(unavailable = true)).inviteKeyOf(membership, emptyFlow(), backgroundScope)
+        val locked = EventKeys(
+            crypto,
+            inMemorySecureStore(unavailable = true),
+        ).inviteKeyOf(membership, emptyFlow(), backgroundScope)
         runCurrent()
         assertNull(locked.value, "a key that cannot be read now is no key in an invite")
     }
