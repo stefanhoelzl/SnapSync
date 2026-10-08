@@ -93,12 +93,13 @@ fun AppTextPromptSheet(
     // the submission — a report the app wrote for the user — may be sent as it stands.
     val submittable = written.isNotEmpty() && (field.submitUnchanged || written != field.initialValue.trim())
 
+    // Busy refuses the scrim, the swipe-down and the cancel button alike: a request in flight has no honest
+    // cancellation, so there is one answer for every dismissal route.
+    val dismissIfIdle = {
+        if (!field.busy) onDismiss()
+    }
     ModalBottomSheet(
-        // Busy refuses the scrim and the swipe-down as firmly as it refuses the cancel button: a request
-        // in flight has no honest cancellation, so there is one answer for every dismissal route.
-        onDismissRequest = {
-            if (!field.busy) onDismiss()
-        },
+        onDismissRequest = dismissIfIdle,
         // Full height, so the content is laid out from the top and the keyboard cannot reach the
         // actions. See the note above: this is the load-bearing half of keyboard avoidance, not a
         // presentation preference.
@@ -146,12 +147,13 @@ fun AppTextPromptSheet(
             }
             PrimaryButton(
                 label = copy.confirmLabel,
-                onClick = { onConfirm(written) },
-                enabled = submittable && !field.busy,
+                onClick = if (submittable && !field.busy) {
+                    { onConfirm(written) }
+                } else {
+                    null
+                },
             )
-            SecondaryButton(label = copy.cancelLabel, onClick = {
-                if (!field.busy) onDismiss()
-            })
+            SecondaryButton(label = copy.cancelLabel, onClick = dismissIfIdle)
         }
     }
 }

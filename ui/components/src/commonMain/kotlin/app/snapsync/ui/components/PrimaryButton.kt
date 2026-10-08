@@ -13,14 +13,15 @@ import androidx.compose.ui.unit.dp
 /**
  * The screen's main call to action: a full-width, prominent button. Emphasis is a design-time choice,
  * so it is a distinct component, not a parameter — a `SecondaryButton` arrives only with its first
- * caller. [enabled] is semantic (whether the action is available), not appearance — the skin owns the
- * disabled treatment. Width, height, and shape are owned here (the call site passes no appearance).
+ * caller. [onClick] is the action, or `null` while it is not available — one value, so a disabled button never
+ * carries a handler; the skin owns the disabled treatment. Width, height, and shape are owned here (the call
+ * site passes no appearance).
  */
 @Composable
-fun PrimaryButton(label: String, onClick: () -> Unit, enabled: Boolean = true) {
+fun PrimaryButton(label: String, onClick: (() -> Unit)?) {
     Button(
-        onClick = onClick,
-        enabled = enabled,
+        onClick = onClick ?: {},
+        enabled = onClick != null,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth().height(52.dp),
     ) {
