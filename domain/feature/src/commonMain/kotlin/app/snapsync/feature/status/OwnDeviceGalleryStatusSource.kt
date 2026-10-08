@@ -6,7 +6,6 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.gallery.CandidateSource
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -121,14 +120,13 @@ class OwnDeviceGalleryStatusSource(
         //   • NOT READABLE       → publish nothing (below)
         //   • a thrown walk      → publish nothing (the `runCatching` arm)
         val counted = runCatchingCancellable {
-            EventPhotoSet.readable(policy, source::candidates)?.assets()?.mapTo(mutableSetOf()) { it.facts.assetId }
+            EventPhotoSet.readable(policy, source::candidates)?.let { set -> set.assets().mapTo(mutableSetOf()) { it.facts.assetId } }
         }
         counted.exceptionOrNull()?.let { failure ->
-            // Cancellation is not a failed walk. `runCatching` catches it like anything else, and
-            // swallowing it would break structured concurrency AND post an Error-severity line — which
-            // reaches the crash reporter on production builds (capability `privacy-security`) — for an
-            // ordinary teardown. `StatusCountsPoller` separates the two for the same reason.
-            if (failure is CancellationException) throw failure
+            // Cancellation is not a failed walk: `runCatchingCancellable` rethrows it, so it never lands
+            // here — swallowing it would break structured concurrency AND post an Error-severity line, which
+            // reaches the crash reporter on production builds (capability `privacy-security`), for an
+            // ordinary teardown.
             // **The invariant is this source's, so the containment is too.** A walk that blew up must
             // leave `admitted` exactly as it was — the previous good count, or the un-counted seed if there
             // was none — because "could not count" settling the screen as "counted nothing" is the

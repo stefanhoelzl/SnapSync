@@ -217,7 +217,7 @@ class DownloadController(
         entryContext,
         "reconcile",
         params = "eventId=$eventId trigger=${trigger.wire}" +
-            (announced?.let { " announced=$it" } ?: "") + if (known != null) " (the join's union)" else "",
+            (if (announced != null) " announced=$announced" else "") + if (known != null) " (the join's union)" else "",
     ) {
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
         // (`null`). Neither enables the arm, and neither is inferred from the other.

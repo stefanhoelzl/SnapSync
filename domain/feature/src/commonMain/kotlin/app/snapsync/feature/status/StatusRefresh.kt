@@ -5,7 +5,6 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CancellationException
 
 /**
  * Re-read every status the joined screen shows, **cheap local reads before the library enumeration**
@@ -90,13 +89,10 @@ class StatusRefresh(
         // counted as a zero and settling the screen at "Up to date" (capability `sync-status`).
         val derived = runCatchingCancellable { policyFor(config) }
         derived.exceptionOrNull()?.let { failure ->
-            // Cancellation is not a failed read. `runCatching` catches it like anything else, and
-            // swallowing it would break structured concurrency AND post an Error-severity line — which
-            // reaches the crash reporter on production builds (capability `privacy-security`) — for an
-            // ordinary teardown. [OwnDeviceGalleryStatusSource] and [StatusCountsPoller] separate the two
-            // for the same reason; this call site did not, which is the last place in this sequence that
-            // still conflated them.
-            if (failure is CancellationException) throw failure
+            // Cancellation is not a failed read: `runCatchingCancellable` rethrows it, so it never lands
+            // here — swallowing it would break structured concurrency AND post an Error-severity line, which
+            // reaches the crash reporter on production builds (capability `privacy-security`), for an
+            // ordinary teardown.
             // Bounded, not thrown: this runs as one child of the Foreground flow's `coroutineScope`, so
             // an escaping failure would cancel its SIBLINGS — the download reconcile, the staged-byte
             // reclaim, the membership refresh — none of which have anything to do with a policy read.

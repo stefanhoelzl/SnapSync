@@ -96,7 +96,7 @@ class AlbumGather(
     fun onAccessObserved(usable: Boolean) {
         val wasUsable = lastUsable
         lastUsable = usable
-        val eventId = configSource.config.value?.eventId ?: return
+        val eventId = (configSource.config.value ?: return).eventId
         if (usable && wasUsable == false) start("grant", eventId)
     }
 

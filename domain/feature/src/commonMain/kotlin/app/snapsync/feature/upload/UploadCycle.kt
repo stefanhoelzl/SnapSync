@@ -4,7 +4,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.CycleResult
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.PauseReason
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.Resource
@@ -261,8 +260,8 @@ class UploadCycle(
             // A job whose row the walk removed is not retried: the photo left the library or the selection
             // (capability `background-upload`). A transport hands over only jobs whose row exists and answers
             // the rest itself, so skipping one here leaves nothing un-acknowledged.
-            if (isGone(job)) continue
-            val retry = adjudicateFailure(engine, job) ?: continue
+            if (rowOf(job) == null) continue
+            val retry = adjudicateFailure(engine, job)
             platform.retryJob(job, retry.request)
             engine.handle(SyncEvent.UploadStarted(retry.request))
         }
@@ -326,9 +325,8 @@ class UploadCycle(
         // The admitted assets whose rows this walk is about to date — the join-time load's bare rows.
         // They are never enqueued (their bytes are stored), so this walk is the only moment that places
         // them in the event album (capability `event-album`).
-        val healing = toRead.mapTo(mutableSetOf()) { it.facts.assetId }.filterTo(mutableSetOf()) { id ->
-            byAsset[id]?.any { it.needsManifestDetail } == true
-        }
+        // An asset read here that has rows at all has a bare one — a fully known asset is not read.
+        val healing = toRead.mapTo(mutableSetOf()) { it.facts.assetId }.filterTo(mutableSetOf()) { it in byAsset }
         val liveResources = resourcesOf(toRead)
             .also {
                 log.i {
@@ -371,7 +369,7 @@ class UploadCycle(
      * **Whatever the row's state** — an in-flight (`REQUESTED`) row included. The photo left the library or,
      * under a partial grant, the selection, so it leaves the manifest this cycle rather than when its job
      * settles. The job may still land its bytes; its guarded terminal write then matches no row and applies to
-     * nothing, and a failure presented for the key is answered and forgotten (see [isGone]). Decision record:
+     * nothing, and a failure presented for the key is answered and forgotten (see [rowOf]). Decision record:
      * `changes/selection-is-the-walk` (D2).
      */
     private suspend fun departedKeys(
@@ -446,8 +444,12 @@ class UploadCycle(
         // The resources this walk already read, by key: a row it just recorded is created from the handle in
         // hand rather than resolved a second time (see [createOne]). A walk run as the tail's ③ creates nothing
         // ([enqueue] is `null`): the top-up the tail runs next does, from the same handles.
-        val enqueued = enqueue?.let { stop -> enqueue(ready, plan.liveResources.associateBy { it.filename }, stop) }
-            ?: Enqueued(created = 0, truncated = false)
+        val stop = enqueue
+        val enqueued = if (stop != null) {
+            enqueue(ready, plan.liveResources.associateBy { it.filename }, stop)
+        } else {
+            Enqueued(created = 0, truncated = false)
+        }
         // Truncated by either half: the settle pass could not re-create a retry, or this pass could
         // not create everything the ledger holds. Both mean the same thing to the tail's re-arm — work remains.
         val truncated = ready.capHit || enqueued.truncated
@@ -522,12 +524,13 @@ class UploadCycle(
             // next boundary"): the creation in flight has completed, and no further one starts. The rows not reached
             // still need a job, so the pass reports truncated.
             if (stopRequested()) return Enqueued(created, truncated = true)
-            when (createOne(ready, row, walked)) {
+            // No outcome: the row's resource left the library, or the engine found it no longer work.
+            when (createOne(ready, row, walked) ?: continue) {
                 UploadCreateOutcome.CREATED -> created++
                 // Backpressure, not failure — and the only signal that work remains. The row stays as it was
                 // (it still needs a job), so the next cycle finds it in the same read.
                 UploadCreateOutcome.LIMIT_EXCEEDED -> return Enqueued(created, truncated = true)
-                UploadCreateOutcome.FAILED, null -> Unit
+                UploadCreateOutcome.FAILED -> Unit
             }
         }
         return Enqueued(created, truncated = false)
@@ -568,7 +571,7 @@ class UploadCycle(
 
     /**
      * Event-album placement (capability `event-album`) for the photo this pass is about to enqueue: a
-     * `DISCOVERED` row whose resource resolved. One best-effort call.
+     * `DISCOVERED` row whose resource resolved — the ledger's work read hands over no other. One best-effort call.
      *
      * **Before** any job is created, deliberately. Creating a job records `REQUESTED` durably, so a process
      * death between that write and a later placement would leave a photo that no pass ever places — nothing
@@ -584,7 +587,7 @@ class UploadCycle(
      * Decision records: `changes/retire-uploaded-state` (D2), `changes/shrink-the-ledger-row` (D5).
      */
     private suspend fun placeFirstEnqueued(ready: Ready, row: LedgerEntry) {
-        if (!ready.saveToAlbum || row.state != LedgerState.DISCOVERED) return
+        if (!ready.saveToAlbum) return
         runCatchingCancellable { placeInAlbum(ready.eventId, setOf(row.assetId)) }
             .onFailure { log.w(it) { "event-album placement failed this cycle" } }
     }
@@ -778,11 +781,10 @@ class UploadCycle(
      * Report a failure to the engine and return its `Retry` (returns the row to `DISCOVERED`; `REQUESTED`
      * deferred). Takes the engine rather than reading a field: it is built per cycle from that cycle's config.
      */
-    private suspend fun adjudicateFailure(engine: SyncEngine, job: PlatformUploadJob): SyncDecision.Retry? {
-        if (job.key.isBlank()) return null // unrecoverable key — never record a phantom row
+    private suspend fun adjudicateFailure(engine: SyncEngine, job: PlatformUploadJob): SyncDecision.Retry {
         val failed = reconstruct(job)
         val error = job.error ?: UploadError.Unknown("unspecified")
-        return engine.handle(SyncEvent.UploadFailed(failed, error)) as? SyncDecision.Retry
+        return engine.handle(SyncEvent.UploadFailed(failed, error))
     }
 
     /**
@@ -844,8 +846,8 @@ class UploadCycle(
      */
     private suspend fun acknowledgePresented(engine: SyncEngine) {
         for (job in platform.drainTerminals()) {
-            if (isGone(job)) continue
-            if (ledger.entry(job.key)?.state?.isDone == true) continue
+            val row = rowOf(job) ?: continue
+            if (row.state.isDone) continue
             adjudicateFailure(engine, job)
         }
     }
@@ -861,9 +863,9 @@ class UploadCycle(
      * never admitted, never in a walk's window, never deleted, and pending forever. Decision record:
      * `changes/selection-is-the-walk` (D3).
      */
-    private suspend fun isGone(job: PlatformUploadJob): Boolean =
-        (ledger.entry(job.key) == null).also { gone ->
-            if (gone) log.i { "presented job ${job.key} has no row — its photo left; answered, nothing written" }
+    private suspend fun rowOf(job: PlatformUploadJob): LedgerEntry? =
+        ledger.entry(job.key).also { row ->
+            if (row == null) log.i { "presented job ${job.key} has no row — its photo left; answered, nothing written" }
         }
 
     /**
@@ -892,13 +894,13 @@ class UploadCycle(
         var capHit = false
         val returned = platform.drainTerminals()
         for (job in returned) {
-            if (isGone(job)) continue
+            val row = rowOf(job) ?: continue
             // At-least-once: the platform can hand back a failure for a key that has since settled (its
             // own guarded write already declined to touch it). Adjudicating anyway would drive the engine
             // to record a failure over a COMPLETED row and re-upload bytes that are stored — the failure
             // this whole change exists to stop, arriving by a different door.
-            if (ledger.entry(job.key)?.state?.isDone == true) continue
-            val retry = adjudicateFailure(engine, job) ?: continue
+            if (row.state.isDone) continue
+            val retry = adjudicateFailure(engine, job)
             if (job.data == null || capHit) continue
             when (platform.createJob(retry.request, retry.request.resource)) {
                 UploadCreateOutcome.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.request))

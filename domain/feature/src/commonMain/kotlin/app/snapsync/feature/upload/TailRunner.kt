@@ -245,7 +245,7 @@ class TailRunner(
             entryContext,
             "tail.request",
             params = "trigger=$trigger",
-            result = { it?.toString() ?: "not requested" },
+            result = { if (it != null) it.toString() else "not requested" },
         ) {
             check(currentCoroutineContext()[InsideTail]?.runner !== this) {
                 "a tail unit requested the tail it is running in — that join would wait on itself"
@@ -287,7 +287,7 @@ class TailRunner(
         val (run, joined) = mutex.withLock {
             val running = current.load()
             if (running != null) {
-                running.pending = running.pending?.let { it + trigger.scope } ?: trigger.scope
+                running.pending = running.pending.joinedWith(trigger.scope)
                 running.served(trigger)
                 // A joiner is work waiting: an import the running unit is merely awaiting must not hold it back.
                 running.interrupt()
@@ -308,8 +308,8 @@ class TailRunner(
         val outcome = withContext(InsideTail(this)) { drive(run) }
         try {
             // Read under the lock: no request joins once the tail has ended, and this is the last write's reader.
-            val (scope, requests) = mutex.withLock { run.rearmScope to run.rearmRequests }
-            if (scope != null) rearm(scope, requests, outcome)
+            val requests = mutex.withLock { run.rearmRequests }
+            if (requests > 0) rearm(requests, outcome)
         } finally {
             run.rearmed.complete(Unit)
         }
@@ -365,8 +365,14 @@ class TailRunner(
         val pass = Pass()
         // A join that landed before this unit began is served by the pass it requested, not by abandoning a wait here.
         if (scope.imports) run.interrupts.store(CompletableDeferred())
-        if (scope.imports && !step(run, pass, UNIT_IMPORT) { importStaged(run.signal) }) return pass
-        if (scope.topsUp && !step(run, pass, UNIT_TOP_UP) { pass.results += topUp(run.stopRequested) }) return pass
+        // ① then ②, each unless a stop came first. One loop rather than a call each: a stop is read before every unit,
+        // and nothing between [nextPass]'s own read and the first unit suspends, so only a stop from another thread
+        // could land before ① — one check shared by both units is one a test can reach.
+        val leading = listOfNotNull(
+            (UNIT_IMPORT to suspend { importStaged(run.signal) }).takeIf { scope.imports },
+            (UNIT_TOP_UP to suspend { pass.results += topUp(run.stopRequested) }).takeIf { scope.topsUp },
+        )
+        for ((name, body) in leading) if (!step(run, pass, name, body)) return pass
         if (!scope.walks || !walkPermitted()) return pass
         var added = false
         val walked = step(run, pass, UNIT_WALK) {
@@ -380,7 +386,7 @@ class TailRunner(
     }
 
     /** Runs [body] as one unit unless a stop came first; `false` when the pass was cut here. */
-    private suspend inline fun step(run: Run, pass: Pass, name: String, body: () -> Unit): Boolean {
+    private suspend fun step(run: Run, pass: Pass, name: String, body: suspend () -> Unit): Boolean {
         if (run.stop.load()) {
             log.i { "stopped before $name — not started" }
             run.left += name
@@ -415,17 +421,17 @@ class TailRunner(
      * The re-arm after [trigger]'s tail ended with [outcome] (capability `background-upload`, "Photos upload without
      * the app being opened"; decision record `changes/timely-background-receiving`, D1).
      *
-     * After every tail that ran the uploads for a membership that contributes — any trigger but an import-only one, any
-     * outcome but `SKIPPED` (an import-only tail's outcome says nothing of the membership) — the library-change wake is
+     * After every tail that ran the uploads for a membership that contributes — any trigger that re-arms (every one that runs
+     * the uploads; an import-only one does not, [TailTrigger.rearms]), any outcome but `SKIPPED` (an import-only tail's outcome says nothing of the membership) — the library-change wake is
      * re-requested first: a standing "wake me when a photo is added", so a device that is caught up still notices the
      * next photo. Where one stands (Android) the heartbeat need not look for new photos itself; where none can (iOS,
      * which answers it `Unsupported`) the confirmed OS uploader is what stands in for it. Then [heartbeatCadence] picks
      * busy, idle or nothing, and the heartbeat is armed at that cadence — replacing the pending one.
      */
-    private suspend fun rearm(scope: TailScope, requests: Int, outcome: TailOutcome) {
+    private suspend fun rearm(requests: Int, outcome: TailOutcome) {
         if (requests > 1) log.i { "one re-arm for the tail's $requests re-arming requests" }
         val contributes = outcome.result != CycleResult.SKIPPED
-        val watched = scope != TailScope.IMPORT && contributes && heartbeat.watchLibrary()
+        val watched = contributes && heartbeat.watchLibrary()
         val cadence = heartbeatCadence(
             facts = cadenceFacts(),
             leftWork = outcome.result.leftWork,
@@ -450,10 +456,7 @@ class TailRunner(
         /** Guarded by [mutex]. */
         var pending: TailScope? = null
 
-        /** The union of the re-arming requests' scopes, or `null` while none re-arms. Guarded by [mutex]. */
-        var rearmScope: TailScope? = null
-
-        /** How many of this tail's requests re-arm — for the log alone. Guarded by [mutex]. */
+        /** How many of this tail's requests re-arm; none, and the tail re-arms nothing. Guarded by [mutex]. */
         var rearmRequests = 0
 
         /** Completed once the driver has re-armed (or found nothing to re-arm): what a joiner awaits last. */
@@ -461,9 +464,7 @@ class TailRunner(
 
         /** Under [mutex]: [trigger] is one of the requests this tail answers. */
         fun served(trigger: TailTrigger) {
-            if (!trigger.rearms) return
-            rearmScope = rearmScope?.let { it + trigger.scope } ?: trigger.scope
-            rearmRequests++
+            if (trigger.rearms) rearmRequests++
         }
 
         val stop = AtomicBoolean(false)
@@ -540,3 +541,6 @@ class TailRunner(
         const val UNIT_WALK = "③ walk → manifest"
     }
 }
+
+/** This pending scope widened by [scope] — or [scope] alone, when nothing was pending. */
+private fun TailScope?.joinedWith(scope: TailScope): TailScope = if (this == null) scope else this + scope

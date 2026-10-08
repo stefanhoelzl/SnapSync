@@ -101,6 +101,6 @@ class StatusCountsPoller(
          * nobody can act on is worse than admitting there is none. It costs the group's cheap local reads
          * per tick while foregrounded, and nothing at all while backgrounded.
          */
-        val DEFAULT_CADENCE: Duration = 2.seconds
+        private val DEFAULT_CADENCE: Duration = 2.seconds
     }
 }

@@ -91,8 +91,8 @@ class EventCompletion(
         val after = config.config.value
         if (after?.eventId != eventId || !after.closed) return CompletionOutcome.WAITING
 
-        val declared = published(eventId)?.takeIf { it.final }?.assets?.mapTo(mutableSetOf()) { it.assetId }
-            ?: return CompletionOutcome.WAITING
+        val final = published(eventId)?.takeIf { it.final } ?: return CompletionOutcome.WAITING
+        val declared = final.assets.mapTo(mutableSetOf()) { it.assetId }
         val ownArrived = runCatchingCancellable { ledger.pendingResources().none { it.assetId in declared } }
             .getOrDefault(false)
         if (!ownArrived) return CompletionOutcome.WAITING

@@ -165,7 +165,7 @@ class CollectDiagnosticDump(
     private fun verificationSection(facts: RefusalFacts?): Map<String, String> {
         if (facts == null) return mapOf("attest_failure" to "none recorded")
         return buildMap {
-            put("attest_failure", facts.reason.wireName + (facts.detail?.let { " ($it)" } ?: ""))
+            put("attest_failure", facts.reason.wireName + facts.detail.let { if (it != null) " ($it)" else "" })
             val chain = facts.chain ?: return@buildMap
             put(
                 "attest_chain",
@@ -203,22 +203,15 @@ class CollectDiagnosticDump(
      */
     private suspend fun readDevice(): Map<String, String> = coroutineScope {
         val access = async { bounded("network") { network.watch().first() } }
-        val reading = async { bounded("device conditions") { conditions.read() } }
+        // One read: its failure is every fact's.
+        val reading = async { bounded("device conditions", { conditions.read() }, { it }, DeviceConditionsReading::failed) }
         val app = runCatchingCancellable { appFacts() }.getOrElse { failure ->
             reasonOf(failure).let { AppFacts(Fact.Failed(it), Fact.Failed(it), Fact.Failed(it), Fact.Failed(it)) }
         }
         buildMap {
             put(DiagnosticKeys.NETWORK, access.await()) { it.label }
             put(DiagnosticKeys.MOBILE_DATA, mobileData.describe())
-            putConditions(
-                when (val read = reading.await()) {
-                    is Fact.Known -> read.value
-                    is Fact.Failed -> DeviceConditionsReading.failed(
-                        read.reason,
-                    ) // one read: its failure is every fact's
-                    Fact.Unsupported -> DeviceConditionsReading.failed("unsupported")
-                },
-            )
+            putConditions(reading.await())
             put(DiagnosticKeys.DEVICE_ID, app.deviceId) { it }
             put(DiagnosticKeys.TIME_ZONE, app.timeZone) { it }
             put(DiagnosticKeys.MEMORY_FOOTPRINT_MB, app.memoryFootprintMb) { it.toString() }
@@ -251,9 +244,13 @@ class CollectDiagnosticDump(
 
     /** [read] as a [Fact]: its value, or failed — it threw, or it took longer than [readTimeout]. */
     private suspend fun <T : Any> bounded(what: String, read: suspend () -> T): Fact<T> =
+        bounded(what, read, { Fact.Known(it) }, { Fact.Failed(it) })
+
+    /** [read] answered as [known] of its value, or as [failed] of why not — it threw, or took longer than [readTimeout]. */
+    private suspend fun <T : Any, R> bounded(what: String, read: suspend () -> T, known: (T) -> R, failed: (String) -> R): R =
         runCatchingCancellable { withTimeoutOrNull(readTimeout) { read() } }.fold(
-            onSuccess = { value -> value?.let { Fact.Known(it) } ?: Fact.Failed("the $what read timed out after $readTimeout") },
-            onFailure = { Fact.Failed(reasonOf(it)) },
+            onSuccess = { value -> if (value != null) known(value) else failed("the $what read timed out after $readTimeout") },
+            onFailure = { failed(reasonOf(it)) },
         )
 
     private fun reasonOf(failure: Throwable): String = failure.message ?: failure::class.simpleName.orEmpty()
