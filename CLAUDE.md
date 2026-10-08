@@ -537,9 +537,9 @@ their hosts, and why some coverage is measured on hardware rather than asserted.
   date, a one-off op), and the removal steps. The PR that removes the shim deletes its entry. Raising
   `MIN_APP_VERSION` starts by reading its section.
 - **`/ship` is a GLOBAL skill** (`~/.claude/skills/ship/`), not a file in this repo. Everything that
-  varies per repo lives in **`.ship/`** — `gates.sh` (the local half of what gates a merge),
-  `pr-title.md` (the App Store title policy), `post-merge.md` (the Bugsink resolve), `config.json`
-  (the merge budgets). The hook contract is `~/.claude/skills/ship/hooks.md`; read it before editing
+  varies per repo lives in **`.ship/`** — `gates.md` (the local half of what gates a merge),
+  `pr-title.md` (the App Store title policy), `post-merge.md` (the Bugsink resolve), and a
+  `config.json` only for non-default settings (none today). The hook contract is `~/.claude/skills/ship/hooks.md`; read it before editing
   any of them, and do not add a sixth file expecting ship to read it.
 - **The branch ruleset is LIVE-ONLY** — ship owns it as an exhaustive baseline and there is no
   committed copy to edit. Read it with `gh api repos/stefanhoelzl/SnapSync/rulesets`. Required-check
