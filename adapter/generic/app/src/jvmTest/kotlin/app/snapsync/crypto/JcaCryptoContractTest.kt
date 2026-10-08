@@ -19,7 +19,11 @@ class JcaCryptoContractTest {
         override val host = Host.JVM
         override val kind = BindingKind.Live
         override val reaches = setOf(CryptoState.READY)
-        override fun create(state: CryptoState, clauseId: String, log: CallLog): Entered<Crypto> = Entered.Ready(JcaCrypto().recorded(log))
+        override fun create(
+            state: CryptoState,
+            clauseId: String,
+            log: CallLog,
+        ): Entered<Crypto> = Entered.Ready(JcaCrypto().recorded(log))
     }
 
     @Test

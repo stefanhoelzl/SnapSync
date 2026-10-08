@@ -22,7 +22,9 @@ class IosCryptoContractTest {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(CryptoState.READY)
-        override fun create(state: CryptoState, clauseId: String, log: CallLog): Entered<Crypto> = Entered.Ready(IosCrypto().recorded(log))
+        override fun create(state: CryptoState, clauseId: String, log: CallLog): Entered<Crypto> = Entered.Ready(
+            IosCrypto().recorded(log),
+        )
     }
 
     @Test

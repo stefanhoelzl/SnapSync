@@ -154,7 +154,12 @@ class ProxyCompletenessTest {
          */
         private fun throws(member: KCallable<*>, call: () -> Any?) {
             val declared = (member as KFunction<*>).javaMethod!!.exceptionTypes.single()
-            val raises = listOf(allocate(declared) as Throwable, AssertionError("not the declared type"), CancellationException("cancelled"))
+            val raises =
+                listOf(
+                    allocate(declared) as Throwable,
+                    AssertionError("not the declared type"),
+                    CancellationException("cancelled"),
+                )
             raises.forEachIndexed { i, raised ->
                 val before = log.cells
                 answers[javaName(member)] = { throw raised }
@@ -413,7 +418,9 @@ class ProxyCompletenessTest {
                 variant == "null" -> null
                 variant == "true" || variant == "false" -> variant.toBoolean()
                 k != null && k.java.isEnum -> k.java.enumConstants.first { "${k.simpleName}.${(it as Enum<*>).name}" == variant }
-                k != null && k.isSealed -> leaves(k).first { relativeName(it) == variant }.let(::instance)
+                k != null && k.isSealed -> PortGrid.leaves(
+                    k,
+                ).first { PortGrid.relativeName(it) == variant }.let(::instance)
                 else -> dummy(type)
             }
         }
@@ -433,7 +440,7 @@ class ProxyCompletenessTest {
                 k.isSubclassOf(Flow::class) -> MutableStateFlow(dummy(type.arguments.single().type!!))
                 k.isSubclassOf(Function::class) -> functionDouble(type) { null }
                 k.java.isEnum -> k.java.enumConstants.first()
-                k.isSealed -> instance(leaves(k).first())
+                k.isSealed -> instance(PortGrid.leaves(k).first())
                 k.java.isInterface -> double(k) { null }
                 // A value class is unboxed at a typed call, so its one field must be real.
                 k.isValue -> k.primaryConstructor!!.let { c ->
@@ -452,17 +459,5 @@ class ProxyCompletenessTest {
             ).getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
             return unsafe.javaClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, c)
         }
-
-        fun leaves(k: KClass<*>): List<KClass<*>> = k.sealedSubclasses.flatMap {
-            if (it.isSealed) {
-                leaves(
-                    it,
-                )
-            } else {
-                listOf(it)
-            }
-        }
-
-        fun relativeName(k: KClass<*>): String = k.qualifiedName!!.removePrefix(k.java.`package`.name + ".")
     }
 }

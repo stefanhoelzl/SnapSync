@@ -191,7 +191,9 @@ class PhotoContractBindingsTest {
                 rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_0009.JPG", Unit)),
             )
             return Entered.Ready(
-                GalleryChange(inMemoryGallery(library, access(granted = true)).recorded(log)) { library.value += added },
+                GalleryChange(
+                    inMemoryGallery(library, access(granted = true)).recorded(log),
+                ) { library.value += added },
             )
         }
     }

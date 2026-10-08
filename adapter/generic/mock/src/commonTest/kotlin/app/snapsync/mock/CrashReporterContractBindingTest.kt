@@ -58,7 +58,11 @@ class CrashReporterContractBindingTest {
                 }
             }
             return Entered.Ready(
-                CrashReporterSubject(inMemoryCrashReporter(started, dumps).recorded(log), CrashOptions("in-memory"), observe),
+                CrashReporterSubject(
+                    inMemoryCrashReporter(started, dumps).recorded(log),
+                    CrashOptions("in-memory"),
+                    observe,
+                ),
             )
         }
     }
