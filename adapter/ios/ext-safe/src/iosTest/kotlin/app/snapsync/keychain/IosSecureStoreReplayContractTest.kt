@@ -2,6 +2,7 @@ package app.snapsync.keychain
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.SecureStoreContract
@@ -36,13 +37,14 @@ class IosSecureStoreReplayContractTest {
             SecureStoreState.HOLDING_RESTRICTED,
         )
 
-        override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
+        override fun create(state: SecureStoreState, clauseId: String, log: CallLog): Entered<SecureStore> {
             if (state !in reaches) return Entered.Unreachable(DEVICE_UNREACHABLE_INACCESSIBLE)
             return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
                 keychainInState(
                     ReplayingKeychainApi(replayer),
                     state,
                     clauseId,
+                    log,
                     afterDispose = replayer::assertExhausted,
                 )
             }

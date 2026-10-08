@@ -2,6 +2,7 @@ package app.snapsync.sentry
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.CrashObservation
 import app.snapsync.contracts.CrashReporterContract
 import app.snapsync.contracts.CrashReporterState
@@ -10,18 +11,19 @@ import app.snapsync.contracts.DeliveredEvent
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.WaitExpired
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.CrashOptions
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
+import kotlin.test.Test
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSThread
 import platform.Foundation.NSUserDomainMask
-import kotlin.test.Test
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The Sentry seat of `CrashReporter`, live on the simulator test executable (`docs/architecture.md`), over the REAL
@@ -52,7 +54,7 @@ class SentryCrashReporterContractTest {
             CrashReporterState.ON_THE_WIRE,
         )
 
-        override fun create(state: CrashReporterState, clauseId: String): Entered<CrashReporterSubject> {
+        override fun create(state: CrashReporterState, clauseId: String, log: CallLog): Entered<CrashReporterSubject> {
             if (state == CrashReporterState.ACROSS_A_RESTART) {
                 return Entered.Unreachable("sentry-cocoa re-stamps a given build number at send, so iOS is given none")
             }
@@ -72,7 +74,7 @@ class SentryCrashReporterContractTest {
                     }
                 }
             }
-            return Entered.Ready(CrashReporterSubject(SentryCrashReporter(), CrashOptions(ingest.dsn), observe)) {
+            return Entered.Ready(CrashReporterSubject(SentryCrashReporter().recorded(log), CrashOptions(ingest.dsn), observe)) {
                 resetChannel()
                 ingest.stop()
                 Logger.setLogWriters(writers)

@@ -4,6 +4,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
@@ -13,6 +14,7 @@ import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.model.ChangeOutcome
@@ -54,7 +56,7 @@ class SimulatorUploadJobQueueContractTest {
             UploadState.PRESENTED_RETRY_SPENT,
         )
 
-        override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
             if (state == UploadState.RESTRICTED_NETWORK) {
                 return Entered.Unreachable(
                     "a restricted network needs a phone off unrestricted Wi-Fi; a simulator shares its Mac's network (capability `mobile-data`)",
@@ -80,7 +82,8 @@ class SimulatorUploadJobQueueContractTest {
             if (state in UploadContract.PRESENTED) runEntry { presentPrepared(state, clauseId, jobs, os) }
             return Entered.Ready(
                 UploadUnderTest(
-                    upload = os,
+                    // The played OS is the system behind the queue; the clause sees the queue through its proxy.
+                    upload = os.recorded(log),
                     base = BASE,
                     usable = { UploadSource.Resource(StandInPhoto) },
                     unusable = { UploadSource.Resource("not a photo") },
