@@ -1,10 +1,14 @@
 package app.snapsync.presentation
 
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.ReportContext
+import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserQueries
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /** A query bundle that answers nothing: every details load fails and no count is available. */
 internal val noQueries: UserQueries = UserQueries(
@@ -71,3 +75,8 @@ internal fun testMenuCommands(
 /** Diagnostics that go nowhere unless a test is about them. */
 internal fun testDiagnostics(log: (String) -> Unit = {}, onIntentError: (Throwable) -> Unit = {}) =
     StatusDiagnostics(log = log, onIntentError = onIntentError)
+
+/** A sync snapshot that holds [status] and never moves — for a test about something other than the snapshot. */
+internal class FixedSync(status: SyncStatus) : SyncStatusSource {
+    override val status: StateFlow<SyncStatus> = MutableStateFlow(status)
+}
