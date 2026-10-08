@@ -16,14 +16,14 @@ import app.snapsync.contracts.verify
 import app.snapsync.model.CrashOptions
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
-import kotlin.test.Test
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.seconds
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSThread
 import platform.Foundation.NSUserDomainMask
+import kotlin.test.Test
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The Sentry seat of `CrashReporter`, live on the simulator test executable (`docs/architecture.md`), over the REAL
@@ -74,7 +74,9 @@ class SentryCrashReporterContractTest {
                     }
                 }
             }
-            return Entered.Ready(CrashReporterSubject(SentryCrashReporter().recorded(log), CrashOptions(ingest.dsn), observe)) {
+            return Entered.Ready(
+                CrashReporterSubject(SentryCrashReporter().recorded(log), CrashOptions(ingest.dsn), observe),
+            ) {
                 resetChannel()
                 ingest.stop()
                 Logger.setLogWriters(writers)

@@ -15,9 +15,9 @@ import app.snapsync.model.FileArea
 import app.snapsync.ports.Files
 import app.snapsync.testsupport.newTempDirectory
 import app.snapsync.testsupport.removeDirectory
-import kotlin.test.Test
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.posix.chmod
+import kotlin.test.Test
 
 /**
  * [FilesContract] against the real [IosFiles], two temp directories standing for the two areas. [FilesState.DENIED]

@@ -12,8 +12,8 @@ import app.snapsync.contracts.verify
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Files
 import java.io.File
-import java.nio.file.Files as Nio
 import kotlin.test.Test
+import java.nio.file.Files as Nio
 
 /**
  * The `Files` contract against the real [JvmFiles], so every `./gradlew build` runs it beside its iOS binding (which

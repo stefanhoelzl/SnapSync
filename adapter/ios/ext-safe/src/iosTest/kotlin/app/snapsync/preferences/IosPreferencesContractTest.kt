@@ -10,8 +10,8 @@ import app.snapsync.contracts.PreferencesState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.Preferences
-import kotlin.test.Test
 import platform.Foundation.NSUserDefaults
+import kotlin.test.Test
 
 /** [PreferencesContract] against the real [IosPreferences], over a `UserDefaults` suite of each clause's own. */
 class IosPreferencesContractTest {

@@ -98,10 +98,10 @@ internal object PortGrid {
         return if (type.isMarkedNullable) base + "null" else base
     }
 
-    private fun leaves(k: KClass<*>): List<KClass<*>> =
+    fun leaves(k: KClass<*>): List<KClass<*>> =
         k.sealedSubclasses.flatMap { if (it.isSealed) leaves(it) else listOf(it) }.sortedBy { it.qualifiedName }
 
-    private fun relativeName(k: KClass<*>): String = k.qualifiedName!!.removePrefix(k.java.`package`.name + ".")
+    fun relativeName(k: KClass<*>): String = k.qualifiedName!!.removePrefix(k.java.`package`.name + ".")
 
     /**
      * Whether [member] declares a throw as one of its answers (`@Throws`). Kotlin's `@Throws` is source-retained and

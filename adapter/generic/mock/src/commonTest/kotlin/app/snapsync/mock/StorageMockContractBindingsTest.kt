@@ -46,7 +46,11 @@ class StorageMockContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(PreferencesState.EMPTY, PreferencesState.HOLDING)
-        override fun create(state: PreferencesState, clauseId: String, log: CallLog): Entered<Preferences> = Entered.Ready(
+        override fun create(
+            state: PreferencesState,
+            clauseId: String,
+            log: CallLog,
+        ): Entered<Preferences> = Entered.Ready(
             when (state) {
                 PreferencesState.EMPTY -> inMemoryPreferences()
                 PreferencesState.HOLDING ->
