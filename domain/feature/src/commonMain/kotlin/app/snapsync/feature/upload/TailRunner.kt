@@ -421,9 +421,9 @@ class TailRunner(
      * The re-arm after [trigger]'s tail ended with [outcome] (capability `background-upload`, "Photos upload without
      * the app being opened"; decision record `changes/timely-background-receiving`, D1).
      *
-     * After every tail that ran the uploads for a membership that contributes — any trigger that re-arms (every one that runs
-     * the uploads; an import-only one does not, [TailTrigger.rearms]), any outcome but `SKIPPED` (an import-only tail's outcome says nothing of the membership) — the library-change wake is
-     * re-requested first: a standing "wake me when a photo is added", so a device that is caught up still notices the
+     * After every tail that ran the uploads for a membership that contributes — any trigger that re-arms (every one
+     * that runs the uploads; an import-only one does not, [TailTrigger.rearms]), any outcome but `SKIPPED` — the
+     * library-change wake is re-requested first: a standing "wake me when a photo is added", so a device that is caught up still notices the
      * next photo. Where one stands (Android) the heartbeat need not look for new photos itself; where none can (iOS,
      * which answers it `Unsupported`) the confirmed OS uploader is what stands in for it. Then [heartbeatCadence] picks
      * busy, idle or nothing, and the heartbeat is armed at that cadence — replacing the pending one.
