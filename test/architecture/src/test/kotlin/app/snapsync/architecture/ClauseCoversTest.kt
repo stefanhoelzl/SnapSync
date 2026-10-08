@@ -14,9 +14,13 @@ import kotlin.test.fail
  * clause with no declared cell, and on a declared cell the grid does not hold: a stale name, or a combination no
  * adapter can answer.
  *
- * REPORTS, and does not fail on, the grid cells no clause claims, and — separately — the cells claimed only by clauses
- * that run against no real implementation on any host ([ContractCoverage.isReal]): those are claimed, but only a mock
- * has ever answered them. Both are written to `build/reports/port-grid/clause-covers.txt`.
+ * **Armed against the open cells** (`docs/testing.md`, "Open cells"): every grid cell is either COVERED — declared by a
+ * clause that runs against a real implementation on some host ([ContractCoverage.coveredCells]) — or listed in the
+ * committed `test/contracts/open-cells.txt`, never both, and every entry there is a grid cell. So new port surface
+ * without a clause fails at once, and the list only shrinks.
+ *
+ * REPORTS the grid cells no clause claims, and — separately — the cells claimed only by clauses that run against no
+ * real implementation on any host ([ContractCoverage.isReal]), in `build/reports/port-grid/clause-covers.txt`.
  *
  * Declarations are trusted: nothing here checks a clause really drives the cell it names.
  */
@@ -58,6 +62,59 @@ class ClauseCoversTest {
         }
     }
 
+    private val covered = ContractCoverage.coveredCells
+
+    private val openLines: List<String> =
+        ContractCoverage.openCellsFile().readLines().filter { it.isNotBlank() && !it.startsWith("#") }
+
+    private val open = openLines.toSet()
+
+    @Test
+    fun `every grid cell is covered or an open cell`() {
+        val novel = (grid - covered - open).sorted()
+        if (novel.isNotEmpty()) {
+            fail(
+                "these port-grid cells are covered by no clause run against a real implementation, and are not on " +
+                    "${OPEN_CELLS}. Write the clause that covers them; only where none can be written yet, add these " +
+                    "lines to the list:\n  " + novel.joinToString("\n  "),
+            )
+        }
+    }
+
+    @Test
+    fun `no open cell is covered`() {
+        val stale = (open intersect covered).sorted()
+        if (stale.isNotEmpty()) {
+            fail(
+                "these cells on $OPEN_CELLS are now covered by a clause run against a real implementation. Delete " +
+                    "these lines — the list only shrinks:\n  " + stale.joinToString("\n  "),
+            )
+        }
+    }
+
+    @Test
+    fun `every open cell is a cell of the grid`() {
+        val unknown = (open - grid).sorted()
+        if (unknown.isNotEmpty()) {
+            fail(
+                "these entries on $OPEN_CELLS name no port-grid cell (build/reports/port-grid/port-grid.txt) — a " +
+                    "port member or variant was renamed or removed. Delete these lines; a cell it became is reported " +
+                    "by `every grid cell is covered or an open cell`:\n  " + unknown.joinToString("\n  "),
+            )
+        }
+    }
+
+    @Test
+    fun `the open cells are sorted and listed once`() {
+        val first = openLines.zipWithNext().firstOrNull { (a, b) -> a >= b }
+        if (first != null) {
+            fail(
+                "$OPEN_CELLS must list each cell once, sorted (`LC_ALL=C sort -u`): " +
+                    "\"${first.second}\" follows \"${first.first}\"",
+            )
+        }
+    }
+
     @Test
     fun `the claims are reported`() {
         val claimed = claims.filter { it.cell in grid }.groupBy { it.cell }
@@ -82,5 +139,9 @@ class ClauseCoversTest {
         )
         println("clause covers: $summary → ${out.absolutePath}/clause-covers.txt")
         assertTrue(real.isNotEmpty(), "no cell is claimed through a real host — the catalog or the coverage read broke")
+    }
+
+    private companion object {
+        const val OPEN_CELLS = "test/contracts/open-cells.txt"
     }
 }
