@@ -9,6 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
+import app.snapsync.model.DateFormats
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinedSurface
@@ -106,11 +107,14 @@ fun StatusScreen(
     // system-reading default (migration step 9): the host binds the `Clock` port
     // (production) or a fixed instant/zone (tests); this screen holds no clock or timezone knowledge.
     cutoff: CutoffFormatter,
+    // How a date reads — the platform's (the `DateFormatting` port's `formats`), asked in the language the strings
+    // resolved to. Required, with no default: the screen knows no platform's CLDR data.
+    dateFormats: (languageTag: String?) -> DateFormats,
     // Everything this screen can ask for, bundled (see [StatusActions]). Required: every host builds it
     // through the one factory, `statusActions(dispatch)`, so a forgotten action is a compile error.
     actions: StatusActions,
 ) {
-    AppTheme {
+    AppTheme(dateFormats) {
         // Derived once from the state. There is no screen-held visibility left to reset when the layer
         // changes: the container clears the overlays where a membership actually ends, and the reduction
         // masks a joined-only overlay against a layer that is not joined.

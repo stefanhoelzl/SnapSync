@@ -6,6 +6,7 @@ import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.snapSyncExtension
+import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.identity.NoPlatformDeviceId
@@ -105,6 +106,8 @@ class JvmApp<D>(
             links = lazyOf(ports.entries.links),
             pushNotifications = lazyOf(ports.entries.pushNotifications),
             ui = lazyOf(ports.entries.ui),
+            // The JDK's CLDR data, as a phone's root hands its platform's: the formatting keeps no state to mock.
+            dateFormatting = lazyOf(JvmDateFormatting()),
         )
 
         /** The extension's own process: its files reach only the shared area; its crash channel is one nobody observes. */

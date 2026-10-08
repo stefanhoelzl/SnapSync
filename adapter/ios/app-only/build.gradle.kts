@@ -51,6 +51,8 @@ kotlin {
             api(project(":adapter:ios:ext-safe"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
+            // The date formatting adapter's wall-clock values.
+            implementation(libs.kotlinx.datetime)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

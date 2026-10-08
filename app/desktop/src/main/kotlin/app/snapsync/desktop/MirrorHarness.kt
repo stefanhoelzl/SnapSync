@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.control.RigClient
+import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.model.Layer
 import app.snapsync.model.RangeChoice
 import app.snapsync.model.RangeForm
@@ -85,13 +86,15 @@ fun MirrorHarnessRoot(url: String) {
 
     // The screen reads the wall clock and zone of the machine it is drawn on, as both desktop harnesses do.
     val cutoff = remember { CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.currentSystemDefault()) }
+    // And its dates read as this machine's JVM writes them: the mirror re-composes the screen here, not on the device.
+    val dates = remember { JvmDateFormatting() }
     val actions = remember { mirrorActions(client, scope, { state }, note) }
 
     MaterialTheme {
         Surface {
             Row(modifier = Modifier.padding(16.dp)) {
                 PhoneFrame {
-                    state?.let { StatusScreen(state = it.ui, cutoff = cutoff, actions = actions) }
+                    state?.let { StatusScreen(state = it.ui, cutoff = cutoff, dateFormats = dates::formats, actions = actions) }
                         ?: Text("waiting for $url …")
                 }
                 Column(

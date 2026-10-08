@@ -106,7 +106,7 @@ class RangePickerDialogTest {
 
     private fun setDialog(initial: EventRange = WHOLE) {
         rule.setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) {
+            CompositionLocalProvider(LocalReduceMotion provides true, LocalDateFormats provides dateFormats(null)) {
                 RangePickerDialog(
                     initial = initial,
                     bounds = WINDOW,

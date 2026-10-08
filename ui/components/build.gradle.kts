@@ -47,6 +47,9 @@ kotlin {
         // exercised through :ui:screens, but the picker dialog's internals warrant a direct probe.
         jvmTest.dependencies {
             implementation(kotlin("test"))
+            // The JVM's real date formatting (`JvmDateFormatting`): a label is asserted as a locale writes it, and how
+            // a date reads is the platform's, behind the `DateFormatting` port — never this module's.
+            implementation(project(":adapter:generic:app"))
             implementation(libs.compose.ui.test.junit4)
             implementation(compose.desktop.currentOs)
         }

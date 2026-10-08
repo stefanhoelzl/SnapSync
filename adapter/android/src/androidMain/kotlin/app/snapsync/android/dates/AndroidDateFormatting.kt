@@ -1,20 +1,26 @@
-package app.snapsync.ui.components
+package app.snapsync.android.dates
 
 import android.icu.text.DateFormat
 import android.icu.util.TimeZone
 import android.icu.util.ULocale
+import app.snapsync.model.DateFormats
+import app.snapsync.model.DateLocale
+import app.snapsync.model.resolveDateLocale
+import app.snapsync.ports.DateFormatting
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.toInstant
 import java.util.Date
 import java.util.Locale
 
 /**
- * Android's [DateFormats]: ICU's pattern for a skeleton. ICU formats an instant, so the wall-clock value is read
- * as UTC and formatted in UTC — the same fields come back out, with no zone in between.
+ * Android's [DateFormatting]: ICU's pattern for a skeleton. ICU formats an instant, so the wall-clock value is read as
+ * UTC and formatted in UTC — the same fields come back out, with no zone in between.
  */
-actual fun DateFormats(languageTag: String?): DateFormats = PlatformDateFormats(languageTag)
+class AndroidDateFormatting : DateFormatting {
+    override fun formats(languageTag: String?): DateFormats = AndroidDateFormats(languageTag)
+}
 
-private class PlatformDateFormats(languageTag: String?) : DateFormats {
+private class AndroidDateFormats(languageTag: String?) : DateFormats {
     private val locale: ULocale = Locale.getDefault(Locale.Category.FORMAT).let { device ->
         when (val resolved = resolveDateLocale(languageTag, device.language, device.country)) {
             DateLocale.Device -> ULocale.forLocale(device)

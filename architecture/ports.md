@@ -37,6 +37,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Enumerated, NotJoined, Paused, Unreadable, Withheld | no |
 | `CycleResult` | `:domain:model` | `:domain:model` COMPLETED, FAILED, PROCESSING, Paused, SKIPPED | no |
 | `Databases` | `:domain:ports` | `:adapter:android` AndroidDatabases; `:adapter:generic:app` JdbcDatabases; `:adapter:generic:mock` InMemoryDatabases; `:adapter:ios:ext-safe` IosDatabases; `:domain:services` Failing, Scripted; `:test:contracts` DatabasesProxy; `:test:feature` RecordingDatabases | yes |
+| `DateFormats` | `:domain:model` | `:adapter:android` AndroidDateFormats; `:adapter:generic:app` JvmDateFormats; `:adapter:ios:app-only` IosDateFormats | no |
+| `DateFormatting` | `:domain:ports` | `:adapter:android` AndroidDateFormatting; `:adapter:generic:app` JvmDateFormatting; `:adapter:ios:app-only` IosDateFormatting; `:test:contracts` DateFormattingProxy | no |
+| `DateLocale` | `:domain:model` | `:domain:model` Device, Explicit | no |
 | `DbOpen` | `:domain:ports` | `:domain:ports` Failed, Missing, OldSchema, Opened | no |
 | `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:test:contracts` DevControlsProxy; `:test:rig` RigDevControls | yes |
 | `DeviceConditions` | `:domain:ports` | `:adapter:android` AndroidDeviceConditions; `:adapter:generic:mock` InMemoryDeviceConditions; `:adapter:ios:app-only` IosDeviceConditions; `:test:contracts` DeviceConditionsProxy | yes |

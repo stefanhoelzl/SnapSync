@@ -1,8 +1,10 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
+import app.snapsync.model.DateFormats
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
+import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.LogSink
@@ -100,4 +102,13 @@ internal class SystemUiProxy(private val inner: SystemUi, log: CallLog) : System
     override suspend fun share(text: String, title: String) = r.answer("share", inner.share(text, title))
     override suspend fun openUrl(url: String) = r.answer("openUrl", inner.openUrl(url))
     override fun openSettings() = r.returns("openSettings", inner.openSettings())
+}
+
+/** [DateFormatting] as its clause's [CallLog] sees it: each [DateFormats] it hands over is an answer. */
+fun DateFormatting.recorded(log: CallLog): DateFormatting = DateFormattingProxy(this, log)
+
+internal class DateFormattingProxy(private val inner: DateFormatting, log: CallLog) : DateFormatting {
+    private val r = log.recorder("DateFormatting")
+
+    override fun formats(languageTag: String?) = r.returns("formats", inner.formats(languageTag))
 }

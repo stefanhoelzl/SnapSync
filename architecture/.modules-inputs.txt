@@ -189,7 +189,9 @@ edge :test:rig :domain:services
 edge :test:rig :test:contracts
 edge :test:rig :test:edge
 edge :test:rig :test:launch-adapters
+edge :ui:components :adapter:generic:app
 edge :ui:components :domain:model
+edge :ui:screens :adapter:generic:app
 edge :ui:screens :domain:feature
 edge :ui:screens :domain:model
 edge :ui:screens :domain:presentation

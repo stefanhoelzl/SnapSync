@@ -1,5 +1,9 @@
-package app.snapsync.ui.components
+package app.snapsync.dates
 
+import app.snapsync.model.DateFormats
+import app.snapsync.model.DateLocale
+import app.snapsync.model.resolveDateLocale
+import app.snapsync.ports.DateFormatting
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
@@ -14,12 +18,14 @@ import platform.Foundation.languageCode
 import platform.Foundation.timeZoneForSecondsFromGMT
 
 /**
- * iOS's [DateFormats]: Foundation's pattern for a skeleton (`dateFormatFromTemplate`). Foundation formats an
+ * iOS's [DateFormatting]: Foundation's pattern for a skeleton (`dateFormatFromTemplate`). Foundation formats an
  * instant, so the wall-clock value is read as UTC and formatted in UTC — the same fields come back out.
  */
-actual fun DateFormats(languageTag: String?): DateFormats = PlatformDateFormats(languageTag)
+class IosDateFormatting : DateFormatting {
+    override fun formats(languageTag: String?): DateFormats = IosDateFormats(languageTag)
+}
 
-private class PlatformDateFormats(languageTag: String?) : DateFormats {
+private class IosDateFormats(languageTag: String?) : DateFormats {
     private val locale: NSLocale = NSLocale.currentLocale.let { device ->
         when (val resolved = resolveDateLocale(languageTag, device.languageCode, device.countryCode)) {
             DateLocale.Device -> device

@@ -261,7 +261,7 @@ class LaunchAdaptersTest {
         extensionRegistry = unbuilt("extensionRegistry"), gallery = unbuilt("gallery"),
         photoAccess = unbuilt("photoAccess"), appUpload = unbuilt("appUpload"), download = unbuilt("download"),
         systemUi = systemUi, lifecycle = unbuilt("lifecycle"), links = unbuilt("links"),
-        pushNotifications = unbuilt("pushNotifications"), ui = ui,
+        pushNotifications = unbuilt("pushNotifications"), ui = ui, dateFormatting = unbuilt("dateFormatting"),
     )
 
     /** An extension's real ports, each failing if built. */

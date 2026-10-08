@@ -197,7 +197,9 @@ flowchart LR
   test_rig --> test_contracts
   test_rig --> test_edge
   test_rig --> test_launch_adapters
+  ui_components --> adapter_generic_app
   ui_components --> domain_model
+  ui_screens --> adapter_generic_app
   ui_screens --> domain_feature
   ui_screens --> domain_model
   ui_screens --> domain_presentation

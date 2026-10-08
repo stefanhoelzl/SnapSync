@@ -50,6 +50,9 @@ kotlin {
             implementation(libs.compose.ui.test)
         }
         jvmTest.dependencies {
+            // The JVM's real date formatting (`JvmDateFormatting`), the one the screen tests render through: a date
+            // is asserted as en-GB writes it, and how it reads is the platform's, behind the `DateFormatting` port.
+            implementation(project(":adapter:generic:app"))
             // Skiko's desktop native binaries — the JVM renderer the offscreen scene draws into.
             implementation(compose.desktop.currentOs)
         }

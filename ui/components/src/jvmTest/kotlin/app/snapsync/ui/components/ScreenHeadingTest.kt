@@ -32,7 +32,7 @@ class ScreenHeadingTest {
     fun `a long name is cut after two lines and the edit control stays`() {
         rule.setContent {
             // A phone's width, so the name has to wrap as it would on the device.
-            AppTheme {
+            AppTheme(platformDates) {
                 Box(Modifier.width(PHONE_WIDTH)) {
                     ScreenLayout(
                         title = "SnapSync",

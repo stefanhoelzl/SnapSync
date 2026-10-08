@@ -94,7 +94,9 @@ flowchart LR
   domain_presentation --> domain_model
   domain_services --> domain_model
   domain_services --> domain_ports
+  ui_components --> adapter_generic_app
   ui_components --> domain_model
+  ui_screens --> adapter_generic_app
   ui_screens --> domain_feature
   ui_screens --> domain_model
   ui_screens --> domain_presentation

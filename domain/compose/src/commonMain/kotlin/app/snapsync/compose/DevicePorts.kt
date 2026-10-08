@@ -6,6 +6,7 @@ import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Databases
+import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
@@ -71,6 +72,8 @@ class AppDevicePorts(
     val links: Lazy<Links>,
     val pushNotifications: Lazy<PushNotifications>,
     val ui: Lazy<Ui>,
+    /** How a date reads on the screen — the platform's CLDR data. */
+    val dateFormatting: Lazy<DateFormatting>,
 ) {
     /**
      * The app process's [AppPorts] over these ports — the one place an app root's ports become the composition's, so
@@ -116,6 +119,7 @@ class AppDevicePorts(
         processInfo = processInfo.value,
         network = network.value,
         deviceConditions = deviceConditions.value,
+        dateFormatting = dateFormatting.value,
     )
 }
 

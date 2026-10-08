@@ -24,7 +24,11 @@ class AppPageSheetTest {
     @Test
     fun `a tap on the screen above the sheet dismisses it`() {
         var dismissed = 0
-        rule.setContent { AppTheme { AppPageSheet(onDismiss = { dismissed++ }) { Text("Share my photos") } } }
+        rule.setContent {
+            AppTheme(
+                platformDates,
+            ) { AppPageSheet(onDismiss = { dismissed++ }) { Text("Share my photos") } }
+        }
         rule.onNodeWithText("Share my photos").assertExists()
         // The scrim spans the screen; its centre is under the sheet, so tap where it shows — the strip at the top.
         rule.onNodeWithContentDescription("Close sheet").performTouchInput { click(Offset(centerX, 5f)) }
@@ -35,7 +39,11 @@ class AppPageSheetTest {
     @Test
     fun `swiping the sheet down dismisses it`() {
         var dismissed = 0
-        rule.setContent { AppTheme { AppPageSheet(onDismiss = { dismissed++ }) { Text("Share my photos") } } }
+        rule.setContent {
+            AppTheme(
+                platformDates,
+            ) { AppPageSheet(onDismiss = { dismissed++ }) { Text("Share my photos") } }
+        }
         rule.onNodeWithText("Share my photos").performTouchInput { swipeDown(startY = top, endY = bottom + 2000f) }
         rule.waitForIdle()
         assertEquals(1, dismissed)
