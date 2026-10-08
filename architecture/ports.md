@@ -65,7 +65,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Fact` | `:domain:model` | `:domain:model` Failed, Known, Unsupported | no |
 | `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |
 | `FileResult` | `:domain:model` | `:domain:model` AreaUnavailable, Denied, Failed, NotFound, Ok | no |
-| `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` Answering, InMemoryFiles, ReadFailing; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, SharedArea; `:test:feature` RecordingFiles, ThrowingDeletes | yes |
+| `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` Answering, InMemoryFiles, ReadFailing; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, SharedArea; `:test:feature` RecordingFiles, ThrowingDeletes, UnlistableStaging | yes |
 | `Found` | `:domain:services` | `:domain:services` Failed, Missing, OldSchema, Open | no |
 | `Gallery` | `:domain:ports` | `:adapter:android` AndroidGallery; `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery | yes |
 | `GalleryImport` | `:domain:ports` | `:adapter:generic:mock` NoImports; `:test:feature` FakeImporter, NoopImporter | yes |
