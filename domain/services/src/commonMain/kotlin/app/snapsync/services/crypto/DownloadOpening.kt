@@ -1,7 +1,6 @@
 package app.snapsync.services.crypto
 
 import app.snapsync.model.AssetRef
-import app.snapsync.model.ConfigRead
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
 import app.snapsync.model.SecureStoreUnavailable
@@ -47,8 +46,7 @@ class DownloadOpening(
     private val failures = MutableStateFlow<Map<String, Int>>(emptyMap())
 
     /** Whether the joined event's resources are sealed — so each must be opened before it is staged. */
-    fun sealed(): Boolean = config.config.value?.keyId != null ||
-        (config.read() as? ConfigRead.Joined)?.config?.keyId != null
+    fun sealed(): Boolean = config.joinedOrRead()?.keyId != null
 
     /**
      * Open [from] into [to] in the shared area, for [ref]'s [resourceKey]. `true` only when every byte authenticated
@@ -83,7 +81,7 @@ class DownloadOpening(
      * event's — a transfer a switch left behind — is not tried.
      */
     private fun attempt(ref: AssetRef, resourceKey: String, eventId: String, from: String, to: String): String? {
-        val joined = config.config.value ?: (config.read() as? ConfigRead.Joined)?.config ?: return "not joined"
+        val joined = config.joinedOrRead() ?: return "not joined"
         if (eventId.isNotEmpty() && eventId != joined.eventId) return "fetched for another event"
         val key = try {
             keys.current()

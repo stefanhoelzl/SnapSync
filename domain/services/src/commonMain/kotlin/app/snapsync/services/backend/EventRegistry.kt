@@ -61,12 +61,10 @@ class BackendEventCreation(
 
     private fun refusal(body: String): CreateOutcome =
         if (WINDOW_FIELDS.any { it in body }) CreateOutcome.InvalidWindow else CreateOutcome.InvalidName
-
-    private companion object {
-        /** The fields a date-range refusal names (`invalid startsAt` / `invalid endsAt`). */
-        val WINDOW_FIELDS = listOf("startsAt", "endsAt")
-    }
 }
+
+/** The fields a date-range refusal names (`invalid startsAt` / `invalid endsAt`). */
+private val WINDOW_FIELDS = listOf("startsAt", "endsAt")
 
 /**
  * [EventRename] over the backend: a served rename answers the name the backend's echo carries; a `400` is

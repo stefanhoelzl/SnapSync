@@ -35,4 +35,7 @@ class ExtensionCredential(
             }
         return null
     }
+
+    /** Nothing: this process cannot attest, so a missing token stays missing and the call goes out without one. */
+    override suspend fun missing(): String? = null
 }

@@ -1,6 +1,5 @@
 package app.snapsync.services.crypto
 
-import app.snapsync.model.ConfigRead
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
@@ -29,7 +28,7 @@ class UploadSealing(
 
     /** How [resource] goes up in the joined event. */
     suspend fun sealFor(resource: Resource): UploadSeal {
-        val joined = config.config.value ?: (config.read() as? ConfigRead.Joined)?.config ?: return UploadSeal.Plain
+        val joined = config.joinedOrRead() ?: return UploadSeal.Plain
         val keyId = joined.keyId ?: return UploadSeal.Plain
         val key = try {
             keys.current()

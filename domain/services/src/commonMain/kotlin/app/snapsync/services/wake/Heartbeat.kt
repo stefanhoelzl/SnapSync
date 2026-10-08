@@ -93,9 +93,6 @@ class Heartbeat(
          */
         val IDLE_EARLIEST = 1.hours
 
-        /** The most a library-change wake may lag the change that prompted it. */
-        val LIBRARY_CHANGE_DELAY = 60.seconds
-
         /**
          * The heartbeat's trigger at [cadence]. It needs the network (its work uploads and reads the event) and not
          * external power, so the operating system grants windows often enough to drain a first whole-library upload.
@@ -103,7 +100,7 @@ class Heartbeat(
          */
         fun triggerAt(
             cadence: WakeCadence,
-            transfers: TransferNetwork = TransferNetwork.ANY,
+            transfers: TransferNetwork,
         ): WakeTrigger.After = when (cadence) {
             WakeCadence.BUSY -> WakeTrigger.After(
                 earliest = BUSY_EARLIEST,
@@ -118,3 +115,6 @@ class Heartbeat(
         }
     }
 }
+
+/** The most a library-change wake may lag the change that prompted it. */
+private val LIBRARY_CHANGE_DELAY = 60.seconds

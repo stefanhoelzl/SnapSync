@@ -38,7 +38,7 @@ class SuppressionService(private val databases: Databases) : SuppressionSource {
     }
 
     override suspend fun suppressedLocalIds(): Set<AssetId> = when (val found = open()) {
-        is Found.Open -> found.queries.suppressedLocalIds().executeAsList().mapNotNull { it }.toSet()
+        is Found.Open -> found.queries.suppressedLocalIds().executeAsList().filterNotNull().toSet()
         Found.Missing -> emptySet()
         // Never "nothing suppressed": either would upload downloaded photos back into the event.
         Found.OldSchema -> throw DatabaseUnavailable(DOWNLOADS_DB_NAME, "older schema than this build's")
