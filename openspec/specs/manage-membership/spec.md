@@ -282,7 +282,10 @@ in both light and dark appearance. Shown, the QR code SHALL be presented as an i
 and its caption SHALL be addressed to the member showing it, telling them to let family and friends scan it
 with their camera. Sharing or showing the QR code SHALL have no effect on the app's state, whether completed
 or cancelled. Invite affordances SHALL NOT appear while the device is in no event, nor once the event has
-closed.
+closed, nor while the device cannot read an encrypted event's key — after it lost the key (capability `sync-status`)
+or while the phone is locked since it was started — so an invite is only ever offered whole, never without its key
+(capability `join-event`); a QR code already shown then closes. They SHALL return as soon as the key can be read
+again.
 
 #### Scenario: A host shares the invite before granting photo access
 - **WHEN** a host who has not granted photo access has just joined their new event
@@ -322,6 +325,14 @@ closed.
 #### Scenario: A closed event offers no invite
 - **WHEN** the event closes while a member is looking at the joined screen, with or without the QR code shown
 - **THEN** the share action, the QR action and any shown QR code disappear
+
+#### Scenario: A phone that lost the event's key offers no invite
+- **WHEN** a member of an encrypted event whose phone lost the event's key opens the joined screen
+- **THEN** it offers neither to share the invite nor to show its QR code
+
+#### Scenario: The invite returns with the key
+- **WHEN** that member opens the event's whole invite and the key is restored
+- **THEN** the joined screen offers to share the invite and to show its QR code again, both carrying the key
 
 ### Requirement: The app leaves on its own once the event is finished for it
 The app SHALL end the membership on its own, exactly as an explicit leave but without asking and without

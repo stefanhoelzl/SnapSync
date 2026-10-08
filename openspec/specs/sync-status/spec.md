@@ -56,7 +56,8 @@ about photos not arriving, and Leave.
 The joined screen SHALL show exactly one status line. When several conditions hold at once it SHALL show the
 first that applies, in this order: the app is still reading its state; the member neither shares nor receives
 (both switched off in the event's settings, capability `manage-membership`) and no work remains in either
-direction — the line then reads "Not sharing or receiving"; photo access missing; no usable network (as "The
+direction — the line then reads "Not sharing or receiving"; the device has lost the event's key (as "A device that
+lost the event's key asks for its invite" requires); photo access missing; no usable network (as "The
 app says when it cannot reach the network" requires); the event has not started; the device cannot be
 verified; then "Up to date" or work in progress. Limited photo access SHALL NOT count as
 missing access (capability `photo-access`).
@@ -68,6 +69,10 @@ missing access (capability `photo-access`).
 #### Scenario: Missing access outranks a missing network
 - **WHEN** a joined member without photo access has no network
 - **THEN** the status line asks for photo access
+
+#### Scenario: A lost key outranks missing access
+- **WHEN** a joined member without photo access has lost the event's key
+- **THEN** the status line asks for the event's invite
 
 #### Scenario: A missing network outranks everything else
 - **WHEN** a joined member with access has no network, in an event that has not started or while everything is
@@ -668,3 +673,25 @@ off by choice SHALL look different from one held back by missing access, which i
 #### Scenario: The remedy is always there
 - **WHEN** a member opens the joined screen in any status
 - **THEN** it tells them that opening the app makes photos that are not arriving catch up
+
+### Requirement: A device that lost the event's key asks for its invite
+When the device is in an encrypted event but no longer holds the event's key — after the phone was restored onto a
+new device, or the phone's own protection of the key was reset — the joined screen SHALL say so in its status line
+and ask the member to open the event's invite again, for example from another member. The line SHALL NOT be
+tappable. While the key is missing, nothing SHALL be uploaded or downloaded and the progress SHALL NOT advance, and
+the member SHALL stay in the event with every setting unchanged. Opening the event's whole invite SHALL end it
+(capability `join-event`). A device that merely cannot read the key for a moment — a phone locked since it was
+started — SHALL NOT show this line.
+
+#### Scenario: A restored phone asks for the invite
+- **WHEN** a member restores their phone onto a new device and opens SnapSync, and the event's key did not come with it
+- **THEN** the joined screen's status line asks them to open the event's invite again, and no photo is uploaded or
+  downloaded
+
+#### Scenario: The invite ends it
+- **WHEN** that member opens the event's whole invite
+- **THEN** the status line returns to the event's ordinary status, and sharing and receiving resume where they stopped
+
+#### Scenario: A locked phone is not mistaken for a lost key
+- **WHEN** a member's phone is woken in the background while still locked since it was started
+- **THEN** the joined screen does not ask for the invite once the phone is unlocked and the app opened
