@@ -80,7 +80,9 @@ internal fun stagingPath(root: String, eventId: String, ref: AssetRef, resourceK
  * unknown status all pass.
  */
 internal fun TransferOutcome.mayBeStaged(): Boolean {
-    if (statusCode != null && statusCode !in 200..299) return false
+    // Read once: a property of another module's class is re-read, and null-checked, at each use.
+    val status = statusCode
+    if (status != null && status !in 200..299) return false
     if (expectedBytes >= 0 && receivedBytes < expectedBytes) return false
     return true
 }
@@ -324,8 +326,10 @@ class DownloadJobs(
 
     private fun pump() {
         while (inFlight.size < MAX_IN_FLIGHT) {
-            val tag = queued.keys.firstOrNull() ?: break
-            val next = queued.remove(tag) ?: break
+            val first = queued.entries.firstOrNull() ?: break
+            val tag = first.key
+            val next = first.value
+            queued.remove(tag)
             if (!isFetchableUrl(next.resource.url)) {
                 // Pending, not failed: a later reconcile re-plans the url (`receiving-photos`), and a
                 // permanently-bad one is skipped again rather than aborting the process.

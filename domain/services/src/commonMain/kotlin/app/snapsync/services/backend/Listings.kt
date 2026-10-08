@@ -59,17 +59,14 @@ class BackendDeviceFilesSource(private val backend: AuthenticatedBackend) : Devi
 
     override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> =
         when (val reply = backend.deviceFiles(eventId, deviceId)) {
-            is Reply.Ok -> Result.success(
-                reply.value.map {
-                    StoredResource(uploadKey(it.assetId, it.role, it.filename), it.assetId)
-                },
-            )
             is Reply.Malformed -> Result.failure(
                 DeviceListingShapeException(
                     "the per-device listing did not decode into {assetId, role, filename}: ${reply.detail}",
                 ),
             )
-            else -> reply.toResult("list device $deviceId in $eventId").map { emptyList() }
+            else -> reply.toResult("list device $deviceId in $eventId").map { files ->
+                files.map { StoredResource(uploadKey(it.assetId, it.role, it.filename), it.assetId) }
+            }
         }
 }
 

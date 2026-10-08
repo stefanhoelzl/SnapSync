@@ -80,27 +80,28 @@ class PersistedDeviceIdentity(
     }
 
     private fun resolveOnce(): DeviceIdResult {
-        var resolution: SecureStoreResolution? = null
+        // What the store reported: exactly once for every id the helpers answer, before they answer it.
+        val reported = mutableListOf<SecureStoreResolution>()
         val result = try {
             when (role) {
                 // Asks the shared slot and accepts its answer; absence is never minted over here.
                 DeviceIdentityRole.READ_ONLY ->
-                    readExisting(store, SecureSlots.DEVICE_ID, onResolution = { resolution = it })
+                    readExisting(store, SecureSlots.DEVICE_ID, onResolution = reported::add)
                         ?.let { DeviceIdResult.Id(it, DeviceIdResult.Via.READ) }
                         ?: DeviceIdResult.AbsentNotMintable
 
                 DeviceIdentityRole.MINTING -> resolveOrMint(
                     store,
                     SecureSlots.DEVICE_ID,
-                    onResolution = { resolution = it },
+                    onResolution = reported::add,
                     generate = ::mint,
-                ).let { DeviceIdResult.Id(it, via(resolution)) }
+                ).let { DeviceIdResult.Id(it, via(reported.single())) }
             }
         } catch (unavailable: SecureStoreUnavailable) {
             DeviceIdResult.Unavailable(unavailable.detail)
         }
         when (result) {
-            is DeviceIdResult.Id -> log.i { "device identity: id=${result.value} via=${resolution.describe()}" }
+            is DeviceIdResult.Id -> log.i { "device identity: id=${result.value} via=${reported.single().describe()}" }
             DeviceIdResult.AbsentNotMintable ->
                 log.i { "device identity: absent in the shared group and this process may not mint" }
             is DeviceIdResult.Unavailable -> Unit // the caller's skip line names it
@@ -122,14 +123,13 @@ class PersistedDeviceIdentity(
     @OptIn(ExperimentalUuidApi::class)
     private fun mint(): String = platformDeviceId.stableId() ?: Uuid.random().toString().uppercase()
 
-    private fun via(resolution: SecureStoreResolution?): DeviceIdResult.Via = when (resolution) {
+    private fun via(resolution: SecureStoreResolution): DeviceIdResult.Via = when (resolution) {
         SecureStoreResolution.Minted -> DeviceIdResult.Via.MINTED
-        is SecureStoreResolution.Found, null -> DeviceIdResult.Via.READ
+        is SecureStoreResolution.Found -> DeviceIdResult.Via.READ
     }
 
-    private fun SecureStoreResolution?.describe(): String = when (this) {
+    private fun SecureStoreResolution.describe(): String = when (this) {
         is SecureStoreResolution.Found -> "read(protection=$protection)"
         SecureStoreResolution.Minted -> "minted"
-        null -> "unreported"
     }
 }

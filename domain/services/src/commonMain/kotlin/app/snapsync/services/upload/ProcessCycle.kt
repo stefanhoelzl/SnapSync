@@ -62,7 +62,10 @@ suspend fun runProcessCycle(
             null
         }
         // The hook runs outside the cycle's own guard, so a throwing hook is a LATE failure, not a failed cycle.
-        ran?.also(onCycleFinished)?.requeueWhilePending(pending, onRequeue) ?: CycleResult.FAILED
+        when (ran) {
+            null -> CycleResult.FAILED
+            else -> ran.also(onCycleFinished).requeueWhilePending(pending, onRequeue)
+        }
     } catch (t: Throwable) {
         onLateFailure(t)
         CycleResult.FAILED

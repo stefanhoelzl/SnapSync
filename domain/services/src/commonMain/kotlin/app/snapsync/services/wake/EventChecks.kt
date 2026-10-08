@@ -40,7 +40,10 @@ class EventChecks(
     /** Whether a wake may ask [eventId] for [check] now. */
     fun due(check: EventCheck, eventId: String): Boolean {
         val last = when (val read = preferences.get(keyOf(check, eventId))) {
-            is PrefRead.Value -> read.value.toLongOrNull()?.let(Instant::fromEpochMilliseconds) ?: return true
+            is PrefRead.Value -> when (val millis = read.value.toLongOrNull()) {
+                null -> return true
+                else -> Instant.fromEpochMilliseconds(millis)
+            }
             PrefRead.Absent -> return true
             is PrefRead.Unavailable -> return true.also { log.w { "last $check check unreadable (${read.detail}) — due" } }
         }
@@ -59,10 +62,10 @@ class EventChecks(
         EventCheck.entries.forEach { preferences.remove(keyOf(it, eventId)) }
     }
 
-    companion object {
-        /** The least time between two asks of one event from background wakes. */
-        val INTERVAL: Duration = 1.hours
-
+    private companion object {
         private fun keyOf(check: EventCheck, eventId: String) = "app.snapsync.check.${check.key}.$eventId"
     }
 }
+
+/** The least time between two asks of one event from background wakes. */
+private val INTERVAL: Duration = 1.hours

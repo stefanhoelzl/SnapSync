@@ -33,7 +33,10 @@ class GalleryAlbums(
 
     /** An album the gallery cannot read does not resolve — the caller then creates, which fails the same way. */
     suspend fun exists(albumLocalId: String): Boolean =
-        (gallery.albumsById(setOf(albumLocalId)) as? GalleryRead.Read)?.value?.isNotEmpty() == true
+        when (val read = gallery.albumsById(setOf(albumLocalId))) {
+            is GalleryRead.Read -> read.value.isNotEmpty()
+            GalleryRead.NotReadable -> false
+        }
 
     /**
      * Add the library assets [assetIds] (the gallery's asset ids, as the ledger and the download store carry
@@ -52,7 +55,10 @@ class GalleryAlbums(
      * gallery answers the empty set — the denylist is a subtraction and the policy admits on doubt.
      */
     suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId> {
-        val albums = (gallery.albums() as? GalleryRead.Read)?.value ?: return emptySet()
+        val albums = when (val read = gallery.albums()) {
+            is GalleryRead.Read -> read.value
+            GalleryRead.NotReadable -> return emptySet()
+        }
         return albums.filter { calibration.isDenylistedAlbum(it.title) }.flatMapTo(mutableSetOf()) { album ->
             val members = (gallery.albumMembers(album.id, since) as? GalleryRead.Read)?.value.orEmpty()
             log.i { "denylisted album '${album.title}': ${members.size} member(s) in scope" }

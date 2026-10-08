@@ -147,20 +147,23 @@ class UploadTransferService(
         }
         // A failure's live resource: the job's own where the platform still holds it, otherwise the photo's, if it is
         // still in the library (PhotoKit answers no resource for a retry-spent job — measured SE2, iOS 26.6.2).
-        val live: Resource? = (job.source as? UploadSource.Resource)
-            ?.let { Resource(key, assetIdFromUploadKey(key), job.contentType.orEmpty(), emptyMap(), it.handle) }
-            ?: if (classified.state == UploadJobState.SUCCEEDED) null else liveResource(key)
+        val held = job.source as? UploadSource.Resource
+        val live: Resource? = when {
+            held != null -> Resource(key, assetIdFromUploadKey(key), job.contentType.orEmpty(), emptyMap(), held.handle)
+            classified.state == UploadJobState.SUCCEEDED -> null
+            else -> liveResource(key)
+        }
         val disposition = terminalDisposition(classified.state, resourceIsLive = live != null)
         if (!record.markTerminal(key, disposition.outcome)) {
             // Not silent: the row was not REQUESTED — already settled, or pruned.
             log.i { "terminal $key -> ${disposition.outcome} applied to no row" }
         }
-        if (!disposition.reCreate || live == null) return null
+        val reCreated = live?.takeIf { disposition.reCreate } ?: return null
         return PlatformUploadJob(
             key = key,
-            contentType = jobContentType(job.contentType, live.contentType.ifEmpty { null }),
+            contentType = jobContentType(job.contentType, reCreated.contentType.ifEmpty { null }),
             error = classified.error,
-            data = live.data,
+            data = reCreated.data,
         )
     }
 
@@ -182,7 +185,7 @@ class UploadTransferService(
                 return@invocation
             }
             // A platform's own retry re-sends the library's bytes, so an encrypted event's edge seal is renewed with it.
-            val sealed = when (val seal = sealing?.sealFor(request.resource) ?: UploadSeal.Plain) {
+            val sealed = when (val seal = sealOf(request.resource)) {
                 UploadSeal.Plain -> request.headers
                 is UploadSeal.Sealed -> request.headers + sealing!!.edgeHeaders(seal)
                 is UploadSeal.Withheld -> {
@@ -209,7 +212,7 @@ class UploadTransferService(
                 return@invocation UploadCreateOutcome.FAILED
             }
             val target = UploadTarget(request.url, request.headers, network())
-            when (val seal = sealing?.sealFor(resource) ?: UploadSeal.Plain) {
+            when (val seal = sealOf(resource)) {
                 UploadSeal.Plain -> when (upload.accepts) {
                     UploadSourceKind.RESOURCE -> upload.create(
                         UploadSource.Resource(resource.data),
@@ -246,11 +249,11 @@ class UploadTransferService(
         val staged = uploadStagingPath(resource.filename)
         // A sealed upload is exported beside the staged file and sealed INTO it; the plaintext goes at once.
         val exportedTo = if (seal == null) staged else "$staged$PLAINTEXT_SUFFIX"
-        val path = (files.locate(FileArea.SHARED, staged) as? FileResult.Ok)?.value ?: run {
+        val path = located(staged) ?: run {
             log.w { "createJob: the shared area cannot hold ${resource.filename}'s bytes — not creating" }
             return UploadCreateOutcome.FAILED
         }
-        val exportPath = (files.locate(FileArea.SHARED, exportedTo) as? FileResult.Ok)?.value ?: return UploadCreateOutcome.FAILED
+        val exportPath = located(exportedTo) ?: return UploadCreateOutcome.FAILED
         // The directory the export writes into: `write` creates parents, and the empty file is replaced by the export.
         files.write(FileArea.SHARED, exportedTo, ByteArray(0))
         when (val exported = gallery.export(resource, exportPath)) {
@@ -348,6 +351,16 @@ class UploadTransferService(
                 }
             }
         }
+    }
+
+    /** How [resource] goes up: plainly where nothing is ever sealed, else as [sealing] decides for the joined event. */
+    private suspend fun sealOf(resource: Resource): UploadSeal =
+        if (sealing == null) UploadSeal.Plain else sealing.sealFor(resource)
+
+    /** The OS path of [path] in the shared area, or `null` when the area cannot hold it now. */
+    private fun located(path: String): String? = when (val at = files.locate(FileArea.SHARED, path)) {
+        is FileResult.Ok -> at.value
+        else -> null
     }
 
     private suspend fun liveResource(key: String): Resource? =

@@ -106,6 +106,15 @@ class ConfigService(
     }
 
     /**
+     * The joined event's config for a reader that may run before this process re-read the file: the held [config],
+     * else the file's — `null` when the file holds none or cannot be read now. Never a reader that acts on absence.
+     */
+    fun joinedOrRead(): EventConfig? = state.value ?: when (val read = read()) {
+        is ConfigRead.Joined -> read.config
+        else -> null
+    }
+
+    /**
      * Re-read the file into [config]: cross-process writers do not notify this process's [StateFlow], and a
      * pre-first-unlock construction seeded `null`. The trigger flows call this at every OS entry, so an
      * **unreadable** read retains the last good value (`configAfterReload`): at this cadence a transient failure

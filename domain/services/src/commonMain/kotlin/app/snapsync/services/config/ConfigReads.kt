@@ -34,7 +34,10 @@ import app.snapsync.model.runCatchingCancellable
  * user out must not be testable on macOS only.
  */
 fun configReadViaFile(file: FileResult<ByteArray>): ConfigRead = when (file) {
-    is FileResult.Ok -> file.value.decodeUtf8()?.let(::configReadOf) ?: ConfigRead.Unavailable("config file is not UTF-8")
+    is FileResult.Ok -> when (val text = file.value.decodeUtf8()) {
+        null -> ConfigRead.Unavailable("config file is not UTF-8")
+        else -> configReadOf(text)
+    }
     FileResult.NotFound -> ConfigRead.None
     FileResult.AreaUnavailable -> ConfigRead.Unavailable("the shared area is unavailable")
     is FileResult.Denied -> ConfigRead.Unavailable("denied (code=${file.code}): ${file.detail}")

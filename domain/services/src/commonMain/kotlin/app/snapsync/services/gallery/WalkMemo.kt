@@ -63,14 +63,14 @@ class WalkMemo(
     private val log: Logger,
 ) : UploadDiscovery {
 
+    /** A full-grant walk's answer — the only grant one is ever stored under, so the grant is no part of its key. */
     private class Entry(
         val token: LibraryChangeToken,
         val policy: SelectionPolicy,
-        val grant: GalleryAccess,
         val discovery: Discovery,
     ) {
-        fun matches(token: LibraryChangeToken, policy: SelectionPolicy, grant: GalleryAccess): Boolean =
-            this.grant == grant && this.policy == policy && this.token.sameLibraryAs(token)
+        fun matches(token: LibraryChangeToken, policy: SelectionPolicy): Boolean =
+            this.policy == policy && this.token.sameLibraryAs(token)
     }
 
     /** Guards [entry] only — never a walk, so two callers never wait on each other's enumeration. */
@@ -81,14 +81,14 @@ class WalkMemo(
         val grantNow = grant.current()
         if (grantNow != GalleryAccess.GRANTED) return walk.discover(policy)
         val token = changeToken.changeToken() ?: return walk.discover(policy)
-        val held = lock.withLock { entry }?.takeIf { it.matches(token, policy, grantNow) }
+        val held = lock.withLock { entry }?.takeIf { it.matches(token, policy) }
         if (held != null && use == WalkMemoUse.SERVE) {
             log.i { "walk memo: library unchanged, answered ${held.discovery.candidates.size} candidate(s) without a walk" }
             return held.discovery
         }
         val fresh = walk.discover(policy)
         if (held != null) compare(held.discovery, fresh)
-        if (fresh.fullEnumeration) lock.withLock { entry = Entry(token, policy, grantNow, fresh) }
+        if (fresh.fullEnumeration) lock.withLock { entry = Entry(token, policy, fresh) }
         return fresh
     }
 

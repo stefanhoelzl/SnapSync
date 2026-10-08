@@ -57,10 +57,10 @@ interface Credential {
     /**
      * This process holds no token and a USER is waiting on the call: obtain one now if this process can, and answer
      * it — or `null`. What makes a tap on a phone that never attested try to verify it again (capability `create-event`,
-     * "The front screen tells a refused phone before it tries"). Only the extension, which cannot attest, keeps the
-     * default. Never throws.
+     * "The front screen tells a refused phone before it tries"). The extension, which cannot attest, answers `null`.
+     * Never throws.
      */
-    suspend fun missing(): String? = null
+    suspend fun missing(): String?
 }
 
 /**

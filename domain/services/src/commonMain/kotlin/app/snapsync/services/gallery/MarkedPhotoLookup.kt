@@ -69,11 +69,17 @@ class MarkedPhotoLookup(
     private suspend fun fromLibrary(window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId>? {
         // The whole library, not the sharing candidates: on Android a received photo filed into an event album lives in
         // a folder the candidates leave out, and it must be recognised all the same.
-        val facts = (gallery.libraryAssets(window) as? GalleryRead.Read)?.value ?: return null
+        val facts = when (val read = gallery.libraryAssets(window)) {
+            is GalleryRead.Read -> read.value
+            GalleryRead.NotReadable -> return null
+        }
         // The reader may return more than the policy (it narrows only what the platform can express); the policy decides.
         val ids = facts.filter { it.assetId !in known && window.admits(it) }.mapTo(mutableSetOf()) { it.assetId }
         if (ids.isEmpty()) return emptyMap()
-        val assets = (gallery.resources(ids) as? GalleryRead.Read)?.value ?: return emptyMap()
+        val assets = when (val read = gallery.resources(ids)) {
+            is GalleryRead.Read -> read.value
+            GalleryRead.NotReadable -> return emptyMap()
+        }
         return assets.mapNotNull { asset ->
             val primary = asset.rawResources.firstOrNull { it.role == ResourceRole.PRIMARY } ?: return@mapNotNull null
             ReceivedPhotoName.tokenOf(primary.originalFilename)?.let { it to asset.assetId }

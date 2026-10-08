@@ -2,13 +2,16 @@
 
 package app.snapsync.services.wake
 
+import app.snapsync.model.ConfinedTo
 import app.snapsync.ports.Completion
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
@@ -46,18 +49,27 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * queue — so that adapter's completion hops to main itself (phase 11f; before it, this holder took a release lane).
  *
  * **Thread-safe by construction.** Handovers arrive on the main thread, drains on a session queue, expiries on the
- * operating system's queue: the outstanding set is one atomic reference replaced whole, and each handler's release is
- * a compare-and-set — so two paths racing to release one handler release it once.
+ * operating system's queue: a handover is one send into an unbounded queue, taken into the outstanding set only by a
+ * [releaseAfter], under its lock; and each handler's release is a compare-and-set on its own flag — so two paths racing
+ * to release one handler release it once, and an expiry touches nothing shared.
  */
 class OsCompletions(
     /** The entry point these handlers belong to, for the diagnostic lines. */
     private val entryPoint: String,
     private val log: Logger = Logger.withTag("OsCompletions"),
 ) {
-    private val outstanding = AtomicReference<List<Handover>>(emptyList())
+    /** Handovers not yet taken into [outstanding]: the one structure a handover writes, from any thread. */
+    private val arrivals = Channel<Handover>(Channel.UNLIMITED)
+
+    /** Guards [outstanding], which only [releaseAfter] reads and writes. */
+    private val lock = Mutex()
+
+    /** Every handler handed over and not released when the last [releaseAfter] began. Read and written under [lock]. */
+    @ConfinedTo("lock")
+    private var outstanding: List<Handover> = emptyList()
 
     /** The operating system handed over [completion]. Held until a [releaseAfter] that begins later, or an expiry. */
-    fun adopt(completion: Completion): Handover = Handover(completion).also { handover -> update { it + handover } }
+    fun adopt(completion: Completion): Handover = Handover(completion).also { arrivals.trySend(it) }
 
     /**
      * Run [ownWork], then release every handler handed over before it began — after the work, on every path.
@@ -65,7 +77,10 @@ class OsCompletions(
      * background time rather than under these handlers.
      */
     suspend fun releaseAfter(ownWork: suspend () -> Unit) {
-        val window = outstanding.load()
+        val window = lock.withLock {
+            outstanding = (outstanding + arrived()).filterNot { it.isReleased }
+            outstanding
+        }
         try {
             ownWork()
         } finally {
@@ -75,11 +90,9 @@ class OsCompletions(
         }
     }
 
-    private fun update(change: (List<Handover>) -> List<Handover>) {
-        while (true) {
-            val current = outstanding.load()
-            if (outstanding.compareAndSet(current, change(current))) return
-        }
+    /** Every handover sent since the last call, in the order they arrived. */
+    private fun arrived(): List<Handover> = buildList {
+        while (true) add(arrivals.tryReceive().getOrNull() ?: break)
     }
 
     /** One handler the operating system handed over, and the only way to answer it early. */
@@ -103,7 +116,6 @@ class OsCompletions(
 
         internal fun release(expired: String?) {
             if (!answered.compareAndSet(expectedValue = false, newValue = true)) return
-            update { held -> held - this }
             try {
                 completion.complete()
             } finally {
