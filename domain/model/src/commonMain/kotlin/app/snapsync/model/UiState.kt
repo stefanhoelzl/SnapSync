@@ -193,15 +193,10 @@ sealed interface Layer {
     @Serializable
     data class JoiningEvent(
         val eventId: String,
-        val phase: JoinPhase,
+        /** Where the confirmation stands, and — once the details are loaded — the range a confirm would commit. */
+        val stage: JoinStage,
         /** The member's uncommitted choices on this surface. Seeded when the details load. */
         val form: RangeForm = RangeForm(),
-        /**
-         * [form] resolved against the loaded event's window — what a confirm would commit, and what the
-         * range row renders. `null` on the phases that have no window yet, which are exactly the phases
-         * that render no range row.
-         */
-        val range: ResolvedRange? = null,
         /**
          * A transient, self-clearing notice over the join surface — the rejected-event-link message
          * (capability `join-event`), the same cell [Joined.notice] and [CreateEvent.error] read: a bad
@@ -221,7 +216,12 @@ sealed interface Layer {
          * the details load by themselves once the network returns.
          */
         val network: NetworkNotice? = null,
-    ) : Layer
+    ) : Layer {
+        val phase: JoinPhase get() = stage.phase
+
+        /** [form] resolved against the loaded event's window, or `null` before there is one. */
+        val range: ResolvedRange? get() = (stage as? JoinStage.Loaded)?.range
+    }
 
     /**
      * An event is connected (`config != null`) — the joined layer. Always renders the invite (name,
@@ -416,17 +416,21 @@ data class EventDetails(
  */
 @Serializable
 sealed interface JoinPhase {
+    /** A phase that carries no event: the details are not loaded, or there is nothing to load. */
+    @Serializable
+    sealed interface Eventless : JoinPhase
+
     /** Fetching `GET /event/:id` details ("Loading event details…"). */
     @Serializable
-    data object Loading : JoinPhase
+    data object Loading : Eventless
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
     @Serializable
-    data object NotFound : JoinPhase
+    data object NotFound : Eventless
 
     /** The details fetch failed transiently (network/5xx); a Retry re-runs it. */
     @Serializable
-    data object LoadFailed : JoinPhase
+    data object LoadFailed : Eventless
 
     /**
      * The event has closed, or finished and its photos were deleted (capability `join-event`, "A closed or finished
@@ -434,7 +438,7 @@ sealed interface JoinPhase {
      * final, so a Retry could never succeed.
      */
     @Serializable
-    data object Closed : JoinPhase
+    data object Closed : Eventless
 
     /**
      * The invite link does not open this event: the event is encrypted and the link carried no key, or another one
@@ -442,7 +446,7 @@ sealed interface JoinPhase {
      * opening the whole invite again, which no Retry of this one can do.
      */
     @Serializable
-    data object WrongLink : JoinPhase
+    data object WrongLink : Eventless
 
     /**
      * Details loaded: [event] is what was fetched, [step] is where in the confirmation the member is.
@@ -485,6 +489,23 @@ sealed interface JoinPhase {
     }
 }
 
+/**
+ * The join surface's stage (capability `join-event`): a phase with no event, or a [JoinPhase.Detailed] TOGETHER WITH
+ * the range its form resolves to against the loaded window — so a surface that renders or commits the range cannot be
+ * constructed without one. The range is not part of the phase because the phase is also the pending join's own record,
+ * where a range resolved from the form and the share count would be stale.
+ */
+@Serializable
+sealed interface JoinStage {
+    val phase: JoinPhase
+
+    @Serializable
+    data class Unloaded(override val phase: JoinPhase.Eventless) : JoinStage
+
+    @Serializable
+    data class Loaded(override val phase: JoinPhase.Detailed, val range: ResolvedRange) : JoinStage
+}
+
 /** The loaded event facts, or `null` on the three phases that carry none. */
 val JoinPhase.details: EventDetails? get() = (this as? JoinPhase.Detailed)?.event
 
@@ -492,7 +513,7 @@ val JoinPhase.details: EventDetails? get() = (this as? JoinPhase.Detailed)?.even
 val JoinPhase.step: JoinPhase.Detailed.Step? get() = (this as? JoinPhase.Detailed)?.step
 
 /** A loaded phase at [step], built from [details] — the shape every construction site takes. */
-fun joinPhase(step: JoinPhase.Detailed.Step, details: EventDetails): JoinPhase =
+fun joinPhase(step: JoinPhase.Detailed.Step, details: EventDetails): JoinPhase.Detailed =
     JoinPhase.Detailed(details, step)
 
 /**

@@ -4,6 +4,7 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -84,7 +85,6 @@ class CutoffTest {
         // event began can be uploaded to it.
         val picks =
             listOf(
-                captureCutoff(""),
                 captureCutoff("2001-01-01T00:00:00Z"),
                 CaptureCutoff(startsAt.at),
                 captureCutoff("2099-12-31T23:59:59Z"),
@@ -98,10 +98,15 @@ class CutoffTest {
     }
 
     @Test
-    fun `the empty-string cutoff cannot survive the clamp`() {
-        // "" is the trapdoor to whole-library scope (every string is >= ""). The floor closes it: even if
-        // an empty cutoff reached the clamp, it is raised to the event's start.
-        assertEquals(CaptureCutoff(startsAt.at), clampToFloor(chosen = captureCutoff(""), startsAt = startsAt))
+    fun `the empty-string cutoff cannot be constructed`() {
+        // "" is the trapdoor to whole-library scope (every string is >= ""). A membership's dates hold an instant by
+        // construction, so it never reaches the clamp — nor does any other off-shape value, for any of the four roles.
+        for (bad in listOf("", "not-a-date")) {
+            assertFailsWith<IllegalArgumentException> { captureCutoff(bad) }
+            assertFailsWith<IllegalArgumentException> { captureCeiling(bad) }
+            assertFailsWith<IllegalArgumentException> { eventStart(bad) }
+            assertFailsWith<IllegalArgumentException> { eventEnd(bad) }
+        }
     }
 
     @Test

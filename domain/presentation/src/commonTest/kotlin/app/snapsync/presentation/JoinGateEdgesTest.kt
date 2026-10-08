@@ -12,7 +12,6 @@ import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinPhase
-import app.snapsync.model.Layer
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -35,7 +34,6 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -460,22 +458,6 @@ class JoinGateEdgesTest {
     }
 
     // ---- what the gate resolves and announces ----------------------------------------------------
-
-    @Test
-    fun `event dates that do not parse resolve to the widest safe window rather than failing`() = runTest {
-        // The window starts now (2026-07-09T12:00Z) and ends at the far-future sentinel; the bounds only narrow from here.
-        val world = World().apply {
-            load = { FOUND.copy(startsAt = eventStart("not a date"), endsAt = eventEnd("not a date either")) }
-        }
-        val host = host(world, backgroundScope)
-        settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
-
-        val layer = host.container.stateFlow.first { (it.layer as? Layer.JoiningEvent)?.range != null }.layer
-        val range = assertIs<Layer.JoiningEvent>(layer).range!!
-        assertEquals(LocalDateTime(2026, 7, 9, 12, 0), range.windowStart)
-        assertEquals(LocalDateTime(2026 + NO_CEILING_YEARS, 1, 1, 0, 0), range.windowEnd)
-        assertTrue(world.errors.isEmpty(), "${world.errors}")
-    }
 
     @Test
     fun `the confirm announces the access dialog only for a first join on a phone never asked`() {

@@ -126,14 +126,13 @@ class UiStateFieldContractTest {
             Layer.JoiningEvent.serializer(),
             Layer.JoiningEvent(
                 eventId = "event",
-                phase = detailed,
+                stage = JoinStage.Loaded(detailed, range),
                 form = form,
-                range = range,
                 notice = ScreenMessage.INVALID_LINK,
                 asksAccessOnJoin = true,
                 network = NetworkNotice.BLOCKED,
             ),
-            optional = setOf("form", "range", "notice", "asksAccessOnJoin", "network"),
+            optional = setOf("form", "notice", "asksAccessOnJoin", "network"),
         )
         assertFieldContract(
             Layer.Joined.serializer(),
@@ -181,6 +180,8 @@ class UiStateFieldContractTest {
     fun `the join phase and the range require what was loaded and resolved`() {
         assertFieldContract(EventDetails.serializer(), details)
         assertFieldContract(JoinPhase.Detailed.serializer(), detailed, optional = setOf("refusal"))
+        assertFieldContract(JoinStage.Unloaded.serializer(), JoinStage.Unloaded(JoinPhase.LoadFailed))
+        assertFieldContract(JoinStage.Loaded.serializer(), JoinStage.Loaded(detailed, range))
         assertFieldContract(
             RangeForm.serializer(),
             form,

@@ -11,7 +11,9 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.model.localToCutoff
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -199,8 +201,7 @@ class RangeResolutionTest {
     }
 
     /** A fixed-shape cutoff conversion — the resolution is under test, not the formatter. */
-    private fun stubCutoff(local: LocalDateTime): CaptureDate =
-        CaptureDate("${local.year}-${local.month.ordinal + 1}-${local.day}T${local.hour}:${local.minute}:00Z")
+    private fun stubCutoff(local: LocalDateTime): CaptureDate = localToCutoff(local, TimeZone.UTC)
 
     // ── directionOf ─────────────────────────────────────────────────────────────────────────────
 

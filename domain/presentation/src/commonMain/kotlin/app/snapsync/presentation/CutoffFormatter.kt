@@ -1,7 +1,12 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventStart
+import app.snapsync.model.iso
 import app.snapsync.model.localToCutoff
 import app.snapsync.model.runCatchingCancellable
 import kotlinx.datetime.LocalDateTime
@@ -36,6 +41,20 @@ class CutoffFormatter(
     /** Parse a UTC `…Z` cutoff (the event's `startsAt`) back to a local value for the picker. */
     fun toLocal(cutoff: CaptureDate): LocalDateTime? =
         runCatchingCancellable { Instant.parse(cutoff.iso).toLocalDateTime(zone) }.getOrNull()
+
+    /** A membership's or event's date as a local value — never absent: these roles hold an instant by construction. */
+    fun toLocal(start: EventStart): LocalDateTime = local(start.iso)
+
+    /** See the [EventStart] overload. */
+    fun toLocal(end: EventEnd): LocalDateTime = local(end.iso)
+
+    /** See the [EventStart] overload. */
+    fun toLocal(floor: CaptureCutoff): LocalDateTime = local(floor.iso)
+
+    /** See the [EventStart] overload. */
+    fun toLocal(ceiling: CaptureCeiling): LocalDateTime = local(ceiling.iso)
+
+    private fun local(iso: String): LocalDateTime = Instant.parse(iso).toLocalDateTime(zone)
 
     /**
      * "Now" directly as a canonical `…Z` string — the form the event-start comparison needs

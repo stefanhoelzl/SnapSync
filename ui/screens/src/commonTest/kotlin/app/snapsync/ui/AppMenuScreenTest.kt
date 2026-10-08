@@ -21,13 +21,18 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
+import app.snapsync.model.Direction
 import app.snapsync.model.EventDetails
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinStage
 import app.snapsync.model.Layer
 import app.snapsync.model.MobileDataState
 import app.snapsync.model.Overlays
 import app.snapsync.model.ReportOutcome
+import app.snapsync.model.ResolvedRange
 import app.snapsync.model.UiState
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
@@ -47,6 +52,7 @@ import app.snapsync.ui.resources.report_not_sent
 import app.snapsync.ui.resources.report_problem
 import app.snapsync.ui.resources.report_saved
 import app.snapsync.ui.resources.report_sent
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -71,6 +77,19 @@ class AppMenuScreenTest {
         deletesAt("2026-08-05T00:00:00Z"),
     )
 
+    /** The range a committing join carries; the menu does not read it. */
+    private val range = ResolvedRange(
+        windowStart = LocalDateTime(2026, 7, 6, 0, 0),
+        windowEnd = LocalDateTime(2026, 7, 13, 0, 0),
+        from = LocalDateTime(2026, 7, 6, 0, 0),
+        until = LocalDateTime(2026, 7, 13, 0, 0),
+        chosenFrom = captureCutoff("2026-07-06T00:00:00Z"),
+        chosenUntil = captureCeiling("2026-07-13T00:00:00Z"),
+        direction = Direction.Both,
+        commitEnabled = true,
+        nowAvailable = true,
+    )
+
     @Test
     fun `the menu button asks for the menu`() = runComposeUiTest {
         var opened = 0
@@ -91,10 +110,12 @@ class AppMenuScreenTest {
         var state by androidx.compose.runtime.mutableStateOf(UiState(Layer.CreatingEvent))
         setContent { TestStatusScreen(state, cutoff) }
         onNodeWithContentDescription(str(ComponentRes.string.menu)).assertDoesNotExist()
-        state = UiState(Layer.JoiningEvent(eventId = "E", phase = joinPhase(JoinPhase.Detailed.Step.Committing, details)))
+        state = UiState(
+            Layer.JoiningEvent(eventId = "E", stage = JoinStage.Loaded(joinPhase(JoinPhase.Detailed.Step.Committing, details), range)),
+        )
         waitForIdle()
         onNodeWithContentDescription(str(ComponentRes.string.menu)).assertDoesNotExist()
-        state = UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.LoadFailed))
+        state = UiState(Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(JoinPhase.LoadFailed)))
         waitForIdle()
         onNodeWithContentDescription(str(ComponentRes.string.menu)).assertExists()
     }

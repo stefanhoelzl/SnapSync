@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinStage
 import app.snapsync.model.Layer
 import app.snapsync.model.Overlays
 import app.snapsync.model.PendingSwitch
@@ -202,7 +203,12 @@ class DiagnosticDumpGestureTest {
         val sent = mutableListOf<String>()
         setContent {
             TestStatusScreen(
-                reporting(Layer.JoiningEvent("11111111-2222-4333-8444-555555555555", JoinPhase.LoadFailed)),
+                reporting(
+                    Layer.JoiningEvent(
+                        "11111111-2222-4333-8444-555555555555",
+                        JoinStage.Unloaded(JoinPhase.LoadFailed),
+                    ),
+                ),
                 cutoff = fixedCutoff(),
                 actions = testActions(
                     onSendDiagnostics = { _, screen -> sent += screen },

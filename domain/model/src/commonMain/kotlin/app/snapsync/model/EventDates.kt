@@ -8,6 +8,7 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlin.jvm.JvmInline
+import kotlin.time.Instant
 
 /**
  * The **date vocabulary** (capability `photo-sharing`): one canonical instant type plus a
@@ -57,6 +58,10 @@ value class CaptureDate(val iso: String) : Comparable<CaptureDate> {
 @Serializable(with = CaptureCutoffSerializer::class)
 @JvmInline
 value class CaptureCutoff(val at: CaptureDate) : Comparable<CaptureCutoff> {
+    init {
+        requireInstant(at)
+    }
+
     override fun compareTo(other: CaptureCutoff): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
 }
@@ -71,6 +76,10 @@ value class CaptureCutoff(val at: CaptureDate) : Comparable<CaptureCutoff> {
 @Serializable(with = CaptureCeilingSerializer::class)
 @JvmInline
 value class CaptureCeiling(val at: CaptureDate) : Comparable<CaptureCeiling> {
+    init {
+        requireInstant(at)
+    }
+
     override fun compareTo(other: CaptureCeiling): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
 }
@@ -83,6 +92,10 @@ value class CaptureCeiling(val at: CaptureDate) : Comparable<CaptureCeiling> {
 @Serializable(with = EventStartSerializer::class)
 @JvmInline
 value class EventStart(val at: CaptureDate) : Comparable<EventStart> {
+    init {
+        requireInstant(at)
+    }
+
     override fun compareTo(other: EventStart): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
 }
@@ -96,6 +109,10 @@ value class EventStart(val at: CaptureDate) : Comparable<EventStart> {
 @Serializable(with = EventEndSerializer::class)
 @JvmInline
 value class EventEnd(val at: CaptureDate) : Comparable<EventEnd> {
+    init {
+        requireInstant(at)
+    }
+
     override fun compareTo(other: EventEnd): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
 }
@@ -114,6 +131,19 @@ value class EventEnd(val at: CaptureDate) : Comparable<EventEnd> {
 value class DeletesAt(val at: CaptureDate) : Comparable<DeletesAt> {
     override fun compareTo(other: DeletesAt): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
+}
+
+/**
+ * The four roles a membership's dates are read through (the floor, the ceiling, the event's start and end) hold a
+ * readable instant BY CONSTRUCTION, so nothing downstream carries a branch for one that is not: a screen converts
+ * them to local time unconditionally. Every producer already writes one — the wire boundary normalizes the
+ * backend's dates (`EventDirectory`) and a local pick is canonical by construction ([localToCutoff]) — so the check
+ * refuses only a value no build writes. Where such a value is DECODED (a corrupt stored config), the decode fails
+ * and reads as unusable, which defers and never leaves (capability `join-event`). [CaptureDate] itself stays
+ * unchecked: an asset's capture date may legitimately be absent (`""`).
+ */
+private fun requireInstant(at: CaptureDate) {
+    Instant.parse(at.iso)
 }
 
 /** The underlying canonical string of any capture-date role — for logging and wire encoding only. */
