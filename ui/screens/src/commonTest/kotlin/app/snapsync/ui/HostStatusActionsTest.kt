@@ -26,9 +26,15 @@ import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.EventStart
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinPhase
@@ -37,6 +43,8 @@ import app.snapsync.model.Layer
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.RangeChoice
 import app.snapsync.model.ReconfigureOutcome
+import app.snapsync.model.ReportContext
+import app.snapsync.model.ReportOutcome
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
@@ -198,44 +206,65 @@ class HostStatusActionsTest {
             ),
             scope = scope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
-            commands = UserCommands(
-                leave = {
+            commands = object : UserCommands {
+                override suspend fun leave() {
                     record("leave")
-                    this.config.value = null
-                },
-                create = { name, _, _ -> record("create:$name") },
-                commitJoin = { join ->
-                    record("commitJoin:${join.eventId}:${join.direction}:${join.saveToAlbum}")
-                    JoinCommit.Failed
-                },
-                share = { url, _ -> record("share:$url") },
-                requestAccess = { record("requestAccess") },
-                openSettings = { record("openSettings") },
-                openLink = { record("openLink:$it") },
-                choosePhotos = { record("choosePhotos") },
-                reconfigure = { eventId, direction, _, _, _ ->
-                    record(
-                        "reconfigure:$eventId:$direction",
-                    )
-                    ReconfigureOutcome.Saved
-                },
-                rename = { eventId, name -> record("rename:$eventId:$name") },
-                resetRename = { record("resetRename") },
-                sendDiagnostics = { note, context ->
+                    this@Rig.config.value = null
+                }
+
+                override fun create(name: String, startsAt: EventStart, endsAt: EventEnd) = record("create:$name")
+
+                override suspend fun commitJoin(choice: JoinChoice): JoinCommit {
+                    record("commitJoin:${choice.eventId}:${choice.direction}:${choice.saveToAlbum}")
+                    return JoinCommit.Failed
+                }
+
+                override fun share(url: String, title: String) = record("share:$url")
+
+                override fun requestAccess() = record("requestAccess")
+
+                override fun openSettings() = record("openSettings")
+
+                override fun openLink(url: String) = record("openLink:$url")
+
+                override fun choosePhotos() = record("choosePhotos")
+
+                override suspend fun reconfigure(
+                    eventId: String,
+                    direction: Direction,
+                    minPhotoDate: CaptureCutoff,
+                    maxPhotoDate: CaptureCeiling,
+                    saveToAlbum: Boolean,
+                ): ReconfigureOutcome {
+                    record("reconfigure:$eventId:$direction")
+                    return ReconfigureOutcome.Saved
+                }
+
+                override fun rename(eventId: String, name: String) = record("rename:$eventId:$name")
+
+                override suspend fun resetRename() = record("resetRename")
+
+                override suspend fun sendDiagnostics(note: String, context: ReportContext): ReportOutcome {
                     // A report opened from "Report this" is marked: only it carries the refused verification's facts.
                     record("sendDiagnostics:$note" + if (context.verification) " [verification]" else "")
-                    app.snapsync.model.ReportOutcome.SENT
-                },
-                setMobileData = { on ->
+                    return ReportOutcome.SENT
+                }
+
+                override suspend fun setMobileData(on: Boolean): Boolean {
                     record("setMobileData:$on")
-                    true
-                },
-                restoreEventKey = {
+                    return true
+                }
+
+                override suspend fun restoreEventKey(linkKey: String): Boolean {
                     record("restoreEventKey")
-                    false
-                },
-            ),
-            queries = UserQueries(loadJoinDetails = { id, _ -> details(id) }, shareableCount = { _, _ -> null }),
+                    return false
+                }
+            },
+            queries = object : UserQueries {
+                override suspend fun loadJoinDetails(eventId: String, linkKey: String?) = details(eventId)
+
+                override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
+            },
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
         )
 

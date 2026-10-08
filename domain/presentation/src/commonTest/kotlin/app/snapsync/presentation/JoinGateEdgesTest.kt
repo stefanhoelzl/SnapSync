@@ -14,7 +14,6 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserQueries
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
@@ -121,12 +120,11 @@ class JoinGateEdgesTest {
                 world.rename.value = RenameStatus.Idle
             },
         ),
-        queries = UserQueries(
-            loadJoinDetails = { id, _ ->
+        queries = testQueries(
+            load = { id, _ ->
                 world.loads++
                 world.load(id)
             },
-            shareableCount = { _, _ -> null },
         ),
         diagnostics = testDiagnostics(log = { world.logged += it }, onIntentError = { world.errors += it }),
         inviteLinkHints = hints,
@@ -214,12 +212,11 @@ class JoinGateEdgesTest {
             backgroundScope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
             commands = testCommands(),
-            queries = UserQueries(
-                loadJoinDetails = { _, key ->
+            queries = testQueries(
+                load = { _, key ->
                     keys += key
                     JoinLoad.Failed
                 },
-                shareableCount = { _, _ -> null },
             ),
             diagnostics = testDiagnostics(),
         )

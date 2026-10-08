@@ -236,7 +236,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | Commands cross one door: every command is a flow command, a service call, or a presentation intent — user taps and OS callbacks cross `flow/`, and an event port's handler is exactly one of the three. Presentation gets the `UserCommands` bundle and never calls a feature command or flow directly | `ReadModelImportsTest` (a feature command lies outside every `readmodel` package) + the compiler (presentation has no `flow/` edge) |
 | Only a composition builds an event port's `*Handlers` (`compose/`, or `host/` where the host must exist first) | `ListenDoorTest` (with its twin: at least one site seen) |
 | Presentation's only function-typed port-reaching reads are the `UserQueries` bundle | **review** |
-| Every `UserCommands`/`UserQueries` field is built through a lane-declaring decorator, with no default lane | `CommandLaneTest` (and the compiler: decorators take no default) |
+| Every `UserCommands`/`UserQueries` member is implemented through a lane-declaring decorator, with no default lane | `CommandLaneTest` (and the compiler: decorators take no default) |
 | `:ui:screens` takes no `suspend` function parameter or field | `ScreensTakeNoSuspendSeamTest` |
 | What a screen shows is `UiState`. Compose-remembered state in `:ui:screens` is allowlisted per file with its reason | `ScreenStateContainmentTest` |
 

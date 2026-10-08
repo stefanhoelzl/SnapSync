@@ -69,11 +69,8 @@ class KeyLostTest {
     )
 
     /** The inert bundle, with [restore] for the reopened invite's key. */
-    private fun restoringCommands(restore: suspend (String) -> Boolean) = testCommands().let {
-        UserCommands(
-            it.leave, it.create, it.commitJoin, it.share, it.requestAccess, it.openSettings, it.openLink, it.choosePhotos,
-            it.reconfigure, it.rename, it.resetRename, it.sendDiagnostics, it.setMobileData, restore,
-        )
+    private fun restoringCommands(restore: suspend (String) -> Boolean) = object : UserCommands by testCommands() {
+        override suspend fun restoreEventKey(linkKey: String) = restore(linkKey)
     }
 
     private suspend fun TestScope.driving(host: StatusContainerHost, block: suspend () -> Unit) =
@@ -194,16 +191,7 @@ class KeyLostTest {
     }
 
     /** The inert bundle, with [share] for the share sheet. */
-    private fun sharingCommands(share: (String) -> Unit) = testCommands().let {
-        UserCommands(
-            it.leave, it.create, it.commitJoin, { url, _ ->
-                share(
-                    url,
-                )
-            }, it.requestAccess, it.openSettings, it.openLink,
-            it.choosePhotos, it.reconfigure, it.rename, it.resetRename, it.sendDiagnostics, it.setMobileData, it.restoreEventKey,
-        )
-    }
+    private fun sharingCommands(share: (String) -> Unit) = testCommands(share = { url, _ -> share(url) })
 
     private companion object {
         const val EVENT = "11111111-1111-4111-8111-111111111111"
