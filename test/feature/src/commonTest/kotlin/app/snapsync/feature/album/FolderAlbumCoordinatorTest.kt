@@ -144,7 +144,7 @@ class FolderAlbumCoordinatorTest {
     }
 
     @Test
-    fun `filing nothing, or filing with no album yet, fills nothing`() = runTest {
+    fun `filing nothing or filing with no album yet fills nothing`() = runTest {
         coordinator.placeReceived(event, listOf(receive("R1", album = null)))
         assertFalse(store.filled(event), "no album was ever created")
 

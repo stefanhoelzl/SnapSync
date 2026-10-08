@@ -29,7 +29,7 @@ class TailSignalTest {
 
     @Test
     @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class, ExperimentalCoroutinesApi::class)
-    fun `an import that reports while it is awaited is waited for, and an interrupt is consumed by one wait`() =
+    fun `an import that reports while it is awaited is waited for and an interrupt is consumed by one wait`() =
         runTest {
             val interrupts = kotlin.concurrent.atomics.AtomicReference(CompletableDeferred<Unit>())
             val signal = TailSignal({ false }, interrupts)
