@@ -180,7 +180,6 @@
     <string name="switch_title">Event wechseln?</string>
     <string name="switch_confirm">Wechseln</string>
     <string name="switch_body">Du verlässt „%1$s“ und trittst „%2$s“ bei.</string>
-    <string name="this_event">dieses Event</string>
 
     <!-- The joined screen's explanation of how the event works (capability `sync-status`). A `%1$s` in a
          caption with a link is where the link's words go. -->

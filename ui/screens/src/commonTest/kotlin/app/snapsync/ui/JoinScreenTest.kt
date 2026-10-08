@@ -83,9 +83,13 @@ import app.snapsync.ui.resources.join_button
 import app.snapsync.ui.resources.join_button_allow
 import app.snapsync.ui.resources.join_failed_body
 import app.snapsync.ui.resources.join_failed_title
+import app.snapsync.ui.resources.link_incomplete_body
+import app.snapsync.ui.resources.link_incomplete_title
+import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.loading_event
 import app.snapsync.ui.resources.message_device_modified
 import app.snapsync.ui.resources.message_device_unverifiable
+import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.ok
@@ -260,6 +264,25 @@ class JoinScreenTest {
         onNodeWithText(str(Res.string.join_button)).assertDoesNotExist()
         onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
         onNodeWithText(str(Res.string.cancel)).assertExists()
+    }
+
+    @Test
+    fun `an invite cut short says so and offers only Cancel`() = runComposeUiTest {
+        setScreen { TestStatusScreen(joining(JoinPhase.WrongLink), cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.link_incomplete_title)).assertExists()
+        onNodeWithText(str(Res.string.link_incomplete_body)).assertExists()
+        onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.cancel)).assertExists()
+    }
+
+    @Test
+    fun `a link rejected while the join screen is open is said above it`() = runComposeUiTest {
+        val state = joining(JoinPhase.Loading).let {
+            it.copy(layer = (it.layer as Layer.JoiningEvent).copy(notice = ScreenMessage.INVALID_LINK))
+        }
+        setScreen { TestStatusScreen(state, cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.message_invalid_link)).assertExists()
+        onNodeWithText(str(Res.string.loading_event)).assertExists()
     }
 
     @Test
@@ -1062,6 +1085,63 @@ class JoinScreenTest {
         onNodeWithText(str(Res.string.event_not_found_body)).assertExists()
         onNodeWithText(str(Res.string.ok)).performClick()
         assertEquals(1, cancelled)
+    }
+
+    @Test
+    fun `a switch whose details failed to load offers Retry and Cancel keeps the membership`() = runComposeUiTest {
+        var retried = 0
+        var cancelled = 0
+        setScreen {
+            TestStatusScreen(
+                joinedWith(
+                    SyncHealth.Loading,
+                    PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.LoadFailed),
+                ),
+                cutoff = fixedCutoff(),
+                actions = testActions(
+                    join = testJoinGateActions(onRetryLoad = { retried++ }),
+                    switch = testSwitchActions(onCancelSwitch = { cancelled++ }),
+                ),
+            )
+        }
+        onNodeWithText(str(Res.string.load_failed_title)).assertExists()
+        onNodeWithText(str(Res.string.retry)).performClick()
+        onNodeWithText(str(Res.string.cancel)).performClick()
+        assertEquals(1 to 1, retried to cancelled)
+    }
+
+    @Test
+    fun `a switch to an invite cut short names it and dismisses`() = runComposeUiTest {
+        var cancelled = 0
+        setScreen {
+            TestStatusScreen(
+                joinedWith(
+                    SyncHealth.Loading,
+                    PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.WrongLink),
+                ),
+                cutoff = fixedCutoff(),
+                actions = testActions(switch = testSwitchActions(onCancelSwitch = { cancelled++ })),
+            )
+        }
+        onNodeWithText(str(Res.string.link_incomplete_title)).assertExists()
+        onNodeWithText(str(Res.string.ok)).performClick()
+        assertEquals(1, cancelled)
+    }
+
+    @Test
+    fun `no switch dialog shows while the new event's details load`() = runComposeUiTest {
+        setScreen {
+            TestStatusScreen(
+                joinedWith(
+                    SyncHealth.Loading,
+                    PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.Loading),
+                ),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText(str(Res.string.switch_title)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.ok)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
     }
 
     // ---- NEGATIVE: the derived direction is never named on the Ready surface --------------------------

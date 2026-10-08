@@ -33,7 +33,7 @@ import app.snapsync.ui.resources.stop_sharing_title
 import app.snapsync.ui.resources.switch_body
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.switch_title
-import app.snapsync.ui.resources.this_event
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 // In-place membership reconfigure (capability `manage-membership`) and the switch confirmation
@@ -116,10 +116,10 @@ internal fun screenLabel(state: UiState): String {
     if (layer is Layer.Joined && layer.surface is JoinedSurface.Reconfigure) return "Reconfigure"
     return when (layer) {
         is Layer.JoiningEvent -> "JoiningEvent:${layer.phase::class.simpleName}"
-        is Layer.Joined ->
-            layer.pendingSwitch
-                ?.let { "Switch:${it.phase::class.simpleName}" }
-                ?: "Joined"
+        is Layer.Joined -> when (val switch = layer.pendingSwitch) {
+            null -> "Joined"
+            else -> "Switch:${switch.phase::class.simpleName}"
+        }
         is Layer.CreateEvent -> "CreateEvent"
         Layer.CreatingEvent -> "CreatingEvent"
         is Layer.UpdateRequired -> "UpdateRequired"
@@ -132,73 +132,77 @@ internal fun screenLabel(state: UiState): String {
  * full-screen surface, which the reduction presents once the leave has cleared the config. So this dialog
  * carries no pickers, decides nothing, and commits nothing.
  *
- * Mirrors the join phases in a compact `AppConfirmDialog`: the loaded phase offers Switch; a load failure
- * offers Retry; a missing event dismisses. Transient loading/committing phases show nothing. There is no
- * commit-failure branch: the leave precedes any commit, so a commit can never fail while a config is
- * still present — that phase belongs to the full-screen surface now.
+ * Mirrors the join phases in a compact dialog, chosen by [switchPrompt]: the loaded phase offers Switch; a load
+ * failure offers Retry; a missing event dismisses. Transient loading/committing phases show nothing.
  */
 @Composable
 internal fun SwitchDialog(
     switch: PendingSwitch,
-    currentEventName: String?,
+    currentEventName: String,
     onConfirmSwitch: () -> Unit,
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
 ) {
-    val current = currentEventName ?: stringResource(Res.string.this_event)
-    when (val phase = switch.phase) {
-        // Only the Ready step opens a confirmation here. The others are unreachable in this overlay and
-        // are collapsed deliberately below, each with the reason it cannot occur.
-        is JoinPhase.Detailed -> if (phase.step != JoinPhase.Detailed.Step.Ready) {
-            // CommitFailed cannot occur: this dialog's confirm runs only the leave, so no commit can fail
-            // while the previous event is still configured. Committing is transient — no dialog while a
-            // commit runs.
-        } else {
-            AppDestructiveConfirmDialog(
-                // The names carry the whole weight of the decision, so they are the whole body; the title
-                // is the crisp question. Destructive, because the confirm leaves immediately. It promises
-                // NO participation — the member picks direction, cutoff and album on the join surface that
-                // follows — and shows no shareable count, there being no chosen range to count yet
-                // (capability `join-event`).
-                copy = DialogCopy(
-                    title = stringResource(Res.string.switch_title),
-                    confirmLabel = stringResource(Res.string.switch_confirm),
-                    cancelLabel = stringResource(Res.string.cancel),
-                    body = stringResource(Res.string.switch_body, current, phase.event.name),
-                ),
-                onConfirm = onConfirmSwitch,
-                onDismiss = onCancelSwitch,
-            )
-        }
-        // An invite to no event, a closed one, or an incomplete invite of an encrypted one: the member stays in
-        // their own event (capability `join-event`) — the same walls the join screen shows.
-        JoinPhase.NotFound, JoinPhase.Closed, JoinPhase.WrongLink -> {
-            val copy = wallCopy(phase)
-            AppConfirmDialog(
-                copy = DialogCopy(
-                    title = stringResource(copy.title),
-                    body = stringResource(copy.body),
-                    confirmLabel = stringResource(Res.string.ok),
-                    cancelLabel = stringResource(Res.string.cancel),
-                ),
-                onConfirm = onCancelSwitch,
-                onDismiss = onCancelSwitch,
-            )
-        }
-        JoinPhase.LoadFailed ->
-            AppConfirmDialog(
-                copy = DialogCopy(
-                    title = stringResource(Res.string.load_failed_title),
-                    body = stringResource(Res.string.load_failed_body),
-                    confirmLabel = stringResource(Res.string.retry),
-                    cancelLabel = stringResource(Res.string.cancel),
-                ),
-                onConfirm = onRetryLoad,
-                onDismiss = onCancelSwitch,
-            )
-        // Transient — no dialog while the details load.
-        JoinPhase.Loading -> Unit
+    val prompt = switchPrompt(switch.phase) ?: return
+    val copy = DialogCopy(
+        title = stringResource(prompt.title),
+        body = prompt.switchingTo
+            ?.let { stringResource(prompt.body, currentEventName, it) }
+            ?: stringResource(prompt.body),
+        confirmLabel = stringResource(prompt.confirm),
+        cancelLabel = stringResource(Res.string.cancel),
+    )
+    val onConfirm = when (prompt.act) {
+        SwitchAct.SWITCH -> onConfirmSwitch
+        SwitchAct.RETRY -> onRetryLoad
+        SwitchAct.DISMISS -> onCancelSwitch
     }
+    // Destructive, because a switch's confirm leaves immediately.
+    if (prompt.act == SwitchAct.SWITCH) {
+        AppDestructiveConfirmDialog(copy = copy, onConfirm = onConfirm, onDismiss = onCancelSwitch)
+    } else {
+        AppConfirmDialog(copy = copy, onConfirm = onConfirm, onDismiss = onCancelSwitch)
+    }
+}
+
+/** What the switch dialog's confirm does. */
+internal enum class SwitchAct { SWITCH, RETRY, DISMISS }
+
+/**
+ * What the switch dialog says at one phase: its words, what its confirm does, and — on a switch — the event it would
+ * join, named in the body beside the current one.
+ */
+internal class SwitchPrompt(
+    val title: StringResource,
+    val body: StringResource,
+    val confirm: StringResource,
+    val act: SwitchAct,
+    val switchingTo: String? = null,
+)
+
+/** The switch dialog's prompt at [phase], or `null` where it shows none. */
+internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
+    // Only the Ready step opens a confirmation here. CommitFailed cannot occur: this dialog's confirm runs only the
+    // leave, so no commit can fail while the previous event is still configured. Committing is transient — no dialog
+    // while a commit runs. The names carry the whole weight of the decision, so they are the whole body; the title is
+    // the crisp question. It promises NO participation — the member picks direction, cutoff and album on the join
+    // surface that follows — and shows no shareable count, there being no chosen range to count yet (capability
+    // `join-event`).
+    is JoinPhase.Detailed -> SwitchPrompt(
+        Res.string.switch_title,
+        Res.string.switch_body,
+        Res.string.switch_confirm,
+        SwitchAct.SWITCH,
+        switchingTo = phase.event.name,
+    ).takeIf { phase.step == JoinPhase.Detailed.Step.Ready }
+    // An invite to no event, a closed one, or an incomplete invite of an encrypted one: the member stays in their own
+    // event (capability `join-event`) — the same walls the join screen shows.
+    JoinPhase.NotFound, JoinPhase.Closed, JoinPhase.WrongLink ->
+        wallCopy(phase).let { SwitchPrompt(it.title, it.body, Res.string.ok, SwitchAct.DISMISS) }
+    JoinPhase.LoadFailed ->
+        SwitchPrompt(Res.string.load_failed_title, Res.string.load_failed_body, Res.string.retry, SwitchAct.RETRY)
+    // Transient — no dialog while the details load.
+    JoinPhase.Loading -> null
 }
 
 /**

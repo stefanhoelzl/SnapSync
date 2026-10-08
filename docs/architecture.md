@@ -439,8 +439,8 @@ branch. A module is in one of two states, and its `plugins {}` block says which.
 - **At zero** — `id("snapsync.coverage-zero")`. Its `coverageZero` task (on `check`) reads the module's own Kover
   `report.xml` and fails on any missed `INSTRUCTION` or `BRANCH`. No ceiling, no percentage: a miss is fixed by a test,
   never by a number. Today: `:domain:flow`, `:domain:model`, `:domain:ports`, `:domain:presentation`,
-  `:domain:feature`, `:adapter:generic:app` and the three wiring modules, `:domain:compose`, `:domain:host` and
-  `:app:jvm`.
+  `:domain:feature`, `:adapter:generic:app`, `:ui:screens` and the three wiring modules, `:domain:compose`,
+  `:domain:host` and `:app:jvm`.
 - **Floored** — `id("snapsync.coverage")` with a `coverageFloors { aggregate(…) packageFloor(…) }` block: Kover
   `verify` rules on `check`, an `INSTRUCTION` and a `BRANCH` aggregate plus an `INSTRUCTION` package floor, whole
   percentages that may only rise. Every module that has not yet reached zero keeps these, untouched. A module joins the
@@ -474,7 +474,9 @@ body is a miss of its own. The gate's failure says so.
 *The dead arm of an exhaustive `when`, on body lines.* Kotlin ends a `when` over a sealed or enum subject with a
 `NoWhenBranchMatchedException` no value reaches; inside a composable the compiler wraps it in a replace group. Kover
 filters the throw, but not the group calls or a conditional jump into the block (a sealed `when`'s last `is` arm). The
-allowance is exact: those instructions, and one arm per such jump.
+allowance is exact: those instructions, and one arm per such jump. A word-picking `when` is not left to this rule but
+restructured: a plain mapping function chooses (testable with no Compose) and the composable renders once —
+`:ui:screens`' `Phrase`.
 
 *kotlinx-serialization's zero-mask missing-field check.* In a `@Serializable` class whose every field has a default,
 the plugin's deserialization constructor still opens with `if ((0 & seen) != 0) throwMissingFieldException(…)`: the
