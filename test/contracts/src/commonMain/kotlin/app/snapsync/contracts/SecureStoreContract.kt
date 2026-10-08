@@ -2,14 +2,10 @@ package app.snapsync.contracts
 
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.StoredProtection
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.SecureStore
-import app.snapsync.services.secure.resolveOrMint
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -80,17 +76,6 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
             )
         }
 
-        clause("INACCESSIBLE_RESOLVE_NEVER_MINTS", SecureStoreState.INACCESSIBLE) { store ->
-            var generated = false
-            assertFailsWith<SecureStoreUnavailable> {
-                resolveOrMint(store, slot("INACCESSIBLE_RESOLVE_NEVER_MINTS")) {
-                    generated = true
-                    minted("INACCESSIBLE_RESOLVE_NEVER_MINTS")
-                }
-            }
-            assertFalse(generated, "minting on an unreadable store is the build-297 identity split")
-        }
-
         clause("EMPTY_READ_IS_ABSENT", SecureStoreState.EMPTY) { store ->
             assertEquals(SecureStoreRead.Absent, store.read(slot("EMPTY_READ_IS_ABSENT")))
         }
@@ -111,22 +96,6 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
                 "deleting nothing is not an error",
             )
             assertEquals(SecureStoreRead.Absent, store.read(slot("EMPTY_DELETE_IS_A_NOOP")))
-        }
-
-        clause("EMPTY_RESOLVE_MINTS_EXACTLY_ONCE", SecureStoreState.EMPTY) { store ->
-            var generations = 0
-            val mint = {
-                generations++
-                minted("EMPTY_RESOLVE_MINTS_EXACTLY_ONCE")
-            }
-            val first = resolveOrMint(store, slot("EMPTY_RESOLVE_MINTS_EXACTLY_ONCE"), generate = mint)
-            val second = resolveOrMint(store, slot("EMPTY_RESOLVE_MINTS_EXACTLY_ONCE"), generate = mint)
-            assertEquals(1, generations, "the second resolve reads the minted value back")
-            assertEquals(first, second)
-            assertEquals(
-                SecureStoreRead.Found(first, StoredProtection.BACKGROUND_READABLE),
-                store.read(slot("EMPTY_RESOLVE_MINTS_EXACTLY_ONCE")),
-            )
         }
 
         clause("HOLDING_READS_BACK", SecureStoreState.HOLDING_BACKGROUND_READABLE) { store ->
@@ -157,15 +126,15 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
             assertEquals(SecureStoreRead.Absent, store.read(slot("LOST_KEY_READS_AS_ABSENT")), "and stays absent")
         }
 
-        clause("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK", SecureStoreState.HOLDING_UNDER_A_LOST_KEY) { store ->
-            val resolved = resolveOrMint(
-                store,
-                slot("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK"),
-            ) { minted("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK") }
-            assertEquals(minted("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK"), resolved)
+        clause("LOST_KEY_WRITE_THEN_READ", SecureStoreState.HOLDING_UNDER_A_LOST_KEY) { store ->
+            // What lets a fresh identity be minted over the lost one: the store seals under a fresh key.
             assertEquals(
-                SecureStoreRead.Found(resolved, StoredProtection.BACKGROUND_READABLE),
-                store.read(slot("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK")),
+                WriteOutcome.Ok,
+                store.write(slot("LOST_KEY_WRITE_THEN_READ"), minted("LOST_KEY_WRITE_THEN_READ")),
+            )
+            assertEquals(
+                SecureStoreRead.Found(minted("LOST_KEY_WRITE_THEN_READ"), StoredProtection.BACKGROUND_READABLE),
+                store.read(slot("LOST_KEY_WRITE_THEN_READ")),
                 "the store seals under a fresh key and reads it back",
             )
         }
