@@ -78,7 +78,7 @@ class JoinedLayerTest {
             configFlow,
             rename = MutableStateFlow(rename),
             download = MutableStateFlow(download),
-            inviteKey = MutableStateFlow(inviteKey),
+            eventKey = EventKeyView(inviteKey = MutableStateFlow(inviteKey)),
         ),
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
@@ -119,7 +119,7 @@ class JoinedLayerTest {
         val layer = host.container.stateFlow.first { (it.layer as? Layer.Joined)?.inviteUrl?.contains("#k=") == true }
             .layer as Layer.Joined
 
-        assertEquals(INVITE_KEY, decodedKey(layer.inviteUrl))
+        assertEquals(INVITE_KEY, decodedKey(layer.inviteUrl!!))
     }
 
     @Test
@@ -134,8 +134,8 @@ class JoinedLayerTest {
             (it.layer as? Layer.Joined)?.membership?.name == "Plain Weekend"
         }.layer as Layer.Joined
 
-        assertNull(decodedKey(layer.inviteUrl))
-        assertFalse("#k=" in layer.inviteUrl)
+        assertNull(decodedKey(layer.inviteUrl!!))
+        assertFalse("#k=" in layer.inviteUrl!!)
     }
 
     // ---- the rename dialog -------------------------------------------------------------------------
