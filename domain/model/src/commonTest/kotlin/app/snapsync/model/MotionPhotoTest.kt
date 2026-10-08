@@ -76,6 +76,60 @@ class MotionPhotoTest {
     }
 
     @Test
+    fun a_jpeg_carrying_the_legacy_micro_video_tags_is_not_rewritten() {
+        val legacy = """<x:xmpmeta><rdf:RDF><rdf:Description GCamera:MicroVideo="1"/></rdf:RDF></x:xmpmeta>"""
+        assertNull(motionPhotoStill(jpeg(assertNotNull(JpegSegments.xmpSegment(legacy))), videoLength = 7))
+        val current = """<x:xmpmeta><rdf:RDF><rdf:Description Camera:MotionPhoto="1"/></rdf:RDF></x:xmpmeta>"""
+        assertNull(motionPhotoStill(jpeg(assertNotNull(JpegSegments.xmpSegment(current))), videoLength = 7))
+    }
+
+    @Test
+    fun a_packet_the_merge_would_push_past_one_segment_is_left_as_it_is() {
+        // The largest packet one segment holds, already full: the motion description cannot be added to it.
+        val room = 0xFFFF - 2 - "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray().size
+        val head = "<x:xmpmeta><rdf:RDF>"
+        val full = head + " ".repeat(room - head.length - "</rdf:RDF></x:xmpmeta>".length) + "</rdf:RDF></x:xmpmeta>"
+        val jpeg = jpeg(assertNotNull(JpegSegments.xmpSegment(full)))
+        assertNull(motionPhotoStill(jpeg, videoLength = 7))
+        assertNull(JpegSegments.xmpSegment("$full "), "one byte more no longer fits a segment")
+    }
+
+    @Test
+    fun a_damaged_segment_stream_is_not_a_jpeg_this_codec_reads() {
+        val soi = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
+        assertNull(JpegSegments.leading(ByteArray(0)), "empty")
+        assertNull(JpegSegments.leading(byteArrayOf(0xFF.toByte(), 0x00)), "no SOI")
+        assertNull(
+            JpegSegments.leading(soi + byteArrayOf(0x00, 0xE0.toByte(), 0x00, 0x04)),
+            "a segment without its marker",
+        )
+        assertNull(
+            JpegSegments.leading(soi + byteArrayOf(0xFF.toByte(), 0xE0.toByte(), 0x00, 0x01)),
+            "a length below its own",
+        )
+        assertNull(
+            JpegSegments.leading(soi + byteArrayOf(0xFF.toByte(), 0xE0.toByte(), 0x00, 0x40)),
+            "a segment past the end",
+        )
+    }
+
+    @Test
+    fun an_app1_segment_too_short_for_a_header_is_neither_xmp_nor_exif() {
+        val tiny = byteArrayOf(0xFF.toByte(), 0xD8.toByte()) + segment(0xE1, ByteArray(0)) +
+            byteArrayOf(0xFF.toByte(), 0xDA.toByte(), 0x00, 0x02)
+        val segments = assertNotNull(JpegSegments.leading(tiny))
+        assertTrue(segments.none { it.isXmp(tiny) || it.isExif(tiny) })
+        assertNull(jpegXmp(tiny))
+    }
+
+    @Test
+    fun the_xmp_of_a_jpeg_is_its_packet_and_a_file_without_one_has_none() {
+        assertEquals("<x:xmpmeta/>", jpegXmp(jpeg(exif(), assertNotNull(JpegSegments.xmpSegment("<x:xmpmeta/>")))))
+        assertNull(jpegXmp(jpeg(exif())))
+        assertNull(jpegXmp("....ftypheic".encodeToByteArray()))
+    }
+
+    @Test
     fun a_built_motion_photo_is_taken_apart_again() {
         val video = mp4(bytes = 300)
         val file = assertNotNull(motionPhotoStill(jpeg(exif()), video.size.toLong())) + video
@@ -114,6 +168,17 @@ class MotionPhotoTest {
         assertNull(locateMotionVideo("""GCamera:MicroVideoOffset="0"""", file), "empty")
         assertNull(locateMotionVideo("""GCamera:MicroVideoOffset="${file.size}"""", file), "the whole file")
         assertNull(locateMotionVideo("""GCamera:MicroVideoOffset="63"""", file), "no ftyp where it should start")
+        val shortBox = jpeg() + byteArrayOf(0, 0, 0, 12) + "mpvd".encodeToByteArray() + ByteArray(4)
+        assertNull(
+            locateMotionVideo("""GCamera:MicroVideoOffset="12"""", shortBox),
+            "an mpvd box too short to hold a video",
+        )
+        val unsized = """<Container:Item Item:Semantic="MotionPhoto" Item:Mime="video/mp4"/>"""
+        assertNull(locateMotionVideo(unsized, file), "a motion item that gives no length")
+        assertNull(
+            locateMotionVideo("""GCamera:MicroVideoOffset="99999999999999999999"""", file),
+            "a length no file has",
+        )
     }
 
     @Test
@@ -124,6 +189,7 @@ class MotionPhotoTest {
             motionPresentationTimestampUs("""Camera:MotionPhotoPresentationTimestampUs="1500000""""),
         )
         assertEquals(42, motionPresentationTimestampUs("""GCamera:MicroVideoPresentationTimestampUs="42""""))
+        assertNull(motionPresentationTimestampUs("<x:xmpmeta/>"), "an XMP declaring no time")
     }
 
     @Test

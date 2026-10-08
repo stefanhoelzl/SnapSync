@@ -130,6 +130,6 @@ suspend fun projectDeviceManifest(
                 )
             },
         )
-    }.sortedBy { it.assetId }
+    }.sortedBy { it.assetId.value } // the id's own order, compared as the string it is
     return DeviceManifest(deviceId = deviceId, assets = assets)
 }

@@ -65,7 +65,7 @@ class SelectionPolicyTest {
     // ── The policy as a value ──
 
     @Test
-    fun `two policies over the same rules are one value, so a walk filtered by one is reused under the other`() {
+    fun `two policies over the same rules are one value so a walk filtered by one is reused under the other`() {
         val floor = SelectionRule.CaptureAfter(captureCutoff("2026-07-01T00:00:00Z"))
         val policy = { SelectionPolicy(listOf(floor, SelectionRule.ExcludeScreenshots)) }
 

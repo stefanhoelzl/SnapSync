@@ -45,7 +45,8 @@ fun capUtf8(text: String, maxBytes: Int): String {
     if (bytes.size <= maxBytes) return text
     // The dropped count is at most bytes.size, so a marker sized for it is the longest this cut can need.
     var keep = (maxBytes - truncationMarker(bytes.size).encodeToByteArray().size).coerceAtLeast(0)
-    while (keep > 0 && bytes[keep].isContinuationByte()) keep--
+    // No `keep > 0` guard: the bytes are an encoded String, so valid UTF-8, and byte 0 always starts a sequence.
+    while (bytes[keep].isContinuationByte()) keep--
     return bytes.decodeToString(0, keep) + truncationMarker(bytes.size - keep)
 }
 

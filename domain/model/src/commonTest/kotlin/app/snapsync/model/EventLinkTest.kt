@@ -350,6 +350,7 @@ class EventLinkTest {
             "$LINK_ORIGIN/join/$eventId?x=1",
             "$LINK_ORIGIN/join/$eventId#unknown=1",
             "$LINK_ORIGIN/join/$eventId#autoJoin=yes",
+            "$LINK_ORIGIN/join/$eventId#saveToAlbum=yes",
             "$LINK_ORIGIN/join/$eventId#direction=sideways",
             "$LINK_ORIGIN/join/$eventId#garbage",
         )) {

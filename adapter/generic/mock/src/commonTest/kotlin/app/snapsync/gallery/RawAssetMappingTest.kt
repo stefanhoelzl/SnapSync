@@ -147,6 +147,24 @@ class RawAssetMappingTest {
     }
 
     @Test
+    fun an_unknown_area_is_carried_as_an_empty_fact_not_a_zero() {
+        // A zero would read as "measured, and tiny" and trip the resolution floor; empty reads as unknown, which
+        // the floor admits on doubt.
+        val asset = RawAsset(
+            assetId = AssetId("ABC_L0_002"),
+            creationDate = "2026-07-01T00:00:00Z",
+            rawResources = listOf(raw(ResourceRole.PRIMARY, mime = "image/heic", name = "IMG_0002.HEIC")),
+            facts = AssetFacts(
+                assetId = AssetId("ABC_L0_002"),
+                creationDate = CaptureDate("2026-07-01T00:00:00Z"),
+                pixelArea = null,
+            ),
+        )
+
+        assertEquals("", resourcesFrom(listOf(asset)).single().metadata[RESOURCE_META_PIXEL_AREA])
+    }
+
+    @Test
     fun the_walk_stays_decision_free_a_screenshot_is_mapped_not_dropped() = runTest {
         // The walk and the mapping carry facts; they never exclude. A screenshot must cross this seam intact
         // — the authoritative filter lives downstream in the upload cycle, and putting it here instead would

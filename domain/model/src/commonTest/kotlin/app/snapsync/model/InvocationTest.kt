@@ -129,30 +129,49 @@ class InvocationTest {
         assertEquals(listOf(false), inner.exited)
     }
 
+    /**
+     * The ONE call site the routine-line table below drives. `invocation` and the level checks it carries are
+     * inlined into each caller, so the table runs through a single caller to reach every combination there.
+     */
+    private fun route(logger: Logger, severity: Severity, params: String, rendered: String) =
+        logger.invocation(EntryScope.None, "onWake", params, severity, result = { _: Unit -> rendered }) { }
+
     @Test
-    fun `every severity a call site can choose carries through to both routine lines`() {
+    fun `the routine lines carry the chosen severity and shape and are not written below the logger's minimum`() {
         for (severity in Severity.entries) {
-            val captured = CapturingLogWriter()
+            for (minimum in listOf(Severity.Verbose, Severity.Assert)) {
+                for ((params, rendered) in listOf("" to "", "event=E" to "ok")) {
+                    val captured = CapturingLogWriter()
+                    route(
+                        Logger(StaticConfig(minSeverity = minimum, logWriterList = listOf(captured)), "test"),
+                        severity,
+                        params,
+                        rendered,
+                    )
 
-            logger(captured).invocation(RecordingScope(), "onWake", severity = severity) { }
-
-            assertEquals(listOf(severity, severity), captured.severities, "chosen: $severity")
+                    val expected = if (severity < minimum) {
+                        emptyList()
+                    } else {
+                        listOf(
+                            severity to (if (params.isEmpty()) "→ onWake" else "→ onWake($params)"),
+                            severity to (if (rendered.isEmpty()) "← onWake (Nms)" else "← onWake = $rendered (Nms)"),
+                        )
+                    }
+                    assertEquals(
+                        expected,
+                        captured.lines.map { (s, line) -> s to line.replace(Regex("""\(\d+ms\)$"""), "(Nms)") },
+                        "chosen $severity under minimum $minimum, params='$params', result='$rendered'",
+                    )
+                }
+            }
         }
     }
 
     @Test
-    fun `below the logger's minimum no line is written, and the call still runs and still throws`() {
-        // Kermit's level check is inlined into each routine line and into the failure line; a quiet logger
-        // must cost the call nothing but the lines.
+    fun `below the logger's minimum the failure line is not written either and the throw still propagates`() {
         val quiet = CapturingLogWriter()
         val logger = Logger(StaticConfig(minSeverity = Severity.Assert, logWriterList = listOf(quiet)), "test")
 
-        for (severity in Severity.entries - Severity.Assert) {
-            assertEquals(
-                severity.name,
-                logger.invocation(RecordingScope(), "onWake", severity = severity) { severity.name },
-            )
-        }
         assertFailsWith<IllegalStateException> { logger.invocation(RecordingScope(), "process") { error("boom") } }
 
         assertEquals(emptyList(), quiet.lines)

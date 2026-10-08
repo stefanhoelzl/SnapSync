@@ -52,6 +52,11 @@ class ReceivedPhotoNameTest {
     }
 
     @Test
+    fun a_name_ending_in_a_dot_has_no_extension_to_keep() {
+        assertEquals("IMG_4471.snapsync-zfevt6zysw", ReceivedPhotoName.mark("IMG_4471.", key, ref))
+    }
+
+    @Test
     fun the_role_token_never_reaches_the_library() {
         for (role in ResourceRole.entries) {
             val roleKey = uploadKey(ref.sourceAssetId, role, "IMG_4471.HEIC")

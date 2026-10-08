@@ -170,9 +170,8 @@ kotlin {
 // expressed by the module graph instead of by a grouping rule. `:domain:compose` is measured over the
 // integration surface rather than bounded here (`docs/architecture.md`, "Coverage").
 //
-// What remains uncovered is largely NOT a testing gap: data-class `equals`/`hashCode`/`toString` and
-// enum `<clinit>` make up the bulk - 72 of `LedgerEntry`'s 86 missed instructions are `equals` alone -
-// and no test reaches them meaningfully.
+// What remains uncovered is NOT a testing gap: it is the compiler output described on the floors below, which no
+// input reaches.
 //
 // A zero on a method can mean MISPLACED rather than untested. `SyncEngine.complete` read zero while
 // `SyncEngineTest` covered it from a module whose instrumentation was off and which credited
@@ -180,16 +179,12 @@ kotlin {
 // number is worse than the gap it closes.
 coverageFloors {
     aggregate(
-        instruction = 85,
-        // LOWERED 80 -> 78 by the feature → ports cut, which MOVED the inline logging helpers
-        // (`invocation`, `logAt`, `bestEffort`) here from `ports/`. The forcing proof recorded then — that
-        // an inline function's out-of-line copy is the one Kover measures and is never executed — was
-        // WRONG: Kover credits inlined execution back to the inline function's own source lines (measured
-        // 2026-10-07: `logAt` 0 missed, both `runCatchingCancellable` fully covered). The branches the
-        // move brought in are ordinary debt: `invocation`'s misses are the `logAt` severity arms and
-        // Kermit's level checks inlined into it, which the tests reach only at Info/Debug, and
-        // `bestEffort` reads 0% because nothing tests it. Still 78 because that is what the module
-        // measures (78.3%); it rises when those tests are written.
-        branch = 78,
+        // RAISED 85 -> 99 and 78 -> 99 (measured 99.8% / 99.4%) by the model-to-zero work. What still misses is
+        // the serialization plugin's missing-field check in the seven `@Serializable` classes whose every field has
+        // a default: emitted with a required-field mask of zero, so `(0 & seen) != 0` can never hold — 35
+        // instructions, 7 branches no input reaches. Until the programme decides how such compiler output is held,
+        // this module stays on floors rather than `snapsync.coverage-zero`.
+        instruction = 99,
+        branch = 99,
     )
 }

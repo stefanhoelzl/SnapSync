@@ -27,7 +27,7 @@ fun utcLogStamp(epochMillis: Long): String {
 
     // civil_from_days: shift the epoch to 0000-03-01 so the leap day is the LAST day of a (March-based) year.
     val z = days + DAYS_FROM_CIVIL_EPOCH_TO_UNIX_EPOCH
-    val era = z.floorDiv(DAYS_PER_ERA)
+    val era = (if (z >= 0) z else z - (DAYS_PER_ERA - 1)) / DAYS_PER_ERA
     val dayOfEra = (z - era * DAYS_PER_ERA).toInt() // [0, 146096]
     val yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365 // [0, 399]
     val dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100) // [0, 365]

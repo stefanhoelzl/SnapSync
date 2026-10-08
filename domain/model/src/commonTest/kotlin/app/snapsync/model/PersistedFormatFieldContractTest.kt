@@ -52,7 +52,7 @@ class PersistedFormatFieldContractTest {
     }
 
     @Test
-    fun `a manifest requires its device and its assets, each asset and resource every field`() {
+    fun `a manifest requires its device and its assets each asset and resource every field`() {
         val resource = ManifestResource(ResourceRole.PRIMARY, "image/jpeg", "events/e/devices/d/a", "IMG_0001.JPG")
         val asset = DeviceManifestAsset(AssetId("asset-1"), "2026-07-06T14:00:00Z", listOf(resource))
         assertFieldContract(ManifestResource.serializer(), resource)
@@ -65,7 +65,7 @@ class PersistedFormatFieldContractTest {
     }
 
     @Test
-    fun `a memory reading requires when, where and how much`() {
+    fun `a memory reading requires when where and how much`() {
         assertFieldContract(
             FootprintSample.serializer(),
             FootprintSample(

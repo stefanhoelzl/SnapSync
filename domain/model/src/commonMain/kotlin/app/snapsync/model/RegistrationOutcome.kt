@@ -127,7 +127,7 @@ sealed interface RegistrationOutcome {
         override val severity = Severity.Error
         override val message =
             "extension ${if (enabling) "enable" else "disable"} FAILED: " +
-                "${domain ?: "no domain"}:${code?.toString() ?: "no code"} — the extension is not in the " +
+                "${domain ?: "no domain"}:${code ?: "no code"} — the extension is not in the " +
                 "state the app believes; uploads will not run and nothing else will report it"
     }
 }

@@ -149,4 +149,45 @@ class EventPhotoSetResourcesTest {
         assertEquals(1, set.count())
         assertEquals(emptyList(), set.resources())
     }
+
+    /** A batch that records each request and answers from [held]; an asset it holds nothing for is absent. */
+    private class RecordingBatch(private val held: Map<String, List<Resource>>) : ResourceBatch {
+        val requests = mutableListOf<Set<AssetId>>()
+
+        override suspend fun read(assetIds: Set<AssetId>): Map<AssetId, List<Resource>> {
+            requests += assetIds
+            return held.filterKeys { AssetId(it) in assetIds }.mapKeys { AssetId(it.key) }
+        }
+    }
+
+    @Test
+    fun `candidates sharing a batch are read in one request per batch in candidate order`() = runTest {
+        val first = RecordingBatch(
+            mapOf("A" to listOf(resource("A", "A.heic")), "B" to listOf(resource("B", "B.heic"))),
+        )
+        val second = RecordingBatch(mapOf("C" to listOf(resource("C", "C.heic"))))
+        val candidates = candidatesFromFacts(listOf(facts("A"), facts("B")), first) +
+            candidatesFromFacts(listOf(facts("L")), resourcesFor = { listOf(resource("L", "L.heic")) }) +
+            candidatesFromFacts(listOf(facts("C"), facts("GONE")), second)
+
+        val out = resourcesOf(candidates)
+
+        assertEquals(listOf("A.heic", "B.heic", "L.heic", "C.heic"), out.map { it.filename })
+        assertEquals(listOf(setOf(AssetId("A"), AssetId("B"))), first.requests)
+        assertEquals(
+            listOf(setOf(AssetId("C"), AssetId("GONE"))),
+            second.requests,
+            "an asset the batch lost reads as none",
+        )
+    }
+
+    @Test
+    fun `a batched candidate asked on its own reads just itself`() = runTest {
+        val batch = RecordingBatch(mapOf("A" to listOf(resource("A", "A.heic"))))
+        val (held, gone) = candidatesFromFacts(listOf(facts("A"), facts("GONE")), batch)
+
+        assertEquals(listOf("A.heic"), held.resources().map { it.filename })
+        assertEquals(emptyList(), gone.resources())
+        assertEquals(listOf(setOf(AssetId("A")), setOf(AssetId("GONE"))), batch.requests)
+    }
 }

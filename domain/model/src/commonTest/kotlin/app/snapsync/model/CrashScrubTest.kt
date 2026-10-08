@@ -44,6 +44,14 @@ class CrashScrubTest {
         assertEquals("join ‹uuid› ok", scrubbedCrumb(Crumb(CrashLevel.INFO, "join $id ok")).message)
     }
 
+    @Test
+    fun a_breadcrumb_without_a_message_spends_the_whole_cap_on_its_data() {
+        // The SDK's HTTP crumbs carry data only; the absent message must stay absent, not become the first value.
+        val scrubbed = scrubbedCrumb(Crumb(CrashLevel.INFO, null, "http", mapOf("url" to "/events/$id")))
+        assertNull(scrubbed.message)
+        assertEquals(mapOf("url" to "/events/‹uuid›"), scrubbed.data)
+    }
+
     // ---- automatic events --------------------------------------------------------------------------------------
 
     @Test
@@ -58,6 +66,14 @@ class CrashScrubTest {
             val t = text.orEmpty()
             assertTrue(t.bytes <= EVENT_TEXT_BYTES && t.contains("…[+"), "got ${t.bytes} bytes")
         }
+    }
+
+    @Test
+    fun an_automatic_event_without_a_message_stays_without_one() {
+        val scrubbed = scrubbedEvent(CrashEvent(exceptionValues = listOf("no row $id")))
+        assertNull(scrubbed.message)
+        assertNull(scrubbed.formatted)
+        assertEquals(listOf("no row ‹uuid›"), scrubbed.exceptionValues)
     }
 
     @Test

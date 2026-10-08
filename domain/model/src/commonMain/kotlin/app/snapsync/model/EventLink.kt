@@ -2,7 +2,6 @@
 
 package app.snapsync.model
 
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -119,9 +118,8 @@ private fun decodeFragmentForm(fragment: String): ConfigDecodeResult {
 
     val payload = try {
         json.decodeFromString(EventLinkPayload.serializer(), jsonBytes.decodeToString())
-    } catch (_: SerializationException) {
-        return fail("payload is not valid config JSON")
     } catch (_: IllegalArgumentException) {
+        // `SerializationException` is an `IllegalArgumentException`: every way the payload fails to decode lands here.
         return fail("payload is not valid config JSON")
     }
 

@@ -95,6 +95,26 @@ class EdgeUploadRequestProviderTest {
     }
 
     @Test
+    fun a_build_that_declares_no_version_sends_no_version_header() = runTest {
+        val req = provider(appVersion = "").provide(resource("x-primary.jpg"))
+        assertEquals(null, req.headers[APP_VERSION_HEADER])
+    }
+
+    @Test
+    fun a_blank_capture_name_falls_back_to_the_key_as_a_missing_one_does() = runTest {
+        val req = provider().provide(
+            Resource(
+                filename = "K-primary.jpg",
+                assetId = AssetId("K"),
+                contentType = "image/jpeg",
+                metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to " "),
+                data = ByteArray(0),
+            ),
+        )
+        assertTrue(req.url.endsWith("?filename=K-primary.jpg"), "was ${req.url}")
+    }
+
+    @Test
     fun headers_are_exactly_content_type_and_the_device_token_no_metadata() = runTest {
         // The byte route is GATED (capability `privacy-security`), so the request carries the token —
         // and still nothing else: no `Host` (URL-implied), and no `x-*-meta-*` even though the resource
