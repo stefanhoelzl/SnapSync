@@ -2,10 +2,12 @@ package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
@@ -27,7 +29,7 @@ class ProcessInfoReplayContractTest {
         override val reaches = setOf(ProcessInfoState.LOCKED)
         override val precondition = "LOCKED"
 
-        override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> {
+        override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> {
             if (state !in reaches) {
                 return Entered.Unreachable(
                     "this recording holds the phone locked; $state runs live elsewhere",
@@ -35,7 +37,10 @@ class ProcessInfoReplayContractTest {
             }
             val name = recordingName(ProcessInfoContract.name, host, null, precondition)
             return replayerFor(RECORDINGS, name, clauseId) { replayer ->
-                Entered.Ready(IosProcessInfo(ReplayingProtectedDataApi(replayer)), dispose = replayer::assertExhausted)
+                Entered.Ready(
+                    IosProcessInfo(ReplayingProtectedDataApi(replayer)).recorded(log),
+                    dispose = replayer::assertExhausted,
+                )
             }
         }
     }

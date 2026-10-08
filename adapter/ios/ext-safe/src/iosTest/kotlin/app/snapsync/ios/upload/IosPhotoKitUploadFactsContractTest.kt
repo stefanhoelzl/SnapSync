@@ -2,12 +2,14 @@ package app.snapsync.ios.upload
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.UploadSource
 import co.touchlab.kermit.Logger
@@ -25,11 +27,11 @@ class IosPhotoKitUploadFactsContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(UploadState.TAKES_RESOURCES_ONLY, UploadState.PRESENTS_WHEN_ASKED)
 
-        override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
             if (state !in reaches) return Entered.Unreachable("the PhotoKit queue runs only in the upload extension")
             return Entered.Ready(
                 UploadUnderTest(
-                    upload = IosPhotoKitUploadPlatform(Logger.withTag("contract")),
+                    upload = IosPhotoKitUploadPlatform(Logger.withTag("contract")).recorded(log),
                     base = "",
                     usable = { error("this state creates nothing") },
                     unusable = { UploadSource.File("/nonexistent/$it") },

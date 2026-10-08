@@ -4,11 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.LinksContract
 import app.snapsync.contracts.LinksState
 import app.snapsync.contracts.LinksUnderTest
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import co.touchlab.kermit.Logger
 import kotlin.test.Test
@@ -23,11 +25,11 @@ class AndroidLinksContractTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(LinksState.OPENABLE)
-        override fun create(state: LinksState, clauseId: String): Entered<LinksUnderTest> {
+        override fun create(state: LinksState, clauseId: String, log: CallLog): Entered<LinksUnderTest> {
             val links = AndroidLinks(Logger.withTag("contract"))
             return Entered.Ready(
                 LinksUnderTest(
-                    links,
+                    links.recorded(log),
                 ) { url -> links.deliverIntent("onNewIntent", Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
             )
         }

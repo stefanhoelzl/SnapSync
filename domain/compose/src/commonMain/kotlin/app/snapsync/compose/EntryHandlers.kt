@@ -5,7 +5,6 @@ import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
 import app.snapsync.model.contained
-import app.snapsync.model.describe
 import app.snapsync.model.invocation
 import app.snapsync.ports.Completion
 import app.snapsync.ports.DevHandlers

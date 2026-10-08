@@ -30,10 +30,10 @@ class AndroidPreferencesContractTest {
         override fun create(state: PreferencesState, clauseId: String, log: CallLog): Entered<Preferences> {
             val file = "contract.$clauseId"
             val shared = context.getSharedPreferences(file, Context.MODE_PRIVATE).also { it.edit().clear().commit() }
-            val prefs = AndroidPreferences(shared)
+            val bare = AndroidPreferences(shared)
             val key = PreferencesContract.key(clauseId)
             when (state) {
-                PreferencesState.HOLDING, PreferencesState.UNWRITABLE -> prefs.set(
+                PreferencesState.HOLDING, PreferencesState.UNWRITABLE -> bare.set(
                     key,
                     PreferencesContract.seed(clauseId),
                 )
@@ -43,7 +43,7 @@ class AndroidPreferencesContractTest {
             // A directory this process may read but not write: `commit()` cannot replace the file, and answers false.
             val directory = File(context.dataDir, "shared_prefs")
             if (state == PreferencesState.UNWRITABLE) directory.setWritable(false, false)
-            return Entered.Ready(prefs) {
+            return Entered.Ready(bare.recorded(log)) {
                 directory.setWritable(true, true)
                 context.deleteSharedPreferences(file)
             }

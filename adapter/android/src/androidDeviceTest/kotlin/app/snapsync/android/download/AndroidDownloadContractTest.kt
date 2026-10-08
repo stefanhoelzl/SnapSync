@@ -65,7 +65,12 @@ class AndroidDownloadContractTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches =
-            setOf(DownloadState.READY, DownloadState.RESTRICTED_NETWORK, DownloadState.WAKES_TO_DELIVER)
+            setOf(
+                DownloadState.READY,
+                DownloadState.RESTRICTED_NETWORK,
+                DownloadState.WAKES_TO_DELIVER,
+                DownloadState.REFUSES_UNFETCHABLE,
+            )
 
         override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {
             removeAllDownloads()

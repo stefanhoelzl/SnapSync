@@ -25,6 +25,12 @@ enum class GalleryReaderState {
     /** The process holds no photo grant (undetermined or denied): there is no library to read. */
     NO_GRANT,
 
+    /** No grant, and the process never asked — on a platform that keeps its own record of having asked. */
+    NEVER_ASKED,
+
+    /** No grant, and the process asked and was refused — on a platform that keeps its own record of having asked. */
+    REFUSED,
+
     /** A full grant, and [SEED_COUNT] assets seeded in the clause's window. */
     GRANTED_SEEDED,
 
@@ -121,6 +127,26 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.NotReadable, gallery.albumsById(setOf(absentAlbumId(clauseId))))
             assertEquals(GalleryRead.NotReadable, gallery.libraryAssets(policy(clauseId)), "nor is the wider library")
             assertEquals(GalleryRead.NotReadable, gallery.albumMembers(absentAlbumId(clauseId), since = null))
+        }
+
+        clause(
+            "NEVER_ASKED_READS_UNDETERMINED",
+            GalleryReaderState.NEVER_ASKED,
+            covers = cells {
+                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.NOT_DETERMINED)
+            },
+        ) { seeded ->
+            assertEquals(GalleryAccess.NOT_DETERMINED, seeded.port.access(), "never asked is still undecided")
+        }
+
+        clause(
+            "REFUSED_READS_DENIED",
+            GalleryReaderState.REFUSED,
+            covers = cells {
+                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.DENIED)
+            },
+        ) { seeded ->
+            assertEquals(GalleryAccess.DENIED, seeded.port.access(), "asked and refused is denied")
         }
 
         clause(

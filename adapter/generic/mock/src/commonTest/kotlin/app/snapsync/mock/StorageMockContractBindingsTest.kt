@@ -26,17 +26,17 @@ class StorageMockContractBindingsTest {
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
             val path = FilesContract.path(clauseId)
             return when (state) {
-                FilesState.EMPTY -> Entered.Ready(inMemoryFiles())
+                FilesState.EMPTY -> Entered.Ready(inMemoryFiles().recorded(log))
                 FilesState.HOLDING -> Entered.Ready(
-                    inMemoryFiles(shared = mutableMapOf(path to FilesContract.seed(clauseId))),
+                    inMemoryFiles(shared = mutableMapOf(path to FilesContract.seed(clauseId))).recorded(log),
                 )
                 FilesState.DENIED -> Entered.Ready(
                     inMemoryFiles(
                         shared = mutableMapOf(path to FilesContract.seed(clauseId)),
                         denied = setOf(FileArea.SHARED to path),
-                    ),
+                    ).recorded(log),
                 )
-                FilesState.UNAVAILABLE -> Entered.Ready(inMemoryFiles(shared = null))
+                FilesState.UNAVAILABLE -> Entered.Ready(inMemoryFiles(shared = null).recorded(log))
                 // The double holds paths, not directories with permissions, and no links.
                 FilesState.DENIED_DIRECTORY,
                 FilesState.READ_ONLY_DIRECTORY,
@@ -51,12 +51,16 @@ class StorageMockContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(PreferencesState.EMPTY, PreferencesState.HOLDING)
-        override fun create(state: PreferencesState, clauseId: String, log: CallLog): Entered<Preferences> = when (state) {
-            PreferencesState.EMPTY -> Entered.Ready(inMemoryPreferences())
+        override fun create(
+            state: PreferencesState,
+            clauseId: String,
+            log: CallLog,
+        ): Entered<Preferences> = when (state) {
+            PreferencesState.EMPTY -> Entered.Ready(inMemoryPreferences().recorded(log))
             PreferencesState.HOLDING -> Entered.Ready(
                 inMemoryPreferences(
                     mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
-                ),
+                ).recorded(log),
             )
             PreferencesState.FOREIGN, PreferencesState.UNWRITABLE ->
                 Entered.Unreachable("the double holds strings only, and refuses no write")

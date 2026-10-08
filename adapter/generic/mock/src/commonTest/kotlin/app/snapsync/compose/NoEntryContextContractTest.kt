@@ -2,10 +2,12 @@ package app.snapsync.compose
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.EntryContextContract
 import app.snapsync.contracts.EntryContextState
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.EntryContext
 import kotlin.test.Test
@@ -20,10 +22,10 @@ class NoEntryContextContractTest {
         override val host = currentHost
         override val kind = BindingKind.Live
         override val reaches = setOf(EntryContextState.NO_CONTEXT)
-        override fun create(state: EntryContextState, clauseId: String): Entered<EntryContext> =
+        override fun create(state: EntryContextState, clauseId: String, log: CallLog): Entered<EntryContext> =
             if (state in reaches) {
                 Entered.Ready(
-                    NoEntryContext,
+                    NoEntryContext.recorded(log),
                 )
             } else {
                 Entered.Unreachable("this process keeps no context")

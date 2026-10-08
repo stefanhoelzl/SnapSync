@@ -4,8 +4,10 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.BuildInfoContract
 import app.snapsync.contracts.BuildInfoState
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.BuildInfo
 import kotlin.test.Test
@@ -21,11 +23,10 @@ class IosBuildInfoContractTest {
         override val kind = BindingKind.Live
         override val reaches =
             setOf(BuildInfoState.UNREPORTED_AND_UNLISTED, BuildInfoState.UNBUNDLED, BuildInfoState.ON_IOS)
-        override fun create(state: BuildInfoState, clauseId: String): Entered<BuildInfo> =
+        override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
             if (state in reaches) {
-                Entered.Ready(
-                    IosBuildInfo(osSupportsOsDrivenUpload = osCarriesOsDrivenUpload(), bootLines = emptyList()),
-                )
+                val os = osCarriesOsDrivenUpload()
+                Entered.Ready(IosBuildInfo(osSupportsOsDrivenUpload = os, bootLines = emptyList()).recorded(log))
             } else {
                 Entered.Unreachable("a test executable has no bundle: nothing distributed, no app on a device")
             }

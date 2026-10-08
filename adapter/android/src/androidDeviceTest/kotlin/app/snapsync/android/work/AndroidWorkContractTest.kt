@@ -89,8 +89,9 @@ class AndroidWorkContractTest {
                     "Android has both wakes, and WorkManager refuses no request",
                 )
             }
-            val adapter = AndroidWake(context)
-            WakeId.entries.forEach(adapter::cancel)
+            val bare = AndroidWake(context)
+            val adapter = bare.recorded(log)
+            WakeId.entries.forEach(bare::cancel)
             val name = AndroidWake.nameOf(WakeId.Heartbeat)
             val seeded = mutableSetOf<AssetId>()
             // A new photo in the default gallery changes the library; the job scheduler's timeout is the system's end.
@@ -104,7 +105,8 @@ class AndroidWorkContractTest {
             return Entered.Ready(
                 ScheduledWakes(adapter, os.takeIf { state == WakeState.DELIVERING }) { pending(name) },
             ) {
-                WakeId.entries.forEach(adapter::cancel)
+                // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.
+                WakeId.entries.forEach(bare::cancel)
                 MediaStoreSeeder.delete(seeded)
                 Airplane.leave()
             }
@@ -117,7 +119,7 @@ class AndroidWorkContractTest {
         override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
         override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
             if (state in reaches) {
-                Entered.Ready(AndroidBackgroundTime(context))
+                Entered.Ready(AndroidBackgroundTime(context).recorded(log))
             } else {
                 // An expedited work's stop comes when WorkManager's quota or the system's constraints end it, which a
                 // device test cannot bring about on a work it runs in-process (`docs/testing.md`).

@@ -41,7 +41,7 @@ class PhotoKitNoGrantContractTest {
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
             if (state !in reaches || !holdsNoGrant()) return Entered.Unreachable(unreachable)
-            return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract"))))
+            return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))
         }
     }
 

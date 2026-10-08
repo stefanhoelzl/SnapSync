@@ -29,14 +29,16 @@ class IosPreferencesContractTest {
             }
             val suite = "contract.preferences.$clauseId"
             NSUserDefaults(suiteName = suite).removePersistentDomainForName(suite)
-            val prefs = IosPreferences(suite).recorded(log)
+            val bare = IosPreferences(suite)
             if (state == PreferencesState.HOLDING) {
-                prefs.set(PreferencesContract.key(clauseId), PreferencesContract.seed(clauseId))
+                bare.set(PreferencesContract.key(clauseId), PreferencesContract.seed(clauseId))
             }
             if (state == PreferencesState.FOREIGN) {
                 NSUserDefaults(suiteName = suite).setInteger(FOREIGN_NUMBER, forKey = PreferencesContract.key(clauseId))
             }
-            return Entered.Ready(prefs) { NSUserDefaults(suiteName = suite).removePersistentDomainForName(suite) }
+            return Entered.Ready(bare.recorded(log)) {
+                NSUserDefaults(suiteName = suite).removePersistentDomainForName(suite)
+            }
         }
     }
 

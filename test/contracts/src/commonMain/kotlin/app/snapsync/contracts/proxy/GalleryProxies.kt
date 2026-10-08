@@ -26,7 +26,8 @@ fun GalleryReader.recorded(log: CallLog): GalleryReader = GalleryReaderProxy(thi
 internal class GalleryReaderProxy(private val inner: GalleryReader, log: CallLog) : GalleryReader {
     private val r = log.recorder("GalleryReader")
 
-    override fun access() = r.answer("access", inner.access())
+    // Inherited from [PhotoGrantRead], so counted under it, as the grid counts it.
+    override fun access() = r.port("PhotoGrantRead").answer("access", inner.access())
     override suspend fun assets(policy: SelectionPolicy) = r.answer("assets", inner.assets(policy))
     override suspend fun libraryAssets(policy: SelectionPolicy) = r.answer("libraryAssets", inner.libraryAssets(policy))
     override suspend fun assetsById(ids: Set<AssetId>) = r.answer("assetsById", inner.assetsById(ids))
@@ -112,7 +113,7 @@ fun PhotoGrantRead.recorded(log: CallLog): PhotoGrantRead = PhotoGrantReadProxy(
 internal class PhotoGrantReadProxy(private val inner: PhotoGrantRead, log: CallLog) : PhotoGrantRead {
     private val r = log.recorder("PhotoGrantRead")
 
-    override fun current() = r.answer("current", inner.current())
+    override fun access() = r.answer("access", inner.access())
 }
 
 /** [PhotoAccessStatusSource] as its clause's [CallLog] sees it. */

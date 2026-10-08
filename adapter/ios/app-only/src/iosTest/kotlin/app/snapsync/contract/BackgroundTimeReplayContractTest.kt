@@ -5,8 +5,10 @@ import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.ports.BackgroundTime
@@ -26,7 +28,7 @@ class BackgroundTimeReplayContractTest {
         override val kind = BindingKind.Replay
         override val reaches = setOf(BackgroundTimeState.TIME_RUNS_OUT)
 
-        override fun create(state: BackgroundTimeState, clauseId: String): Entered<BackgroundTime> {
+        override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> {
             if (state !in reaches) {
                 return Entered.Unreachable(
                     "this recording holds the app's time running out; $state runs live",
@@ -34,7 +36,7 @@ class BackgroundTimeReplayContractTest {
             }
             return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
                 Entered.Ready(
-                    IosBackgroundTime(Logger.withTag("contract"), ReplayingBackgroundTimeApi(replayer)),
+                    IosBackgroundTime(Logger.withTag("contract"), ReplayingBackgroundTimeApi(replayer)).recorded(log),
                     dispose = replayer::assertExhausted,
                 )
             }

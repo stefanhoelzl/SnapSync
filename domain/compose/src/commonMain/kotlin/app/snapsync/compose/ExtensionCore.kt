@@ -129,7 +129,6 @@ private fun extensionServices(
         log.orNullLogged("attest token unreadable — proceeding unauthenticated (expect 401)") { attestStore.token() }
     }
     val albums = GalleryAlbums(ports.gallery)
-    val grant = PhotoGrantRead { ports.gallery.access() }
     val build = ports.process.build
     val config = ConfigService(process.files, process.clock)
     return UploadServices(
@@ -154,7 +153,7 @@ private fun extensionServices(
         suppression = SuppressionService(ports.databases),
         // A failed denylisted-album lookup fails the cycle here; the next invocation retries.
         albumExclusions = { cutoff ->
-            denylistedAlbumMembers(albums, cutoff, grant.current(), AlbumLookupFailure.FailCycle, log)
+            denylistedAlbumMembers(albums, cutoff, ports.gallery.access(), AlbumLookupFailure.FailCycle, log)
         },
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(

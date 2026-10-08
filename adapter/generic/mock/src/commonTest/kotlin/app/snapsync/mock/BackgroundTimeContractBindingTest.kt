@@ -25,7 +25,7 @@ class BackgroundTimeContractBindingTest {
 
         override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
             if (state in reaches) {
-                Entered.Ready(inMemoryBackgroundTime(MutableStateFlow(emptyList())))
+                Entered.Ready(inMemoryBackgroundTime(MutableStateFlow(emptyList())).recorded(log))
             } else {
                 Entered.Unreachable("the double's expiry is its operator's to play, not a time that runs out")
             }

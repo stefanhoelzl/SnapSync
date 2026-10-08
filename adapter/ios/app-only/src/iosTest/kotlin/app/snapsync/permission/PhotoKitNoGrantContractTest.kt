@@ -53,7 +53,7 @@ class PhotoKitNoGrantContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(GalleryState.TOKEN_WITHHELD)
 
-        override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
+        override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
             if (state !in reaches || currentPhotoPermission() != GalleryAccess.DENIED) {
                 return Entered.Unreachable(
                     unreachable,
@@ -61,7 +61,7 @@ class PhotoKitNoGrantContractTest {
             }
             val reader = IosGalleryReader(Logger.withTag("contract"))
             val gallery = IosGallery(reader, PhotoLibraryPermission(), CoroutineScope(Dispatchers.Default))
-            return Entered.Ready(GalleryChange(gallery) {})
+            return Entered.Ready(GalleryChange(gallery.recorded(log)) {})
         }
     }
 

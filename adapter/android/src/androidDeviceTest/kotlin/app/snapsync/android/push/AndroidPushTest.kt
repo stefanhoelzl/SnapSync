@@ -64,7 +64,7 @@ class AndroidPushTest {
 
         override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> = when (state) {
             ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_NOT_ACCOUNTED -> Entered.Ready(
-                AndroidProcessInfo(context),
+                AndroidProcessInfo(context).recorded(log),
             )
             ProcessInfoState.MEMORY_ACCOUNTED ->
                 Entered.Unreachable(
@@ -86,8 +86,8 @@ class AndroidPushTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(PushState.NO_PUSH_PROJECT, PushState.DELIVERING)
-        override fun create(state: PushState, clauseId: String): Entered<PushUnderTest> {
-            val push = AndroidPushNotifications(context, FirebaseConfig("", "", "", ""))
+        override fun create(state: PushState, clauseId: String, log: CallLog): Entered<PushUnderTest> {
+            val push = AndroidPushNotifications(context, FirebaseConfig("", "", "", "")).recorded(log)
             val os = PushOs(
                 issueToken = { token ->
                     @Suppress("DEPRECATION")

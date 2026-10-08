@@ -2,11 +2,13 @@ package app.snapsync.background
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import co.touchlab.kermit.Logger
 import kotlin.test.Test
@@ -24,12 +26,11 @@ class IosWakeContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(WakeState.NO_LIBRARY_WAKE, WakeState.REFUSING)
 
-        override fun create(state: WakeState, clauseId: String): Entered<ScheduledWakes> {
+        override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
             if (state !in reaches) return Entered.Unreachable("a test executable's bundle permits no task identifier")
             // Neither clause reads the queue: a test executable's pending-request query has no app to answer for.
-            return Entered.Ready(
-                ScheduledWakes(IosWake(Logger.withTag("contract"))) { error("the queue is not read here") },
-            )
+            val wake = IosWake(Logger.withTag("contract")).recorded(log)
+            return Entered.Ready(ScheduledWakes(wake) { error("the queue is not read here") })
         }
     }
 

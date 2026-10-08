@@ -2,6 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.http.HttpBackend
 import app.snapsync.mock.DeclaredVersion
+import app.snapsync.model.Ack
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -39,15 +40,15 @@ class VersionedHttpBackend(
     override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = http().getEvent(token, eventId)
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> =
         http().renameEvent(token, eventId, name)
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
+    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Ack<Unit> =
         http().joinEvent(token, eventId, deviceId)
     override suspend fun publishManifest(
         token: String?,
         eventId: String,
         deviceId: String,
         manifest: DeviceManifest,
-    ): Reply<Unit> = http().publishManifest(token, eventId, deviceId, manifest)
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
+    ): Ack<Unit> = http().publishManifest(token, eventId, deviceId, manifest)
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Ack<Unit> =
         http().leaveEvent(token, eventId, deviceId, received)
     override suspend fun eventFiles(
         token: String?,
@@ -58,6 +59,6 @@ class VersionedHttpBackend(
         http().eventFiles(token, eventId, cursor, trigger)
     override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
         http().deviceFiles(token, eventId, deviceId)
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Ack<Unit> =
         http().putDeviceConfig(token, deviceId, push)
 }

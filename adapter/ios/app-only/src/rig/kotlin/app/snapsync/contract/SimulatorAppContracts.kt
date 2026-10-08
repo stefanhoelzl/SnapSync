@@ -195,6 +195,9 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
             GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES -> return Entered.Unreachable(
                 UNREACHABLE_NO_GRANT,
             )
+            GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED -> return Entered.Unreachable(
+                "PhotoKit keeps the record of having asked; a simulator granted access holds the full grant",
+            )
             GalleryReaderState.GRANTED_SEEDED,
             GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
             GalleryReaderState.GRANTED_SEEDED_EXPORTING,
@@ -210,7 +213,7 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         ) { checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" } }
         val scratch = scratch(GalleryReaderContract.name, clauseId)
         val files = ClauseFiles({ "$scratch/$it" }, { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() })
-        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")), ids, files))
+        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log), ids, files))
     }
 }
 
@@ -258,7 +261,7 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             GalleryImportState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
         }
         val delivered = ImportDeliveries()
-        val importer = contractGallery().apply { listen(delivered.handlers) }
+        val importer = contractGallery().recorded(log).apply { listen(delivered.handlers) }
         var staged = 0
         val stage = {
             staged++
@@ -311,7 +314,7 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
             LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED -> PhotoLibrary.brokenMotionPhoto
         }
         val delivered = ImportDeliveries()
-        val importer = contractGallery().apply { listen(delivered.handlers) }
+        val importer = contractGallery().recorded(log).apply { listen(delivered.handlers) }
         val stage = {
             val key = "contract-$clauseId-primary.jpg"
             val path = NSTemporaryDirectory() + key
@@ -368,9 +371,10 @@ class SimAppBuildInfoBinding : Binding<BuildInfoState, BuildInfo> {
     override val kind = BindingKind.Live
     override val reaches = setOf(BuildInfoState.OS_DRIVEN_UPLOAD, BuildInfoState.ON_IOS)
 
-    override fun create(state: BuildInfoState, clauseId: String): Entered<BuildInfo> =
+    override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
         if (state in reaches) {
-            Entered.Ready(IosBuildInfo(osSupportsOsDrivenUpload = osCarriesOsDrivenUpload(), bootLines = emptyList()))
+            val adapter = IosBuildInfo(osSupportsOsDrivenUpload = osCarriesOsDrivenUpload(), bootLines = emptyList())
+            Entered.Ready(adapter.recorded(log))
         } else {
             Entered.Unreachable("a rig build on a simulator is neither distributed nor bundle-less")
         }
@@ -383,7 +387,7 @@ class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
 
     override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
         if (state in reaches) {
-            Entered.Ready(IosProcessInfo())
+            Entered.Ready(IosProcessInfo().recorded(log))
         } else {
             Entered.Unreachable("$state: iOS accounts the footprint, and the simulator implements no data protection")
         }
@@ -418,7 +422,7 @@ class SimAppBackgroundTimeBinding : Binding<BackgroundTimeState, BackgroundTime>
 
     override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
         if (state in reaches) {
-            Entered.Ready(IosBackgroundTime(Logger.withTag("contract")))
+            Entered.Ready(IosBackgroundTime(Logger.withTag("contract")).recorded(log))
         } else {
             Entered.Unreachable("the rig drives the simulator app in the foreground, where its time does not run out")
         }

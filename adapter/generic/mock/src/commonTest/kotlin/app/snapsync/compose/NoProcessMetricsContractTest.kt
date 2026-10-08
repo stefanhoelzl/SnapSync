@@ -2,10 +2,12 @@ package app.snapsync.compose
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.ProcessMetricsContract
 import app.snapsync.contracts.ProcessMetricsState
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.ProcessMetrics
 import kotlin.test.Test
@@ -20,8 +22,12 @@ class NoProcessMetricsContractTest {
         override val host = currentHost
         override val kind = BindingKind.Live
         override val reaches = setOf(ProcessMetricsState.NO_PROVIDER)
-        override fun create(state: ProcessMetricsState, clauseId: String): Entered<ProcessMetrics> =
-            if (state in reaches) Entered.Ready(NoProcessMetrics) else Entered.Unreachable("no provider holds a report")
+        override fun create(state: ProcessMetricsState, clauseId: String, log: CallLog): Entered<ProcessMetrics> =
+            if (state in reaches) {
+                Entered.Ready(NoProcessMetrics.recorded(log))
+            } else {
+                Entered.Unreachable("no provider holds a report")
+            }
     }
 
     @Test
