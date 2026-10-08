@@ -100,6 +100,9 @@ class EventCompletionTest {
         var answer: EventLookup = details()
         val manifestRecord = DeviceManifestService(inMemoryFiles()).apply { recorded?.let(::saveLastUploaded) }
         var received = true
+
+        /** Runs while the union is read — where a member's own join or leave lands when it lands during that read. */
+        var duringReceivedCheck: suspend () -> Unit = {}
         var fetches = 0
         var finalPublishes = 0
         var publishFails = false
@@ -132,7 +135,10 @@ class EventCompletionTest {
                 finalPublishes++
                 if (publishFails) error("the manifest publish failed")
             },
-            everythingReceived = { received },
+            everythingReceived = {
+                duringReceivedCheck()
+                received
+            },
             checks = checks,
         )
 
@@ -175,6 +181,23 @@ class EventCompletionTest {
     fun `a closed event with everything here is left`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z").apply { answer = details(closed = true) }
         assertEquals(CompletionOutcome.LEFT, with(w) { completion() }.finish())
+        assertNull(w.config.config.value)
+    }
+
+    @Test
+    fun `a join landing while the union is read is not torn down by the finished event's leave`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply { answer = details(closed = true) }
+        val next = joined.copy(eventId = "F", name = "Next")
+        w.duringReceivedCheck = { w.config.save(next) }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+        assertEquals(next, w.config.config.value)
+    }
+
+    @Test
+    fun `a leave landing while the union is read is not reported as this step's own`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply { answer = details(closed = true) }
+        w.duringReceivedCheck = { w.config.clear() }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
         assertNull(w.config.config.value)
     }
 

@@ -49,6 +49,7 @@ class MembershipRefresh(
      *   the rewrites from losing each other's field. The membership's own `maxPhotoDate` is **not**
      *   backfilled: it is required on every persisted membership (capability `join-event`), so a config
      *   that decoded at all already carries one.
+     * - [RefreshOutcome.CLOSED] — the same, for a membership whose event has closed (now or before).
      * - [RefreshOutcome.INCONCLUSIVE] — the fetch could not tell (offline, transport, non-404 status,
      *   unparseable body), or it resolved for an event that is no longer configured (a fetch landing
      *   after a switch or leave must not resurrect the departed membership). **Nothing is persisted and
@@ -100,7 +101,7 @@ class MembershipRefresh(
                 if (fetched.completion.closed && !current.closed) next = next.copy(closed = true)
                 fetched.completion.members?.let { if (it != current.members) next = next.copy(members = it) }
                 if (next != current) configSource.save(next)
-                RefreshOutcome.REFRESHED
+                if (next.closed) RefreshOutcome.CLOSED else RefreshOutcome.REFRESHED
             }
         }
     }
@@ -114,6 +115,9 @@ class MembershipRefresh(
 enum class RefreshOutcome {
     /** Resolved and folded in (name refresh and/or backfill). Nothing further is due. */
     REFRESHED,
+
+    /** Resolved and folded in, and the membership's event has closed — now or by an earlier answer. Nothing was torn down. */
+    CLOSED,
 
     /** Could not tell, or no longer ours. Nothing is persisted and nothing is torn down. */
     INCONCLUSIVE,

@@ -223,7 +223,7 @@ class MembershipRefreshTest {
             DELETES,
             EventCompletionState(closed = true, completed = false, members = MemberCounts(active = 4, settled = 4)),
         )
-        assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", closed))
+        assertEquals(RefreshOutcome.CLOSED, refresh(config).refresh("E", closed))
         assertEquals(joined.copy(closed = true, members = MemberCounts(4, 4)), config.saved)
     }
 
@@ -255,7 +255,7 @@ class MembershipRefreshTest {
             DELETES,
             EventCompletionState(closed = true, completed = false),
         )
-        assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", closed))
+        assertEquals(RefreshOutcome.CLOSED, refresh(config).refresh("E", closed))
         assertNull(config.saved)
     }
 }
