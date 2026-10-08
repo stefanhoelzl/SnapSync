@@ -23,7 +23,8 @@ interface Crypto : Port {
 
     /**
      * AES-256-GCM of [plaintext] under [key] (32 bytes) and [nonce] (12 bytes), no associated data: the ciphertext
-     * followed by its 16-byte tag.
+     * followed by its 16-byte tag. A [key] of any other length throws [IllegalArgumentException], here and in
+     * [aesGcmOpen]: the platform ciphers would quietly run AES-128 or AES-192 under a 16- or 24-byte one.
      */
     fun aesGcmSeal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray
 

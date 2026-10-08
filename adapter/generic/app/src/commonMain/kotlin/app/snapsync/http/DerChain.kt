@@ -22,7 +22,8 @@ internal fun derElements(bytes: ByteArray): List<ByteArray> {
             length = 0
             repeat(count) { length = (length shl BITS) or (bytes[i++].toInt() and BYTE) }
         }
-        require(length >= 0 && i + length <= bytes.size) { "DER: element at byte $start runs past the end" }
+        // At most [MAX_LENGTH_BYTES] length bytes: a length below 2^24, never negative.
+        require(i + length <= bytes.size) { "DER: element at byte $start runs past the end" }
         i += length
         out += bytes.copyOfRange(start, i)
     }

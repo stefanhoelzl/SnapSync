@@ -3,6 +3,7 @@ package app.snapsync.contracts
 import app.snapsync.ports.Crypto
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
@@ -86,6 +87,15 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE.copyOf().also { it[11] = 0 }, GCM_SEALED), "another nonce")
             assertNull(crypto.aesGcmOpen(ByteArray(32), GCM_NONCE, GCM_SEALED), "another key")
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, ByteArray(15)), "shorter than a tag")
+        }
+
+        clause("A_KEY_THAT_IS_NOT_AES_256_IS_REFUSED", CryptoState.READY) { crypto ->
+            assertFailsWith<IllegalArgumentException>("a 16-byte key would seal AES-128") {
+                crypto.aesGcmSeal(ByteArray(16), GCM_NONCE, GCM_PLAIN)
+            }
+            assertFailsWith<IllegalArgumentException>("nor does one open") {
+                crypto.aesGcmOpen(ByteArray(33), GCM_NONCE, GCM_SEALED)
+            }
         }
 
         clause("RANDOM_BYTES_ARE_FRESH", CryptoState.READY) { crypto ->

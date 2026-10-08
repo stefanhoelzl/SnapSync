@@ -19,6 +19,12 @@ enum class FilesState {
     /** [FilesContract.path] in the SHARED area exists and this process may not read it. */
     DENIED,
 
+    /**
+     * [FilesContract.directory] in the SHARED area exists and holds [FilesContract.path], and this process may not
+     * list it.
+     */
+    DENIED_DIRECTORY,
+
     /** The SHARED area cannot be reached (on iOS, a build without the App-Group entitlement). */
     UNAVAILABLE,
 }
@@ -32,8 +38,11 @@ enum class FilesState {
  */
 object FilesContract : Contract<FilesState, Files>("Files") {
 
-    /** The clause's file, relative to its area. */
-    fun path(clauseId: String) = "contract/$clauseId/file.bin"
+    /** The clause's directory, relative to its area. */
+    fun directory(clauseId: String) = "contract/$clauseId"
+
+    /** The clause's file, relative to its area: inside [directory]. */
+    fun path(clauseId: String) = "${directory(clauseId)}/file.bin"
 
     /** What a [FilesState.HOLDING] binding writes: ASCII lines, several times [SMALL]. */
     fun seed(clauseId: String): ByteArray =
@@ -92,6 +101,17 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             ).value
             assertEquals(0, tail.bytes.size)
             assertTrue(!tail.cut)
+        }
+
+        clause("EMPTY_A_DIRECTORY_IS_NOT_A_FILE", FilesState.EMPTY) { files ->
+            val id = "EMPTY_A_DIRECTORY_IS_NOT_A_FILE"
+            FileArea.entries.forEach {
+                files.write(it, path(id), ByteArray(1))
+                assertIs<FileResult.Failed>(
+                    files.read(it, directory(id)),
+                    "$it: a directory is there, so never NotFound, and it is not this process's to be Denied",
+                )
+            }
         }
 
         clause("EMPTY_LOCATE_NAMES_EACH_AREA_APART", FilesState.EMPTY) { files ->
@@ -186,6 +206,13 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.Ok(true), files.exists(FileArea.SHARED, p), "it is there")
         }
 
+        clause("DENIED_DIRECTORY_LIST_IS_DENIED_NEVER_EMPTY", FilesState.DENIED_DIRECTORY) { files ->
+            assertIs<FileResult.Denied>(
+                files.list(FileArea.SHARED, directory("DENIED_DIRECTORY_LIST_IS_DENIED_NEVER_EMPTY")),
+                "a directory that could not be listed answered as empty reads as 'nothing was staged'",
+            )
+        }
+
         clause("UNAVAILABLE_AREA_IS_NEITHER_FOUND_NOR_ABSENT", FilesState.UNAVAILABLE) { files ->
             val p = path("UNAVAILABLE_AREA_IS_NEITHER_FOUND_NOR_ABSENT")
             assertEquals(FileResult.AreaUnavailable, files.read(FileArea.SHARED, p))
@@ -198,6 +225,7 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.AreaUnavailable, files.locate(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.move(FileArea.SHARED, p, "$p.moved"))
             assertEquals(FileResult.AreaUnavailable, files.list(FileArea.SHARED, "contract"))
+            assertEquals(FileResult.AreaUnavailable, files.adopt("/handed/by/the/platform.bin", FileArea.SHARED, p))
         }
 
         clause("EMPTY_LIST_IS_EVERY_FILE_BENEATH_AT_ANY_DEPTH", FilesState.EMPTY) { files ->

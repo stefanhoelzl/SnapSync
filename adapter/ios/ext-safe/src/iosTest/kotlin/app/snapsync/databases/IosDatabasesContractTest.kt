@@ -31,6 +31,7 @@ class IosDatabasesContractTest {
             DatabasesState.ABSENT,
             DatabasesState.CURRENT,
             DatabasesState.OLD,
+            DatabasesState.NEWER,
             DatabasesState.UNOPENABLE,
         )
         override fun create(state: DatabasesState, clauseId: String): Entered<Databases> {
@@ -40,6 +41,7 @@ class IosDatabasesContractTest {
                 DatabasesState.ABSENT -> Unit
                 DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)
+                DatabasesState.NEWER -> DatabasesContract.enterNewer(databases)
                 DatabasesState.UNOPENABLE ->
                     writeTextFile(
                         "$dir/${DatabasesContract.NAME}",

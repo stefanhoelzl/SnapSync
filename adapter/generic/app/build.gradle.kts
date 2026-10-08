@@ -15,9 +15,9 @@ plugins {
     // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
     id("snapsync.android")
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
-    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
-    id("snapsync.coverage")
+    // Coverage at ZERO (`docs/architecture.md`, "Coverage"; `snapsync.coverage-zero`): no instruction or branch may be
+    // missed. Applied here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
     // `jvmTest` starts the real backend (`liveEdge.consumedBy`, below).
@@ -94,43 +94,4 @@ tasks.named<Test>("jvmTest") {
     val vectors = rootProject.layout.projectDirectory.dir("test/vectors")
     inputs.dir(vectors).withPropertyName("encryptedFileVectors")
     systemProperty("snapsync.vectorsDir", vectors.asFile.absolutePath)
-}
-
-// ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
-//
-// A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
-// permitted to move in one direction only: UP. The destination is full coverage, and these numbers
-// are the distance still to travel.
-//
-// RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
-// stated forcing proof in that change's description, naming what makes the loss of coverage
-// unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
-// is deliberately NOT a proof. `docs/architecture.md` carries the same contract at the opposite
-// polarity - a ceiling that may only fall.
-//
-// TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves
-// every package above the floor; the PACKAGE FLOOR - "no package here is worse than this" - catches
-// one package rotting behind well-tested neighbours, which is the shape an untested class has.
-//
-// ENGINE: Kover's default, not JaCoCo. The two disagree by up to 26% on a single package's
-// denominator, so every number below is engine-specific and switching engines means re-seeding all
-// of them in that same change.
-//
-// Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
-//
-// THE PACKAGE FLOOR GATES. It was seeded at 0 because four production classes carried no test at all, rose
-// 0 -> 75 once they were covered, and 75 -> 90 when the ten backend clients became one `HttpBackend` (phase 11c,
-// measured 98.1% for `app.snapsync.http`): its optional-field bodies are read as JSON objects, so the generated
-// serializers' unreachable halves that held the old `app.snapsync.join` at 75 are gone. 90 is `app.snapsync.databases`.
-coverageFloors {
-    aggregate(
-        // 89 -> 96 with `HttpBackend` (measured 96.6%).
-        instruction = 96,
-        // 56 -> 63 when the SQLDelight stores moved to `:domain:services` (measured 64.0%); 63 -> 78 with
-        // `HttpBackend` (measured 78.1%).
-        branch = 78,
-    )
-    // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
-    // tree, where a single uncovered arm moves the number by 17 points.
-    packageFloor(instruction = 90)
 }

@@ -32,6 +32,10 @@ class IosFilesContractTest {
 
         override fun create(state: FilesState, clauseId: String): Entered<Files> {
             if (state == FilesState.UNAVAILABLE) return Entered.Ready(IosFiles())
+            // Not entered yet: the JVM binding holds that clause (the contracts track extends it here).
+            if (state == FilesState.DENIED_DIRECTORY) {
+                return Entered.Unreachable("an unlistable directory is not entered here yet")
+            }
             val shared = newTempDirectory()
             val private = newTempDirectory()
             val files = IosFiles(sharedRoot = shared, privateRoot = private)
@@ -42,7 +46,7 @@ class IosFilesContractTest {
                     files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
                     chmod("$shared/$path", NO_PERMISSIONS)
                 }
-                FilesState.EMPTY, FilesState.UNAVAILABLE -> Unit
+                FilesState.EMPTY, FilesState.UNAVAILABLE, FilesState.DENIED_DIRECTORY -> Unit
             }
             return Entered.Ready(files) {
                 chmod("$shared/$path", OWNER_READ_WRITE)

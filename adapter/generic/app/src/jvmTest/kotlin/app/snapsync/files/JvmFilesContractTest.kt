@@ -36,7 +36,13 @@ class JvmFilesContractTest {
     private val files = object : Binding<FilesState, Files> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
-        override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED, FilesState.UNAVAILABLE)
+        override val reaches = setOf(
+            FilesState.EMPTY,
+            FilesState.HOLDING,
+            FilesState.DENIED,
+            FilesState.DENIED_DIRECTORY,
+            FilesState.UNAVAILABLE,
+        )
         override fun create(state: FilesState, clauseId: String): Entered<Files> {
             if (state == FilesState.UNAVAILABLE) return Entered.Ready(unavailable())
             val areas = Areas()
@@ -46,6 +52,10 @@ class JvmFilesContractTest {
                 FilesState.DENIED -> {
                     areas.files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
                     File(areas.shared, path).setReadable(false)
+                }
+                FilesState.DENIED_DIRECTORY -> {
+                    areas.files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
+                    File(areas.shared, FilesContract.directory(clauseId)).setReadable(false)
                 }
                 FilesState.EMPTY, FilesState.UNAVAILABLE -> Unit
             }

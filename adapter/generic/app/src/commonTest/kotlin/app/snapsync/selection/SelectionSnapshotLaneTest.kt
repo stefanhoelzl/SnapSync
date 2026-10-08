@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -55,7 +56,14 @@ class SelectionSnapshotLaneTest {
             return initial
         }
 
-        override fun after(held: List<String>, change: String): List<String> = held + change
+        /** Runs inside [after], before it answers — where a grant can move mid-fold. */
+        var onAfter: (String) -> Unit = {}
+
+        /** A change appends its id; a `noop…` change does not touch the held read, so it answers `null`. */
+        override fun after(held: List<String>, change: String): List<String>? {
+            onAfter(change)
+            return if (change.startsWith("noop")) null else held + change
+        }
 
         /** Holds the NEXT enumeration open until completed; consumed by it. */
         var snapshotGate: CompletableDeferred<Unit>? = null
@@ -290,6 +298,125 @@ class SelectionSnapshotLaneTest {
         advanceUntilIdle()
 
         assertEquals(listOf("base", "a"), emitted.last())
+        scope.cancel()
+    }
+
+    @Test
+    fun an_observation_that_ends_before_the_lane_begins_it_opens_nothing() = runTest {
+        // The lane runs on a scheduler of its own, so the Begin and the End that superseded it are both queued
+        // before it handles either.
+        val laneScheduler = TestCoroutineScheduler()
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job())
+        val permission = MutableStateFlow(GalleryAccess.LIMITED)
+        val platform = FakePlatform(listOf("base"))
+        SelectionSnapshotLane(permission, scope, StandardTestDispatcher(laneScheduler), platform).observe(true)
+        advanceUntilIdle() // Begin queued
+        permission.value = GalleryAccess.GRANTED
+        advanceUntilIdle() // End queued
+
+        laneScheduler.advanceUntilIdle()
+
+        assertEquals(null, platform.onChange, "a stale Begin starts no observer")
+        assertTrue(platform.enumerations.isEmpty(), "and reads nothing")
+        assertEquals(0, platform.stops, "so its End has nothing to stop")
+        scope.cancel()
+    }
+
+    @Test
+    fun a_baseline_enumerated_across_the_grant_flip_is_dropped() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val permission = MutableStateFlow(GalleryAccess.LIMITED)
+        val platform = FakePlatform(listOf("base"))
+        val running = CompletableDeferred<Unit>().also { platform.snapshotGate = it }
+        val source = SelectionSnapshotLane(permission, scope, lane, platform).apply { observe(true) }
+        val emitted = mutableListOf<List<String>>()
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle() // the baseline is read and its enumeration held open
+
+        permission.value = GalleryAccess.GRANTED
+        advanceUntilIdle()
+        running.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf("base")), platform.enumerations)
+        assertEquals(emptyList(), emitted, "an enumeration that spans the flip is not emitted")
+        assertEquals(1, platform.stops)
+        scope.cancel()
+    }
+
+    @Test
+    fun a_change_queued_behind_a_baseline_that_was_dropped_finds_no_read_and_emits_nothing() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val permission = MutableStateFlow(GalleryAccess.LIMITED)
+        val platform = FakePlatform(listOf("base")).apply { baselineGate = CompletableDeferred() }
+        val source = SelectionSnapshotLane(permission, scope, lane, platform).apply { observe(true) }
+        val emitted = mutableListOf<List<String>>()
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle() // observing, the baseline read in progress
+
+        platform.change("a") // queued behind the baseline
+        permission.value = GalleryAccess.GRANTED // and the End behind it
+        advanceUntilIdle()
+        platform.baselineGate!!.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), emitted)
+        assertTrue(platform.enumerations.isEmpty(), "neither the dropped baseline nor the change is enumerated")
+        assertEquals(1, platform.stops)
+        scope.cancel()
+    }
+
+    @Test
+    fun changes_that_leave_the_held_read_untouched_cost_no_enumeration() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val platform = FakePlatform(listOf("base"))
+        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform).apply {
+            observe(true)
+        }
+        val emitted = mutableListOf<List<String>>()
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle()
+
+        platform.change("noop-alone")
+        advanceUntilIdle()
+        assertEquals(listOf(listOf("base")), platform.enumerations, "a change that touches nothing reads nothing")
+
+        val running = CompletableDeferred<Unit>().also { platform.snapshotGate = it }
+        platform.change("a")
+        advanceUntilIdle() // a's enumeration is running, held open
+        platform.change("noop-first") // the fold starts from a change that touches nothing…
+        platform.change("b") // …so b applies to the read held before it
+        platform.change("noop-last") // and one after b keeps b's
+        running.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf("base"), listOf("base", "a"), listOf("base", "a", "b")), platform.enumerations)
+        assertEquals(listOf("base", "a", "b"), emitted.last())
+        scope.cancel()
+    }
+
+    @Test
+    fun a_grant_that_moves_while_changes_are_folded_stops_the_fold_and_ends_the_observation() = runTest {
+        // The collector is unconfined, so a grant moved from inside `after` queues its End before the fold drains.
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler) + Job())
+        val permission = MutableStateFlow(GalleryAccess.LIMITED)
+        val platform = FakePlatform(listOf("base"))
+        val source = SelectionSnapshotLane(permission, scope, lane, platform).apply { observe(true) }
+        val emitted = mutableListOf<List<String>>()
+        scope.launch { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle()
+        platform.onAfter = { if (it == "a") permission.value = GalleryAccess.GRANTED }
+
+        platform.change("a")
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf("base")), emitted, "the fold's change is built under the ended observation")
+        assertEquals(listOf(listOf("base")), platform.enumerations, "so it is not enumerated")
+        assertEquals(1, platform.stops, "and the End the fold stopped at is handled next")
         scope.cancel()
     }
 

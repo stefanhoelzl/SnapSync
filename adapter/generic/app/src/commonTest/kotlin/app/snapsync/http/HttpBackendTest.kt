@@ -265,6 +265,12 @@ class HttpBackendTest {
             ).getEvent(null, "E") as Reply.Ok
             ).value
         assertNull(wrongShape.members)
+        val nested = (
+            backend(
+                body = """{"name":"N","members":{"active":{"n":5},"final":1}}""",
+            ).getEvent(null, "E") as Reply.Ok
+            ).value
+        assertNull(nested.members, "a count that is not a number at all")
     }
 
     @Test
@@ -358,6 +364,22 @@ class HttpBackendTest {
             .deviceFiles("T", "E", "D")
         assertEquals(Reply.Ok(listOf(DeviceFile(AssetId("A"), ResourceRole.PRIMARY, "IMG.JPG"))), listed)
         assertEquals("GET /api/v2/events/E/files/devices/D", "${sent[0].method} ${sent[0].path}")
+    }
+
+    @Test
+    fun a_union_asset_or_resource_missing_a_required_field_is_malformed() = runTest {
+        val resource = """{"key":"A-primary.jpg","role":"primary","contentType":"image/jpeg","filename":"IMG.JPG"}"""
+        assertIs<Reply.Malformed>(
+            backend(body = """[{"deviceId":"D","assetId":"A","resources":[$resource]}]""")
+                .eventFiles(null, "E", null, UnionTrigger.JOIN),
+            "an asset without its capture date",
+        )
+        val bare = """{"key":"k","role":"primary"}"""
+        assertIs<Reply.Malformed>(
+            backend(body = """[{"deviceId":"D","assetId":"A","creationDate":"c","resources":[$bare]}]""")
+                .eventFiles(null, "E", null, UnionTrigger.JOIN),
+            "a resource without its content type and filename",
+        )
     }
 
     @Test

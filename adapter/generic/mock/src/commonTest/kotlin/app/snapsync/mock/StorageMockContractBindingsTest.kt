@@ -22,6 +22,8 @@ class StorageMockContractBindingsTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED, FilesState.UNAVAILABLE)
         override fun create(state: FilesState, clauseId: String): Entered<Files> {
+            // The double holds paths, not directories, so there is none to deny.
+            if (state == FilesState.DENIED_DIRECTORY) return Entered.Unreachable("the double holds no directories")
             val path = FilesContract.path(clauseId)
             return Entered.Ready(
                 when (state) {
@@ -32,6 +34,7 @@ class StorageMockContractBindingsTest {
                         denied = setOf(FileArea.SHARED to path),
                     )
                     FilesState.UNAVAILABLE -> inMemoryFiles(shared = null)
+                    FilesState.DENIED_DIRECTORY -> error("returned Unreachable above")
                 },
             )
         }

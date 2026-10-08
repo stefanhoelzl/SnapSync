@@ -25,6 +25,7 @@ class AndroidDatabasesContractTest {
             DatabasesState.ABSENT,
             DatabasesState.CURRENT,
             DatabasesState.OLD,
+            DatabasesState.NEWER,
             DatabasesState.UNOPENABLE,
         )
 
@@ -35,6 +36,7 @@ class AndroidDatabasesContractTest {
                 DatabasesState.ABSENT -> Unit
                 DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)
+                DatabasesState.NEWER -> DatabasesContract.enterNewer(databases)
                 DatabasesState.UNOPENABLE -> File(dir, DatabasesContract.NAME)
                     .writeText("this is not a database, and it is long enough to have a header\n".repeat(8))
             }

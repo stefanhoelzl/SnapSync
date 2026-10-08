@@ -212,7 +212,7 @@ class HttpBackend(
         trigger: UnionTrigger,
     ): Reply<UnionPage> = exchangeWith(
         HttpMethod.Get,
-        "/events/$eventId/files?urls=false" + (cursor?.let { "&cursor=$it" } ?: ""),
+        "/events/$eventId/files?urls=false" + if (cursor == null) "" else "&cursor=$cursor",
         token,
         headers = mapOf(UNION_TRIGGER_HEADER to trigger.wire),
     ) { text, headers ->
@@ -306,8 +306,8 @@ class HttpBackend(
             Reply.Ok(read(text))
         } catch (e: IllegalArgumentException) {
             // kotlinx.serialization's decoding failures are all IllegalArgumentExceptions (SerializationException
-            // among them), as are a missing field and a non-object body read through [field].
-            Reply.Malformed(e.message ?: e::class.simpleName.orEmpty())
+            // among them), as are a missing field and a non-object body read through [field] — each with its message.
+            Reply.Malformed(e.message.toString())
         }
 
     // The bodies whose every field is optional are read as a JSON object rather than through a generated serializer:

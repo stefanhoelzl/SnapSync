@@ -22,8 +22,11 @@ internal class InMemoryFiles(
         return op(files)
     }
 
-    override fun read(area: FileArea, path: String): FileResult<ByteArray> =
-        at(area, path) { files -> files[path]?.let { FileResult.Ok(it.copyOf()) } ?: FileResult.NotFound }
+    /** A path that prefixes held ones is a directory (see [list]): there, so never absent, and not a file to read. */
+    override fun read(area: FileArea, path: String): FileResult<ByteArray> = at(area, path) { files ->
+        files[path]?.let { FileResult.Ok(it.copyOf()) }
+            ?: if (files.keys.any { it.startsWith("$path/") }) FileResult.Failed("$path is a directory") else FileResult.NotFound
+    }
 
     override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = at(area, path) { files ->
         val bytes = files[path] ?: return@at FileResult.NotFound
@@ -73,6 +76,7 @@ internal class InMemoryFiles(
      * of them points; any other path names nothing it holds.
      */
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> {
+        if (areas[area] == null) return FileResult.AreaUnavailable
         val source = FileArea.entries.firstOrNull { osPath.startsWith("$MEM${it.name.lowercase()}/") }
             ?: return FileResult.NotFound
         val sourcePath = osPath.removePrefix("$MEM${source.name.lowercase()}/")
