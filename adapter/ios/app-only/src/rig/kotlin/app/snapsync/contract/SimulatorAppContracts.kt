@@ -7,6 +7,7 @@ import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DeviceConditionsContract
 import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.DownloadContract
@@ -40,6 +41,7 @@ import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.StagedLiveImport
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.simulatorAppContract
 import app.snapsync.device.IosDeviceConditions
 import app.snapsync.gallery.IosGallery
@@ -178,7 +180,11 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
     )
 
-    override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
+    override fun create(
+        state: GalleryReaderState,
+        clauseId: String,
+        log: CallLog,
+    ): Entered<SeededLibrary<GalleryReader>> {
         val seeded = when (state) {
             GalleryReaderState.NO_GRANT -> return Entered.Unreachable(UNREACHABLE_NO_GRANT)
             GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
@@ -191,7 +197,7 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         val ids = seeded.mapTo(
             linkedSetOf(),
         ) { checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" } }
-        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")), ids))
+        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log), ids))
     }
 }
 
@@ -205,9 +211,9 @@ class SimAppGalleryBinding : Binding<GalleryState, GalleryChange> {
     override val kind = BindingKind.Live
     override val reaches = setOf(GalleryState.GRANTED)
 
-    override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
+    override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
         val seedDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate
-        return Entered.Ready(GalleryChange(contractGallery()) { seedPhotos(seedDate) })
+        return Entered.Ready(GalleryChange(contractGallery().recorded(log)) { seedPhotos(seedDate) })
     }
 }
 
@@ -216,9 +222,9 @@ class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override val kind = BindingKind.Live
     override val reaches = setOf(PhotoAccessState.GRANTED)
 
-    override fun create(state: PhotoAccessState, clauseId: String): Entered<PhotoAccess> {
+    override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
         if (state == PhotoAccessState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
-        val adapter = PhotoLibraryPermission()
+        val adapter = PhotoLibraryPermission().recorded(log)
         return Entered.Ready(PhotoAccess(adapter))
     }
 }
@@ -231,13 +237,13 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
         GalleryImportState.GRANTED_INVALID_STAGED,
     )
 
-    override fun create(state: GalleryImportState, clauseId: String): Entered<StagedImport> {
+    override fun create(state: GalleryImportState, clauseId: String, log: CallLog): Entered<StagedImport> {
         val bytes = when (state) {
             GalleryImportState.GRANTED_VALID_STAGED -> PhotoLibrary.jpeg
             GalleryImportState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
         }
         val markers = mutableMapOf<AssetRef, MarkerState>()
-        val importer = contractGallery().apply {
+        val importer = contractGallery().recorded(log).apply {
             listen(
                 GalleryHandlers(
                     onChanged = {},
@@ -297,13 +303,13 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
         LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED,
     )
 
-    override fun create(state: LivePhotoImportState, clauseId: String): Entered<StagedLiveImport> {
+    override fun create(state: LivePhotoImportState, clauseId: String, log: CallLog): Entered<StagedLiveImport> {
         val bytes = when (state) {
             LivePhotoImportState.GRANTED_MOTION_PHOTO_STAGED -> PhotoLibrary.motionPhoto
             LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED -> PhotoLibrary.brokenMotionPhoto
         }
         val markers = mutableMapOf<AssetRef, MarkerState>()
-        val importer = contractGallery().apply {
+        val importer = contractGallery().recorded(log).apply {
             listen(
                 GalleryHandlers(
                     onChanged = {},
@@ -369,8 +375,8 @@ class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
     override val kind = BindingKind.Live
     override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
 
-    override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> =
-        Entered.Ready(IosProcessInfo())
+    override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
+        Entered.Ready(IosProcessInfo().recorded(log))
 }
 
 /**
@@ -383,10 +389,11 @@ class SimAppDeviceConditionsBinding : Binding<DeviceConditionsState, DeviceCondi
     override val kind = BindingKind.Live
     override val reaches = setOf(DeviceConditionsState.IPHONE)
 
-    override fun create(state: DeviceConditionsState, clauseId: String): Entered<DeviceConditions> = when (state) {
-        DeviceConditionsState.IPHONE -> Entered.Ready(IosDeviceConditions())
-        DeviceConditionsState.ANDROID -> Entered.Unreachable("an iPhone is not Android")
-    }
+    override fun create(state: DeviceConditionsState, clauseId: String, log: CallLog): Entered<DeviceConditions> =
+        when (state) {
+            DeviceConditionsState.IPHONE -> Entered.Ready(IosDeviceConditions().recorded(log))
+            DeviceConditionsState.ANDROID -> Entered.Unreachable("an iPhone is not Android")
+        }
 }
 
 /**
@@ -399,6 +406,6 @@ class SimAppBackgroundTimeBinding : Binding<BackgroundTimeState, BackgroundTime>
     override val kind = BindingKind.Live
     override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
 
-    override fun create(state: BackgroundTimeState, clauseId: String): Entered<BackgroundTime> =
-        Entered.Ready(IosBackgroundTime(Logger.withTag("contract")))
+    override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
+        Entered.Ready(IosBackgroundTime(Logger.withTag("contract")).recorded(log))
 }

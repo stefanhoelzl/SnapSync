@@ -5,10 +5,12 @@ import app.snapsync.contract.ReplayingRegistrationApi
 import app.snapsync.contract.registryInState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.ExtensionRegistryContract
 import app.snapsync.contracts.ExtensionRegistryState
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
@@ -26,13 +28,18 @@ import kotlin.test.Test
  */
 class PhotoKitExtensionRegistryReplayContractTest {
 
-    private fun replay(grant: GalleryAccess, state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> =
+    private fun replay(
+        grant: GalleryAccess,
+        state: ExtensionRegistryState,
+        clauseId: String,
+        log: CallLog,
+    ): Entered<ExtensionRegistry> =
         replayerFor(
             RECORDINGS,
             recordingName(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP, grant),
             clauseId,
         ) { replayer ->
-            registryInState(ReplayingRegistrationApi(replayer), state, afterDispose = replayer::assertExhausted)
+            registryInState(ReplayingRegistrationApi(replayer), state, log, afterDispose = replayer::assertExhausted)
         }
 
     private val granted = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
@@ -41,12 +48,13 @@ class PhotoKitExtensionRegistryReplayContractTest {
         override val grant = GalleryAccess.GRANTED
         override val reaches = setOf(ExtensionRegistryState.RECORD_ABSENT, ExtensionRegistryState.RECORD_PRESENT)
 
-        override fun create(state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> =
+        override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> =
             if (state in reaches) {
                 replay(
                     GalleryAccess.GRANTED,
                     state,
                     clauseId,
+                    log,
                 )
             } else {
                 Entered.Unreachable("recorded under a partial grant")
@@ -59,12 +67,13 @@ class PhotoKitExtensionRegistryReplayContractTest {
         override val grant = GalleryAccess.LIMITED
         override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
 
-        override fun create(state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> =
+        override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> =
             if (state in reaches) {
                 replay(
                     GalleryAccess.LIMITED,
                     state,
                     clauseId,
+                    log,
                 )
             } else {
                 Entered.Unreachable("recorded under a full grant")

@@ -2,10 +2,12 @@ package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.NetworkState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
@@ -26,9 +28,13 @@ class NetworkReplayContractTest {
     private class ReplayBinding(condition: String) {
         val name = recordingName(NetworkMonitorContract.name, Host.IOS_DEVICE_APP, null, condition)
 
-        fun create(clauseId: String): Entered<NetworkMonitor> = replayerFor(RECORDINGS, name, clauseId) { replayer ->
-            Entered.Ready(IosNetworkMonitor(ReplayingNetworkPathApi(replayer)), dispose = replayer::assertExhausted)
-        }
+        fun create(clauseId: String, log: CallLog): Entered<NetworkMonitor> =
+            replayerFor(RECORDINGS, name, clauseId) { replayer ->
+                Entered.Ready(
+                    IosNetworkMonitor(ReplayingNetworkPathApi(replayer)).recorded(log),
+                    dispose = replayer::assertExhausted,
+                )
+            }
     }
 
     private val online = object : Binding<NetworkState, NetworkMonitor> {
@@ -38,7 +44,7 @@ class NetworkReplayContractTest {
         override val precondition = "ONLINE"
         private val replay = ReplayBinding(precondition)
 
-        override fun create(state: NetworkState, clauseId: String) = replay.create(clauseId)
+        override fun create(state: NetworkState, clauseId: String, log: CallLog) = replay.create(clauseId, log)
     }
 
     private val offline = object : Binding<NetworkState, NetworkMonitor> {
@@ -48,7 +54,7 @@ class NetworkReplayContractTest {
         override val precondition = "OFFLINE"
         private val replay = ReplayBinding(precondition)
 
-        override fun create(state: NetworkState, clauseId: String) = replay.create(clauseId)
+        override fun create(state: NetworkState, clauseId: String, log: CallLog) = replay.create(clauseId, log)
     }
 
     private val restricted = object : Binding<NetworkState, NetworkMonitor> {
@@ -58,7 +64,7 @@ class NetworkReplayContractTest {
         override val precondition = "RESTRICTED"
         private val replay = ReplayBinding(precondition)
 
-        override fun create(state: NetworkState, clauseId: String) = replay.create(clauseId)
+        override fun create(state: NetworkState, clauseId: String, log: CallLog) = replay.create(clauseId, log)
     }
 
     @Test

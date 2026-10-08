@@ -5,12 +5,14 @@ package app.snapsync.contract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.network.NetworkPathApi
 import app.snapsync.network.PathReading
@@ -116,9 +118,9 @@ class SimAppNetworkMonitorBinding : Binding<NetworkState, NetworkMonitor> {
     override val kind = BindingKind.Live
     override val reaches = setOf(NetworkState.ONLINE)
 
-    override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
+    override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
         if (state == NetworkState.ONLINE) {
-            Entered.Ready(IosNetworkMonitor())
+            Entered.Ready(IosNetworkMonitor().recorded(log))
         } else {
             Entered.Unreachable("the simulator shares its Mac's network, which no binding can take down")
         }
@@ -131,8 +133,8 @@ internal class DeviceNetworkOnlineBinding(private val recorder: Recorder) : Bind
     override val reaches = setOf(NetworkState.ONLINE)
     override val precondition = "ONLINE"
 
-    override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
-        recordingIn(state, NetworkState.ONLINE, recorder, clauseId)
+    override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
+        recordingIn(state, NetworkState.ONLINE, recorder, clauseId, log)
 }
 
 /**
@@ -145,8 +147,8 @@ internal class DeviceNetworkRestrictedBinding(private val recorder: Recorder) : 
     override val reaches = setOf(NetworkState.RESTRICTED)
     override val precondition = "RESTRICTED"
 
-    override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
-        recordingIn(state, NetworkState.RESTRICTED, recorder, clauseId)
+    override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
+        recordingIn(state, NetworkState.RESTRICTED, recorder, clauseId, log)
 }
 
 /** The device in airplane mode, Wi-Fi off too, recording every `nw_path_monitor` call and iOS's answer. */
@@ -156,8 +158,8 @@ internal class DeviceNetworkOfflineBinding(private val recorder: Recorder) : Bin
     override val reaches = setOf(NetworkState.OFFLINE)
     override val precondition = "OFFLINE"
 
-    override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
-        recordingIn(state, NetworkState.OFFLINE, recorder, clauseId)
+    override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
+        recordingIn(state, NetworkState.OFFLINE, recorder, clauseId, log)
 }
 
 /**
@@ -169,6 +171,7 @@ private fun recordingIn(
     held: NetworkState,
     recorder: Recorder,
     clauseId: String,
+    log: CallLog,
 ): Entered<NetworkMonitor> {
     if (state != held) {
         return Entered.Unreachable(
@@ -176,7 +179,7 @@ private fun recordingIn(
         )
     }
     recorder.open(clauseId)
-    return Entered.Ready(IosNetworkMonitor(RecordingNetworkPathApi(SystemNetworkPathApi, recorder)))
+    return Entered.Ready(IosNetworkMonitor(RecordingNetworkPathApi(SystemNetworkPathApi, recorder)).recorded(log))
 }
 
 /**
