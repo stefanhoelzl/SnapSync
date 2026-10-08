@@ -82,7 +82,10 @@ class AppEventRangeHighlightTest {
     private fun ComposeUiTest.settledPicker(reduceMotion: Boolean): PixelMap {
         mainClock.autoAdvance = false
         setContent {
-            CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
+            CompositionLocalProvider(
+                LocalReduceMotion provides reduceMotion,
+                LocalDateFormats provides dateFormats(null),
+            ) {
                 primary = MaterialTheme.colorScheme.primary
                 AppEventRangePicker(
                     range = EventRange(from = LocalDateTime(2026, 3, 10, 9, 0)),

@@ -177,7 +177,7 @@ class CalendarDragTest {
 
     private fun setPicker() {
         rule.setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) {
+            CompositionLocalProvider(LocalReduceMotion provides true, LocalDateFormats provides dateFormats(null)) {
                 AppEventRangePicker(
                     range = range,
                     bounds = TWO_MONTHS,

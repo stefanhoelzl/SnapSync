@@ -111,7 +111,7 @@ class AppToggleSectionTest {
         runComposeUiTest {
             setContent {
                 CompositionLocalProvider(LocalDarkThemeOverride provides dark, LocalReduceMotion provides true) {
-                    AppTheme {
+                    AppTheme(platformDates) {
                         muted = MaterialTheme.colorScheme.onSurfaceVariant
                         surface = MaterialTheme.colorScheme.surface
                         Box(Modifier.background(surface).padding(4.dp)) { SectionSwitch(checked = false) }
