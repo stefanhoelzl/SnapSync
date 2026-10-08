@@ -116,6 +116,14 @@ class CycleGateTest {
     }
 
     @Test
+    fun `a skip with no forensics supplied carries none`() {
+        // The cycle names an empty detail itself ("a required read failed"); the gate never invents one.
+        val gate = cycleGate(configReadable = false, membership = null, host = host, admission = UploadAdmission.Admit)
+
+        assertEquals(CycleGate.Skip(""), gate)
+    }
+
+    @Test
     fun `a definitively absent config is NotJoined so the leave side still reconciles`() {
         val gate = gate(configReadable = true, membership = null, host = host)
 

@@ -324,6 +324,22 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `recording what a walk found writes only the keys that have no row`() = runTest {
+        // A REQUESTED row records a live job: rewriting it DISCOVERED would orphan that job (a second upload of the
+        // same bytes), so the walk's record leaves every key that already has a row as it is.
+        val inFlight = resource(filename = "in-flight.heic", assetId = "in-flight")
+        ledger.recordRequested(inFlight, destinationPath = "e/d/in-flight.heic")
+        val fresh = resource(filename = "fresh.heic", assetId = "fresh")
+
+        val applied = ledger.recordDiscovered(listOf(inFlight, fresh))
+
+        assertEquals(1, applied, "only the fresh key was written")
+        assertEquals(LedgerState.REQUESTED, store.get("in-flight.heic")?.state)
+        assertEquals("e/d/in-flight.heic", store.get("in-flight.heic")?.destinationPath)
+        assertEquals(LedgerState.DISCOVERED, store.get("fresh.heic")?.state)
+    }
+
+    @Test
     fun `isWork is untouched by a provider that would fail`() = runTest {
         provider.nextFailure = IllegalStateException("provider down")
 
