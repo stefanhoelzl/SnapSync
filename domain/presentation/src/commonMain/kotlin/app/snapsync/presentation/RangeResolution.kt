@@ -114,8 +114,7 @@ internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> 
 /**
  * How far ahead the "no ceiling known yet" sentinel sits.
  *
- * Only the join gate reaches it, and only on a phase whose details have not loaded — a window it renders
- * no range row against. A membership always carries its own ceiling, so the sentinel never bounds a real
- * commit; it exists so the resolution is TOTAL rather than optional.
+ * Reached only when an event's end does not parse — every event carries one, so the sentinel exists to make
+ * the resolution TOTAL rather than optional, at the widest safe reading.
  */
 internal const val NO_CEILING_YEARS = 100

@@ -128,7 +128,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadFailed, UploadStarted | no |
 | `SyncHealth` | `:domain:model` | `:domain:model` InSync, Inactive, Loading, NeedsAccess, NoNetwork, NotStarted, Syncing, Unattested | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
-| `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, IdleSync, MenuTestSync, Sync | yes |
+| `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, FixedSync, IdleSync, MenuTestSync, Sync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:ios:app-only` IosSystemUi | no |
 | `TimeLeft` | `:domain:model` | `:domain:model` Days, Hours, Minutes, UnderAMinute | no |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, ProofFailed, Refused, Unreachable | no |

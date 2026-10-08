@@ -429,7 +429,7 @@ branch. A module is in one of two states, and its `plugins {}` block says which.
 
 - **At zero** — `id("snapsync.coverage-zero")`. Its `coverageZero` task (on `check`) reads the module's own Kover
   `report.xml` and fails on any missed `INSTRUCTION` or `BRANCH`. No ceiling, no percentage: a miss is fixed by a test,
-  never by a number. Today: `:domain:flow`.
+  never by a number. Today: `:domain:flow`, `:domain:presentation`.
 - **Floored** — `id("snapsync.coverage")` with a `coverageFloors { aggregate(…) packageFloor(…) }` block: Kover
   `verify` rules on `check`, an `INSTRUCTION` and a `BRANCH` aggregate plus an `INSTRUCTION` package floor, whole
   percentages that may only rise. Every module that has not yet reached zero keeps these, untouched. A module joins the

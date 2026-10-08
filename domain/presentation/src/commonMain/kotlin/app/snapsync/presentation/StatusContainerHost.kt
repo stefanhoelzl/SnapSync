@@ -174,7 +174,9 @@ class StatusContainerHost(
     private val settingsQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val settingsWorker by lazy {
         scope.launch {
-            for (act in settingsQueue) {
+            // Never closed: the worker lives as long as the container's scope, so it ends by cancellation only.
+            while (true) {
+                val act = settingsQueue.receive()
                 try {
                     act()
                 } catch (e: CancellationException) {
@@ -200,20 +202,18 @@ class StatusContainerHost(
     private fun resolveRange(
         form: RangeForm,
         startsAt: EventStart,
-        endsAt: EventEnd?,
-        ownCeiling: CaptureCeiling?,
+        endsAt: EventEnd,
     ): ResolvedRange {
         val windowStart = cutoffFormatter.toLocal(startsAt.at) ?: cutoffFormatter.nowLocal()
-        // A membership always carries its own ceiling; the join gate falls back to a far-future sentinel,
-        // the widest safe reading, since the bounds only ever narrow from here.
-        val upper = endsAt?.at ?: ownCeiling?.at
-        val windowEnd = upper?.let { cutoffFormatter.toLocal(it) }
+        // An end that does not parse falls back to a far-future sentinel, the widest safe reading, since the
+        // bounds only ever narrow from here.
+        val windowEnd = cutoffFormatter.toLocal(endsAt.at)
             ?: LocalDateTime(windowStart.year + NO_CEILING_YEARS, 1, 1, 0, 0)
         return form.resolve(
             windowStart = windowStart,
             windowEnd = windowEnd,
             nowLocal = cutoffFormatter.nowLocal(),
-            nowAvailable = nowWithinWindow(cutoffFormatter.nowCutoff(), startsAt.at, endsAt?.at),
+            nowAvailable = nowWithinWindow(cutoffFormatter.nowCutoff(), startsAt.at, endsAt.at),
             toCutoff = cutoffFormatter::toCutoff,
             shareCount = local.value.shareCount,
         )
@@ -676,9 +676,9 @@ class StatusContainerHost(
          * from the membership IN EFFECT with that one change, and run in the container's intent order — so quick changes
          * apply one after another and the last one stands. A change that would withdraw photos from the event (sharing
          * off, or a narrower range) is held instead, and asked about ([pendingWithdrawal][Local.pendingWithdrawal]).
+         * [config] is the membership whose settings are open ([openMembership]).
          */
-        internal suspend fun change(change: (SettingChange, EventConfig) -> SettingChange) {
-            val config = config.value ?: return
+        internal suspend fun change(config: EventConfig, change: (SettingChange, EventConfig) -> SettingChange) {
             val inEffect = settingsInEffect(config)
             val next = change(inEffect, config)
             if (next.withdrawsFrom(inEffect)) {
@@ -741,9 +741,13 @@ class StatusContainerHost(
         /** "Keep sharing": the held change is dropped, and the controls — which never took it — stay as they were. */
         fun onKeepSharing() = enqueue { local.update { it.copy(pendingWithdrawal = Owned(null, null)) } }
 
-        /** Whether the event's settings are open over the joined screen — where a form edit applies rather than drafts. */
-        internal fun isOpen(): Boolean =
-            local.value.settings.forMembership(config.value?.eventId, SettingsSurface.Closed) != SettingsSurface.Closed
+        /**
+         * The membership whose settings are open over the joined screen — where a form edit applies rather than drafts —
+         * or `null` when none are.
+         */
+        internal fun openMembership(): EventConfig? = config.value?.takeIf {
+            local.value.settings.forMembership(it.eventId, SettingsSurface.Closed) != SettingsSurface.Closed
+        }
     }
 
     /**
@@ -767,24 +771,29 @@ class StatusContainerHost(
 
         // At the join gate each edit drafts the form; with the event's settings open it applies at once.
         fun onShareOn(on: Boolean) = formIntent {
-            if (settings.isOpen()) {
-                settings.change { now, _ -> now.copy(direction = directionOf(on, now.direction.includesDownload)) }
+            val open = settings.openMembership()
+            if (open != null) {
+                settings.change(open) { now, _ ->
+                    now.copy(direction = directionOf(on, now.direction.includesDownload))
+                }
             } else {
                 local.editForm { it.copy(shareOn = on) }
             }
         }
 
         fun onReceiveOn(on: Boolean) = formIntent {
-            if (settings.isOpen()) {
-                settings.change { now, _ -> now.copy(direction = directionOf(now.direction.includesUpload, on)) }
+            val open = settings.openMembership()
+            if (open != null) {
+                settings.change(open) { now, _ -> now.copy(direction = directionOf(now.direction.includesUpload, on)) }
             } else {
                 local.editForm { it.copy(receiveOn = on) }
             }
         }
 
         fun onSaveToAlbum(on: Boolean) = formIntent {
-            if (settings.isOpen()) {
-                settings.change { now, _ -> now.copy(saveToAlbum = on) }
+            val open = settings.openMembership()
+            if (open != null) {
+                settings.change(open) { now, _ -> now.copy(saveToAlbum = on) }
             } else {
                 local.editForm {
                     it.copy(saveToAlbum = on)
@@ -810,13 +819,14 @@ class StatusContainerHost(
          * bounds are re-resolved from the form; every other change carries the bounds in effect untouched.
          */
         private suspend fun editRange(edit: (RangeForm) -> RangeForm) {
-            if (!settings.isOpen()) {
+            val open = settings.openMembership()
+            if (open == null) {
                 local.editForm(edit)
                 return
             }
             val form = edit(local.value.form)
-            settings.change { now, c ->
-                val range = resolveRange(form, c.startsAt, c.endsAt, now.until)
+            settings.change(open) { now, c ->
+                val range = resolveRange(form, c.startsAt, c.endsAt)
                 now.copy(from = range.chosenFrom, until = range.chosenUntil)
             }
         }
@@ -848,7 +858,7 @@ class StatusContainerHost(
                             eventId,
                             result.payload.minPhotoDate?.let(::captureCutoff),
                             result.payload.maxPhotoDate?.let(::captureCeiling),
-                            result.payload.direction,
+                            result.payload.direction?.let(Direction::fromWire),
                             result.payload.saveToAlbum,
                             result.payload.key,
                         )
@@ -893,7 +903,7 @@ class StatusContainerHost(
     fun onRetryLoad() = intent {
         val p = pending.value ?: return@intent
         pending.value = p.copy(phase = JoinPhase.Loading)
-        loadInto(p.eventId)
+        loadInto(p.eventId, p.linkKey)
     }
 
     /**
@@ -985,7 +995,7 @@ class StatusContainerHost(
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
         local.editForm { freshForm }
         pending.value = PendingJoin(eventId, JoinPhase.Loading, linkKey)
-        loadInto(eventId)
+        loadInto(eventId, linkKey)
     }
 
     /**
@@ -1006,9 +1016,9 @@ class StatusContainerHost(
      * Erring toward `now` shares too few photos, which the user can fix by re-joining with an earlier
      * date; erring toward whole-library cannot be undone.
      */
-    private suspend fun loadInto(eventId: String) {
+    private suspend fun loadInto(eventId: String, linkKey: String?) {
         val load = try {
-            queries.loadJoinDetails(eventId, pending.value?.takeIf { it.eventId == eventId }?.linkKey)
+            queries.loadJoinDetails(eventId, linkKey)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (t: Throwable) {
@@ -1025,9 +1035,7 @@ class StatusContainerHost(
             // is one adapter change away from being false, and the cost of it being false is a screen no
             // one can leave. It IS covered: the seam is a constructor parameter, so a test injects a
             // throwing loader directly.
-            if (pending.value?.eventId == eventId) {
-                pending.update { it?.copy(phase = JoinPhase.LoadFailed) }
-            }
+            pending.update { if (it?.eventId == eventId) it.copy(phase = JoinPhase.LoadFailed) else it }
             throw t
         }
         // The headless negative oracle (mirrors autoConfirm's abort line): a gate parked on a failed
@@ -1069,7 +1077,7 @@ class StatusContainerHost(
         val event = detailed.event
         // What is committed is what the reduction RESOLVED — the same value the surface rendered.
         val form = local.value.form
-        val range = resolveRange(form, event.startsAt, event.endsAt, null)
+        val range = resolveRange(form, event.startsAt, event.endsAt)
         // A join always carries a direction (capability `join-event`): with both switches off the confirm is
         // disabled on screen, and a confirm that arrives anyway joins nothing rather than a membership doing nothing.
         if (!range.commitEnabled) return
@@ -1140,7 +1148,7 @@ class StatusContainerHost(
         eventId: String,
         explicitCutoff: CaptureCutoff?,
         explicitUntil: CaptureCeiling?,
-        explicitDirection: String?,
+        explicitDirection: Direction?,
         explicitSaveToAlbum: Boolean?,
         linkKey: String?,
     ) {
@@ -1168,7 +1176,7 @@ class StatusContainerHost(
         val until = explicitUntil ?: CaptureCeiling(load.endsAt.at)
         // The direction defaults to Both, unless the event link supplied an explicit dev/test override
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
-        val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both
+        val direction = explicitDirection ?: Direction.Both
         // The album choice defaults to off, unless the event link supplied an explicit dev/test override
         // (capability `event-album`). This is the ONE default that deliberately does NOT mirror the
         // interactive surface, where `RangeForm.saveToAlbum` starts ON: the cutoff and direction above
@@ -1225,7 +1233,7 @@ private fun unjoinedLayer(
     permission: GalleryAccess,
     network: NetworkNotice?,
     refusal: DeviceRefusal?,
-    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
+    resolveAgainst: (RangeForm, EventStart, EventEnd) -> ResolvedRange,
 ): Layer {
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
     // lands here — a transient no-event, shown full-screen with a Retry).
@@ -1237,7 +1245,7 @@ private fun unjoinedLayer(
             form = form,
             // Resolved only where there IS a window: the three detail-less phases render no range row,
             // so an absent resolution is the honest answer rather than one invented from `now`.
-            range = event?.let { resolveAgainst(form, it.startsAt, it.endsAt, null) },
+            range = event?.let { resolveAgainst(form, it.startsAt, it.endsAt) },
             // The same transient cell the create and joined layers read: a rejected link is rejected
             // wherever it arrives, including over an open join surface, and it touches the join not at all.
             notice = transient,
@@ -1283,7 +1291,7 @@ private fun reduceFrom(
     interaction: Interaction,
     local: Local,
     nowCutoff: CaptureDate,
-    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
+    resolveAgainst: (RangeForm, EventStart, EventEnd) -> ResolvedRange,
 ): Layer {
     val (config, permission, snapshot, download, attested, access) = membership
     val network = NetworkNotice.of(access)
@@ -1332,9 +1340,9 @@ private fun joinedHealth(
     val (_, permission, snapshot, download, attested, access) = membership
     // What the snapshot says on its own: not read yet, settled, or work remaining. The bottom of the ladder below,
     // and what decides whether a membership that neither shares nor receives may say so.
-    val settled = when {
+    val settled = when (snapshot) {
         // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
-        snapshot is SyncStatus.Loading -> SyncHealth.Loading
+        SyncStatus.Loading -> SyncHealth.Loading
         // The download arm has its OWN read-ness, and it must gate the health too. `syncHealth` below
         // hides an arrow when its counts are complete, and shows "Up to date" only when BOTH arrows are
         // hidden — so an un-read DownloadProgress, whose `downloaded` and `total` are both a placeholder
@@ -1342,17 +1350,19 @@ private fun joinedHealth(
         // own. Gating the upload side alone would relocate that defect rather than remove it: the next
         // member to join an event with foreign photos outstanding would meet it through this arm on
         // their first launch (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `sync-status`).
-        !download.read -> SyncHealth.Loading
+        //
         // Photos kept off mobile data wait while the phone is on a network the choice avoids (capability `mobile-data`):
         // from the device's CURRENT choice, so after turning mobile data back on the few transfers still holding the old
         // rule read as pending, not waiting (decision record `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
-        snapshot is SyncStatus.Ready ->
+        is SyncStatus.Ready -> if (!download.read) {
+            SyncHealth.Loading
+        } else {
             syncHealth(
                 snapshot.progress,
                 download,
                 heldForWifi = !membership.mobileData && access == NetworkAccess.Online(restricted = true),
             )
-        else -> SyncHealth.Loading
+        }
     }
     return when {
         // Neither shares nor receives (capability `sync-status`): once the snapshot is read and nothing is left in
@@ -1406,7 +1416,7 @@ private fun joinedLayer(
     reconfiguring: SettingsShown,
     transient: ScreenMessage?,
     form: RangeForm,
-    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
+    resolveAgainst: (RangeForm, EventStart, EventEnd) -> ResolvedRange,
     inviteKey: String?,
 ): Layer.Joined {
     return Layer.Joined(
@@ -1431,15 +1441,13 @@ private fun joinedLayer(
         // The same transient cell the create layer's banner reads. A rejected link is rejected wherever
         // it arrives, so the message reaches whichever layer is showing rather than only one of them.
         notice = transient,
-        // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window — which is
-        // the one deliberate divergence from the join gate: a legacy membership carrying no event end
-        // bounds against its own ceiling, so a no-edit Save is idempotent rather than silently widening.
+        // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window.
         // A closed event's settings are fixed (capability `manage-membership`): a surface left open when the close
         // lands gives way to the status.
         surface = if (reconfiguring.surface != SettingsSurface.Closed && !config.closed) {
             JoinedSurface.Reconfigure(
                 form = form,
-                range = resolveAgainst(form, config.startsAt, config.endsAt, config.maxPhotoDate),
+                range = resolveAgainst(form, config.startsAt, config.endsAt),
                 saveFailed = reconfiguring.surface == SettingsSurface.SaveFailed,
                 askingToStopSharing = reconfiguring.askingToStopSharing,
             )

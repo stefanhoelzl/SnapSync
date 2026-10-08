@@ -132,6 +132,18 @@ class VersionGateHostTest {
 
         assertTrue(opened.isEmpty(), "no url means no hand-off, never a composed guess")
     }
+
+    @Test
+    fun `the store tap opens nothing off the update screen — even on a build that carries a url`() = runTest {
+        // A tap that arrives after the refusal cleared — the screen it came from is gone — hands nothing off.
+        val opened = mutableListOf<String>()
+        val host = gateHost(backgroundScope, openLink = { opened += it })
+        assertIs<Layer.CreateEvent>(host.container.stateFlow.value.layer)
+
+        host.onOpenAppStore().join()
+
+        assertTrue(opened.isEmpty())
+    }
 }
 
 /** The store link a build carries, offered on the update-required screen. */
