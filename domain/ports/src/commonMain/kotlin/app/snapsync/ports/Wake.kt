@@ -42,7 +42,7 @@ interface Wake : Listenable<WakeHandlers> {
 class WakeHandlers(
     /**
      * The operating system woke the app for [id], and handed [completion] — held by the core across the wake's work
-     * (its tail) and released after it, or at once on the operating system's expiry ([Completion.onExpired]).
+     * (its tail) and released after it, or at once on the operating system's expiry ([ExpiringCompletion.onExpired]).
      */
-    val onWake: (id: WakeId, completion: Completion) -> Unit,
+    val onWake: (id: WakeId, completion: ExpiringCompletion) -> Unit,
 )

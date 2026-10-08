@@ -1,0 +1,15 @@
+# contract: ProcessInfo
+# host: IOS_DEVICE_APP
+# precondition: LOCKED
+# file: ProcessInfo@IOS_DEVICE_APP.LOCKED.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-08T21:07:23Z
+# live A_PROCESS_NOT_ACCOUNTED_READS_NO_FOOTPRINT: NotRunHere(this run records the phone locked; MEMORY_NOT_ACCOUNTED runs live elsewhere)
+# live AN_UNLOCKED_DEVICE_READS_AVAILABLE: NotRunHere(this run records the phone locked; UNLOCKED runs live elsewhere)
+# live A_LOCKED_DEVICE_READS_UNAVAILABLE: Passed
+# live A_RUNNING_PROCESS_READS_ITS_OWN_FOOTPRINT: NotRunHere(this run records the phone locked; MEMORY_ACCOUNTED runs live elsewhere)
+[A_LOCKED_DEVICE_READS_UNAVAILABLE]
+isProtectedDataAvailable() -> false

@@ -159,6 +159,8 @@ internal class ExtensionPhotoKitUploadBinding(private val recorder: Recorder) : 
         setOf(UploadState.PRESENTED_SUCCEEDED, UploadState.PRESENTED_REFUSED_ONCE, UploadState.PRESENTED_RETRY_SPENT)
 
     override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+        // A state this host does not present: another platform's fact, or one no binding here enters.
+        if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
         recorder.resume(clauseId)
         return photoKitUploadInState(
             state = state,

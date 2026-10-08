@@ -137,6 +137,14 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     }
 
     clause(
+        "DEVICE_FILES_A_FOREIGN_TOKEN_IS_REJECTED",
+        BackendState.FOREIGN_TOKEN,
+        covers = cells { on<Backend>().answers(Backend::deviceFiles).with(Reply.Refused::class) },
+    ) { s ->
+        assertRefused(UNAUTHORIZED, s.port.deviceFiles(s.token, s.seeded.eventId, s.seeded.deviceId))
+    }
+
+    clause(
         "DEVICE_FILES_A_FRESH_DEVICE_HOLDS_NOTHING",
         BackendState.SERVING,
         covers = cells { on<Backend>().answers(Backend::deviceFiles).withGenericLeaf(Reply.Ok::class) },

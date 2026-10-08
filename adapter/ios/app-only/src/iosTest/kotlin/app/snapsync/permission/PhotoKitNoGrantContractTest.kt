@@ -4,14 +4,22 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.GalleryChange
+import app.snapsync.contracts.GalleryContract
+import app.snapsync.contracts.GalleryState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.gallery.IosGallery
+import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.GalleryAccess
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlin.test.Test
 
 /**
@@ -39,7 +47,28 @@ class PhotoKitNoGrantContractTest {
         }
     }
 
+    /** The app's gallery in a process refused photo access: PhotoKit withholds even the change token (measured). */
+    private val gallery = object : Binding<GalleryState, GalleryChange> {
+        override val host = Host.IOS_SIM_KEXE
+        override val kind = BindingKind.Live
+        override val reaches = setOf(GalleryState.TOKEN_WITHHELD)
+
+        override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
+            if (state !in reaches || currentPhotoPermission() != GalleryAccess.DENIED) {
+                return Entered.Unreachable(
+                    unreachable,
+                )
+            }
+            val reader = IosGalleryReader(Logger.withTag("contract"))
+            val gallery = IosGallery(reader, PhotoLibraryPermission(), CoroutineScope(Dispatchers.Default))
+            return Entered.Ready(GalleryChange(gallery) {})
+        }
+    }
+
     @Test
     fun `PhotoLibraryPermission satisfies the PhotoAccess contract on this host`() =
         verify(PhotoAccessContract, photoAccess)
+
+    @Test
+    fun `the gallery satisfies the Gallery contract on this host`() = verify(GalleryContract, gallery)
 }

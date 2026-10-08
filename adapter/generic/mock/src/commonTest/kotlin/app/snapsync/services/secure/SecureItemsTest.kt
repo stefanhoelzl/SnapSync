@@ -175,16 +175,6 @@ class SecureItemsTest {
         assertTrue(LOCKED in failure.detail, failure.detail)
     }
 
-    @Test
-    fun `persist maps an unsupported write to SecureStoreUnavailable`() {
-        val store = RecordingSecureStore().apply {
-            refuseWrites = true
-            writeRefusal = WriteOutcome.Unsupported
-        }
-
-        assertFailsWith<SecureStoreUnavailable> { persist(store, ITEM, "value") }
-    }
-
     // ── The extension's shape: read the addressed item and nothing else ──────────────────────────
     // It never mints, because it cannot tell "this device has no identity" from "the app's identity is
     // not reachable from here".

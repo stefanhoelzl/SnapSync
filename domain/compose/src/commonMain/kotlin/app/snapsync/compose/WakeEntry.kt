@@ -3,6 +3,7 @@ package app.snapsync.compose
 import app.snapsync.model.WakeId
 import app.snapsync.model.invocation
 import app.snapsync.ports.Completion
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.wake.OsCompletions
 import kotlinx.coroutines.launch
@@ -21,10 +22,10 @@ import kotlinx.coroutines.launch
 internal fun wakeHandlersOf(core: AppCore): WakeHandlers =
     WakeHandlers(onWake = { id, completion -> core.onWake(id, completion) })
 
-private fun AppCore.onWake(id: WakeId, completion: Completion) =
+private fun AppCore.onWake(id: WakeId, completion: ExpiringCompletion) =
     services.log.invocation(process.entryContext, "onWake", params = "id=$id") { runWake(id, completion) }
 
-private fun AppCore.runWake(id: WakeId, completion: Completion) {
+private fun AppCore.runWake(id: WakeId, completion: ExpiringCompletion) {
     val completions = OsCompletions("onWake($id)", log = services.log)
     val handover = completions.adopt(completion)
     // Registered before the launch, so an expiry the operating system fires before the coroutine first runs is not

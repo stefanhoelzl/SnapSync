@@ -9,7 +9,9 @@ import app.snapsync.model.ConfigRead
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
+import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.model.MembershipRead
@@ -221,7 +223,6 @@ class ConfigServiceTest {
         assertFalse(service.hasEnded(SEED.copy(endsAt = EventEnd(CaptureDate("2026-07-01T00:00:00Z")))))
     }
 
-    /** A `Files` whose every answer is [answer] — a platform failure class the mock has no lever for. */
     // ---- the reads the composition takes ---------------------------------------------------------------------
 
     private fun joined(config: EventConfig) = service(holding(encodeConfigFile(config)))
@@ -252,7 +253,11 @@ class ConfigServiceTest {
         assertFalse(service(Answering(FileResult.Denied("locked"))).freshReadHasEnded())
     }
 
-    private class Answering(private val answer: FileResult<Nothing>) : Files {
+    /**
+     * A `Files` whose every answer is [answer] — a platform failure class the mock has no lever for. Naming a path
+     * touches no file, so [locate] can fail only as an unreachable area.
+     */
+    private class Answering(private val answer: FileAccess<Nothing>) : Files {
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = answer
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = answer
         override fun readRange(
@@ -261,14 +266,14 @@ class ConfigServiceTest {
             offset: Long,
             maxBytes: Int,
         ): FileResult<ByteArray> = answer
-        override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = answer
-        override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = answer
+        override fun append(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> = answer
+        override fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> = answer
         override fun delete(area: FileArea, path: String): FileResult<Unit> = answer
-        override fun exists(area: FileArea, path: String): FileResult<Boolean> = answer
-        override fun locate(area: FileArea, path: String): FileResult<String> = answer
+        override fun exists(area: FileArea, path: String): FileAccess<Boolean> = answer
+        override fun locate(area: FileArea, path: String): FileLocation<String> = FileResult.AreaUnavailable
         override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = answer
         override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = answer
-        override fun list(area: FileArea, directory: String): FileResult<List<String>> = answer
+        override fun list(area: FileArea, directory: String): FileAccess<List<String>> = answer
     }
 }
 

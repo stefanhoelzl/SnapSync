@@ -85,7 +85,7 @@ private class FixtureAddress : RunParameters {
 }
 
 /** A fresh, empty directory under the process's temporary directory, for one clause of one contract. */
-private fun scratch(contract: String, clauseId: String): String {
+internal fun scratch(contract: String, clauseId: String): String {
     val dir = NSTemporaryDirectory() + "contracts/$contract/$clauseId"
     NSFileManager.defaultManager.removeItemAtPath(dir, error = null)
     NSFileManager.defaultManager.createDirectoryAtPath(
@@ -97,7 +97,7 @@ private fun scratch(contract: String, clauseId: String): String {
     return dir
 }
 
-private fun NSData.toByteArray(): ByteArray = ByteArray(length.toInt()).also { bytes ->
+internal fun NSData.toByteArray(): ByteArray = ByteArray(length.toInt()).also { bytes ->
     if (bytes.isNotEmpty()) bytes.usePinned { memcpy(it.addressOf(0), this.bytes, length) }
 }
 
@@ -143,13 +143,22 @@ private fun seedOne(contract: String, clauseId: String): PHAssetResource = memSc
 class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP)
+
+    // A URLSession uploader takes a file and reports each end as it happens: those states are IDLE as this platform is.
+    override val reaches = setOf(
+        UploadState.IDLE,
+        UploadState.AT_CAP,
+        UploadState.TAKES_FILES,
+        UploadState.REPORTS_AS_IT_HAPPENS,
+    )
 
     private val fixture = FixtureAddress()
 
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
     override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+        // A state this host does not present: another platform's fact, or one no binding here enters.
+        if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
         if (state in UploadContract.PRESENTED) return Entered.Unreachable(URL_SESSION_SETTLES_AT_ONCE)
         if (state == UploadState.RESTRICTED_NETWORK) return Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
         val base = fixture.require()
@@ -226,6 +235,9 @@ class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunPara
     override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> =
         if (state == DownloadState.RESTRICTED_NETWORK) {
             Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
+        } else if (state == DownloadState.WAKES_TO_DELIVER) {
+            // The simulator target's session is the default one, which delivers in-process and never relaunches the app.
+            Entered.Unreachable("the simulator's default session delivers without waking the app")
         } else {
             Entered.Ready(
                 DownloadUnderTest(

@@ -34,6 +34,7 @@ flowchart LR
     ui_components[":ui:components"]
     ui_screens[":ui:screens"]
   end
+  adapter_android --> domain_feature
   adapter_android --> domain_model
   adapter_android --> domain_ports
   adapter_android --> domain_presentation

@@ -7,6 +7,7 @@ import androidx.work.WorkManager
 import app.snapsync.android.gallery.MediaStoreSeeder
 import app.snapsync.android.network.MeteredWifi
 import app.snapsync.android.network.awaitUnrestrictedNetwork
+import app.snapsync.android.storage.Airplane
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
@@ -18,11 +19,13 @@ import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
+import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
 import app.snapsync.contracts.WakeContract
+import app.snapsync.contracts.WakeOs
 import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
@@ -48,6 +51,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Collections
@@ -77,16 +81,32 @@ class AndroidWorkContractTest {
     private val wake = object : Binding<WakeState, ScheduledWakes> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(WakeState.EMPTY)
+        override val reaches = setOf(WakeState.EMPTY, WakeState.DELIVERING)
 
         override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
-            val bare = AndroidWake(context)
-            val adapter = bare.recorded(log)
+            if (state !in reaches) {
+                return Entered.Unreachable(
+                    "Android has both wakes, and WorkManager refuses no request",
+                )
+            }
+            val adapter = AndroidWake(context)
             WakeId.entries.forEach(adapter::cancel)
             val name = AndroidWake.nameOf(WakeId.Heartbeat)
-            // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.
-            return Entered.Ready(ScheduledWakes(adapter) { pending(name) }) {
-                WakeId.entries.forEach(bare::cancel)
+            val seeded = mutableSetOf<AssetId>()
+            // A new photo in the default gallery changes the library; the job scheduler's timeout is the system's end.
+            // WorkManager runs a due worker in this process rather than through the job scheduler, so the system's end of
+            // a running wake that reaches it is a lost constraint: the heartbeat needs a network, and airplane mode takes
+            // it away.
+            val os = WakeOs(
+                changeLibrary = { seeded += MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-03T12:00:00Z", count = 1) },
+                endRunningWake = { Airplane.enter() },
+            )
+            return Entered.Ready(
+                ScheduledWakes(adapter, os.takeIf { state == WakeState.DELIVERING }) { pending(name) },
+            ) {
+                WakeId.entries.forEach(adapter::cancel)
+                MediaStoreSeeder.delete(seeded)
+                Airplane.leave()
             }
         }
     }
@@ -96,18 +116,31 @@ class AndroidWorkContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
         override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
-            Entered.Ready(AndroidBackgroundTime(context).recorded(log))
+            if (state in reaches) {
+                Entered.Ready(AndroidBackgroundTime(context))
+            } else {
+                // An expedited work's stop comes when WorkManager's quota or the system's constraints end it, which a
+                // device test cannot bring about on a work it runs in-process (`docs/testing.md`).
+                Entered.Unreachable("no device test brings an expedited work's stop about")
+            }
     }
 
     private val upload = object : Binding<UploadState, UploadUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP, UploadState.RESTRICTED_NETWORK)
+        override val reaches = setOf(
+            UploadState.IDLE,
+            UploadState.AT_CAP,
+            UploadState.RESTRICTED_NETWORK,
+            UploadState.TAKES_RESOURCES_AND_FILES,
+            UploadState.REPORTS_AS_IT_HAPPENS,
+        )
 
         override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
             if (state in UploadContract.PRESENTED) {
                 return Entered.Unreachable("Android reports every transfer's end as it happens; nothing is presented")
             }
+            if (state !in reaches) return Entered.Unreachable("Android takes the library's own items, and files too")
             val base = fixture()
             // The fixture is the host's, reached over the emulator's Wi-Fi: metering the Wi-Fi meters the transfer.
             if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.enter()
@@ -158,6 +191,11 @@ class AndroidWorkContractTest {
                     ended = { synchronized(ended) { ended.toList() } },
                     objects = landedAt(base),
                     liftRestriction = { MeteredWifi.lift() },
+                    fileSource = { key ->
+                        UploadSource.File(
+                            File(context.cacheDir, key).apply { writeBytes(PhotoLibrary.jpeg) }.absolutePath,
+                        )
+                    },
                 ),
             ) {
                 // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.

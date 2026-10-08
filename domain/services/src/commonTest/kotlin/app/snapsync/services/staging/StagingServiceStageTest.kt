@@ -1,6 +1,8 @@
 package app.snapsync.services.staging
 
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
+import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.ports.Files
@@ -20,7 +22,7 @@ class StagingServiceStageTest {
     /** A `Files` whose adopt answers [adopted], recording where it was asked to put what, and whose list answers [listed]. */
     private class Adopting(
         private val adopted: FileResult<Unit>,
-        private val listed: FileResult<List<String>> = FileResult.Ok(emptyList()),
+        private val listed: FileAccess<List<String>> = FileResult.Ok(emptyList()),
     ) : Files {
         val listings = mutableListOf<Pair<FileArea, String>>()
         val adoptions = mutableListOf<Triple<String, FileArea, String>>()
@@ -32,18 +34,18 @@ class StagingServiceStageTest {
             offset: Long,
             maxBytes: Int,
         ): FileResult<ByteArray> = FileResult.NotFound
-        override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
-        override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
+        override fun append(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> = FileResult.Ok(Unit)
+        override fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> = FileResult.Ok(Unit)
         override fun delete(area: FileArea, path: String): FileResult<Unit> = FileResult.NotFound
-        override fun exists(area: FileArea, path: String): FileResult<Boolean> = FileResult.Ok(false)
-        override fun locate(area: FileArea, path: String): FileResult<String> = FileResult.Ok(path)
+        override fun exists(area: FileArea, path: String): FileAccess<Boolean> = FileResult.Ok(false)
+        override fun locate(area: FileArea, path: String): FileLocation<String> = FileResult.Ok(path)
         override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = FileResult.NotFound
         override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> {
             adoptions += Triple(osPath, area, to)
             return adopted
         }
 
-        override fun list(area: FileArea, directory: String): FileResult<List<String>> {
+        override fun list(area: FileArea, directory: String): FileAccess<List<String>> {
             listings += area to directory
             return listed
         }

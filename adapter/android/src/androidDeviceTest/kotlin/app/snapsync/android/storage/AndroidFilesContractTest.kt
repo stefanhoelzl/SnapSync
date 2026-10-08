@@ -13,6 +13,7 @@ import app.snapsync.model.FileArea
 import app.snapsync.ports.Files
 import java.io.File
 import kotlin.test.Test
+import java.nio.file.Files as Nio
 
 /**
  * [FilesContract] against the real [AndroidFiles] on ART, two temp directories standing for the two areas.
@@ -25,7 +26,15 @@ class AndroidFilesContractTest {
     private val binding = object : Binding<FilesState, Files> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED)
+        override val reaches = setOf(
+            FilesState.EMPTY,
+            FilesState.HOLDING,
+            FilesState.DENIED,
+            FilesState.DENIED_DIRECTORY,
+            FilesState.READ_ONLY_DIRECTORY,
+            FilesState.UNSEARCHABLE_DIRECTORY,
+            FilesState.LOOPED_LINK,
+        )
 
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
             if (state == FilesState.UNAVAILABLE) {
@@ -33,23 +42,27 @@ class AndroidFilesContractTest {
                     "both areas are app-private directories, always reachable",
                 )
             }
-            // Not entered yet: the JVM binding holds that clause (the contracts track extends it here).
-            if (state == FilesState.DENIED_DIRECTORY) {
-                return Entered.Unreachable("an unlistable directory is not entered here yet")
-            }
             val shared = newTempDirectory()
             val private = newTempDirectory()
             val files = AndroidFiles(sharedRoot = shared, privateRoot = private).recorded(log)
             val path = FilesContract.path(clauseId)
+            val directory = File(shared, FilesContract.directory(clauseId))
+            if (state != FilesState.EMPTY && state != FilesState.LOOPED_LINK) {
+                files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
+            }
             when (state) {
-                FilesState.HOLDING -> files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
-                FilesState.DENIED -> {
-                    files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
-                    revokeAllAccess(File(shared, path))
+                FilesState.DENIED -> revokeAllAccess(File(shared, path))
+                FilesState.DENIED_DIRECTORY -> directory.setReadable(false, false)
+                FilesState.READ_ONLY_DIRECTORY -> directory.setWritable(false, false)
+                FilesState.UNSEARCHABLE_DIRECTORY -> revokeAllAccess(directory)
+                FilesState.LOOPED_LINK -> File(shared, path).toPath().let { link ->
+                    Nio.createDirectories(link.parent)
+                    Nio.createSymbolicLink(link, link.fileName)
                 }
-                FilesState.EMPTY, FilesState.UNAVAILABLE, FilesState.DENIED_DIRECTORY -> Unit
+                FilesState.EMPTY, FilesState.HOLDING, FilesState.UNAVAILABLE -> Unit
             }
             return Entered.Ready(files) {
+                restoreOwnerAccess(directory)
                 restoreOwnerAccess(File(shared, path))
                 shared.deleteRecursively()
                 private.deleteRecursively()

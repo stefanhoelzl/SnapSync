@@ -12,7 +12,6 @@ import app.snapsync.ports.EntryContext
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
@@ -146,7 +145,7 @@ private fun extensionServices(
         discovery = GalleryDiscovery(ports.gallery),
         // This process's own grant read (capability `background-upload`, "The extension withholds its cycle without a
         // full grant"): the OS invokes a surviving registration under a partial grant too, and this is what stops it.
-        process = UploaderProcess.Extension(grant),
+        process = UploaderProcess.Extension(ports.gallery),
         // Unrestricted, stated: the extension never reads the library under a partial grant — its admission withholds
         // before any read.
         selectionScope = { SelectionScope.Unrestricted },

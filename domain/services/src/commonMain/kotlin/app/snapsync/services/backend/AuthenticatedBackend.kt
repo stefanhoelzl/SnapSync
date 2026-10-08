@@ -1,5 +1,6 @@
 package app.snapsync.services.backend
 
+import app.snapsync.model.Ack
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -27,12 +28,12 @@ interface AuthenticatedBackend {
     suspend fun createEvent(req: CreateEventRequest): Reply<EventCreated>
     suspend fun getEvent(eventId: String): Reply<EventMeta>
     suspend fun renameEvent(eventId: String, name: String): Reply<EventRenamed>
-    suspend fun joinEvent(eventId: String, deviceId: String): Reply<Unit>
-    suspend fun publishManifest(eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit>
-    suspend fun leaveEvent(eventId: String, deviceId: String, received: Boolean): Reply<Unit>
+    suspend fun joinEvent(eventId: String, deviceId: String): Ack<Unit>
+    suspend fun publishManifest(eventId: String, deviceId: String, manifest: DeviceManifest): Ack<Unit>
+    suspend fun leaveEvent(eventId: String, deviceId: String, received: Boolean): Ack<Unit>
     suspend fun eventFiles(eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage>
     suspend fun deviceFiles(eventId: String, deviceId: String): Reply<List<DeviceFile>>
-    suspend fun putDeviceConfig(deviceId: String, push: PushEndpoint): Reply<Unit>
+    suspend fun putDeviceConfig(deviceId: String, push: PushEndpoint): Ack<Unit>
 }
 
 /**
@@ -126,7 +127,7 @@ class CredentialedBackend(
      * BEFORE sending, since the call would only `401`. Every other route is a background one and sends what it holds,
      * so a phone the service refuses is not re-attested once per background call.
      */
-    private suspend fun <T> gated(obtainFirst: Boolean = false, call: suspend (token: String?) -> Reply<T>): Reply<T> {
+    private suspend fun <R : Reply<*>> gated(obtainFirst: Boolean = false, call: suspend (token: String?) -> R): R {
         val sent = credential.token() ?: if (obtainFirst) credential.missing() else null
         val first = observed(call(sent))
         if (sent == null || first !is Reply.Refused || first.status != HttpStatus.UNAUTHORIZED) return first
@@ -136,5 +137,5 @@ class CredentialedBackend(
         return observed(call(retry))
     }
 
-    private fun <T> observed(reply: Reply<T>): Reply<T> = reply.also { versionGate?.observe(it) }
+    private fun <R : Reply<*>> observed(reply: R): R = reply.also { versionGate?.observe(it) }
 }

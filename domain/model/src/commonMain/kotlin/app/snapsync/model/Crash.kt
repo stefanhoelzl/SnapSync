@@ -96,7 +96,7 @@ fun crashDist(platform: Platform, buildNumber: String): String? = when (platform
 /** What became of an operator-initiated dump. Delivery itself is the channel's business, and never claimed. */
 sealed interface DumpResult {
     /** Handed to the channel, which queues and retransmits it. Returning does NOT mean it left the device. */
-    data object Queued : DumpResult
+    data object Queued : DumpHandOff
 
     /**
      * Kept on the device at [path] (in the app's own files), because this build reports nowhere (capability
@@ -105,8 +105,14 @@ sealed interface DumpResult {
     data class Saved(val path: String) : DumpResult
 
     /** Nothing was sent or saved, and [reason] says why (the channel is not running, or the write was refused). */
-    data class NotSent(val reason: String) : DumpResult
+    data class NotSent(val reason: String) : DumpHandOff
 }
+
+/**
+ * What the crash channel did with a dump it was handed: [DumpResult.Queued] or [DumpResult.NotSent]. Keeping one on
+ * the device ([DumpResult.Saved]) is the reporting service's choice for a build that reports nowhere, never the channel's.
+ */
+sealed interface DumpHandOff : DumpResult
 
 /** What the user is told became of their report (capability `privacy-security`): a hand-off, never a delivery. */
 val DumpResult.outcome: ReportOutcome

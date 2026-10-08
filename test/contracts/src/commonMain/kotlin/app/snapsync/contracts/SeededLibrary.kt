@@ -11,7 +11,15 @@ import app.snapsync.model.AssetId
  * [ids] are the canonical ids of what the binding created — minted through the implementation's own platform
  * mapping, so a clause comparing them with what the port answers checks that mapping end to end.
  */
-class SeededLibrary<T>(val port: T, val ids: Set<AssetId> = emptySet())
+class SeededLibrary<T>(
+    val port: T,
+    val ids: Set<AssetId> = emptySet(),
+    /** A platform path the clause may write [name] to — and what such a path holds now, `null` for nothing. */
+    val files: ClauseFiles? = null,
+)
+
+/** Where a clause may have the platform write a file, and what it reads back there. */
+class ClauseFiles(val pathOf: (name: String) -> String, val read: (path: String) -> ByteArray?)
 
 /** How many assets a `*_SEEDED` state puts in a clause's window. */
 const val SEED_COUNT: Int = 2

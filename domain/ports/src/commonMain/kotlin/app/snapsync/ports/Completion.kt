@@ -7,7 +7,7 @@ package app.snapsync.ports
  *
  * Calling [complete] declares *"I am done"*, and the system may suspend the process on the strength of it. The core
  * never calls it directly: it hands the completion to `OsCompletions` (in `:domain:services`), the one holder, which
- * releases it after the wake's own work or at once on the operating system's expiry.
+ * releases it after the wake's own work or at once on the operating system's expiry ([ExpiringCompletion]).
  *
  * **No success flag**, on purpose: nothing reads one, and on Android a failure or retry answer would make the OS
  * reschedule a wake the services already re-arm, which would double it (decision record of phase 11f, r12 D2).
@@ -20,15 +20,20 @@ interface Completion {
      * main thread: the adapter hops there itself). Returns without waiting for that hop.
      */
     fun complete()
+}
+
+/**
+ * A [Completion] whose wake the operating system can end early — a `BGTask`'s `expirationHandler`, an Android
+ * `Worker.onStopped` — which is only what [Wake] hands over. Every other completion's wake has no such signal (a
+ * background `URLSession` relaunch, a silent push): those wakes' only "time is up" is the process's background time
+ * (`BackgroundTime`), which the core holds across them, so their completion carries no expiry to register on.
+ */
+interface ExpiringCompletion : Completion {
 
     /**
-     * Run [action] when the operating system says this wake's time is up — a `BGTask`'s `expirationHandler`, an
-     * Android `Worker.onStopped`. [action] runs **at most once**, on a thread the adapter does not choose, and must
-     * only request a stop and return. Registered after the expiry already came, it runs at once.
-     *
-     * A completion whose wake has no such signal (a background `URLSession` relaunch, a silent push) never runs it:
-     * those wakes' only "time is up" is the process's background time (`BackgroundTime`), which the core holds across
-     * them.
+     * Run [action] when the operating system says this wake's time is up. [action] runs **at most once**, on a thread
+     * the adapter does not choose, and must only request a stop and return. Registered after the expiry already came,
+     * it runs at once.
      */
     fun onExpired(action: () -> Unit)
 }

@@ -88,12 +88,26 @@ class EdgeSubject<P>(
      * effect on the union. Null for a binding with no backend behind it.
      */
     private val edge: BackendSetup? = null,
+    /** A key the binding attests with; required of a binding that reaches [BackendState.ATTESTABLE]. */
+    val attester: SoftwareAttester? = null,
 ) {
     /** The token this state's calls carry. */
     val token: String? get() = seeded.identity.token
 
     /** The backend's public surface; a clause asking for it on a binding with none fails naming that. */
     val setup: BackendSetup get() = requireNotNull(edge) { "this binding has no backend to read through" }
+}
+
+/**
+ * A key the binding attests with as an Android device's KeyMint does in software — what the local rig's `any` policy
+ * accepts, and what proves the route and its verifier, never hardware trust.
+ */
+interface SoftwareAttester {
+    /** The key's attestation chain over [challenge], leaf first, concatenated DER — the bytes an Android device mints with. */
+    fun attest(challenge: String): ByteArray
+
+    /** The key's ECDSA P-256 signature over [challenge]'s UTF-8 bytes, DER — what a renewal sends. */
+    fun sign(challenge: String): ByteArray
 }
 
 /** How a binding enters backend states: through the backend's public surface, whatever that backend is. */

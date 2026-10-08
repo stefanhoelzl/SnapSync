@@ -22,6 +22,7 @@ import app.snapsync.model.WakeTrigger
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
@@ -155,7 +156,7 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
  * A wake's [Completion]: released once, and expired once — when WorkManager stops the worker. The expiry action runs at
  * most once, whichever comes first, its registration or the stop, as `IosWake`'s does.
  */
-private class WorkerCompletion(private val done: CompletableDeferred<Unit>) : Completion {
+private class WorkerCompletion(private val done: CompletableDeferred<Unit>) : ExpiringCompletion {
     private val expired = AtomicBoolean(false)
     private val action = AtomicReference<(() -> Unit)?>(null)
     private val actionRan = AtomicBoolean(false)

@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.UserManager
 import app.snapsync.model.Availability
 import app.snapsync.model.MemoryFootprint
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.ProcessInfo
 
 /**
@@ -18,9 +17,9 @@ import app.snapsync.ports.ProcessInfo
 class AndroidProcessInfo(context: Context) : ProcessInfo {
     private val users: UserManager = context.applicationContext.getSystemService(UserManager::class.java)
 
+    // The process's own user, which needs no permission to ask about: a read that cannot fail, so it has no unknown.
     override suspend fun protectedDataAvailable(): Availability =
-        runCatchingCancellable { if (users.isUserUnlocked) Availability.AVAILABLE else Availability.UNAVAILABLE }
-            .getOrDefault(Availability.UNKNOWN)
+        if (users.isUserUnlocked) Availability.AVAILABLE else Availability.UNAVAILABLE
 
     override fun memoryFootprint(): MemoryFootprint? = null
 }

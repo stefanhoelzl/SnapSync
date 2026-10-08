@@ -1,6 +1,7 @@
 package app.snapsync.http
 
 import app.snapsync.model.APP_VERSION_HEADER
+import app.snapsync.model.Ack
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -32,6 +33,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
@@ -185,24 +187,24 @@ class HttpBackend(
         body = JsonObject(mapOf("name" to JsonPrimitive(name))).toString(),
     ) { text -> EventRenamed(optional(text, "name")) }
 
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
-        exchange(HttpMethod.Put, "/events/$eventId/devices/$deviceId", token) { }
+    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Ack<Unit> =
+        acknowledged(HttpMethod.Put, "/events/$eventId/devices/$deviceId", token)
 
     override suspend fun publishManifest(
         token: String?,
         eventId: String,
         deviceId: String,
         manifest: DeviceManifest,
-    ): Reply<Unit> =
-        exchange(
+    ): Ack<Unit> =
+        acknowledged(
             HttpMethod.Put,
             "/events/$eventId/devices/$deviceId/manifest",
             token,
             body = manifest.encodeToJson(),
-        ) { }
+        )
 
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
-        exchange(HttpMethod.Delete, "/events/$eventId/devices/$deviceId?received=$received", token) { }
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Ack<Unit> =
+        acknowledged(HttpMethod.Delete, "/events/$eventId/devices/$deviceId?received=$received", token)
 
     // A missing or unreadable position is Malformed: a page the app could not continue from is no page.
     override suspend fun eventFiles(
@@ -243,8 +245,8 @@ class HttpBackend(
             }
         }
 
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
-        exchange(HttpMethod.Put, "/devices/$deviceId", token, body = deviceConfigJson(push)) { }
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Ack<Unit> =
+        acknowledged(HttpMethod.Put, "/devices/$deviceId", token, body = deviceConfigJson(push))
 
     /**
      * One request: the headers every call carries, the answer read into a [Reply], and one log line. Never throws
@@ -267,7 +269,50 @@ class HttpBackend(
         body: String? = null,
         headers: Map<String, String> = emptyMap(),
         read: (String, Headers) -> T,
-    ): Reply<T> {
+    ): Reply<T> = when (val sent = send(method, path, token, body, headers)) {
+        is Sent.Answered ->
+            if (sent.status.isSuccess()) {
+                decoded(
+                    sent.text,
+                ) { read(it, sent.headers) }
+            } else {
+                Reply.Refused(sent.status.value, sent.text)
+            }
+        is Sent.Lost -> Reply.Unreachable(sent.cause)
+    }
+
+    /** One request to a route whose body is never read: any success is served, so it is never [Reply.Malformed]. */
+    private suspend fun acknowledged(
+        method: HttpMethod,
+        path: String,
+        token: String?,
+        body: String? = null,
+    ): Ack<Unit> =
+        when (val sent = send(method, path, token, body, headers = emptyMap())) {
+            is Sent.Answered -> if (sent.status.isSuccess()) {
+                Reply.Ok(
+                    Unit,
+                )
+            } else {
+                Reply.Refused(sent.status.value, sent.text)
+            }
+            is Sent.Lost -> Reply.Unreachable(sent.cause)
+        }
+
+    /** What became of one request: the backend's answer, whatever its status, or none. */
+    private sealed interface Sent {
+        class Answered(val status: HttpStatusCode, val text: String, val headers: Headers) : Sent
+        class Lost(val cause: Throwable) : Sent
+    }
+
+    /** One request: the headers every call carries, and one log line. Never throws but for cancellation. */
+    private suspend fun send(
+        method: HttpMethod,
+        path: String,
+        token: String?,
+        body: String?,
+        headers: Map<String, String>,
+    ): Sent {
         val url = "$base$path"
         val start = TimeSource.Monotonic.markNow()
         return try {
@@ -286,18 +331,12 @@ class HttpBackend(
                 "${method.value} $url → ${response.status.value} " +
                     "(${start.elapsedNow().inWholeMilliseconds}ms, req=${body?.length ?: 0}, resp=${text.length})"
             }
-            if (response.status.isSuccess()) {
-                decoded(text) {
-                    read(it, response.headers)
-                }
-            } else {
-                Reply.Refused(response.status.value, text)
-            }
+            Sent.Answered(response.status, text, response.headers)
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
             httpLog.w(t) { "${method.value} $url → FAILED (${start.elapsedNow().inWholeMilliseconds}ms)" }
-            Reply.Unreachable(t)
+            Sent.Lost(t)
         }
     }
 

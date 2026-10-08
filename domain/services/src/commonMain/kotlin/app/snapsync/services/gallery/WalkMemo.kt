@@ -78,7 +78,7 @@ class WalkMemo(
     private var entry: Entry? = null
 
     override suspend fun discover(policy: SelectionPolicy): Discovery {
-        val grantNow = grant.current()
+        val grantNow = grant.access()
         if (grantNow != GalleryAccess.GRANTED) return walk.discover(policy)
         val token = changeToken.changeToken() ?: return walk.discover(policy)
         val held = lock.withLock { entry }?.takeIf { it.matches(token, policy) }

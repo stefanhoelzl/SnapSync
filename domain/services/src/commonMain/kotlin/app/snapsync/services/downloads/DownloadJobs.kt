@@ -103,7 +103,7 @@ internal fun isFetchableUrl(url: String): Boolean {
 /**
  * The download jobs (capability `receiving-photos`), platform-free: a pending queue drained through a bounded
  * in-flight window into the [Download] port (on iOS a background `URLSession`, in tests a double). What the port
- * reports arrives through the composition's handlers, which call [onFinished], [onCompleted], [onInvalidated],
+ * reports arrives through the composition's handlers, which call [onFinished], [onCompleted],
  * [adoptBackgroundEvents] and [onBackgroundEventsFinished]; the window refills as transfers complete.
  *
  * **A finished body is judged and kept here, inline.** The port reports the facts and a temporary file the platform
@@ -242,18 +242,6 @@ class DownloadJobs(
         if (error != null) log.w { "download task failed (will retry): $error" }
         scope.launch {
             inFlight.remove(tag)
-            pump()
-        }
-    }
-
-    /**
-     * The **system** invalidated the session (we never do): its transfers are gone, and the port runs the next on a
-     * fresh one. The window empties and refills.
-     */
-    fun onInvalidated() {
-        log.w { "the download session was invalidated by the system — continuing on a fresh one" }
-        scope.launch {
-            inFlight.clear()
             pump()
         }
     }

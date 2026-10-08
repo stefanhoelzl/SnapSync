@@ -3,11 +3,16 @@
 package app.snapsync.contract
 
 import app.snapsync.background.IosBackgroundTime
+import app.snapsync.config.IosBuildInfo
+import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.BuildInfoContract
+import app.snapsync.contracts.BuildInfoState
 import app.snapsync.contracts.CallLog
+import app.snapsync.contracts.ClauseFiles
 import app.snapsync.contracts.DeviceConditionsContract
 import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.DownloadContract
@@ -20,13 +25,13 @@ import app.snapsync.contracts.GalleryReaderContract
 import app.snapsync.contracts.GalleryReaderState
 import app.snapsync.contracts.GalleryState
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.ImportDeliveries
 import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.LivePhotoImportContract
 import app.snapsync.contracts.LivePhotoImportState
 import app.snapsync.contracts.LivePhotoLibrary
-import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
@@ -49,16 +54,14 @@ import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.AssetId
-import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
-import app.snapsync.model.ImportResult
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.BackgroundTime
+import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.DeviceConditions
-import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.protection.IosProcessInfo
@@ -79,6 +82,7 @@ import platform.Foundation.NSError
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.create
+import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetCreationRequest
@@ -117,6 +121,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(UploadContract, SimAppUploadBinding(), ::refusal),
     simulatorAppContract(DownloadContract, SimAppDownloadBinding(), ::hostRefusal),
     simulatorAppContract(BackgroundTimeContract, SimAppBackgroundTimeBinding(), ::hostRefusal),
+    simulatorAppContract(BuildInfoContract, SimAppBuildInfoBinding(), ::hostRefusal),
 )
 
 /** Why this process is not the simulator app, or `null` when it is — for bindings that need no photo grant. */
@@ -178,6 +183,7 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         GalleryReaderState.GRANTED_SEEDED,
         GalleryReaderState.GRANTED_EMPTY_WINDOW,
         GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+        GalleryReaderState.GRANTED_SEEDED_EXPORTING,
     )
 
     override fun create(
@@ -186,8 +192,13 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         log: CallLog,
     ): Entered<SeededLibrary<GalleryReader>> {
         val seeded = when (state) {
-            GalleryReaderState.NO_GRANT -> return Entered.Unreachable(UNREACHABLE_NO_GRANT)
-            GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
+            GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES -> return Entered.Unreachable(
+                UNREACHABLE_NO_GRANT,
+            )
+            GalleryReaderState.GRANTED_SEEDED,
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            GalleryReaderState.GRANTED_SEEDED_EXPORTING,
+            ->
                 seedPhotos(PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate)
             GalleryReaderState.GRANTED_EMPTY_WINDOW -> emptyList()
             GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER, GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->
@@ -197,7 +208,9 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         val ids = seeded.mapTo(
             linkedSetOf(),
         ) { checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" } }
-        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log), ids))
+        val scratch = scratch(GalleryReaderContract.name, clauseId)
+        val files = ClauseFiles({ "$scratch/$it" }, { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() })
+        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")), ids, files))
     }
 }
 
@@ -212,6 +225,7 @@ class SimAppGalleryBinding : Binding<GalleryState, GalleryChange> {
     override val reaches = setOf(GalleryState.GRANTED)
 
     override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
+        if (state !in reaches) return Entered.Unreachable("a simulator holds the full grant, and has no partial one")
         val seedDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate
         return Entered.Ready(GalleryChange(contractGallery().recorded(log)) { seedPhotos(seedDate) })
     }
@@ -223,6 +237,7 @@ class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override val reaches = setOf(PhotoAccessState.GRANTED)
 
     override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
+        if (state !in reaches) return Entered.Unreachable("a simulator holds the full grant, and has no partial one")
         if (state == PhotoAccessState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
         val adapter = PhotoLibraryPermission().recorded(log)
         return Entered.Ready(PhotoAccess(adapter))
@@ -242,21 +257,8 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             GalleryImportState.GRANTED_VALID_STAGED -> PhotoLibrary.jpeg
             GalleryImportState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
         }
-        val markers = mutableMapOf<AssetRef, MarkerState>()
-        val importer = contractGallery().recorded(log).apply {
-            listen(
-                GalleryHandlers(
-                    onChanged = {},
-                    onImportPlaceholder = { ref, _ -> markers[ref] = MarkerState.RECORDED },
-                    onImportSettled = { ref, outcome ->
-                        when (outcome) {
-                            is ImportResult.Imported -> markers[ref] = MarkerState.CONFIRMED
-                            is ImportResult.Failed -> if (outcome.placeholder != null) markers[ref] = MarkerState.CLEARED
-                        }
-                    },
-                ),
-            )
-        }
+        val delivered = ImportDeliveries()
+        val importer = contractGallery().apply { listen(delivered.handlers) }
         var staged = 0
         val stage = {
             staged++
@@ -280,7 +282,7 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
                 return asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) }
             }
 
-            override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+            override val deliveries = delivered
 
             // Through the reader's resource read — the same read a later install's join makes.
             override suspend fun primaryFilename(id: AssetId): String? =
@@ -308,21 +310,8 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
             LivePhotoImportState.GRANTED_MOTION_PHOTO_STAGED -> PhotoLibrary.motionPhoto
             LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED -> PhotoLibrary.brokenMotionPhoto
         }
-        val markers = mutableMapOf<AssetRef, MarkerState>()
-        val importer = contractGallery().recorded(log).apply {
-            listen(
-                GalleryHandlers(
-                    onChanged = {},
-                    onImportPlaceholder = { ref, _ -> markers[ref] = MarkerState.RECORDED },
-                    onImportSettled = { ref, outcome ->
-                        when (outcome) {
-                            is ImportResult.Imported -> markers[ref] = MarkerState.CONFIRMED
-                            is ImportResult.Failed -> if (outcome.placeholder != null) markers[ref] = MarkerState.CLEARED
-                        }
-                    },
-                ),
-            )
-        }
+        val delivered = ImportDeliveries()
+        val importer = contractGallery().apply { listen(delivered.handlers) }
         val stage = {
             val key = "contract-$clauseId-primary.jpg"
             val path = NSTemporaryDirectory() + key
@@ -333,7 +322,7 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
             override suspend fun captureDate(id: AssetId): String? =
                 asset(id)?.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) }
 
-            override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+            override val deliveries = delivered
 
             // Through the reader's resource read — the same read a later install's join makes.
             override suspend fun primaryFilename(id: AssetId): String? =
@@ -370,13 +359,34 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
  * this host presents `UNLOCKED` and never the locked state, which no host presents (`ProcessInfoContract`); and the
  * simulator's kernel accounts the app's memory as a device's does, so it presents `MEMORY_ACCOUNTED` too.
  */
+/**
+ * The real [IosBuildInfo] in the simulator app, given the OS fact the app's root hands it — [osCarriesOsDrivenUpload],
+ * the same call — on a simulator runtime that carries the OS-driven uploader.
+ */
+class SimAppBuildInfoBinding : Binding<BuildInfoState, BuildInfo> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(BuildInfoState.OS_DRIVEN_UPLOAD, BuildInfoState.ON_IOS)
+
+    override fun create(state: BuildInfoState, clauseId: String): Entered<BuildInfo> =
+        if (state in reaches) {
+            Entered.Ready(IosBuildInfo(osSupportsOsDrivenUpload = osCarriesOsDrivenUpload(), bootLines = emptyList()))
+        } else {
+            Entered.Unreachable("a rig build on a simulator is neither distributed nor bundle-less")
+        }
+}
+
 class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
 
     override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
-        Entered.Ready(IosProcessInfo().recorded(log))
+        if (state in reaches) {
+            Entered.Ready(IosProcessInfo())
+        } else {
+            Entered.Unreachable("$state: iOS accounts the footprint, and the simulator implements no data protection")
+        }
 }
 
 /**
@@ -399,7 +409,7 @@ class SimAppDeviceConditionsBinding : Binding<DeviceConditionsState, DeviceCondi
 /**
  * The real [IosBackgroundTime] in the simulator app — the one CI host with a `UIApplication` (a test executable has
  * none). The rig drives the app in the foreground, so its time is not up and every hold is granted; "time is up" is
- * a state no host presents to a binding, which is why `BackgroundTimeContract` has no expiry clause.
+ * recorded on a device (`BackgroundTime@IOS_DEVICE_APP.rec`).
  */
 class SimAppBackgroundTimeBinding : Binding<BackgroundTimeState, BackgroundTime> {
     override val host = Host.IOS_SIM_APP
@@ -407,5 +417,9 @@ class SimAppBackgroundTimeBinding : Binding<BackgroundTimeState, BackgroundTime>
     override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
 
     override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
-        Entered.Ready(IosBackgroundTime(Logger.withTag("contract")).recorded(log))
+        if (state in reaches) {
+            Entered.Ready(IosBackgroundTime(Logger.withTag("contract")))
+        } else {
+            Entered.Unreachable("the rig drives the simulator app in the foreground, where its time does not run out")
+        }
 }

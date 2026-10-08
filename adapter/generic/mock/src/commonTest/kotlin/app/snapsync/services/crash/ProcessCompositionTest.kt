@@ -11,6 +11,7 @@ import app.snapsync.mock.inMemoryCrashReporter
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.DumpHandOff
 import app.snapsync.model.DumpResult
 import app.snapsync.model.NON_REDACTED_TAG
 import app.snapsync.model.ProcessMetricReport
@@ -157,7 +158,7 @@ class ProcessCompositionTest {
         override fun setContext(name: String, fields: Map<String, String>) {
             contexts[name] = fields
         }
-        override suspend fun sendDump(dump: CrashEvent): DumpResult = DumpResult.Queued
+        override suspend fun sendDump(dump: CrashEvent): DumpHandOff = DumpResult.Queued
     }
 
     private class Entry(private val name: String?) : EntryContext {

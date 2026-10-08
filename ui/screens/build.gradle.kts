@@ -60,10 +60,12 @@ kotlin {
 }
 
 // The module's strings (`docs/architecture.md`, "Localization"): `src/commonMain/composeResources/values/`
-// is the base language, `values-<lang>/` a translation. The generated `Res` stays internal to this module.
+// is the base language, `values-<lang>/` a translation. The generated `Res` is public only so tests can name the
+// words a screen shows (`:adapter:android`'s Ui contract binding taps the real screen by them); production code passes
+// a screen its state, never borrows its words.
 compose.resources {
     packageOfResClass = "app.snapsync.ui.resources"
-    publicResClass = false
+    publicResClass = true
 }
 
 // The languages the app ships (`docs/architecture.md`, "Localization"): the first is the base, in `values/`. Adding

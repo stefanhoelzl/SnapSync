@@ -39,10 +39,7 @@ import app.snapsync.model.WriteOutcome
  * Every read hops off the caller's lane itself: each platform call is a synchronous round-trip into the photo
  * service, which no timeout can abandon.
  */
-interface GalleryReader : Port {
-
-    /** The grant as the platform reports it right now. Cheap, synchronous, and never raises a dialog. */
-    fun access(): GalleryAccess
+interface GalleryReader : PhotoGrantRead {
 
     /**
      * The assets [policy] may admit — facts only, no resources. The implementation narrows its native query by

@@ -68,6 +68,11 @@ kotlin {
                 implementation(project(":test:edge"))
                 // The encrypted file format's reference implementation (`docs/architecture.md`).
                 implementation(libs.tink)
+                // The software key-attestation chain the Backend contract's mint is proved with
+                // (`BackendAttestClauses`).
+                implementation(libs.bouncycastle.pkix)
+                // The wire fixture's client: the engine the live edge is reached with (`LiveEdge`).
+                implementation(libs.ktor.client.cio)
             }
         }
         named("iosSimulatorArm64Test") {

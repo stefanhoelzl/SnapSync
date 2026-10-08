@@ -26,7 +26,8 @@ class JvmFilesContractTest {
         val private: File = Nio.createTempDirectory("private").toFile()
         val files = JvmFiles(shared, private)
         fun dispose() {
-            shared.walkTopDown().forEach { it.setReadable(true) }
+            shared.walkTopDown().onEnter { it.setReadable(true) && it.setWritable(true) && it.setExecutable(true) }
+                .forEach { it.setReadable(true) }
             shared.deleteRecursively()
             private.deleteRecursively()
         }
@@ -44,6 +45,9 @@ class JvmFilesContractTest {
             FilesState.DENIED,
             FilesState.DENIED_DIRECTORY,
             FilesState.UNAVAILABLE,
+            FilesState.READ_ONLY_DIRECTORY,
+            FilesState.UNSEARCHABLE_DIRECTORY,
+            FilesState.LOOPED_LINK,
         )
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
             if (state == FilesState.UNAVAILABLE) return Entered.Ready(unavailable().recorded(log))
@@ -58,6 +62,21 @@ class JvmFilesContractTest {
                 FilesState.DENIED_DIRECTORY -> {
                     areas.files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
                     File(areas.shared, FilesContract.directory(clauseId)).setReadable(false)
+                }
+                FilesState.READ_ONLY_DIRECTORY -> {
+                    areas.files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
+                    File(areas.shared, FilesContract.directory(clauseId)).setWritable(false)
+                }
+                FilesState.UNSEARCHABLE_DIRECTORY -> {
+                    areas.files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
+                    File(
+                        areas.shared,
+                        FilesContract.directory(clauseId),
+                    ).run { setReadable(false) && setExecutable(false) }
+                }
+                FilesState.LOOPED_LINK -> File(areas.shared, path).toPath().let { link ->
+                    Nio.createDirectories(link.parent)
+                    Nio.createSymbolicLink(link, link.fileName)
                 }
                 FilesState.EMPTY, FilesState.UNAVAILABLE -> Unit
             }

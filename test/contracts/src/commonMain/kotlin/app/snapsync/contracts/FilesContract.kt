@@ -27,6 +27,21 @@ enum class FilesState {
 
     /** The SHARED area cannot be reached (on iOS, a build without the App-Group entitlement). */
     UNAVAILABLE,
+
+    /**
+     * [FilesContract.directory] in the SHARED area holds [FilesContract.path], and this process may read and list it
+     * but create, replace or remove nothing in it.
+     */
+    READ_ONLY_DIRECTORY,
+
+    /**
+     * [FilesContract.directory] in the SHARED area holds [FilesContract.path], and this process may not look inside it
+     * at all — so whether the file is there cannot be asked.
+     */
+    UNSEARCHABLE_DIRECTORY,
+
+    /** [FilesContract.path] in the SHARED area is a symbolic link to itself: every lookup through it loops. */
+    LOOPED_LINK,
 }
 
 /**
@@ -154,7 +169,12 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             "EMPTY_A_DIRECTORY_IS_NOT_A_FILE",
             FilesState.EMPTY,
             covers = cells {
-                on<Files>().answers(Files::read).with(FileResult.Failed::class)
+                on<Files> {
+                    answers(Files::read).with(FileResult.Failed::class)
+                    answers(Files::readTail).with(FileResult.Failed::class)
+                    answers(Files::readRange).with(FileResult.Failed::class)
+                    answers(Files::delete).with(FileResult.Failed::class)
+                }
             },
         ) { files ->
             val id = "EMPTY_A_DIRECTORY_IS_NOT_A_FILE"
@@ -164,7 +184,123 @@ object FilesContract : Contract<FilesState, Files>("Files") {
                     files.read(it, directory(id)),
                     "$it: a directory is there, so never NotFound, and it is not this process's to be Denied",
                 )
+                assertIs<FileResult.Failed>(files.readTail(it, directory(id), SMALL), "$it: no tail of a directory")
+                assertIs<FileResult.Failed>(files.readRange(it, directory(id), 0, SMALL), "$it: no range of one")
+                assertIs<FileResult.Failed>(
+                    files.delete(it, directory(id)),
+                    "$it: removing a file never empties a directory",
+                )
+                assertEquals(FileResult.Ok(true), files.exists(it, path(id)), "$it: what it holds is untouched")
             }
+        }
+
+        clause(
+            "EMPTY_A_PATH_THROUGH_A_FILE_IS_NO_PLACE_TO_WRITE",
+            FilesState.EMPTY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::write).with(FileResult.Failed::class)
+                    answers(Files::append).with(FileResult.Failed::class)
+                    answers(Files::move).with(FileResult.Failed::class)
+                    answers(Files::adopt).with(FileResult.Failed::class)
+                    answers(Files::list).with(FileResult.Failed::class)
+                }
+            },
+        ) { files ->
+            val id = "EMPTY_A_PATH_THROUGH_A_FILE_IS_NO_PLACE_TO_WRITE"
+            // The clause's directory is a FILE, so nothing can be created beneath it: no parent can be made.
+            val blocker = directory(id)
+            val beneath = "$blocker/file.bin"
+            val elsewhere = "contract/$id-elsewhere/file.bin"
+            FileArea.entries.forEach {
+                files.write(it, blocker, seed(id))
+                files.write(it, elsewhere, seed(id))
+                assertIs<FileResult.Failed>(files.write(it, beneath, ByteArray(1)), "$it: no parent can be created")
+                assertIs<FileResult.Failed>(files.append(it, beneath, ByteArray(1)), "$it")
+                assertIs<FileResult.Failed>(files.move(it, elsewhere, beneath), "$it")
+                assertIs<FileResult.Failed>(
+                    files.list(it, blocker),
+                    "$it: a file is no directory, so never its contents",
+                )
+                assertEquals(FileResult.Ok(true), files.exists(it, elsewhere), "$it: a failed move leaves the source")
+            }
+            val handed = "contract/$id-handed.bin"
+            files.write(FileArea.PRIVATE, handed, seed(id))
+            val osPath = assertIs<FileResult.Ok<String>>(files.locate(FileArea.PRIVATE, handed)).value
+            assertIs<FileResult.Failed>(files.adopt(osPath, FileArea.SHARED, beneath))
+        }
+
+        clause(
+            "READ_ONLY_DIRECTORY_REFUSES_EVERY_CHANGE",
+            FilesState.READ_ONLY_DIRECTORY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::write).with(FileResult.Denied::class)
+                    answers(Files::append).with(FileResult.Denied::class)
+                    answers(Files::delete).with(FileResult.Denied::class)
+                    answers(Files::move).with(FileResult.Denied::class)
+                    answers(Files::adopt).with(FileResult.Denied::class)
+                }
+            },
+        ) { files ->
+            val id = "READ_ONLY_DIRECTORY_REFUSES_EVERY_CHANGE"
+            val inside = "${directory(id)}/new.bin"
+            assertIs<FileResult.Denied>(
+                files.write(FileArea.SHARED, inside, ByteArray(1)),
+                "a refusal, never a failure",
+            )
+            assertIs<FileResult.Denied>(files.append(FileArea.SHARED, inside, ByteArray(1)))
+            assertIs<FileResult.Denied>(files.delete(FileArea.SHARED, path(id)))
+            assertIs<FileResult.Denied>(files.move(FileArea.SHARED, path(id), "contract/$id-elsewhere/file.bin"))
+            files.write(FileArea.PRIVATE, path(id), seed(id))
+            val osPath = assertIs<FileResult.Ok<String>>(files.locate(FileArea.PRIVATE, path(id))).value
+            assertIs<FileResult.Denied>(files.adopt(osPath, FileArea.SHARED, inside))
+            assertContentEquals(
+                seed(id),
+                assertIs<FileResult.Ok<ByteArray>>(files.read(FileArea.SHARED, path(id))).value,
+                "what it held is still there, and still readable",
+            )
+        }
+
+        clause(
+            "UNSEARCHABLE_DIRECTORY_A_LOOKUP_IS_DENIED_NEVER_ABSENT",
+            FilesState.UNSEARCHABLE_DIRECTORY,
+            covers = cells {
+                on<Files> {
+                    answers(Files::exists).with(FileResult.Denied::class)
+                    answers(Files::read).with(FileResult.Denied::class)
+                    answers(Files::move).with(FileResult.Denied::class)
+                }
+            },
+        ) { files ->
+            val id = "UNSEARCHABLE_DIRECTORY_A_LOOKUP_IS_DENIED_NEVER_ABSENT"
+            assertIs<FileResult.Denied>(
+                files.exists(FileArea.SHARED, path(id)),
+                "a lookup that could not be made is never false",
+            )
+            assertIs<FileResult.Denied>(files.read(FileArea.SHARED, path(id)))
+            assertIs<FileResult.Denied>(
+                files.move(FileArea.SHARED, path(id), "contract/$id-elsewhere/file.bin"),
+                "a source that could not be looked for is never 'nothing to move'",
+            )
+        }
+
+        clause(
+            "LOOPED_LINK_A_LOOKUP_THAT_LOOPS_FAILS",
+            FilesState.LOOPED_LINK,
+            covers = cells {
+                on<Files> {
+                    answers(Files::exists).with(FileResult.Failed::class)
+                    answers(Files::read).with(FileResult.Failed::class)
+                }
+            },
+        ) { files ->
+            val id = "LOOPED_LINK_A_LOOKUP_THAT_LOOPS_FAILS"
+            assertIs<FileResult.Failed>(
+                files.exists(FileArea.SHARED, path(id)),
+                "neither there nor absent: unanswerable",
+            )
+            assertIs<FileResult.Failed>(files.read(FileArea.SHARED, path(id)))
         }
 
         clause(
@@ -352,6 +488,7 @@ object FilesContract : Contract<FilesState, Files>("Files") {
                     answers(Files::locate).with(FileResult.AreaUnavailable::class)
                     answers(Files::move).with(FileResult.AreaUnavailable::class)
                     answers(Files::list).with(FileResult.AreaUnavailable::class)
+                    answers(Files::adopt).with(FileResult.AreaUnavailable::class)
                 }
             },
         ) { files ->

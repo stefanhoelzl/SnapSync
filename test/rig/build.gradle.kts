@@ -130,6 +130,11 @@ kotlin {
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.cio)
         }
+
+        // The rig's own port implementation held to its contract: `RigDevControls`, the one DevControls that switches.
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }
 

@@ -7,6 +7,7 @@ import app.snapsync.config.bakedUploadBase
 import app.snapsync.contract.appDeviceContracts
 import app.snapsync.contract.extension.extensionContractEntries
 import app.snapsync.contract.extension.recordLanded
+import app.snapsync.contract.resumeContractRuns
 import app.snapsync.contract.simulatorAppContracts
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.files.IosFiles
@@ -71,6 +72,8 @@ import platform.Foundation.writeToFile
  * passed as **thunks**, and the first request that needs the graph finds it composed.
  */
 internal fun platformAdapters(real: AppDevicePorts): PlatformAdapters {
+    // Before the composition's first relaunch is routed: a contract run spanning launches picks up where it was.
+    resumeContractRuns()
     val launch = rigLaunch(real)
     startWhenReady { startRig(launch) }
     return PlatformAdapters(

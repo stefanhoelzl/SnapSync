@@ -206,6 +206,24 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   USB, so it keeps answering offline. A `# live …: Failed` line means the phone was not in the stated condition — do
   not commit that run.
 
+- **Runs that wait for the phone to leave your hands.** Each holds background time and waits, reading the app's own
+  state, for the person to put the phone there — so START the run first (in the background, no `--max-time`), confirm
+  `→ /contract/<name>` in `/device/logs`, and only then ask for the step. Every run also keeps its recording in the
+  app's `Documents/contracts/<file>.rec`: when the connection drops (it does on a lock), pull it with `apps pull`.
+  - **`ProcessInfo`** (`…LOCKED.rec`): lock the phone. Needs a passcode with **Require Passcode: Immediately** — with a
+    delay iOS keeps the data readable past the ~30 s of background time and the run never sees it sealed (measured).
+  - **`BackgroundTime`**: go to the home screen; iOS's expiry comes ~30 s later and is recorded as an event line.
+  - **`Upload` (device app) + `SharePresenter`** — the relaunch, two steps: `?step=arm` prepares a transfer to
+    `https://snapsync.stho.net/contract-relaunch` (a 404 path of our own domain — a transfer whose connection fails is
+    retried and never relaunches anything, measured) and EXITS the app; iOS relaunches it in the background (35 s–2 min)
+    and that process records both. Pull `Upload@IOS_DEVICE_APP.rec` and `SharePresenter@IOS_DEVICE_APP.rec` from
+    `Documents/contracts/` (the relaunched app is suspended, so `?step=collect` answers only once it is opened).
+  - **`ProcessMetrics`**: `?step=arm` subscribes and waits, across launches, for MetricKit's next delivery (a queued
+    report arrives within seconds; otherwise about a day); `?step=collect` or pull the kept file.
+- ⚠️ **The upload extension does not run below ~20 % battery**, even plugged in: `dasd` answers its runner
+  `Battery Level Policy … Decision: MNP` (measured 2026-10-08 at 19–20 %), so the extension run below times out with no
+  sign on the phone. Charge first; read `syslog live` for `assetresourceuploadextensionrunner` to tell.
+
 ### Recording INSIDE the upload extension — `?host=IOS_DEVICE_PHOTOKIT_EXT`
 
 The upload-job contract (`Upload`) records in the upload extension, the process production calls

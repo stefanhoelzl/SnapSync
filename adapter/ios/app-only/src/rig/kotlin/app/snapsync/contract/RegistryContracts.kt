@@ -74,6 +74,7 @@ internal fun registryInState(
         ExtensionRegistryState.RECORD_ABSENT -> api.setEnabled(false)
         ExtensionRegistryState.RECORD_PRESENT -> api.setEnabled(true)
         ExtensionRegistryState.UNDER_PARTIAL_GRANT -> Unit
+        ExtensionRegistryState.NO_MECHANISM -> error("a device that carries the mechanism never enters $state")
     }
     // Recorded on an iOS 26.6 device, which carries the selector: replayed as such on whatever host replays it.
     return Entered.Ready(PhotoKitExtensionRegistry(logger, api, supported = true).recorded(log), dispose = afterDispose)

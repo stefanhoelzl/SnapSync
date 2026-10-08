@@ -1,0 +1,15 @@
+# contract: Upload
+# host: IOS_DEVICE_APP
+# file: Upload@IOS_DEVICE_APP.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-08T21:46:24Z
+# live RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED: Passed
+[RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED]
+<- handleEvents(id=app.snapsync.contract.upload.relaunch)
+open(id=app.snapsync.contract.upload.relaunch) -> attached
+<- didComplete(tag=contract-relaunched_events_are_handed_over_then_drained-1-primary.jpg path=/contract-relaunch status=401 error=none)
+<- didFinishEvents()
+release() -> done

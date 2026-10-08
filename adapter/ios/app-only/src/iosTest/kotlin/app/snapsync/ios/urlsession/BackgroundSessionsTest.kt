@@ -28,7 +28,6 @@ class BackgroundSessionsTest {
             DownloadHandlers(
                 onFinished = { _, _, _ -> },
                 onCompleted = { _, _ -> },
-                onInvalidated = {},
                 onBackgroundEvents = { handedTo += "download" },
                 onEventsDrained = {},
             ),

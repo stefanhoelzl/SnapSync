@@ -47,6 +47,12 @@ class BackendContractBindingTest {
         )
 
         override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<Backend>> = runBlocking {
+            // An in-memory backend always answers: a request that never completes is a socket's, not a double's.
+            if (state !in reaches) {
+                return@runBlocking Entered.Unreachable(
+                    "an in-memory backend answers what it holds, and attests nothing",
+                )
+            }
             val stored = mutableMapOf<Pair<String, String>, MutableSet<DeviceFile>>()
             val serving = inMemoryBackend(storedFiles = stored)
             val setup = PortSetup(serving, stored)

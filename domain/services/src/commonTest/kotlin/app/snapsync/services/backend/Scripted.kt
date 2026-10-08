@@ -1,5 +1,6 @@
 package app.snapsync.services.backend
 
+import app.snapsync.model.Ack
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -37,6 +38,10 @@ internal class ScriptedBackend(
         return answer(route, token) as Reply<T>
     }
 
+    /** [call], for a route whose body is never read: a scripted answer is never `Malformed` there. */
+    @Suppress("UNCHECKED_CAST")
+    private fun ack(route: String, token: String?): Ack<Unit> = call<Unit>(route, token) as Ack<Unit>
+
     override suspend fun challenge(): Reply<String> = call("challenge", null)
     override suspend fun mintToken(req: MintRequest): Reply<String> = call("mint", null)
     override suspend fun renewToken(req: RenewRequest): Reply<String> = call("renew", null)
@@ -53,16 +58,16 @@ internal class ScriptedBackend(
         "rename",
         token,
     )
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = call("join", token)
+    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Ack<Unit> = ack("join", token)
     override suspend fun publishManifest(
         token: String?,
         eventId: String,
         deviceId: String,
         manifest: DeviceManifest,
-    ): Reply<Unit> =
-        call("manifest", token)
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
-        call("leave", token)
+    ): Ack<Unit> =
+        ack("manifest", token)
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Ack<Unit> =
+        ack("leave", token)
     override suspend fun eventFiles(
         token: String?,
         eventId: String,
@@ -72,7 +77,7 @@ internal class ScriptedBackend(
         call("union", token)
     override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
         call("files", token)
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = call(
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Ack<Unit> = ack(
         "config",
         token,
     )

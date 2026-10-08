@@ -10,6 +10,7 @@ import app.snapsync.android.storage.context
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
+import app.snapsync.contracts.ClauseFiles
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FolderAlbumContract
 import app.snapsync.contracts.FolderAlbumState
@@ -63,27 +64,34 @@ class AndroidGalleryContractTest {
             GalleryReaderState.GRANTED_EMPTY_WINDOW,
             GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER,
             GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY,
+            GalleryReaderState.GRANTED_SEEDED_EXPORTING,
         )
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
             val date = PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate
             val ids: Set<AssetId> = when (state) {
-                GalleryReaderState.NO_GRANT ->
+                GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES ->
                     return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
                 GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
                     return Entered.Unreachable(
                         "an Android album is the folder a photo lives in, not a collection: FolderAlbumContract",
                     )
                 GalleryReaderState.GRANTED_EMPTY_WINDOW -> emptySet()
-                GalleryReaderState.GRANTED_SEEDED -> MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, date)
+                GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_EXPORTING ->
+                    MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, date)
                 GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER ->
                     MediaStoreSeeder.seed("DCIM/${GalleryReaderContract.title(clauseId)}/", date)
                 GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->
                     MediaStoreSeeder.seed("Pictures/${GalleryReaderContract.title(clauseId)}/", date)
             }
             MediaStoreSeeder.grantFull()
-            val reader = AndroidGalleryReader(context, permission()::current).recorded(log)
-            return Entered.Ready(SeededLibrary(reader, ids)) { MediaStoreSeeder.delete(ids) }
+            val reader = AndroidGalleryReader(context, permission()::current)
+            val scratch = File(context.cacheDir, "export-$clauseId").apply { mkdirs() }
+            val files = ClauseFiles({ File(scratch, it).absolutePath }, { File(it).takeIf(File::exists)?.readBytes() })
+            return Entered.Ready(SeededLibrary(reader, ids, files)) {
+                MediaStoreSeeder.delete(ids)
+                scratch.deleteRecursively()
+            }
         }
     }
 
@@ -94,6 +102,11 @@ class AndroidGalleryContractTest {
         override val reaches = setOf(GalleryState.GRANTED)
 
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
+            if (state !in reaches) {
+                return Entered.Unreachable(
+                    "this binding holds the full grant: a grant short of it is another APK's",
+                )
+            }
             MediaStoreSeeder.grantFull()
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val created = mutableSetOf<AssetId>()
@@ -172,6 +185,11 @@ class AndroidGalleryContractTest {
         override val reaches = setOf(PhotoAccessState.GRANTED)
 
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
+            if (state !in reaches) {
+                return Entered.Unreachable(
+                    "this binding holds the full grant: a grant short of it is another APK's",
+                )
+            }
             if (state == PhotoAccessState.NO_GRANT) {
                 return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
             }

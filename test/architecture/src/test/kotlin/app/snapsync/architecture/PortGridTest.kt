@@ -94,7 +94,7 @@ class PortGridTest {
             "Backend.challenge → Reply.Unreachable",
             "SecureStore.read → SecureStoreRead.Unavailable",
             "LibraryChangeTokenRead.changeToken → null",
-            "Wake.Completion.complete → returns",
+            "Wake.ExpiringCompletion.complete → returns",
             "AttestStore.token → throws",
         )
         val missing = canaries - texts

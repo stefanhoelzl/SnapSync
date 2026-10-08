@@ -69,6 +69,10 @@ class MainLaneContainmentTest {
         // sheet it presented, and UIKit dismissal is main-thread-only like the presentation it undoes.
         "/adapter/ios/app-only/src/rig/kotlin/app/snapsync/contract/HandoffContracts.kt" to
             "dismisses the UIActivityViewController a clause presented",
+        // The device runs' reads of the app's own state (rig-gated): whether it is in the background, whether the
+        // person locked the phone — `UIApplication`, main-thread-only.
+        "/adapter/ios/app-only/src/rig/kotlin/app/snapsync/contract/MainThreadReads.kt" to
+            "UIApplication.applicationState + isProtectedDataAvailable",
         // The Android app shell: its composition scope runs on the main lane — the lifecycle adapter's process observer
         // must be added on the main thread. The composition itself names no main lane: every platform-UI adapter
         // hops there on its own (`docs/architecture.md`, "Dispatcher lanes are fixed by the composition").

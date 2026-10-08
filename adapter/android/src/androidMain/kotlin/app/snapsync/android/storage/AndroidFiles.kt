@@ -1,7 +1,9 @@
 package app.snapsync.android.storage
 
 import android.content.Context
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
+import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.ports.Files
@@ -11,6 +13,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AccessDeniedException
 import java.nio.file.NoSuchFileException
+import java.nio.file.NotDirectoryException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
@@ -76,14 +79,14 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
         }
     }
 
-    override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = guarded {
+    override fun append(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> = access {
         val target = resolve(area, path)
         Nio.createDirectories(target.parent)
         Nio.write(target, bytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE)
         FileResult.Ok(Unit)
     }
 
-    override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = guarded {
+    override fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> = access {
         val target = resolve(area, path)
         Nio.createDirectories(target.parent)
         val temp = Nio.createTempFile(target.parent, ".${target.fileName}.", ".tmp")
@@ -102,16 +105,16 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
     }
 
     // `Files.exists` answers `false` when it could not look; reading the attributes keeps the two apart.
-    override fun exists(area: FileArea, path: String): FileResult<Boolean> = try {
+    override fun exists(area: FileArea, path: String): FileAccess<Boolean> = try {
         Nio.readAttributes(resolve(area, path), "basic:isRegularFile")
         FileResult.Ok(true)
     } catch (_: NoSuchFileException) {
         FileResult.Ok(false)
     } catch (e: IOException) {
-        e.toResult()
+        e.toAccessFailure()
     }
 
-    override fun locate(area: FileArea, path: String): FileResult<String> = FileResult.Ok(
+    override fun locate(area: FileArea, path: String): FileLocation<String> = FileResult.Ok(
         resolve(area, path).toString(),
     )
 
@@ -121,10 +124,11 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> =
         moveReplacing(File(osPath).toPath(), resolve(area, to))
 
-    override fun list(area: FileArea, directory: String): FileResult<List<String>> = guarded {
+    override fun list(area: FileArea, directory: String): FileAccess<List<String>> = access {
         val root = resolve(area, "")
         val dir = resolve(area, directory)
-        if (!Nio.exists(dir)) return@guarded FileResult.Ok(emptyList())
+        if (!Nio.exists(dir)) return@access FileResult.Ok(emptyList())
+        if (!Nio.isDirectory(dir)) throw NotDirectoryException(dir.toString())
         Nio.walk(dir).use { paths ->
             FileResult.Ok(
                 paths.filter { Nio.isRegularFile(it) }
@@ -137,7 +141,9 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
 
     /** Move [source] to [destination]: parents created, the previous destination replaced; last write wins. */
     private fun moveReplacing(source: Path, destination: Path): FileResult<Unit> = guarded {
-        if (!Nio.exists(source)) return@guarded FileResult.NotFound
+        // A source that is not there throws `NoSuchFileException` here; one that could not be looked for, its reason —
+        // `Files.exists` would answer `false` for both.
+        Nio.readAttributes(source, "basic:isRegularFile")
         Nio.createDirectories(destination.parent)
         Nio.move(source, destination, StandardCopyOption.REPLACE_EXISTING)
         FileResult.Ok(Unit)
@@ -151,8 +157,21 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
         FileResult.Denied("${e::class.simpleName}: ${e.message}")
     }
 
+    /** [guarded], for an operation absence is no outcome of: a file it did not find is a failure, never not-found. */
+    private inline fun <T> access(block: () -> FileAccess<T>): FileAccess<T> = try {
+        block()
+    } catch (e: IOException) {
+        e.toAccessFailure()
+    } catch (e: SecurityException) {
+        FileResult.Denied("${e::class.simpleName}: ${e.message}")
+    }
+
     private fun IOException.toResult(): FileResult<Nothing> = when (this) {
         is NoSuchFileException -> FileResult.NotFound
+        else -> toAccessFailure()
+    }
+
+    private fun IOException.toAccessFailure(): FileAccess<Nothing> = when (this) {
         is AccessDeniedException -> FileResult.Denied("${this::class.simpleName}: $message")
         else -> FileResult.Failed("${this::class.simpleName}: $message")
     }

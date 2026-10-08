@@ -22,14 +22,30 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  */
 internal class SessionCompletion(
     private val handler: () -> Unit,
-    private val log: Logger = Logger.withTag("SessionCompletion"),
+    /** How the handler reaches the main thread: [MainThreadRelease], or a session's own, which records or replays it. */
+    private val release: HandlerRelease,
 ) : Completion {
     private val released = AtomicBoolean(false)
 
     override fun complete() {
         if (!released.compareAndSet(expectedValue = false, newValue = true)) return
-        onQueue(dispatch_get_main_queue(), log, "sessionCompletion.release", handler)
+        release.release(handler)
     }
+}
 
-    override fun onExpired(action: () -> Unit) = Unit
+/** Releases an operating-system completion handler where the platform requires. */
+internal fun interface HandlerRelease {
+    fun release(handler: () -> Unit)
+}
+
+/** On the main queue, where UIKit requires a session relaunch's handler to be called. */
+internal object MainThreadRelease : HandlerRelease {
+    private val log = Logger.withTag("SessionCompletion")
+
+    override fun release(handler: () -> Unit) = onQueue(
+        dispatch_get_main_queue(),
+        log,
+        "sessionCompletion.release",
+        handler,
+    )
 }

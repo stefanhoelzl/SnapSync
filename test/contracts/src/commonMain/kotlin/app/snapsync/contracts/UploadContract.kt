@@ -9,11 +9,16 @@ import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadSource
+import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.destinationPathOf
 import app.snapsync.model.uploadKey
+import app.snapsync.ports.Completion
 import app.snapsync.ports.Upload
+import app.snapsync.ports.UploadHandlers
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -49,6 +54,34 @@ enum class UploadState {
      * Wi-Fi, a hotspot, Low Data Mode — which the binding can lift ([UploadUnderTest.liftRestriction]).
      */
     RESTRICTED_NETWORK,
+
+    /*
+     * What each platform's uploads take, and how it tells a transfer's end — facts of the platform, so each binding
+     * reaches only the states its platform is.
+     */
+
+    /** Nothing in flight, on a platform that takes the library's own resource handles and also takes a file. */
+    TAKES_RESOURCES_AND_FILES,
+
+    /** Nothing in flight, on a platform that takes only a file of the photo's bytes. */
+    TAKES_FILES,
+
+    /** On a platform that takes only the library's own resources — so an encrypted event's upload is sealed elsewhere. */
+    TAKES_RESOURCES_ONLY,
+
+    /** Nothing in flight, on a platform that reports each transfer's end as it happens and offers no free retry. */
+    REPORTS_AS_IT_HAPPENS,
+
+    /** On a platform that holds each settled transfer until asked, and is owed an acknowledgement for every one. */
+    PRESENTS_WHEN_ASKED,
+
+    /**
+     * The app relaunched by the operating system in the background to deliver its session's events: a transfer the
+     * binding prepared — to the clause's [UploadContract.relaunchedTag] — ended while the app was not running, and the
+     * relaunch is held for the clause to hand over ([UploadUnderTest.relaunch]). A device's, recorded across the two
+     * processes: no CI host's session outlives its app.
+     */
+    RELAUNCHED_WITH_EVENTS,
 }
 
 /**
@@ -72,6 +105,23 @@ class UploadUnderTest(
     val objects: FixtureObjects,
     /** Puts the device back on an unrestricted network; required of a binding that reaches [UploadState.RESTRICTED_NETWORK]. */
     val liftRestriction: (suspend () -> Unit)? = null,
+    /** A file of the photo's bytes for a key; required of a binding that reaches [UploadState.TAKES_RESOURCES_AND_FILES]. */
+    val fileSource: (suspend (key: String) -> UploadSource)? = null,
+    /** The relaunch the operating system made; required of a binding that reaches [UploadState.RELAUNCHED_WITH_EVENTS]. */
+    val relaunch: Relaunch? = null,
+)
+
+/**
+ * A relaunch the operating system made to deliver a session's events, held by the binding — which listened to the port
+ * — until the clause hands it over.
+ */
+class Relaunch(
+    /** Hands the port the relaunch, with the system's completion handler, as the app's delegate does. */
+    val deliver: () -> Unit,
+    /** Every completion the port handed its owner for a relaunch, in order. */
+    val handedOver: () -> List<Completion>,
+    /** How many drain reports the port gave its owner. */
+    val drains: () -> Int,
 )
 
 /**
@@ -102,6 +152,9 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
         UploadState.PRESENTED_RETRY_SPENT,
     )
 
+    /** The tag a relaunched state's prepared transfer was created under, which its end is reported with. */
+    fun relaunchedTag(clauseId: String): String = key(clauseId)
+
     /** The route a presented state's prepared transfer goes to: accepted for a success, refused otherwise. */
     fun preparedRoute(clauseId: String, state: UploadState): String =
         path(clauseId, if (state == UploadState.PRESENTED_SUCCEEDED) ACCEPT else REJECT)
@@ -123,6 +176,10 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
         return (ended() + upload.jobs(UploadJobSet.TERMINAL) + upload.jobs(UploadJobSet.RETRY_OFFERED))
             .filter { it.destinationPath == path }
     }
+
+    /** Whether this live job is [clauseId]'s transfer to [route]: by its destination, or its tag where that is all it keeps. */
+    private fun UploadJob.matches(subject: UploadUnderTest, route: String, clauseId: String) =
+        destinationPath == subject.destination(route) || tag == key(clauseId)
 
     private suspend fun UploadUnderTest.presented(set: UploadJobSet, route: String): UploadJob? =
         upload.jobs(set).firstOrNull { it.destinationPath == destination(route) }
@@ -279,10 +336,215 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             assertNull(subject.objects.landed(route), "a deferred creation sends nothing")
         }
 
+        clause(
+            "TAKES_RESOURCES_AND_FILES_LANDS_BOTH",
+            UploadState.TAKES_RESOURCES_AND_FILES,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::accepts).with(UploadSourceKind.RESOURCE)
+                    answers(Upload::acceptsFiles).with(true)
+                    answers(Upload::create).with(UploadCreateOutcome.CREATED)
+                }
+            },
+        ) { subject ->
+            val id = "TAKES_RESOURCES_AND_FILES_LANDS_BOTH"
+            val file = assertNotNull(subject.fileSource, "a binding that reaches this state can make a file source")
+            assertEquals(UploadSourceKind.RESOURCE, subject.upload.accepts, "the library's own handle is what it takes")
+            assertTrue(
+                subject.upload.acceptsFiles,
+                "and a file too, so an encrypted event's upload can be sealed first",
+            )
+            val resource = path(id, ACCEPT, n = 1)
+            val sealed = path(id, ACCEPT, n = 2)
+            assertIs<UploadSource.Resource>(subject.usable(key(id, n = 1)), "what it takes is a resource")
+            assertEquals(
+                UploadCreateOutcome.CREATED,
+                subject.upload.create(subject.usable(key(id, n = 1)), subject.target(resource), key(id, n = 1)),
+            )
+            assertEquals(
+                UploadCreateOutcome.CREATED,
+                subject.upload.create(file(key(id, n = 2)), subject.target(sealed), key(id, n = 2)),
+            )
+            awaitWithin { subject.objects.landed(resource) != null && subject.objects.landed(sealed) != null }
+        }
+
+        clause(
+            "TAKES_FILES_LANDS_A_FILE",
+            UploadState.TAKES_FILES,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::accepts).with(UploadSourceKind.FILE)
+                    answers(Upload::acceptsFiles).with(true)
+                    answers(Upload::create).with(UploadCreateOutcome.CREATED)
+                }
+            },
+        ) { subject ->
+            val id = "TAKES_FILES_LANDS_A_FILE"
+            assertEquals(
+                UploadSourceKind.FILE,
+                subject.upload.accepts,
+                "the photo's bytes are exported to a file first",
+            )
+            assertTrue(subject.upload.acceptsFiles)
+            val source = subject.usable(key(id))
+            assertIs<UploadSource.File>(source, "what it takes is a file")
+            val route = path(id, ACCEPT)
+            assertEquals(UploadCreateOutcome.CREATED, subject.upload.create(source, subject.target(route), key(id)))
+            awaitWithin { subject.objects.landed(route) != null }
+        }
+
+        clause(
+            "TAKES_RESOURCES_ONLY_IS_NO_SEALED_UPLOAD",
+            UploadState.TAKES_RESOURCES_ONLY,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::accepts).with(UploadSourceKind.RESOURCE)
+                    answers(Upload::acceptsFiles).with(false)
+                }
+            },
+        ) { subject ->
+            assertEquals(UploadSourceKind.RESOURCE, subject.upload.accepts)
+            assertFalse(
+                subject.upload.acceptsFiles,
+                "only the library's own bytes, so the edge seals an encrypted event's",
+            )
+        }
+
+        clause(
+            "PRESENTS_WHEN_ASKED_REFUSES_A_JOB_IT_NEVER_PRESENTED",
+            UploadState.PRESENTS_WHEN_ASKED,
+            covers = cells {
+                on<Upload>().answers(Upload::acknowledge).with(ChangeOutcome.Refused::class)
+            },
+        ) { subject ->
+            val id = "PRESENTS_WHEN_ASKED_REFUSES_A_JOB_IT_NEVER_PRESENTED"
+            val never = UploadJob(
+                null,
+                key(id),
+                subject.destination(path(id, ACCEPT)),
+                CONTENT_TYPE,
+                UploadJobState.SUCCEEDED,
+                null,
+                null,
+            )
+            assertIs<ChangeOutcome.Refused>(
+                subject.upload.acknowledge(never),
+                "only a job the platform presented is owed an acknowledgement; another is refused, not taken as dealt with",
+            )
+        }
+
+        clause(
+            "RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED",
+            UploadState.RELAUNCHED_WITH_EVENTS,
+            covers = cells {
+                on<Upload> {
+                    calls(UploadHandlers::onBackgroundEvents, Completion::class)
+                    calls(UploadHandlers::onFinished, UploadJob::class)
+                    calls(UploadHandlers::onEventsDrained)
+                    handle<Completion>().answers(Completion::complete).returns()
+                }
+            },
+        ) { subject ->
+            val id = "RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED"
+            val relaunch = assertNotNull(subject.relaunch, "a binding that reaches this state holds the relaunch")
+            relaunch.deliver()
+            awaitWithin { relaunch.drains() > 0 }
+            val completion = assertNotNull(
+                relaunch.handedOver().singleOrNull(),
+                "the relaunch's completion is handed over once: ${relaunch.handedOver().size}",
+            )
+            val ended = subject.ended().filter { it.tag == relaunchedTag(id) }
+            assertEquals(
+                1,
+                ended.size,
+                "the transfer that ended while the app was gone is reported once, before the drain",
+            )
+            assertNotEquals(
+                UploadJobState.SUCCEEDED,
+                ended.single().state,
+                "a transfer the server refused is not a success",
+            )
+            completion.complete()
+            completion.complete()
+        }
+
+        clause(
+            "REPORTS_AS_IT_HAPPENS_AN_END_REACHES_THE_HANDLER",
+            UploadState.REPORTS_AS_IT_HAPPENS,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::listen).returns()
+                    answers(Upload::create).with(UploadCreateOutcome.CREATED)
+                    calls(UploadHandlers::onFinished, UploadJob::class)
+                }
+            },
+        ) { subject ->
+            val id = "REPORTS_AS_IT_HAPPENS_AN_END_REACHES_THE_HANDLER"
+            val route = path(id, ACCEPT)
+            assertEquals(
+                UploadCreateOutcome.CREATED,
+                subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)),
+            )
+            awaitWithin {
+                subject.ended().any { it.destinationPath == subject.destination(route) && it.state == UploadJobState.SUCCEEDED }
+            }
+            assertTrue(
+                subject.upload.jobs(UploadJobSet.TERMINAL).isEmpty(),
+                "told as it happened, so nothing is presented",
+            )
+        }
+
+        clause(
+            "REPORTS_AS_IT_HAPPENS_A_LIVE_TRANSFER_IS_CANCELLED_AND_NEVER_RETRIED",
+            UploadState.REPORTS_AS_IT_HAPPENS,
+            covers = cells {
+                on<Upload> {
+                    answers(Upload::create).with(UploadCreateOutcome.CREATED)
+                    answers(Upload::jobs).returns()
+                    answers(Upload::retry).with(ChangeOutcome.Refused::class)
+                    answers(Upload::cancel).with(ChangeOutcome.Applied::class)
+                    answers(Upload::cancel).with(ChangeOutcome.Refused::class)
+                }
+            },
+        ) { subject ->
+            val id = "REPORTS_AS_IT_HAPPENS_A_LIVE_TRANSFER_IS_CANCELLED_AND_NEVER_RETRIED"
+            val route = path(id, FixtureAnswer.Hold)
+            assertEquals(
+                UploadCreateOutcome.CREATED,
+                subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)),
+            )
+            awaitWithin { subject.upload.jobs(UploadJobSet.IN_FLIGHT).any { it.matches(subject, route, id) } }
+            val live = subject.upload.jobs(UploadJobSet.IN_FLIGHT).first { it.matches(subject, route, id) }
+            assertIs<ChangeOutcome.Refused>(
+                subject.upload.retry(live, subject.target(route)),
+                "a platform with no free retry refuses one: a failure is re-created instead",
+            )
+            assertEquals(ChangeOutcome.Applied, subject.upload.cancel(live), "a live transfer is stopped")
+            awaitWithin { subject.ended().any { it.destinationPath == subject.destination(route) } }
+            assertTrue(
+                subject.ended().none { it.destinationPath == subject.destination(route) && it.state == UploadJobState.SUCCEEDED },
+                "a stopped transfer is reported, and never as a success",
+            )
+            val never = UploadJob(
+                null,
+                key(id, n = 2),
+                subject.destination(route),
+                CONTENT_TYPE,
+                UploadJobState.PENDING,
+                null,
+                null,
+            )
+            assertIs<ChangeOutcome.Refused>(
+                subject.upload.cancel(never),
+                "a job the platform never made cannot be stopped",
+            )
+        }
+
         /*
          * The PRESENTED_* clauses act on a transfer the OS already settled — they create nothing, so none waits on an
-         * upload. A retry that then SUCCEEDS has no clause: production retries to the identical destination, and a
-         * fixture route answers one status for good (`TransferFixture`).
+         * upload. A retry is taken, and what it then does has no clause: production retries to the identical destination,
+         * and a fixture route answers one status for good (`TransferFixture`), so the retried transfer is refused again
+         * and presented as spent — which [UploadState.PRESENTED_RETRY_SPENT] holds.
          */
         clause(
             "PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED",
@@ -309,7 +571,10 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             "PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY",
             UploadState.PRESENTED_REFUSED_ONCE,
             covers = cells {
-                on<Upload>().answers(Upload::jobs).returns()
+                on<Upload> {
+                    answers(Upload::jobs).returns()
+                    answers(Upload::retry).with(ChangeOutcome.Applied::class)
+                }
             },
         ) { subject ->
             val id = "PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY"
@@ -320,6 +585,11 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             )
             assertNotEquals(UploadJobState.SUCCEEDED, offered.state, "a refused transfer is not a success")
             assertEquals(CONTENT_TYPE, offered.contentType, "a retried transfer keeps the type it was created with")
+            assertEquals(
+                ChangeOutcome.Applied,
+                subject.upload.retry(offered, subject.target(route)),
+                "the free retry it is offered is taken",
+            )
         }
 
         clause(

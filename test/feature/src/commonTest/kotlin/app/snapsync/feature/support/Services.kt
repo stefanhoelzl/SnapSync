@@ -9,7 +9,9 @@ import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.ConfigFileDecode
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
+import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.model.GalleryAccess
@@ -83,16 +85,16 @@ class RecordingFiles(
         area: FileArea,
         path: String,
         bytes: ByteArray,
-    ): FileResult<Unit> = inner.append(area, path, bytes)
-    override fun exists(area: FileArea, path: String): FileResult<Boolean> = inner.exists(area, path)
-    override fun locate(area: FileArea, path: String): FileResult<String> =
+    ): FileAccess<Unit> = inner.append(area, path, bytes)
+    override fun exists(area: FileArea, path: String): FileAccess<Boolean> = inner.exists(area, path)
+    override fun locate(area: FileArea, path: String): FileLocation<String> =
         if (path in unlocatable) FileResult.AreaUnavailable else inner.locate(area, path)
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = inner.move(area, from, to)
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = inner.adopt(osPath, area, to)
 
-    override fun list(area: FileArea, directory: String): FileResult<List<String>> = inner.list(area, directory)
+    override fun list(area: FileArea, directory: String): FileAccess<List<String>> = inner.list(area, directory)
 
-    override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> {
+    override fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> {
         record("write $path")
         return if (failWrites) FileResult.Failed("write failed on demand") else inner.write(area, path, bytes)
     }

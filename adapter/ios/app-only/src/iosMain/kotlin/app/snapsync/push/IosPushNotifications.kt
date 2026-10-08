@@ -74,6 +74,4 @@ private class PushCompletion(private val handler: () -> Unit) : Completion {
     override fun complete() {
         if (released.compareAndSet(expectedValue = false, newValue = true)) handler()
     }
-
-    override fun onExpired(action: () -> Unit) = Unit
 }

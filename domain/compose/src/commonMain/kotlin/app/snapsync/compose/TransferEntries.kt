@@ -51,7 +51,6 @@ class AppEvents internal constructor(private val core: AppCore) {
 internal fun downloadHandlersOf(core: AppCore): DownloadHandlers = DownloadHandlers(
     onFinished = { tag, facts, tempPath -> core.downloadJobs.onFinished(tag, facts, tempPath) },
     onCompleted = { tag, error -> core.downloadJobs.onCompleted(tag, error) },
-    onInvalidated = { core.downloadJobs.onInvalidated() },
     onBackgroundEvents = { completion ->
         core.onTransferEvents("download", TailTrigger.DOWNLOAD_SESSION_EVENTS) {
             core.downloadJobs.adoptBackgroundEvents(completion)

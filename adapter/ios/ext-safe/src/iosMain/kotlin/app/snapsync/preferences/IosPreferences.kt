@@ -12,9 +12,9 @@ import platform.Foundation.NSUserDefaults
  * unlock with no accessibility class to get wrong.
  *
  * `UserDefaults` reports no failure on a read or a write: a missing key is `nil`, and a write is accepted into the
- * suite's in-memory copy and persisted by the OS. So this adapter answers [PrefRead.Unavailable] only for a suite
- * it could not open, and [WriteOutcome.Failed] likewise — it has nothing else to report, and says so here rather
- * than inventing a failure it cannot observe.
+ * suite's in-memory copy and persisted by the OS. So this adapter answers [PrefRead.Unavailable] for a suite it could
+ * not open and for a value of a kind it never writes, and [WriteOutcome.Failed] only for the suite — it has nothing
+ * else to report, and says so here rather than inventing a failure it cannot observe.
  *
  * [suiteName] is the App Group in production; a test passes a suite of its own.
  */
@@ -28,7 +28,13 @@ class IosPreferences(suiteName: String) : Preferences {
 
     override fun get(key: String): PrefRead {
         val suite = defaults ?: return PrefRead.Unavailable(unavailable)
-        return suite.stringForKey(key)?.let { PrefRead.Value(it) } ?: PrefRead.Absent
+        // `objectForKey`, never `stringForKey`, which answers a number as its text: a value of a kind never written here
+        // is unreadable, and never absent.
+        return when (val held = suite.objectForKey(key)) {
+            null -> PrefRead.Absent
+            is String -> PrefRead.Value(held)
+            else -> PrefRead.Unavailable("'$key' holds a ${held::class.simpleName}, not a string")
+        }
     }
 
     override fun set(key: String, value: String): WriteOutcome {

@@ -15,6 +15,7 @@ import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.ImportRequest
@@ -1708,7 +1709,7 @@ class DownloadControllerTest {
 
     /** [inner], except that the staging directory cannot be listed — a permission the platform withdrew. */
     private class UnlistableStaging(private val inner: Files) : Files by inner {
-        override fun list(area: FileArea, directory: String): FileResult<List<String>> =
+        override fun list(area: FileArea, directory: String): FileAccess<List<String>> =
             FileResult.Denied("$directory is not readable")
     }
 

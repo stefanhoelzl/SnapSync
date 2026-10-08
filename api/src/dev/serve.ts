@@ -43,7 +43,7 @@ import { DEV_TOKEN_DEVICE_ID, devConfig } from "./config.ts";
 import { sqliteDb } from "./db-sqlite.ts";
 import { storeSink } from "../request-log-store.ts";
 import { replay } from "./replay.ts";
-import { fsFetch, withFcmPassthrough } from "./fs-storage.ts";
+import { fsFetch, localRevocations, withFcmPassthrough } from "./fs-storage.ts";
 import { startTunnel, type Tunnel } from "./tunnel.ts";
 
 const HOST_FILE = ".localdev/host";
@@ -121,6 +121,7 @@ const app = createApp({
   config,
   db,
   fetch: withFcmPassthrough(storage, config),
+  revocationFetch: localRevocations(config),
   logSink: storeSink(db),
 });
 

@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.model.Ack
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -144,9 +145,9 @@ internal class InMemoryBackend(
         Reply.Ok(EventRenamed(trimmed))
     }
 
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
-        held(BackendCall.JOIN, token, gated = true) {
-            if (state.offline) return@held offline()
+    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Ack<Unit> =
+        heldAck(BackendCall.JOIN, token) {
+            if (state.offline) return@heldAck offline()
             when (state.join(eventId, deviceId)) {
                 BackendState.JoinOutcome.NO_SUCH_EVENT -> notFound()
                 BackendState.JoinOutcome.FULL -> Reply.Refused(CONFLICT, "event full")
@@ -160,8 +161,8 @@ internal class InMemoryBackend(
         eventId: String,
         deviceId: String,
         manifest: DeviceManifest,
-    ): Reply<Unit> = gated(token) {
-        if (state.offline) return@gated offline()
+    ): Ack<Unit> = gatedAck(token) {
+        if (state.offline) return@gatedAck offline()
         when (state.publish(eventId, deviceId, manifest)) {
             BackendState.PublishOutcome.NO_SUCH_EVENT -> notFound()
             BackendState.PublishOutcome.NOT_A_MEMBER -> Reply.Refused(CONFLICT, "not a member")
@@ -171,10 +172,10 @@ internal class InMemoryBackend(
         }
     }
 
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
-        held(BackendCall.LEAVE, token, gated = true) {
-            if (state.offline) return@held offline()
-            if (eventId !in state.events) return@held notFound()
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Ack<Unit> =
+        heldAck(BackendCall.LEAVE, token) {
+            if (state.offline) return@heldAck offline()
+            if (eventId !in state.events) return@heldAck notFound()
             state.leave(eventId, deviceId)
             Reply.Ok(Unit)
         }
@@ -188,7 +189,7 @@ internal class InMemoryBackend(
         trigger: UnionTrigger,
     ): Reply<UnionPage> =
         state.locked {
-            refusal<UnionPage>(token, gated = true, online = true)?.let { return@locked it }
+            refusal(token, gated = true, online = true)?.let { return@locked it }
             state.unionReads[eventId] = (state.unionReads[eventId] ?: 0) + 1
             val reader = token?.substringBefore('.')
             val (union, position) = state.unionPage(eventId, cursor, reader, trigger.wire) ?: return@locked notFound()
@@ -221,8 +222,8 @@ internal class InMemoryBackend(
             Reply.Ok(state.storedFiles[eventId to deviceId].orEmpty().toList())
         }
 
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
-        gated(token) {
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Ack<Unit> =
+        gatedAck(token) {
             state.deviceConfigs[deviceId] = push
             state.deviceConfigWrites[deviceId] = (state.deviceConfigWrites[deviceId] ?: 0) + 1
             Reply.Ok(Unit)
@@ -238,6 +239,10 @@ internal class InMemoryBackend(
     private inline fun <T> gated(token: String?, crossinline answer: () -> Reply<T>): Reply<T> =
         state.locked { refusal(token, gated = true) ?: answer() }
 
+    /** [gated], for a route whose body is never read. */
+    private inline fun gatedAck(token: String?, crossinline answer: () -> Ack<Unit>): Ack<Unit> =
+        state.locked { refusal(token, gated = true) ?: answer() }
+
     /**
      * A route an operator can [hold][BackendCall]: refused as the route is, then — once [arrived] is recorded — the
      * hold waited on, then answered. Two locked steps with the wait between them, unlocked: the operator's release
@@ -251,13 +256,40 @@ internal class InMemoryBackend(
         checksSentToken: Boolean = false,
         crossinline arrived: () -> Unit = {},
         crossinline answer: () -> Reply<T>,
-    ): Reply<T> {
+    ): Reply<T> = heldAs(call, token, gated, online, checksSentToken, arrived, { it }, answer)
+
+    /** [held], for a route whose body is never read. */
+    private suspend inline fun heldAck(
+        call: BackendCall,
+        token: String?,
+        crossinline answer: () -> Ack<Unit>,
+    ): Ack<Unit> = heldAs(
+        call,
+        token,
+        gated = true,
+        online = false,
+        checksSentToken = false,
+        arrived = {},
+        { it },
+        answer,
+    )
+
+    private suspend inline fun <R : Reply<*>> heldAs(
+        call: BackendCall,
+        token: String?,
+        gated: Boolean,
+        online: Boolean,
+        checksSentToken: Boolean,
+        crossinline arrived: () -> Unit,
+        crossinline refused: (Reply.Refused) -> R,
+        crossinline answer: () -> R,
+    ): R {
         state.locked {
-            refusal<T>(token, gated, online, checksSentToken) ?: run {
+            refusal(token, gated, online, checksSentToken) ?: run {
                 arrived()
                 null
             }
-        }?.let { return it }
+        }?.let { return refused(it) }
         state.awaitRelease(call)
         return state.locked { answer() }
     }
@@ -267,12 +299,12 @@ internal class InMemoryBackend(
      * [gated] route is refused for a refused phone and checks its token; a public route that [checksSentToken] checks
      * only a token it is sent — the refusal of the phone is the gate's, which such a route never runs.
      */
-    private fun <T> refusal(
+    private fun refusal(
         token: String?,
         gated: Boolean = false,
         online: Boolean = false,
         checksSentToken: Boolean = false,
-    ): Reply<T>? {
+    ): Reply.Refused? {
         state.refusalFor(declared.value)?.let { return Reply.Refused(UPGRADE_REQUIRED, it) }
         return when {
             online && state.offline -> offline()
@@ -294,11 +326,11 @@ internal class InMemoryBackend(
         }
     }
 
-    private fun <T> notFound(): Reply<T> = Reply.Refused(NOT_FOUND, "not found")
+    private fun notFound(): Reply.Refused = Reply.Refused(NOT_FOUND, "not found")
 
-    private fun <T> closed(): Reply<T> = Reply.Refused(GONE, CLOSED_BODY)
+    private fun closed(): Reply.Refused = Reply.Refused(GONE, CLOSED_BODY)
 
-    private fun <T> offline(): Reply<T> = Reply.Refused(BAD_GATEWAY, "offline")
+    private fun offline(): Reply.Refused = Reply.Refused(BAD_GATEWAY, "offline")
 
     private fun parse(raw: String): Instant? = runCatchingCancellable { Instant.parse(raw) }.getOrNull()
 

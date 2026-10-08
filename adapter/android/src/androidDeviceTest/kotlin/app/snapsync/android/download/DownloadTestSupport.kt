@@ -4,6 +4,9 @@ import android.app.DownloadManager
 import android.os.ParcelFileDescriptor
 import androidx.test.platform.app.InstrumentationRegistry
 import app.snapsync.android.storage.context
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.concurrent.thread
 
 internal val downloadManager: DownloadManager get() = context.getSystemService(DownloadManager::class.java)
 
@@ -30,4 +33,18 @@ internal fun awaitBroadcastsIdle() {
     ParcelFileDescriptor.AutoCloseInputStream(
         automation.executeShellCommand("am wait-for-broadcast-idle"),
     ).use { it.readBytes() }
+}
+
+/**
+ * Whether the system's broadcast queue goes idle within [millis] — no broadcast of this app held open any more, so a
+ * completion broadcast's `goAsync` was finished.
+ */
+internal suspend fun broadcastsIdleWithin(millis: Long): Boolean {
+    // The shell's wait blocks its thread until the queue is idle, so it runs on one of its own the timeout can leave.
+    val idle = CompletableDeferred<Unit>()
+    thread(isDaemon = true) {
+        awaitBroadcastsIdle()
+        idle.complete(Unit)
+    }
+    return withTimeoutOrNull(millis) { idle.await() } != null
 }

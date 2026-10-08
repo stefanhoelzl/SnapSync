@@ -4,6 +4,7 @@ import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
+import app.snapsync.model.DumpHandOff
 import app.snapsync.model.DumpResult
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
@@ -128,7 +129,7 @@ class SentryCrashReporter : CrashReporter {
      * `beforeSend` before it runs (measured: `ScrubExemptionSdkTest`), which is what lets the handler read the
      * dump's exemption off the event.
      */
-    override suspend fun sendDump(dump: CrashEvent): DumpResult {
+    override suspend fun sendDump(dump: CrashEvent): DumpHandOff {
         if (!processStarted) return DumpResult.NotSent("the channel is not running")
         Sentry.captureMessage(dump.message.orEmpty()) { scope -> scope.carry(dump) }
         return DumpResult.Queued
