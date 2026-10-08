@@ -36,5 +36,7 @@ class ReplyTest {
     @Test
     fun an_unreachable_answer_names_its_cause() {
         assertEquals("Unreachable(offline)", Reply.Unreachable(offline).toString())
+        // A cause with no message still says what failed, by its type.
+        assertEquals("Unreachable(IllegalStateException)", Reply.Unreachable(IllegalStateException()).toString())
     }
 }

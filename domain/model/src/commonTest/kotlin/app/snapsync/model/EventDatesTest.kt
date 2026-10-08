@@ -56,6 +56,17 @@ class EventDatesTest {
     }
 
     @Test
+    fun `every role logs and goes on the wire as the canonical string it was built from`() {
+        val instant = "2026-07-06T14:32:11Z"
+        assertEquals(instant, "${CaptureDate(instant)}")
+        assertEquals(instant, captureCutoff(instant).iso)
+        assertEquals(instant, captureCeiling(instant).iso)
+        assertEquals(instant, eventStart(instant).iso)
+        assertEquals(instant, eventEnd(instant).iso)
+        assertEquals(instant, deletesAt(instant).iso)
+    }
+
+    @Test
     fun `a config written before the vocabulary existed still decodes`() {
         // The exact bytes an already-joined device has on disk: bare strings for every date.
         val persisted = """

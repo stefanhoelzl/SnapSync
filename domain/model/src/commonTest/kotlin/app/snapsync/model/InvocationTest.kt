@@ -128,4 +128,33 @@ class InvocationTest {
 
         assertEquals(listOf(false), inner.exited)
     }
+
+    @Test
+    fun `every severity a call site can choose carries through to both routine lines`() {
+        for (severity in Severity.entries) {
+            val captured = CapturingLogWriter()
+
+            logger(captured).invocation(RecordingScope(), "onWake", severity = severity) { }
+
+            assertEquals(listOf(severity, severity), captured.severities, "chosen: $severity")
+        }
+    }
+
+    @Test
+    fun `below the logger's minimum no line is written, and the call still runs and still throws`() {
+        // Kermit's level check is inlined into each routine line and into the failure line; a quiet logger
+        // must cost the call nothing but the lines.
+        val quiet = CapturingLogWriter()
+        val logger = Logger(StaticConfig(minSeverity = Severity.Assert, logWriterList = listOf(quiet)), "test")
+
+        for (severity in Severity.entries - Severity.Assert) {
+            assertEquals(
+                severity.name,
+                logger.invocation(RecordingScope(), "onWake", severity = severity) { severity.name },
+            )
+        }
+        assertFailsWith<IllegalStateException> { logger.invocation(RecordingScope(), "process") { error("boom") } }
+
+        assertEquals(emptyList(), quiet.lines)
+    }
 }

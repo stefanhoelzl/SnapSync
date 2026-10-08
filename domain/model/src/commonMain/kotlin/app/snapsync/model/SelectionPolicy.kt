@@ -114,11 +114,14 @@ class SelectionPolicy(val rules: List<SelectionRule>) {
      */
     val contributes: Boolean get() = rules.none { it.deniesEverything }
 
+    /**
+     * Value equality over the rules, written out rather than taken from a `data class`, whose `copy` would be a
+     * construction door the derivation does not guard. It is load-bearing: a library walk is reused only while the
+     * policy it was filtered by is equal to the current one.
+     */
     override fun equals(other: Any?): Boolean = other is SelectionPolicy && rules == other.rules
 
     override fun hashCode(): Int = rules.hashCode()
-
-    override fun toString(): String = "SelectionPolicy($rules)"
 }
 
 /**

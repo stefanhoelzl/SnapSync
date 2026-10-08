@@ -200,29 +200,14 @@ val NEEDS_JOB_STATES: List<LedgerState> = LedgerState.entries.filter { it.needsJ
  * resource row**: [pending] = photos with any non-`COMPLETED` resource, [completed] = photos whose
  * resources are all `COMPLETED`.
  */
-class LedgerAggregates(
+data class LedgerAggregates(
     val pending: Int,
     val completed: Int,
-) {
-    override fun equals(other: Any?): Boolean = other is LedgerAggregates &&
-        pending == other.pending && completed == other.completed
-
-    override fun hashCode(): Int = 31 * pending + completed
-
-    override fun toString(): String =
-        "LedgerAggregates(pending=$pending, completed=$completed)"
-}
+)
 
 /**
  * One outstanding resource: the [assetId] (photo) a non-`COMPLETED` [key] belongs to. The backlog
  * read returns these so a status projection can group outstanding resources by photo; the backend
  * never interprets them (it just reports the rows whose state is not `COMPLETED`).
  */
-class PendingResource(val assetId: AssetId, val key: String) {
-    override fun equals(other: Any?): Boolean =
-        other is PendingResource && assetId == other.assetId && key == other.key
-
-    override fun hashCode(): Int = 31 * assetId.hashCode() + key.hashCode()
-
-    override fun toString(): String = "PendingResource(assetId=$assetId, key=$key)"
-}
+data class PendingResource(val assetId: AssetId, val key: String)
