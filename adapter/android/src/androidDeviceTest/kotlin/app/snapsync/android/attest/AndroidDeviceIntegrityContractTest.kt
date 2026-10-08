@@ -5,10 +5,12 @@ import android.util.Log
 import app.snapsync.android.network.EmulatorNetwork
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
@@ -41,9 +43,9 @@ class AndroidDeviceIntegrityContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(DeviceIntegrityState.AVAILABLE)
 
-        override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> =
+        override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =
             if (state == DeviceIntegrityState.AVAILABLE) {
-                Entered.Ready(AndroidDeviceIntegrity())
+                Entered.Ready(AndroidDeviceIntegrity().recorded(log))
             } else {
                 Entered.Unreachable("key attestation exists in the one process Android has")
             }

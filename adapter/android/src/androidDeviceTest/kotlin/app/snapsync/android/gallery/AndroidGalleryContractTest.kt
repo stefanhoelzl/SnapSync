@@ -9,6 +9,7 @@ import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FolderAlbumContract
 import app.snapsync.contracts.FolderAlbumState
@@ -24,6 +25,7 @@ import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.SeededLibrary
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
@@ -63,7 +65,7 @@ class AndroidGalleryContractTest {
             GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY,
         )
 
-        override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
+        override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
             val date = PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate
             val ids: Set<AssetId> = when (state) {
                 GalleryReaderState.NO_GRANT ->
@@ -80,7 +82,7 @@ class AndroidGalleryContractTest {
                     MediaStoreSeeder.seed("Pictures/${GalleryReaderContract.title(clauseId)}/", date)
             }
             MediaStoreSeeder.grantFull()
-            val reader = AndroidGalleryReader(context, permission()::current)
+            val reader = AndroidGalleryReader(context, permission()::current).recorded(log)
             return Entered.Ready(SeededLibrary(reader, ids)) { MediaStoreSeeder.delete(ids) }
         }
     }
@@ -91,12 +93,12 @@ class AndroidGalleryContractTest {
         override val grant = GalleryAccess.GRANTED
         override val reaches = setOf(GalleryState.GRANTED)
 
-        override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
+        override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
             MediaStoreSeeder.grantFull()
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val created = mutableSetOf<AssetId>()
             val date = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate
-            val subject = GalleryChange(AndroidGallery(context, permission(), scope)) {
+            val subject = GalleryChange(AndroidGallery(context, permission(), scope).recorded(log)) {
                 created += MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, date, count = 1)
             }
             return Entered.Ready(subject) {
@@ -112,11 +114,11 @@ class AndroidGalleryContractTest {
         override val grant = GalleryAccess.GRANTED
         override val reaches = setOf(FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED)
 
-        override fun create(state: FolderAlbumState, clauseId: String): Entered<FolderAlbums> {
+        override fun create(state: FolderAlbumState, clauseId: String, log: CallLog): Entered<FolderAlbums> {
             MediaStoreSeeder.grantFull()
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val imported = mutableSetOf<AssetId>()
-            val gallery = AndroidGallery(context, permission(), scope).apply {
+            val gallery = AndroidGallery(context, permission(), scope).recorded(log).apply {
                 listen(
                     GalleryHandlers(
                         onChanged = {},
@@ -169,12 +171,12 @@ class AndroidGalleryContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(PhotoAccessState.GRANTED)
 
-        override fun create(state: PhotoAccessState, clauseId: String): Entered<PhotoAccess> {
+        override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
             if (state == PhotoAccessState.NO_GRANT) {
                 return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
             }
             MediaStoreSeeder.grantFull()
-            return Entered.Ready(PhotoAccess(permission()))
+            return Entered.Ready(PhotoAccess(permission().recorded(log)))
         }
     }
 

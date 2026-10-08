@@ -12,6 +12,7 @@ import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
@@ -23,6 +24,7 @@ import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
@@ -77,12 +79,14 @@ class AndroidWorkContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(WakeState.EMPTY)
 
-        override fun create(state: WakeState, clauseId: String): Entered<ScheduledWakes> {
-            val adapter = AndroidWake(context)
+        override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
+            val bare = AndroidWake(context)
+            val adapter = bare.recorded(log)
             WakeId.entries.forEach(adapter::cancel)
             val name = AndroidWake.nameOf(WakeId.Heartbeat)
+            // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.
             return Entered.Ready(ScheduledWakes(adapter) { pending(name) }) {
-                WakeId.entries.forEach(adapter::cancel)
+                WakeId.entries.forEach(bare::cancel)
             }
         }
     }
@@ -91,8 +95,8 @@ class AndroidWorkContractTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
-        override fun create(state: BackgroundTimeState, clauseId: String): Entered<BackgroundTime> =
-            Entered.Ready(AndroidBackgroundTime(context))
+        override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
+            Entered.Ready(AndroidBackgroundTime(context).recorded(log))
     }
 
     private val upload = object : Binding<UploadState, UploadUnderTest> {
@@ -100,7 +104,7 @@ class AndroidWorkContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP, UploadState.RESTRICTED_NETWORK)
 
-        override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
             if (state in UploadContract.PRESENTED) {
                 return Entered.Unreachable("Android reports every transfer's end as it happens; nothing is presented")
             }
@@ -109,13 +113,14 @@ class AndroidWorkContractTest {
             if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.enter()
             val seeded = mutableSetOf<AssetId>()
             val ended = Collections.synchronizedList(mutableListOf<UploadJob>())
-            val adapter = AndroidUpload(
+            val bare = AndroidUpload(
                 context,
                 AndroidBackgroundTime(context),
                 maxLive = CAP,
                 journalName = "contract.$clauseId",
                 unrestricted = awaitUnrestrictedNetwork(context),
             )
+            val adapter = bare.recorded(log)
             adapter.listen(
                 UploadHandlers(onFinished = {
                     ended += it
@@ -155,7 +160,8 @@ class AndroidWorkContractTest {
                     liftRestriction = { MeteredWifi.lift() },
                 ),
             ) {
-                runEntry { adapter.jobs(UploadJobSet.IN_FLIGHT).forEach { adapter.cancel(it) } }
+                // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.
+                runEntry { bare.jobs(UploadJobSet.IN_FLIGHT).forEach { bare.cancel(it) } }
                 MediaStoreSeeder.delete(seeded)
                 if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.lift()
             }

@@ -2,10 +2,12 @@ package app.snapsync.android.storage
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.PlatformDeviceIdContract
 import app.snapsync.contracts.PlatformDeviceIdState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.PlatformDeviceId
 import kotlin.test.Test
@@ -19,9 +21,9 @@ class AndroidPlatformDeviceIdContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(PlatformDeviceIdState.ANSWERING)
 
-        override fun create(state: PlatformDeviceIdState, clauseId: String): Entered<PlatformDeviceId> =
+        override fun create(state: PlatformDeviceIdState, clauseId: String, log: CallLog): Entered<PlatformDeviceId> =
             if (state == PlatformDeviceIdState.ANSWERING) {
-                Entered.Ready(AndroidPlatformDeviceId(context))
+                Entered.Ready(AndroidPlatformDeviceId(context).recorded(log))
             } else {
                 Entered.Unreachable("the platform answers ANDROID_ID for every app")
             }
