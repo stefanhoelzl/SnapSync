@@ -1,3 +1,5 @@
+import app.snapsync.buildlogic.SchemaStatementsTask
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
@@ -14,6 +16,25 @@ plugins {
 // withholding argument: it is the only module whose MAIN source set depends on `kotlin-test`, so no
 // production module's main code can assert.
 //
+// The statement lists `DatabasesContract`'s schema clauses run (`SchemaStatementsTask`): read from the SQLDelight
+// code `:domain:services` generates for its two databases, so a query added there is run here with nothing to
+// remember. A fixture per argument type; a type with none fails this task naming the statement.
+val generateSchemaStatements = tasks.register<SchemaStatementsTask>("generateSchemaStatements") {
+    dependsOn(":domain:services:generateSqlDelightInterface")
+    generatedCode.set(project(":domain:services").layout.buildDirectory.dir("generated/sqldelight/code"))
+    outputDir.set(layout.buildDirectory.dir("generated/schemaStatements/kotlin"))
+    packageName.set("app.snapsync.contracts")
+    fixtures.set(
+        mapOf(
+            "String" to "\"f\"",
+            "Long" to "1L",
+            "AssetId" to "AssetId(\"f\")",
+            "LedgerState" to "LedgerState.entries.first()",
+            "DownloadState" to "DownloadState.entries.first()",
+        ),
+    )
+}
+
 // `iosArm64` because the device app links it; `jvm` + `iosSimulatorArm64` because every binding's test
 // source set does. NOT INSTRUMENTED for coverage (`docs/architecture.md`): this is test equipment.
 kotlin {
@@ -22,15 +43,16 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generateSchemaStatements)
+        }
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
             // `DatabasesContract` brings its own schema and reads through the driver it is handed.
             implementation(libs.sqldelight.runtime)
-            // `SecureStoreContract` resolves through the identity service's one mint-once rule (`resolveOrMint`).
+            // The schema clauses (`SchemaClauses.kt`) run every statement through the databases' generated code.
             implementation(project(":domain:services"))
-            // `LedgerStoreContract` exercises the ledger through the one writer feature (`LedgerWriter`).
-            implementation(project(":domain:feature"))
             api(kotlin("test"))
             api(libs.coroutines.test)
             implementation(libs.coroutines.core)
