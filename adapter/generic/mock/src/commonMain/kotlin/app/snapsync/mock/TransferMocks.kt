@@ -90,6 +90,7 @@ class UploadQueueMock(
 
     private val face: Upload = object : Upload {
         override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
+        override val acceptsFiles: Boolean = false
 
         /** The queue raises no events: its terminal jobs are presented when asked, as PhotoKit's are. */
         override fun listen(handlers: UploadHandlers) = Unit
@@ -248,6 +249,7 @@ class UploadSessionMock(
 
     fun port(): Upload = object : Upload {
         override val accepts: UploadSourceKind = UploadSourceKind.FILE
+        override val acceptsFiles: Boolean = true
 
         override fun listen(handlers: UploadHandlers) {
             this@UploadSessionMock.handlers.set(handlers)

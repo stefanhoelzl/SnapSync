@@ -96,6 +96,7 @@ class EncryptedTransfersTest {
 
     /** A platform that takes [kind], and remembers what it was asked to send. */
     private class Platform(override val accepts: UploadSourceKind) : Upload {
+        override val acceptsFiles: Boolean = accepts == UploadSourceKind.FILE
         val created = mutableListOf<Pair<UploadSource, UploadTarget>>()
         val retried = mutableListOf<UploadTarget>()
         var offered: List<UploadJob> = emptyList()

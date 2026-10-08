@@ -53,6 +53,7 @@ class UploadTransferServiceTest {
 
     private class ScriptedUpload(
         override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE,
+        override val acceptsFiles: Boolean = accepts == UploadSourceKind.FILE,
         var terminal: List<UploadJob> = emptyList(),
         var offered: List<UploadJob> = emptyList(),
         var inFlight: List<UploadJob> = emptyList(),

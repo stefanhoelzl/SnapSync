@@ -18,6 +18,7 @@ class ExtensionCredentialTest {
         override fun keyId(): String? = "K"
         override fun setKeyId(keyId: String) = Unit
         override fun clearToken() { held = null }
+        override fun clearTokenIf(expected: String): Boolean = (token() == expected).also { if (it) held = null }
     }
 
     @Test
