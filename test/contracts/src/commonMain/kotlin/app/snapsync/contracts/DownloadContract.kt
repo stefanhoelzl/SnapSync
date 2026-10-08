@@ -8,8 +8,10 @@ import app.snapsync.model.TransferOutcome
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -25,6 +27,12 @@ enum class DownloadState {
      * Mode — which the binding can lift ([DownloadUnderTest.liftRestriction]).
      */
     RESTRICTED_NETWORK,
+
+    /**
+     * Any network, on a platform that delivers a finished transfer by waking the app — handing a completion it holds
+     * the wake open on — which the binding can see end once released ([DownloadUnderTest.wakeEnded]).
+     */
+    WAKES_TO_DELIVER,
 }
 
 /**
@@ -39,6 +47,11 @@ class DownloadUnderTest(
     val readTemp: (path: String) -> ByteArray?,
     /** Puts the device back on an unrestricted network; required of a binding that reaches [DownloadState.RESTRICTED_NETWORK]. */
     val liftRestriction: (suspend () -> Unit)? = null,
+    /**
+     * Whether the platform's delivery wake has ended — the system holds no wake of this app open any more; required of a
+     * binding that reaches [DownloadState.WAKES_TO_DELIVER].
+     */
+    val wakeEnded: (suspend () -> Boolean)? = null,
 )
 
 /** One thing the port told its owner, in the order it was told. */
@@ -55,8 +68,18 @@ sealed interface DownloadEvent {
  */
 class ClauseDownloadHandlers(private val readTemp: (String) -> ByteArray?) {
     private val log = AtomicReference<List<DownloadEvent>>(emptyList())
+    private val wakes = AtomicInt(0)
+    private val drains = AtomicInt(0)
 
     val events: List<DownloadEvent> get() = log.load()
+
+    /** How many delivery wakes the port handed over (each completion released at once), and how many drain reports. */
+    val wakesHandedOver: Int get() = wakes.load()
+    val drainsReported: Int get() = drains.load()
+
+    private fun count(counter: AtomicInt) {
+        counter.incrementAndFetch()
+    }
 
     private fun add(event: DownloadEvent) {
         while (true) {
@@ -68,9 +91,11 @@ class ClauseDownloadHandlers(private val readTemp: (String) -> ByteArray?) {
     val handlers = DownloadHandlers(
         onFinished = { tag, facts, tempPath -> add(DownloadEvent.Finished(tag, facts, readTemp(tempPath))) },
         onCompleted = { tag, error -> add(DownloadEvent.Completed(tag, error)) },
-        onInvalidated = {},
-        onBackgroundEvents = { completion: Completion -> completion.complete() },
-        onEventsDrained = {},
+        onBackgroundEvents = { completion: Completion ->
+            count(wakes)
+            completion.complete()
+        },
+        onEventsDrained = { count(drains) },
     )
 }
 
@@ -101,6 +126,39 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
     }
 
     override val clauses = clauses {
+
+        clause(
+            "WAKES_TO_DELIVER_A_FINISH_IS_DRAINED_AND_THE_WAKE_RELEASED",
+            DownloadState.WAKES_TO_DELIVER,
+            covers = cells {
+                on<Download> {
+                    calls(DownloadHandlers::onBackgroundEvents, Completion::class)
+                    calls(DownloadHandlers::onEventsDrained)
+                    handle<Completion>().answers(Completion::complete).returns()
+                }
+            },
+        ) { subject ->
+            val id = "WAKES_TO_DELIVER_A_FINISH_IS_DRAINED_AND_THE_WAKE_RELEASED"
+            val ended = assertNotNull(subject.wakeEnded, "a binding that reaches this state can see the wake end")
+            val owner = ClauseDownloadHandlers(subject.readTemp)
+            val download = subject.open()
+            download.listen(owner.handlers)
+            assertEquals(
+                StartResult.Started,
+                download.start(
+                    subject.base + path(id, FixtureAnswer.Respond(200, length = 64)),
+                    "d-$id",
+                    TransferNetwork.ANY,
+                ),
+            )
+            awaitWithin { owner.drainsReported > 0 }
+            assertTrue(owner.wakesHandedOver > 0, "the finish arrived in a wake, its completion handed over first")
+            assertTrue(
+                owner.events.any { it is DownloadEvent.Finished },
+                "and was delivered inside it, before the drain report",
+            )
+            awaitWithin { ended() }
+        }
 
         clause(
             "FINISH_REPORTS_THE_TRUE_FACTS_AND_THE_BODY",

@@ -104,6 +104,8 @@ class TransferContractBindingsTest {
         override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP, UploadState.RESTRICTED_NETWORK)
 
         override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+            // A state this host does not present: another platform's fact, or one no binding here enters.
+            if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
             if (state in UploadContract.PRESENTED) {
                 return Entered.Unreachable("the upload queue mock settles a transfer at once and presents none later")
             }
@@ -194,6 +196,8 @@ class TransferContractBindingsTest {
         override val reaches = setOf(DownloadState.READY, DownloadState.RESTRICTED_NETWORK)
 
         override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {
+            // A state this host does not present: another platform's fact, or one no binding here enters.
+            if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
             // The temporary files the mock hands over, as the network the binding plays filled them.
             val bodies = mutableMapOf<String, ByteArray>()
             var restricted = state == DownloadState.RESTRICTED_NETWORK

@@ -33,7 +33,6 @@ class EntryDispatchTest {
 
     private val completion = object : Completion {
         override fun complete() = Unit
-        override fun onExpired(action: () -> Unit) = Unit
     }
 
     @Test
@@ -68,7 +67,7 @@ class EntryDispatchTest {
         push.port().listen(
             PushHandlers(
                 onToken = { ran += "token ${it.value}" },
-                onTokenFailure = { ran += "failure ${it?.description}" },
+                onTokenFailure = { ran += "failure ${it.description}" },
                 onMessage = { message, done ->
                     ran += "message"
                     messages += message.payload to done
@@ -78,10 +77,9 @@ class EntryDispatchTest {
 
         push.operator.deliverToken("T1")
         push.operator.deliverTokenFailure("no network")
-        push.operator.deliverTokenFailure(null)
         push.operator.deliverMessage(mapOf("eventId" to "E"), completion)
 
-        assertEquals(listOf("token T1", "failure no network", "failure null", "message"), ran)
+        assertEquals(listOf("token T1", "failure no network", "message"), ran)
         assertEquals(mapOf<Any?, Any?>("eventId" to "E"), messages.single().first)
         assertSame(completion, messages.single().second, "the push's completion is handed over, not a stand-in")
     }

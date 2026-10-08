@@ -193,6 +193,7 @@ class ModuleSetTest {
             ":app:jvm",
             ":test:integration", ":test:architecture", ":test:harness-driver",
             ":tools:diagrams", ":tools:detekt-rules", ":test:edge", ":test:control", ":test:feature",
+            ":test:partial-grant", ":test:no-grant",
         )
     }
 }

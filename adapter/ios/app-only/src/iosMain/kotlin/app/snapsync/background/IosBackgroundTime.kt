@@ -64,12 +64,10 @@ internal object SystemBackgroundTimeApi : BackgroundTimeApi {
  * so a core that ends on more than one path (its work finished; an expiry stopped it) cannot end the task twice —
  * nor end a later task that reuses the identifier, which the platform recycles.
  *
- * WHAT IS CONTRACTED, AND WHAT CANNOT BE. `BackgroundTimeContract` runs live in the simulator app, where the app's
- * time is not up: a hold is granted, two holds do not refuse each other, and ending twice is quiet. No host lets a
- * binding enter "time is up" — the system fires the handler only after the app has been in the background as long
- * as it allows, which takes it away from the rig — so the expiry path is held by this module's tests over
- * [BackgroundTimeApi], and by nothing that ran on an operating system. Whether the handler fires in the simulator's
- * background-transfer relaunch setting is an open question of the design (`changes/own-work-per-wake`).
+ * WHAT IS CONTRACTED. `BackgroundTimeContract` runs live in the simulator app, where the app's time is not up: a
+ * hold is granted, two holds do not refuse each other, and ending twice is quiet. "Time is up" is recorded on the SE2
+ * sent to the home screen, at [BackgroundTimeApi] — the expiry delivered as an event — and replayed on every build. A
+ * refusal, which no host presents to a running app's first hold, is held by this module's tests over that seam.
  */
 class IosBackgroundTime internal constructor(
     private val log: Logger,

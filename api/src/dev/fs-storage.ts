@@ -30,6 +30,7 @@
 // real directories: a sibling `.type` file would surface as a phantom `BunnyEntry` in every listing.
 
 import { dirname, join, normalize, resolve, SEPARATOR } from "@std/path";
+import { REVOCATION_LIST_URL } from "../android-attest.ts";
 import type { Config } from "../config.ts";
 import type { BunnyEntry, FetchLike } from "../storage.ts";
 
@@ -199,4 +200,17 @@ export function withFcmPassthrough(inner: FetchLike, config: Config): FetchLike 
     `https://fcm.googleapis.com/v1/projects/${config.fcmProjectId}/messages:send`,
   ];
   return (url, init) => allowed.includes(url) ? fetch(url, init) : inner(url, init);
+}
+
+/**
+ * The rig's attestation status list, when it trusts any attestation (`any`): an empty one, answered here. The rig
+ * reaches no network but its loopback, and under that policy a chain proves nothing anyway, so nothing it holds is
+ * revoked. `undefined` otherwise — the app's default, the real list — which no filesystem deployment composes today.
+ */
+export function localRevocations(config: Config): FetchLike | undefined {
+  if (config.androidAttestationTrust !== "any") return undefined;
+  return (url, init) =>
+    url === REVOCATION_LIST_URL
+      ? Promise.resolve(Response.json({ entries: {} }))
+      : fetch(url, init);
 }

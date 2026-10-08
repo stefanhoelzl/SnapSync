@@ -37,11 +37,14 @@ flowchart LR
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
   test_launch_adapters[":test:launch-adapters"]
+  test_no_grant[":test:no-grant"]
+  test_partial_grant[":test:partial-grant"]
   test_rig[":test:rig"]
   tools_detekt_rules[":tools:detekt-rules"]
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
   ui_screens[":ui:screens"]
+  adapter_android --> domain_feature
   adapter_android --> domain_model
   adapter_android --> domain_ports
   adapter_android --> domain_presentation
@@ -182,6 +185,14 @@ flowchart LR
   test_launch_adapters --> domain_compose
   test_launch_adapters --> domain_model
   test_launch_adapters --> domain_ports
+  test_no_grant --> adapter_android
+  test_no_grant --> domain_model
+  test_no_grant --> domain_ports
+  test_no_grant --> test_contracts
+  test_partial_grant --> adapter_android
+  test_partial_grant --> domain_model
+  test_partial_grant --> domain_ports
+  test_partial_grant --> test_contracts
   test_rig --> adapter_android
   test_rig --> adapter_generic_app
   test_rig --> adapter_generic_mock

@@ -18,11 +18,8 @@ sealed interface Handoff {
     data class Refused(val reason: String) : Handoff
 }
 
-/**
- * A yes/no the platform may be unable to give (`docs/architecture.md`, "A read that can be unknown returns a sealed
- * result"): [UNKNOWN] is its own answer, never folded into either of the others.
- */
-enum class Availability { AVAILABLE, UNAVAILABLE, UNKNOWN }
+/** Whether something the platform guards can be reached right now — a read every platform can always make. */
+enum class Availability { AVAILABLE, UNAVAILABLE }
 
 /**
  * Records a hand-off to the platform that did not happen, and answers it unchanged. Nothing acts on a [Handoff], but a

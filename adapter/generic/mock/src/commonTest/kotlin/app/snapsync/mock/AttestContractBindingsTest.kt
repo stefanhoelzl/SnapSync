@@ -50,14 +50,17 @@ class AttestContractBindingsTest {
     private val store = object : Binding<AttestStoreState, AttestStore> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(AttestStoreState.EMPTY, AttestStoreState.HOLDING)
+        override val reaches = setOf(
+            AttestStoreState.EMPTY,
+            AttestStoreState.HOLDING,
+            AttestStoreState.HOLDING_CONTESTED,
+        )
 
         override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> = when (state) {
             AttestStoreState.INACCESSIBLE -> Entered.Unreachable("the in-memory store models no unreadable Keychain")
-            AttestStoreState.EMPTY -> Entered.Ready(inMemoryAttestStore().recorded(log))
-            AttestStoreState.HOLDING -> Entered.Ready(
-                inMemoryAttestStore(AttestStoreContract.seedToken(clauseId), AttestStoreContract.seedKeyId(clauseId))
-                    .recorded(log),
+            AttestStoreState.EMPTY -> Entered.Ready(inMemoryAttestStore())
+            AttestStoreState.HOLDING, AttestStoreState.HOLDING_CONTESTED -> Entered.Ready(
+                inMemoryAttestStore(AttestStoreContract.seedToken(clauseId), AttestStoreContract.seedKeyId(clauseId)),
             )
         }
     }
@@ -74,7 +77,11 @@ class AttestContractBindingsTest {
     private val cachedStore = object : Binding<AttestStoreState, AttestStore> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(AttestStoreState.EMPTY, AttestStoreState.HOLDING)
+        override val reaches = setOf(
+            AttestStoreState.EMPTY,
+            AttestStoreState.HOLDING,
+            AttestStoreState.HOLDING_CONTESTED,
+        )
 
         override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> =
             // The copy is the subject under contract, so it is the one recorded; the store behind it records nowhere.
@@ -93,7 +100,11 @@ class AttestContractBindingsTest {
         override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
 
         override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
-            Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)).recorded(log))
+            if (state in reaches) {
+                Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)))
+            } else {
+                Entered.Unreachable("the double accounts a footprint and is held available")
+            }
     }
 
     @Test

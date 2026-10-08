@@ -36,7 +36,7 @@ class PushHandlers(
     /** The platform issued (or re-delivered, or rotated) this device's token. */
     val onToken: (PushToken) -> Unit,
     /** The platform could not issue a token — no silent push will arrive until it can. */
-    val onTokenFailure: (PlatformError?) -> Unit,
+    val onTokenFailure: (PlatformError) -> Unit,
     /**
      * A silent push arrived; [completion] is released once the push's own work is done, or at once when the
      * process's background time is up — always, including for a payload no receiver can use.

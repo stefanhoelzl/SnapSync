@@ -1,0 +1,12 @@
+# contract: SharePresenter
+# host: IOS_DEVICE_APP
+# file: SharePresenter@IOS_DEVICE_APP.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-08T21:46:24Z
+# live PRESENTABLE_SHARE_IS_ACCEPTED: NotRunHere(this run is a background launch; PRESENTABLE runs live on the simulator app)
+# live NO_WINDOW_SHARE_IS_REFUSED: Passed
+[NO_WINDOW_SHARE_IS_REFUSED]
+present(text=https://snapsync.stho.net/join#contract title=Contract event) -> nothing on screen

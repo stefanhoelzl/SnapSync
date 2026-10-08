@@ -31,7 +31,7 @@ internal class AppUploader(private val core: AppCore) {
      * through the gallery port rather than the core's permission cell, which follows the platform rather than leading
      * it.
      */
-    private val grant = PhotoGrantRead { core.ports.gallery.access() }
+    private val grant: PhotoGrantRead get() = core.ports.gallery
 
     /** The attestation bearer every request carries, read per request from the core's attestation service. */
     private val token: suspend () -> String? = { core.attestation.token() }

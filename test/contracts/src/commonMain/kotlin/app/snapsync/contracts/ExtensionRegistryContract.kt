@@ -25,6 +25,9 @@ enum class ExtensionRegistryState {
 
     /** A partial (`.limited`) photo grant, whatever record exists. */
     UNDER_PARTIAL_GRANT,
+
+    /** On a platform with no OS-driven upload mechanism at all (Android; iOS below 26.1). */
+    NO_MECHANISM,
 }
 
 /**
@@ -39,13 +42,28 @@ enum class ExtensionRegistryState {
  *
  * Its recorded name is the port's old one, `UploadExtensionRegistry`: the adapter's operating-system calls did not
  * change when the port became [ExtensionRegistry] (phase 11f), so both grants' device recordings replay unedited. A
- * platform without the mechanism answers `Unsupported` with no operating-system call to record; that answer is pinned
- * beside each adapter.
+ * platform without the mechanism answers `Unsupported` with no operating-system call to record: its clause has a state
+ * of its own, [ExtensionRegistryState.NO_MECHANISM], which the recorded host never reaches.
  */
 object ExtensionRegistryContract :
     Contract<ExtensionRegistryState, ExtensionRegistry>("UploadExtensionRegistry") {
 
     override val clauses = clauses {
+
+        clause(
+            "NO_MECHANISM_IS_UNSUPPORTED_EITHER_WAY",
+            ExtensionRegistryState.NO_MECHANISM,
+            covers = cells {
+                on<ExtensionRegistry> {
+                    answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Unsupported::class)
+                    answers(ExtensionRegistry::isEnabled).with(RegistrationState.UNSUPPORTED)
+                }
+            },
+        ) { registry ->
+            assertEquals(RegistrationAnswer.Unsupported, registry.setEnabled(true), "nothing to register")
+            assertEquals(RegistrationAnswer.Unsupported, registry.setEnabled(false), "nor to deregister")
+            assertEquals(RegistrationState.UNSUPPORTED, registry.isEnabled(), "and no record to read back")
+        }
 
         clause(
             "ENABLE_CREATES_A_RECORD",

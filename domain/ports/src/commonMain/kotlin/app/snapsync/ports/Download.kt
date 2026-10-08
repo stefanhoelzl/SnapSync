@@ -15,8 +15,8 @@ import app.snapsync.model.TransferOutcome
  *
  * **It offers no way to destroy its session.** Creating a task on an invalidated `NSURLSession` raises an
  * Objective-C exception Kotlin/Native cannot catch, so a session destroyed as a means of cancelling would be a crash
- * waiting for the next reconcile. A session the *system* invalidates is reported ([DownloadHandlers.onInvalidated])
- * and rebuilt by the adapter on the next [start].
+ * waiting for the next reconcile. A session the *system* invalidates is rebuilt by the adapter on the next [start];
+ * each transfer it still held reports [DownloadHandlers.onCompleted], with an error.
  */
 interface Download : Listenable<DownloadHandlers> {
 
@@ -48,8 +48,6 @@ class DownloadHandlers(
     val onFinished: (tag: String, facts: TransferOutcome, tempPath: String) -> Unit,
     /** [tag]'s transfer ended — finished, failed or cancelled; [error] describes a failure. Its slot is free. */
     val onCompleted: (tag: String, error: String?) -> Unit,
-    /** The **system** invalidated the session (never the app): the next [Download.start] runs on a fresh one. */
-    val onInvalidated: () -> Unit,
     /**
      * The operating system relaunched (or woke) the app to deliver this session's events, handing [completion] — held
      * by the core across the wake's own work (staging what is delivered) and released after the drain report.

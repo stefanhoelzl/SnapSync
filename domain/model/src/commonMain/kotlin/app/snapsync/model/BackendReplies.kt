@@ -19,19 +19,25 @@ import kotlinx.serialization.Serializable
 sealed interface Reply<out T> {
 
     /** The backend served the call and its body read as [value]. */
-    data class Ok<out T>(val value: T) : Reply<T>
+    data class Ok<out T>(val value: T) : Ack<T>
 
     /** The backend answered, with a status that is not success. [body] is its text, verbatim. */
-    data class Refused(val status: Int, val body: String) : Reply<Nothing>
+    data class Refused(val status: Int, val body: String) : Ack<Nothing>
 
     /** The backend answered success with a body this build could not read. */
     data class Malformed(val detail: String) : Reply<Nothing>
 
     /** No answer: the request did not complete. */
-    class Unreachable(val cause: Throwable) : Reply<Nothing> {
+    class Unreachable(val cause: Throwable) : Ack<Nothing> {
         override fun toString(): String = "Unreachable(${cause.message ?: cause::class.simpleName})"
     }
 }
+
+/**
+ * A [Reply] whose body is never read — a route that answers only whether it served the call — so it is never
+ * [Reply.Malformed]: any success is [Reply.Ok].
+ */
+sealed interface Ack<out T> : Reply<T>
 
 /** The value of an [Reply.Ok], or `null` for every other answer. */
 fun <T> Reply<T>.okOrNull(): T? = (this as? Reply.Ok)?.value

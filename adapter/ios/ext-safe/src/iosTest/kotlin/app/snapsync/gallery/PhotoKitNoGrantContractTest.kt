@@ -35,11 +35,13 @@ class PhotoKitNoGrantContractTest {
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
-        override val reaches = setOf(GalleryReaderState.NO_GRANT)
+
+        // With no grant, the library refuses this process's writes too (measured on this host: `createAlbum` → null).
+        override val reaches = setOf(GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES)
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
-            if (state != GalleryReaderState.NO_GRANT || !holdsNoGrant()) return Entered.Unreachable(unreachable)
-            return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))
+            if (state !in reaches || !holdsNoGrant()) return Entered.Unreachable(unreachable)
+            return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract"))))
         }
     }
 

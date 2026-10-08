@@ -90,6 +90,17 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
         }
 
         clause(
+            "INACCESSIBLE_DELETE_REFUSES",
+            SecureStoreState.INACCESSIBLE,
+            covers = cells { on<SecureStore>().answers(SecureStore::delete).with(WriteOutcome.Failed::class) },
+        ) { store ->
+            assertIs<WriteOutcome.Failed>(
+                store.delete(slot("INACCESSIBLE_DELETE_REFUSES")),
+                "a store that cannot be reached cannot say the item is gone",
+            )
+        }
+
+        clause(
             "EMPTY_READ_IS_ABSENT",
             SecureStoreState.EMPTY,
             covers = cells {

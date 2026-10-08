@@ -9,6 +9,10 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
+import app.snapsync.contracts.PushNotificationsContract
+import app.snapsync.contracts.PushOs
+import app.snapsync.contracts.PushState
+import app.snapsync.contracts.PushUnderTest
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.PUSH_KIND_FCM
@@ -56,19 +60,54 @@ class AndroidPushTest {
     private val processInfo = object : Binding<ProcessInfoState, ProcessInfo> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(ProcessInfoState.UNLOCKED)
+        override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_NOT_ACCOUNTED)
 
         override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> = when (state) {
-            ProcessInfoState.UNLOCKED -> Entered.Ready(AndroidProcessInfo(context).recorded(log))
+            ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_NOT_ACCOUNTED -> Entered.Ready(
+                AndroidProcessInfo(context),
+            )
             ProcessInfoState.MEMORY_ACCOUNTED ->
                 Entered.Unreachable(
                     "Android accounts no footprint to the process: no process-metric provider reads one",
                 )
+            ProcessInfoState.LOCKED ->
+                Entered.Unreachable("a device test runs on an emulator unlocked since boot, its user's storage open")
         }
     }
 
     @Test
     fun `the process read satisfies the ProcessInfo contract`() = verify(ProcessInfoContract, processInfo)
+
+    /**
+     * The push entry against its contract: a build naming no Firebase project, and FCM's own entries — the messaging
+     * service's `onNewToken` and `onMessageReceived` — playing the service's side.
+     */
+    private val push = object : Binding<PushState, PushUnderTest> {
+        override val host = Host.ANDROID_EMU
+        override val kind = BindingKind.Live
+        override val reaches = setOf(PushState.NO_PUSH_PROJECT, PushState.DELIVERING)
+        override fun create(state: PushState, clauseId: String): Entered<PushUnderTest> {
+            val push = AndroidPushNotifications(context, FirebaseConfig("", "", "", ""))
+            val os = PushOs(
+                issueToken = { token ->
+                    @Suppress("DEPRECATION")
+                    SnapSyncMessagingService().onNewToken(token)
+                },
+                deliver = { data ->
+                    val message = RemoteMessage.Builder("sender@fcm.googleapis.com").apply {
+                        data.forEach { (key, value) -> addData(key, value) }
+                    }.build()
+                    val started = TimeSource.Monotonic.markNow()
+                    SnapSyncMessagingService().onMessageReceived(message)
+                    started.elapsedNow().inWholeMilliseconds < AndroidPushNotifications.MESSAGE_BUDGET_MILLIS
+                },
+            )
+            return Entered.Ready(PushUnderTest(push, os.takeIf { state == PushState.DELIVERING }))
+        }
+    }
+
+    @Test
+    fun `the push entry satisfies the PushNotifications contract`() = verify(PushNotificationsContract, push)
 
     @Test
     fun `the adapter speaks FCM`() {

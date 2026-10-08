@@ -113,9 +113,9 @@ fun pushHandlers(core: AppCore): PushHandlers {
                 core.services.pushTokens.deliver(token.value)
             }
         },
-        onTokenFailure = { error: PlatformError? ->
-            log.invocation(entry, "onPushTokenFailure", params = "error=${error.describe()}") {
-                log.w { "push registration failed — no silent pushes will arrive: ${error.describe()}" }
+        onTokenFailure = { error: PlatformError ->
+            log.invocation(entry, "onPushTokenFailure", params = "error=${error.description}") {
+                log.w { "push registration failed — no silent pushes will arrive: ${error.description}" }
             }
         },
         onMessage = { message: PushMessage, completion: Completion ->

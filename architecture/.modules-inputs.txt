@@ -29,11 +29,14 @@ module :test:feature
 module :test:harness-driver
 module :test:integration
 module :test:launch-adapters
+module :test:no-grant
+module :test:partial-grant
 module :test:rig
 module :tools:detekt-rules
 module :tools:diagrams
 module :ui:components
 module :ui:screens
+edge :adapter:android :domain:feature
 edge :adapter:android :domain:model
 edge :adapter:android :domain:ports
 edge :adapter:android :domain:presentation
@@ -174,6 +177,14 @@ edge :test:launch-adapters :adapter:generic:mock
 edge :test:launch-adapters :domain:compose
 edge :test:launch-adapters :domain:model
 edge :test:launch-adapters :domain:ports
+edge :test:no-grant :adapter:android
+edge :test:no-grant :domain:model
+edge :test:no-grant :domain:ports
+edge :test:no-grant :test:contracts
+edge :test:partial-grant :adapter:android
+edge :test:partial-grant :domain:model
+edge :test:partial-grant :domain:ports
+edge :test:partial-grant :test:contracts
 edge :test:rig :adapter:android
 edge :test:rig :adapter:generic:app
 edge :test:rig :adapter:generic:mock

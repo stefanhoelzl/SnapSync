@@ -148,8 +148,8 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
     }
 
     /** The push service could not issue a token. */
-    fun deliverTokenFailure(description: String?) =
-        mock.handlers.require("a token failure").onTokenFailure(description?.let(::PlatformError))
+    fun deliverTokenFailure(description: String) =
+        mock.handlers.require("a token failure").onTokenFailure(PlatformError(description))
 
     /** A silent push carrying [payload] arrived, handing [completion]. */
     fun deliverMessage(payload: Map<Any?, *>, completion: Completion) =

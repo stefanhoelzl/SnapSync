@@ -11,6 +11,7 @@ import app.snapsync.compose.ProcessServices
 import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.config.iosBootLines
+import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.crypto.IosCrypto
 import app.snapsync.databases.IosDatabases
 import app.snapsync.dates.IosDateFormatting
@@ -56,14 +57,10 @@ import app.snapsync.systemui.IosSystemUi
 import app.snapsync.time.SystemClock
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import platform.Foundation.NSOperatingSystemVersion
-import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSUserActivity
 import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
 
@@ -142,7 +139,7 @@ object SnapSyncRoot {
      * rig's switch, by the pure `extensionRegistrable` in `:domain model/`, re-evaluated at every transition;
      * the app's uploader runs on every OS, beside the extension.
      */
-    internal val osSupportsOsDrivenUpload: Boolean = backgroundUploadSupported()
+    internal val osSupportsOsDrivenUpload: Boolean = osCarriesOsDrivenUpload()
 
     // ── This process's REAL adapters. Declared ahead of [real] and [adapters]: a rig build's adapter set may touch one
     // while this object initializes (it quiets the real wake an adapter choice mocks), and a property further down would
@@ -609,17 +606,6 @@ object SnapSyncRoot {
         adapters.launch { composed }
         BackgroundSessions(uploadAdapter, downloadAdapter)
     }
-
-    /** Whether the iOS 26.1 background-upload API is present on this system. */
-    @OptIn(ExperimentalForeignApi::class)
-    private fun backgroundUploadSupported(): Boolean =
-        NSProcessInfo.processInfo.isOperatingSystemAtLeastVersion(
-            cValue<NSOperatingSystemVersion> {
-                majorVersion = 26
-                minorVersion = 1
-                patchVersion = 0
-            },
-        )
 }
 
 /**

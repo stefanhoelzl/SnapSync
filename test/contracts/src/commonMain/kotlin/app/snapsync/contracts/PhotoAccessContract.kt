@@ -12,6 +12,9 @@ enum class PhotoAccessState {
 
     /** A full grant. */
     GRANTED,
+
+    /** A partial grant: the member's selection of photos. */
+    PARTIAL,
 }
 
 /** The photo-access adapter as a clause receives it: the permission status. */
@@ -47,6 +50,16 @@ object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAcces
                 status == GalleryAccess.NOT_DETERMINED || status == GalleryAccess.DENIED,
                 "a process holding no grant reads undetermined or denied, got $status",
             )
+        }
+
+        clause(
+            "PARTIAL_READS_LIMITED",
+            PhotoAccessState.PARTIAL,
+            covers = cells {
+                on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.LIMITED)
+            },
+        ) { access ->
+            assertEquals(GalleryAccess.LIMITED, access.status.permission.value, "a partial grant is its own answer")
         }
 
         clause(

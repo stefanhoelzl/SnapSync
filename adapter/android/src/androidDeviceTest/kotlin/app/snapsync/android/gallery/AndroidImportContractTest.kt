@@ -19,6 +19,7 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.GalleryImportContract
 import app.snapsync.contracts.GalleryImportState
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.ImportDeliveries
 import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoLibrary
@@ -46,7 +47,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -75,7 +75,7 @@ class AndroidImportContractTest {
 
     private val foreground = ForegroundActivity(context.applicationContext as Application)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val markers = ConcurrentHashMap<AssetRef, MarkerState>()
+    private val deliveries = ImportDeliveries()
     private val created = mutableSetOf<Uri>()
     private val staging = File(context.filesDir, "contract-staging")
     private val albums = mutableListOf<String>()
@@ -85,9 +85,9 @@ class AndroidImportContractTest {
             listen(
                 GalleryHandlers(
                     onChanged = {},
-                    onImportPlaceholder = { ref, _ -> markers[ref] = MarkerState.RECORDED },
+                    onImportPlaceholder = deliveries.handlers.onImportPlaceholder,
                     onImportSettled = { ref, result ->
-                        markers[ref] = if (result is ImportResult.Imported) MarkerState.CONFIRMED else MarkerState.CLEARED
+                        deliveries.handlers.onImportSettled(ref, result)
                         if (result is ImportResult.Imported) created += uriOf(result.createdLocalId)
                     },
                 ),
@@ -137,7 +137,7 @@ class AndroidImportContractTest {
                 // which the contract's plain JPEG is — the DATE_MODIFIED the import stamped (seconds).
                 override suspend fun captureDate(id: AssetId): String? =
                     (dateTaken(id) ?: modified(id)?.times(MILLIS_PER_SECOND))?.let(::iso)
-                override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+                override val deliveries = this@AndroidImportContractTest.deliveries
 
                 // The column the gallery reader reports as the primary resource's original filename.
                 override suspend fun primaryFilename(id: AssetId): String? = column(
@@ -160,7 +160,7 @@ class AndroidImportContractTest {
                 ImportRequest(ref, listOf(stagedResource(fixture, type, fixture(fixture))), iso(CAPTURED), null),
             )
             val id = assertIs<ImportResult.Imported>(result, "$fixture imports").createdLocalId
-            assertEquals(MarkerState.CONFIRMED, markers[ref])
+            assertEquals(MarkerState.CONFIRMED, deliveries.marker(ref))
             assertEquals(MediaStoreImport.CAMERA_FOLDER, column(id, MediaStore.MediaColumns.RELATIVE_PATH), fixture)
             assertEquals(
                 ReceivedPhotoName.mark(fixture, "key-$fixture", ref),
@@ -192,7 +192,7 @@ class AndroidImportContractTest {
         val id = assertIs<ImportResult.Imported>(
             gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null)),
         ).createdLocalId
-        assertEquals(MarkerState.CONFIRMED, markers[ref])
+        assertEquals(MarkerState.CONFIRMED, deliveries.marker(ref))
         assertEquals(
             "image/jpeg",
             column(id, MediaStore.MediaColumns.MIME_TYPE),
@@ -277,7 +277,7 @@ class AndroidImportContractTest {
         ).createdLocalId
         assertContentEquals(still, bytesOf(id), "the still, unchanged")
         assertEquals(1, countNamed(ReceivedPhotoName.mark("$stem.JPG", "key-$stem.JPG", ref)), "once")
-        assertEquals(MarkerState.CONFIRMED, markers[ref])
+        assertEquals(MarkerState.CONFIRMED, deliveries.marker(ref))
     }
 
     @Test
@@ -351,7 +351,7 @@ class AndroidImportContractTest {
         )
         val failed = assertIs<ImportResult.Failed>(result)
         assertTrue(failed.consumedResources, "settled, never retried")
-        assertEquals(MarkerState.CLEARED, markers[ref])
+        assertIs<ImportResult.Failed>(deliveries.settled(ref), "the refusal is settled")
     }
 
     private fun ref(name: String) = AssetRef(

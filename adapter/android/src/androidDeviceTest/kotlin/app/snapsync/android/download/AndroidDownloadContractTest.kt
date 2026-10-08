@@ -64,7 +64,8 @@ class AndroidDownloadContractTest {
     private val download = object : Binding<DownloadState, DownloadUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(DownloadState.READY, DownloadState.RESTRICTED_NETWORK)
+        override val reaches =
+            setOf(DownloadState.READY, DownloadState.RESTRICTED_NETWORK, DownloadState.WAKES_TO_DELIVER)
 
         override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {
             removeAllDownloads()
@@ -76,6 +77,8 @@ class AndroidDownloadContractTest {
                     base = fixture(),
                     readTemp = { path -> runCatching { File(path).readBytes() }.getOrNull() },
                     liftRestriction = { MeteredWifi.lift() },
+                    // The completion broadcast is the wake: it is held (goAsync) until the delivery releases it.
+                    wakeEnded = { broadcastsIdleWithin(BROADCAST_IDLE_MILLIS) },
                 ),
             ) {
                 removeAllDownloads()
@@ -128,5 +131,8 @@ class AndroidDownloadContractTest {
         const val POLL_MILLIS = 200L
         const val HTTP_OK = 200
         const val MISSED_LENGTH = 256
+
+        /** Well under the receiver's own 50 s budget: a wake released at once is long over by then. */
+        const val BROADCAST_IDLE_MILLIS = 10_000L
     }
 }

@@ -7,7 +7,7 @@ import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
-import app.snapsync.ports.Completion
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
@@ -42,7 +42,7 @@ class IosWakeTest {
         }
     }
 
-    private class Released : Completion {
+    private class Released : ExpiringCompletion {
         var releases = 0
         override fun complete() {
             releases++

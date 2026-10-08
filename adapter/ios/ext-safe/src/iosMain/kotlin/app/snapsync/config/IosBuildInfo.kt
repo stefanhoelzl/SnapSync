@@ -9,7 +9,11 @@ import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.BuildInfo
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.cValue
 import platform.Foundation.NSBundle
+import platform.Foundation.NSOperatingSystemVersion
+import platform.Foundation.NSProcessInfo
 
 /**
  * The [BuildInfo] port over THIS process's bundle — the generated `Deployment.plist` both bundles carry and the
@@ -36,6 +40,23 @@ class IosBuildInfo(
         deviceDiagnosticEnvironment(uploadersCarried(osSupportsOsDrivenUpload))
     }
 }
+
+/**
+ * Whether this OS carries the OS-driven upload mechanism at all — the iOS 26.1 background-upload API. The app's root
+ * hands it to [IosBuildInfo] (the extension, which runs only where it is carried, hands `true`).
+ */
+@OptIn(ExperimentalForeignApi::class)
+fun osCarriesOsDrivenUpload(): Boolean =
+    NSProcessInfo.processInfo.isOperatingSystemAtLeastVersion(
+        cValue<NSOperatingSystemVersion> {
+            majorVersion = OS_DRIVEN_UPLOAD_MAJOR
+            minorVersion = OS_DRIVEN_UPLOAD_MINOR
+            patchVersion = 0
+        },
+    )
+
+private const val OS_DRIVEN_UPLOAD_MAJOR = 26L
+private const val OS_DRIVEN_UPLOAD_MINOR = 1L
 
 /**
  * An iOS process's boot banner (capability `privacy-security`, D5), the same shape in the app and the upload extension:

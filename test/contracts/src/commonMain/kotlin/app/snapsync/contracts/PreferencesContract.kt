@@ -4,6 +4,7 @@ import app.snapsync.model.PrefRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 /** The states the clause's key can be found in. */
 enum class PreferencesState {
@@ -12,6 +13,12 @@ enum class PreferencesState {
 
     /** [PreferencesContract.key] holds [PreferencesContract.seed]. */
     HOLDING,
+
+    /** [PreferencesContract.key] holds a value of a kind this port never writes — a number another writer left. */
+    FOREIGN,
+
+    /** [PreferencesContract.key] holds [PreferencesContract.seed], and the store refuses every write. */
+    UNWRITABLE,
 }
 
 /**
@@ -26,6 +33,32 @@ object PreferencesContract : Contract<PreferencesState, Preferences>("Preference
     fun seed(clauseId: String) = "value of $clauseId"
 
     override val clauses = clauses {
+
+        clause(
+            "FOREIGN_GET_IS_UNAVAILABLE_NEVER_ABSENT",
+            PreferencesState.FOREIGN,
+            covers = cells { on<Preferences>().answers(Preferences::get).with(PrefRead.Unavailable::class) },
+        ) { prefs ->
+            assertIs<PrefRead.Unavailable>(
+                prefs.get(key("FOREIGN_GET_IS_UNAVAILABLE_NEVER_ABSENT")),
+                "a value it cannot read is there, so never absent — and never a value it did not write",
+            )
+        }
+
+        clause(
+            "UNWRITABLE_A_REFUSED_WRITE_SAYS_SO",
+            PreferencesState.UNWRITABLE,
+            covers = cells {
+                on<Preferences> {
+                    answers(Preferences::set).with(WriteOutcome.Failed::class)
+                    answers(Preferences::remove).with(WriteOutcome.Failed::class)
+                }
+            },
+        ) { prefs ->
+            val k = key("UNWRITABLE_A_REFUSED_WRITE_SAYS_SO")
+            assertIs<WriteOutcome.Failed>(prefs.set(k, "changed"), "a write the store refused is not a write")
+            assertIs<WriteOutcome.Failed>(prefs.remove(k), "nor is a removal")
+        }
 
         clause(
             "EMPTY_GET_IS_ABSENT",

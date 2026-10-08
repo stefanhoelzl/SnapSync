@@ -3,6 +3,7 @@ package app.snapsync.mock
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
+import app.snapsync.model.DumpHandOff
 import app.snapsync.model.DumpResult
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
@@ -42,7 +43,7 @@ internal class InMemoryCrashReporter(
 
     override fun setContext(name: String, fields: Map<String, String>) = Unit
 
-    override suspend fun sendDump(dump: CrashEvent): DumpResult {
+    override suspend fun sendDump(dump: CrashEvent): DumpHandOff {
         if (!started.value) return DumpResult.NotSent("the channel is not running")
         // Nothing unshaped leaves: no handler, or a handler's null, sends nothing — as on the real channel.
         handlers?.onEvent?.invoke(dump)?.let { shaped -> dumps.value = dumps.value + shaped }

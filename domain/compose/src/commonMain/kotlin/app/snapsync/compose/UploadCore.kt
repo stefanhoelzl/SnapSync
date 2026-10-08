@@ -49,7 +49,7 @@ sealed interface UploaderProcess {
 
     /** The extension, admitting on its own [grant] read — a status read, never a request. */
     class Extension(private val grant: PhotoGrantRead) : UploaderProcess {
-        override fun admission() = extensionAdmission(grant.current())
+        override fun admission() = extensionAdmission(grant.access())
     }
 }
 

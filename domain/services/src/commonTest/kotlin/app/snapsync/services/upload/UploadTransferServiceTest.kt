@@ -7,7 +7,9 @@ import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
+import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.model.GalleryAccess
@@ -172,11 +174,11 @@ class UploadTransferServiceTest {
             else -> FileResult.NotFound
         }
         override fun exists(area: FileArea, path: String) = FileResult.Ok(path in files)
-        override fun locate(area: FileArea, path: String): FileResult<String> =
+        override fun locate(area: FileArea, path: String): FileLocation<String> =
             if (reachable) FileResult.Ok("/shared/$path") else FileResult.AreaUnavailable
         override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = FileResult.NotFound
         override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = FileResult.NotFound
-        override fun list(area: FileArea, directory: String): FileResult<List<String>> =
+        override fun list(area: FileArea, directory: String): FileAccess<List<String>> =
             if (reachable) {
                 FileResult.Ok(
                     (files + vanishing).filter { it.startsWith("$directory/") }.sorted(),

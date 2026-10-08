@@ -2,6 +2,7 @@ package app.snapsync.contracts
 
 import kotlinx.coroutines.test.runTest
 import kotlin.test.fail
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * Runs every clause of [contract] against [binding] and returns one result per clause, in contract order.
@@ -76,7 +77,14 @@ private inline fun classify(block: () -> Unit): Outcome =
     }
 
 private fun <K : Enum<K>, T> execute(clause: Clause<K, T>, subject: T): Outcome =
-    classify { runTest { clause.body(this, subject) } }
+    classify { runTest(timeout = CLAUSE_BOUND) { clause.body(this, subject) } }
+
+/**
+ * How long one clause may take in all. Longer than `runTest`'s minute because a clause may drive a real platform
+ * surface end to end — the Ui contract tours every control of a screen an emulator renders in software — while every
+ * wait on an operating-system callback inside it keeps its own real-time bound (`NotWithin`).
+ */
+private val CLAUSE_BOUND = 5.minutes
 
 /** One line per clause, in contract order — the table a failing run reports and a device run returns. */
 fun List<ClauseResult>.table(): String = joinToString("\n") { "${it.clauseId} ${it.outcome.render()}" }

@@ -68,7 +68,7 @@ class BackendEventJoin(private val backend: AuthenticatedBackend) : EventJoin {
                 HttpStatus.UNAUTHORIZED -> JoinResult.UNVERIFIED
                 else -> JoinResult.FAILED
             }
-            is Reply.Malformed, is Reply.Unreachable -> JoinResult.FAILED
+            is Reply.Unreachable -> JoinResult.FAILED
         }
 }
 
@@ -88,7 +88,7 @@ class BackendManifestPublisher(private val backend: AuthenticatedBackend) : Mani
             is Reply.Refused ->
                 reply.status == HttpStatus.GONE ||
                     (reply.status == HttpStatus.CONFLICT && CLOSED_MARK in reply.body)
-            is Reply.Malformed, is Reply.Unreachable -> false
+            is Reply.Unreachable -> false
         }
 
     private companion object {

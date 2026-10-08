@@ -3,6 +3,7 @@
 package app.snapsync.download
 
 import app.snapsync.ios.upload.applyTransferNetwork
+import app.snapsync.ios.urlsession.MainThreadRelease
 import app.snapsync.ios.urlsession.SessionCompletion
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.logging.invocation
@@ -53,8 +54,9 @@ const val DOWNLOAD_SESSION_ID = "app.snapsync.download.bg"
  * window, the tag codec and the staging path are the download feature's.
  *
  * **It never invalidates the session.** Cancellation is [cancelAll], task by task; the session outlives every leave.
- * If the *system* invalidates it, the handlers are told and the next [start] builds a fresh one — creating a task on an
- * invalidated session raises an `NSException` Kotlin/Native cannot catch.
+ * If the *system* invalidates it, every transfer it still held is reported completed with an error — as a cancelled one
+ * is — and the next [start] builds a fresh session: creating a task on an invalidated session raises an `NSException`
+ * Kotlin/Native cannot catch.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosDownload(private val log: Logger = Logger.withTag("Download")) : Download {
@@ -65,6 +67,9 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
     private val current = AtomicReference<NSURLSession?>(null)
 
     private val delegate = Delegate(this)
+
+    /** The tags of the transfers started or reported here and not yet completed — what an invalidation ends. */
+    private val open = AtomicReference<Set<String>>(emptySet())
 
     override fun listen(handlers: DownloadHandlers) {
         this.handlers.store(handlers)
@@ -94,6 +99,7 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
         val request = NSMutableURLRequest(uRL = nsUrl).apply { applyTransferNetwork(network) }
         val task = session().downloadTaskWithRequest(request)
         task.taskDescription = tag
+        update { it + tag }
         task.resume()
         return StartResult.Started
     }
@@ -120,9 +126,9 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
         val registered = handlers.load()
         if (registered == null) {
             log.e { "download session events arrived before the composition listened — released at once" }
-            SessionCompletion(completion).complete()
+            SessionCompletion(completion, MainThreadRelease).complete()
         } else {
-            registered.onBackgroundEvents(SessionCompletion(completion))
+            registered.onBackgroundEvents(SessionCompletion(completion, MainThreadRelease))
         }
         session()
         Unit
@@ -130,6 +136,7 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
 
     private fun onFinished(task: NSURLSessionDownloadTask, location: NSURL) {
         val tag = task.taskDescription ?: return
+        update { it + tag }
         val temp = location.path ?: return
         handlers.load()?.onFinished?.invoke(tag, outcomeOf(task, temp), temp)
             ?: log.e { "download $tag finished before the composition listened — its bytes are downloaded again later" }
@@ -156,13 +163,26 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
 
     private fun onComplete(task: NSURLSessionTask, error: NSError?) {
         val tag = task.taskDescription ?: return
+        update { it - tag }
         handlers.load()?.onCompleted?.invoke(tag, error?.localizedDescription)
     }
 
-    /** The system invalidated [session] (we never do): forget it, so the next transfer builds a fresh one. */
-    private fun onInvalidated(session: NSURLSession) {
+    /**
+     * The system invalidated [session] (we never do): forget it, so the next transfer builds a fresh one, and end every
+     * transfer it still held — each reported completed with an error, as a cancelled one is, so its slot is free.
+     */
+    private fun onInvalidated(session: NSURLSession, error: NSError?) {
         current.compareAndSet(session, null)
-        handlers.load()?.onInvalidated?.invoke()
+        val ended = open.exchange(emptySet())
+        val reason = "the session was invalidated by the system: ${error?.localizedDescription ?: "no error"}"
+        ended.forEach { tag -> handlers.load()?.onCompleted?.invoke(tag, reason) }
+    }
+
+    private fun update(change: (Set<String>) -> Set<String>) {
+        while (true) {
+            val now = open.load()
+            if (open.compareAndSet(now, change(now))) return
+        }
     }
 
     private fun onEventsFinished() {
@@ -210,7 +230,7 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
         override fun URLSession(session: NSURLSession, didBecomeInvalidWithError: NSError?) =
             objcBoundary(download.log, "download.didBecomeInvalid") {
                 download.log.w { "background session invalidated by the system: ${didBecomeInvalidWithError?.localizedDescription}" }
-                download.onInvalidated(session)
+                download.onInvalidated(session, didBecomeInvalidWithError)
             }
 
         // Session-level, not per-task: INFO.

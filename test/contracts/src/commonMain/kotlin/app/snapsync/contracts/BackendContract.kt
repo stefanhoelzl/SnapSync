@@ -50,6 +50,22 @@ enum class BackendState {
      * settled — so the event waits for the device alone.
      */
     ENDED_BESIDE_A_SETTLED_MEMBER,
+
+    /** No backend at the address: nothing listens there, so no request completes. */
+    NO_BACKEND,
+
+    /**
+     * A server that answers every route with success and bytes no backend version this build speaks would send — a
+     * wire fixture, standing in for a backend of another version; what is judged is only what the client's decoding
+     * makes of the bytes (`docs/testing.md`, "Hosts").
+     */
+    UNREADABLE_SUCCESS,
+
+    /**
+     * A backend that accepts a software Android key attestation (the local rig's `any` policy), and a key the binding
+     * can attest and sign with ([EdgeSubject.attester]).
+     */
+    ATTESTABLE,
 }
 
 /**
@@ -77,7 +93,12 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
 
     /** Enters [state] on the backend [setup] drives. Bindings call exactly this. */
     suspend fun seed(state: BackendState, clauseId: String, setup: BackendSetup): Seeded = when (state) {
-        BackendState.SERVING, BackendState.NO_SUCH_EVENT -> Seeded(
+        BackendState.SERVING,
+        BackendState.NO_SUCH_EVENT,
+        BackendState.NO_BACKEND,
+        BackendState.UNREADABLE_SUCCESS,
+        BackendState.ATTESTABLE,
+        -> Seeded(
             eventId = setup.freshId(),
             deviceId = setup.freshId(),
         )
@@ -133,5 +154,6 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
         listingClauses()
         attestClauses()
         completionClauses()
+        transportClauses()
     }
 }

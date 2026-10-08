@@ -311,6 +311,8 @@ val detektTierOf: Map<String, String> = mapOf(
     ":test:architecture" to "tests",
     ":test:integration" to "tests",
     ":test:feature" to "tests",
+    ":test:partial-grant" to "tests",
+    ":test:no-grant" to "tests",
 )
 
 /** The `src` directory of every subproject in a tier, read from the live project model. */

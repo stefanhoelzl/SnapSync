@@ -1,6 +1,8 @@
 package app.snapsync.ports
 
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
+import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 
@@ -16,7 +18,8 @@ import app.snapsync.model.FileTail
  *
  * Every answer is a [FileResult] that keeps "not there" and "could not look" apart. [FileResult.NotFound] is a
  * definite absence and nothing else: an unreadable file is [FileResult.Denied] or [FileResult.Failed], never
- * absent — a config file read as absent is a leave.
+ * absent — a config file read as absent is a leave. A member for which absence is no outcome answers the narrower
+ * [FileAccess] (or [FileLocation]), so it cannot say [FileResult.NotFound] at all.
  *
  * Writes create missing parent directories, replace atomically, and leave the file readable while the device is
  * locked after its first unlock (the upload extension runs there).
@@ -40,23 +43,23 @@ interface Files : Port {
     fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray>
 
     /** Replace the file with [bytes], atomically, creating its parent directories. */
-    fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit>
+    fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit>
 
     /**
      * Add [bytes] to the end of the file, creating it — and its parent directories — when missing. NOT atomic: how a
      * file too large to hold is written piece by piece, so a caller builds it under a name of its own and [move]s it
      * into place once it is whole.
      */
-    fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit>
+    fun append(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit>
 
     /** Remove the file. [FileResult.NotFound] when there was nothing to remove. */
     fun delete(area: FileArea, path: String): FileResult<Unit>
 
     /** Whether the file exists. A lookup that could not be made is never `false`. */
-    fun exists(area: FileArea, path: String): FileResult<Boolean>
+    fun exists(area: FileArea, path: String): FileAccess<Boolean>
 
     /** The platform path of [path] in [area], for a platform API that must be handed a file. Nothing is created. */
-    fun locate(area: FileArea, path: String): FileResult<String>
+    fun locate(area: FileArea, path: String): FileLocation<String>
 
     /**
      * Move [from] to [to] within [area], replacing whatever [to] held and creating its parent directories.
@@ -77,5 +80,5 @@ interface Files : Port {
      * `directory/`), sorted. A directory that does not exist holds no files: an empty list, never
      * [FileResult.NotFound]. A directory that could not be read is never empty.
      */
-    fun list(area: FileArea, directory: String): FileResult<List<String>>
+    fun list(area: FileArea, directory: String): FileAccess<List<String>>
 }

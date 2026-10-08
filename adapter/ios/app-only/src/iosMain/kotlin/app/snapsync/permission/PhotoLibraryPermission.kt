@@ -100,11 +100,13 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
      * need"). It lives in this adapter because the same object already presents the permission dialog, and the
      * picker is the second face of that one need; [IosGallery] exposes it as `widenSelection`.
      *
-     * Answers the grant once the picker is presented: PhotoKit reports the resulting selection through the
-     * library change observer, never through a completion handler here.
+     * Answers the grant once the picker is presented — presented only under a partial grant, the one with a selection
+     * to revise: PhotoKit reports the resulting selection through the library change observer, never through a
+     * completion handler here.
      */
     suspend fun widenSelection(): GalleryAccess {
-        presentPicker()
+        // Only a partial grant has a selection to revise: under any other the picker has nothing to offer.
+        if (read() == GalleryAccess.LIMITED) presentPicker()
         return read()
     }
 

@@ -9,6 +9,7 @@ import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
@@ -32,28 +33,28 @@ class CoversTest {
             on<SecureStore>().answers(SecureStore::read).with(SecureStoreRead.Unavailable::class)
             on<AttestStore>().answers(AttestStore::token).throws()
             on<Backend>().answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
-            on<PhotoGrantRead>().answers(PhotoGrantRead::current).with(GalleryAccess.LIMITED)
+            on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.LIMITED)
             on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
             on<LibraryChangeTokenRead>().answers(LibraryChangeTokenRead::changeToken).with(null)
             on<Lifecycle>().calls(LifecycleHandlers::onForeground)
             on<Download>().calls(DownloadHandlers::onCompleted, String::class, null)
             on<BackgroundTime>().callsBack(BackgroundTime::begin, "onExpiry")
             on<Wake>().handle<Completion>().answers(Completion::complete).returns()
-            on<Download> { handle<Completion>().callsBack(Completion::onExpired, "action") }
+            on<Wake> { handle<ExpiringCompletion>().callsBack(ExpiringCompletion::onExpired, "action") }
         }
         assertEquals(
             listOf(
                 "SecureStore.read → SecureStoreRead.Unavailable",
                 "AttestStore.token → throws",
                 "Backend.challenge → Reply.Ok",
-                "PhotoGrantRead.current → GalleryAccess.LIMITED",
+                "PhotoGrantRead.access → GalleryAccess.LIMITED",
                 "PhotoAccessStatusSource.permission → GalleryAccess.DENIED",
                 "LibraryChangeTokenRead.changeToken → null",
                 "Lifecycle.handlers.onForeground()",
                 "Download.handlers.onCompleted(String, null)",
                 "BackgroundTime.begin.onExpiry()",
                 "Wake.Completion.complete → returns",
-                "Download.Completion.onExpired.action()",
+                "Wake.ExpiringCompletion.onExpired.action()",
             ),
             covers.cells,
         )

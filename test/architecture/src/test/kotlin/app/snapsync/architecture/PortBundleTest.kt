@@ -45,6 +45,7 @@ class PortBundleTest {
     /** Interfaces in `:domain:ports` that are NOT ports — each a handle or a value a port hands over. */
     private val notPorts = mapOf(
         "Completion" to "the OS's completion handler for one delivery, handed to the core with it — a handle, not a seam",
+        "ExpiringCompletion" to "a wake's completion handler, which the OS may end early — a handle, not a seam",
         "BackgroundTimeHold" to "one hold on the process's background time, answered by the BackgroundTime port",
         "LibraryChangeToken" to "an opaque value the gallery answers and is later handed back — a value, not a seam",
         "DbOpen" to "the result of opening a database — a sealed answer the Databases port returns",

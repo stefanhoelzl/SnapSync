@@ -7,14 +7,17 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
+import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.PhotoGrantRead
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The states a [GalleryReader]'s library can be found in, as far as a clause cares. */
@@ -46,6 +49,12 @@ enum class GalleryReaderState {
      * platform whose default gallery is narrower than its library (Android: outside `DCIM`). On iOS the library IS it.
      */
     GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY,
+
+    /** [GRANTED_SEEDED], and a place the clause may have the library export a resource to ([SeededLibrary.files]). */
+    GRANTED_SEEDED_EXPORTING,
+
+    /** A library that refuses this process's writes — iOS, to a process it has refused photo access. */
+    REFUSING_WRITES,
 }
 
 /**
@@ -83,8 +92,8 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             GalleryReaderState.NO_GRANT,
             covers = cells {
                 oneOf {
-                    on<GalleryReader>().answers(GalleryReader::access).with(GalleryAccess.NOT_DETERMINED)
-                    on<GalleryReader>().answers(GalleryReader::access).with(GalleryAccess.DENIED)
+                    on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.NOT_DETERMINED)
+                    on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.DENIED)
                 }
                 on<GalleryReader> {
                     answers(GalleryReader::assets).with(GalleryRead.NotReadable::class)
@@ -92,6 +101,8 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
                     answers(GalleryReader::resources).with(GalleryRead.NotReadable::class)
                     answers(GalleryReader::albums).with(GalleryRead.NotReadable::class)
                     answers(GalleryReader::albumsById).with(GalleryRead.NotReadable::class)
+                    answers(GalleryReader::libraryAssets).with(GalleryRead.NotReadable::class)
+                    answers(GalleryReader::albumMembers).with(GalleryRead.NotReadable::class)
                 }
             },
         ) { seeded ->
@@ -108,6 +119,50 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.NotReadable, gallery.resources(absent))
             assertEquals(GalleryRead.NotReadable, gallery.albums(), "an album fetch while undetermined raises a dialog")
             assertEquals(GalleryRead.NotReadable, gallery.albumsById(setOf(absentAlbumId(clauseId))))
+            assertEquals(GalleryRead.NotReadable, gallery.libraryAssets(policy(clauseId)), "nor is the wider library")
+            assertEquals(GalleryRead.NotReadable, gallery.albumMembers(absentAlbumId(clauseId), since = null))
+        }
+
+        clause(
+            "EXPORTING_A_RESOURCE_WRITES_ITS_BYTES_AND_A_FOREIGN_ONE_FAILS",
+            GalleryReaderState.GRANTED_SEEDED_EXPORTING,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::resources).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::export).with(WriteOutcome.Ok::class)
+                    answers(GalleryReader::export).with(WriteOutcome.Failed::class)
+                }
+            },
+        ) { seeded ->
+            val files =
+                assertNotNull(seeded.files, "a binding that reaches this state gives the clause a place to write")
+            val read = assertIs<GalleryRead.Read<List<RawAsset>>>(seeded.port.resources(seeded.ids))
+            val asset = read.value.first()
+            val raw = asset.rawResources.first { it.role == ResourceRole.PRIMARY }
+            val resource = Resource(raw.originalFilename, asset.assetId, raw.mimeContentType, emptyMap(), raw.handle)
+            val to = files.pathOf("exported.bin")
+            assertEquals(WriteOutcome.Ok, seeded.port.export(resource, to), "the library's own resource exports")
+            assertTrue((files.read(to)?.size ?: 0) > 0, "and its bytes are at the path it was given")
+            val foreign = files.pathOf("foreign.bin")
+            assertIs<WriteOutcome.Failed>(
+                seeded.port.export(
+                    Resource("IMG_0001.JPG", asset.assetId, "image/jpeg", emptyMap(), "not a handle"),
+                    foreign,
+                ),
+                "a resource that is not the library's own handle cannot be produced",
+            )
+            assertNull(files.read(foreign), "and nothing is left where it was to go")
+        }
+
+        clause(
+            "REFUSING_WRITES_AN_ALBUM_NOT_CREATED_IS_NO_ID",
+            GalleryReaderState.REFUSING_WRITES,
+            covers = cells { on<GalleryReader>().answers(GalleryReader::createAlbum).with(null) },
+        ) { seeded ->
+            assertNull(
+                seeded.port.createAlbum(title("REFUSING_WRITES_AN_ALBUM_NOT_CREATED_IS_NO_ID")),
+                "an album the library refused to create is no id: nothing could be filed into it",
+            )
         }
 
         clause(
@@ -125,7 +180,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             "GRANTED_READS_GRANTED",
             GalleryReaderState.GRANTED_EMPTY_WINDOW,
             covers = cells {
-                on<GalleryReader>().answers(GalleryReader::access).with(GalleryAccess.GRANTED)
+                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.GRANTED)
             },
         ) { seeded ->
             assertEquals(GalleryAccess.GRANTED, seeded.port.access())

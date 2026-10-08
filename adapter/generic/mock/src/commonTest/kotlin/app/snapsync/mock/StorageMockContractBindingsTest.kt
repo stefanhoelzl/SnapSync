@@ -24,21 +24,26 @@ class StorageMockContractBindingsTest {
         override val kind = BindingKind.Fake
         override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED, FilesState.UNAVAILABLE)
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
-            // The double holds paths, not directories, so there is none to deny.
-            if (state == FilesState.DENIED_DIRECTORY) return Entered.Unreachable("the double holds no directories")
             val path = FilesContract.path(clauseId)
-            return Entered.Ready(
-                when (state) {
-                    FilesState.EMPTY -> inMemoryFiles()
-                    FilesState.HOLDING -> inMemoryFiles(shared = mutableMapOf(path to FilesContract.seed(clauseId)))
-                    FilesState.DENIED -> inMemoryFiles(
+            return when (state) {
+                FilesState.EMPTY -> Entered.Ready(inMemoryFiles())
+                FilesState.HOLDING -> Entered.Ready(
+                    inMemoryFiles(shared = mutableMapOf(path to FilesContract.seed(clauseId))),
+                )
+                FilesState.DENIED -> Entered.Ready(
+                    inMemoryFiles(
                         shared = mutableMapOf(path to FilesContract.seed(clauseId)),
                         denied = setOf(FileArea.SHARED to path),
-                    )
-                    FilesState.UNAVAILABLE -> inMemoryFiles(shared = null)
-                    FilesState.DENIED_DIRECTORY -> error("returned Unreachable above")
-                }.recorded(log),
-            )
+                    ),
+                )
+                FilesState.UNAVAILABLE -> Entered.Ready(inMemoryFiles(shared = null))
+                // The double holds paths, not directories with permissions, and no links.
+                FilesState.DENIED_DIRECTORY,
+                FilesState.READ_ONLY_DIRECTORY,
+                FilesState.UNSEARCHABLE_DIRECTORY,
+                FilesState.LOOPED_LINK,
+                -> Entered.Unreachable("the double holds no directories with permissions, and no links")
+            }
         }
     }
 
@@ -46,19 +51,16 @@ class StorageMockContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(PreferencesState.EMPTY, PreferencesState.HOLDING)
-        override fun create(
-            state: PreferencesState,
-            clauseId: String,
-            log: CallLog,
-        ): Entered<Preferences> = Entered.Ready(
-            when (state) {
-                PreferencesState.EMPTY -> inMemoryPreferences()
-                PreferencesState.HOLDING ->
-                    inMemoryPreferences(
-                        mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
-                    )
-            }.recorded(log),
-        )
+        override fun create(state: PreferencesState, clauseId: String, log: CallLog): Entered<Preferences> = when (state) {
+            PreferencesState.EMPTY -> Entered.Ready(inMemoryPreferences())
+            PreferencesState.HOLDING -> Entered.Ready(
+                inMemoryPreferences(
+                    mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
+                ),
+            )
+            PreferencesState.FOREIGN, PreferencesState.UNWRITABLE ->
+                Entered.Unreachable("the double holds strings only, and refuses no write")
+        }
     }
 
     @Test

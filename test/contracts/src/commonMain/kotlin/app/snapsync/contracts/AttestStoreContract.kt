@@ -4,7 +4,9 @@ import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.ports.AttestStore
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * The states an [AttestStore] can be found in. A `HOLDING` store holds [AttestStoreContract.seedToken] and
@@ -19,6 +21,12 @@ enum class AttestStoreState {
 
     /** Readable, holding a token and the `keyId` it was attested with. */
     HOLDING,
+
+    /**
+     * [HOLDING], where the token may be contested: a caller drops the token it sent only if it is still the one held,
+     * since another may have renewed it since — the compare-and-clear the backend's rejection is answered with.
+     */
+    HOLDING_CONTESTED,
 }
 
 /**
@@ -36,6 +44,24 @@ object AttestStoreContract : Contract<AttestStoreState, AttestStore>("AttestStor
     fun seedKeyId(clauseId: String) = "key:$clauseId"
 
     override val clauses = clauses {
+
+        clause(
+            "HOLDING_CONTESTED_ONLY_THE_HELD_TOKEN_IS_CLEARED",
+            AttestStoreState.HOLDING_CONTESTED,
+            covers = cells {
+                on<AttestStore> {
+                    answers(AttestStore::clearTokenIf).with(false)
+                    answers(AttestStore::clearTokenIf).with(true)
+                }
+            },
+        ) { store ->
+            val id = "HOLDING_CONTESTED_ONLY_THE_HELD_TOKEN_IS_CLEARED"
+            assertFalse(store.clearTokenIf("superseded:$id"), "a rejection of a token no longer held clears nothing")
+            assertEquals(seedToken(id), store.token(), "the renewed token stays")
+            assertTrue(store.clearTokenIf(seedToken(id)), "a rejection of the held token clears it")
+            assertNull(store.token())
+            assertEquals(seedKeyId(id), store.keyId(), "and the key that renews it stays")
+        }
 
         clause(
             "AN_UNREADABLE_TOKEN_IS_NOT_ABSENCE",

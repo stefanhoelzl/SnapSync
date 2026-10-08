@@ -36,8 +36,8 @@ import platform.darwin.NSObject
  * Whether that field was elided or merely unreliable was never settled; what is settled is that it is
  * the only structural difference between the shape that worked and the shape that did not.
  *
- * So [subscriber] is held in a field that [listen] writes and reads, and the subscriber reads its own handlers on
- * every delivery. Nothing here is write-only.
+ * So the subscriber is held in a field that [SystemMetricKitApi.subscribe] writes and reads, and it reads where it
+ * delivers on every delivery. Nothing here is write-only.
  *
  * The subscriber cannot simply BE this class: Kotlin/Native refuses to mix Kotlin and Objective-C
  * supertypes, so a class conforming to `MXMetricManagerSubscriberProtocol` may not also implement the
@@ -51,43 +51,76 @@ import platform.darwin.NSObject
  * [listen] must only be called where the handler is already live; registering and then dropping what
  * arrives is strictly worse than never registering.
  *
- * **No port contract, by reason rather than omission** (`docs/architecture.md`, "Every clause runs
- * against a real implementation on some host"). No host can enter a state for a clause: MetricKit delivers when
- * the OS decides — roughly daily, one-shot, and only on a device — so a binding cannot make a report arrive,
- * and a recording would replay only a payload we chose. Nor is there an in-memory double for a contract to
- * license: the app root constructs this class directly, and every other process binds `NoProcessMetrics`. The
- * measured evidence lives in this comment (the seventeen payloads, the write-only field that silenced them, the
+ * **Contracted on a device.** MetricKit delivers when the OS decides — roughly daily, one-shot, and only on a
+ * device — so `ProcessMetricsContract`'s delivery is recorded on the SE2 by a run that waits for it, at the
+ * [MetricKitApi] seam (`ProcessMetrics@IOS_DEVICE_APP.rec`), and replayed on every build. The measured evidence of the
+ * subscriber's lifetime lives in this comment (the seventeen payloads, the write-only field that silenced them, the
  * day-long hold); the rule over what arrives is `:domain:model`'s, tested there.
  *
  * ⏰ **Expiry**: this whole `MX*` surface is deprecated at iOS 27 in favour of a Swift-only successor
  * that Kotlin/Native cannot call. When that bites, this class is what gets replaced — behind
  * [ProcessMetrics], with the rule, the thresholds and the channels untouched.
  */
-class MetricKitProcessMetrics : ProcessMetrics {
+class MetricKitProcessMetrics internal constructor(
+    // The operating-system boundary; production always passes the real one.
+    private val api: MetricKitApi,
+) : ProcessMetrics {
+
+    constructor() : this(SystemMetricKitApi())
 
     private val log: Logger = Logger.withTag("processMetrics")
 
-    /**
-     * The ObjC subscriber this retains, built by [listen] around the handlers it delivers to — they are its
-     * constructor argument, not a slot assigned later, so a subscriber that exists always has somewhere to deliver.
-     */
-    private var subscriber: MetricKitSubscriber? = null
-
     override fun listen(handlers: MetricHandlers) {
-        val subscriber = MetricKitSubscriber(log, handlers).also { this.subscriber = it }
-        val manager = MXMetricManager.sharedManager
-        // The `shared` touch is itself load-bearing: MetricKit accumulates NOTHING for an app until
-        // this is first called, and never retroactively. A launch that does not reach here is
-        // attribution nobody gets back.
-        manager.addSubscriber(subscriber)
+        // Convert and hand over, INLINE — before the delivery returns (see [MetricKitSubscriber]).
+        val queue = api.subscribe { raw ->
+            val nested = raw.entries.associate { (key, value) -> key.toString() to value }
+            handlers.onReport(ProcessMetricReport(flattenToDottedKeys(nested)))
+        }
         // The two `past…` counts say something about the QUEUE rather than only about us, which is the
         // one thing four days of silence could not distinguish: an empty queue reads the same as a
         // subscriber that cannot be reached. Measured to be 0 on a fresh process even moments before a
         // delivery, so a non-zero reading here would be news.
         log.i {
-            "process metrics: observing (pastPayloads=${manager.pastPayloads.size} " +
-                "pastDiagnosticPayloads=${manager.pastDiagnosticPayloads.size})"
+            "process metrics: observing (pastPayloads=${queue.pastPayloads} " +
+                "pastDiagnosticPayloads=${queue.pastDiagnosticPayloads})"
         }
+    }
+}
+
+/**
+ * The operating-system boundary of [MetricKitProcessMetrics]: subscribing to MetricKit, and what it hands over —
+ * nothing else, so a report a phone received, recorded there, replays on every build.
+ */
+internal interface MetricKitApi {
+    /**
+     * Subscribes, handing each payload MetricKit delivers — metric and diagnostic alike — to [deliver] as its own
+     * dictionary, inline, on MetricKit's thread. Answers the queue's counts at the moment of subscribing.
+     */
+    fun subscribe(deliver: (raw: Map<Any?, *>) -> Unit): MetricQueue
+}
+
+/** What MetricKit says it holds as a subscriber arrives. */
+internal class MetricQueue(val pastPayloads: Int, val pastDiagnosticPayloads: Int)
+
+/** The real one. */
+internal class SystemMetricKitApi : MetricKitApi {
+
+    private val log: Logger = Logger.withTag("processMetrics")
+
+    /**
+     * The ObjC subscriber this retains, built around where it delivers — its constructor argument, not a slot assigned
+     * later, so a subscriber that exists always has somewhere to deliver. Written and read below: never write-only.
+     */
+    private var subscriber: MetricKitSubscriber? = null
+
+    override fun subscribe(deliver: (raw: Map<Any?, *>) -> Unit): MetricQueue {
+        val subscriber = MetricKitSubscriber(log, deliver).also { this.subscriber = it }
+        val manager = MXMetricManager.sharedManager
+        // The `shared` touch is itself load-bearing: MetricKit accumulates NOTHING for an app until
+        // this is first called, and never retroactively. A launch that does not reach here is
+        // attribution nobody gets back.
+        manager.addSubscriber(checkNotNull(this.subscriber) { "the subscriber is held before it is added" })
+        return MetricQueue(manager.pastPayloads.size, manager.pastDiagnosticPayloads.size)
     }
 }
 
@@ -101,6 +134,13 @@ class MetricKitProcessMetrics : ProcessMetrics {
  * `privacy-security`). ⚠️ If a callback ever hands work to another thread, those lines log
  * unprefixed — move it to the process-wide claim rather than accept that silently.
  *
+ * **Delivery is inline** — handed over before the callback returns, not hopped to another lane, deliberately and
+ * against the observer convention this module otherwise follows. The work is small (call-stack branches are dropped by
+ * [flattenToDottedKeys] before anything is rendered — measured: one delivery of twelve queued payloads WITH call stacks
+ * serialized to 15.1 MB, rolled the 10 MB log and blocked 18 s; see changes/archive/2026-09-14-add-os-exit-attribution),
+ * and a process woken briefly in the background may be killed before deferred work runs — which for a one-shot
+ * delivery means losing the report permanently.
+ *
  * Separate from [MetricKitProcessMetrics] because Kotlin/Native refuses to mix Kotlin and ObjC
  * supertypes, so the class ObjC is handed cannot also be the class `:domain` sees. Internal rather
  * than private: a private nested class was the previous shape, and keeping this one visible to the
@@ -108,8 +148,8 @@ class MetricKitProcessMetrics : ProcessMetrics {
  */
 internal class MetricKitSubscriber(
     private val log: Logger,
-    /** Where each report goes; supplied by [MetricKitProcessMetrics.listen]. */
-    private val handlers: MetricHandlers,
+    /** Where each payload's dictionary goes; supplied through [SystemMetricKitApi.subscribe]. */
+    private val deliver: (raw: Map<Any?, *>) -> Unit,
 ) : NSObject(), MXMetricManagerSubscriberProtocol {
 
     @PlatformEntry
@@ -128,20 +168,5 @@ internal class MetricKitSubscriber(
                 (payload as? MXDiagnosticPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
         }
-    }
-
-    /**
-     * Convert and hand over, **inline** — before the callback returns.
-     *
-     * Not hopped to another lane, deliberately and against the observer convention this module
-     * otherwise follows. The work is small (call-stack branches are dropped by [flattenToDottedKeys]
-     * before anything is rendered — measured: one delivery of twelve queued payloads WITH call stacks
-     * serialized to 15.1 MB, rolled the 10 MB log and blocked 18 s; see
-     * changes/archive/2026-09-14-add-os-exit-attribution), and a process woken briefly in the background may be killed before
-     * deferred work runs — which for a one-shot delivery means losing the report permanently.
-     */
-    private fun deliver(raw: Map<Any?, *>) {
-        val nested = raw.entries.associate { (key, value) -> key.toString() to value }
-        handlers.onReport(ProcessMetricReport(flattenToDottedKeys(nested)))
     }
 }

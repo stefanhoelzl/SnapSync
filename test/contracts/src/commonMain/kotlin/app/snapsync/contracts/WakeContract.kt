@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalAtomicApi::class)
+
 package app.snapsync.contracts
 
 import app.snapsync.model.ScheduleResult
@@ -5,8 +7,16 @@ import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Wake
+import app.snapsync.ports.WakeHandlers
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
@@ -14,7 +24,27 @@ import kotlin.time.Duration.Companion.seconds
 enum class WakeState {
     /** No heartbeat wake is pending. */
     EMPTY,
+
+    /**
+     * No wake is pending, and the binding can let the operating system deliver what is due, change the photo library and
+     * end a running wake ([ScheduledWakes.os]).
+     */
+    DELIVERING,
+
+    /** On a platform that has no library-change wake (iOS). */
+    NO_LIBRARY_WAKE,
+
+    /** In a process the operating system refuses wake requests from (one whose bundle permits no task identifier). */
+    REFUSING,
 }
+
+/** The operating system's side of a delivered wake, as a binding plays it on the real system. */
+class WakeOs(
+    /** Changes the member's photo library, as a new photo would. */
+    val changeLibrary: suspend () -> Unit,
+    /** Ends the wake now running, as the system does when its time is up. */
+    val endRunningWake: suspend () -> Unit,
+)
 
 /**
  * The port as a clause receives it: [wake], which declares no reads, and [pendingWakes] — an observation handle over
@@ -24,8 +54,25 @@ enum class WakeState {
  */
 class ScheduledWakes(
     val wake: Wake,
+    /** The system's side of a wake; required of a binding that reaches [WakeState.DELIVERING]. */
+    val os: WakeOs? = null,
     val pendingWakes: suspend () -> Int,
 )
+
+/** One wake the adapter delivered: which, and the completion it handed over with it. */
+private class Delivered(val id: WakeId, val completion: ExpiringCompletion)
+
+/** Handlers that keep every wake delivered, releasing none — the clause decides when. */
+private class WakeRecorder {
+    private val delivered = AtomicReference<List<Delivered>>(emptyList())
+    val all: List<Delivered> get() = delivered.load()
+    val handlers = WakeHandlers { id, completion ->
+        while (true) {
+            val now = delivered.load()
+            if (delivered.compareAndSet(now, now + Delivered(id, completion))) break
+        }
+    }
+}
 
 /**
  * What every [Wake] promises the heartbeat (`docs/architecture.md` — this list IS the specification). The heartbeat is
@@ -34,8 +81,8 @@ class ScheduledWakes(
  *
  * Its recorded name is the port's old one, `BackgroundScheduler`: the adapter's operating-system calls did not change
  * when the port became [Wake] (phase 11f), so the device recording replays unedited — as 11e kept `LinkOpener`.
- * A platform's answer for a wake it does not have ([ScheduleResult.Unsupported]) is adapter vocabulary, pinned beside
- * each adapter rather than here: it makes no operating-system call to record.
+ * A platform's answer for a wake it does not have ([ScheduleResult.Unsupported]) makes no operating-system call to
+ * record, so its clause has a state of its own, [WakeState.NO_LIBRARY_WAKE], which the recorded host never reaches.
  */
 object WakeContract : Contract<WakeState, ScheduledWakes>("BackgroundScheduler") {
 
@@ -49,7 +96,105 @@ object WakeContract : Contract<WakeState, ScheduledWakes>("BackgroundScheduler")
      */
     private val IDLE = WakeTrigger.After(earliest = 1.hours, network = WakeNetwork.ANY, cadence = WakeCadence.IDLE)
 
+    /** A wake due at once. */
+    private val NOW = WakeTrigger.After(earliest = Duration.ZERO, network = WakeNetwork.ANY)
+
     override val clauses = clauses {
+
+        clause(
+            "DELIVERING_A_DUE_WAKE_IS_DELIVERED_AND_RELEASED",
+            WakeState.DELIVERING,
+            covers = cells {
+                on<Wake> {
+                    answers(Wake::listen).returns()
+                    answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+                    calls(WakeHandlers::onWake, WakeId.Heartbeat, ExpiringCompletion::class)
+                    handle<ExpiringCompletion>().answers(ExpiringCompletion::complete).returns()
+                }
+            },
+        ) { subject ->
+            val recorder = WakeRecorder()
+            subject.wake.listen(recorder.handlers)
+            assertEquals(ScheduleResult.Scheduled, subject.wake.schedule(WakeId.Heartbeat, NOW))
+            awaitWithin { recorder.all.isNotEmpty() }
+            val wake = recorder.all.single()
+            assertEquals(WakeId.Heartbeat, wake.id, "the wake is delivered under the id it was asked for")
+            wake.completion.complete()
+            awaitWithin { subject.pendingWakes() == 0 }
+        }
+
+        clause(
+            "DELIVERING_A_LIBRARY_CHANGE_WAKES_THE_APP",
+            WakeState.DELIVERING,
+            covers = cells {
+                on<Wake> {
+                    answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+                    calls(WakeHandlers::onWake, WakeId.LibraryChanged, ExpiringCompletion::class)
+                }
+            },
+        ) { subject ->
+            val os = assertNotNull(subject.os, "a binding that delivers wakes plays the system's side of them")
+            val recorder = WakeRecorder()
+            subject.wake.listen(recorder.handlers)
+            assertEquals(
+                ScheduleResult.Scheduled,
+                subject.wake.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = 1.seconds)),
+            )
+            os.changeLibrary()
+            awaitWithin { recorder.all.any { it.id == WakeId.LibraryChanged } }
+            recorder.all.forEach { it.completion.complete() }
+        }
+
+        clause(
+            "DELIVERING_A_WAKE_THE_SYSTEM_ENDS_RUNS_ITS_EXPIRY",
+            WakeState.DELIVERING,
+            covers = cells {
+                on<Wake> {
+                    calls(WakeHandlers::onWake, WakeId.Heartbeat, ExpiringCompletion::class)
+                    handle<ExpiringCompletion>().answers(ExpiringCompletion::onExpired).returns()
+                    handle<ExpiringCompletion>().callsBack(ExpiringCompletion::onExpired, "action")
+                }
+            },
+        ) { subject ->
+            val os = assertNotNull(subject.os, "a binding that delivers wakes plays the system's side of them")
+            val recorder = WakeRecorder()
+            subject.wake.listen(recorder.handlers)
+            subject.wake.schedule(WakeId.Heartbeat, NOW)
+            awaitWithin { recorder.all.isNotEmpty() }
+            val wake = recorder.all.single()
+            val expired = AtomicReference(false)
+            wake.completion.onExpired { expired.store(true) }
+            assertFalse(expired.load(), "a running wake has not expired")
+            os.endRunningWake()
+            awaitWithin { expired.load() }
+            wake.completion.complete()
+        }
+
+        clause(
+            "NO_LIBRARY_WAKE_IS_UNSUPPORTED",
+            WakeState.NO_LIBRARY_WAKE,
+            covers = cells {
+                on<Wake>().answers(Wake::schedule).with(ScheduleResult.Unsupported::class)
+            },
+        ) { subject ->
+            assertIs<ScheduleResult.Unsupported>(
+                subject.wake.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = 1.seconds)),
+                "a wake the platform does not have is answered so, and asks the system nothing",
+            )
+        }
+
+        clause(
+            "REFUSING_A_REFUSED_REQUEST_IS_REFUSED",
+            WakeState.REFUSING,
+            covers = cells {
+                on<Wake>().answers(Wake::schedule).with(ScheduleResult.Refused::class)
+            },
+        ) { subject ->
+            assertIs<ScheduleResult.Refused>(
+                subject.wake.schedule(WakeId.Heartbeat, HEARTBEAT),
+                "a request the system refused is not a scheduled wake",
+            )
+        }
 
         clause(
             "SCHEDULE_ARMS_ONE",

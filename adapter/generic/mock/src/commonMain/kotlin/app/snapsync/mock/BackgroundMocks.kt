@@ -6,7 +6,7 @@ import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
-import app.snapsync.ports.Completion
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
@@ -61,7 +61,7 @@ class WakeOperator internal constructor(private val mock: WakeMock) {
     val pendingWakes: Map<WakeId, WakeTrigger> get() = mock.pending.value
 
     /** The operating system wakes the app for [id], handing it [completion]. */
-    fun fire(id: WakeId, completion: Completion) {
+    fun fire(id: WakeId, completion: ExpiringCompletion) {
         val handlers = mock.handlers.require("a $id wake")
         // Every wake is one-shot: the operating system launching it is what consumes the request.
         mock.pending.value -= id

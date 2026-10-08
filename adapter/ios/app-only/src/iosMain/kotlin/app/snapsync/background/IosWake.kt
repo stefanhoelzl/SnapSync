@@ -10,6 +10,7 @@ import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.Completion
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
@@ -104,10 +105,10 @@ class IosWake internal constructor(
      * Public for the control channel, which plays the operating system (`/os onBackgroundTask`) until the entry surface
      * becomes event ports (11g).
      */
-    fun onTaskLaunched(identifier: String, completion: Completion) =
+    fun onTaskLaunched(identifier: String, completion: ExpiringCompletion) =
         log.invocation("wake.onTaskLaunched", params = "identifier=$identifier") { route(identifier, completion) }
 
-    private fun route(identifier: String, completion: Completion) {
+    private fun route(identifier: String, completion: ExpiringCompletion) {
         val id = if (identifier in TASK_IDENTIFIERS) WakeId.Heartbeat else null
         val registered = handlers.load()
         when {
@@ -172,7 +173,7 @@ class IosWake internal constructor(
  * expiry delivered once to the action the core registers — at once if the expiry came first.
  */
 @OptIn(ExperimentalForeignApi::class)
-private class TaskCompletion(private val task: BGTask, private val log: Logger) : Completion {
+private class TaskCompletion(private val task: BGTask, private val log: Logger) : ExpiringCompletion {
     private val completed = AtomicBoolean(false)
     private val expired = AtomicBoolean(false)
     private val actionRan = AtomicBoolean(false)

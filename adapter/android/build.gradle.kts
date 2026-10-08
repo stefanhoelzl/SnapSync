@@ -55,6 +55,16 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.coroutines.test)
             implementation(libs.androidx.work.testing)
+            // The Ui contract's binding: the real screen over a real status container, tapped through a Compose UI
+            // test hosted in the manifest artifact's `ComponentActivity`.
+            implementation(project(":domain:presentation"))
+            implementation(project(":domain:feature"))
+            implementation(project(":ui:screens"))
+            implementation(project(":ui:components"))
+            implementation(libs.compose.ui.test)
+            implementation(libs.compose.components.resources)
+            implementation(libs.orbit.core)
+            implementation(libs.androidx.compose.ui.test.manifest)
         }
     }
 }

@@ -14,8 +14,8 @@ import app.snapsync.contracts.GalleryImportState
 import app.snapsync.contracts.GalleryReaderContract
 import app.snapsync.contracts.GalleryReaderState
 import app.snapsync.contracts.GalleryState
+import app.snapsync.contracts.ImportDeliveries
 import app.snapsync.contracts.ImportedLibrary
-import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
@@ -28,14 +28,11 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
-import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ImportResult
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
-import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
@@ -73,12 +70,20 @@ class PhotoContractBindingsTest {
         )
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
+            if (state == GalleryReaderState.GRANTED_SEEDED_EXPORTING) {
+                return Entered.Unreachable("an in-memory library holds no bytes to export")
+            }
+            if (state == GalleryReaderState.REFUSING_WRITES) {
+                return Entered.Unreachable("the double takes every write")
+            }
             val library = when (state) {
                 GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
                     seededLibrary(GalleryReaderContract.name, clauseId)
                 GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER, GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->
                     return Entered.Unreachable("the in-memory library has no folders: all of it is the default gallery")
-                GalleryReaderState.NO_GRANT, GalleryReaderState.GRANTED_EMPTY_WINDOW -> MutableStateFlow(emptyList())
+                GalleryReaderState.NO_GRANT, GalleryReaderState.GRANTED_EMPTY_WINDOW, GalleryReaderState.REFUSING_WRITES -> MutableStateFlow(
+                    emptyList(),
+                )
             }
             val gallery = inMemoryGallery(library, access(state != GalleryReaderState.NO_GRANT)).recorded(log)
             return Entered.Ready(SeededLibrary(gallery, library.value.mapTo(linkedSetOf()) { it.assetId }))
@@ -91,6 +96,7 @@ class PhotoContractBindingsTest {
         override val reaches = setOf(PhotoAccessState.NO_GRANT, PhotoAccessState.GRANTED)
 
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
+            if (state !in reaches) return Entered.Unreachable("the double plays no partial grant here")
             val cell = MutableStateFlow(
                 if (state == PhotoAccessState.GRANTED) GalleryAccess.GRANTED else GalleryAccess.NOT_DETERMINED,
             )
@@ -108,13 +114,13 @@ class PhotoContractBindingsTest {
                 return Entered.Unreachable("an in-memory library holds no bytes, so it cannot find one undecodable")
             }
             val library = MutableStateFlow<List<RawAsset>>(emptyList())
-            val markers = mutableMapOf<AssetRef, MarkerState>()
-            val importer = inMemoryGallery(library).recorded(log).apply { listen(markerHandlers(markers)) }
+            val deliveries = ImportDeliveries()
+            val importer = inMemoryGallery(library).apply { listen(deliveries.handlers) }
             val observed = object : ImportedLibrary {
                 override suspend fun captureDate(id: AssetId): String? =
                     library.value.firstOrNull { it.facts.assetId == id }?.creationDate
 
-                override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+                override val deliveries = deliveries
 
                 override suspend fun primaryFilename(id: AssetId): String? =
                     library.value.firstOrNull { it.facts.assetId == id }
@@ -135,18 +141,6 @@ class PhotoContractBindingsTest {
         }
     }
 
-    /** Import handlers that record where each ref's marker stands — what a clause observes. */
-    private fun markerHandlers(markers: MutableMap<AssetRef, MarkerState>) = GalleryHandlers(
-        onChanged = {},
-        onImportPlaceholder = { ref, _ -> markers[ref] = MarkerState.RECORDED },
-        onImportSettled = { ref, outcome ->
-            when (outcome) {
-                is ImportResult.Imported -> markers[ref] = MarkerState.CONFIRMED
-                is ImportResult.Failed -> if (outcome.placeholder != null) markers[ref] = MarkerState.CLEARED
-            }
-        },
-    )
-
     /** The library mock playing an Android library, whose albums are the folders its photos live in. */
     private val folderAlbums = object : Binding<FolderAlbumState, FolderAlbums> {
         override val host = currentHost
@@ -162,7 +156,7 @@ class PhotoContractBindingsTest {
             val seeded = library.value.mapTo(linkedSetOf()) { it.assetId }
             // The seeded photos are this app's own saves, as the emulator binding's are: the ones it may move.
             mock.state.ownImports += seeded
-            val gallery = mock.port().recorded(log).apply { listen(markerHandlers(mutableMapOf())) }
+            val gallery = mock.port().apply { listen(ImportDeliveries().handlers) }
             val staged = {
                 listOf(
                     StagedResource(
@@ -184,6 +178,7 @@ class PhotoContractBindingsTest {
         override val reaches = setOf(GalleryState.GRANTED)
 
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
+            if (state !in reaches) return Entered.Unreachable("the double plays the full grant here")
             val library = seededLibrary(GalleryContract.name, clauseId)
             val added = RawAsset(
                 assetId = AssetId("contract-$clauseId-change"),

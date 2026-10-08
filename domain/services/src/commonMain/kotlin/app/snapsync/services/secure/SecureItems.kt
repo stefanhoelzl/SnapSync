@@ -76,6 +76,5 @@ fun persist(store: SecureStore, slot: SecureSlot, value: String) {
     when (val written = store.write(slot, value)) {
         WriteOutcome.Ok -> Unit
         is WriteOutcome.Failed -> throw SecureStoreUnavailable("write refused: ${written.detail}")
-        WriteOutcome.Unsupported -> throw SecureStoreUnavailable("write unsupported for $slot")
     }
 }

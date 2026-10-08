@@ -1,0 +1,17 @@
+# contract: BackgroundTime
+# host: IOS_DEVICE_APP
+# file: BackgroundTime@IOS_DEVICE_APP.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-08T21:11:53Z
+# live A_HOLD_IS_GRANTED_WHILE_TIME_REMAINS: NotRunHere(this run records the app's time running out; TIME_REMAINS runs live)
+# live A_SECOND_HOLD_IS_GRANTED_BESIDE_THE_FIRST: NotRunHere(this run records the app's time running out; TIME_REMAINS runs live)
+# live AN_ENDED_HOLD_REPORTS_NO_EXPIRY: NotRunHere(this run records the app's time running out; TIME_REMAINS runs live)
+# live ENDING_TWICE_IS_QUIET: NotRunHere(this run records the app's time running out; TIME_REMAINS runs live)
+# live AN_EXPIRY_IS_REPORTED_ONCE_AND_THE_HOLD_STILL_ENDS: Passed
+[AN_EXPIRY_IS_REPORTED_ONCE_AND_THE_HOLD_STILL_ENDS]
+beginBackgroundTask(name=contract.expiry) -> granted id=<masked>
+<- expired(name=contract.expiry)
+endBackgroundTask(id=<masked>) -> done

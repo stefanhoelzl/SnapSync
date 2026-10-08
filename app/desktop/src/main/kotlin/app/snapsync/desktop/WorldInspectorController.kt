@@ -37,7 +37,7 @@ import app.snapsync.model.noContribution
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
-import app.snapsync.ports.Completion
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
@@ -489,7 +489,7 @@ class WorldInspectorController(
     }
 
     /** A completion the harness hands the app for an OS entry it plays: nothing waits on its release. */
-    private object NoCompletion : Completion {
+    private object NoCompletion : ExpiringCompletion {
         override fun complete() = Unit
 
         override fun onExpired(action: () -> Unit) = Unit

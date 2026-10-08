@@ -352,6 +352,4 @@ internal class OnceCompletion(private val release: () -> Unit) : Completion {
     override fun complete() {
         if (done.compareAndSet(false, true)) release()
     }
-
-    override fun onExpired(action: () -> Unit) = Unit
 }

@@ -4,6 +4,7 @@ import app.snapsync.model.Availability
 import app.snapsync.ports.ProcessInfo
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The states a [ProcessInfo] can be found in, as far as a clause cares. */
@@ -12,23 +13,43 @@ enum class ProcessInfoState {
     UNLOCKED,
 
     /**
+     * A running app on a device whose protected data is sealed: not unlocked since boot, or — on iOS, with a passcode
+     * set — its screen locked.
+     */
+    LOCKED,
+
+    /**
      * A running process whose platform accounts its memory to it — iOS. Not Android: nothing there consumes a
      * footprint, so its binding answers none and never reaches this state.
      */
     MEMORY_ACCOUNTED,
+
+    /** A running process whose platform's footprint is not read — Android, where nothing consumes one. */
+    MEMORY_NOT_ACCOUNTED,
 }
 
 /**
  * What the process read promises (`docs/architecture.md` — this list IS the port's specification).
  *
- * Deliberately no `LOCKED` clause: no host lets a binding enter "not unlocked since boot" — the
- * simulator implements no data protection, and the rig drives only a running, unlocked app (`docs/architecture.md`,
- * "Hosts are a closed set of what changes reachable states"). A clause only the in-memory double could reach
- * may not exist, so that belief lives in `IosProcessInfo`'s documentation.
+ * [ProcessInfoState.LOCKED] has no live host — the simulator implements no data protection — so it is recorded on a
+ * phone whose screen a person locked while the app ran on in the background.
  */
 object ProcessInfoContract : Contract<ProcessInfoState, ProcessInfo>("ProcessInfo") {
 
     override val clauses = clauses {
+
+        clause(
+            "A_PROCESS_NOT_ACCOUNTED_READS_NO_FOOTPRINT",
+            ProcessInfoState.MEMORY_NOT_ACCOUNTED,
+            covers = cells {
+                on<ProcessInfo>().answers(ProcessInfo::memoryFootprint).with(null)
+            },
+        ) { process ->
+            assertNull(
+                process.memoryFootprint(),
+                "where the platform's accounting is not read, no footprint is invented",
+            )
+        }
 
         clause(
             "AN_UNLOCKED_DEVICE_READS_AVAILABLE",
@@ -38,6 +59,20 @@ object ProcessInfoContract : Contract<ProcessInfoState, ProcessInfo>("ProcessInf
             },
         ) { process ->
             assertEquals(Availability.AVAILABLE, process.protectedDataAvailable())
+        }
+
+        clause(
+            "A_LOCKED_DEVICE_READS_UNAVAILABLE",
+            ProcessInfoState.LOCKED,
+            covers = cells {
+                on<ProcessInfo>().answers(ProcessInfo::protectedDataAvailable).with(Availability.UNAVAILABLE)
+            },
+        ) { process ->
+            assertEquals(
+                Availability.UNAVAILABLE,
+                process.protectedDataAvailable(),
+                "while the protected data is sealed, the read says so",
+            )
         }
 
         clause(

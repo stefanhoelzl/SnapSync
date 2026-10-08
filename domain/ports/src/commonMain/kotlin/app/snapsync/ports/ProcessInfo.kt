@@ -11,7 +11,7 @@ import app.snapsync.model.MemoryFootprint
  * ledger, the config file, the Keychain — encrypted, and a background wake can land in exactly that window. Every
  * protected read already tells *unreadable* from *absent*, so nothing decides on this answer: a background entry
  * point writes it into the device log, which is the only way to see after the fact that a failed wake ran on a
- * locked device. [Availability.UNKNOWN] where the process cannot ask (an app extension has no `UIApplication`).
+ * locked device. Only the app asks it: an app extension has no `UIApplication`, and composes no [ProcessInfo].
  *
  * Named for the need: iOS answers with `UIApplication.isProtectedDataAvailable`; an Android binding would ask
  * whether the user has unlocked since boot.

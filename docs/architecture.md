@@ -368,12 +368,15 @@ system it stands in for. The contract code **is** the specification of a port's 
   **replayed** against the current adapter on every build. An adapter recorded this way routes its OS
   calls through an `internal` seam (`KeychainApi`, `AppAttestApi`, `BackgroundTaskApi`, ...).
 
-- **The entry ports have no contract.** What an entry's handler promises — which work runs, when a completion
-  is released, which handlers assemble the host — is the composition's, pinned by rig tests over the JVM root
-  (`EntryIntegrationTest`, `OsCompletionIntegrationTest`) and `ExtensionEntryTest`; what a platform delivers is its
-  adapter's. They were
-  the inbound-port contracts (`PlatformEntriesContract`, `ExtensionEntriesContract`) until the entry surface
-  became event ports (11g1).
+- **An entry port's contract states what its adapter delivers, never what a delivery runs.** `LifecycleContract`,
+  `LinksContract`, `PushNotificationsContract`, `ExtensionHostContract` and `DevControlsContract` hold each adapter to
+  handing the platform's deliveries to the handlers that listened — raw, once, in order, a completion with the message
+  it came with — driven through the adapter's own platform entries (the calls the OS's callbacks make). What an entry's
+  handler promises — which work runs, when a completion is released, which handlers assemble the host — is the
+  composition's, pinned by rig tests over the JVM root (`EntryIntegrationTest`, `OsCompletionIntegrationTest`) and
+  `ExtensionEntryTest`. Until the entry surface became event ports (11g1) those handler promises were contracted as
+  inbound ports (`PlatformEntriesContract`, `ExtensionEntriesContract`); the delivery contracts came with clause
+  completeness, which holds every port's cells to a real host.
 
 Measured platform facts belong in clauses (so a fact that stops being true fails a test) or, where no
 host can exercise them, in the adapter's KDoc with their evidence. The full mechanism, the host matrix

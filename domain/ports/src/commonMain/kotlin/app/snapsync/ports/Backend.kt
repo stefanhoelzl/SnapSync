@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.Ack
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -60,7 +61,7 @@ interface Backend : Port {
     suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed>
 
     /** `PUT /events/<eventId>/devices/<deviceId>` — create or reactivate a membership. No body. */
-    suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit>
+    suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Ack<Unit>
 
     /** `PUT /events/<eventId>/devices/<deviceId>/manifest` — replace what a member shares. */
     suspend fun publishManifest(
@@ -68,14 +69,14 @@ interface Backend : Port {
         eventId: String,
         deviceId: String,
         manifest: DeviceManifest,
-    ): Reply<Unit>
+    ): Ack<Unit>
 
     /**
      * `DELETE /events/<eventId>/devices/<deviceId>?received=<received>` — end a membership. [received] is the
      * device's word that it holds every photo of the others; the backend judges the rest of "left having
      * everything" itself.
      */
-    suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit>
+    suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Ack<Unit>
 
     /**
      * `GET /events/<eventId>/files` — the event-wide union of complete assets; public, authorized by the id alone. From
@@ -88,5 +89,5 @@ interface Backend : Port {
     suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>>
 
     /** `PUT /devices/<deviceId>` — publish a device's push registration. */
-    suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit>
+    suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Ack<Unit>
 }

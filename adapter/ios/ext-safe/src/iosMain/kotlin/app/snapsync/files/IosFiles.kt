@@ -1,7 +1,9 @@
 package app.snapsync.files
 
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
+import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.objc.ObjCFailure
@@ -43,6 +45,7 @@ import platform.posix.lseek
 import platform.posix.memcpy
 import platform.posix.open
 import platform.posix.read
+import platform.posix.stat
 import platform.posix.write
 
 /**
@@ -100,7 +103,8 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
             buffer.usePinned { pinned ->
                 while (filled < buffer.size) {
                     val n = read(fd, pinned.addressOf(filled), (buffer.size - filled).convert()).toInt()
-                    if (n <= 0) break
+                    if (n < 0) return posixFailure("read")
+                    if (n == 0) break
                     filled += n
                 }
             }
@@ -136,7 +140,7 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
      * Created with the container's default protection — `CompleteUntilFirstUserAuthentication`, the entitlement's
      * class — like every other file here, so a piece written by a background wake is readable by the next one.
      */
-    override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> {
+    override fun append(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> {
         val file = resolve(area, path) ?: return FileResult.AreaUnavailable
         checkedObjC("createDirectoryAtPath") {
             fm.createDirectoryAtPath(
@@ -145,15 +149,15 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
                 attributes = null,
                 error = it,
             )
-        }.onFailure { return (it as ObjCFailure).toResult() }
+        }.onFailure { return (it as ObjCFailure).toResult().withoutAbsence(path) }
         val fd = open(file, O_WRONLY or O_CREAT or O_APPEND, FILE_MODE)
-        if (fd < 0) return posixFailure("open")
+        if (fd < 0) return posixFailure("open").withoutAbsence(path)
         try {
             var written = 0
             bytes.usePinned { pinned ->
                 while (written < bytes.size) {
                     val n = write(fd, pinned.addressOf(written), (bytes.size - written).convert()).toInt()
-                    if (n <= 0) return posixFailure("write")
+                    if (n <= 0) return posixFailure("write").withoutAbsence(path)
                     written += n
                 }
             }
@@ -163,7 +167,7 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
         }
     }
 
-    override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> {
+    override fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> {
         val file = resolve(area, path) ?: return FileResult.AreaUnavailable
         checkedObjC("createDirectoryAtPath") {
             fm.createDirectoryAtPath(
@@ -172,28 +176,35 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
                 attributes = null,
                 error = it,
             )
-        }.onFailure { return (it as ObjCFailure).toResult() }
+        }.onFailure { return (it as ObjCFailure).toResult().withoutAbsence(path) }
         return checkedObjC("writeToFile") {
             bytes.toNSData().writeToFile(
                 file,
                 options = NSDataWritingAtomic or NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication,
                 error = it,
             )
-        }.fold(onSuccess = { FileResult.Ok(Unit) }, onFailure = { (it as ObjCFailure).toResult() })
+        }.fold(onSuccess = { FileResult.Ok(Unit) }, onFailure = { (it as ObjCFailure).toResult().withoutAbsence(path) })
     }
 
     override fun delete(area: FileArea, path: String): FileResult<Unit> {
         val file = resolve(area, path) ?: return FileResult.AreaUnavailable
+        // `removeItemAtPath` empties a directory recursively; removing a file never does.
+        if (isDirectory(file)) return FileResult.Failed("$path is a directory, not a file")
         return checkedObjC("removeItemAtPath") { fm.removeItemAtPath(file, error = it) }
             .fold(onSuccess = { FileResult.Ok(Unit) }, onFailure = { (it as ObjCFailure).toResult() })
     }
 
-    override fun exists(area: FileArea, path: String): FileResult<Boolean> {
+    // `stat`, never `fileExistsAtPath`, which answers `false` when it could not look.
+    override fun exists(area: FileArea, path: String): FileAccess<Boolean> {
         val file = resolve(area, path) ?: return FileResult.AreaUnavailable
-        return FileResult.Ok(fm.fileExistsAtPath(file))
+        return when (val err = statErrno(file)) {
+            0 -> FileResult.Ok(true)
+            ENOENT -> FileResult.Ok(false)
+            else -> errnoFailure("stat", err)
+        }
     }
 
-    override fun locate(area: FileArea, path: String): FileResult<String> =
+    override fun locate(area: FileArea, path: String): FileLocation<String> =
         resolve(area, path)?.let { FileResult.Ok(it) } ?: FileResult.AreaUnavailable
 
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> {
@@ -204,11 +215,12 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> =
         moveReplacing(osPath, resolve(area, to) ?: return FileResult.AreaUnavailable)
 
-    override fun list(area: FileArea, directory: String): FileResult<List<String>> {
+    override fun list(area: FileArea, directory: String): FileAccess<List<String>> {
         val dir = resolve(area, directory) ?: return FileResult.AreaUnavailable
         if (!fm.fileExistsAtPath(dir)) return FileResult.Ok(emptyList())
+        if (!isDirectory(dir)) return FileResult.Failed("$directory is a file, not a directory")
         val entries = checkedObjCValue("subpathsOfDirectoryAtPath") { fm.subpathsOfDirectoryAtPath(dir, error = it) }
-            .getOrElse { return (it as ObjCFailure).toResult() }
+            .getOrElse { return (it as ObjCFailure).toResult().withoutAbsence(directory) }
         return FileResult.Ok(
             entries.filterIsInstance<String>()
                 .filter { relative -> isRegularFile("$dir/$relative") }
@@ -222,9 +234,21 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
         fm.fileExistsAtPath(path, isDirectory = isDirectory.ptr) && !isDirectory.value
     }
 
+    private fun isDirectory(path: String): Boolean = memScoped {
+        val isDirectory = alloc<BooleanVar>()
+        fm.fileExistsAtPath(path, isDirectory = isDirectory.ptr) && isDirectory.value
+    }
+
+    /** `stat`'s answer for [path], following links as every read does: 0 when it is there, else its `errno`. */
+    private fun statErrno(path: String): Int = memScoped { if (stat(path, alloc<stat>().ptr) == 0) 0 else errno }
+
     /** Move [source] to [destination]: parents created, the previous destination removed; last write wins. */
     private fun moveReplacing(source: String, destination: String): FileResult<Unit> {
-        if (!fm.fileExistsAtPath(source)) return FileResult.NotFound
+        when (val err = statErrno(source)) {
+            0 -> Unit
+            ENOENT -> return FileResult.NotFound
+            else -> return errnoFailure("stat", err)
+        }
         checkedObjC("createDirectoryAtPath") {
             fm.createDirectoryAtPath(
                 destination.substringBeforeLast('/'),
@@ -254,11 +278,18 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
 
     private fun posixFailure(call: String): FileResult<Nothing> {
         val err = errno
-        return when (err) {
-            ENOENT -> FileResult.NotFound
-            EPERM, EACCES -> FileResult.Denied("$call: errno $err", err.toLong())
-            else -> FileResult.Failed("$call: errno $err", err.toLong())
-        }
+        return if (err == ENOENT) FileResult.NotFound else errnoFailure(call, err)
+    }
+
+    private fun errnoFailure(call: String, err: Int): FileAccess<Nothing> = when (err) {
+        EPERM, EACCES -> FileResult.Denied("$call: errno $err", err.toLong())
+        else -> FileResult.Failed("$call: errno $err", err.toLong())
+    }
+
+    /** [this] failure where absence is no outcome: a not-found there is the platform failing to say, never absence. */
+    private fun FileResult<Nothing>.withoutAbsence(what: String): FileAccess<Nothing> = when (this) {
+        is FileAccess -> this
+        FileResult.NotFound -> FileResult.Failed("$what: a missing file is no answer here")
     }
 }
 

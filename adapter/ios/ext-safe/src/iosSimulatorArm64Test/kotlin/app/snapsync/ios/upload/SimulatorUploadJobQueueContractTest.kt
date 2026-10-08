@@ -57,6 +57,8 @@ class SimulatorUploadJobQueueContractTest {
         )
 
         override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+            // A state this host does not present: another platform's fact, or one no binding here enters.
+            if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
             if (state == UploadState.RESTRICTED_NETWORK) {
                 return Entered.Unreachable(
                     "a restricted network needs a phone off unrestricted Wi-Fi; a simulator shares its Mac's network (capability `mobile-data`)",

@@ -5,6 +5,7 @@ package app.snapsync.attest
 import app.snapsync.mock.InMemoryAttestStore
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.model.Ack
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceIdentityRole
@@ -127,20 +128,20 @@ private class FakeClient(
     override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = unused()
     override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = unused()
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = unused()
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
+    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Ack<Unit> = unused()
     override suspend fun publishManifest(
         token: String?,
         eventId: String,
         deviceId: String,
         manifest: DeviceManifest,
-    ): Reply<Unit> =
+    ): Ack<Unit> =
         unused()
     override suspend fun leaveEvent(
         token: String?,
         eventId: String,
         deviceId: String,
         received: Boolean,
-    ): Reply<Unit> = unused()
+    ): Ack<Unit> = unused()
     override suspend fun eventFiles(
         token: String?,
         eventId: String,
@@ -153,7 +154,7 @@ private class FakeClient(
         eventId: String,
         deviceId: String,
     ): Reply<List<DeviceFile>> = unused()
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = unused()
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Ack<Unit> = unused()
 
     private fun unused(): Nothing = error("attestation reaches only the /attest/… routes")
 }

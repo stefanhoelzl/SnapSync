@@ -180,8 +180,9 @@ and why that matters for architecture, is in `docs/architecture.md`.
 subject, even when the service is all a caller ever sees of the port: its rules are tested over the mocks
 (section 5), which are bound to the same contracts as the real adapters, so the mocks' fidelity is held where the
 adapters' is. (Eight contracts once took a service as subject — the ledger, the download store and six App-Group
-stores; their scenarios now live in those services' suites.) The entry ports'
-handlers deliberately have none: they are pinned by rig tests over the JVM root (section 7) rather than by clauses.
+stores; their scenarios now live in those services' suites.) What an entry
+port's handler RUNS is the composition's, pinned by rig tests over the JVM root (section 7); an entry port's contract
+holds only its adapter's delivery to the handlers, driven through the adapter's own platform entries.
 A format a port's answers are framed into is not a port: the encrypted file format is held to shared reference
 vectors instead (below, `Crypto`).
 
@@ -261,6 +262,11 @@ Where bindings live: beside their implementations.
   and is no candidate to share; an import into an album lands there. The one clause it cannot reach on the emulator
   is a camera photo **another** app owns being left in place (every photo the test seeds is its own): the core never
   hands one over (`FolderAlbumCoordinatorTest`, `AlbumGatherTest`), and the closed test observes the platform's refusal.
+- The lesser photo grants on Android: a device-test APK is installed with every runtime permission it declares granted,
+  and revoking one ends the process, so each grant is an APK of its own — `:adapter:android`'s holds the full grant,
+  `:test:partial-grant`'s declares only `READ_MEDIA_VISUAL_USER_SELECTED` (the `Gallery` and `PhotoAccess` contracts'
+  partial-grant clauses: the selection read, its observer's baseline), and `:test:no-grant`'s declares none (never
+  asked; refused — the adapter's own record that it asked).
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
@@ -483,6 +489,13 @@ the binding stands up only to *receive* (the Sentry ingest), or to *answer with 
 input or observer. It does not change the binding's kind. A receiving endpoint must not be more lenient
 than production on a limit production is measured to enforce.
 
+One exception is deliberate and narrow: a **wire fixture** for the `Backend` port's HTTP adapter. A loopback server
+answering every route with success and bytes no backend version this build speaks would send stands in for a backend
+of another version, and its binding counts as `Live` for `BackendState.UNREADABLE_SUCCESS` alone — the one state
+whose clause judges only what the client's own decoding makes of the bytes (`Reply.Malformed`), never what a backend
+answers. The real `api/` never sends such a body, so nothing else could produce that answer; every other backend
+state stays the real `api/`'s or the in-memory mock's.
+
 No host can enter "protected data unavailable before first unlock", and the reason is mechanical rather
 than a gap in the fleet: before first unlock the App-Group file the launch-time adapters read sits in a
 class the OS will not decrypt, so `LaunchMix` refuses and a rig build composes nothing — the observer is
@@ -526,6 +539,11 @@ recording is input to a clause, never an expectation.
   volatile keys is masked. An OS-minted id that the adapter sends back is masked to the same placeholder
   in both places. **Credential material (attestations, assertions, tokens) is always masked**, because
   recordings are public.
+- **What the OS delivers unasked is recorded too, as an event** — a `<- text` line where it arrived among the
+  calls: an expiration handler fired, a relaunch's session events, a report handed over. On replay the replaying
+  seam takes the events due after each call it answers (`Replayer.takeEvents`) and delivers them to the adapter as
+  the OS did, on another thread. A call made while an event is still due, or an event never delivered, is
+  `Diverged`. A recording without events replays as it always did.
 - Clause inputs are deterministic: fixed values, a fixed id generator, and addresses derived from the
   clause id.
 - A missing recording, or a missing block for a declared-reachable clause, is `Failed`, not `NotRunHere`.
@@ -538,8 +556,18 @@ recording is input to a clause, never an expectation.
   an answer shows up as a diff on the same host.
 
 **Recording.** Build with `-Psnapsync.rig=true`, install on the entitled device, and call
-`POST /contract/<name>` over the rig. It answers with the recording text and the live outcome table. A
-production build contains none of the contract module, the bindings or the recorder.
+`POST /contract/<name>` over the rig. It answers with the recording text and the live outcome table, and keeps
+it in the app's `Documents/contracts/` too. A production build contains none of the contract module, the
+bindings or the recorder.
+
+Some states exist only once the app has left the person's hands, and their runs wait for it: the screen locked
+(`ProcessInfo@IOS_DEVICE_APP.LOCKED.rec`), the app sent to the home screen until its background time runs out
+(`BackgroundTime`). Each holds background time and waits — reading the app's own state, unrecorded — for the person
+to put the phone there. Two span launches, and are asked for in two steps (`?step=arm`, then `?step=collect`): the
+relaunch, where the app prepares a transfer in a session of its own and exits, and iOS relaunches it in the
+background to deliver the transfer's end (`Upload@IOS_DEVICE_APP.rec`, and `SharePresenter@IOS_DEVICE_APP.rec` from
+the same windowless launch); and MetricKit's delivery, which the run waits for across launches, about a day
+(`ProcessMetrics@IOS_DEVICE_APP.rec`). A step that records nothing answers `409`, so it never lands in a `.rec`.
 
 The extension cannot be reached by the rig directly. The verb writes a run request into the shared App
 Group and re-registers the extension. The OS invokes it, and the rig build's extension runs the contract

@@ -7,7 +7,7 @@ import app.snapsync.mock.MockedSystem
 import app.snapsync.model.FileArea
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
-import app.snapsync.ports.Completion
+import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -52,7 +52,7 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
     }
 
     /** A completion handler for [done], counted, and expirable by [expire]. */
-    fun completion(done: () -> Unit): Completion {
+    fun completion(done: () -> Unit): ExpiringCompletion {
         val handler = Handler(done)
         locked {
             handed++
@@ -144,7 +144,7 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         }
     }.toString()
 
-    private inner class Handler(private val done: () -> Unit) : Completion {
+    private inner class Handler(private val done: () -> Unit) : ExpiringCompletion {
         var released = false
         var expired = false
         var expiry: (() -> Unit)? = null

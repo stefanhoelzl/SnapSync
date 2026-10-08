@@ -27,6 +27,20 @@ import platform.darwin.task_info
 import platform.darwin.task_vm_info
 
 /**
+ * The operating-system boundary of [IosProcessInfo]'s protected-data read — `UIApplication.isProtectedDataAvailable` and
+ * nothing else — so the locked device's answer, recorded on a phone, replays on every build.
+ */
+internal interface ProtectedDataApi {
+    suspend fun available(): Boolean
+}
+
+/** The real one, on the main lane `UIApplication` requires. */
+internal object SystemProtectedDataApi : ProtectedDataApi {
+    override suspend fun available(): Boolean =
+        withContext(Dispatchers.Main) { UIApplication.sharedApplication.isProtectedDataAvailable() }
+}
+
+/**
  * The iOS [ProcessInfo] of the app process: `UIApplication.isProtectedDataAvailable`. App-only, because
  * `UIApplication` is unavailable to app extensions — the extension records the status of each protected read it
  * makes instead (capability `sync-status`, "Background entry points record protected-data state").
@@ -35,13 +49,10 @@ import platform.darwin.task_vm_info
  * lanes are fixed by the composition"), so the read names the main lane itself. It is a property read, not work:
  * nothing blocking follows it onto main.
  *
- * WHAT IS CONTRACTED, AND WHAT CANNOT BE. `ProcessInfoContract` runs live on the simulator app — the one CI host
- * with a `UIApplication` — and holds that an unlocked device reads available, through the main-lane hop above. The
- * unavailable answer has no clause and no host: no host lets a binding enter "not unlocked since boot", because the
- * simulator implements no data protection and the rig drives only a running, unlocked app (`docs/architecture.md`,
- * "Hosts are a closed set of what changes reachable states"). That belief — `isProtectedDataAvailable` is false on
- * a device locked since boot — is Apple's documented contract, and the background entry points' device-log lines
- * are the only place it is ever observed.
+ * WHAT IS CONTRACTED. `ProcessInfoContract` runs live on the simulator app — the one CI host with a `UIApplication` —
+ * and holds that an unlocked device reads available, through the main-lane hop above. The unavailable answer is
+ * recorded on the SE2 with its screen locked, the app held running in the background, at the [ProtectedDataApi] seam
+ * (`ProcessInfo@IOS_DEVICE_APP.LOCKED.rec`), and replayed on every build: the simulator implements no data protection.
  *
  * THE FOOTPRINT is the kernel's own accounting of this task (`task_info(TASK_VM_INFO)`): `phys_footprint` is the
  * figure the system's memory-pressure exits are decided on, `ledger_phys_footprint_peak` the highest it has been, and
@@ -49,13 +60,15 @@ import platform.darwin.task_vm_info
  * and the kernel reports how much of it it filled, so a field it did not fill reads `null` rather than zero. A mach
  * call on our own task — no UIKit, any thread, nothing that blocks.
  */
-class IosProcessInfo : ProcessInfo {
+class IosProcessInfo internal constructor(
+    // The operating-system boundary; production always passes the real one.
+    private val protectedData: ProtectedDataApi,
+) : ProcessInfo {
+
+    constructor() : this(SystemProtectedDataApi)
+
     override suspend fun protectedDataAvailable(): Availability =
-        if (withContext(Dispatchers.Main) { UIApplication.sharedApplication.isProtectedDataAvailable() }) {
-            Availability.AVAILABLE
-        } else {
-            Availability.UNAVAILABLE
-        }
+        if (protectedData.available()) Availability.AVAILABLE else Availability.UNAVAILABLE
 
     override fun memoryFootprint(): MemoryFootprint? = memScoped {
         val info = alloc<task_vm_info>()

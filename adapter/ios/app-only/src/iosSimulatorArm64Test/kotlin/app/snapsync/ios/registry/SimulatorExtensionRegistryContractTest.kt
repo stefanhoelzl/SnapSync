@@ -44,6 +44,8 @@ class SimulatorExtensionRegistryContractTest {
                     Entered.Unreachable(
                         "the simulator substitute models no photo grant, and a simulator has no partial one",
                     )
+                ExtensionRegistryState.NO_MECHANISM ->
+                    Entered.Unreachable("the substitute stands in for the mechanism, so it is never absent")
             }
     }
 

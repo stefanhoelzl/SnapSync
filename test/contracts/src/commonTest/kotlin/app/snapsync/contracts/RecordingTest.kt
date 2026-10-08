@@ -80,6 +80,51 @@ class RecordingTest {
     }
 
     @Test
+    fun `an event round-trips where it arrived among the calls`() {
+        val r = Recorder()
+        r.open("A")
+        r.record("begin(name=n)", "7")
+        r.event("expired(name=n)")
+        r.record("end(id=7)", "done")
+        val rendered = r.recording(emptyList()).render()
+        assertEquals("[A]\nbegin(name=n) -> 7\n<- expired(name=n)\nend(id=7) -> done\n", rendered)
+        assertEquals(
+            listOf(Exchange("begin(name=n)", "7"), Event("expired(name=n)"), Exchange("end(id=7)", "done")),
+            Recording.parse(rendered).blocks["A"],
+        )
+    }
+
+    @Test
+    fun `an event outside any clause is refused`() {
+        assertFailsWith<IllegalStateException> { Recorder().event("expired()") }
+    }
+
+    @Test
+    fun `the replayer hands each event over at the point it was recorded`() {
+        val p =
+            Replayer(
+                "A",
+                listOf(Event("relaunched()"), Exchange("a()", "1"), Event("e1"), Event("e2"), Exchange("b()", "2")),
+            )
+        assertEquals(listOf("relaunched()"), p.takeEvents())
+        assertEquals("1", p.answer("a()"))
+        assertEquals(listOf("e1", "e2"), p.takeEvents())
+        assertEquals(emptyList(), p.takeEvents(), "nothing is due until the next call is answered")
+        assertEquals("2", p.answer("b()"))
+        p.assertExhausted()
+    }
+
+    @Test
+    fun `a call made while an event is due diverges as does an event never delivered`() {
+        val p = Replayer("A", listOf(Exchange("a()", "1"), Event("e"), Exchange("b()", "2")))
+        p.answer("a()")
+        assertFailsWith<Divergence> { p.answer("b()") }
+        val q = Replayer("A", listOf(Exchange("a()", "1"), Event("e")))
+        q.answer("a()")
+        assertFailsWith<Divergence> { q.assertExhausted() }
+    }
+
+    @Test
     fun `volatile keys are masked and nothing else is`() {
         assertEquals(
             "0 cdat=<masked> pdmn=ck mdat=<masked> v_Data=abc",

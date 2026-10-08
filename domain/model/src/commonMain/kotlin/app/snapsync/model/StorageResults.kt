@@ -25,12 +25,25 @@ enum class FileArea {
  * [Denied] and [Failed] carry diagnostics only: log them, never branch on [code].
  */
 sealed interface FileResult<out T> {
-    data class Ok<out T>(val value: T) : FileResult<T>
+    data class Ok<out T>(val value: T) : FileLocation<T>
     data object NotFound : FileResult<Nothing>
-    data object AreaUnavailable : FileResult<Nothing>
-    data class Denied(val detail: String, val code: Long? = null) : FileResult<Nothing>
-    data class Failed(val detail: String, val code: Long? = null) : FileResult<Nothing>
+    data object AreaUnavailable : FileLocation<Nothing>
+    data class Denied(val detail: String, val code: Long? = null) : FileAccess<Nothing>
+    data class Failed(val detail: String, val code: Long? = null) : FileAccess<Nothing>
 }
+
+/**
+ * A [FileResult] that is never [FileResult.NotFound]: the answer of an operation for which nothing being there is no
+ * outcome at all — a write creates the file and its parents, a listing of a missing directory is empty, an existence
+ * check answers `false`.
+ */
+sealed interface FileAccess<out T> : FileResult<T>
+
+/**
+ * A [FileAccess] that is only [FileResult.Ok] or [FileResult.AreaUnavailable]: naming a platform path touches no file,
+ * so only the area's own reachability can fail it.
+ */
+sealed interface FileLocation<out T> : FileAccess<T>
 
 /** The last bytes of a file, and whether the read began after its first byte (so possibly mid-line). */
 class FileTail(val bytes: ByteArray, val cut: Boolean)
@@ -45,8 +58,5 @@ sealed interface PrefRead {
 /** The outcome of a write to a store that may refuse it. [Failed.detail] is diagnostics only. */
 sealed interface WriteOutcome {
     data object Ok : WriteOutcome
-
-    /** This platform has no such operation (answered, never thrown, so a caller states what it does instead). */
-    data object Unsupported : WriteOutcome
     data class Failed(val detail: String) : WriteOutcome
 }

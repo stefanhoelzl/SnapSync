@@ -156,5 +156,4 @@ class OsCompletionsTest {
 /** A [Completion] that runs [onComplete] each time it is completed — the holder's once-only is what is under test. */
 private fun completionOf(onComplete: () -> Unit): Completion = object : Completion {
     override fun complete() = onComplete()
-    override fun onExpired(action: () -> Unit) = Unit
 }

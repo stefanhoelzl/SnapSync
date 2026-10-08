@@ -3,6 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
+import app.snapsync.model.DumpHandOff
 import app.snapsync.model.DumpResult
 
 /**
@@ -39,5 +40,5 @@ interface CrashReporter : Listenable<CrashHandlers> {
     fun capture(event: CrashEvent)
     fun breadcrumb(crumb: Crumb)
     fun setContext(name: String, fields: Map<String, String>)
-    suspend fun sendDump(dump: CrashEvent): DumpResult
+    suspend fun sendDump(dump: CrashEvent): DumpHandOff
 }

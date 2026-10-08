@@ -3,11 +3,18 @@ package app.snapsync.contracts
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.minutes
 
 /** The states the app's background time can be found in, as far as a clause cares. */
 enum class BackgroundTimeState {
     /** A running app whose time is not up: the operating system grants a hold when asked. */
     TIME_REMAINS,
+
+    /**
+     * The app sent to the background, so a hold it begins runs until the operating system says its time is up — a
+     * device's, recorded: no CI host's background time runs out under a binding.
+     */
+    TIME_RUNS_OUT,
 }
 
 /**
@@ -20,14 +27,11 @@ enum class BackgroundTimeState {
  * expiry is exactly what a refusal would look like — that holds do not refuse each other (background time is per
  * app), and that ending a hold is safe to repeat.
  *
- * Deliberately **no expiry clause**: no host lets a binding enter "time is up". The operating system fires a
- * background task's expiration handler only after the app has been in the background for as long as it allows,
- * which takes the process under test away from the rig that drives it, and no API lets a process expire its own
- * time. A clause only the in-memory double could reach may not exist (`docs/architecture.md`, "Every clause runs against
- * a real implementation on some host"), so the expiry behaviour — the handler invoked once and returning at once,
- * the hold NOT ended by the expiry, a refusal reported as an immediate expiry — lives in `IosBackgroundTime`'s
- * documentation and its own tests over its operating-system seam, and the core's reaction to an expiry is tested
- * over the honest double.
+ * **The expiry** ([BackgroundTimeState.TIME_RUNS_OUT]) has no live host: the operating system fires a background
+ * task's expiration handler only after the app has been in the background for as long as it allows, and no API lets
+ * a process expire its own time. So it is recorded on a phone a person sent to the home screen, and replayed — the
+ * expiry delivered where it arrived among the adapter's calls. A refusal reported as an immediate expiry stays in
+ * `IosBackgroundTime`'s own tests over its operating-system seam: no host refuses a running app its first hold.
  */
 object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("BackgroundTime") {
 
@@ -96,8 +100,31 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
             assertEquals(0, expiries.count, "a repeated end neither fails nor disturbs a hold begun after it")
             next.end()
         }
+
+        clause(
+            "AN_EXPIRY_IS_REPORTED_ONCE_AND_THE_HOLD_STILL_ENDS",
+            BackgroundTimeState.TIME_RUNS_OUT,
+            covers = cells {
+                on<BackgroundTime> {
+                    answers(BackgroundTime::begin).returns()
+                    callsBack(BackgroundTime::begin, "onExpiry")
+                    handle<BackgroundTimeHold>().answers(BackgroundTimeHold::end).returns()
+                }
+            },
+        ) { time ->
+            val expiries = Expiries()
+            val hold = time.begin("contract.expiry", expiries::fire)
+            awaitWithin(EXPIRY_BOUND) { expiries.count > 0 }
+            settle()
+            assertEquals(1, expiries.count, "the operating system's \"time is up\" is reported exactly once")
+            // The expiry only requested a stop; the hold is the caller's to end, inside the system's grace.
+            hold.end()
+        }
     }
 }
+
+/** How long a backgrounded app's hold may run before its time is up: about thirty seconds on iOS 26, with margin. */
+private val EXPIRY_BOUND = 3.minutes
 
 /** Counts the expiries a clause's holds report. */
 private class Expiries {

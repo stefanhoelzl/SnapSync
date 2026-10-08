@@ -13,6 +13,7 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.model.Ack
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.EventConfig
@@ -83,7 +84,7 @@ class ExtensionEntryTest {
             eventId: String,
             deviceId: String,
             manifest: DeviceManifest,
-        ): Reply<Unit> {
+        ): Ack<Unit> {
             publishedWith += token
             return Reply.Ok(Unit)
         }

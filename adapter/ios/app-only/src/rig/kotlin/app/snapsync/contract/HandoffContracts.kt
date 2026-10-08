@@ -1,5 +1,9 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+
 package app.snapsync.contract
 
+import app.snapsync.background.SystemBackgroundTimeApi
+import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
@@ -12,6 +16,7 @@ import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.LinkOpenerState
 import app.snapsync.contracts.NetworkMonitorContract
+import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.SharePresenterState
@@ -24,13 +29,19 @@ import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
+import app.snapsync.logging.documentsDirectory
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.SystemUi
 import app.snapsync.systemui.IosSystemUi
 import platform.Foundation.NSDate
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSString
 import platform.Foundation.NSURL
+import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.create
+import platform.Foundation.writeToFile
 import platform.UIKit.UIApplication
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_sync
@@ -94,7 +105,9 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
     InAppContract(WakeContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
     InAppContract(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP) { recordRegistry(refusal) },
     InAppContract(NetworkMonitorContract.name, Host.IOS_DEVICE_APP) { params -> recordNetwork(params) },
-)
+    InAppContract(ProcessInfoContract.name, Host.IOS_DEVICE_APP) { recordProcessInfoLocked() },
+    InAppContract(BackgroundTimeContract.name, Host.IOS_DEVICE_APP) { recordBackgroundTimeExpiry() },
+) + relaunchContracts() + metricsContracts()
 
 /**
  * Runs the registration contract under the grant this process holds — the grant is a precondition of the run,
@@ -141,7 +154,41 @@ internal fun <K : Enum<K>, T> recordAppOnDevice(
             "kotlin" to KotlinVersion.CURRENT.toString(),
             "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
         ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
-    return recorder.recording(header).render()
+    return recorder.recording(header).render().also { keepRecording(contract.name, grant, precondition, it) }
+}
+
+/**
+ * Keeps [text] in the app's `Documents/contracts/` as well as answering it, under the name it is committed as: a run
+ * that takes the app to the background — the phone locked, the home screen shown — may find the rig's connection
+ * gone by the time it answers, and the device tooling pulls `Documents/` like `debug.log`.
+ */
+internal fun keepRecording(contract: String, grant: GalleryAccess?, precondition: String?, text: String) {
+    val dir = documentsDirectory()?.let { "$it/contracts" } ?: return
+    NSFileManager.defaultManager.createDirectoryAtPath(
+        dir,
+        withIntermediateDirectories = true,
+        attributes = null,
+        error = null,
+    )
+    val name = recordingName(contract, Host.IOS_DEVICE_APP, grant, precondition)
+    NSString.create(
+        string = text,
+    ).writeToFile("$dir/$name.rec", atomically = true, encoding = NSUTF8StringEncoding, error = null)
+}
+
+/**
+ * Runs [block] holding the app's background time, so a run the person sends to the background — by locking the phone,
+ * or going to the home screen — runs to its end rather than being suspended mid-clause. The system's expiry ends the
+ * hold early; what the run has by then is what it answers.
+ */
+internal fun <T> whileHoldingBackgroundTime(name: String, block: () -> T): T {
+    var identifier: ULong? = null
+    identifier = SystemBackgroundTimeApi.begin(name) { identifier?.let(SystemBackgroundTimeApi::end) }
+    try {
+        return block()
+    } finally {
+        identifier?.let(SystemBackgroundTimeApi::end)
+    }
 }
 
 /** The real [IosSystemUi] in the simulator app, for the state that leaves the app where it is. */
@@ -166,7 +213,11 @@ class SimAppSharePresenterBinding : Binding<SharePresenterState, SystemUi> {
     override val reaches = setOf(SharePresenterState.PRESENTABLE)
 
     override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> =
-        Entered.Ready(IosSystemUi().recorded(log), dispose = ::dismissPresented)
+        if (state in reaches) {
+            Entered.Ready(IosSystemUi(), dispose = ::dismissPresented)
+        } else {
+            Entered.Unreachable("the rig drives the simulator app in the foreground, its window built")
+        }
 }
 
 /** Dismisses whatever the key window's root controller presents. Called off the main queue, by the runner. */

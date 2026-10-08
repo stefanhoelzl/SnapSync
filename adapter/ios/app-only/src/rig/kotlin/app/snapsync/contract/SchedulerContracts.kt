@@ -149,6 +149,8 @@ internal class DeviceSchedulerBinding(private val recorder: Recorder) : Binding<
     override val reaches = setOf(WakeState.EMPTY)
 
     override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
+        // A state this host does not present: another platform's fact, or one no binding here enters.
+        if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
         recorder.open(clauseId)
         return schedulerInState(RecordingBackgroundTaskApi(SystemBackgroundTaskApi, recorder), log)
     }

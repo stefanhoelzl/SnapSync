@@ -2,7 +2,9 @@ package app.snapsync.services.downloads
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
+import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
+import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.model.PendingDownload
@@ -97,11 +99,16 @@ class DownloadJobsTest {
         /** The session delivered every event it had — `URLSessionDidFinishEventsForBackgroundURLSession`. */
         fun eventsFinished() = jobs.onBackgroundEventsFinished()
 
-        /** The system invalidated the session — the only way one ever dies. */
+        /**
+         * The system invalidated the session — the only way one ever dies: every transfer it held reports completed
+         * with an error, as the port promises.
+         */
         fun systemInvalidates() {
             sessions++
-            started.forEach { it.cancelled = true }
-            jobs.onInvalidated()
+            started.filterNot { it.cancelled }.forEach {
+                it.cancelled = true
+                jobs.onCompleted(it.description, "the session was invalidated by the system")
+            }
         }
 
         /**
@@ -678,15 +685,15 @@ class DownloadJobsTest {
             offset: Long,
             maxBytes: Int,
         ): FileResult<ByteArray> = FileResult.NotFound
-        override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
-        override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
+        override fun append(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> = FileResult.Ok(Unit)
+        override fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> = FileResult.Ok(Unit)
         override fun delete(area: FileArea, path: String): FileResult<Unit> = FileResult.NotFound
-        override fun exists(area: FileArea, path: String): FileResult<Boolean> = FileResult.Ok(false)
-        override fun locate(area: FileArea, path: String): FileResult<String> = FileResult.Ok("/abs/$path")
+        override fun exists(area: FileArea, path: String): FileAccess<Boolean> = FileResult.Ok(false)
+        override fun locate(area: FileArea, path: String): FileLocation<String> = FileResult.Ok("/abs/$path")
         override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = FileResult.NotFound
         override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> =
             if (adopts) FileResult.Ok(Unit) else FileResult.Denied("locked")
-        override fun list(area: FileArea, directory: String): FileResult<List<String>> = FileResult.Ok(emptyList())
+        override fun list(area: FileArea, directory: String): FileAccess<List<String>> = FileResult.Ok(emptyList())
     }
 
     @Test
@@ -721,7 +728,6 @@ class DownloadJobsTest {
 private fun bareCompletion(onComplete: () -> Unit): app.snapsync.ports.Completion =
     object : app.snapsync.ports.Completion {
         override fun complete() = onComplete()
-        override fun onExpired(action: () -> Unit) = Unit
     }
 
 /** The event every planned download in this file belongs to. */

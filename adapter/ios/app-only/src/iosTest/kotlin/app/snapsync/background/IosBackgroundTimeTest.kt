@@ -6,8 +6,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * [IosBackgroundTime]'s own logic over its operating-system boundary — the part no host can put under the contract,
- * because no binding can make the system say "time is up" (see `BackgroundTimeContract`).
+ * [IosBackgroundTime]'s own logic over its operating-system boundary — a refusal and a repeated expiry, which no host
+ * presents to a binding (the expiry itself is `BackgroundTimeContract`'s, recorded on a device).
  */
 class IosBackgroundTimeTest {
 
