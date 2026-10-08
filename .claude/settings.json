@@ -11,7 +11,9 @@
       "Bash(deno fmt:*)",
       "Bash(deno lint:*)",
       "Bash(deno test:*)",
-      "Bash(node ~/.claude/skills/ssh-runner/ssh-runner.ts:*)"
+      "Bash(node ~/.claude/skills/ssh-runner/ssh-runner.ts:*)",
+      "Bash(jq:*)",
+      "Bash(cd api)"
     ]
   }
 }
