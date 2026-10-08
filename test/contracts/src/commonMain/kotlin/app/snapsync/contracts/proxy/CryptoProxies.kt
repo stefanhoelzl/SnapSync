@@ -12,11 +12,20 @@ internal class CryptoProxy(private val inner: Crypto, log: CallLog) : Crypto {
     private val r = log.recorder("Crypto")
 
     override fun randomBytes(count: Int) = r.returns("randomBytes", inner.randomBytes(count))
-    override fun hmacSha256(key: ByteArray, message: ByteArray) = r.returns("hmacSha256", inner.hmacSha256(key, message))
+    override fun hmacSha256(
+        key: ByteArray,
+        message: ByteArray,
+    ) = r.returns("hmacSha256", inner.hmacSha256(key, message))
     override fun aesGcmSeal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray) =
-        r.returns("aesGcmSeal", r.throwing("aesGcmSeal", THROWS.getValue("aesGcmSeal")) { inner.aesGcmSeal(key, nonce, plaintext) })
+        r.returns(
+            "aesGcmSeal",
+            r.throwing("aesGcmSeal", THROWS.getValue("aesGcmSeal")) { inner.aesGcmSeal(key, nonce, plaintext) },
+        )
     override fun aesGcmOpen(key: ByteArray, nonce: ByteArray, sealed: ByteArray) =
-        r.returns("aesGcmOpen", r.throwing("aesGcmOpen", THROWS.getValue("aesGcmOpen")) { inner.aesGcmOpen(key, nonce, sealed) })
+        r.returns(
+            "aesGcmOpen",
+            r.throwing("aesGcmOpen", THROWS.getValue("aesGcmOpen")) { inner.aesGcmOpen(key, nonce, sealed) },
+        )
 
     companion object {
         /** Each member's `@Throws`, which Kotlin/Native cannot read at run time; held to the port by `:test:architecture`. */

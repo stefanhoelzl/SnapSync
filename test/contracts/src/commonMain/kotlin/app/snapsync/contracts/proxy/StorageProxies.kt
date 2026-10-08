@@ -25,7 +25,11 @@ internal class FilesProxy(private val inner: Files, log: CallLog) : Files {
         r.answer("readTail", inner.readTail(area, path, maxBytes))
     override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int) =
         r.answer("readRange", inner.readRange(area, path, offset, maxBytes))
-    override fun write(area: FileArea, path: String, bytes: ByteArray) = r.answer("write", inner.write(area, path, bytes))
+    override fun write(
+        area: FileArea,
+        path: String,
+        bytes: ByteArray,
+    ) = r.answer("write", inner.write(area, path, bytes))
     override fun append(area: FileArea, path: String, bytes: ByteArray) =
         r.answer("append", inner.append(area, path, bytes))
     override fun delete(area: FileArea, path: String) = r.answer("delete", inner.delete(area, path))

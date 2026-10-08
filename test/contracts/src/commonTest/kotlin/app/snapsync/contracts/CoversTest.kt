@@ -77,7 +77,12 @@ class CoversTest {
         }
         assertEquals(listOf("PhotoGrantRead.current → GalleryAccess.GRANTED"), covers.cells)
         assertEquals(
-            listOf(listOf("PhotoGrantRead.current → GalleryAccess.NOT_DETERMINED", "PhotoGrantRead.current → GalleryAccess.DENIED")),
+            listOf(
+                listOf(
+                    "PhotoGrantRead.current → GalleryAccess.NOT_DETERMINED",
+                    "PhotoGrantRead.current → GalleryAccess.DENIED",
+                ),
+            ),
             covers.oneOf,
         )
     }

@@ -111,12 +111,29 @@ class ProxyRenderingTest {
     fun `only the declared throw is recorded, and every throw passes unchanged`() {
         val unavailable = SecureStoreUnavailable("locked")
         val log = log()
-        assertEquals(unavailable, assertFailsWith<SecureStoreUnavailable> { attestStore { throw unavailable }.recorded(log).token() })
+        assertEquals(
+            unavailable,
+            assertFailsWith<SecureStoreUnavailable> {
+                attestStore { throw unavailable }.recorded(log).token()
+            },
+        )
         assertEquals(setOf("AttestStore.token → throws"), log.cells)
 
         val other = log()
-        assertFailsWith<IllegalStateException> { attestStore { error("not the declared type") }.recorded(other).token() }
-        assertFailsWith<CancellationException> { attestStore { throw CancellationException("x") }.recorded(other).token() }
+        assertFailsWith<IllegalStateException> {
+            attestStore {
+                error(
+                    "not the declared type",
+                )
+            }.recorded(other).token()
+        }
+        assertFailsWith<CancellationException> {
+            attestStore {
+                throw CancellationException(
+                    "x",
+                )
+            }.recorded(other).token()
+        }
         assertEquals(emptySet(), other.cells)
     }
 
@@ -154,7 +171,9 @@ private object UnusedBackend : Backend {
         deviceId: String,
         manifest: app.snapsync.model.DeviceManifest,
     ) = error("unused")
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean) = error("unused")
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean) = error(
+        "unused",
+    )
     override suspend fun eventFiles(
         token: String?,
         eventId: String,

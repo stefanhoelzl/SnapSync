@@ -11,10 +11,10 @@ import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
-import app.snapsync.ports.LinkHandlers
-import app.snapsync.ports.Links
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
+import app.snapsync.ports.LinkHandlers
+import app.snapsync.ports.Links
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.PushHandlers

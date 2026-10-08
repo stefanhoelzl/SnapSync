@@ -20,7 +20,10 @@ internal class BackendProxy(private val inner: Backend, log: CallLog) : Backend 
     override suspend fun renewToken(req: RenewRequest) = r.answer("renewToken", inner.renewToken(req))
     override suspend fun createEvent(token: String?, req: CreateEventRequest) =
         r.answer("createEvent", inner.createEvent(token, req))
-    override suspend fun getEvent(token: String?, eventId: String) = r.answer("getEvent", inner.getEvent(token, eventId))
+    override suspend fun getEvent(
+        token: String?,
+        eventId: String,
+    ) = r.answer("getEvent", inner.getEvent(token, eventId))
     override suspend fun renameEvent(token: String?, eventId: String, name: String) =
         r.answer("renameEvent", inner.renameEvent(token, eventId, name))
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String) =

@@ -205,9 +205,11 @@ end of this section.
   generates or rewrites a clause from observed behaviour. A person decides.
 - Each contract has its own **state vocabulary** beside it. Production code never gains it.
 - A **binding** pairs one implementation with one **host** and has a kind: `Fake`, `Live` or `Replay`.
-  It declares, **as a literal**, the states it can reach. `create(state)` returns a fresh implementation
-  already in that state, or `Unreachable(reason)`. Each clause gets a fresh instance. The runner checks
-  the declaration: a declared state answered `Unreachable`, or an undeclared one answered, is `Failed`.
+  It declares, **as a literal**, the states it can reach. `create(state, clauseId, log)` returns a fresh
+  implementation already in that state, or `Unreachable(reason)`. Each clause gets a fresh instance. The
+  runner checks the declaration: a declared state answered `Unreachable`, or an undeclared one answered, is
+  `Failed`. Its first act is to wrap the implementation in the port's **recording proxy** over `log`, and
+  it builds everything else over the proxy ("A declared cell must occur").
 - Where an outcome cannot be read through the port itself, the clause also gets an **observation
   handle**. Examples: a port method that returns nothing, a refusal that reaches the app only through
   the HTTP interceptor, or what a reporter transmitted to an endpoint. The handle reads **outcomes**
@@ -391,14 +393,49 @@ fails the compile; handler arguments and the member's owning port are not type-c
 A clause claims a cell only where its body **checks** that answer: it asserts it, or asserts an effect
 only that answer produces (one pending wake after a `schedule`). A call made for setup whose answer the
 clause never checks is not a claim. A clause that accepts either of two answers (a grant that reads
-`NOT_DETERMINED` or `DENIED`, a `start` that may or may not begin) claims both, though one run sees one.
+`NOT_DETERMINED` or `DENIED`, a `start` that may or may not begin) declares them as a **one-of group**:
+`oneOf { on<P>()…; on<P>()… }`. One run sees one of them, so a cell claimed only inside groups is a
+**weak claim** and does not count as covered.
 
 The declarations render through `:test:contracts`' common code (`Covers.kt`), the same on every host.
 `ClauseCoversTest` loads every contract as a value (`ContractCatalog`, by reflection over the contracts'
 JVM classes) and holds the declarations to the grid. It **fails** on a clause with no cell and on a
-declared cell the grid does not hold. It **reports** the unclaimed cells, and the cells claimed only by
-clauses no real implementation runs, in `build/reports/port-grid/clause-covers.txt`. A declaration is
-trusted: nothing yet checks that a clause really drives the cell it names.
+declared cell the grid does not hold. It **reports** the unclaimed cells, the cells claimed only by
+clauses no real implementation runs, and the cells claimed only weakly, in
+`build/reports/port-grid/clause-covers.txt`.
+
+### A declared cell must occur
+
+A declaration is checked on every host a clause runs, `Fake` included: a clause's state is fixed, so its
+answers do not depend on the host, and one check keeps the mock and the adapter honest to the same claim.
+
+- The runner makes one `CallLog` per clause and passes it to `create`. The binding wraps its
+  implementation in the port's **recording proxy** (`adapter.recorded(log)`, `:test:contracts`
+  `proxy/`) before anything else, and builds the subject over the proxy only — the `EdgeSubject`, the
+  `SeededLibrary`, each `Download` a factory opens.
+- A proxy forwards every call unchanged and records the cell it saw as the grid's own text, rendered by the
+  same `Covers.kt` the declarations use: the instance's class is the class the declaration names, on the
+  JVM and Kotlin/Native alike. It wraps what it hands on, too: the handlers passed to `listen` (logged as
+  `Port.handlers.field(…)`), the callbacks handed to a member, and the handles a member returns or a
+  handler receives (`Completion`, `BackgroundTimeHold`, `LibraryChangeToken`), each under the port that
+  hands it out. A member that declares `@Throws` records `throws` only for the declared type: another
+  throw, or a cancellation, passes unrecorded, and every throw is rethrown unchanged.
+- Only the clause's **window** counts: from just before its body to the end of the binding's `dispose`.
+  What `create` does to enter the state (seeding writes, `listen`) satisfies no claim; a handler the
+  adapter calls late, during the body or the disposal, does. A call after the window is dropped. So a
+  binding's own cleanup in `dispose` goes through the bare implementation: a cleanup `delete` through the
+  proxy would satisfy a clause that claims a delete its body never made.
+- After a body that passed, a declared cell that never occurred is `Failed("declared <cell> never
+  occurred")`, and a one-of group none of whose cells occurred is `Failed("none of … occurred")`. A cell
+  that occurred undeclared is ignored.
+
+Kotlin/Native cannot read `@Throws` at run time, so each proxy names its members' declared types in a
+`THROWS` map. `ProxyCompletenessTest` (`:test:architecture`) holds every proxy to the grid: each grid
+port has one; it drives **every** cell of the grid through it, over a reflective double that answers the
+cell's variant, throws its declared type or calls its handler, callback or handle, and requires exactly
+that cell to be recorded; and each `THROWS` map equals the port's `@Throws` declarations. A proxy for a
+port no contract binds yet is held to the grid all the same. `ProxyRenderingTest` runs the rendering on
+every target `:test:contracts` tests, the iOS simulator included.
 
 ### Open cells
 

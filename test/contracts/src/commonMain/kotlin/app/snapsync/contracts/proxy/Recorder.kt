@@ -62,7 +62,10 @@ class Recorder internal constructor(private val log: CallLog, private val owner:
          * A handler or callback argument's variant: `null`, or for an argument whose type is neither sealed, enum nor
          * `Boolean` the type's name as the grid writes it ([plain]); otherwise the value's variant.
          */
-        fun arg(value: Any?, plain: String? = null): String = if (value == null || plain == null) answerVariant(value) else plain
+        fun arg(
+            value: Any?,
+            plain: String? = null,
+        ): String = if (value == null || plain == null) answerVariant(value) else plain
     }
 }
 
