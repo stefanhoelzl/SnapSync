@@ -3,6 +3,8 @@ package app.snapsync.model
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -58,6 +60,25 @@ class SelectionPolicyTest {
         val admitted = EventPhotoSet(policy) { candidatesFromResources(resources) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
         return (resources.mapTo(mutableSetOf()) { it.assetId } - admitted).mapTo(mutableSetOf()) { it.value }
+    }
+
+    // ── The policy as a value ──
+
+    @Test
+    fun `two policies over the same rules are one value, so a walk filtered by one is reused under the other`() {
+        val floor = SelectionRule.CaptureAfter(captureCutoff("2026-07-01T00:00:00Z"))
+        val policy = { SelectionPolicy(listOf(floor, SelectionRule.ExcludeScreenshots)) }
+
+        assertEquals(policy(), policy())
+        assertEquals(policy().hashCode(), policy().hashCode())
+        assertNotEquals(policy(), SelectionPolicy(listOf(floor)))
+        assertNotEquals<Any>(policy(), listOf(floor, SelectionRule.ExcludeScreenshots))
+    }
+
+    @Test
+    fun `a policy contributes unless one of its rules refuses everything`() {
+        assertTrue(SelectionPolicy(listOf(SelectionRule.ExcludeScreenshots, SelectionRule.MinImageArea(1))).contributes)
+        assertFalse(SelectionPolicy(listOf(SelectionRule.ExcludeScreenshots, SelectionRule.DenyAll)).contributes)
     }
 
     // ── Subtypes ──────────────────────────────────────────────────────────────────────────────────────

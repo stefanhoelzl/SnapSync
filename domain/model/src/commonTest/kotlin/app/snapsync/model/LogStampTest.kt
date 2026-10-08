@@ -31,6 +31,19 @@ class LogStampTest {
     )
 
     @Test
+    fun `an instant before the epoch floors into the previous second and day`() = stamps(
+        -1L to "1969-12-31 23:59:59.999 +0000",
+        -1_000L to "1969-12-31 23:59:59.000 +0000",
+        -86_400_000L to "1969-12-31 00:00:00.000 +0000",
+    )
+
+    @Test
+    fun `the days before year 0's March fall in the previous 400-year era and are still dated right`() = stamps(
+        -62_167_219_200_000L to "0000-01-01 00:00:00.000 +0000",
+        -62_162_035_200_000L to "0000-03-01 00:00:00.000 +0000",
+    )
+
+    @Test
     fun `a leap century keeps its leap day`() = stamps(
         951_825_600_050L to "2000-02-29 12:00:00.050 +0000",
         951_868_800_000L to "2000-03-01 00:00:00.000 +0000",

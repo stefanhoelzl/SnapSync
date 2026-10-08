@@ -50,6 +50,9 @@ class EncryptedFileFormatTest {
         assertFailsWith<IllegalArgumentException> {
             Hkdf.derive(Recording(), ByteArray(1), ByteArray(0), ByteArray(0), 255 * 32 + 1)
         }
+        assertFailsWith<IllegalArgumentException> {
+            Hkdf.derive(Recording(), ByteArray(1), ByteArray(0), ByteArray(0), -1)
+        }
     }
 
     @Test
@@ -80,6 +83,11 @@ class EncryptedFileFormatTest {
             FileHead(head.keyId.copyOf(), head.salt.copyOf(), head.noncePrefix.copyOf()).hashCode(),
         )
         assertNotEquals<Any>(head, "a head")
+        // Equal by every byte of every part: a head differing in any one part is another file's.
+        val other = ByteArray(32) { 99 }
+        assertNotEquals(head, FileHead(other.copyOf(8), head.salt, head.noncePrefix))
+        assertNotEquals(head, FileHead(head.keyId, other, head.noncePrefix))
+        assertNotEquals(head, FileHead(head.keyId, head.salt, other.copyOf(7)))
     }
 
     @Test

@@ -63,6 +63,13 @@ class LedgerEntryEqualityTest {
         assertTrue(!base.equals("A-primary.jpg"), "equality must not reduce to the key alone")
     }
 
+    @Test
+    fun a_row_reads_as_its_key_asset_and_state() {
+        // What a failed ledger assertion prints: the three fields that identify a row and say where it is, not
+        // every field the row carries.
+        assertEquals("LedgerEntry(A-primary.jpg, assetId=A, COMPLETED)", base.toString())
+    }
+
     private fun LedgerEntry.copyWith(
         key: String = this.key,
         assetId: AssetId = this.assetId,
