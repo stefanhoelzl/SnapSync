@@ -9,9 +9,11 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ReceivedPhotoName
+import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.resourcesFrom
@@ -113,6 +115,53 @@ class MarkedPhotoLookupTest {
         assertNull(
             MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, emptySet()),
             "unreadable",
+        )
+    }
+
+    @Test
+    fun a_known_asset_in_the_selection_is_passed_over_and_a_primary_with_no_name_is_unmarked() = runTest {
+        val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(GalleryAccess.LIMITED))
+        val nameless = Resource(
+            "L-X-primary.heic",
+            AssetId("L-X"),
+            "image/heic",
+            mapOf(RESOURCE_META_CREATION_DATE to "2026-06-05T12:00:00Z"),
+            Unit,
+        )
+        val found = MarkedPhotoLookup(gallery) { SelectionScope.Scoped(resourcesFrom(library) + nameless) }
+            .markedIn(start, end, known = setOf(AssetId("L-A")))
+        assertEquals(mapOf(ReceivedPhotoName.token(refB) to AssetId("L-B")), found)
+    }
+
+    @Test
+    fun a_library_whose_resources_cannot_be_read_finds_nothing_marked() = runTest {
+        val gallery = object : GalleryReader by inMemoryGallery(MutableStateFlow(library)) {
+            override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = GalleryRead.NotReadable
+        }
+        assertEquals(
+            emptyMap(),
+            MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, known = emptySet()),
+        )
+    }
+
+    @Test
+    fun a_photo_with_no_primary_resource_is_unmarked() = runTest {
+        val liveOnly = LibraryAssets.photo(
+            "L-LIVE",
+            creationDate = "2026-06-05T12:00:00Z",
+            resources = listOf(
+                RawResource(
+                    ResourceRole.LIVE,
+                    "video/quicktime",
+                    ReceivedPhotoName.mark("IMG_2.MOV", "k-live.mov", refA),
+                    Unit,
+                ),
+            ),
+        )
+        val gallery = inMemoryGallery(MutableStateFlow(listOf(liveOnly)))
+        assertEquals(
+            emptyMap(),
+            MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, known = emptySet()),
         )
     }
 }

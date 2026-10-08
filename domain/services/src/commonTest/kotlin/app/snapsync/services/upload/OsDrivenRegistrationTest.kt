@@ -110,6 +110,18 @@ class OsDrivenRegistrationTest {
         assertEquals(listOf("disable"), log, "deregister must touch nothing but the registration")
     }
 
+    /** What the platform's record says is what the mechanism answers — read from the record, never remembered. */
+    @Test
+    fun `the registration reads as the platform records it`() = runTest {
+        val log = mutableListOf<String>()
+        val (mechanism, registry) = mechanism(log)
+        assertEquals(false, mechanism.isRegistered())
+        mechanism.register()
+        assertEquals(true, mechanism.isRegistered())
+        registry.registered = false
+        assertEquals(false, mechanism.isRegistered(), "a record removed underneath is read as removed")
+    }
+
     // ── A platform without the mechanism ───────────────────────────────────────────────────────────
 
     /** Below iOS 26.1, on the JVM, on Android: the port answers `Unsupported`, and nothing reads as registered. */

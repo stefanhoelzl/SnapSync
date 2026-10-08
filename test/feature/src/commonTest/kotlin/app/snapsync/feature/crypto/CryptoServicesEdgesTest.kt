@@ -4,6 +4,7 @@ import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -151,6 +152,33 @@ class CryptoServicesEdgesTest {
             FileResult.NotFound,
             FileCipher(crypto, RecordingFiles()).encrypt(key, ad, FileArea.SHARED, "missing", "t"),
         )
+        assertEquals(
+            FileResult.AreaUnavailable,
+            FileCipher(crypto, inMemoryFiles(shared = null)).encrypt(key, ad, FileArea.SHARED, "p", "t"),
+        )
+    }
+
+    /** A transfer started before transfers named their event fetched for the event joined then — the one joined now. */
+    @Test
+    fun a_download_from_before_transfers_named_their_event_opens_with_the_joined_events_key() = runTest {
+        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val keys = EventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
+        val files = RecordingFiles()
+        files.write(FileArea.SHARED, "p", ByteArray(10))
+        FileCipher(crypto, files).encrypt(
+            keys.current()!!,
+            EncryptedFileFormat.associatedData(EVENT, DEVICE, "ASSET1", "primary"),
+            FileArea.SHARED,
+            "p",
+            "in",
+        )
+        val opening = DownloadOpening(
+            keys,
+            FileCipher(crypto, files),
+            configService(config(minted.keyId), files),
+            files,
+        )
+        assertTrue(opening.open(ref, "ASSET1-primary.heic", eventId = "", from = "in", to = "out"))
     }
 
     @Test

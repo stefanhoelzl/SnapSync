@@ -47,6 +47,17 @@ class MobileDataSettingTest {
     }
 
     @Test
+    fun `turned back on photos use any network again and the choice is kept`() {
+        val setting = MobileDataSetting(prefs)
+        setting.set(false)
+        assertTrue(setting.set(true))
+        assertTrue(setting.allowed.value)
+        assertEquals(TransferNetwork.ANY, setting.transferNetwork())
+        assertEquals("on", MobileDataSetting(prefs).describe(), "stored, not merely the default")
+        assertEquals("on", prefs.values[MOBILE_DATA_KEY])
+    }
+
+    @Test
     fun `a choice made by another process is read on the next transfer`() {
         val setting = MobileDataSetting(prefs)
         MobileDataSetting(prefs).set(false)

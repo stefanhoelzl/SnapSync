@@ -62,6 +62,9 @@ class RecordingFiles(
     /** Lever: every delete answers `Failed` (nothing is deleted) while set. */
     var failDeletes: Boolean = false
 
+    /** Lever: these paths cannot be located in any area — answered `AreaUnavailable`, as a missing container is. */
+    val unlocatable: MutableSet<String> = mutableSetOf()
+
     /** Called with each operation as it happens — how a test interleaves the port's calls with its own record. */
     var onOperation: (String) -> Unit = {}
 
@@ -82,7 +85,8 @@ class RecordingFiles(
         bytes: ByteArray,
     ): FileResult<Unit> = inner.append(area, path, bytes)
     override fun exists(area: FileArea, path: String): FileResult<Boolean> = inner.exists(area, path)
-    override fun locate(area: FileArea, path: String): FileResult<String> = inner.locate(area, path)
+    override fun locate(area: FileArea, path: String): FileResult<String> =
+        if (path in unlocatable) FileResult.AreaUnavailable else inner.locate(area, path)
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = inner.move(area, from, to)
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = inner.adopt(osPath, area, to)
 

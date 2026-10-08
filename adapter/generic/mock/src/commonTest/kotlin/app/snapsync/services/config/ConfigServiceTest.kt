@@ -184,6 +184,27 @@ class ConfigServiceTest {
         assertEquals(MembershipRead.Member(SEED), service.membership)
     }
 
+    @Test
+    fun `a reader before the re-read takes the held membership - else the file's - else none`() = runTest {
+        val shared = mutableMapOf<String, ByteArray>()
+        val denied = mutableSetOf<Pair<FileArea, String>>()
+        val files = inMemoryFiles(shared = shared, denied = denied)
+        val app = service(files)
+        assertNull(app.joinedOrRead(), "no file")
+
+        denied += FileArea.SHARED to CONFIG_FILE_NAME
+        assertNull(app.joinedOrRead(), "an unreadable file holds no membership this reader may use")
+
+        denied.clear()
+        service(files).save(SEED) // another process joins
+        assertEquals(SEED, app.joinedOrRead(), "the file's, before this process re-read it")
+
+        val held = SEED.copy(eventId = "E-held")
+        app.save(held)
+        denied += FileArea.SHARED to CONFIG_FILE_NAME
+        assertEquals(held, app.joinedOrRead(), "the held one, without asking the file")
+    }
+
     // ---- the membership's clock ---------------------------------------------------------------------------
 
     @Test

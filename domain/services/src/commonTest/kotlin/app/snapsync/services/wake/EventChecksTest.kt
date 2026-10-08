@@ -13,13 +13,14 @@ import kotlin.time.Instant
 /** A background wake asks each event at most once an hour per check (decision record `changes/timely-background-receiving`, D4–D5). */
 class EventChecksTest {
 
-    private class Prefs(var unreadable: Boolean = false) : Preferences {
+    private class Prefs(var unreadable: Boolean = false, var refuseWrites: Boolean = false) : Preferences {
         val values = mutableMapOf<String, String>()
         override fun get(key: String): PrefRead = when {
             unreadable -> PrefRead.Unavailable("locked")
             else -> values[key]?.let(PrefRead::Value) ?: PrefRead.Absent
         }
-        override fun set(key: String, value: String): WriteOutcome = WriteOutcome.Ok.also { values[key] = value }
+        override fun set(key: String, value: String): WriteOutcome =
+            if (refuseWrites) WriteOutcome.Failed("locked") else WriteOutcome.Ok.also { values[key] = value }
         override fun remove(key: String): WriteOutcome = WriteOutcome.Ok.also { values.remove(key) }
     }
 
@@ -64,6 +65,13 @@ class EventChecksTest {
         assertTrue(checks.due(EventCheck.PHOTOS, EVENT), "garbled")
         prefs.unreadable = true
         assertTrue(checks.due(EventCheck.PHOTOS, EVENT), "unreadable")
+    }
+
+    @Test
+    fun `an ask that cannot be recorded leaves the event due`() {
+        prefs.refuseWrites = true
+        checks.stamp(EventCheck.PHOTOS, EVENT)
+        assertTrue(checks.due(EventCheck.PHOTOS, EVENT), "the next wake asks again")
     }
 
     @Test

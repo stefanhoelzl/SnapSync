@@ -39,6 +39,13 @@ class ExtensionCredentialTest {
     }
 
     @Test
+    fun a_missing_token_is_never_obtained_here() = runTest {
+        val item = Item(null)
+        assertNull(ExtensionCredential(CachedAttestStore(item)).missing(), "the extension cannot attest")
+        assertNull(item.held)
+    }
+
+    @Test
     fun an_unreadable_store_sends_the_call_unauthenticated_and_never_throws() = runTest {
         val item = Item("T1", unreadable = true)
         val credential = ExtensionCredential(CachedAttestStore(item))

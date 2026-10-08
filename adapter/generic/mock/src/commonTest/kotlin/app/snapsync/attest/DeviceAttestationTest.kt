@@ -19,6 +19,7 @@ import app.snapsync.model.ProofFormat
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
+import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.TokenOutcome
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
@@ -846,6 +847,45 @@ class DeviceAttestationTest {
         val (attest, _, _) = attestation(store = store)
 
         assertFalse(attest.onRejected(token(30)), "an unreadable store is never read as a cleared token")
+        assertNull(attest.rejected(token(30)), "the token still held is the one rejected: nothing to retry with")
+    }
+
+    @Test
+    fun `a recovery over a store that cannot be read offers nothing and never throws`() = runTest {
+        val store = object : AttestStore by InMemoryAttestStore(token = token(29), keyId = "k") {
+            override fun token(): String? = throw SecureStoreUnavailable("keychain locked")
+        }
+        val (attest, client, _) = attestation(store = store)
+
+        assertNull(attest.rejected(token(29)), "a rejected call stands as the backend answered it")
+        assertNull(attest.missing(), "a tap waits for no token this process cannot read")
+        assertEquals(0, client.mintCalls, "an unreadable token is not a missing one: nothing is attested over it")
+    }
+
+    @Test
+    fun `a renewed token the store cannot keep leaves the held one judging the device`() = runTest {
+        val store = object : AttestStore by InMemoryAttestStore(token = token(1), keyId = "k") {
+            override fun setToken(token: String) = throw SecureStoreUnavailable("keychain locked")
+        }
+        val (attest, client, _) = attestation(store = store)
+
+        attest.refresh()
+
+        assertEquals(1, client.renewCalls)
+        assertTrue(attest.attested.value, "the token held is still usable for a day")
+    }
+
+    @Test
+    fun `a renewal the backend has no record for attests afresh`() = runTest {
+        val key = FakeKey()
+        val client = FakeClient().apply { renewAnswers += TokenOutcome.NotAttested }
+        val store = InMemoryAttestStore(token = token(1), keyId = "existing-key")
+        val (attest, _, _) = attestation(key, client, store)
+
+        assertTrue(attest.ensureFresh())
+
+        assertEquals(1, key.attested, "the leave cascade removed the record: a full attestation replaces it")
+        assertEquals(token(30), store.token())
     }
 }
 

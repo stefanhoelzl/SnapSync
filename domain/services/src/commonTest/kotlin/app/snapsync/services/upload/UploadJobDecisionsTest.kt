@@ -119,6 +119,8 @@ class UploadJobDecisionsTest {
     fun `a destination of no byte-route shape is unmappable`() {
         assertEquals(JobRow.Unmappable, jobRowOf("/something/else", null))
         assertEquals(JobRow.Unmappable, jobRowOf("/api/v2/files/devices/D/a/b/c", null))
+        assertEquals(JobRow.Unmappable, jobRowOf("/devices/D/A/primary", null), "nothing before devices")
+        assertEquals(JobRow.Unmappable, jobRowOf("/api/v2/other/devices/D/A/primary", null), "not under files")
     }
 
     @Test

@@ -3,9 +3,8 @@ plugins {
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.sqldelight)
-    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
-    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
-    id("snapsync.coverage")
+    // The zero coverage gate (`docs/architecture.md`, "Coverage"): no instruction and no branch missed.
+    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
 }
@@ -84,25 +83,12 @@ sqldelight {
     }
 }
 
-// Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes, and the
-// SQLDelight-GENERATED sources are excluded: nobody writes or reviews them, so bounding them ratchets a code
-// generator's output rather than this module's tests.
+// Coverage (`docs/architecture.md`): at zero, under `snapsync.coverage-zero`. The crediting edges that let the mocks'
+// suites, `:test:feature` and `:adapter:generic:app`'s tests count here are in the root build file.
 //
-// Coverage bounds (`docs/architecture.md`). Each number below is a FLOOR that may only RISE: lowering one
-// is a regression and needs a stated forcing proof in the PR. Seeded from MEASUREMENT on the commit that
-// created this zone (98.6% instructions, 86.9% branches; the thinnest package, `databases`, 93.1%).
-// ENGINE: Kover's default. Most of what counts here runs beside the adapters and in the world, through the
-// crediting edges in the root build file.
-coverageFloors {
-    aggregate(
-        instruction = 98,
-        // 86 -> 89 when the file-backed services joined (measured 89.7%).
-        branch = 89,
-    )
-    packageFloor(instruction = 93)
-}
-
-// SQLDelight's generated packages leave the report (see above).
+// SQLDelight's GENERATED packages leave the report, so the gate never reads them: nobody writes or reviews them, and
+// holding them at zero would test a code generator's output rather than this module. What they run is held instead by
+// `DatabasesContract`'s schema clauses, every statement on each platform's own SQLite (`docs/testing.md`).
 kover {
     reports {
         filters {

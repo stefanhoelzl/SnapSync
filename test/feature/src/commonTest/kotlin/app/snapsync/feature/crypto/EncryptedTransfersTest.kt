@@ -348,6 +348,34 @@ class EncryptedTransfersTest {
     }
 
     @Test
+    fun a_seal_with_nowhere_to_export_the_plaintext_creates_no_job() = runTest {
+        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
+        device.files.unlocatable += "${uploadStagingPath(KEY)}.plain"
+        val platform = Platform(UploadSourceKind.FILE)
+        assertEquals(UploadCreateOutcome.FAILED, transfer(device, platform).createJob(request, resource))
+        assertTrue(platform.created.isEmpty())
+    }
+
+    @Test
+    fun a_plain_events_download_is_staged_as_it_arrived() = runTest {
+        val receiver = Device(DEVICE_B, linkKey = null, keyId = null)
+        val staged = mutableListOf<String>()
+        val jobs = DownloadJobs(
+            scope = this,
+            staging = StagingService(receiver.files),
+            download = RecordingDownload(),
+            onStaged = { _, _, path -> staged += path },
+            network = { TransferNetwork.ANY },
+            opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
+        )
+        receiver.files.write(FileArea.SHARED, "os-tmp/0", photo)
+        jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY\n$EVENT", HEALTHY, "mem:/shared/os-tmp/0")
+        advanceUntilIdle()
+        assertEquals(1, staged.size, "nothing to open: the bytes are the photo")
+    }
+
+    @Test
     fun a_new_event_is_encrypted_unless_the_builds_control_asks_for_a_plain_one() {
         val controls = app.snapsync.mock.DevControlsMock()
         val minting = EventKeyMinting(EventKeys(crypto, inMemorySecureStore()), controls.port())
