@@ -61,7 +61,7 @@ class ScreenHeadingTest {
     @Test
     fun `a heading without details is just the name`() {
         rule.setContent {
-            AppTheme {
+            AppTheme(platformDates) {
                 Box(Modifier.width(PHONE_WIDTH)) {
                     ScreenLayout(
                         title = "SnapSync",

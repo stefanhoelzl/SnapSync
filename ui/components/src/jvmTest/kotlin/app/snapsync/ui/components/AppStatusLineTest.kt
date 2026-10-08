@@ -31,7 +31,7 @@ class AppStatusLineTest {
     private fun setLine(status: AppSyncStatus) {
         rule.setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) {
-                AppTheme { AppStatusLine(status) }
+                AppTheme(platformDates) { AppStatusLine(status) }
             }
         }
     }

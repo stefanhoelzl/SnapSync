@@ -90,7 +90,7 @@ class AppExplainRowTest {
         var clicks = 0
         val caption = "Turn on sharing to share photos."
         rule.setContent {
-            AppTheme {
+            AppTheme(platformDates) {
                 AppExplainRow(
                     subject = ExplainSubject.SHARING,
                     state = ExplainState.OFF,

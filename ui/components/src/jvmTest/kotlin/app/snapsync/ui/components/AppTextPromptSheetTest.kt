@@ -67,7 +67,7 @@ class AppTextPromptSheetTest {
 
     private fun setSheet(busy: Boolean, submitUnchanged: Boolean = false, onConfirm: (String) -> Unit = {}) {
         rule.setContent {
-            AppTheme {
+            AppTheme(platformDates) {
                 AppTextPromptSheet(
                     copy = DialogCopy(
                         TITLE,
