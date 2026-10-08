@@ -11,12 +11,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -73,10 +77,12 @@ import androidx.compose.ui.unit.dp
  * call for the same reason.)
  *
  * While [busy] the sheet stays open, the confirm action states that it is running, and **every dismissal
- * route is refused** — cancel, the scrim, and the swipe-down alike. An in-flight request must be neither
- * double-submitted nor abandoned half-way, and the only honest thing a sheet can do while it waits is
- * stay put. Otherwise cancel, the scrim, and the swipe-down gesture all route to [onDismiss] — one
- * dismissal, however it is spelled.
+ * route is refused** — cancel, the scrim, the swipe-down and Android's back gesture alike. An in-flight request
+ * must be neither double-submitted nor abandoned half-way, and the only honest thing a sheet can do while it
+ * waits is stay put. Refusing [onDismiss] is not enough for that: Material 3 moves the sheet off the screen
+ * before it asks, so the swipe and the scrim are refused by the sheet's state and the back gesture and the
+ * scrim by its properties ([rememberPromptSheetState], [promptSheetProperties]). Otherwise cancel, the scrim,
+ * the swipe-down and the back gesture all route to [onDismiss] — one dismissal, however it is spelled.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,17 +99,15 @@ fun AppTextPromptSheet(
     // the submission — a report the app wrote for the user — may be sent as it stands.
     val submittable = written.isNotEmpty() && (field.submitUnchanged || written != field.initialValue.trim())
 
-    // Busy refuses the scrim, the swipe-down and the cancel button alike: a request in flight has no honest
-    // cancellation, so there is one answer for every dismissal route.
+    // Busy refuses the swipe-down, a tap outside, the back gesture and the cancel button alike: a request in flight
+    // has no honest cancellation, so there is one answer for every dismissal route (capability `sync-status`).
     val dismissIfIdle = {
         if (!field.busy) onDismiss()
     }
     ModalBottomSheet(
         onDismissRequest = dismissIfIdle,
-        // Full height, so the content is laid out from the top and the keyboard cannot reach the
-        // actions. See the note above: this is the load-bearing half of keyboard avoidance, not a
-        // presentation preference.
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = rememberPromptSheetState(field.busy),
+        properties = promptSheetProperties(field.busy),
         // Pinned to the frozen scheme: an unpinned M3 surface falls back to the Material baseline
         // tonal surface — the lavender cast on our green palette that keeps resurfacing.
         containerColor = scheme.surface,
@@ -155,6 +159,29 @@ fun AppTextPromptSheet(
         }
     }
 }
+
+/**
+ * The sheet's state: full height, so the content is laid out from the top and the keyboard cannot reach the actions —
+ * the load-bearing half of keyboard avoidance, not a presentation preference — and, while [busy], refusing to hide.
+ * Material 3 moves a sheet off the screen BEFORE it asks `onDismissRequest`, so a refusal there comes too late; a swipe
+ * and a tap outside both ask this veto first.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun rememberPromptSheetState(busy: Boolean): SheetState {
+    val running by rememberUpdatedState(busy)
+    return rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { value ->
+            value != SheetValue.Hidden || !running
+        },
+    )
+}
+
+/** While [busy], neither the back gesture (which hides without asking the sheet's veto) nor a tap outside reacts. */
+@OptIn(ExperimentalMaterial3Api::class)
+private fun promptSheetProperties(busy: Boolean) =
+    ModalBottomSheetProperties(shouldDismissOnBackPress = !busy, shouldDismissOnClickOutside = !busy)
 
 /**
  * The input half of a text prompt: what the empty field says, what it starts with, how long it may get,
