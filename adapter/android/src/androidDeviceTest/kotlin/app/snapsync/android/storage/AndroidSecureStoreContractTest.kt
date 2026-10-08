@@ -2,10 +2,12 @@ package app.snapsync.android.storage
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.SecureStore
@@ -34,7 +36,7 @@ class AndroidSecureStoreContractTest {
             SecureStoreState.HOLDING_UNDER_A_LOST_KEY,
         )
 
-        override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
+        override fun create(state: SecureStoreState, clauseId: String, log: CallLog): Entered<SecureStore> {
             if (state == SecureStoreState.HOLDING_RESTRICTED) {
                 return Entered.Unreachable(
                     "every item is written background-readable",
@@ -42,7 +44,7 @@ class AndroidSecureStoreContractTest {
             }
             deleteKey()
             val dir = newTempDirectory()
-            val store = AndroidSecureStore(dir, TEST_ALIAS)
+            val store = AndroidSecureStore(dir, TEST_ALIAS).recorded(log)
             val slot = SecureStoreContract.slot(clauseId)
             when (state) {
                 SecureStoreState.INACCESSIBLE -> {

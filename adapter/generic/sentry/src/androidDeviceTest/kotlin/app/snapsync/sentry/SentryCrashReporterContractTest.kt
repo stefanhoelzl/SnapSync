@@ -3,6 +3,7 @@ package app.snapsync.sentry
 import androidx.test.platform.app.InstrumentationRegistry
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.CrashObservation
 import app.snapsync.contracts.CrashReporterContract
 import app.snapsync.contracts.CrashReporterState
@@ -12,6 +13,7 @@ import app.snapsync.contracts.DeliveredEvent
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.WaitExpired
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.CrashOptions
 import app.snapsync.ports.CrashReporter
@@ -56,14 +58,14 @@ class SentryCrashReporterContractTest {
             CrashReporterState.ACROSS_A_RESTART,
         )
 
-        override fun create(state: CrashReporterState, clauseId: String): Entered<CrashReporterSubject> {
+        override fun create(state: CrashReporterState, clauseId: String, log: CallLog): Entered<CrashReporterSubject> {
             val writers = Logger.config.logWriterList
             resetChannel(wipeCache = true)
             val ingest = LoopbackIngest()
             val restart = CrashRestart {
                 resetChannel(wipeCache = false)
                 ingest.open()
-                SettledStart(SentryCrashReporter())
+                SettledStart(SentryCrashReporter()).recorded(log)
             }
             if (state != CrashReporterState.ACROSS_A_RESTART) ingest.open()
             val observe = object : CrashObservation {
@@ -80,7 +82,7 @@ class SentryCrashReporterContractTest {
                 }
             }
             val subject = CrashReporterSubject(
-                SettledStart(SentryCrashReporter()),
+                SettledStart(SentryCrashReporter()).recorded(log),
                 CrashOptions(ingest.dsn),
                 observe,
                 restart.takeIf { state == CrashReporterState.ACROSS_A_RESTART },

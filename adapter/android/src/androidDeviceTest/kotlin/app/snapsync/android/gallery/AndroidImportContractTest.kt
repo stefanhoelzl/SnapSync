@@ -14,6 +14,7 @@ import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.GalleryImportContract
 import app.snapsync.contracts.GalleryImportState
@@ -22,6 +23,7 @@ import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.StagedImport
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -36,6 +38,7 @@ import app.snapsync.model.jpegXmp
 import app.snapsync.model.locateMotionVideo
 import app.snapsync.model.motionPhotoStill
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryImport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -119,7 +122,7 @@ class AndroidImportContractTest {
         override val grant = GalleryAccess.GRANTED
         override val reaches = setOf(GalleryImportState.GRANTED_VALID_STAGED, GalleryImportState.GRANTED_INVALID_STAGED)
 
-        override fun create(state: GalleryImportState, clauseId: String): Entered<StagedImport> {
+        override fun create(state: GalleryImportState, clauseId: String, log: CallLog): Entered<StagedImport> {
             val bytes = when (state) {
                 GalleryImportState.GRANTED_VALID_STAGED -> PhotoLibrary.jpeg
                 GalleryImportState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
@@ -142,7 +145,7 @@ class AndroidImportContractTest {
                     MediaStore.MediaColumns.DISPLAY_NAME,
                 )
             }
-            return Entered.Ready(StagedImport(gallery, stage, library))
+            return Entered.Ready(StagedImport((gallery as GalleryImport).recorded(log), stage, library))
         }
     }
 

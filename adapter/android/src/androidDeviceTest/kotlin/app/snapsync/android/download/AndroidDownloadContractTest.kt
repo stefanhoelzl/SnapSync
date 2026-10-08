@@ -8,6 +8,7 @@ import app.snapsync.android.network.MeteredWifi
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.ClauseDownloadHandlers
 import app.snapsync.contracts.DownloadContract
 import app.snapsync.contracts.DownloadEvent
@@ -16,6 +17,7 @@ import app.snapsync.contracts.DownloadUnderTest
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.StartResult
 import app.snapsync.model.TransferNetwork
@@ -64,13 +66,13 @@ class AndroidDownloadContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(DownloadState.READY, DownloadState.RESTRICTED_NETWORK)
 
-        override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> {
+        override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {
             removeAllDownloads()
             // The fixture is the host's, reached over the emulator's Wi-Fi: metering the Wi-Fi meters the transfer.
             if (state == DownloadState.RESTRICTED_NETWORK) MeteredWifi.enter()
             return Entered.Ready(
                 DownloadUnderTest(
-                    open = { AndroidDownload(context) },
+                    open = { AndroidDownload(context).recorded(log) },
                     base = fixture(),
                     readTemp = { path -> runCatching { File(path).readBytes() }.getOrNull() },
                     liftRestriction = { MeteredWifi.lift() },

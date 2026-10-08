@@ -3,10 +3,12 @@ package app.snapsync.android.device
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DeviceConditionsContract
 import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.DeviceConditions
 import kotlin.test.Test
@@ -23,8 +25,8 @@ class AndroidDeviceConditionsContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(DeviceConditionsState.ANDROID)
 
-        override fun create(state: DeviceConditionsState, clauseId: String): Entered<DeviceConditions> = when (state) {
-            DeviceConditionsState.ANDROID -> Entered.Ready(AndroidDeviceConditions(context))
+        override fun create(state: DeviceConditionsState, clauseId: String, log: CallLog): Entered<DeviceConditions> = when (state) {
+            DeviceConditionsState.ANDROID -> Entered.Ready(AndroidDeviceConditions(context).recorded(log))
             DeviceConditionsState.IPHONE -> Entered.Unreachable("Android is not an iPhone")
         }
     }

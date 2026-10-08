@@ -9,10 +9,12 @@ import android.os.ParcelFileDescriptor
 import androidx.test.platform.app.InstrumentationRegistry
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.NetworkState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.NetworkMonitor
 import kotlin.test.Test
@@ -44,9 +46,9 @@ class AndroidNetworkMonitorContractTest {
             NetworkState.BLOCKED,
         )
 
-        override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> {
+        override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> {
             enter(state)
-            return Entered.Ready(AndroidNetworkMonitor(context), dispose = ::restoreOnline)
+            return Entered.Ready(AndroidNetworkMonitor(context).recorded(log), dispose = ::restoreOnline)
         }
     }
 

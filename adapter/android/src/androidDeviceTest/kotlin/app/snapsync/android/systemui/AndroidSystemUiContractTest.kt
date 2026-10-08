@@ -6,12 +6,14 @@ import app.snapsync.android.storage.context
 import app.snapsync.android.upload.AndroidExtensionRegistry
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.LinkOpenerState
 import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.SharePresenterState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
@@ -32,14 +34,16 @@ class AndroidSystemUiContractTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(SharePresenterState.PRESENTABLE)
-        override fun create(state: SharePresenterState, clauseId: String): Entered<SystemUi> = Entered.Ready(systemUi())
+        override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> =
+            Entered.Ready(systemUi().recorded(log))
     }
 
     private val links = object : Binding<LinkOpenerState, SystemUi> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
-        override fun create(state: LinkOpenerState, clauseId: String): Entered<SystemUi> = Entered.Ready(systemUi())
+        override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> =
+            Entered.Ready(systemUi().recorded(log))
     }
 
     @Test

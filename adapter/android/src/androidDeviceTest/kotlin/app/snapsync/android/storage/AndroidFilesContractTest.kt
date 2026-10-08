@@ -2,10 +2,12 @@ package app.snapsync.android.storage
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FilesContract
 import app.snapsync.contracts.FilesState
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Files
@@ -25,7 +27,7 @@ class AndroidFilesContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED)
 
-        override fun create(state: FilesState, clauseId: String): Entered<Files> {
+        override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
             if (state == FilesState.UNAVAILABLE) {
                 return Entered.Unreachable(
                     "both areas are app-private directories, always reachable",
@@ -37,7 +39,7 @@ class AndroidFilesContractTest {
             }
             val shared = newTempDirectory()
             val private = newTempDirectory()
-            val files = AndroidFiles(sharedRoot = shared, privateRoot = private)
+            val files = AndroidFiles(sharedRoot = shared, privateRoot = private).recorded(log)
             val path = FilesContract.path(clauseId)
             when (state) {
                 FilesState.HOLDING -> files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))

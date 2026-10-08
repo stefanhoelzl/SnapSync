@@ -4,10 +4,12 @@ import app.snapsync.android.process.AndroidProcessInfo
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
+import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.PUSH_KIND_FCM
 import app.snapsync.model.PlatformError
@@ -56,8 +58,8 @@ class AndroidPushTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(ProcessInfoState.UNLOCKED)
 
-        override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> = when (state) {
-            ProcessInfoState.UNLOCKED -> Entered.Ready(AndroidProcessInfo(context))
+        override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> = when (state) {
+            ProcessInfoState.UNLOCKED -> Entered.Ready(AndroidProcessInfo(context).recorded(log))
             ProcessInfoState.MEMORY_ACCOUNTED ->
                 Entered.Unreachable(
                     "Android accounts no footprint to the process: no process-metric provider reads one",
