@@ -18,8 +18,8 @@ import kotlin.test.assertTrue
 
 /**
  * The create's key (the encrypted file format, `docs/architecture.md`): over the REAL key minting, a create is
- * encrypted only while the build's control says so — the key is minted on the creating device, only its id is
- * sent, and the key itself goes to the creator's own join.
+ * encrypted unless the build's control says to create a plain event — the key is minted on the creating device,
+ * only its id is sent, and the key itself goes to the creator's own join.
  */
 class CreateEventKeyTest {
 
@@ -52,7 +52,7 @@ class CreateEventKeyTest {
 
     @Test
     fun `an encrypted create sends only the key id and routes the key to the creator's join`() = runTest {
-        val w = World().apply { controls.operator.encryptsNewEvents = true }
+        val w = World()
 
         w.create(eventId).create("Party", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z")
 
@@ -65,7 +65,7 @@ class CreateEventKeyTest {
 
     @Test
     fun `a build that creates plain events mints no key and sends no key id`() = runTest {
-        val w = World()
+        val w = World().apply { controls.operator.encryptsNewEvents = false }
 
         w.create(eventId).create("Party", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z")
 
