@@ -97,7 +97,8 @@ class ContractCoverageTest {
     @Test
     fun `every grant a recording is named for is declared by a binding of that contract and host`() {
         val expected = contracts.flatMap { c ->
-            bindings.filter { it.stateEnum == c.stateEnum && it.kind == "Replay" }.map { ContractCoverage.recordingKey(c.name, it) }
+            bindings.filter { it.stateEnum == c.stateEnum && it.kind == "Replay" }
+                .map { ContractCoverage.recordingKey(c.name, it) }
         }.toSet()
         val undeclared = recordings.keys.filter { key -> '.' in key.substringAfter('@') && key !in expected }
         assertTrue(
