@@ -10,7 +10,6 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.ExtensionRegistryContract
 import app.snapsync.contracts.ExtensionRegistryState
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify

@@ -35,7 +35,7 @@ class ProxyRenderingTest {
     private fun log() = CallLog().also { it.open() }
 
     @Test
-    fun `a sealed leaf, a generic leaf, an enum entry and null render as declared`() = runTest {
+    fun `a sealed leaf - a generic leaf - an enum entry and null render as declared`() = runTest {
         val log = log()
         val store = object : SecureStore {
             override fun read(slot: SecureSlot) = SecureStoreRead.Absent
@@ -67,7 +67,7 @@ class ProxyRenderingTest {
     }
 
     @Test
-    fun `a handler call, an enum argument and a handed handle render as declared`() = runTest {
+    fun `a handler call - an enum argument and a handed handle render as declared`() = runTest {
         val log = log()
         lateinit var told: WakeHandlers
         val wake = object : Wake {
@@ -108,7 +108,7 @@ class ProxyRenderingTest {
     }
 
     @Test
-    fun `only the declared throw is recorded, and every throw passes unchanged`() {
+    fun `only the declared throw is recorded and every throw passes unchanged`() {
         val unavailable = SecureStoreUnavailable("locked")
         val log = log()
         assertEquals(
