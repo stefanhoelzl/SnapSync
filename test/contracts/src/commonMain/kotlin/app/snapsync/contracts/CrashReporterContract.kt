@@ -204,7 +204,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
 
         // ---- NOT_STARTED: inert on every member ----------------------------------------------------------------
 
-        clause("NOT_STARTED_IS_INERT", CrashReporterState.NOT_STARTED) { s ->
+        clause(
+            "NOT_STARTED_IS_INERT",
+            CrashReporterState.NOT_STARTED,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::sendDump).with(DumpResult.NotSent::class)
+            },
+        ) { s ->
             s.reporter.listen(PASS_THROUGH)
             s.reporter.capture(CrashEvent(message = "NOT_STARTED_IS_INERT"))
             s.reporter.breadcrumb(Crumb(CrashLevel.INFO, "NOT_STARTED_IS_INERT"))
@@ -218,13 +224,25 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
 
         // ---- STARTED: the port's answers and whether the channel runs ------------------------------------------
 
-        clause("STARTED_START_RUNS_CHANNEL", CrashReporterState.STARTED) { s ->
+        clause(
+            "STARTED_START_RUNS_CHANNEL",
+            CrashReporterState.STARTED,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::start).returns()
+            },
+        ) { s ->
             s.startListening()
             s.reporter.start(s.options)
             assertTrue(s.observe.channelRunning(), "a start runs the channel, and a second keeps it running")
         }
 
-        clause("STARTED_DUMP_IS_QUEUED", CrashReporterState.STARTED) { s ->
+        clause(
+            "STARTED_DUMP_IS_QUEUED",
+            CrashReporterState.STARTED,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::sendDump).with(DumpResult.Queued::class)
+            },
+        ) { s ->
             s.startListening()
             assertEquals(
                 DumpResult.Queued,
@@ -235,7 +253,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
 
         // ---- ON_THE_WIRE: what actually left the process -------------------------------------------------------
 
-        clause("WIRE_CAPTURE_IS_ONE_EVENT", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_CAPTURE_IS_ONE_EVENT",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::capture).returns()
+            },
+        ) { s ->
             val line = "WIRE_CAPTURE_IS_ONE_EVENT failed"
             s.startListening()
             s.reporter.start(s.options)
@@ -247,7 +271,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
         }
 
-        clause("WIRE_BREADCRUMB_IS_NOT_AN_EVENT", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_BREADCRUMB_IS_NOT_AN_EVENT",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::breadcrumb).returns()
+            },
+        ) { s ->
             val line = "WIRE_BREADCRUMB_IS_NOT_AN_EVENT retrying"
             s.startListening()
             s.reporter.breadcrumb(Crumb(CrashLevel.WARNING, line, "engine"))
@@ -260,7 +290,19 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
         }
 
-        clause("WIRE_HANDLERS_SHAPE_WHAT_LEAVES", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_HANDLERS_SHAPE_WHAT_LEAVES",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter> {
+                    answers(CrashReporter::listen).returns()
+                    calls(CrashHandlers::onEvent, CrashEvent::class)
+                    calls(CrashHandlers::onBreadcrumb, Crumb::class)
+                    answers(CrashReporter::capture).returns()
+                    answers(CrashReporter::breadcrumb).returns()
+                }
+            },
+        ) { s ->
             s.startListening(
                 CrashHandlers(
                     // Both fields: a captured message's text reaches the handler as the SDK's rendering, `formatted`.
@@ -288,7 +330,16 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
         }
 
-        clause("WIRE_A_DROPPED_EVENT_LEAVES_NOTHING", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_A_DROPPED_EVENT_LEAVES_NOTHING",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter> {
+                    answers(CrashReporter::listen).returns()
+                    calls(CrashHandlers::onEvent, CrashEvent::class)
+                }
+            },
+        ) { s ->
             val dropped = "WIRE_A_DROPPED_EVENT_LEAVES_NOTHING drop me"
             s.startListening(
                 CrashHandlers(
@@ -303,7 +354,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
         }
 
-        clause("WIRE_TAGS_AND_EXCEPTION_RIDE_THE_EVENT", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_TAGS_AND_EXCEPTION_RIDE_THE_EVENT",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::capture).returns()
+            },
+        ) { s ->
             s.startListening()
             s.reporter.capture(
                 CrashEvent(
@@ -315,7 +372,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             assertEquals("WIRE_TAGS_AND_EXCEPTION_RIDE_THE_EVENT", event.tags["entry_point"], "the tag rides the event")
         }
 
-        clause("WIRE_BUILD_FACTS_RIDE_THE_EVENT", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_BUILD_FACTS_RIDE_THE_EVENT",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::start).returns()
+            },
+        ) { s ->
             val facts = CrashOptions(
                 dsn = s.options.dsn,
                 release = "9.9.contract",
@@ -335,7 +398,16 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
 
         // ---- ACROSS_A_RESTART: what a relaunch delivers ------------------------------------------------------------
 
-        clause("RESTART_CACHED_EVENT_KEEPS_ITS_BUILD", CrashReporterState.ACROSS_A_RESTART) { s ->
+        clause(
+            "RESTART_CACHED_EVENT_KEEPS_ITS_BUILD",
+            CrashReporterState.ACROSS_A_RESTART,
+            covers = cells {
+                on<CrashReporter> {
+                    answers(CrashReporter::start).returns()
+                    answers(CrashReporter::capture).returns()
+                }
+            },
+        ) { s ->
             val line = "RESTART_CACHED_EVENT_KEEPS_ITS_BUILD captured as build 1"
             s.reporter.listen(PASS_THROUGH)
             s.reporter.start(CrashOptions(dsn = s.options.dsn, release = "9.9.contract", dist = "1"))
@@ -352,7 +424,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
         }
 
-        clause("WIRE_INSTALL_ID_IS_KEPT", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_INSTALL_ID_IS_KEPT",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::capture).returns()
+            },
+        ) { s ->
             s.startListening(PRODUCTION)
             val installId = assertNotNull(
                 s.sentinelEvent(sentinel("WIRE_INSTALL_ID_IS_KEPT")).installId,
@@ -364,7 +442,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
         }
 
-        clause("WIRE_LATEST_CONTEXT_RIDES_LATER_EVENTS", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_LATEST_CONTEXT_RIDES_LATER_EVENTS",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::setContext).returns()
+            },
+        ) { s ->
             s.startListening()
             s.reporter.setContext("process_metrics", mapOf("generation" to "first", "only-in-first" to "1"))
             s.reporter.setContext("process_metrics", mapOf("generation" to "second", "only-in-second" to "1"))
@@ -375,7 +459,18 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
         }
 
-        clause("WIRE_AUTOMATIC_EVENTS_ARE_SCRUBBED", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_AUTOMATIC_EVENTS_ARE_SCRUBBED",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter> {
+                    calls(CrashHandlers::onEvent, CrashEvent::class)
+                    calls(CrashHandlers::onBreadcrumb, Crumb::class)
+                    answers(CrashReporter::capture).returns()
+                    answers(CrashReporter::breadcrumb).returns()
+                }
+            },
+        ) { s ->
             val id = uuidFor("WIRE_AUTOMATIC_EVENTS_ARE_SCRUBBED")
             s.startListening(PRODUCTION)
             s.reporter.breadcrumb(Crumb(CrashLevel.INFO, "enumerating $id"))
@@ -387,7 +482,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             assertTrue(event.breadcrumbs.none { id in it }, "and carries no identifier either: ${event.breadcrumbs}")
         }
 
-        clause("WIRE_DUMP_IS_DELIVERED_VERBATIM", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_DUMP_IS_DELIVERED_VERBATIM",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter>().answers(CrashReporter::sendDump).with(DumpResult.Queued::class)
+            },
+        ) { s ->
             val dump = dumpFor("WIRE_DUMP_IS_DELIVERED_VERBATIM")
             s.startListening(PRODUCTION)
             s.reporter.sendDump(diagnosticDumpEvent(dump))
@@ -402,7 +503,16 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             assertEquals(dump.state, delivered.single().contexts["state"], "and its sections ride as contexts")
         }
 
-        clause("WIRE_WORST_CASE_DUMP_ARRIVES", CrashReporterState.ON_THE_WIRE) { s ->
+        clause(
+            "WIRE_WORST_CASE_DUMP_ARRIVES",
+            CrashReporterState.ON_THE_WIRE,
+            covers = cells {
+                on<CrashReporter> {
+                    answers(CrashReporter::sendDump).with(DumpResult.Queued::class)
+                    answers(CrashReporter::breadcrumb).returns()
+                }
+            },
+        ) { s ->
             s.startListening(PRODUCTION)
             // A full set of breadcrumbs, each far over the cap: the breadcrumb row of the whole-event sum at its worst.
             repeat(MAX_BREADCRUMBS) { i ->

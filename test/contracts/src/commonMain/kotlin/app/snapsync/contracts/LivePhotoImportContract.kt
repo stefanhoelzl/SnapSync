@@ -49,6 +49,9 @@ object LivePhotoImportContract : Contract<LivePhotoImportState, StagedLiveImport
         clause(
             "A_MOTION_PHOTO_IMPORTS_AS_ONE_LIVE_PHOTO",
             LivePhotoImportState.GRANTED_MOTION_PHOTO_STAGED,
+            covers = cells {
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+            },
         ) { subject ->
             val clauseId = "A_MOTION_PHOTO_IMPORTS_AS_ONE_LIVE_PHOTO"
             val ref = GalleryImportContract.ref(clauseId)
@@ -68,6 +71,9 @@ object LivePhotoImportContract : Contract<LivePhotoImportState, StagedLiveImport
         clause(
             "A_FILE_THAT_ONLY_LOOKS_LIKE_A_MOTION_PHOTO_IMPORTS_AS_ITS_STILL",
             LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED,
+            covers = cells {
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+            },
         ) { subject ->
             val clauseId = "A_FILE_THAT_ONLY_LOOKS_LIKE_A_MOTION_PHOTO_IMPORTS_AS_ITS_STILL"
             val ref = GalleryImportContract.ref(clauseId)

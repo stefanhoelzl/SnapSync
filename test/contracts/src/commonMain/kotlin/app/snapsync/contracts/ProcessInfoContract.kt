@@ -30,11 +30,23 @@ object ProcessInfoContract : Contract<ProcessInfoState, ProcessInfo>("ProcessInf
 
     override val clauses = clauses {
 
-        clause("AN_UNLOCKED_DEVICE_READS_AVAILABLE", ProcessInfoState.UNLOCKED) { process ->
+        clause(
+            "AN_UNLOCKED_DEVICE_READS_AVAILABLE",
+            ProcessInfoState.UNLOCKED,
+            covers = cells {
+                on<ProcessInfo>().answers(ProcessInfo::protectedDataAvailable).with(Availability.AVAILABLE)
+            },
+        ) { process ->
             assertEquals(Availability.AVAILABLE, process.protectedDataAvailable())
         }
 
-        clause("A_RUNNING_PROCESS_READS_ITS_OWN_FOOTPRINT", ProcessInfoState.MEMORY_ACCOUNTED) { process ->
+        clause(
+            "A_RUNNING_PROCESS_READS_ITS_OWN_FOOTPRINT",
+            ProcessInfoState.MEMORY_ACCOUNTED,
+            covers = cells {
+                on<ProcessInfo>().answers(ProcessInfo::memoryFootprint).returns()
+            },
+        ) { process ->
             val read = assertNotNull(process.memoryFootprint(), "a process the platform accounts reads a footprint")
             assertTrue(read.footprintBytes > 0, "a running process occupies memory: $read")
             read.peakBytes?.let { assertTrue(it >= read.footprintBytes, "the peak is never below the present: $read") }

@@ -361,10 +361,44 @@ question: what could an adapter answer at all? It reads `:domain:ports` by refle
 - `Port.member.param(…)`: the same, for a callback handed to a member.
 - `Port.Handle.member → Variant`: a handle (`Completion`, …) counted under each port that hands it out.
 
-Throws are not cells, and a member with a default body in the interface is not the adapter's answer, so
-it gets no cell either. The test writes `build/reports/port-grid/port-grid.txt`. It also writes an
-estimate that marks a cell with `~` where a port contract's source mentions the member and the variant.
-That is a mention, not a clause asserting the cell. **Report only:** it fails nothing but its own scan.
+Errors are reduced into values, so a throw is a cell only where the member **declares** it with
+`@Throws` (one `throws` cell, whatever it throws: `AttestStore.token`, `DeviceIntegrity.prove`). A member
+with a default body in the interface is not the adapter's answer, so it gets no cell. The test writes
+`build/reports/port-grid/port-grid.txt`. It also writes an estimate that marks a cell with `~` where a
+port contract's source mentions the member and the variant. That is a mention, not a clause asserting the
+cell. **Report only:** it fails nothing but its own scan.
+
+### Every clause declares the cells it covers
+
+Each clause names the grid cells it checks, by typed reference, in a required `covers`:
+
+```kotlin
+clause(
+    "INACCESSIBLE_READ_IS_UNAVAILABLE",
+    SecureStoreState.INACCESSIBLE,
+    covers = cells { on<SecureStore>().answers(SecureStore::read).with(SecureStoreRead.Unavailable::class) },
+) { store -> … }
+```
+
+The forms are `answers(member).with(LeafClass::class | ENUM_ENTRY | true | null)`, `.withGenericLeaf(…)`
+(a leaf of a generic sealed type such as `Reply.Ok`, which the compiler cannot check), `.returns()`,
+`.throws()`, `emits(flowMember)` for a `Flow`, `calls(XHandlers::field, args…)` for an event port's
+handler, `callsBack(member, "param", args…)` for a callback handed to a member, and `handle<H>()` for a
+handle's members. The port is a reified `on<P>()` because a Kotlin/Native member reference carries only its
+name. The variant is fixed against the member's return type in two steps, so a wrong leaf, enum or `null`
+fails the compile; handler arguments and the member's owning port are not type-checked.
+
+A clause claims a cell only where its body **checks** that answer: it asserts it, or asserts an effect
+only that answer produces (one pending wake after a `schedule`). A call made for setup whose answer the
+clause never checks is not a claim. A clause that accepts either of two answers (a grant that reads
+`NOT_DETERMINED` or `DENIED`, a `start` that may or may not begin) claims both, though one run sees one.
+
+The declarations render through `:test:contracts`' common code (`Covers.kt`), the same on every host.
+`ClauseCoversTest` loads every contract as a value (`ContractCatalog`, by reflection over the contracts'
+JVM classes) and holds the declarations to the grid. It **fails** on a clause with no cell and on a
+declared cell the grid does not hold. It **reports** the unclaimed cells, and the cells claimed only by
+clauses no real implementation runs, in `build/reports/port-grid/clause-covers.txt`. A declaration is
+trusted: nothing yet checks that a clause really drives the cell it names.
 
 ### Hosts
 

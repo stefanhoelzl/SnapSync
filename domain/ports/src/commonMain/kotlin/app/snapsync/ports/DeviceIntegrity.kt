@@ -27,7 +27,9 @@ interface DeviceIntegrity : Port {
      * [handle], that key signs [challenge]: local work, no network, no throttle.
      *
      * Throws when no proof can be produced — an unavailable service, an unknown handle, a refused attestation. A
-     * refusal is an exception, never a hang and never an invented proof.
+     * refusal is an exception, never a hang and never an invented proof — declared, so the port grid counts it as an
+     * answer (`docs/testing.md`, "The port grid").
      */
+    @Throws(Exception::class)
     suspend fun prove(challenge: String, handle: String? = null): Proof
 }

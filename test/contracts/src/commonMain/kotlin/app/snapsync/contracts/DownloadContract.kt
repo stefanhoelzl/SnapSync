@@ -102,7 +102,18 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
 
     override val clauses = clauses {
 
-        clause("FINISH_REPORTS_THE_TRUE_FACTS_AND_THE_BODY", DownloadState.READY) { subject ->
+        clause(
+            "FINISH_REPORTS_THE_TRUE_FACTS_AND_THE_BODY",
+            DownloadState.READY,
+            covers = cells {
+                on<Download> {
+                    answers(Download::listen).returns()
+                    answers(Download::start).with(StartResult.Started)
+                    calls(DownloadHandlers::onFinished, String::class, TransferOutcome::class, String::class)
+                    calls(DownloadHandlers::onCompleted, String::class, null)
+                }
+            },
+        ) { subject ->
             val id = "FINISH_REPORTS_THE_TRUE_FACTS_AND_THE_BODY"
             val events = subject.transfer(id, FixtureAnswer.Respond(200, length = 1024))
             val finished = events.first() as? DownloadEvent.Finished
@@ -113,7 +124,18 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             assertEquals(DownloadEvent.Completed("d-$id", null), events.last(), "then completed without an error")
         }
 
-        clause("A_REDIRECT_IS_FOLLOWED_TO_THE_BODY", DownloadState.READY) { subject ->
+        clause(
+            "A_REDIRECT_IS_FOLLOWED_TO_THE_BODY",
+            DownloadState.READY,
+            covers = cells {
+                on<Download> {
+                    answers(Download::listen).returns()
+                    answers(Download::start).with(StartResult.Started)
+                    calls(DownloadHandlers::onFinished, String::class, TransferOutcome::class, String::class)
+                    calls(DownloadHandlers::onCompleted, String::class, null)
+                }
+            },
+        ) { subject ->
             // A download URL may name a route that answers `302` to where the bytes are (an edge route redirecting to a
             // freshly presigned object URL). The port follows it on its own and reports the TARGET's answer: the facts
             // and the body are the final response's, never the redirect's.
@@ -127,7 +149,16 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             assertEquals(DownloadEvent.Completed("d-$id", null), events.last(), "then completed without an error")
         }
 
-        clause("AN_ERROR_STATUS_IS_A_FINISHED_TRANSFER_OF_ITS_BODY", DownloadState.READY) { subject ->
+        clause(
+            "AN_ERROR_STATUS_IS_A_FINISHED_TRANSFER_OF_ITS_BODY",
+            DownloadState.READY,
+            covers = cells {
+                on<Download> {
+                    answers(Download::listen).returns()
+                    answers(Download::start).with(StartResult.Started)
+                }
+            },
+        ) { subject ->
             // Two honest shapes, one outcome. A background `URLSession` reports an HTTP error as a SUCCESSFUL transfer of
             // the error body, with a nil completion error — the port reports the status, and the owner's integrity
             // check refuses it. Android's DownloadManager fails the transfer instead, the status as its reason, and
@@ -147,7 +178,16 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             assertTrue(events.last() is DownloadEvent.Completed, "the slot is freed either way")
         }
 
-        clause("NO_LENGTH_IS_NEGATIVE", DownloadState.READY) { subject ->
+        clause(
+            "NO_LENGTH_IS_NEGATIVE",
+            DownloadState.READY,
+            covers = cells {
+                on<Download> {
+                    answers(Download::listen).returns()
+                    answers(Download::start).with(StartResult.Started)
+                }
+            },
+        ) { subject ->
             // Either the port finishes a body whose length was never declared and says the length is unknown (never
             // zero), or it refuses to download what it cannot size — DownloadManager's answer ("can't know size of
             // download"), a failed completion. Every object the backend presigns declares its length, so the refusal
@@ -167,7 +207,16 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             }
         }
 
-        clause("SHORT_READ_IS_REPORTED_TRUTHFULLY", DownloadState.READY) { subject ->
+        clause(
+            "SHORT_READ_IS_REPORTED_TRUTHFULLY",
+            DownloadState.READY,
+            covers = cells {
+                on<Download> {
+                    answers(Download::listen).returns()
+                    answers(Download::start).with(StartResult.Started)
+                }
+            },
+        ) { subject ->
             val id = "SHORT_READ_IS_REPORTED_TRUTHFULLY"
             val events = subject.transfer(id, FixtureAnswer.Respond(200, length = 64, short = true))
             // Either the port fails a body cut short — no finish, completed with an error — or it reports the TRUE
@@ -181,7 +230,18 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             }
         }
 
-        clause("CANCEL_ALL_COMPLETES_WHAT_IT_HOLDS_WITH_AN_ERROR", DownloadState.READY) { subject ->
+        clause(
+            "CANCEL_ALL_COMPLETES_WHAT_IT_HOLDS_WITH_AN_ERROR",
+            DownloadState.READY,
+            covers = cells {
+                on<Download> {
+                    answers(Download::listen).returns()
+                    answers(Download::start).with(StartResult.Started)
+                    answers(Download::cancelAll).returns()
+                    calls(DownloadHandlers::onCompleted, String::class, String::class)
+                }
+            },
+        ) { subject ->
             val id = "CANCEL_ALL_COMPLETES_WHAT_IT_HOLDS_WITH_AN_ERROR"
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
@@ -199,7 +259,18 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             assertTrue(owner.events.none { it is DownloadEvent.Finished }, "and nothing finished")
         }
 
-        clause("A_TRANSFER_STARTED_AFTER_CANCEL_ALL_RETURNS_RUNS", DownloadState.READY) { subject ->
+        clause(
+            "A_TRANSFER_STARTED_AFTER_CANCEL_ALL_RETURNS_RUNS",
+            DownloadState.READY,
+            covers = cells {
+                on<Download> {
+                    answers(Download::listen).returns()
+                    answers(Download::cancelAll).returns()
+                    answers(Download::start).with(StartResult.Started)
+                    calls(DownloadHandlers::onCompleted, String::class, null)
+                }
+            },
+        ) { subject ->
             val id = "A_TRANSFER_STARTED_AFTER_CANCEL_ALL_RETURNS_RUNS"
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
@@ -222,7 +293,18 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             )
         }
 
-        clause("A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE", DownloadState.RESTRICTED_NETWORK) { subject ->
+        clause(
+            "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE",
+            DownloadState.RESTRICTED_NETWORK,
+            covers = cells {
+                on<Download> {
+                    answers(Download::listen).returns()
+                    answers(Download::start).with(StartResult.Started)
+                    calls(DownloadHandlers::onFinished, String::class, TransferOutcome::class, String::class)
+                    calls(DownloadHandlers::onCompleted, String::class, null)
+                }
+            },
+        ) { subject ->
             val id = "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE"
             val lift = assertNotNull(subject.liftRestriction, "a binding that reaches a restricted network can lift it")
             val owner = ClauseDownloadHandlers(subject.readTemp)
@@ -243,7 +325,16 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             assertEquals(200, owner.events.filterIsInstance<DownloadEvent.Finished>().single().facts.statusCode)
         }
 
-        clause("UNUSABLE_URL_NEVER_FINISHES", DownloadState.READY) { subject ->
+        clause(
+            "UNUSABLE_URL_NEVER_FINISHES",
+            DownloadState.READY,
+            covers = cells {
+                on<Download> {
+                    answers(Download::start).with(StartResult.Started)
+                    answers(Download::start).with(StartResult.NotStarted)
+                }
+            },
+        ) { subject ->
             val id = "UNUSABLE_URL_NEVER_FINISHES"
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()

@@ -38,11 +38,21 @@ object DeviceIntegrityContract : Contract<DeviceIntegrityState, DeviceIntegrity>
 
     override val clauses = clauses {
 
-        clause("AN_UNAVAILABLE_SERVICE_SAYS_SO", DeviceIntegrityState.UNAVAILABLE) { integrity ->
+        clause(
+            "AN_UNAVAILABLE_SERVICE_SAYS_SO",
+            DeviceIntegrityState.UNAVAILABLE,
+            covers = cells {
+                on<DeviceIntegrity>().answers(DeviceIntegrity::isAvailable).with(false)
+            },
+        ) { integrity ->
             assertFalse(integrity.isAvailable(), "a process without App Attest must not claim it")
         }
 
-        clause("AN_UNAVAILABLE_SERVICE_REFUSES_A_FRESH_PROOF", DeviceIntegrityState.UNAVAILABLE) { integrity ->
+        clause(
+            "AN_UNAVAILABLE_SERVICE_REFUSES_A_FRESH_PROOF",
+            DeviceIntegrityState.UNAVAILABLE,
+            covers = cells { on<DeviceIntegrity>().answers(DeviceIntegrity::prove).throws() },
+        ) { integrity ->
             val failure =
                 assertFailsWith<Exception> {
                     integrity.prove(
@@ -52,16 +62,32 @@ object DeviceIntegrityContract : Contract<DeviceIntegrityState, DeviceIntegrity>
             assertTrue(!failure.message.isNullOrBlank(), "a refusal carries a diagnosis")
         }
 
-        clause("AN_UNAVAILABLE_SERVICE_REFUSES_A_RENEWAL_PROOF", DeviceIntegrityState.UNAVAILABLE) { integrity ->
+        clause(
+            "AN_UNAVAILABLE_SERVICE_REFUSES_A_RENEWAL_PROOF",
+            DeviceIntegrityState.UNAVAILABLE,
+            covers = cells { on<DeviceIntegrity>().answers(DeviceIntegrity::prove).throws() },
+        ) { integrity ->
             val id = "AN_UNAVAILABLE_SERVICE_REFUSES_A_RENEWAL_PROOF"
             assertFailsWith<Exception> { integrity.prove(challenge(id), unknownHandle(id)) }
         }
 
-        clause("AN_AVAILABLE_SERVICE_SAYS_SO", DeviceIntegrityState.AVAILABLE) { integrity ->
+        clause(
+            "AN_AVAILABLE_SERVICE_SAYS_SO",
+            DeviceIntegrityState.AVAILABLE,
+            covers = cells {
+                on<DeviceIntegrity>().answers(DeviceIntegrity::isAvailable).with(true)
+            },
+        ) { integrity ->
             assertTrue(integrity.isAvailable())
         }
 
-        clause("A_FRESH_PROOF_NAMES_A_KEY_THAT_THEN_SIGNS", DeviceIntegrityState.AVAILABLE) { integrity ->
+        clause(
+            "A_FRESH_PROOF_NAMES_A_KEY_THAT_THEN_SIGNS",
+            DeviceIntegrityState.AVAILABLE,
+            covers = cells {
+                on<DeviceIntegrity>().answers(DeviceIntegrity::prove).returns()
+            },
+        ) { integrity ->
             val challenge = challenge("A_FRESH_PROOF_NAMES_A_KEY_THAT_THEN_SIGNS")
             val fresh = integrity.prove(challenge)
             assertTrue(fresh.handle.isNotBlank(), "a fresh proof names the key it created")
@@ -71,7 +97,11 @@ object DeviceIntegrityContract : Contract<DeviceIntegrityState, DeviceIntegrity>
             assertTrue(renewal.bytes.isNotEmpty(), "an assertion by the attested key is bytes")
         }
 
-        clause("AN_UNKNOWN_KEY_CANNOT_SIGN", DeviceIntegrityState.AVAILABLE) { integrity ->
+        clause(
+            "AN_UNKNOWN_KEY_CANNOT_SIGN",
+            DeviceIntegrityState.AVAILABLE,
+            covers = cells { on<DeviceIntegrity>().answers(DeviceIntegrity::prove).throws() },
+        ) { integrity ->
             val id = "AN_UNKNOWN_KEY_CANNOT_SIGN"
             assertFailsWith<Exception> { integrity.prove(challenge(id), unknownHandle(id)) }
         }

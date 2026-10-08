@@ -26,7 +26,13 @@ object DeviceConditionsContract : Contract<DeviceConditionsState, DeviceConditio
 
     override val clauses = clauses {
 
-        clause("AN_IPHONE_ANSWERS_ITS_OWN_FACTS_AND_NOT_ANDROIDS", DeviceConditionsState.IPHONE) { conditions ->
+        clause(
+            "AN_IPHONE_ANSWERS_ITS_OWN_FACTS_AND_NOT_ANDROIDS",
+            DeviceConditionsState.IPHONE,
+            covers = cells {
+                on<DeviceConditions>().answers(DeviceConditions::read).returns()
+            },
+        ) { conditions ->
             val reading = conditions.read()
             assertKnown(reading.powerSaving, "power saving")
             assertKnown(reading.backgroundRefresh, "background refresh")
@@ -42,7 +48,13 @@ object DeviceConditionsContract : Contract<DeviceConditionsState, DeviceConditio
             assertBatteryInRange(reading)
         }
 
-        clause("AN_ANDROID_ANSWERS_ITS_OWN_FACTS_AND_NOT_IPHONES", DeviceConditionsState.ANDROID) { conditions ->
+        clause(
+            "AN_ANDROID_ANSWERS_ITS_OWN_FACTS_AND_NOT_IPHONES",
+            DeviceConditionsState.ANDROID,
+            covers = cells {
+                on<DeviceConditions>().answers(DeviceConditions::read).returns()
+            },
+        ) { conditions ->
             val reading = conditions.read()
             assertKnown(reading.powerSaving, "battery saver")
             assertKnown(reading.standbyBucket, "standby bucket")

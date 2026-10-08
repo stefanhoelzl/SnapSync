@@ -14,12 +14,22 @@ import kotlinx.coroutines.test.runTest
  * A body has no way to decline: whether the clause runs at all is decided by the binding's [Binding.create]
  * BEFORE the body executes. That is deliberate — a skip operation inside a body is how an earlier attempt
  * came to report an unexercised clause as `Passed`.
+ *
+ * [covers] is the port-grid cells the clause exercises, rendered ([cells]) — at least one: a clause that pins no answer
+ * of a port is not a port clause (`docs/testing.md`, "Every clause declares the cells it covers").
  */
 class Clause<K : Enum<K>, T>(
     val id: String,
     val state: K,
+    covers: Covers,
     val body: suspend TestScope.(subject: T) -> Unit,
-)
+) {
+    val covers: List<String> = covers.cells
+
+    init {
+        require(this.covers.isNotEmpty()) { "clause $id declares no cell it covers" }
+    }
+}
 
 /**
  * A port's contract: an explicit list of [Clause]s (`docs/architecture.md`). The list IS the
@@ -32,8 +42,8 @@ abstract class Contract<K : Enum<K>, T>(val name: String) {
 
     abstract val clauses: List<Clause<K, T>>
 
-    protected fun clause(id: String, state: K, body: suspend TestScope.(subject: T) -> Unit) =
-        Clause(id, state, body)
+    protected fun clause(id: String, state: K, covers: Covers, body: suspend TestScope.(subject: T) -> Unit) =
+        Clause(id, state, covers, body)
 
     /**
      * Builds the clause list as a sequence of `clause(...) { }` statements rather than one comma-separated
@@ -49,8 +59,8 @@ abstract class Contract<K : Enum<K>, T>(val name: String) {
 class ClauseList<K : Enum<K>, T> internal constructor() {
     internal val built = mutableListOf<Clause<K, T>>()
 
-    fun clause(id: String, state: K, body: suspend TestScope.(subject: T) -> Unit) {
-        built += Clause(id, state, body)
+    fun clause(id: String, state: K, covers: Covers, body: suspend TestScope.(subject: T) -> Unit) {
+        built += Clause(id, state, covers, body)
     }
 }
 

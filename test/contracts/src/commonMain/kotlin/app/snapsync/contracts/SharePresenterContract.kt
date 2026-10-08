@@ -26,7 +26,13 @@ object SharePresenterContract : Contract<SharePresenterState, SystemUi>("SharePr
 
     override val clauses = clauses {
 
-        clause("PRESENTABLE_SHARE_IS_ACCEPTED", SharePresenterState.PRESENTABLE) { presenter ->
+        clause(
+            "PRESENTABLE_SHARE_IS_ACCEPTED",
+            SharePresenterState.PRESENTABLE,
+            covers = cells {
+                on<SystemUi>().answers(SystemUi::share).with(Handoff.Accepted::class)
+            },
+        ) { presenter ->
             val answer = withinRealTime(HANDOFF_ANSWER_MILLIS) { presenter.share(TEXT, TITLE) }
             assertEquals(Handoff.Accepted, answer, "with a key window to present from, the sheet is presented")
         }

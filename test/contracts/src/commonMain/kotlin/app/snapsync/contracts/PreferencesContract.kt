@@ -27,32 +27,66 @@ object PreferencesContract : Contract<PreferencesState, Preferences>("Preference
 
     override val clauses = clauses {
 
-        clause("EMPTY_GET_IS_ABSENT", PreferencesState.EMPTY) { prefs ->
+        clause(
+            "EMPTY_GET_IS_ABSENT",
+            PreferencesState.EMPTY,
+            covers = cells { on<Preferences>().answers(Preferences::get).with(PrefRead.Absent::class) },
+        ) { prefs ->
             assertEquals(PrefRead.Absent, prefs.get(key("EMPTY_GET_IS_ABSENT")))
         }
 
-        clause("EMPTY_SET_THEN_GET", PreferencesState.EMPTY) { prefs ->
+        clause(
+            "EMPTY_SET_THEN_GET",
+            PreferencesState.EMPTY,
+            covers = cells {
+                on<Preferences> {
+                    answers(Preferences::set).with(WriteOutcome.Ok::class)
+                    answers(Preferences::get).with(PrefRead.Value::class)
+                }
+            },
+        ) { prefs ->
             val k = key("EMPTY_SET_THEN_GET")
             assertEquals(WriteOutcome.Ok, prefs.set(k, "v"))
             assertEquals(PrefRead.Value("v"), prefs.get(k))
             prefs.remove(k)
         }
 
-        clause("EMPTY_REMOVE_IS_OK", PreferencesState.EMPTY) { prefs ->
+        clause(
+            "EMPTY_REMOVE_IS_OK",
+            PreferencesState.EMPTY,
+            covers = cells { on<Preferences>().answers(Preferences::remove).with(WriteOutcome.Ok::class) },
+        ) { prefs ->
             assertEquals(WriteOutcome.Ok, prefs.remove(key("EMPTY_REMOVE_IS_OK")))
         }
 
-        clause("HOLDING_GET_IS_THE_VALUE", PreferencesState.HOLDING) { prefs ->
+        clause(
+            "HOLDING_GET_IS_THE_VALUE",
+            PreferencesState.HOLDING,
+            covers = cells { on<Preferences>().answers(Preferences::get).with(PrefRead.Value::class) },
+        ) { prefs ->
             assertEquals(PrefRead.Value(seed("HOLDING_GET_IS_THE_VALUE")), prefs.get(key("HOLDING_GET_IS_THE_VALUE")))
         }
 
-        clause("HOLDING_SET_REPLACES", PreferencesState.HOLDING) { prefs ->
+        clause(
+            "HOLDING_SET_REPLACES",
+            PreferencesState.HOLDING,
+            covers = cells { on<Preferences>().answers(Preferences::get).with(PrefRead.Value::class) },
+        ) { prefs ->
             val k = key("HOLDING_SET_REPLACES")
             prefs.set(k, "replaced")
             assertEquals(PrefRead.Value("replaced"), prefs.get(k))
         }
 
-        clause("HOLDING_REMOVE_MAKES_IT_ABSENT", PreferencesState.HOLDING) { prefs ->
+        clause(
+            "HOLDING_REMOVE_MAKES_IT_ABSENT",
+            PreferencesState.HOLDING,
+            covers = cells {
+                on<Preferences> {
+                    answers(Preferences::remove).with(WriteOutcome.Ok::class)
+                    answers(Preferences::get).with(PrefRead.Absent::class)
+                }
+            },
+        ) { prefs ->
             val k = key("HOLDING_REMOVE_MAKES_IT_ABSENT")
             assertEquals(WriteOutcome.Ok, prefs.remove(k))
             assertEquals(PrefRead.Absent, prefs.get(k))

@@ -33,8 +33,8 @@ kover {
 // of `File.walkTopDown()`, and not for free: Konsist 0.17.3 (December 2024) embeds a Kotlin 2.0.21 compiler
 // while this project builds with 2.4.0. See `SourceScan`.
 //
-// This module deliberately depends on NO project modules: it reads the repository's source and
-// entitlements files, so a guard can never be defeated by a dependency edge.
+// Most guards read the repository's source and entitlements files rather than depend on a project module, so a
+// guard can never be defeated by a dependency edge. The ones that need a compiled shape say why at their dependency.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
 }
@@ -57,6 +57,12 @@ dependencies {
     // PortGridTest reads the ports' compiled shapes — sealed subtypes, enum entries, handler bundles — by reflection:
     // a text scan counts the generic `Reply<T>` as having no subtypes. Versioned by the Kotlin plugin.
     testImplementation(kotlin("reflect"))
+    // ClauseCoversTest and ContractCoverageTest load every port contract as a VALUE: a clause's id may be computed and
+    // its declared cells are rendered by the contracts' own common code, which a source scan cannot see.
+    // Its JVM variant carries kotlin-test's JUnit 4 framework for the bindings' tests; this module runs JUnit 5.
+    testImplementation(project(":test:contracts")) {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-test-junit")
+    }
 }
 
 tasks.test {

@@ -2,7 +2,9 @@ package app.snapsync.contracts
 
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeToken
+import app.snapsync.ports.LibraryChangeTokenRead
 import kotlinx.coroutines.delay
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,7 +43,14 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
 
     override val clauses = clauses {
 
-        clause("A_REQUEST_AFTER_THE_GRANT_CHANGES_NOTHING", GalleryState.GRANTED) { subject ->
+        clause(
+            "A_REQUEST_AFTER_THE_GRANT_CHANGES_NOTHING",
+            GalleryState.GRANTED,
+            covers = cells {
+                on<Gallery>().answers(Gallery::requestAccess).with(GalleryAccess.GRANTED)
+                on<GalleryReader>().answers(GalleryReader::access).with(GalleryAccess.GRANTED)
+            },
+        ) { subject ->
             assertEquals(GalleryAccess.GRANTED, subject.gallery.requestAccess())
             assertEquals(GalleryAccess.GRANTED, subject.gallery.requestAccess())
             assertEquals(
@@ -51,7 +60,16 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
             )
         }
 
-        clause("A_LIBRARY_CHANGE_MOVES_THE_TOKEN", GalleryState.GRANTED) { subject ->
+        clause(
+            "A_LIBRARY_CHANGE_MOVES_THE_TOKEN",
+            GalleryState.GRANTED,
+            covers = cells {
+                on<LibraryChangeTokenRead> {
+                    answers(LibraryChangeTokenRead::changeToken).returns()
+                    handle<LibraryChangeToken>().answers(LibraryChangeToken::sameLibraryAs).with(false)
+                }
+            },
+        ) { subject ->
             val before = assertNotNull(subject.gallery.changeToken(), "a full grant's library has a token")
             subject.change()
             val after = assertNotNull(subject.gallery.changeToken(), "a full grant's library has a token")
@@ -62,7 +80,16 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
             )
         }
 
-        clause("A_QUIET_LIBRARY_KEEPS_ITS_TOKEN", GalleryState.GRANTED) { subject ->
+        clause(
+            "A_QUIET_LIBRARY_KEEPS_ITS_TOKEN",
+            GalleryState.GRANTED,
+            covers = cells {
+                on<LibraryChangeTokenRead> {
+                    answers(LibraryChangeTokenRead::changeToken).returns()
+                    handle<LibraryChangeToken>().answers(LibraryChangeToken::sameLibraryAs).with(true)
+                }
+            },
+        ) { subject ->
             // Trailing changes keep moving the token for 1–9 s after any write (measured), and this library is
             // shared with every clause before this one — so wait, on the real clock, for one quiet gap.
             withinRealTime(QUIET_WITHIN_MILLIS) {

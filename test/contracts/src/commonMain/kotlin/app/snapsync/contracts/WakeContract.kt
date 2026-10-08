@@ -51,46 +51,100 @@ object WakeContract : Contract<WakeState, ScheduledWakes>("BackgroundScheduler")
 
     override val clauses = clauses {
 
-        clause("SCHEDULE_ARMS_ONE", WakeState.EMPTY) { subject ->
+        clause(
+            "SCHEDULE_ARMS_ONE",
+            WakeState.EMPTY,
+            covers = cells {
+                on<Wake>().answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+            },
+        ) { subject ->
             assertEquals(ScheduleResult.Scheduled, subject.wake.schedule(WakeId.Heartbeat, HEARTBEAT))
             assertEquals(1, subject.pendingWakes(), "one request makes one pending wake")
         }
 
-        clause("SCHEDULE_IS_IDEMPOTENT", WakeState.EMPTY) { subject ->
+        clause(
+            "SCHEDULE_IS_IDEMPOTENT",
+            WakeState.EMPTY,
+            covers = cells {
+                on<Wake>().answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+            },
+        ) { subject ->
             subject.wake.schedule(WakeId.Heartbeat, HEARTBEAT)
             subject.wake.schedule(WakeId.Heartbeat, HEARTBEAT)
             assertEquals(1, subject.pendingWakes(), "a repeated request replaces the pending one, never stacks")
         }
 
-        clause("CANCEL_CLEARS", WakeState.EMPTY) { subject ->
+        clause(
+            "CANCEL_CLEARS",
+            WakeState.EMPTY,
+            covers = cells {
+                on<Wake> {
+                    answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+                    answers(Wake::cancel).returns()
+                }
+            },
+        ) { subject ->
             subject.wake.schedule(WakeId.Heartbeat, HEARTBEAT)
             subject.wake.cancel(WakeId.Heartbeat)
             assertEquals(0, subject.pendingWakes(), "a cancel leaves no pending wake")
         }
 
-        clause("CANCEL_EMPTY_IS_QUIET", WakeState.EMPTY) { subject ->
+        clause(
+            "CANCEL_EMPTY_IS_QUIET",
+            WakeState.EMPTY,
+            covers = cells {
+                on<Wake>().answers(Wake::cancel).returns()
+            },
+        ) { subject ->
             subject.wake.cancel(WakeId.Heartbeat)
             assertEquals(0, subject.pendingWakes(), "cancelling nothing is not a failure, and arms nothing")
         }
 
-        clause("IDLE_ARMS_ONE", WakeState.EMPTY) { subject ->
+        clause(
+            "IDLE_ARMS_ONE",
+            WakeState.EMPTY,
+            covers = cells {
+                on<Wake>().answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+            },
+        ) { subject ->
             assertEquals(ScheduleResult.Scheduled, subject.wake.schedule(WakeId.Heartbeat, IDLE))
             assertEquals(1, subject.pendingWakes(), "an idle request makes one pending wake")
         }
 
-        clause("IDLE_REPLACES_BUSY", WakeState.EMPTY) { subject ->
+        clause(
+            "IDLE_REPLACES_BUSY",
+            WakeState.EMPTY,
+            covers = cells {
+                on<Wake>().answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+            },
+        ) { subject ->
             subject.wake.schedule(WakeId.Heartbeat, HEARTBEAT)
             subject.wake.schedule(WakeId.Heartbeat, IDLE)
             assertEquals(1, subject.pendingWakes(), "going idle withdraws the busy wake, never keeps both")
         }
 
-        clause("BUSY_REPLACES_IDLE", WakeState.EMPTY) { subject ->
+        clause(
+            "BUSY_REPLACES_IDLE",
+            WakeState.EMPTY,
+            covers = cells {
+                on<Wake>().answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+            },
+        ) { subject ->
             subject.wake.schedule(WakeId.Heartbeat, IDLE)
             subject.wake.schedule(WakeId.Heartbeat, HEARTBEAT)
             assertEquals(1, subject.pendingWakes(), "going busy withdraws the idle wake, never keeps both")
         }
 
-        clause("CANCEL_CLEARS_IDLE", WakeState.EMPTY) { subject ->
+        clause(
+            "CANCEL_CLEARS_IDLE",
+            WakeState.EMPTY,
+            covers = cells {
+                on<Wake> {
+                    answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
+                    answers(Wake::cancel).returns()
+                }
+            },
+        ) { subject ->
             subject.wake.schedule(WakeId.Heartbeat, IDLE)
             subject.wake.cancel(WakeId.Heartbeat)
             assertEquals(0, subject.pendingWakes(), "a cancel withdraws the idle wake too")
