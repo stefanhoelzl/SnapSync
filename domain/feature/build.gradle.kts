@@ -3,9 +3,9 @@ plugins {
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
-    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
-    id("snapsync.coverage")
+    // Coverage at ZERO (`docs/architecture.md`, "Coverage"; `snapsync.coverage-zero`): no instruction or branch may be
+    // missed. Applied here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
 }
@@ -41,52 +41,7 @@ kotlin {
 }
 
 // Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes, so a
-// zone is measured on what it contains rather than on its neighbours' test suites. The crediting edge
-// that lets `:adapter:generic:mock`'s tests count toward this module is declared in the ROOT build
-// file, not here: `ModuleSetTest` asserts a `:domain:*` build file names no module at all, because
-// that absence is the precondition for the platform-free compile error.
-//
-// Coverage bounds (`docs/architecture.md`). Each number below is a FLOOR that may only RISE:
-// lowering one is a regression and needs a stated forcing proof in the PR. Nothing enforces that — it
-// is a ratchet carried by this contract, exactly as `docs/architecture.md` carries its ceilings at the
-// opposite polarity.
-//
-// Seeded from MEASUREMENT, never chosen: the number is what this module measured on the commit that
-// set it. ENGINE: Kover's default, not JaCoCo — the two disagree by up to 26 points on a single
-// package's denominator, so switching engines means re-seeding in that same change. Bounds are whole
-// percentages (`minValue` is an `Int`), so each concedes up to one point of its scope.
-//
-// Nine packages, so the floor matters: it catches one feature rotting behind well-tested neighbours,
-// which is the shape an untested class has. It names `feature/push`, whose gap is the generated
-// `<init>` of two decode-only DTOs — no test reaches it, so this floor is close to its ceiling.
-//
-// LOWERED 92 -> 90 by `device-speaks-v2`. A floor going the wrong way owes a forcing proof; here it is,
-// and it is the sentence above coming true. That change DELETED `EventNotifier` from `feature/push` —
-// the completion notify has no route on the versioned device API, because publishing the manifest IS
-// the announcement. `EventNotifier` was well covered, so removing it shrank that package's denominator
-// around a FIXED, unreachable gap, and the ratio fell to 90.68 with nothing having rotted: `LINE` is
-// 23/23 and `METHOD` 12/12 in that package, and every remaining miss is INSTRUCTION-level inside
-// kotlinx's synthetic deserialization constructors for two `private`, encode-only DTOs.
-//
-// No test can repay it. Those DTOs are `private` to `PushRegistration.kt` and are only ever ENCODED, so
-// the generated decode path is unreachable without widening production visibility for a test — which
-// would be a worse trade than this number. The honest alternatives were both worse: excluding the two
-// classes hides a real gap behind a mechanism this module does not otherwise use, and rewriting the
-// encoding to `buildJsonObject` is a change to `receiving-photos`'s wire path made by a change about
-// the device API.
-//
-// ⚠️ The cost is real and belongs on the record: this weakens the guard for all nine packages, not just
-// the one that moved. It should rise again the moment `feature/push` gains reachable covered code.
-//
-// The aggregate BRANCH floor LOWERED 91 -> 90 by the Kotlin 2.4.0 -> 2.4.20 bump. Forcing proof, measured on
-// both compilers over unchanged sources: MISSED branches held at 71 while COVERED fell 725 -> 714, all of it
-// in `UploadCycle` (-6), `DownloadController` (-2) and `SyncEngine` (-3) — the newer compiler emits fewer
-// bytecode branches for the same code. The denominator shrank around a fixed gap, so the ratio fell
-// 91.08 -> 90.96 with no test losing anything. The gap it shrank around is largely unreachable by
-// construction (e.g. `SyncEngine.needsJob`'s one miss is the synthetic arm of an exhaustive `when`).
-coverageFloors {
-    aggregate(instruction = 98, branch = 90)
-    // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
-    // tree, where a single uncovered arm moves the number by 17 points.
-    packageFloor(instruction = 90)
-}
+// zone is measured on what it contains rather than on its neighbours' test suites. The crediting edges
+// that let `:adapter:generic:mock`'s and `:test:feature`'s tests count toward this module are declared in
+// the ROOT build file, not here: `ModuleSetTest` asserts a `:domain:*` build file names no module at all,
+// because that absence is the precondition for the platform-free compile error.
