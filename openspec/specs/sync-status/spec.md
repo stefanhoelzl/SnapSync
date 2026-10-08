@@ -569,7 +569,8 @@ dismissal.
 
 #### Scenario: A running sheet cannot be dismissed
 - **WHEN** the member has confirmed and the action is still running
-- **THEN** the sheet stays open showing progress, and neither cancel nor swiping it away closes it
+- **THEN** the sheet stays open showing progress, and neither cancel, swiping it away, tapping outside it nor
+  Android's back gesture closes it or moves it off the screen
 
 ### Requirement: The app menu is one tap away on every screen
 Every screen SHALL show a menu button beside the app's name that opens the app menu, except while the event settings
