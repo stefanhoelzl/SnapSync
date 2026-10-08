@@ -12,5 +12,5 @@
 
 ## 2. Integration
 
-- [ ] 2.1 Verify the change validates (`npx --yes @fission-ai/openspec@1.13.2 validate show-chosen-end-day --strict`)
+- [x] 2.1 Verify the change validates (`npx --yes @fission-ai/openspec@1.13.2 validate show-chosen-end-day --strict`)
       and `./gradlew build` is green
