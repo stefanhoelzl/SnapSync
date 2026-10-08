@@ -4,7 +4,8 @@ import java.io.File
 
 /**
  * **Which clauses run against a real implementation on some host** (`docs/architecture.md`, "The contract-coverage
- * gate"): the one reading [ContractCoverageTest] fails on and [ClauseCoversTest] counts a cell through.
+ * gate"): the one reading [ContractCoverageTest] fails on and [ClauseCoversTest] counts a cell COVERED through
+ * ([coveredCells]).
  *
  * Contracts and their clauses are the catalog's ([ContractCatalog], by reflection). Bindings and recordings are read
  * from source text and the committed files, because the bindings live in test source sets of many modules —
@@ -86,6 +87,18 @@ internal object ContractCoverage {
         }
         return live || replayed
     }
+
+    /**
+     * The grid cells COVERED: declared by a clause that [isReal]. The one reading the open-cells list
+     * ([openCellsFile]) is held to — a claim that should count for less (a mock-only one, a weak one) is excluded here
+     * and nowhere else.
+     */
+    val coveredCells: Set<String> by lazy {
+        ContractCatalog.contracts.flatMap { c -> c.clauses.filter { isReal(c, it) }.flatMap { it.covers } }.toSet()
+    }
+
+    /** The committed list of the grid cells not yet [coveredCells]: one per line, sorted, `#` lines comments. */
+    fun openCellsFile() = File(SourceScan.repoRoot, "test/contracts/open-cells.txt")
 
     /** Whether [b] is a `Live` binding CI runs: not on a recorded host, and registered if its host runs in-app. */
     private fun runsLiveOnCi(b: BindingDecl, recordedHosts: Set<String>) =

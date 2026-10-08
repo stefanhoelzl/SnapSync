@@ -92,6 +92,9 @@ tasks.test {
             // UP-TO-DATE, so the gate reported coverage from a recording that no longer said so. Measured
             // while adding grant-keyed recordings: a stray `.LIMITED.rec` passed until `--rerun`.
             include("test/contracts/recordings/*.rec")
+            // The armed grid gate's list. Without it a list-only edit — a line deleted that a clause does
+            // not cover — leaves this task UP-TO-DATE and the gate passes a list it never read. Measured.
+            include("test/contracts/open-cells.txt")
             // The event-link domain guard's subjects (capability `join-event`). Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing

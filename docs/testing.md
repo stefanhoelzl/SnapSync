@@ -400,6 +400,23 @@ declared cell the grid does not hold. It **reports** the unclaimed cells, and th
 clauses no real implementation runs, in `build/reports/port-grid/clause-covers.txt`. A declaration is
 trusted: nothing yet checks that a clause really drives the cell it names.
 
+### Open cells
+
+A cell is **covered** when a clause that runs against a real implementation on some host
+(`ContractCoverageTest`'s reading) declares it. A claim by a clause only a mock answers does not count.
+Every grid cell must be covered or listed in **`test/contracts/open-cells.txt`**: the cells no clause
+covers yet, one per line in the grid's own text, sorted. `ClauseCoversTest` fails when:
+- a grid cell is neither covered nor listed. That is new port surface (a member, a variant, a handler)
+  without a clause. Write the clause; list the cell only where none can be written yet.
+- a listed cell is covered. Delete the line: the list only shrinks.
+- a listed cell is not in the grid: a member or variant was renamed or removed. Delete it; the cells it
+  became fail under the first rule.
+- the list is unsorted or names a cell twice.
+
+The one reading of "covered" is `ContractCoverage.coveredCells`, so a rule that counts a claim for less
+changes that function only. A renamed port member moves its cells, so it fails the first and third rule
+together: the messages print the lines to add and delete.
+
 ### Hosts
 
 A `Host` is identity that changes which states are reachable: platform × process kind × entitlements. OS
