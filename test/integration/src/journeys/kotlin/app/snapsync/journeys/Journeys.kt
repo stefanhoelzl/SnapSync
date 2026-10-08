@@ -114,11 +114,13 @@ class Journeys {
      */
     private suspend fun receive(a: RigClient, member: Member) {
         val invite = (a.state().ui.layer as? Layer.Joined)?.inviteUrl ?: fail("A's joined screen carries no invite link")
-        val event = when (val link = decodeEventUrl(invite)) {
-            is ConfigDecodeResult.Success -> link.payload.eventId
-            is ConfigDecodeResult.Failure -> fail("A's invite link does not decode (${link.reason}): $invite")
+        val link = when (val decoded = decodeEventUrl(invite)) {
+            is ConfigDecodeResult.Success -> decoded.payload
+            is ConfigDecodeResult.Failure -> fail("A's invite link does not decode (${decoded.reason}): $invite")
         }
-        member.join(event)
+        val event = link.eventId
+        // An encrypted event's invite carries its key, and the member keeps it as a device does at its join.
+        member.join(event, link.key)
         // Captured today at noon: inside the event's window, as a member's photo of the event would be.
         val today = Clock.System.todayIn(TimeZone.UTC)
         val shared = member.share(event, count = MEMBER_PHOTOS, creationDate = "${today}T12:00:00Z")
