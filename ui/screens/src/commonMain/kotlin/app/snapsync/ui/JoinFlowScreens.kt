@@ -141,7 +141,11 @@ private fun BlockedStep(phase: JoinPhase.Detailed, actions: JoinActions, online:
     val title = stringResource(if (full) Res.string.event_full_title else Res.string.join_failed_title)
     val body = refusal?.text() ?: stringResource(if (full) Res.string.event_full_body else Res.string.join_failed_body)
     val onRetry = actions.onRetryJoin.takeIf { online && !full }
-    val onReport = refusal?.takeIf { it.offersReport }?.let { { actions.onReportRefusal(it) } }
+    val onReport = refusal?.takeIf { it.offersReport }?.let { reportable ->
+        {
+            actions.onReportRefusal(reportable)
+        }
+    }
     PhaseScaffold(
         body = {
             AppEventHeaderCompact(title = phase.event.name)

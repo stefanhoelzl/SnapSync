@@ -106,9 +106,7 @@ private fun StatusBlock(state: Layer.Joined, access: AccessActions) {
             onAttentionClick = {
                 if (health is SyncHealth.NeedsAccess) accessAction(health, access)()
                 // A blocked network is SnapSync's own setting (capability `sync-status`); an offline device is not.
-                if (health is SyncHealth.NoNetwork && health.notice == NetworkNotice.BLOCKED) {
-                    access.onOpenSettings()
-                }
+                if (health == SyncHealth.NoNetwork(NetworkNotice.BLOCKED)) access.onOpenSettings()
             },
         )
         CountsLine(state.counts, state.waiting)
@@ -156,17 +154,16 @@ private fun CountsLine(counts: SyncCounts?, waiting: MemberCounts?) {
         Res.string.counts_received_progress,
         Res.string.counts_not_receiving,
     )
-    AppStatusDetail(stringResource(Res.string.counts_line, shared, received))
+    AppStatusDetail(Phrase.Of(Res.string.counts_line, listOf(shared, received)).text())
     waiting?.let { AppStatusDetail(stringResource(Res.string.waiting_members, it.waitingFor, it.active)) }
 }
 
 /** `12/15 shared` while work remains, `15 shared` once complete, or what an off direction says. */
-@Composable
-private fun DirectionCount.label(done: StringResource, progress: StringResource, off: StringResource): String =
+internal fun DirectionCount.label(done: StringResource, progress: StringResource, off: StringResource): Phrase =
     when (this) {
-        DirectionCount.Off -> stringResource(off)
+        DirectionCount.Off -> Phrase.Of(off)
         is DirectionCount.Progress ->
-            if (complete) stringResource(done, total) else stringResource(progress, this.done, total)
+            if (complete) Phrase.Of(done, listOf(total)) else Phrase.Of(progress, listOf(this.done, total))
     }
 
 /**
@@ -183,13 +180,12 @@ internal fun JoinedHeadingDetails(state: Layer.Joined, cutoff: CutoffFormatter) 
         end = cutoff.toLocal(state.membership.endsAt),
         today = cutoff.nowLocal().date,
     )
-    AppDatesLine(range, state.timing.phrase())
+    AppDatesLine(range, state.timing.phrase()?.text())
 }
 
 /** "starts in 2 days", "ends in 5 hours", "ended" — or nothing, for a membership with no stored end. */
-@Composable
-private fun EventTiming.phrase(): String? = when (this) {
-    is EventTiming.Upcoming -> stringResource(Res.string.timing_starts_in, remaining.text())
-    is EventTiming.Running -> remaining?.let { stringResource(Res.string.timing_ends_in, it.text()) }
-    EventTiming.Ended -> stringResource(Res.string.timing_ended)
+internal fun EventTiming.phrase(): Phrase? = when (this) {
+    is EventTiming.Upcoming -> Phrase.Of(Res.string.timing_starts_in, listOf(remaining.phrase()))
+    is EventTiming.Running -> remaining?.let { Phrase.Of(Res.string.timing_ends_in, listOf(it.phrase())) }
+    EventTiming.Ended -> Phrase.Of(Res.string.timing_ended)
 }

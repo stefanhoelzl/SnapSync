@@ -29,7 +29,6 @@ import app.snapsync.ui.resources.share_exclusions_note
 import app.snapsync.ui.resources.share_off_note
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.share_zero_note
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 // The participation decision surface (capabilities `join-event`, `manage-membership`,
@@ -106,7 +105,7 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
         actions = actions.choices,
         window = state.window,
         rangeLabel = state.rangeLabel,
-        detail = shareDetail(state.form.preset, state.range.shareCount),
+        detail = shareDetail(state.form.preset, state.range.shareCount).text(),
     )
     // A zero count carries a forward gloss so it does not read as broken (capability `join-event`).
     if (state.range.shareCount == ShareCount.Ready(0)) {
@@ -124,9 +123,8 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
  * member's own photos it would share (capability `join-event`). An unavailable count — no usable grant, or a
  * failed read — is omitted, not shown as zero: the two mean different things.
  */
-@Composable
-internal fun shareDetail(preset: RangeChoice, count: ShareCount): String {
-    val name = stringResource(
+internal fun shareDetail(preset: RangeChoice, count: ShareCount): Phrase {
+    val name = Phrase.Of(
         when (preset) {
             RangeChoice.WHOLE_EVENT -> Res.string.range_whole_event
             RangeChoice.FROM_NOW -> Res.string.range_from_now
@@ -134,9 +132,9 @@ internal fun shareDetail(preset: RangeChoice, count: ShareCount): String {
         },
     )
     return when (count) {
-        ShareCount.Counting -> stringResource(Res.string.share_detail_counting, name)
+        ShareCount.Counting -> Phrase.Of(Res.string.share_detail_counting, listOf(name))
         ShareCount.Unavailable -> name
-        is ShareCount.Ready -> pluralStringResource(Res.plurals.share_detail_count, count.count, name, count.count)
+        is ShareCount.Ready -> Phrase.Counted(Res.plurals.share_detail_count, count.count, listOf(name, count.count))
     }
 }
 

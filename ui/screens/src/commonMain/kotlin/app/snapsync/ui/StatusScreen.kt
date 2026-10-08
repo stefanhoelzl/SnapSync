@@ -63,13 +63,10 @@ import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.rename_body
 import app.snapsync.ui.resources.rename_event
-import app.snapsync.ui.resources.report_body_developer
-import app.snapsync.ui.resources.report_body_device
 import app.snapsync.ui.resources.report_not_sent
 import app.snapsync.ui.resources.report_placeholder
 import app.snapsync.ui.resources.report_problem
 import app.snapsync.ui.resources.report_saved
-import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.share_invite
@@ -144,15 +141,14 @@ fun StatusScreen(
                     // for the same reasons the settings gear is not: `RenameEvent` guards the `eventId` itself,
                     // and suppressing here also hid the pen for the whole of a join's own commit.
                     // Beneath it, that this device has joined and the event's dates (capability `sync-status`).
-                    heading = (state.layer as? Layer.Joined)
-                        ?.takeIf { chrome.showsJoinedChrome }?.let { joined ->
-                            ScreenHeading(
-                                text = joined.membership.name,
-                                onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
-                                editDescription = stringResource(Res.string.rename_event),
-                                details = { JoinedHeadingDetails(joined, cutoff) },
-                            )
-                        },
+                    heading = (state.layer as? Layer.Joined)?.let { joined ->
+                        ScreenHeading(
+                            text = joined.membership.name,
+                            onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
+                            editDescription = stringResource(Res.string.rename_event),
+                            details = { JoinedHeadingDetails(joined, cutoff) },
+                        )
+                    },
                     bottomActions = bottomActions,
                     contentPinsActionCluster = chrome.pinsActionCluster,
                     // The hidden second way to the report sheet; the menu's "Report a problem" is the visible one.
@@ -201,12 +197,16 @@ private fun ColumnScope.AppMenu(build: BuildLabel, mobileData: MobileDataState, 
     AppMenuItem(
         icon = AppMenuIcon.WEBSITE,
         label = stringResource(Res.string.menu_website),
-        onClick = { actions.onOpenLink(AppLink.WEBSITE) },
+        onClick = {
+            actions.onOpenLink(AppLink.WEBSITE)
+        },
     )
     AppMenuItem(
         icon = AppMenuIcon.PRIVACY,
         label = stringResource(Res.string.menu_privacy),
-        onClick = { actions.onOpenLink(AppLink.PRIVACY_POLICY) },
+        onClick = {
+            actions.onOpenLink(AppLink.PRIVACY_POLICY)
+        },
     )
     AppMenuFooter(stringResource(Res.string.menu_version, build.version, build.buildNumber))
 }
@@ -378,7 +378,9 @@ private fun RenameSheet(
         ),
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
         // rather than renaming a different event.
-        onConfirm = { newName -> actions.joined.onRenameEvent(membership.eventId, newName) },
+        onConfirm = { newName ->
+            actions.joined.onRenameEvent(membership.eventId, newName)
+        },
         onDismiss = {
             actions.surfaces.onRenameDismiss()
             actions.joined.onRenameStatusConsumed()
@@ -408,19 +410,11 @@ private fun BugReportSheet(
     seed: ScreenMessage?,
 ) {
     AppTextPromptSheet(
-        copy = when (destination) {
-            ReportDestination.DEVELOPER -> DialogCopy(
+        copy = reportCopy(destination).let { words ->
+            DialogCopy(
                 title = stringResource(Res.string.report_problem),
-                body = stringResource(Res.string.report_body_developer),
-                confirmLabel = stringResource(Res.string.report_send),
-                cancelLabel = stringResource(Res.string.cancel),
-            )
-            // A build that reports nowhere keeps the report on the phone, and says so — it never suggests a
-            // destination it does not have (capability `privacy-security`).
-            ReportDestination.THIS_DEVICE -> DialogCopy(
-                title = stringResource(Res.string.report_problem),
-                body = stringResource(Res.string.report_body_device),
-                confirmLabel = stringResource(Res.string.save),
+                body = stringResource(words.body),
+                confirmLabel = stringResource(words.confirm),
                 cancelLabel = stringResource(Res.string.cancel),
             )
         },

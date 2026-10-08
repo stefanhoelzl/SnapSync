@@ -60,6 +60,7 @@ import app.snapsync.ui.resources.update_headline
 import app.snapsync.ui.resources.update_subtitle
 import app.snapsync.ui.resources.update_title
 import kotlinx.datetime.LocalDateTime
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Duration.Companion.seconds
 
@@ -180,18 +181,20 @@ private fun CreateActions(
     // ONE value: the reduction already coalesced a sticky create failure and a self-clearing invalid-link
     // notice, the transient winning, so the screen renders what it is given.
     val error: String? = state.error?.text()
-    val until = draft.range.until
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val step = draft.nextStep()
         val toStep = when (step) {
-            CreateStep.NAME -> guide.toName
-            CreateStep.END_TIME -> guide.toEndTime
-            CreateStep.COMPLETE -> null
+            CreateStep.Name -> guide.toName
+            CreateStep.EndTime -> guide.toEndTime
+            is CreateStep.Complete -> null
         }
-        StatusHint(nextStepLine(step, draft.range.from, until, cutoff), onClick = toStep)
+        StatusHint(nextStepLine(step, draft.range.from, cutoff).text(), onClick = toStep)
+        val complete = step as? CreateStep.Complete
         PrimaryButton(
             label = stringResource(Res.string.create_button),
-            onClick = { if (until != null) callbacks.onCreateEvent(draft.name, draft.range.from, until) },
+            onClick = {
+                if (complete != null) callbacks.onCreateEvent(draft.name, draft.range.from, complete.until)
+            },
             enabled = createEnabled(draft, cutoff) && state.network == null,
         )
         val network = state.network
@@ -218,23 +221,20 @@ private fun CreateActions(
 }
 
 /** The line above Create: the next missing step, or — once there is none — the event's duration. */
-@Composable
-private fun nextStepLine(step: CreateStep, from: LocalDateTime, until: LocalDateTime?, cutoff: CutoffFormatter) =
-    when (step) {
-        CreateStep.NAME -> stringResource(Res.string.create_step_name)
-        CreateStep.END_TIME -> stringResource(Res.string.create_step_end_time)
-        CreateStep.COMPLETE ->
-            until?.let { stringResource(Res.string.create_lasts, cutoff.coarseDuration(from, it).text()) }.orEmpty()
-    }
+internal fun nextStepLine(step: CreateStep, from: LocalDateTime, cutoff: CutoffFormatter): Phrase = when (step) {
+    CreateStep.Name -> Phrase.Of(Res.string.create_step_name)
+    CreateStep.EndTime -> Phrase.Of(Res.string.create_step_end_time)
+    is CreateStep.Complete ->
+        Phrase.Of(Res.string.create_lasts, listOf(cutoff.coarseDuration(from, step.until).phrase()))
+}
 
 /**
  * Create is enabled only for a complete draft. The window checks restate what the picker already cannot
  * produce (an inverted or over-long range), so a regression there is refused rather than submitted.
  */
-private fun createEnabled(draft: CreateDraft, cutoff: CutoffFormatter): Boolean {
-    val until = draft.range.until ?: return false
-    return draft.nextStep() == CreateStep.COMPLETE && draft.range.from < until &&
-        cutoff.fitsEventWindow(draft.range.from, until)
+internal fun createEnabled(draft: CreateDraft, cutoff: CutoffFormatter): Boolean {
+    val complete = draft.nextStep() as? CreateStep.Complete ?: return false
+    return draft.range.from < complete.until && cutoff.fitsEventWindow(draft.range.from, complete.until)
 }
 
 /**
@@ -301,15 +301,14 @@ internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenLink: (Stri
         }
         layer.store?.let { store ->
             Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-                PrimaryButton(label = storeButtonLabel(store.kind), onClick = { onOpenLink(store.url) })
+                PrimaryButton(label = stringResource(storeButtonLabel(store.kind)), onClick = { onOpenLink(store.url) })
             }
         }
     }
 }
 
 /** The update notice's one button names the store it opens — the one the build is distributed through. */
-@Composable
-private fun storeButtonLabel(kind: StoreKind): String = when (kind) {
-    StoreKind.APP_STORE -> stringResource(Res.string.store_app_store)
-    StoreKind.GOOGLE_PLAY -> stringResource(Res.string.store_google_play)
+internal fun storeButtonLabel(kind: StoreKind): StringResource = when (kind) {
+    StoreKind.APP_STORE -> Res.string.store_app_store
+    StoreKind.GOOGLE_PLAY -> Res.string.store_google_play
 }

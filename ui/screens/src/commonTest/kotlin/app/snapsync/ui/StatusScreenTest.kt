@@ -7,11 +7,15 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
@@ -39,6 +43,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performFirstLinkClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -158,7 +163,9 @@ import app.snapsync.ui.resources.leave_cancel
 import app.snapsync.ui.resources.leave_confirm
 import app.snapsync.ui.resources.leave_event
 import app.snapsync.ui.resources.leave_title
+import app.snapsync.ui.resources.message_create_dates_refused
 import app.snapsync.ui.resources.message_create_failed
+import app.snapsync.ui.resources.message_create_name_refused
 import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_rename_failed
 import app.snapsync.ui.resources.message_rename_name_refused
@@ -167,6 +174,7 @@ import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.range_custom
 import app.snapsync.ui.resources.range_whole_event
 import app.snapsync.ui.resources.receive_toggle
+import app.snapsync.ui.resources.rename_body
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.settings_save_failed
@@ -1989,6 +1997,92 @@ class StatusScreenTest {
         onNodeWithText(str(Res.string.explain_hint_title)).performScrollTo().assertIsDisplayed()
     }
 
+    // ---- the screens' remaining choices ----
+
+    @Test
+    fun `tapping the missing name also raises the keyboard`() = runComposeUiTest {
+        val keyboard = CountingKeyboard()
+        setContent {
+            CompositionLocalProvider(LocalSoftwareKeyboardController provides keyboard) {
+                CreateScreen(UiState(Layer.CreateEvent()))
+            }
+        }
+        onNodeWithText(str(Res.string.create_step_name)).performClick()
+        waitForIdle()
+        assertTrue(keyboard.shown > 0, "the keyboard was not asked to show")
+    }
+
+    @Test
+    fun `without a keyboard to raise — tapping the missing name still puts the cursor in the field`() = runComposeUiTest {
+        setContent {
+            CompositionLocalProvider(LocalSoftwareKeyboardController provides null) {
+                CreateScreen(UiState(Layer.CreateEvent()))
+            }
+        }
+        onNodeWithText(str(Res.string.create_step_name)).performClick()
+        waitForIdle()
+        onNode(hasSetTextAction()).assertIsFocused()
+    }
+
+    @Test
+    fun `a tap that reaches Create while it is disabled creates nothing`() = runComposeUiTest {
+        var creates = 0
+        setContent {
+            CreateScreen(
+                UiState(Layer.CreateEvent()),
+                actions = testActions(onCreateEvent = { _, _, _ -> creates++ }),
+            )
+        }
+        onNode(hasSetTextAction()).performTextInput("Party")
+        // No end yet, so Create is disabled — yet its action stays in the tree, where an accessibility service can
+        // fire it.
+        onNodeWithText(
+            str(Res.string.create_button),
+        ).assertIsNotEnabled().performSemanticsAction(SemanticsActions.OnClick)
+        assertEquals(0, creates)
+    }
+
+    @Test
+    fun `a refused create says which part the service refused`() = runComposeUiTest {
+        var state by mutableStateOf(UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_NAME_REFUSED)))
+        setContent { CreateScreen(state) }
+        onNodeWithText(str(Res.string.message_create_name_refused)).assertExists()
+        state = UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_DATES_REFUSED))
+        onNodeWithText(str(Res.string.message_create_dates_refused)).assertExists()
+    }
+
+    @Test
+    fun `a link rejected while joined is said above the joined screen`() = runComposeUiTest {
+        val state = inSync.copy(layer = (inSync.layer as Layer.Joined).copy(notice = ScreenMessage.INVALID_LINK))
+        setContent { TestStatusScreen(state, cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.message_invalid_link)).assertExists()
+        onNodeWithText(MEMBERSHIP.name).assertExists()
+    }
+
+    @Test
+    fun `a report offered for a message with no description of its own opens empty`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(
+                inSync.copy(overlays = Overlays(reportingBug = true, reportSeed = ScreenMessage.DEVICE_MODIFIED)),
+                cutoff = fixedCutoff(),
+            )
+        }
+        assertEquals("", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+    }
+
+    @Test
+    fun `the rename sheet and the QR sheet need a joined event to show`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(
+                UiState(Layer.CreateEvent(), Overlays(renaming = true, showingQr = true)),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText(str(Res.string.rename_body)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.invite_caption)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.create_title)).assertExists()
+    }
+
     /** A node showing a count ("12/15 shared", "40 received") — the explanation's words are not counts. */
     private fun countsText(): SemanticsMatcher = SemanticsMatcher("shows a count") { node ->
         node.config.getOrElseNullable(
@@ -2021,3 +2115,14 @@ private fun phaseAt(
 /** The store link a build carries, offered on the update-required screen. */
 private const val STORE_URL = "https://apps.apple.com/de/app/id6781692480"
 private const val PLAY_URL = "https://play.google.com/store/apps/details?id=app.snapsync"
+
+/** A keyboard controller that counts what it was asked to do. */
+private class CountingKeyboard : SoftwareKeyboardController {
+    var shown = 0
+
+    override fun show() {
+        shown++
+    }
+
+    override fun hide() = Unit
+}

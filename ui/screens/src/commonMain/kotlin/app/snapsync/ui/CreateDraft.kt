@@ -55,14 +55,23 @@ internal class CreateDraft(name: String, range: EventRange) {
 
 /**
  * The next thing the host still has to do before Create is allowed, in the order the screen asks for it —
- * or [COMPLETE] once there is nothing left (capability `create-event`).
+ * or [Complete] once there is nothing left (capability `create-event`), carrying the end a complete draft has.
  */
-internal enum class CreateStep { NAME, END_TIME, COMPLETE }
+internal sealed interface CreateStep {
+    object Name : CreateStep
 
-internal fun CreateDraft.nextStep(): CreateStep = when {
-    name.isBlank() -> CreateStep.NAME
-    range.until == null -> CreateStep.END_TIME
-    else -> CreateStep.COMPLETE
+    object EndTime : CreateStep
+
+    class Complete(val until: LocalDateTime) : CreateStep
+}
+
+internal fun CreateDraft.nextStep(): CreateStep {
+    val until = range.until
+    return when {
+        name.isBlank() -> CreateStep.Name
+        until == null -> CreateStep.EndTime
+        else -> CreateStep.Complete(until)
+    }
 }
 
 /**
@@ -103,7 +112,7 @@ internal fun CreateFlow(
     // The creating layer carries no session; the draft keeps the one it was last shown with. A plain holder,
     // not state: remembering what was last rendered must not itself cause a recomposition.
     val lastShown = remember { LastSession() }
-    val session = (layer as? Layer.CreateEvent)?.draft?.also { lastShown.value = it } ?: lastShown.value
+    val session = if (layer is Layer.CreateEvent) layer.draft.also { lastShown.value = it } else lastShown.value
     val draft = remember(session.epoch) { freshDraft(cutoff) }
     LaunchedEffect(draft, session.activation) { draft.followNow(nowToTheMinute(cutoff)) }
     if (layer is Layer.CreateEvent) {
