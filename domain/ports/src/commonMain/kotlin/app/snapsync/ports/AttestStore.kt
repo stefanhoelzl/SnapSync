@@ -56,11 +56,9 @@ interface AttestStore : Port {
      * Not atomic ACROSS processes: an extension rejection landing between the app's read and delete can still
      * interleave. That window is microseconds wide, and its outcome is one extra refresh, never a lost photo
      * (decision record `harden-seam-bug-classes`, D10). Within a process, the caller serialises it against writes.
+     *
+     * Each store answers it itself, rather than through a default body here: a store that keeps a copy must compare
+     * against the store of record, never the copy, so the compare is the store's to make.
      */
-    fun clearTokenIf(expected: String): Boolean = if (token() == expected) {
-        clearToken()
-        true
-    } else {
-        false
-    }
+    fun clearTokenIf(expected: String): Boolean
 }

@@ -59,6 +59,7 @@ class IosUrlSessionUploadPlatform(
 ) : Upload {
 
     override val accepts: UploadSourceKind = UploadSourceKind.FILE
+    override val acceptsFiles: Boolean = true
 
     private val handlers = AtomicReference<UploadHandlers?>(null)
 

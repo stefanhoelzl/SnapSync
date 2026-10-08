@@ -44,6 +44,9 @@ class IosPhotoKitUploadPlatform internal constructor(
 
     override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
 
+    /** PhotoKit sends only the library's own bytes, so an encrypted event's upload is sealed by the edge. */
+    override val acceptsFiles: Boolean = false
+
     override fun listen(handlers: UploadHandlers) = Unit
 
     override suspend fun jobs(set: UploadJobSet): List<UploadJob> =

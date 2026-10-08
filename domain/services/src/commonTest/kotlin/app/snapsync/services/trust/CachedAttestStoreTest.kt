@@ -43,6 +43,8 @@ class CachedAttestStoreTest {
         override fun clearToken() {
             held = null
         }
+
+        override fun clearTokenIf(expected: String): Boolean = (token() == expected).also { if (it) held = null }
     }
 
     @Test

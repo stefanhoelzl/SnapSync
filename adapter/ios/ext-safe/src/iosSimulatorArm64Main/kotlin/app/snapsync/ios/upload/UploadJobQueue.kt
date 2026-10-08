@@ -178,6 +178,7 @@ internal class SimulatorUploadJobQueue(
     constructor(log: Logger) : this(log, SimulatorUploadJobs, PHAssetResource::class)
 
     override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
+    override val acceptsFiles: Boolean = false
 
     override fun listen(handlers: UploadHandlers) = Unit
 

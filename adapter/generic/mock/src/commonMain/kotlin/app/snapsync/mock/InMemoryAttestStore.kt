@@ -20,4 +20,6 @@ internal class InMemoryAttestStore(
     override fun clearToken() {
         token = null
     }
+
+    override fun clearTokenIf(expected: String): Boolean = (token == expected).also { if (it) token = null }
 }

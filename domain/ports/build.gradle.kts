@@ -3,9 +3,9 @@ plugins {
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
-    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
-    id("snapsync.coverage")
+    // Coverage at ZERO (`docs/architecture.md`, "Coverage"; `snapsync.coverage-zero`): no instruction or branch may be
+    // missed. Applied here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
 }
@@ -40,65 +40,12 @@ kotlin {
     }
 }
 
-// Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes, so a
-// zone is measured on what it contains rather than on its neighbours' test suites. The crediting edge
-// that lets `:adapter:generic:mock`'s tests count toward this module is declared in the ROOT build
-// file, not here: `ModuleSetTest` asserts a `:domain:*` build file names no module at all, because
-// that absence is the precondition for the platform-free compile error.
+// Coverage (`docs/architecture.md`, "Coverage"). The report is filtered to this module's OWN classes, so a
+// zone is measured on what it contains rather than on its neighbours' test suites. The crediting edges that
+// let `:adapter:generic:mock`'s and `:test:feature`'s tests count toward this module are declared in the ROOT
+// build file, not here: `ModuleSetTest` asserts a `:domain:*` build file names no module at all, because that
+// absence is the precondition for the platform-free compile error.
 //
-// Coverage bounds (`docs/architecture.md`). Each number below is a FLOOR that may only RISE:
-// lowering one is a regression and needs a stated forcing proof in the PR. Nothing enforces that — it
-// is a ratchet carried by this contract, exactly as `docs/architecture.md` carries its ceilings at the
-// opposite polarity.
-//
-// Seeded from MEASUREMENT, never chosen: the number is what this module measured on the commit that
-// set it. ENGINE: Kover's default, not JaCoCo — the two disagree by up to 26 points on a single
-// package's denominator, so switching engines means re-seeding in that same change. Bounds are whole
-// percentages (`minValue` is an `Int`), so each concedes up to one point of its scope.
-//
-// One package, so no floor rule: the aggregate IS the floor. This zone is the weakest of the four,
-// and the zone split is what revealed it — inside the old single `:domain` aggregate it was
-// averaged away. Since the feature → ports cut the zone holds declarations only, so what it can count is
-// small: the event ports' handler bundles, which only the composition builds.
-coverageFloors {
-    aggregate(
-        // LOWERED 83 -> 77 by the transfer re-cut (11f). Forcing proof, two parts: `OsCompletions` and
-        // its test MOVED to `:domain:services` (services/wake), where they are covered and floored at 93;
-        // and the new event ports' handler bundles (`UploadHandlers`, `DownloadHandlers`) are constructed
-        // only by the composition — `ListenDoorTest` pins that — which no module credited here reaches
-        // (their wiring runs in the rig's `OsCompletionIntegrationTest`, which credits nothing).
-        // What stayed
-        // here lost no test. Raise it again as the port-adjacent helpers re-home or gain tests.
-        // LOWERED 77 -> 74 by the entry surface (11g1), for the same reason as 11f's: the five new entry
-        // ports' handler bundles (`LifecycleHandlers`, `LinkHandlers`, `PushHandlers`, `UiHandlers`,
-        // `DevHandlers`) are constructed only by the composition and the host zone — `ListenDoorTest` pins
-        // that — which no module credited here reaches; their wiring runs in the rig's
-        // `EntryIntegrationTest`. What stayed here lost no test.
-        // LOWERED 74 -> 72 in the same phase: the extension's raw-value mapping
-        // (`processingResultRawValue`) MOVED to `:adapter:ios:ext-safe` with its test — the platform's
-        // magic values belong to the adapter that answers the platform — and the new
-        // `ExtensionHandlers` bundle is built only by the extension's composition.
-        // LOWERED 72 -> 68 in the same phase, by the "ports hold interfaces only" law: the extension
-        // cycle's never-throw wrapper (`runProcessCycle`, `requeueWhilePending`) MOVED to
-        // `:domain:services` (services/upload) with both of its tests.
-        // LOWERED 68 -> 43 by the feature → ports cut, by the same law's last step: everything in the zone
-        // that was not a declaration MOVED out with its tests — the config read rules (`configReadViaFile`,
-        // `configAfterReload`, `membershipAfterReload`, to `:domain:services`, tests with them), the inline
-        // logging helpers (to `model/`, `InvocationTest`/`LogAtTest` with them), the inert `None` objects
-        // (to `compose/`, `InertTest` with them) and the store interfaces' defaults (the stores are
-        // concrete services now). What remains countable is the event ports' `*Handlers` bundles, built
-        // only by the composition — `ListenDoorTest` pins that — which no module credited here reaches;
-        // their wiring runs in the rig's entry tests. Nothing that stayed lost a test; the covered
-        // code left.
-        instruction = 43,
-        // LOWERED 65 -> 57 by the storage-ports re-cut. Forcing proof: the zone's
-        // best-covered branchy code (`resolveOrMint`/`readExisting`, with its tests)
-        // MOVED to `:domain:services`, where it is covered and bounded at 89. Nothing
-        // here lost a test; the ratio fell because the covered code left. Raise it
-        // again as the remaining port-adjacent helpers re-home or gain tests.
-        // LOWERED 57 -> 56 by 11f, for the same move: `OsCompletions`' guarded branches left with it.
-        // LOWERED 56 -> 48 by 11g1: the raw-value mapping's branches left for `:adapter:ios:ext-safe`,
-        // and the extension cycle wrapper's guarded branches for `:domain:services`.
-        branch = 48,
-    )
-}
+// At ZERO, its floors deleted in the same change. The zone holds declarations only, so what it can count is the
+// event ports' handler bundles, measured by the entry mocks' dispatch tests (`EntryDispatchTest`). A member with
+// a default body is logic in a declaration zone: it moves to the services, or becomes the adapter's own answer.

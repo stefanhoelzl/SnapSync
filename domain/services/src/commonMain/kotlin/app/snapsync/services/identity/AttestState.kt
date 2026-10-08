@@ -38,4 +38,12 @@ class AttestState(
     override fun clearToken() {
         store.delete(tokenSlot)
     }
+
+    /** Compare-and-clear against the slot itself, so an unreadable item throws rather than clears or keeps. */
+    override fun clearTokenIf(expected: String): Boolean = if (token() == expected) {
+        clearToken()
+        true
+    } else {
+        false
+    }
 }
