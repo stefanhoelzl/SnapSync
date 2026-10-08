@@ -3,6 +3,7 @@ package app.snapsync.ui.components
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -82,5 +83,25 @@ class AppExplainRowTest {
         caption.performTouchInput { swipeDown() }
         rule.waitForIdle()
         assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun `a caption that does not hold its link's words is shown whole, with no link`() {
+        var clicks = 0
+        val caption = "Turn on sharing to share photos."
+        rule.setContent {
+            AppTheme {
+                AppExplainRow(
+                    subject = ExplainSubject.SHARING,
+                    state = ExplainState.OFF,
+                    title = "You're not sharing",
+                    caption = caption,
+                    link = CaptionLink("Settings") { clicks++ },
+                )
+            }
+        }
+        val shown = rule.onNodeWithText(caption).fetchSemanticsNode().config[SemanticsProperties.Text].single()
+        assertEquals(emptyList(), shown.getLinkAnnotations(0, shown.length))
+        assertEquals(0, clicks)
     }
 }

@@ -57,4 +57,24 @@ class ScreenHeadingTest {
         rule.onNodeWithContentDescription("Rename event").assertExists()
         rule.onNodeWithText("You've joined this event").assertExists()
     }
+
+    @Test
+    fun `a heading without details is just the name`() {
+        rule.setContent {
+            AppTheme {
+                Box(Modifier.width(PHONE_WIDTH)) {
+                    ScreenLayout(
+                        title = "SnapSync",
+                        heading = ScreenHeading("Anna's Birthday", onEdit = null),
+                        bottomActions = null,
+                        contentPinsActionCluster = false,
+                        onTitleDoubleTap = null,
+                        onMenu = null,
+                    ) { Text("the content") }
+                }
+            }
+        }
+        rule.onNodeWithText("Anna's Birthday").assertExists()
+        rule.onNodeWithText("the content").assertExists()
+    }
 }

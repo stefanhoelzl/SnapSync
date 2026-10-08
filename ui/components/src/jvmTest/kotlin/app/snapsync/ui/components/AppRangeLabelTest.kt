@@ -40,4 +40,12 @@ class AppRangeLabelTest {
             label(LocalDateTime(2026, 7, 14, 0, 0), LocalDateTime(2026, 7, 21, 0, 0), dateFormats("en-US")),
         )
     }
+
+    @Test
+    fun `a whole-day range across a new year names the first day's year too`() {
+        assertEquals(
+            "28 Dec 2026 – 4 Jan 2027",
+            label(LocalDateTime(2026, 12, 28, 0, 0), LocalDateTime(2027, 1, 4, 0, 0)),
+        )
+    }
 }
