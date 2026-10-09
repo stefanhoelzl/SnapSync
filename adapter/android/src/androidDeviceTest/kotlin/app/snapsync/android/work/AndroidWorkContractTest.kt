@@ -3,6 +3,7 @@ package app.snapsync.android.work
 import android.content.ContentUris
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.snapsync.android.gallery.MediaStoreSeeder
 import app.snapsync.android.network.MeteredWifi
@@ -55,6 +56,9 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Collections
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -116,15 +120,31 @@ class AndroidWorkContractTest {
     private val backgroundTime = object : Binding<BackgroundTimeState, BackgroundTime> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
-        override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =
-            if (state in reaches) {
-                Entered.Ready(AndroidBackgroundTime(context).recorded(log))
-            } else {
-                // An expedited work's stop comes when WorkManager's quota or the system's constraints end it, which a
-                // device test cannot bring about on a work it runs in-process (`docs/testing.md`).
-                Entered.Unreachable("no device test brings an expedited work's stop about")
+        override val reaches = setOf(BackgroundTimeState.TIME_REMAINS, BackgroundTimeState.TIME_RUNS_OUT)
+        override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> {
+            val adapter = AndroidBackgroundTime(context).recorded(log)
+            if (state == BackgroundTimeState.TIME_REMAINS) return Entered.Ready(adapter)
+            // The end of a running hold. WorkManager runs a hold's worker in this process rather than through the job
+            // scheduler, so the scheduler's own timeout never reaches it (measured: `cmd jobscheduler timeout` left the
+            // clause waiting out its bound). Every stop — the quota's, a constraint's, the system's — reaches the worker
+            // through WorkManager's one stop path, which this plays as soon as a hold's worker is running.
+            val ended = AtomicBoolean(false)
+            val watcher = thread(name = "contract.stop") {
+                while (!ended.get()) {
+                    running().forEach { work.cancelWorkById(it).result.get() }
+                    Thread.sleep(POLL_MILLIS)
+                }
             }
+            return Entered.Ready(adapter) {
+                ended.set(true)
+                watcher.join()
+            }
+        }
+    }
+
+    private fun running(): List<UUID> {
+        val holds = work.getWorkInfosByTag(HoldWorker::class.java.name).get()
+        return holds.filter { it.state == WorkInfo.State.RUNNING }.map { it.id }
     }
 
     private val upload = object : Binding<UploadState, UploadUnderTest> {
@@ -388,5 +408,8 @@ class AndroidWorkContractTest {
 
         /** Long enough for a REPLACE to have cancelled a running wake, and for its re-arm to be recorded. */
         const val REPLACE_WINDOW_MILLIS = 1_000L
+
+        /** How often the end of a hold looks for a running hold to stop. */
+        const val POLL_MILLIS = 250L
     }
 }

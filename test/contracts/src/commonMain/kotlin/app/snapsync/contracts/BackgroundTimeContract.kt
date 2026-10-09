@@ -11,8 +11,8 @@ enum class BackgroundTimeState {
     TIME_REMAINS,
 
     /**
-     * The app sent to the background, so a hold it begins runs until the operating system says its time is up — a
-     * device's, recorded: no CI host's background time runs out under a binding.
+     * A hold that runs until its time is up: on iOS the app sent to the background, a device's, recorded; on Android
+     * the hold's work stopped while it runs.
      */
     TIME_RUNS_OUT,
 }
@@ -27,10 +27,11 @@ enum class BackgroundTimeState {
  * expiry is exactly what a refusal would look like — that holds do not refuse each other (background time is per
  * app), and that ending a hold is safe to repeat.
  *
- * **The expiry** ([BackgroundTimeState.TIME_RUNS_OUT]) has no live host: the operating system fires a background
+ * **The expiry** ([BackgroundTimeState.TIME_RUNS_OUT]) has no live iOS host: the operating system fires a background
  * task's expiration handler only after the app has been in the background for as long as it allows, and no API lets
  * a process expire its own time. So it is recorded on a phone a person sent to the home screen, and replayed — the
- * expiry delivered where it arrived among the adapter's calls. A refusal reported as an immediate expiry stays in
+ * expiry delivered where it arrived among the adapter's calls. On Android a hold is a work, and every stop of a
+ * running work reaches it the same way, so the emulator stops one live. A refusal reported as an immediate expiry stays in
  * `IosBackgroundTime`'s own tests over its operating-system seam: no host refuses a running app its first hold.
  */
 object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("BackgroundTime") {
