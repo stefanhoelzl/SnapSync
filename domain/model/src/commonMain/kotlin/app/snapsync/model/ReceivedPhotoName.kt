@@ -1,9 +1,9 @@
 package app.snapsync.model
 
 /**
- * The **filename** an imported foreign photo carries in the receiving device's library (capability
- * `receiving-photos`): the name the capturing device gave it, with a SnapSync **mark** added before the
- * extension — `IMG_4471.HEIC` arrives as `IMG_4471.snapsync-k3f9x2qa7m.HEIC`.
+ * The **filename** an imported foreign photo carries in the receiving device's library: the name the capturing device
+ * gave it, with a SnapSync **mark** added before the extension — `IMG_4471.HEIC` arrives as
+ * `IMG_4471.snapsync-k3f9x2qa7m.HEIC`.
  *
  * **Why a name at all.** The platform picks one whether or not we do. `PHAssetCreationRequest`'s
  * `addResource(with:fileURL:options:)` derives the resource's `originalFilename` from the **file URL's last path

@@ -28,7 +28,7 @@ private const val POSIX_EACCES: Long = 13L
  * the cycle uploads nothing and the screen returns to the setup gate, where a re-scan would reload the
  * ledger — with no error raised anywhere.
  * So **widening the whitelist below is a change to the leave decision**, not an error-handling
- * tidy-up: it is a behaviour change to `join-event` / `photo-sharing` and belongs in a
+ * tidy-up: it is a behaviour change to joining and sharing and belongs in a
  * spec delta.
  *
  * Grounded on Apple's data-protection contract: reading a **protected** file before first unlock

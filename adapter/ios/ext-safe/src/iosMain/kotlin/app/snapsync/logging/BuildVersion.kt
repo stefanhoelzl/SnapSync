@@ -4,7 +4,7 @@ import platform.Foundation.NSBundle
 
 /**
  * The current process's short-version(build) — e.g. `0.1.0(214)` — for the boot banner each
- * composition root emits (capability `privacy-security`, D5). Consolidated here beside the
+ * composition root emits. Consolidated here beside the
  * device-log writers so both processes' banners format identically and neither wiring-only root
  * carries the absent-key defaulting decision; extension-safe (reads only the process's own
  * `NSBundle`).
@@ -31,8 +31,7 @@ internal fun formatBuildVersion(short: String?, build: String?): String =
     "${short ?: "?"}(${build ?: "?"})"
 
 /**
- * The process's **marketing version** alone — the value every versioned backend request declares
- * (capability `app-update-required`).
+ * The process's **marketing version** alone — the value every versioned backend request declares.
  *
  * The marketing version and not the build number, deliberately: every build between two releases shares
  * one marketing version, and it is the only version a user can act on. The gate exists so a screen can

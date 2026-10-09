@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
  * [title], the caller's [content], and one [dismissLabel] action. Every dismissal route (the action, the
  * scrim, the swipe-down) is the same [onDismiss].
  *
- * It exists for the join screen's photo-access explanation (capability `join-event`), which used to be a
+ * It exists for the join screen's photo-access explanation, which used to be a
  * whole step every first-time guest passed through and is now one tap away (decision record
  * `simplify-join-screen`, D3). Reading it must raise nothing — the sheet has no action but closing.
  *

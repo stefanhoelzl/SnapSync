@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * The Android [SystemUi]: the system share sheet (a chooser over `ACTION_SEND`), `ACTION_VIEW` for a URL, and this
- * app's page in Settings (capability `photo-access`). Each is started from the activity in front when there is one,
+ * app's page in Settings. Each is started from the activity in front when there is one,
  * and as a new task otherwise; a start the platform refuses — no app claims the URL — is a [Handoff.Refused].
  */
 class AndroidSystemUi(
@@ -29,7 +29,7 @@ class AndroidSystemUi(
     private val appContext = context.applicationContext
 
     // EXTRA_TITLE on the SEND intent (not the chooser's title, which Android 10+ ignores for ACTION_SEND) is what the
-    // chooser's preview shows above the shared text: the event's name (capability `manage-membership`).
+    // chooser's preview shows above the shared text: the event's name.
     override suspend fun share(text: String, title: String): Handoff {
         val send = Intent(Intent.ACTION_SEND)
             .setType("text/plain")

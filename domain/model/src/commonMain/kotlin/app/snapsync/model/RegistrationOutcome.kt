@@ -3,7 +3,7 @@ package app.snapsync.model
 import co.touchlab.kermit.Severity
 
 /**
- * What a change to the OS-driven upload-job registration actually did (capability `background-upload`).
+ * What a change to the OS-driven upload-job registration actually did.
  *
  * This is a **decision**, so it lives here and is tested in `commonTest`, rather than in the
  * adapter that makes the call — `:app:ios` is wiring-only and the shell gate enforces it. The adapter
@@ -118,10 +118,10 @@ sealed interface RegistrationOutcome {
     /**
      * The change did not take effect, and the consequence is invisible without this line.
      *
-     * A failed **enable** means the extension is never registered, so the OS never launches it, no upload
-     * cycle ever runs, and the screen sits at "Photos queued…" indefinitely with nothing
-     * anywhere to say why. That is why this is `ERROR`: `privacy-security` routes `Error`-severity lines
-     * onward, making a failure knowable without attaching to the device.
+     * A failed **enable** means the extension is never registered, so the OS never launches it, no upload cycle ever
+     * runs, and the screen sits at "Photos queued…" indefinitely with nothing anywhere to say why. That is why this is
+     * `ERROR`: the crash-reporting channel routes `Error`-severity lines onward, making a failure knowable without
+     * attaching to the device.
      */
     data class Failed(val enabling: Boolean, val domain: String?, val code: Long?) : RegistrationOutcome {
         override val severity = Severity.Error

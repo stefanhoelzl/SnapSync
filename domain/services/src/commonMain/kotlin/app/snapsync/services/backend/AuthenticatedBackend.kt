@@ -17,8 +17,8 @@ import co.touchlab.kermit.Logger
 
 /**
  * The backend as every need-shaped service uses it: the [Backend] port's routes with the credential attached and
- * the backend's verdicts answered (capability `privacy-security`, "Only a rejected credential is invalidated, and
- * only that one"; capability `app-update-required`).
+ * the backend's verdicts answered: only a rejected credential is invalidated, and only that one, and a refused
+ * app version raises the update requirement.
  *
  * Its own interface, with no token parameter, so a service above it cannot send a credential of its own choosing
  * and cannot skip the verdicts. The three `/attest/…` routes are not here: they issue the credential, and the
@@ -57,8 +57,8 @@ interface Credential {
 
     /**
      * This process holds no token and a USER is waiting on the call: obtain one now if this process can, and answer
-     * it — or `null`. What makes a tap on a phone that never attested try to verify it again (capability `create-event`,
-     * "The front screen tells a refused phone before it tries"). The extension, which cannot attest, answers `null`.
+     * it — or `null`. What makes a tap on a phone that never attested try to verify it again: the front
+     * screen tells a refused phone before it tries. The extension, which cannot attest, answers `null`.
      * Never throws.
      */
     suspend fun missing(): String?

@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 /**
- * **The app's foreground life** (capability `sync-status`): hear it become active and stop being active. On iOS the
+ * **The app's foreground life**: hear it become active and stop being active. On iOS the
  * application's `didBecomeActive` / `willResignActive` notifications — `willResignActive` includes the transient
  * inactive states (a permission prompt, the app switcher, Control Center), which the foreground flow treats as
  * leaving; `willEnterForeground` would lose the cold launch's first activation. On Android the process lifecycle's

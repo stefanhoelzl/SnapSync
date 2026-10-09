@@ -70,8 +70,8 @@ internal fun resolveFrom(
 }.coerceIn(windowStart, untilResolved)
 
 /**
- * Participation, derived from the two switches. Both off is [Direction.Neither]: the event's settings may apply it
- * (capability `manage-membership`), while the join gate never commits it — its confirm is disabled there.
+ * Participation, derived from the two switches. Both off is [Direction.Neither]: the event's settings may apply it,
+ * while the join gate never commits it — its confirm is disabled there.
  */
 internal fun directionOf(shareOn: Boolean, receiveOn: Boolean): Direction = when {
     shareOn && receiveOn -> Direction.Both
@@ -95,8 +95,8 @@ internal fun nowWithinWindow(now: CaptureDate, startsAt: CaptureDate?, endsAt: C
  *
  * Lossy by construction: the preset is not persisted, only the resulting instants, so a range spanning the
  * whole window seeds **Whole event** and anything narrower seeds **Custom** with its bounds — an original
- * "From now" pick is unrecoverable, and is just a custom start once "now" has moved on (`manage-membership`;
- * decision record `simplify-join-screen`, D1).
+ * "From now" pick is unrecoverable, and is just a custom start once "now" has moved on
+ * (decision record `simplify-join-screen`, D1).
  */
 internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> LocalDateTime?): RangeForm {
     val fromAtFloor = membership.minPhotoDate.at == membership.startsAt.at

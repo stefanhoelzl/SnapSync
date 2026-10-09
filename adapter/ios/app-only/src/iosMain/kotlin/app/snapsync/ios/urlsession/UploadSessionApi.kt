@@ -113,8 +113,8 @@ private class SessionDelegate(
     private val log: Logger = Logger.withTag("urlSessionUpload"),
 ) : NSObject(), NSURLSessionTaskDelegateProtocol {
 
-    // PLATFORM ENTRY POINT (spec `privacy-security`). DEBUG, not INFO: one per uploaded photo, so at INFO a large event
-    // would flush the bounded breadcrumb window and roll the device log.
+    // PLATFORM ENTRY POINT. DEBUG, not INFO: one per uploaded photo, so at INFO a large event would flush the bounded
+    // breadcrumb window and roll the device log.
     @PlatformEntry
     override fun URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError: NSError?) =
         objcBoundary(log, "upload.didComplete") {

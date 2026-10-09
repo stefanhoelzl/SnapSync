@@ -1,8 +1,7 @@
 package app.snapsync.model
 
 /**
- * One asset as **neutral facts** — the only thing the selection policy decides on (capability
- * `photo-sharing`, and `sync-status`'s *The domain reads neutral asset facts* requirement).
+ * One asset as **neutral facts** — the only thing the selection policy decides on.
  *
  * Every field is platform-independent. The interpretation of raw PhotoKit values — the `mediaSubtypes`
  * bitmask, the `mediaType` integer — happens in the iOS adapter (`iosMain`), where those constants are
@@ -12,11 +11,11 @@ package app.snapsync.model
  * **Per asset, never per resource.** An asset's resources stand or fall together: dropping a Live Photo's
  * primary while keeping its paired video leaves an orphan whose bytes nothing uploads.
  *
- * **Every field here is readable without a platform round-trip**, and that is a requirement rather than a
- * happy accident (capability `photo-sharing`, *Admission is decidable on asset facts alone*). A
- * fact that needed a resource read would force each consumer to choose between paying ~110 ms per asset
- * for a decision and admitting on doubt — which is two different answers to "the admitted set" from one
- * policy. The animated-image rule was exactly that fact, and it was removed for exactly that reason.
+ * **Every field here is readable without a platform round-trip**, and that is a requirement rather than a happy
+ * accident: admission is decidable on asset facts alone. A fact that needed a resource read would force each consumer
+ * to choose between paying ~110 ms per asset for a decision and admitting on doubt — which is two different answers to
+ * "the admitted set" from one policy. The animated-image rule was exactly that fact, and it was removed for exactly
+ * that reason.
  *
  * **The defaults describe an ordinary camera photo, deliberately** — the same reasoning `RawAsset`
  * carried. Every default lands on the *admitted* side of every rule, so a facts value assembled from

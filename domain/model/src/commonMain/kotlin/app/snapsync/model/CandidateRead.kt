@@ -1,19 +1,18 @@
 package app.snapsync.model
 
 /**
- * What a library read for admission produced: the candidates, or the statement that there are none to
- * be had (capability `sync-status`; law `docs/architecture.md`, "Absence is never silent").
+ * What a library read for admission produced: the candidates, or the statement that there are none to be had (law
+ * `docs/architecture.md`, "Absence is never silent").
  *
  * ## Why this is not a list
  *
- * The seam used to return `List<Candidate>`, so **"the library could not be read" and "nothing
- * qualifies" were the same value**. Those two have opposite consequences. `EventPhotoSet.count()` feeds
- * the status total `N`, the projection settles once the synced count reaches `N`, and the screen renders
- * one health line rather than numbers — so a zero standing in for an unread library renders a check mark
- * meaning **"everything shared"** on a device that has read nothing. `sync-status` then forbids the
- * recovery that would hide it: once the projection is `Ready` it may not regress to `Loading`, so the
- * false frame is replaced by a worse-looking one rather than by a neutral one. That is the reported
- * defect `SNAPSYNC-14` / `SNAPSYNC-16`, which [app.snapsync.feature.status.OwnDeviceGalleryStatusSource]
+ * The seam used to return `List<Candidate>`, so **"the library could not be read" and "nothing qualifies" were the same
+ * value**. Those two have opposite consequences. `EventPhotoSet.count()` feeds the status total `N`, the projection
+ * settles once the synced count reaches `N`, and the screen renders one health line rather than numbers — so a zero
+ * standing in for an unread library renders a check mark meaning **"everything shared"** on a device that has read
+ * nothing. The status contract then forbids the recovery that would hide it: once the projection is `Ready` it may not
+ * regress to `Loading`, so the false frame is replaced by a worse-looking one rather than by a neutral one. That is the
+ * reported defect `SNAPSYNC-14` / `SNAPSYNC-16`, which [app.snapsync.feature.status.OwnDeviceGalleryStatusSource]
  * closed for its own `Int?` while the seam underneath kept collapsing.
  *
  * ## Why not `Result`
@@ -50,7 +49,7 @@ sealed interface CandidateRead {
      * - **`DENIED`** — the member withheld access.
      * - **`NOT_DETERMINED`** — the grant is unresolved.
      * - **`LIMITED` with no selection snapshot yet** — under a partial grant the hand-picked selection
-     *   *is* the scope (capability `photo-access`), and until the cold-launch baseline or the
+     *   *is* the scope, and until the cold-launch baseline or the
      *   first observer emission has been consumed the app holds no selection and may not go looking.
      *   This is the only one of the three reachable on a shipped device in ordinary use, and it is the
      *   one a cause-shaped name would have missed.

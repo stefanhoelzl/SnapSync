@@ -7,7 +7,7 @@ import app.snapsync.model.FileResult
 import app.snapsync.ports.Files
 
 /**
- * The read side of the two device logs (capability `privacy-security`): the tail of a process's device log, bounded in bytes, over [Files] — the
+ * The read side of the two device logs: the tail of a process's device log, bounded in bytes, over [Files] — the
  * app's own log in its private area, the extension's in the shared one (the only placement the app, which
  * assembles a diagnostic dump, can read).
  *

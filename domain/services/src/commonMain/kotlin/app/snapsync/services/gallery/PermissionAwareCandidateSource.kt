@@ -9,8 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The one [CandidateSource] the app's consumers hold: it decides **where candidates come from** by the
- * current photo-access grant, so no consumer has to (capability `photo-access`, *"the mode
- * difference is one source impl, not a branch in the policy or its consumers"*).
+ * current photo-access grant, so no consumer has to: the mode
+ * difference is one source impl, not a branch in the policy or its consumers.
  *
  * That principle was already true of the policy and false of the consumers. The status total had two
  * entry points (`refresh` and `refreshFrom`) and the join preview had a `when (permission)` arm, so each
@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
  *   keeping every library *fetch* in-flow: a deferred read would have to re-fetch by local identifier at
  *   upload time, and holding the resources means no later library read is needed at all. (Not an alert
  *   argument: no probe has seen reads of an unchanged library raise iOS's limited-access prompt, which
- *   the app suppresses anyway — `photo-access`. The reason that stands is that under a partial
+ *   the app suppresses anyway. The reason that stands is that under a partial
  *   grant the selection *is* the scope, and this is fewer round-trips.)
  *   `candidatesFromResources` is therefore the honest adapter here — the resources genuinely are in hand.
  * - **`DENIED` / `NOT_DETERMINED`** → [CandidateRead.NotReadable]. Nothing is readable, which is a
@@ -38,7 +38,7 @@ import kotlinx.coroutines.flow.StateFlow
  * and may not go looking. That is *not* an empty selection — an empty selection is a counted zero that
  * legitimately settles the screen for a receive-only member, while an un-arrived one settles it for a
  * member who has photos selected and simply has not been told which yet. Because the status projection
- * publishes only `Ready` (capability `sync-status`), that frame cannot be retracted, and the honest count
+ * publishes only `Ready`, that frame cannot be retracted, and the honest count
  * that follows reads as the screen going backwards — `SNAPSYNC-14` / `SNAPSYNC-16`, one grant over from
  * where they were fixed.
  *

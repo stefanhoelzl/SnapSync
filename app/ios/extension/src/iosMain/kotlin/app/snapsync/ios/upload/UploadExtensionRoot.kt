@@ -58,8 +58,8 @@ object UploadExtensionRoot {
 
     /**
      * Where this process's log goes: the SHARED App Group (`ext-debug.log`) rather than its own Documents, because the
-     * app cannot read another bundle's Documents and the app is what assembles a diagnostic dump (capability
-     * `privacy-security`). The App Group is not USB-pullable; the control channel reads it.
+     * app cannot read another bundle's Documents and the app is what assembles a diagnostic dump. The App Group is
+     * not USB-pullable; the control channel reads it.
      */
     private val logDestination = extensionLogDestination()
 
@@ -90,11 +90,11 @@ object UploadExtensionRoot {
         // The upload-job queue, thin: the shared composition's upload service records terminal outcomes into the
         // ledger and acknowledges every presented job.
         //
-        // WHICH adapter is chosen by the COMPILATION TARGET, not here (capability `background-upload`,
-        // "The upload-job subsystem binding is fixed by the compilation target"). Every shipped binary is
-        // `iosArm64` and binds the PhotoKit queue; `iosSimulatorArm64` binds a substitute, because on that
-        // host job creation does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills
-        // the process. This root is unchanged either way: it names the need, and the target answers it.
+        // WHICH adapter is chosen by the COMPILATION TARGET, not here. Every shipped binary is `iosArm64` and
+        // binds the PhotoKit queue; `iosSimulatorArm64` binds a substitute, because on that host job creation
+        // does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills the process. This
+        // root is unchanged either way: it names the need, and the target answers it.
+
         cycleUpload = lazy { uploadJobQueue(log) },
         // The same `HttpBackend` the app runs, over this process's own Darwin client.
         backend = lazy { HttpBackend(darwinHttpClient(), bakedUploadBase(), appMarketingVersion()) },

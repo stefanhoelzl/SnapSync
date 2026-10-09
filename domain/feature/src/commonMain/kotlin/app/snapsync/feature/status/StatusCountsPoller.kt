@@ -9,7 +9,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The **foreground-gated status-counts poll** (capability `sync-status`): while the app is foregrounded — and
+ * The **foreground-gated status-counts poll**: while the app is foregrounded — and
  * only then — re-read the **cheap local status reads** on a fixed cadence, so the joined screen's counts move
  * live rather than standing at whatever the last trigger happened to read.
  *
@@ -24,7 +24,7 @@ import kotlin.time.Duration.Companion.seconds
  * the poll needs no cross-process channel, no platform observer lifecycle, and cannot miss a signal — the read
  * *is* the truth.
  *
- * **The cadence is this feature's rule** — the staleness bound the `sync-status` spec declares. What it bounds
+ * **The cadence is this feature's rule** — the staleness bound the status screen promises. What it bounds
  * is *how long the screen may assert something false*, not the smoothness of a counter, and [DEFAULT_CADENCE]
  * is **chosen for human perception rather than derived**: no measurement produces it and none is claimed. It
  * is also conditional on the foreground — while backgrounded the projection may be arbitrarily stale, which is

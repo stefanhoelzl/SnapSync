@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.update
 import kotlin.time.Instant
 
 /**
- * The app's comings and goings from the foreground, over the process [clock] (capability `create-event`): each
+ * The app's comings and goings from the foreground, over the process [clock]: each
+
  * return is counted with how long the app was away, and [returns] is what the status host reads, so the create
  * screen's draft can follow it. The lifecycle handlers are its only writers.
  */

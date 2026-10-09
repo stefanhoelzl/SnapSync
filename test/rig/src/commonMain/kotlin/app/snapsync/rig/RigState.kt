@@ -92,9 +92,9 @@ data class DownloadView(val downloaded: Int, val total: Int, val inFlight: Int)
 internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: RigHooks): RigState {
     core.ledgerCounts.refresh()
     val progress = core.downloadStatusSource.progress.value
-    // The membership, the invite URL and the inline create error all live INSIDE the UI state now
-    // (capability `sync-status`), so the rig reports exactly what the screen is rendering rather
-    // than a parallel set of read-models that could disagree with it.
+    // The membership, the invite URL and the inline create error all live INSIDE the UI state now,
+    // so the rig reports exactly what the screen is rendering rather than a parallel
+    // set of read-models that could disagree with it.
     val ui = host.container.stateFlow.value
     // `ui.layer`, never `ui`: the state wraps its layer, and a cast of the WRAPPER to a layer type is always null —
     // which the compiler only warns about. That is exactly how this read reported every joined device as

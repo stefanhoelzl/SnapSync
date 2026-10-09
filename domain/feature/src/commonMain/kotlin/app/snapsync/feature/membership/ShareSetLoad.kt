@@ -18,8 +18,8 @@ import kotlin.coroutines.cancellation.CancellationException
 private const val LISTING_TIMEOUT_MS = 15_000L
 
 /**
- * The join-time load (capability `photo-sharing`, "A join loads the ledger from the per-device
- * listing"): at a provision into a **new** membership — a first join or a switch, never a re-provision of
+ * The join-time load — a join loads the ledger from the per-device listing: at a provision into a
+ * **new** membership — a first join or a switch, never a re-provision of
  * the joined event — make the joined event's ledger rows this membership's share set.
  *
  * Every ledger row belongs to one event and every read is scoped to the joined one (change

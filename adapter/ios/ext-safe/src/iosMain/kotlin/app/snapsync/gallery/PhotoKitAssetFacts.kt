@@ -7,8 +7,8 @@ import platform.Photos.PHAsset
 import platform.Photos.PHAssetMediaTypeVideo
 
 /**
- * The **PhotoKit → neutral facts** interpretation (capability `sync-status`, *The domain reads neutral
- * asset facts*): the one place a `PHAssetMediaSubtype` bitmask or a `PHAssetMediaType` integer is read.
+ * The **PhotoKit → neutral facts** interpretation, so the domain reads neutral asset facts: the one place a
+ * `PHAssetMediaSubtype` bitmask or a `PHAssetMediaType` integer is read.
  *
  * It lives in `iosMain` because that is where these constants can be **verified against the SDK**. A copy
  * in `commonMain` would be asserted, in a JVM test, against another copy — the exact drift shape
@@ -53,6 +53,6 @@ internal const val SUBTYPE_SCREEN_RECORDING: Long = 1L shl 19
  * predicate form must be `NOT ((mediaSubtypes & N) != 0)`).
  *
  * It can neither widen nor narrow the admitted set: the in-memory admission re-checks the same facts and
- * stays authoritative (capability `photo-sharing`).
+ * stays authoritative.
  */
 internal const val EXCLUDED_SUBTYPE_MASK: Long = SUBTYPE_SCREENSHOT or SUBTYPE_SCREEN_RECORDING

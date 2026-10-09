@@ -12,7 +12,7 @@ import app.snapsync.ports.Links
 import co.touchlab.kermit.Logger
 
 /**
- * The Android [Links] (capability `join-event`): the intent an App Link opens the activity with — at its creation (a
+ * The Android [Links]: the intent an App Link opens the activity with — at its creation (a
  * cold start, or an activity the platform recreated) and in `onNewIntent` (a running, single-top activity). The
  * activity forwards each intent whole.
  *

@@ -19,7 +19,7 @@ import platform.posix.qos_class_self
 import kotlin.coroutines.EmptyCoroutineContext
 
 /**
- * The QoS class of the **calling thread**, as a short label for a log line (capability `privacy-security`):
+ * The QoS class of the **calling thread**, as a short label for a log line:
  * `UX` user-interactive · `UI` user-initiated · `DEF` default · `UT` utility · `BG` background · `UNSPEC`
  * unspecified; anything else prints its raw value.
  *

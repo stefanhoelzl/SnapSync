@@ -23,7 +23,7 @@ enum class DownloadState {
     READY,
 
     /**
-     * The device on a restricted network (capability `mobile-data`) — mobile data, a metered Wi-Fi, a hotspot, Low Data
+     * The device on a restricted network — mobile data, a metered Wi-Fi, a hotspot, Low Data
      * Mode — which the binding can lift ([DownloadUnderTest.liftRestriction]).
      */
     RESTRICTED_NETWORK,
@@ -103,10 +103,9 @@ class ClauseDownloadHandlers(private val readTemp: (String) -> ByteArray?) {
 }
 
 /**
- * What every [Download] promises its owner (`docs/architecture.md` — this list IS the specification; capability
- * `receiving-photos` states why each matters). Whether a body may be staged, and where, are the owner's; what is
- * contracted is that the port reports the facts truthfully, hands over the body it received, completes every transfer
- * it started, and cancels what it holds.
+ * What every [Download] promises its owner (`docs/architecture.md` — this list IS the specification). Whether a body
+ * may be staged, and where, are the owner's; what is contracted is that the port reports the facts truthfully, hands
+ * over the body it received, completes every transfer it started, and cancels what it holds.
  */
 object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download") {
 

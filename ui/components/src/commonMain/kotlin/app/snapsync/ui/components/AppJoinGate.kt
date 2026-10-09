@@ -153,8 +153,8 @@ fun AppAccessPoint(icon: ImageVector, title: String, body: String, divider: Bool
 }
 
 /**
- * The one-line notice above the join confirm that iOS will ask for photo access next (capability
- * `join-event`), with an info affordance ([infoDescription] names it for assistive tech) that opens the
+ * The one-line notice above the join confirm that iOS will ask for photo access next,
+ * with an info affordance ([infoDescription] names it for assistive tech) that opens the
  * explanation — an [AppInfoSheet] titled [sheetTitle] holding [explanation]. Small and centred — it is a
  * heads-up about the tap below it, not a section of the screen.
  *

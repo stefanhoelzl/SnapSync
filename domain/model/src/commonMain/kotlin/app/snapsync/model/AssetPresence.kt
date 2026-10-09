@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * Whether an asset this device created still exists in the photo library (capability `receiving-photos`).
+ * Whether an asset this device created still exists in the photo library.
  *
  * Three-valued, and the third value is the point. An import that recorded its created asset but never
  * recorded a confirmation leaves a row that must be adjudicated rather than re-imported — and the
@@ -10,7 +10,7 @@ package app.snapsync.model
  *
  * - under a **partial** grant a fetch sees only the user's selection, and an asset created under a full
  *   grant before a downgrade is real but invisible (app-created assets join the selection at creation
- *   time only — measured, capability `photo-access`);
+ *   time only — measured);
  * - with **no** usable grant a query returns nothing for assets that plainly exist.
  *
  * Reporting [ABSENT] in either case would clear a live marker, import a second copy, and orphan the
@@ -24,7 +24,7 @@ enum class AssetPresence {
     /**
      * The asset does not exist, from a source that can see the whole library. The marker is stale — clear
      * it and import. (Cannot distinguish "the user deleted it" from "the commit never landed"; the
-     * capability accepts a single re-import for that, because the alternative loses the photo silently.)
+     * app accepts a single re-import for that, because the alternative loses the photo silently.)
      */
     ABSENT,
 

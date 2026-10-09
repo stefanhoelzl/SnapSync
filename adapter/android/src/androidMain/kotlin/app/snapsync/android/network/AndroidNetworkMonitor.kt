@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.first
  * and the callback still delivers the network — `onAvailable` first, then `onBlockedStatusChanged(true)`; in airplane
  * mode `activeNetwork` and the info are both `null` and nothing calls back.
  *
- * Restricted (capability `mobile-data`) is a METERED default network: cellular, a hotspot, a Wi-Fi the person marked
+ * Restricted is a METERED default network: cellular, a hotspot, a Wi-Fi the person marked
  * metered. Data Saver needs no reading of its own — it applies to metered networks only, where the network already
  * reads restricted, and in the background it shows up as a block (measured on the API 36 emulator, 2026-10-03: Data
  * Saver on unmetered Wi-Fi held nothing). Capabilities arrive between `onAvailable` and `onBlockedStatusChanged`, so
@@ -130,7 +130,7 @@ private fun NetworkCapabilities.isMetered(): Boolean =
 
 /**
  * Suspends until the phone's default network is unmetered and not withheld from this app — what an upload held to
- * unrestricted networks waits for before it sends a byte (capability `mobile-data`).
+ * unrestricted networks waits for before it sends a byte.
  */
 fun awaitUnrestrictedNetwork(context: Context): suspend () -> Unit {
     val monitor = AndroidNetworkMonitor(context)

@@ -9,7 +9,7 @@ import app.snapsync.services.gallery.GalleryAlbums
 import co.touchlab.kermit.Logger
 
 /**
- * The tested `commonMain` orchestration for the event album (capability `event-album`): resolve-or-create
+ * The tested `commonMain` orchestration for the event album: resolve-or-create
  * the album (reuse across re-join, recreate a deleted one) and dispatch-or-skip an add. All album
  * *decisions* live here so a test can assert them without PhotoKit; the raw `PHAssetCollection`
  * calls live behind [GalleryAlbums] and the shared map behind [AlbumMapService].
@@ -44,12 +44,12 @@ class AlbumCoordinator(
      * opt-in gate is the leading guard here, so no caller can forget it — [saveToAlbum] off is a silent
      * no-op, exactly the rule the app shell's
      * `ensureAlbumIfOptedIn` helper used to hold (migration step 8 C3). The guard does **not** test
-     * [name]: a membership's name is required and non-null (capability `join-event`), so a nameless one
+     * [name]: a membership's name is required and non-null, so a nameless one
      * is not a representable state and a clause guarding against it would be an unreachable branch
      * suggesting otherwise. [hasUsableAccess] joined that guard at
      * the migration finale: an album can only be ensured with USABLE photo access — full or limited
-     * (`grantsPhotoAccess`), because asset and album creation is unrestricted under a limited grant
-     * (capability `photo-access`) — so the Provision flow passes the access fact instead of
+     * (`grantsPhotoAccess`), because asset and album creation is unrestricted under a limited grant —
+     * so the Provision flow passes the access fact instead of
      * branching on it (the flow coordinates, the feature decides); it defaults to `true` for the paths
      * that run *because* access became usable (the compose-installed grant subscription). It was called
      * `granted`, which read as "fully granted" to every caller and reviewer (decision record
@@ -60,8 +60,8 @@ class AlbumCoordinator(
      *
      * [optIn] says whether this call is the member's deliberate opt-in — a join, a rejoin or a settings Save —
      * rather than the grant subscription's replay at a launch. Only an opt-in recreates a deleted
-     * [AlbumKind.FOLDER] album (capability `event-album`, "A deleted album is recreated only when the member
-     * asks"); under [AlbumKind.COLLECTION] it changes nothing.
+     * [AlbumKind.FOLDER] album — a deleted album is recreated only when the member asks; under
+     * [AlbumKind.COLLECTION] it changes nothing.
      */
     suspend fun ensureAlbum(
         eventId: String,
@@ -99,8 +99,8 @@ class AlbumCoordinator(
     /**
      * The album `localIdentifier` the current membership's imports go to, or `null` when it opted out
      * ([saveToAlbum] off) or no album was ever created — the same opt-in rule [ensureAlbum] gates on. The
-     * download importer reads it once per import, before the import's own change block (capability
-     * `event-album`, design D5/D9: the import-time add borrows the lookup, it does not route through [place]).
+     * download importer reads it once per import, before the import's own change block (design D5/D9: the
+     * import-time add borrows the lookup, it does not route through [place]).
      * Under [AlbumKind.FOLDER] a filled album the member emptied answers `null` too: the photo then lands in the
      * camera folder instead of bringing the folder back.
      */

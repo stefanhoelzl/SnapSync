@@ -55,7 +55,7 @@ enum class UploadState {
     PRESENTED_RETRY_SPENT,
 
     /**
-     * Nothing in flight, and the device on a restricted network (capability `mobile-data`) — mobile data, a metered
+     * Nothing in flight, and the device on a restricted network — mobile data, a metered
      * Wi-Fi, a hotspot, Low Data Mode — which the binding can lift ([UploadUnderTest.liftRestriction]).
      */
     RESTRICTED_NETWORK,

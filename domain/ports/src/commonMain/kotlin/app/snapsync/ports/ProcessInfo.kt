@@ -4,7 +4,7 @@ import app.snapsync.model.Availability
 import app.snapsync.model.MemoryFootprint
 
 /**
- * What the operating system says about this process right now (capability `sync-status`) — ONE external system,
+ * What the operating system says about this process right now — ONE external system,
  * the OS's view of the running process.
  *
  * [protectedDataAvailable]: until the first unlock after a boot the operating system keeps protected files — the
@@ -17,8 +17,8 @@ import app.snapsync.model.MemoryFootprint
  * whether the user has unlocked since boot.
  *
  * [memoryFootprint]: what the platform charges this process for in memory right now. The app records it as it
- * settles in the background, for the process-metric report that later says a suspended app was ended for memory
- * (capability `privacy-security`). `null` where nothing is answered.
+ * settles in the background, for the process-metric report that later says a suspended app was ended for memory.
+ * `null` where nothing is answered.
  */
 interface ProcessInfo : Port {
     /** Whether protected storage can be read right now. May hop to whatever thread the platform requires. */

@@ -7,7 +7,7 @@ import app.snapsync.model.GalleryRead
 import app.snapsync.ports.GalleryReader
 
 /**
- * Whether assets this device created still exist, asked of the whole library (capability `receiving-photos`).
+ * Whether assets this device created still exist, asked of the whole library.
  *
  * **Only a full grant's miss is [AssetPresence.ABSENT].** Under a partial grant the gallery sees the selection,
  * and an asset created before a downgrade is real but invisible there; with no grant it sees nothing. Either

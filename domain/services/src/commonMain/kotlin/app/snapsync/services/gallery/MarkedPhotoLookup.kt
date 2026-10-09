@@ -15,7 +15,7 @@ import app.snapsync.model.factsFromResources
 import app.snapsync.ports.GalleryReader
 
 /**
- * The library's SnapSync-marked photos inside one event's window (capability `receiving-photos`): what a join reads
+ * The library's SnapSync-marked photos inside one event's window: what a join reads
  * to recognise photos an earlier install received, by the mark each one's filename carries ([ReceivedPhotoName]).
  *
  * The window is the EVENT's range, never the member's capture range — receiving covers the whole event, and the

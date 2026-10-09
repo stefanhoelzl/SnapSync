@@ -64,7 +64,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Duration.Companion.seconds
 
-// Event creation (capability `create-event`): the name/date form and its in-flight state.
+// Event creation: the name/date form and its in-flight state.
 
 /** The longest event window, in whole days, as the create screen states it. */
 private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWholeDays
@@ -79,7 +79,7 @@ private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWho
  * has NO complete default: the start is preset to now (following the clock until the host chooses something
  * in the range, see [CreateDraft]) and the last day to today, but the end TIME must be chosen, because a
  * pre-filled window the host never looked at was almost always wrong and silently bounds every member's
- * photos (capability `photo-sharing`). Create is disabled until [nextStep] is complete; a line ABOVE Create
+ * photos. Create is disabled until [nextStep] is complete; a line ABOVE Create
  * names the next missing step — a button that leads to it: the name field, focused with the keyboard up, or
  * the end-time wheels, brought into view and outlined — and turns into the event's duration once there is
  * none. The picker cannot produce an inverted or over-long range, so the window guards in [creatableEnd]
@@ -132,8 +132,8 @@ internal fun CreateEventScreen(
                 AppEventRangePicker(
                     range = draft.range,
                     bounds = RangeBounds.lastingAtMost(cutoff::latestEnd),
-                    // The truthfulness line: this window is the event's capture-date bound (capability
-                    // `photo-sharing`) — stated once, where it is set — and the one limit on it.
+                    // The truthfulness line: this window is the event's capture-date bound — stated
+                    // once, where it is set — and the one limit on it.
                     note = stringResource(Res.string.create_window_note, EVENT_WINDOW_MAX_DAYS),
                     today = cutoff.nowLocal().date,
                     currentHour = { cutoff.nowLocal().hour },
@@ -146,7 +146,7 @@ internal fun CreateEventScreen(
     }
 }
 
-/** Where tapping the named next missing step leads (capability `create-event`). */
+/** Where tapping the named next missing step leads. */
 private class StepGuide(val toName: () -> Unit, val toEndTime: () -> Unit)
 
 /** One question the form asks, over the control that answers it. */
@@ -162,13 +162,13 @@ private fun CreateQuestion(question: String, modifier: Modifier = Modifier, answ
 internal class CreateCallbacks(
     val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
     val onOpenSettings: () -> Unit,
-    /** "Report this" on a refusal the user can only tell us about (capability `privacy-security`). */
+    /** "Report this" on a refusal the user can only tell us about. */
     val onReportRefusal: (ScreenMessage) -> Unit,
 )
 
 /**
  * The pinned bottom: what is still missing (or how long the event lasts), Create, and one line under it —
- * the scan hint, or in its place the failure, or above both a missing network (capability `create-event`), which
+ * the scan hint, or in its place the failure, or above both a missing network, which
  * also takes Create away. A constant height, so nothing here ever covers the picker.
  */
 @Composable
@@ -207,7 +207,7 @@ private fun CreateActions(
             }
         } else {
             // A refusal the user can only tell us about offers the report in the SAME line, so the bottom keeps its
-            // constant height (capability `create-event`, "The front screen tells a refused phone before it tries").
+            // constant height: the front screen tells a refused phone before it tries.
             val reportable = state.error?.takeIf { it.offersReport }
             StatusHint(
                 text = if (reportable != null) {
@@ -263,7 +263,7 @@ internal fun CreatingEventScreen() {
 }
 
 /**
- * The backend refuses this build as too old (capability `app-update-required`).
+ * The backend refuses this build as too old.
  *
  * The one screen in the app whose remedy is **outside** it, and it is built to say exactly that and
  * nothing else. There is no retry, because retrying is what the app has already been doing and every

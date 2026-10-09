@@ -3,8 +3,8 @@ package app.snapsync.logging
 /**
  * The ambient "what triggered this" holder, read by the device-log writers ([FileLogSink] /
  * [PublicNSLogSink], which sit beside it) to prefix every line with `[<entryPoint>]` so downstream
- * engine/HTTP/download lines trace back to the entry point that drove them (capability
- * `privacy-security`). Driven through the `:domain` `EntryContext` port (see [IosEntryContext]) so the
+ * engine/HTTP/download lines trace back to the entry point that drove them.
+ * Driven through the `:domain` `EntryContext` port (see [IosEntryContext]) so the
  * process-global mutable lives here in the adapter — where a platform global is legitimate — and not
  * in the core (law "State and authority").
  *

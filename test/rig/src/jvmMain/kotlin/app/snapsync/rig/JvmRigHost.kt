@@ -110,7 +110,7 @@ class JvmRigHost private constructor(
 
         private fun compose(scope: CoroutineScope, backend: RigBackend, lane: kotlinx.coroutines.CoroutineDispatcher): JvmRig {
             // Invite-link hints honoured, as the rig's development controls answer them on a device: this host IS the
-            // control channel, whose callers join headlessly with `autoJoin` (capability `join-event`).
+            // control channel, whose callers join headlessly with `autoJoin`.
             val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Honoured, network = backend.network)
             val version = DeclaredVersion(SERVED_VERSION)
             val log = RecordedLog()

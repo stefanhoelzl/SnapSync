@@ -33,8 +33,7 @@ class RigHooks(
     private val uploadBase: String,
     /**
      * Which `URLSession` binding this binary compiled — `"background"` or `"default"` — fixed by the
-     * compilation target (`background-upload`, "The transport binding is fixed by the compilation
-     * target").
+     * compilation target.
      *
      * Reported rather than inferred, because the two are told apart by *what does not happen*: under
      * `"default"` transfers move bytes but die with the process, and a background-events wake expires
@@ -221,7 +220,7 @@ class RigHooks(
      * Only `onBackgroundTransfers` earns a caveat, and only under `"default"` — the one binding whose session
      * reports nothing; a host with no `URLSession` at all (the JVM host's `"world"`) earns none. That entry is the one
      * whose OS handler is released by the session reporting its events drained — a callback a default session
-     * never sends (`background-upload`, "The transport binding is fixed by the compilation target") —
+     * never sends, since the transport binding is fixed by the compilation target —
      * so on that binding the hold always ends on the background time's expiry, which says nothing about the app. The
      * other receipted entries answer their own handlers and are unaffected.
      *
@@ -291,8 +290,8 @@ sealed interface RigTrigger {
      * the wake's own work. The rig supplies [run]'s `done` lambda, so it does not *detect* completion — it
      * **receives** it, on the same channel the OS does, and reports the measured hold.
      *
-     * There is no deadline to report beside it: no clock of the app's own releases a handler any more
-     * (capability `sync-status`, "Time is up is learned only from the operating system"). The rig classifies
+     * There is no deadline to report beside it: no clock of the app's own releases a handler any more —
+     * time is up is learned only from the operating system. The rig classifies
      * nothing either — the release carries no outcome, so "released after its own work" versus "released on
      * the operating system's expiry" is not recoverable here. The authoritative answer is production's own:
      * `OsCompletions` logs its expiry line on the expiry path and no other, readable through `/logs` after the

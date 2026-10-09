@@ -55,7 +55,7 @@ import org.jetbrains.compose.resources.stringResource
 // widget was split out of an 887-line file. Everything another split file reaches is widened to module
 // scope and no further — `:ui:components` is the design system, the same audience these had before.
 //
-// The range calendar (capabilities `create-event`, `join-event`): the range-aware grid with its day cell,
+// The range calendar of the create and join screens: the range-aware grid with its day cell,
 // and the month/weekday chrome above it.
 
 /** A day's circle: small enough for six weeks and the wheels beneath to fit a small phone's form. */

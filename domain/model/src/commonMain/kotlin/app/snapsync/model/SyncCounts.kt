@@ -3,8 +3,7 @@ package app.snapsync.model
 import kotlinx.serialization.Serializable
 
 /**
- * The joined screen's counts line (capability `sync-status`, "The joined screen counts what was shared and
- * received"): per direction, how much there is and how much of it went through.
+ * The joined screen's counts line: per direction, how much there is and how much of it went through.
  *
  * Built from the SAME two pairs of numbers the direction arrows are derived from — `synced`/`total` for the
  * upload side, `downloaded`/`total` for the download side — so the counts and the arrows (and "Up to date") can

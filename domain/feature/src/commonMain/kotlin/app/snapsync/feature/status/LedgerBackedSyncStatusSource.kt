@@ -86,14 +86,14 @@ fun LedgerBackedSyncStatusSource(
                     total = total,
                     failed = 0,
                     // Usable access: syncing is operational under both a full and a limited grant
-                    // (capability `photo-access` — under LIMITED the total is selection-scoped).
+                    // (under LIMITED the total is selection-scoped).
                     active = perm.grantsPhotoAccess,
                     estimatedRemaining = null,
                 ),
             )
             // Only a Ready is ever published. `status` is already seeded Loading, so writing Loading
             // back would be the one thing the seam forbids — "once Ready, a source MUST NOT regress to
-            // Loading" (`sync-status`). The gate above therefore decides when Loading ENDS, and cannot
+            // Loading". The gate above therefore decides when Loading ENDS, and cannot
             // resurrect it if an input were ever to un-read itself.
         }.collect { next -> if (next is SyncStatus.Ready) status.value = next }
     }

@@ -5,8 +5,8 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.Serializable
 
 /**
- * A member's **uncommitted choices** on a decision surface — the join gate and the in-place reconfigure
- * ask for the same seven (capability `photo-sharing`, `join-event`, `manage-membership`, `mobile-data`).
+ * A member's **uncommitted choices** on a decision surface — the join gate and the in-place reconfigure ask for the
+ * same seven.
  *
  * These used to be seven `mutableStateOf`s held by each screen, declared twice with different seeds. That
  * gave them Compose's lifetime rather than the surface's, which is the wrong one: the join gate advances
@@ -18,16 +18,14 @@ import kotlinx.serialization.Serializable
  * window that arrives late (the details fetch resolving after the surface mounts) is picked up rather
  * than baked in.
  *
- * The defaults are what an UNTOUCHED gate commits, so each is a stance. All three participation values
- * start on — including [saveToAlbum], because the album is the only on-device statement that a set of
- * photos belongs to this event, and a member who decides nothing should get that grouping (capability
- * `event-album`). Whether photos may use mobile data is the device's, not the gate's (capability
- * `mobile-data`). The headless `autoJoin` path does NOT read these seeds and deliberately keeps its own
- * album default off; see `StatusContainerHost.autoConfirm`.
+ * The defaults are what an UNTOUCHED gate commits, so each is a stance. All three participation values start on —
+ * including [saveToAlbum], because the album is the only on-device statement that a set of photos belongs to this
+ * event, and a member who decides nothing should get that grouping. Whether photos may use mobile data is the device's,
+ * not the gate's. The headless `autoJoin` path does NOT read these seeds and deliberately keeps its own album default
+ * off; see `StatusContainerHost.autoConfirm`.
  *
- * [albumKind] is not a choice but the platform's answer: how this phone holds an event album (capability
- * `event-album`). It decides what the album note says the album collects — on an Android phone, whose album is a
- * folder, only the photos the member receives.
+ * [albumKind] is not a choice but the platform's answer: how this phone holds an event album. It decides what the album
+ * note says the album collects — on an Android phone, whose album is a folder, only the photos the member receives.
  */
 @Serializable
 data class RangeForm(
@@ -67,15 +65,14 @@ data class ResolvedRange(
     /** The device's date when this was resolved — the day the range calendar marks as today. */
     val today: LocalDate,
     /**
-     * How many of the member's own photos the chosen range would share (capability `join-event`).
-     * Computed by the container over the user-query bundle — never by the screen — and carried here so the
-     * row renders reduced state. Unavailable and zero mean different things: `Ready(0)` says the chosen
-     * range admits none of their photos.
+     * How many of the member's own photos the chosen range would share. Computed by the container over the user-query
+     * bundle — never by the screen — and carried here so the row renders reduced state. Unavailable and zero mean
+     * different things: `Ready(0)` says the chosen range admits none of their photos.
      */
     val shareCount: ShareCount = ShareCount.Counting,
 )
 
-/** The live shareable count (capability `join-event`), as the row renders it. */
+/** The live shareable count, as the row renders it. */
 @Serializable
 sealed interface ShareCount {
     /** Being (re)computed — the row shows `counting…`. */

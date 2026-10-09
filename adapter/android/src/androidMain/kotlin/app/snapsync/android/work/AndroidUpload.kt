@@ -53,7 +53,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * The Android app uploader (capability `background-upload`): each job is an HTTP PUT of a photo's original, streamed
+ * The Android app uploader: each job is an HTTP PUT of a photo's original, streamed
  * straight from MediaStore ([UploadSourceKind.RESOURCE] — no staged copy), run in this process.
  *
  * Android has no transfer daemon that finishes an upload for a process that is gone, so:
@@ -64,7 +64,7 @@ import java.util.concurrent.TimeUnit
  *   so its row is retried rather than waiting on a transfer that no longer exists. A large video stopped mid-way
  *   restarts from the beginning on the next run.
  *
- * **A transfer held to unrestricted networks** ([TransferNetwork.UNRESTRICTED_ONLY], capability `mobile-data`) waits,
+ * **A transfer held to unrestricted networks** ([TransferNetwork.UNRESTRICTED_ONLY]) waits,
  * before it sends a byte, until the default network is unmetered and not withheld — the platform holds nothing here
  * (measured on the API 36 emulator, 2026-10-03: an in-process PUT goes out on cellular and metered Wi-Fi alike), so this
  * adapter plays the part `nsurlsessiond` plays on iOS and the core sees the same created-but-unfinished job either way.
@@ -230,7 +230,7 @@ class AndroidUpload(
         }
 
         private suspend fun awaitUnrestricted() {
-            log.i { "$tag: held for an unmetered network (capability `mobile-data`)" }
+            log.i { "$tag: held for an unmetered network" }
             unrestricted()
         }
 

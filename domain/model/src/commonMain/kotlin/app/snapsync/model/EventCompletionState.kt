@@ -1,8 +1,8 @@
 package app.snapsync.model
 
 /**
- * Where an event stands in its early completion (capability `event-lifetime`; decision record
- * `changes/early-event-completion`), as the backend's event details report it.
+ * Where an event stands in its early completion (decision record `changes/early-event-completion`), as the backend's
+ * event details report it.
  *
  * - [OPEN] — anyone may still join, rename, and change what they share.
  * - [CLOSED] — every member still in it has settled what it shares (or the clock ran out): nobody joins, nothing

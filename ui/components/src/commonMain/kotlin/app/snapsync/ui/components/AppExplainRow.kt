@@ -37,7 +37,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 
-/** What an explanation row is about (capability `sync-status`): one glyph per subject. */
+/** What an explanation row is about: one glyph per subject. */
 enum class ExplainSubject { SHARING, RECEIVING, HINT }
 
 /**
@@ -54,7 +54,7 @@ enum class ExplainState { ON, OFF, BLOCKED }
 class CaptionLink(val text: String, val onClick: () -> Unit)
 
 /**
- * One row of the joined screen's explanation of how the event works (capability `sync-status`): a glyph, a
+ * One row of the joined screen's explanation of how the event works: a glyph, a
  * [title] saying what is happening, and a [caption] saying how or why. With a [link], the link's words in the
  * caption become a real, accessible link — a control in the semantics tree, not styled text.
  * [trailing] sits beneath the caption (the limited-access choices).
@@ -90,7 +90,7 @@ fun AppExplainRow(
 }
 
 /**
- * A small action beneath an explanation row's caption (the limited-access choices, capability `photo-access`):
+ * A small action beneath an explanation row's caption (the limited-access choices):
  * outlined in the accent, as wide as its label and aligned with the text above it, so it reads as part of the
  * row rather than as one of the screen's main actions. Never an attention state.
  */

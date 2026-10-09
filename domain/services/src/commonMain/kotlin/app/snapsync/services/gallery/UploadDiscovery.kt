@@ -6,12 +6,12 @@ import app.snapsync.model.SelectionPolicy
 
 /**
  * What the upload cycle reads from the photo library: the full-enumeration walk and the id-scoped resolve of
- * ledger keys (capability `background-upload`, "Ledger keys resolve to uploadable resources").
+ * ledger keys.
  *
  * Its own port rather than two members of [BackgroundTransfer], because neither read is a transport concern:
  * on every tier both are the same PhotoKit fetches, and only the transfer lifecycle differs. Each composition
  * root binds it **once**, and no transport implements or forwards it. The partial-grant read discipline wraps
- * this port, not the transport (`SelectionScopedDiscovery`, capability `photo-access`).
+ * this port, not the transport (`SelectionScopedDiscovery`).
  *
  * Not [CandidateSource], although once the change-token cursor was removed the walk became nearly the same
  * read: this port's walk also says whether it is **authoritative for deletion** ([Discovery.fullEnumeration]),
@@ -21,20 +21,20 @@ interface UploadDiscovery {
 
     /**
      * Enumerate the library's candidate assets — **every** walk is a full enumeration; there is no persisted
-     * cursor (capability `background-upload`, "In-extension discovery by full enumeration").
+     * cursor.
      *
-     * [policy] carries the membership's capture-date range (capability `photo-sharing`). The walk
+     * [policy] carries the membership's capture-date range. The walk
      * SHALL be scoped by it — walking the whole library costs one synchronous platform round-trip per asset.
      * An implementation MAY return assets outside the range (the cycle filters), but MUST NOT omit any inside
      * it: what this returns is also the walk's **presence** set, and an in-window asset it omits has its rows
-     * deleted as departed (capability `photo-sharing`).
+     * deleted as departed.
      */
     suspend fun discover(policy: SelectionPolicy): Discovery
 
     /**
      * Resolve ledger [keys] to uploadable [Resource]s — **id-scoped, never a walk**.
      *
-     * This is what lets the ledger be the cycle's source of work (capability `photo-sharing`). A row records
+     * This is what lets the ledger be the cycle's source of work. A row records
      * that a resource needs uploading, but it cannot carry the platform handle `createJob` requires, so a
      * producer enqueueing from the ledger asks for exactly the keys it intends to send. A key is
      * `<assetId>-<role>.<ext>`, so an implementation has everything it needs to fetch those assets by
@@ -59,16 +59,16 @@ class Discovery(
     /**
      * The assets the platform returned — **candidates**, not yet admitted. Each carries cheap facts and
      * fetches its own resources on demand, so the cycle pays the per-asset round-trip only for the ones
-     * its admission keeps (capability `sync-status`).
+     * its admission keeps.
      */
     val candidates: List<Candidate>,
     /**
      * Whether this walk read the **library itself** and returned every asset inside the policy's capture
      * window — which is what makes an in-window asset's absence from [candidates] evidence that it left the
-     * library (capability `photo-sharing`, "Deletion is a presence diff over an authoritative walk").
+     * library: deletion is a presence diff over an authoritative walk.
      *
      * False for a partial grant's selection snapshot (a de-selected photo is not a deleted one, and an
-     * uploaded, later-deselected photo keeps its row — capability `photo-access`) and for a library
+     * uploaded, later-deselected photo keeps its row) and for a library
      * the platform could not read (no candidates, and no evidence of anything). A walk that is not
      * authoritative deletes nothing.
      */

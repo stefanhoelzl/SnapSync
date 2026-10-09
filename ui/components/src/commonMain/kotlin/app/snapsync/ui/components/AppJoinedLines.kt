@@ -9,7 +9,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 
-// The joined screen's short supporting lines (capability `sync-status`): the joined statement and the
+// The joined screen's short supporting lines: the joined statement and the
 // dates under the event's name, and the counts beneath the status line. Each is one centered line of body
 // type; they differ only in how loud they are, which is the design system's to decide.
 

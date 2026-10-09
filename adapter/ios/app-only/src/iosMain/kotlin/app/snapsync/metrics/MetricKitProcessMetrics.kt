@@ -16,7 +16,7 @@ import platform.MetricKit.MXMetricPayload
 import platform.darwin.NSObject
 
 /**
- * The MetricKit binding of [ProcessMetrics] (capability `privacy-security`).
+ * The MetricKit binding of [ProcessMetrics].
  *
  * Seated in `:adapter:ios:app-only` by linkage: MetricKit is app-process-only, and the
  * background-upload extension must not link it. That is not a tidiness point — a subscriber in the
@@ -130,9 +130,9 @@ internal class SystemMetricKitApi : MetricKitApi {
  *
  * Both callbacks claim the log prefix for **their own thread only** ([IosThreadEntryContext]). Handling is
  * inline and launches nothing, so every line of theirs is on the calling thread; a process-wide claim
- * instead labelled seven concurrent launch lines `[didReceiveMetricPayloads]` (capability
- * `privacy-security`). ⚠️ If a callback ever hands work to another thread, those lines log
- * unprefixed — move it to the process-wide claim rather than accept that silently.
+ * instead labelled seven concurrent launch lines `[didReceiveMetricPayloads]`. ⚠️ If a callback ever hands
+ * work to another thread, those lines log unprefixed — move it to the process-wide claim rather than accept that
+ * silently.
  *
  * **Delivery is inline** — handed over before the callback returns, not hopped to another lane, deliberately and
  * against the observer convention this module otherwise follows. The work is small (call-stack branches are dropped by

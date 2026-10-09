@@ -39,7 +39,7 @@ class RigUi(private val inner: Lazy<Ui>) : Ui {
 
 /**
  * A rig build's development controls: the per-uploader switch `/device/uploaders` sets, invite-link hints
- * **honoured** — the channel's callers join headlessly with `autoJoin` (capability `join-event`) — unless
+ * **honoured** — the channel's callers join headlessly with `autoJoin` — unless
  * `/device/invite-link-hints` plays a shipped build that ignores them, and the reset `/device/reset` delivers.
  */
 class RigDevControls : DevControls {

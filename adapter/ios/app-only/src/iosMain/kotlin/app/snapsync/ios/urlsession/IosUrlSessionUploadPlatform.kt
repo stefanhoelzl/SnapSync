@@ -70,7 +70,7 @@ class IosUrlSessionUploadPlatform internal constructor(
     private val sessionId = sessionIdentifier
 
     /**
-     * On every shipped binary a **background** session, so transfers survive suspension (`background-upload`). The
+     * On every shipped binary a **background** session, so transfers survive suspension. The
      * binding is fixed by the **compilation target** — see [transferSessionConfiguration], the single place this file
      * and the download adapter both resolve it, where the platform facts and their ⏰ expiry live.
      *

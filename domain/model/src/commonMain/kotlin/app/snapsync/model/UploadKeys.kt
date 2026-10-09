@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * The generic, platform-neutral **role** of an asset resource (capability `asset-manifest`). The role
+ * The generic, platform-neutral **role** of an asset resource. The role
  * carries the resource's place in its asset, never the platform resource-type name or the media kind
  * (that is `contentType`'s job): [PRIMARY] is the single original primary medium (a still image, a
  * video, or an audio track) and [LIVE] the original paired video of a Live Photo. [wire] is the
@@ -30,8 +30,8 @@ enum class ResourceRole(val wire: String) {
 // adapter was reporting the raw type *beside* it rather than instead of it.
 
 /**
- * The header a versioned backend request declares its marketing version in (capability
- * `app-update-required`). Declared here because BOTH transports must send it — the shared HTTP client and
+ * The header a versioned backend request declares its marketing version in. Declared here because BOTH
+ * transports must send it — the shared HTTP client and
  * the byte-upload request the OS performs — and two spellings of one header name is exactly the drift
  * this vocabulary exists to prevent.
  */
@@ -61,13 +61,13 @@ const val RESOURCE_META_ORIGINAL_FILENAME: String = "originalFilename"
 const val RESOURCE_META_MIME: String = "mimeContentType"
 
 /**
- * The **neutral origin facts** (capability `photo-sharing`), stashed alongside the manifest
+ * The **neutral origin facts**, stashed alongside the manifest
  * detail so the one admission can decide in `commonMain` on a `Resource` — which is all the upload cycle
  * ever sees (the `RawAsset` is consumed by [resourcesFrom] before the cycle is reached).
  *
  * They are **platform-neutral by construction**: the iOS adapter interprets `PHAssetMediaSubtype` /
  * `PHAssetMediaType` / the pixel dimensions into these, so no PhotoKit value reaches `model/`
- * (capability `sync-status`; the `:test:architecture` PhotoKit-ABI guard enforces it).
+ * (the `:test:architecture` PhotoKit-ABI guard enforces it).
  *
  * The device-manifest producer reads only the three keys above by name, so these entries are inert to it.
  * Values are `"true"`/`"false"` for the flags and a decimal string for the area; [factsFromResources]

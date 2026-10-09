@@ -8,8 +8,8 @@ import app.snapsync.services.gallery.WalkMemoUse
 import co.touchlab.kermit.Logger
 
 /**
- * Whether the app process's walk memo **serves** walks, or only shadows them (capability `photo-sharing`, "An
- * unchanged library is answered from the walk memo").
+ * Whether the app process's walk memo **serves** walks, or only shadows them — an unchanged library is answered
+ * from the walk memo.
  *
  * [WalkMemoUse.SERVE]: the memo's soundness rests on a change made outside the process always moving the change
  * token, and that is now measured (`changes/own-work-per-wake`, task 7.4, recorded in that requirement): on the
@@ -26,8 +26,9 @@ val APP_WALK_MEMO_USE: WalkMemoUse = WalkMemoUse.SERVE
 /**
  * The app process's upload discovery binding: [walk] behind the walk memo (decision record
  * `changes/own-work-per-wake`, D9). The **one** place a [WalkMemo] is built, and called only from the app's
- * uploader — the upload extension binds its walk bare and walks afresh on every `process()` call (capability
- * `background-upload`; `WalkMemoContainmentTest` pins both sides).
+ * uploader — the upload extension binds its walk bare and walks afresh on every `process()` call
+ * (`WalkMemoContainmentTest` pins both sides).
+
  *
  * [changeToken] is the app's `Gallery` — the extension's `GalleryReader` has none to offer — and
  * [grant] the grant [walk] itself decides its authority by, so the memo keys on the same answer the walk reports

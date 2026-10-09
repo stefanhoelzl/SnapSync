@@ -85,7 +85,7 @@ import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
  * *decision* — which verb fires on join / reconfigure / grant / launch / leave — is not made here, because
  * this module is wiring-only and
  * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier
- * shipped a provision path that destroyed its ledger and started nothing (capability `background-upload`).
+ * shipped a provision path that destroyed its ledger and started nothing.
  *
  * **The OS entries are the adapters'.** Every callback the Swift shell forwards reaches an entry port's adapter in
  * one line — `Lifecycle`, `Links`, `PushNotifications`, `Ui` (`docs/architecture.md`, "Events arrive through
@@ -103,10 +103,10 @@ object SnapSyncRoot {
     }
 
     /**
-     * The OS's own account of how this process has been behaving (capability `privacy-security`) — the MetricKit
-     * seat, constructed HERE, in the object's own initialization, and listened to as the process is set up — the first
-     * act of the composition [onLaunch] forces on every launch. Two measured facts force the seat, and neither is a
-     * preference:
+     * The OS's own account of how this process has been behaving — the MetricKit seat, constructed HERE, in the
+     * object's own initialization, and listened to as the process is set up — the first act of the composition
+     * [onLaunch] forces on every launch. Two measured facts force the seat, and neither is a preference:
+
      *
      *  1. MetricKit accumulates **nothing** for an app until a process first touches it, and never
      *     retroactively — so the earliest path that runs on every launch is the only correct seat. [app] is
@@ -154,7 +154,7 @@ object SnapSyncRoot {
     internal val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
 
     /**
-     * The process's ONE cutoff formatter (capability `sync-status`): the device zone read once, here, from the
+     * The process's ONE cutoff formatter: the device zone read once, here, from the
      * process's one clock — a formatter whose zone moved under a running screen would render one capture date two
      * ways. The status host reduces with it and the screen renders with it: the same instance. Its "now" is the same
      * clock's: the system's own on every production build, and an adapter choice's mocked clock wherever one fixes it.
@@ -189,7 +189,7 @@ object SnapSyncRoot {
     internal val wakeAdapter: IosWake by lazy { IosWake(log) }
 
     /**
-     * The registration port's adapter, chosen by compilation target (capability `background-upload`), on every OS.
+     * The registration port's adapter, chosen by compilation target, on every OS.
      * `internal` so the control channel reads the registration through the very port the app registers through,
      * rather than asking PhotoKit a second time and possibly getting a different answer. Not exported to the ObjC
      * framework header.
@@ -235,25 +235,24 @@ object SnapSyncRoot {
         databases = lazy { IosDatabases() },
         preferences = lazy { IosPreferences() },
         // This process's protected small-value store: the device id, the attestation token and key id, and the legacy
-        // album map's last seat — one instance, every item addressed by its slot, chosen by COMPILATION TARGET
-        // (capability `photo-sharing`): the Keychain on `iosArm64`, the device-id slot in an App-Group file on
-        // `iosSimulatorArm64`, where the shared group cannot exist.
+        // album map's last seat — one instance, every item addressed by its slot, chosen by COMPILATION TARGET:
+        // the Keychain on `iosArm64`, the device-id slot in an App-Group file on `iosSimulatorArm64`, where the
+        // shared group cannot exist.
         secureStore = lazy { platformSecureStore() },
         // iOS offers no stable platform id an app may read; the device id is minted and kept in the secure store.
         platformDeviceId = lazyOf(NoPlatformDeviceId()),
         integrity = lazy { IosDeviceIntegrity() },
-        // Recorded by the background entry points; decides nothing (capability `sync-status`).
+        // Recorded by the background entry points; decides nothing.
         processInfo = lazy { IosProcessInfo() },
-        // The network as iOS reports it to this app, watched only while the app is in front (capability `sync-status`).
+        // The network as iOS reports it to this app, watched only while the app is in front.
         network = lazy { IosNetworkMonitor() },
-        // Power saving, battery, thermal state and Background App Refresh — read only for a bug report (capability
-        // `privacy-security`).
+        // Power saving, battery, thermal state and Background App Refresh — read only for a bug report.
         deviceConditions = lazy { IosDeviceConditions() },
         // The backend — ONE `HttpBackend` over the platform's HTTP client, declaring this bundle's version, which every
         // backend call goes through. The credential and the backend's verdicts are the core's (`AppCore.backend`).
         backend = lazy { HttpBackend(darwinHttpClient(), backendHost, appMarketingVersion()) },
         // The process's background time (`beginBackgroundTask`): what a push or a transfer wake holds across its own
-        // work and its tail, and the only "time is up" those wakes get (capability `sync-status`).
+        // work and its tail, and the only "time is up" those wakes get.
         backgroundTime = lazy { IosBackgroundTime(log) },
         wake = lazy { wakeAdapter },
         extensionRegistry = lazy { extensionRegistry },
@@ -297,7 +296,7 @@ object SnapSyncRoot {
             // A public NSLog sink AND a file sink. NSLog is redacted as `<private>` on current iOS (dynamic format
             // strings are private), so the file (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the
             // reliable channel. The app's log stays in its OWN Documents — it can read it without help, so relocating
-            // it would break every pull command and buy nothing (capability `privacy-security`).
+            // it would break every pull command and buy nothing.
             logSinks = listOf(PublicNSLogSink(), FileLogSink(appLogDestination().path)),
             files = ports.files.value,
             clock = ports.clock.value,
@@ -374,8 +373,8 @@ object SnapSyncRoot {
      * handlers while Apple still accepts them: the wake adapter's `listen` is the heartbeat's `BGTask` launch-handler
      * registration, which Apple requires before launch finishes; the lifecycle adapter's installs the
      * `didBecomeActive` / `willResignActive` observers; and the composition asks the OS for the APNs token, as it does
-     * again at every foreground entry (capability `receiving-photos`, "Registration timing — launch, join, and
-     * rotation"). Composing builds nothing a locked device cannot (every core property is lazy; no database opens).
+     * again at every foreground entry. Composing builds nothing a locked device cannot (every core property is lazy;
+     * no database opens).
      */
     @PlatformEntry
     fun onLaunch() = log.invocation("onLaunch") {
@@ -388,10 +387,10 @@ object SnapSyncRoot {
 
     /**
      * A restored/continued `NSUserActivity` arrived (both halves of Universal-Link delivery —
-     * forwarded **whole** from the Swift scene delegate, which decides nothing; capability
-     * `join-event`). The tested `model/` filter-and-dispatch keeps only a browsing-web activity
-     * with a URL and forwards the **complete** `absoluteString` — the fragment carries the whole
-     * payload; this wiring transcribes the activity's fields and branches on nothing.
+     * forwarded **whole** from the Swift scene delegate, which decides nothing). The tested `model/`
+     * filter-and-dispatch keeps only a browsing-web activity with a URL and forwards the **complete**
+     * `absoluteString` — the fragment carries the whole payload; this wiring transcribes the activity's
+     * fields and branches on nothing.
      */
     @PlatformEntry
     fun onLaunchActivity(activity: NSUserActivity) = links.deliverUserActivity("onLaunchActivity", activity)
@@ -418,8 +417,8 @@ object SnapSyncRoot {
      * re-measure at the next iOS major, and whenever a delivery hook is added or removed.
      *
      * Its name is distinct from every other delivery entry's because a dump must be able to COUNT
-     * deliveries: both paths are live, they overlap, and the gate absorbs the duplicate (capability
-     * `join-event`). Collapsed names would make "delivered twice" unreadable.
+     * deliveries: both paths are live, they overlap, and the gate absorbs the duplicate. Collapsed names
+     * would make "delivered twice" unreadable.
      */
     @PlatformEntry
     fun onSceneContinueActivity(activity: NSUserActivity) =
@@ -428,7 +427,7 @@ object SnapSyncRoot {
     /**
      * The scene connected, carrying [activities] restored/continued `NSUserActivity` values —
      * recorded **unconditionally, zero included** (`docs/architecture.md`, "Absence is never
-     * silent"; spec `privacy-security`).
+     * silent").
      *
      * The Swift cold hook's only Kotlin call used to sit *inside* its `forEach` over
      * `connectionOptions.userActivities`, so a scene connecting with an empty array recorded
@@ -502,8 +501,7 @@ object SnapSyncRoot {
     fun onSceneDidDisconnect() = lifecycle.deliverSceneEvent("onSceneDidDisconnect")
 
     /**
-     * URL contexts were opened on the scene — the **custom-scheme** delivery path (capability
-     * `join-event`).
+     * URL contexts were opened on the scene — the **custom-scheme** delivery path.
      *
      * The `snapsync` scheme is retired and the Info.plist declares no `CFBundleURLTypes`, so this
      * should never fire. Forwarding it anyway is the point: if iOS 18 turns out to route a universal
@@ -516,7 +514,7 @@ object SnapSyncRoot {
 
     /**
      * A URL arrived at SwiftUI's `.onOpenURL` on the `WindowGroup` — **SwiftUI's** delivery path, as
-     * opposed to the scene delegate's (capability `join-event`).
+     * opposed to the scene delegate's.
      *
      * This is the path that carries a link opened while the app is ALREADY RUNNING on iOS 18.7.9, where
      * `scene(_:continue:)` never fires however the link was opened. It is not a fallback: on that OS it
@@ -529,8 +527,8 @@ object SnapSyncRoot {
      * codec still decides what the URL is — a foreign origin is rejected there, as it always was.
      *
      * Its own entry name matters more here than anywhere: this path and [onLaunchActivity] both fire on
-     * a cold launch, so a dump has to be able to COUNT deliveries. The gate absorbs the duplicate
-     * (capability `join-event`); the names are what prove it did. Measured (build 687): the same URL arrived
+     * a cold launch, so a dump has to be able to COUNT deliveries. The gate absorbs the duplicate;
+     * the names are what prove it did. Measured (build 687): the same URL arrived
      * twice on an iOS 18.7.9 cold launch (~130 ms apart) and twice on iOS 26.6 both running (8 ms) and cold
      * (105 ms). No contract clause asserts it. See changes/archive/2026-07-16-migrate-to-universal-links.
      */
@@ -549,7 +547,7 @@ object SnapSyncRoot {
         backgroundSessions.handleEvents(channel, completion)
 
     /**
-     * APNs registration **failed** (capability `receiving-photos`), forwarded from the Swift
+     * APNs registration **failed**, forwarded from the Swift
      * AppDelegate's `didFailToRegisterForRemoteNotificationsWithError` with the error already
      * rendered to a string (an encoding, not a decision).
      *
@@ -579,7 +577,8 @@ object SnapSyncRoot {
      * event. Persists the config (the container's `ConfigSource` is this instance), re-reads the gallery
      * total and the storage-truth status sources, then runs the upload arm's **join** transition (the tested,
      * stateless `UploadTransitions`). At a first join or a switch the Provision flow also loads the
-     * upload ledger from the device's stored-file listing (`photo-sharing`).
+     * upload ledger from the device's stored-file listing.
+
      *
      * Starting here is load-bearing: the grant collector fires only on a *transition* to GRANTED, so a
      * membership provisioned while access is already granted — the common case for every join after the

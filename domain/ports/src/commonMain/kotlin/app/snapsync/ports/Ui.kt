@@ -4,7 +4,7 @@ import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
 
 /**
- * **The platform's user interface** (capability `sync-status`): show the status screen's state, and hear what the
+ * **The platform's user interface**: show the status screen's state, and hear what the
  * person did on it. On iOS the Compose scene SwiftUI hosts; on Android the activity's.
  *
  * One external system, deciding nothing: [show] renders a state the core reduced, and every tap crosses as a

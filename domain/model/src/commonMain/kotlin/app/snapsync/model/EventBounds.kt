@@ -1,9 +1,8 @@
 package app.snapsync.model
 
 /**
- * The reporting channel's ceiling on one event's **decoded** body (capability `privacy-security`), measured against
- * the real Bugsink instance on 2026-07-29. The compressed wire size says nothing about it: a 1.5 MB event went over
- * the wire as 3.8 KB.
+ * The reporting channel's ceiling on one event's **decoded** body, measured against the real Bugsink instance on
+ * 2026-07-29. The compressed wire size says nothing about it: a 1.5 MB event went over the wire as 3.8 KB.
  *
  * ⚠️ Crossing it does not lose one event, it blocks the queue. sentry-cocoa deletes a cached envelope only on a
  * `200` and always sends the oldest first, so a refused one is re-sent on every trigger and holds back every later
@@ -33,7 +32,7 @@ const val BREADCRUMB_TEXT_BYTES: Int = 512
 const val EVENT_TEXT_BYTES: Int = 8_192
 
 /**
- * [text] cut to at most [maxBytes] UTF-8 bytes, marker included (capability `privacy-security`).
+ * [text] cut to at most [maxBytes] UTF-8 bytes, marker included.
  *
  * A text within the cap is returned unchanged. A cut text ends in `…[+<n> B]`, naming the bytes dropped, so a
  * reader never mistakes a cut line for a whole one. The cut never splits a UTF-8 sequence. The cap is counted in

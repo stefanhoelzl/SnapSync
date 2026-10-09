@@ -76,7 +76,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
 
     /**
      * Narrowed by [predicateFor] — whatever of the policy PhotoKit can express; the rest falls to the caller's
-     * admission. Both QoS classes on the one line (capability `privacy-security`): the caller's, and the lane's
+     * admission. Both QoS classes on the one line: the caller's, and the lane's
      * the PhotoKit calls were issued at.
      */
     override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
@@ -266,8 +266,7 @@ fun photoKitFacts(result: PHFetchResult): List<AssetFacts> = buildList {
  * Every asset of an already-fetched [result] with all of its resources — one `assetResourcesForAsset` round-trip
  * per asset. Two callers hold a fetch result already and must not issue another fetch to reach its assets: the
  * by-identifier read above, and the `LIMITED` selection observer, whose re-fetch would repeat a read already paid
- * for (capability `photo-access`, whose read discipline is about reading the right source under a partial grant —
- * not about alert suppression).
+ * for (the read discipline under a partial grant is about reading the right source — not about alert suppression).
  */
 fun photoKitRawAssets(result: PHFetchResult): List<RawAsset> = buildList {
     result.forEachAsset { asset ->

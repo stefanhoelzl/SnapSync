@@ -39,7 +39,7 @@ class IosNetworkMonitor internal constructor(private val paths: NetworkPathApi) 
  * interface, an on-demand VPN) — is online: the app's next request is that attempt. `invalid` is a monitor with no
  * path, read as offline rather than guessed online.
  *
- * Restricted (capability `mobile-data`) is iOS's own pair: `expensive` — cellular, or Wi-Fi from a personal hotspot —
+ * Restricted is iOS's own pair: `expensive` — cellular, or Wi-Fi from a personal hotspot —
  * or `constrained` — Low Data Mode on the current network. They are the conditions a photo request's
  * `allowsExpensiveNetworkAccess` / `allowsConstrainedNetworkAccess` hold it back on, so the screen and the transfers
  * read the same thing.

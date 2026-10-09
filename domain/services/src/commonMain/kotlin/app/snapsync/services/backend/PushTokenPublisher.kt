@@ -6,7 +6,7 @@ import app.snapsync.model.toResult
 import app.snapsync.services.identity.PersistedDeviceIdentity
 
 /**
- * Where this device's push token is published so the backend can wake it (capability `receiving-photos`). The
+ * Where this device's push token is published so the backend can wake it. The
  * address and the device id are this service's, so the feature above it holds only the policy (absorb, publish only
  * on a change, retry on the next trigger).
  */

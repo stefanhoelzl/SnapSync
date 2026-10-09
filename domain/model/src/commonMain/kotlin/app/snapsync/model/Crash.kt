@@ -3,8 +3,8 @@ package app.snapsync.model
 import co.touchlab.kermit.Severity
 
 /**
- * The crash-reporting channel's vocabulary (capability `privacy-security`), in the core's own words: what the
- * `CrashReporter` port carries in both directions, so no zone above the adapter names the reporting SDK.
+ * The crash-reporting channel's vocabulary, in the core's own words: what the `CrashReporter` port carries in both
+ * directions, so no zone above the adapter names the reporting SDK.
  *
  * Every rule over these values — what is redacted, what is capped, which event is exempt, what a log line
  * becomes — lives in this file as a pure function, and the services wire them as the port's handlers. The adapter
@@ -99,8 +99,8 @@ sealed interface DumpResult {
     data object Queued : DumpHandOff
 
     /**
-     * Kept on the device at [path] (in the app's own files), because this build reports nowhere (capability
-     * `privacy-security`). It never leaves the phone.
+     * Kept on the device at [path] (in the app's own files), because this build reports nowhere. It never leaves the
+     * phone.
      */
     data class Saved(val path: String) : DumpResult
 
@@ -114,7 +114,7 @@ sealed interface DumpResult {
  */
 sealed interface DumpHandOff : DumpResult
 
-/** What the user is told became of their report (capability `privacy-security`): a hand-off, never a delivery. */
+/** What the user is told became of their report: a hand-off, never a delivery. */
 val DumpResult.outcome: ReportOutcome
     get() = when (this) {
         DumpResult.Queued -> ReportOutcome.SENT
@@ -168,10 +168,10 @@ const val DIAGNOSTIC_DUMP_MESSAGE_PREFIX: String = "Bug Report:"
  * instance): the server drops the `attachment` envelope item entirely, while breadcrumbs are capped at ~100 by the
  * SDK, some 2% of the budget. Context strings came back **byte-identical** at 340 KB each.
  *
- * The dump is NOT scrubbed, and it says so **on the event**: [NON_REDACTED_TAG] is the narrow, deliberate
- * carve-out from the channel's UUID redaction (capability `privacy-security`). A dump is confirmed by the operator
- * and worthless without its ids — including ids the operator quoted in the description. Drop the tag and every
- * future report arrives mangled, with no failing request; `CrashScrubTest` pins both halves.
+ * The dump is NOT scrubbed, and it says so **on the event**: [NON_REDACTED_TAG] is the narrow, deliberate carve-out
+ * from the channel's UUID redaction. A dump is confirmed by the operator and worthless without its ids — including ids
+ * the operator quoted in the description. Drop the tag and every future report arrives mangled, with no failing
+ * request; `CrashScrubTest` pins both halves.
  */
 fun diagnosticDumpEvent(dump: DiagnosticDump): CrashEvent = CrashEvent(
     message = redactEventKeys("$DIAGNOSTIC_DUMP_MESSAGE_PREFIX ${dump.note}"),
@@ -231,12 +231,12 @@ fun scrubbedEvent(event: CrashEvent): CrashEvent {
 class LoggedCrash(val crumb: Crumb, val event: CrashEvent?)
 
 /**
- * The logging seam's mapping onto the channel (capability `privacy-security`): every error a feature already
- * reduces into state and logs is reported without per-call-site instrumentation.
+ * The logging seam's mapping onto the channel: every error a feature already reduces into state and logs is reported
+ * without per-call-site instrumentation.
  *
  * - `Error`/`Assert` become **events** (with the throwable when present). A breadcrumb attached to no event is
  *   never sent anywhere, so a mapping that quietly demoted `Error` would leave the operator's instance looking
- *   healthy while the fleet failed — the silence this capability exists to break.
+ *   healthy while the fleet failed — the silence this channel exists to break.
  * - The line also travels as an error breadcrumb, so the event keeps the line that explains it — WITH its
  *   `[entryPoint]` prefix.
  * - The event itself carries the **bare** redacted message, and the entry point rides as the `entry_point` tag: the

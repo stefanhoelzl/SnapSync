@@ -5,7 +5,7 @@ import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
 
 /**
- * **The platform's push service** (capability `receiving-photos`): ask it for this device's token, and hear the
+ * **The platform's push service**: ask it for this device's token, and hear the
  * token, a failure to get one, and every silent push. On iOS the APNs registration through `UIApplication` and the
  * application delegate's three callbacks; on Android Firebase Cloud Messaging.
  *

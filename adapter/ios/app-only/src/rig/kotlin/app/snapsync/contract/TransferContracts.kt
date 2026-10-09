@@ -257,7 +257,7 @@ internal const val URL_SESSION_SETTLES_AT_ONCE =
     "the URLSession uploader reports a transfer the moment it ends and offers no free retry; nothing is presented later"
 
 /**
- * Why the simulator app never reaches a restricted network (capability `mobile-data`): it shares its Mac's network, which
+ * Why the simulator app never reaches a restricted network: it shares its Mac's network, which
  * iOS never reports as costly or under Low Data Mode. What the request flags do there is measured on the SE2 and the XS
  * (`applyTransferNetwork`); the held clauses run live on the Android emulator.
  */

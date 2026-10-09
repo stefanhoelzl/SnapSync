@@ -30,8 +30,8 @@ import kotlinx.coroutines.withContext
 // Top-level builders rather than `AppCore` bodies because `AppCore` is measured (see `shareSetLoadFor`).
 
 /**
- * Wrap a user tap as a **platform entry point** (spec `privacy-security`; `docs/architecture.md`, "Absence is never
- * silent"). `compose/` is where this must live: it is where the door law says command instances are decorated, and
+ * Wrap a user tap as a **platform entry point** (`docs/architecture.md`, "Absence is never silent"). `compose/` is
+ * where this must live: it is where the door law says command instances are decorated, and
  * the only place that *can* — `:domain:presentation` may not reference `ports/`, so it cannot reach an `EntryContext`.
  *
  * The `tap.` namespace is load-bearing, not cosmetic. Without it a device log cannot say whether work was started by
@@ -90,7 +90,7 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
         eventCreator.create(name, startsAt.at.iso, endsAt.at.iso)
     }
 
-    // The join gate's commit (capability `join-event`): join (no body, no manifest) then
+    // The join gate's commit: join (no body, no manifest) then
     // provision. The outcome is NAMED rather than reduced to a Boolean, because capacity and a
     // transient failure need different screens: one offers a Retry that may work, the other must
     // not offer one at all. The same-event no-op is a success.
@@ -108,14 +108,14 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
             ports.systemUi.share(url, title).recordingRefusal(tapLog, "tap.share")
         }
 
-    // Leaving the app for the store page (capability `app-update-required`) — UI lane and
+    // Leaving the app for the store page — UI lane and
     // instrumented, like every other platform-surface command.
     override fun openLink(url: String) =
         detachedOnCoreLane("tap.openLink", result = { h: Handoff -> "$h" }) {
             ports.systemUi.openUrl(url).recordingRefusal(tapLog, "tap.openLink")
         }
 
-    // The permission user-taps (capability `photo-access`), bound to the gallery here so presentation
+    // The permission user-taps, bound to the gallery here so presentation
     // never names it. Each tap is fire-and-forget: the screen follows the permission read-model StateFlow,
     // never the gallery's answer.
     override fun requestAccess() = detachedOnCoreLane("tap.requestAccess") { ports.gallery.requestAccess() }
@@ -126,7 +126,7 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     // the selection-change seam.
     override fun choosePhotos() = detachedOnCoreLane("tap.choosePhotos") { ports.gallery.widenSelection() }
 
-    // In-place membership reconfigure (capability `manage-membership`): edit direction/
+    // In-place membership reconfigure: edit direction/
     // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
     override suspend fun reconfigure(
         eventId: String,
@@ -142,12 +142,12 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
         reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
     }
 
-    // The device's mobile-data choice from the app menu (capability `mobile-data`): one shared preference, read by
+    // The device's mobile-data choice from the app menu: one shared preference, read by
     // each transfer as it is created, so the change governs only what starts after it.
     override suspend fun setMobileData(on: Boolean): Boolean =
         awaitingOnCoreLane("tap.setMobileData", params = "on=$on") { services.mobileData.set(on) }
 
-    // Rename the joined event (capability `manage-membership`): unlike `reconfigure`, which edits only
+    // Rename the joined event: unlike `reconfigure`, which edits only
     // this device's settings, this rewrites the SHARED event — every member picks the new name up
     // on their next foreground refresh. Fire-and-forget; the outcome rides `renameStatus`.
     override fun rename(eventId: String, name: String) =
@@ -161,7 +161,7 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     // eliminate.
     override suspend fun resetRename() = awaitingOnCoreLane<Unit>("tap.resetRename") { renameEvent.reset() }
 
-    // The diagnostic dump (capability `privacy-security`), fired once the user has
+    // The diagnostic dump, fired once the user has
     // written what went wrong: sent where the build reports, kept on the device where it does not —
     // the process's crash reporting decides, and the answer is logged either way.
     // Core lane and awaited: the dump reads both device logs (~700 KB) before it sends or saves,
@@ -170,11 +170,11 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
         awaitingOnCoreLane<ReportOutcome>("tap.sendDiagnostics", params = "screen=${context.screen}") {
             val result = process.crash.sendDump(collectDiagnosticDump.collect(note, context))
             services.log.i { "diagnostic dump: $result" }
-            // What the user is told (capability `privacy-security`): handed off, kept here, or neither.
+            // What the user is told: handed off, kept here, or neither.
             result.outcome
         }
 
-    // Keep the key a reopened invite of the joined event carries, when this device lost it (capability `join-event`).
+    // Keep the key a reopened invite of the joined event carries, when this device lost it.
     // The work is `AppCore`'s own `restoreEventKey`, named through its receiver: inside this object the bare name is
     // this override.
     override suspend fun restoreEventKey(linkKey: String): Boolean =

@@ -4,8 +4,8 @@ import app.snapsync.ports.ExtensionRegistry
 import co.touchlab.kermit.Logger
 
 /**
- * **Which implementation of the upload-extension registration this target binds** (capability
- * `background-upload`, "The upload-job subsystem binding is fixed by the compilation target").
+ * **Which implementation of the upload-extension registration this target binds**: the
+ * upload-job subsystem binding is fixed by the compilation target.
  *
  * The registration record is OS state exactly as the upload-job queue is, and it is bound the same way and
  * for the same measured reason. `iosArm64` — every shipped binary — binds the PhotoKit implementation.

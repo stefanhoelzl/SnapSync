@@ -4,7 +4,7 @@ import kotlinx.datetime.LocalTime
 import kotlin.math.abs
 
 // Searching a day's times for an allowed one — what turns a wheel's settle on a disallowed row into the
-// nearest valid value (capability `create-event`: a bad range is unreachable, never refused).
+// nearest valid value (a bad range is unreachable, never refused).
 
 private const val HOURS_PER_DAY = 24
 private const val MINUTES_PER_HOUR = 60

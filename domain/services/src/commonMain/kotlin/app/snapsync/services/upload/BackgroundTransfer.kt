@@ -28,7 +28,7 @@ interface BackgroundTransfer {
      * still available, so the cycle can re-create them in this same cycle.
      *
      * A terminal fact never crosses this seam. The platform tells exactly one party that an upload ended,
-     * and that party records it where it survives the process (`photo-sharing`'s guarded `markTerminal`);
+     * and that party records it where it survives the process (the ledger's guarded `markTerminal`);
      * handing the fact up for a later cycle to collect is what made a completed upload re-upload after
      * process death. So a succeeded job is recorded `COMPLETED` and acknowledged in place, and nothing
      * about it reaches the cycle.

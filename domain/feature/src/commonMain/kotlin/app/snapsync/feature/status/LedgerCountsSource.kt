@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The ledger's per-photo done-ness (`sync-status`), read from a **single** ledger `assetProgress()`
+ * The ledger's per-photo done-ness, read from a **single** ledger `assetProgress()`
  * round-trip so the two sets are mutually consistent:
  *
  * - [done] = the `assetId`s all of whose ledger rows are `COMPLETED`.

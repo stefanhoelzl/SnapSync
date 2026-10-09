@@ -16,8 +16,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * The **OS-supplied completion handlers** of one kind of wake, held across that wake's **own work** and released
- * exactly once (capability `sync-status`, "OS completion handlers are released only after their work completes";
- * decision record `changes/own-work-per-wake`, D1, D3 and D5).
+ * exactly once, only after that work completes (decision
+ * record `changes/own-work-per-wake`, D1, D3 and D5).
  *
  * iOS hands one of these to every background wake — the silent-push fetch handler, a `BGTask`'s `setTaskCompleted`,
  * `handleEventsForBackgroundURLSession`'s handler. Calling it declares *"I am done"*, and the system may suspend the
@@ -120,7 +120,7 @@ class OsCompletions(
                 completion.complete()
             } finally {
                 signal.complete(Unit)
-                // Logged, never silent (capability `privacy-security`): a release on the OS's signal is the only
+                // Logged, never silent: a release on the OS's signal is the only
                 // evidence that the wake's own work did not finish inside the time the OS gave it.
                 if (expired != null) {
                     log.w {

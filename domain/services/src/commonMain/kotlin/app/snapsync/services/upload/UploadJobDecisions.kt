@@ -5,7 +5,7 @@ import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJobState
 
 /*
- * The per-job decisions over a platform's upload jobs (capability `background-upload`) — what the PhotoKit adapter
+ * The per-job decisions over a platform's upload jobs — what the PhotoKit adapter
  * used to hold beside its vocabulary mappings (`PhotoKitJobMapping.kt`, decision record
  * `changes/archive/2026-08-09-extract-upload-platform-mappings`). They are the services' since phase 11f: a thin
  * `Upload` port reports job facts, and which row a job belongs to, what a terminal job means and which offered retry
@@ -35,7 +35,7 @@ fun classifyFetchedJob(destinationPath: String?, state: UploadJobState, error: U
     return FetchedJob.Emit(destinationPath = path, state = state, error = error)
 }
 
-/** Whose row a presented job with a destination belongs to (capability `background-upload`). */
+/** Whose row a presented job with a destination belongs to. */
 sealed interface JobRow {
     /** The row exists: settle it, re-create it, or retry it as the job's state says. */
     data class Found(val key: String) : JobRow

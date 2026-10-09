@@ -5,7 +5,7 @@ import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.plugins.HttpTimeout
 
 /**
- * The per-request ceiling every call through this client carries (capability `sync-status`).
+ * The per-request ceiling every call through this client carries.
  *
  * Without one, the request is bounded only by `NSURLSession`'s defaults — and on a background wake that
  * is not a bound at all. The session runs **in-process**, so a suspended app services no socket; its

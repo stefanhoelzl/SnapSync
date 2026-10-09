@@ -47,7 +47,7 @@ kotlin {
 // compile boundary covers generated code too; the pinned db FILENAMES are the runtime identity, never the
 // packages.
 //
-// ---- The schema snapshots (capability `photo-sharing`) --------------------------------------------
+// ---- The schema snapshots -------------------------------------------------------------------------
 //
 // `schemaOutputDirectory` is what makes `verifyCommonMain<Db>Migration` MEAN anything. That task is
 // registered either way and runs inside `./gradlew build` either way — but it verifies by applying

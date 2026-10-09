@@ -90,8 +90,8 @@ internal const val NO_CEILING_YEARS = 100
  *
  * Screen-local navigation, every one of them: opening a confirm dialog, a rename sheet, a bug-report
  * sheet or the reconfigure surface touches no port and is not a state of the sync, so none belongs in
- * `UiState` or in the reduction (capability `manage-membership` calls this "local Compose
- * navigation"; `privacy-security` and `manage-membership` make the same call for their sheets).
+ * `UiState` or in the reduction: it is local Compose navigation, and the report and rename sheets
+ * make the same call.
  *
  * A holder rather than four separate `var`s because the overlays that read them are a composable of
  * their own: four flags would otherwise cross that boundary as four values and four setters.
@@ -100,7 +100,7 @@ internal const val NO_CEILING_YEARS = 100
 @Composable
 fun StatusScreen(
     // Everything this screen renders. The membership, the invite URL, the inline create error and the
-    // rename status all travel INSIDE it (capability `sync-status`): a value the screen shows is a
+    // rename status all travel INSIDE it: a value the screen shows is a
     // value the state carries, so no call site can supply the state and silently omit a rendered value.
     state: UiState,
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string. Required — with NO
@@ -129,7 +129,7 @@ fun StatusScreen(
             null
         }
 
-        // The app menu (capability `sync-status`) is drawn over the whole screen; where the layer withholds it, the
+        // The app menu is drawn over the whole screen; where the layer withholds it, the
         // title row draws no button and the reduction keeps the drawer shut.
         AppMenuDrawer(
             open = state.overlays.menuOpen,
@@ -144,7 +144,7 @@ fun StatusScreen(
                     // real control and appears in the accessibility tree. Not suppressed during a pending switch,
                     // for the same reasons the settings gear is not: `RenameEvent` guards the `eventId` itself,
                     // and suppressing here also hid the pen for the whole of a join's own commit.
-                    // Beneath it, that this device has joined and the event's dates (capability `sync-status`).
+                    // Beneath it, that this device has joined and the event's dates.
                     heading = (state.layer as? Layer.Joined)?.let { joined ->
                         ScreenHeading(
                             text = joined.membership.name,
@@ -176,8 +176,8 @@ fun StatusScreen(
 }
 
 /**
- * The app menu's rows (capability `sync-status`): the device's mobile-data switch set apart at the top (capability
- * `mobile-data`), then the report, then the site's pages, then which build this is — shown, never a control.
+ * The app menu's rows: the device's mobile-data switch set apart at the top, then the report, then the site's
+ * pages, then which build this is — shown, never a control.
  */
 @Composable
 private fun ColumnScope.AppMenu(build: BuildLabel, mobileData: MobileDataState, actions: MenuActions) {
@@ -216,7 +216,7 @@ private fun ColumnScope.AppMenu(build: BuildLabel, mobileData: MobileDataState, 
 }
 
 /**
- * The word on a confirmed report (capability `privacy-security`): what became of it, and never more — "sent" is a
+ * The word on a confirmed report: what became of it, and never more — "sent" is a
  * hand-off, so it claims no delivery, and the failure is told calmly.
  */
 @Composable
@@ -231,13 +231,13 @@ internal fun reportNoticeText(outcome: ReportOutcome): String = stringResource(
 /**
  * What the status screen's own chrome shows, derived once: whether the joined layer's heading, pen and docked
  * footer show — always while joined, since the event's settings open in a sheet OVER the joined screen rather than
- * replacing it (capability `manage-membership`) — and which bottom edge the layer takes.
+ * replacing it — and which bottom edge the layer takes.
  */
 private class StatusChrome(
     val showsJoinedChrome: Boolean,
     val canRename: Boolean,
     val pinsActionCluster: Boolean,
-    /** The joined event has closed: only Leave remains (capability `manage-membership`). */
+    /** The joined event has closed: only Leave remains. */
     val closed: Boolean,
     /** There is a whole invite to offer — not for an encrypted event whose key cannot be read. */
     val invitable: Boolean,
@@ -274,7 +274,7 @@ private fun statusChrome(state: UiState): StatusChrome {
 private fun StatusOverlays(state: UiState, actions: StatusActions) {
     val joined = state.layer as? Layer.Joined
     val overlays = state.overlays
-    // The event's settings, in a sheet over the joined screen (capability `manage-membership`). First, so a
+    // The event's settings, in a sheet over the joined screen. First, so a
     // dialog raised while they are open (a switch, a report) draws above them.
     (joined?.surface as? JoinedSurface.Reconfigure)?.let { settings ->
         ReconfigureSheet(
@@ -336,13 +336,13 @@ private fun LeaveConfirmDialog(actions: StatusActions) {
 }
 
 /**
- * The rename dialog (capability `manage-membership`), opened by the pen beside the heading.
+ * The rename dialog, opened by the pen beside the heading.
  *
  * Pre-filled with the current name; the field is capped at the backend's own 100-character rule and
  * confirm is inert while the trimmed value is empty or unchanged, so a no-op rename never reaches the
  * network. A failure keeps the sheet open with the typed value and an error BANNER — never a reddened
- * field: a server saying no must not read as a complaint about the host's typing (`create-event`
- * makes the same call for the same reason).
+ * field: a server saying no must not read as a complaint about the host's typing (the create
+ * form makes the same call for the same reason).
  */
 @Composable
 private fun RenameSheet(
@@ -371,13 +371,12 @@ private fun RenameSheet(
         field = PromptField(
             placeholder = stringResource(Res.string.event_name_placeholder),
             initialValue = membership.name,
-            // The backend's own bound (capability `event-creation`), enforced by the input so an
+            // The backend's own bound, enforced by the input so an
             // over-long name is unreachable rather than rejected on a round trip. The SAME constant the
             // create form caps at — it was a bare literal here, which is how the two could have drifted.
             maxLength = EVENT_NAME_MAX_LENGTH,
             busy = renameState == RenameState.InFlight,
-            // The reduction names the failure; the words are this screen's, as for the create layer's twin
-            // (capability `manage-membership`).
+            // The reduction names the failure; the words are this screen's, as for the create layer's twin.
             error = (renameState as? RenameState.Failed)?.message?.text(),
         ),
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
@@ -397,7 +396,7 @@ private fun RenameSheet(
  * operator learns what leaves the device.
  *
  * It names the payload rather than asking a bare yes/no, and claims nothing about identifiers being
- * removed (they are not: a report travels verbatim, capability `privacy-security`). Writing the
+ * removed (they are not: a report travels verbatim). Writing the
  * description IS the confirmation, so there is no second dialog behind Send. There is deliberately NO
  * feedback afterwards — the reporting SDK may queue and retransmit later, so "sent" is a claim the app
  * cannot honestly make.
@@ -425,7 +424,7 @@ private fun BugReportSheet(
         field = PromptField(
             placeholder = stringResource(Res.string.report_placeholder),
             // The description titles the report in the error-tracking service, so it is bounded to
-            // stay readable in a list of issues (capability `privacy-security`).
+            // stay readable in a list of issues.
             maxLength = 200,
             // A report the app offered opens with its description written, which may be sent as it stands.
             initialValue = seed?.reportSeed().orEmpty(),
@@ -440,10 +439,10 @@ private fun BugReportSheet(
 }
 
 /**
- * The joined layer's docked footer (capabilities `manage-membership`, `sync-status`): the two equal ways to
+ * The joined layer's docked footer: the two equal ways to
  * invite — share the link, show its QR code — then, set apart by a line, the quiet text actions for the
  * event's settings and for leaving. A CLOSED event admits nobody and changes nothing any more, so it offers
- * only Leave (capability `manage-membership`); an encrypted event whose key this device cannot read offers no invite.
+ * only Leave; an encrypted event whose key this device cannot read offers no invite.
  *
  * Settings is deliberately NOT suppressed while a `pendingSwitch` is carried, though it once was: the race that
  * justified it is prevented downstream by `ReconfigureEvent`'s own `eventId` guard, and a `pendingSwitch` is
@@ -452,7 +451,7 @@ private fun BugReportSheet(
  */
 @Composable
 private fun JoinedFooter(actions: StatusActions, closed: Boolean, invitable: Boolean) {
-    // An encrypted event's invite is offered only whole (capability `manage-membership`): no key read, no invite.
+    // An encrypted event's invite is offered only whole: no key read, no invite.
     if (!closed && invitable) {
         AppFooterTextActions {
             ShareTextAction(label = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
@@ -483,7 +482,7 @@ private fun ColumnScope.CurrentLayer(
     state: UiState,
     // Needed by the CREATE form (its own name/date draft, held by `CreateFlow`) and by the joined layer's
     // explanation, which names the member's shared range. The RANGE form no longer needs it: its bounds arrive
-    // resolved (capability `sync-status`).
+    // resolved.
     cutoff: CutoffFormatter,
     actions: StatusActions,
 ) {
@@ -491,7 +490,7 @@ private fun ColumnScope.CurrentLayer(
         is Layer.UpdateRequired ->
             UpdateRequiredScreen(layer, actions.onOpenLink)
         // ONE branch for both create layers, so the form's draft survives a failed create's round trip
-        // through the in-flight screen (capability `create-event`) — see [CreateFlow].
+        // through the in-flight screen — see [CreateFlow].
         is Layer.CreateEvent, Layer.CreatingEvent ->
             CreateFlow(
                 layer,

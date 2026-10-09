@@ -5,7 +5,7 @@ import app.snapsync.ports.NetworkMonitor
 import kotlinx.coroutines.flow.Flow
 
 /**
- * The device's network as the operating system reports it to the app (capability `sync-status`) — the
+ * The device's network as the operating system reports it to the app — the
  * [NetworkMonitor] port, for the feature that decides what the member is told and may not see a port
  * (`docs/architecture.md`, "a feature sees services, never ports").
  *

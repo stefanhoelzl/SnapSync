@@ -10,7 +10,7 @@ import app.snapsync.model.runCatchingCancellable
 
 /**
  * The file-backed config read — one read of the config file in the shared area, as the `Files` port answered it —
- * pure so every branch runs in `commonTest` (capability `join-event`):
+ * pure so every branch runs in `commonTest`:
  *
  * - [FileResult.Ok] → decode via the versioned envelope (`decodeConfigFile`, `model/`): valid →
  *   [ConfigRead.Joined]; same-version-but-unusable → [ConfigRead.Unavailable] (unlike the retired Keychain legacy
@@ -19,7 +19,7 @@ import app.snapsync.model.runCatchingCancellable
  *   [ConfigRead.Unavailable] (a future build's file must never read as a leave); not UTF-8 → [ConfigRead.Unavailable].
  * - [FileResult.NotFound] → [ConfigRead.None], **definitively not joined**, consulting nothing — the sole road to
  *   "this device left the event". An App-Group container dies with the install, so this is also what makes a
- *   reinstall a leave (capability `photo-sharing`). Until the Stage-2 change this branch consulted a read-only
+ *   reinstall a leave. Until the Stage-2 change this branch consulted a read-only
  *   legacy-Keychain fallback (decision record: `changes/archive/…-retire-legacy-config-fallback` D1); there is no
  *   second opinion any more, so the `Files` adapter's not-found classification is solely load-bearing: widening it is
  *   a change to the leave decision, not an error-handling detail.
@@ -29,8 +29,8 @@ import app.snapsync.model.runCatchingCancellable
  *
  * Each [ConfigRead.Unavailable] carries a distinct detail, so a device log can tell the causes apart.
  *
- * It stays a `:domain` function rather than collapsing into the service's I/O (`join-event` requires the read
- * algorithm be pure and `commonTest`-covered on both targets): the one decision in the app that can silently log a
+ * It stays a `:domain` function rather than collapsing into the service's I/O (the read
+ * algorithm must be pure and `commonTest`-covered on both targets): the one decision in the app that can silently log a
  * user out must not be testable on macOS only.
  */
 fun configReadViaFile(file: FileResult<ByteArray>): ConfigRead = when (file) {

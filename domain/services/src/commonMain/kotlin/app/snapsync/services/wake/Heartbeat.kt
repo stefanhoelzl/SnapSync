@@ -12,10 +12,10 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * **The app's heartbeat** (capabilities `background-upload`, "Photos upload without the app being opened", and
- * `receiving-photos`, "New photos are announced by a silent wake, and never only by it"): the timed background wake
- * that keeps the process tail running while the app is closed — **busy** while work remains, **idle** otherwise, and
- * pending for as long as the device is joined (decision record `changes/timely-background-receiving`, D1).
+ * **The app's heartbeat** (photos upload without the app being opened, and new photos are announced by a silent
+ * wake, and never only by it): the timed background wake that keeps the process tail running while the app is
+ * closed — **busy** while work remains, **idle** otherwise, and pending for as long as the device is joined
+ * (decision record `changes/timely-background-receiving`, D1).
  *
  * Owns what the wakes ARE — their delays and the heartbeat's network requirement — over the thin [Wake] port.
  * **When** and at which cadence each is armed is the tail runner's rule (`feature/upload/TailRunner`); a disarm
@@ -32,7 +32,7 @@ import kotlin.time.Duration.Companion.seconds
 class Heartbeat(
     private val wake: Wake,
     /**
-     * The networks the membership's photo transfers may use (capability `mobile-data`), read at each arm: a BUSY
+     * The networks the membership's photo transfers may use, read at each arm: a BUSY
      * heartbeat for a member who keeps photos off mobile data waits for an unrestricted network, because the transfers
      * it would run wait for one anyway — and where nothing else holds an upload for it (Android's in-process uploader)
      * this wake is what resumes it once the phone reaches Wi-Fi. An idle heartbeat moves no photo, so it keeps waiting

@@ -9,7 +9,7 @@ import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
 
 /**
- * The library read for admission (capability `sync-status`), over the [GalleryReader]: facts now, and the
+ * The library read for admission, over the [GalleryReader]: facts now, and the
  * admitted assets' resources later, fetched together in one request ([resourceBatch]).
  *
  * [CandidateRead.NotReadable] only when the gallery itself cannot be read. Whether a partial grant's selection

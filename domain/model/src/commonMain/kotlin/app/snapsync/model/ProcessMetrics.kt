@@ -5,8 +5,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * One report about this process's own behaviour, as some platform accounted for it (capability
- * `privacy-security`; the seam is `ports/ProcessMetrics`).
+ * One report about this process's own behaviour, as some platform accounted for it (the seam is
+ * `ports/ProcessMetrics`).
  *
  * **Deliberately an open bag of strings.** The provider flattens whatever the platform serialized,
  * and `:domain` never changes to accommodate a field a future OS adds — it simply appears. There is

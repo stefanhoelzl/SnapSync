@@ -7,7 +7,7 @@ import app.snapsync.model.Reply
 
 /**
  * Minting an event. [endsAt] is the host's chosen event-window end (a canonical `…Z` string); it is **nullable**
- * because the backend treats an absent `endsAt` as "use the legacy `startsAt + 30d`" (capability `event-lifetime`).
+ * because the backend treats an absent `endsAt` as "use the legacy `startsAt + 30d`".
  * The interactive create always supplies one (the create screen requires a range).
  */
 interface EventCreation {
@@ -16,7 +16,7 @@ interface EventCreation {
 }
 
 /**
- * Renaming an event (capability `manage-membership`). Non-throwing: a transport or parse error maps to
+ * Renaming an event. Non-throwing: a transport or parse error maps to
  * [RenameOutcome.Transient], never an exception.
  *
  * [name] arrives **already trimmed** by the caller, matching [EventCreation]'s contract; the backend trims again and
@@ -36,12 +36,12 @@ fun interface EventRename {
  * refusals: a `400` whose body names neither date stays a refused name, as every `400` was before the range could
  * be refused on its own.
  *
- * `startsAt` is sent **verbatim**: the caller's contract is that it is already the canonical cutoff shape
- * (capability `photo-sharing`), and the backend rejects anything else with a `400`. Reformatting or re-deriving it
+ * `startsAt` is sent **verbatim**: the caller's contract is that it is already the canonical cutoff shape,
+ * and the backend rejects anything else with a `400`. Reformatting or re-deriving it
  * here would introduce a second origin for a value whose whole point is having exactly one.
  *
  * [zone] answers the device's zone at the moment of the create — the zone the host picked the range in — which the
- * backend keeps for the event page alone (capability `event-site`). It never refuses a create.
+ * backend keeps for the event page alone. It never refuses a create.
  */
 class BackendEventCreation(
     private val backend: AuthenticatedBackend,

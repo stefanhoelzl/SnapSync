@@ -6,15 +6,14 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 /**
- * The **config-file envelope** (capability `join-event`, migration step 11a): the persisted
- * [EventConfig] rides in an App-Group file as `{"v": <version>, "payload": <EventConfig JSON>}`.
+ * The **config-file envelope** (migration step 11a): the persisted [EventConfig] rides in an App-Group file as
+ * `{"v": <version>, "payload": <EventConfig JSON>}`.
  *
- * The envelope exists for exactly one reason: a **future build must be able to change the format
- * without a past build misreading the result as a leave**. The file read is what decides "this
- * device left the event" (capability `photo-sharing`), so a revert build that opens a
- * successor's file must land on *unreadable* ([ConfigFileDecode.Foreign]) — deferring, membership
- * intact — never on *absent*. A bare `EventConfig` JSON could not make that distinction: any
- * unparseable content would be indistinguishable from a corrupt current-format file.
+ * The envelope exists for exactly one reason: a **future build must be able to change the format without a past build
+ * misreading the result as a leave**. The file read is what decides "this device left the event", so a revert build
+ * that opens a successor's file must land on *unreadable* ([ConfigFileDecode.Foreign]) — deferring, membership intact —
+ * never on *absent*. A bare `EventConfig` JSON could not make that distinction: any unparseable content would be
+ * indistinguishable from a corrupt current-format file.
  *
  * Version handling, exhaustively:
  * - `v == 1`, payload decodes → [ConfigFileDecode.Valid].
@@ -23,8 +22,8 @@ import kotlinx.serialization.json.JsonElement
  *   adapter's own atomic writes should make an unusable current-version file unreachable, so one
  *   is an unexplained state, and an unexplained state defers rather than driving a leave. (The
  *   Keychain legacy-item rule — undecodable reads as no config — deliberately does NOT transfer;
- *   it stays in force on the Keychain side only.) Nothing uploads meanwhile either way
- *   (capability `photo-sharing`), and a re-scan overwrites the file.
+ *   it stays in force on the Keychain side only.) Nothing uploads meanwhile either way, and a re-scan
+ *   overwrites the file.
  * - any other `v` (a future format) → [ConfigFileDecode.Foreign] — this build cannot interpret it,
  *   which is *unreadable*, never *absent* and never a crash.
  * - text that is not an envelope at all → [ConfigFileDecode.Foreign]: only content this build can

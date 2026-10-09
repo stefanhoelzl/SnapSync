@@ -52,7 +52,7 @@ import app.snapsync.ui.resources.join_button
 import app.snapsync.ui.resources.join_button_allow
 import org.jetbrains.compose.resources.stringResource
 
-// The **Ready** join surface (capability `join-event`): the decision the guest actually makes. Split out of
+// The **Ready** join surface: the decision the guest actually makes. Split out of
 // `JoinFlowScreens.kt` because that file holds the OTHER join shape — the status-plus-actions phases and the
 // scaffold they opt into — and Ready is the one phase that declines it.
 
@@ -61,8 +61,8 @@ import org.jetbrains.compose.resources.stringResource
  * ([ParticipationSections]) scrolling between two lines, and Join / Cancel pinned at the bottom as the joined
  * screen's footer actions — borderless, glyph-led, a row each.
  *
- * **Photo access is part of this surface, not a step before it** (capabilities `join-event`,
- * `photo-access`). For a guest iOS has never asked ([ReadyState.asksAccessOnJoin]) a one-line notice above
+ * **Photo access is part of this surface, not a step before it**.
+ * For a guest iOS has never asked ([ReadyState.asksAccessOnJoin]) a one-line notice above
  * the confirm says iOS asks next, its ⓘ opens the explanation as a sheet that raises nothing, and the confirm
  * reads "Join & allow photos" — tapping it is the deliberate action that raises iOS's dialog, and the join
  * goes ahead whatever the answer. Everyone else sees plain "Join" and no notice.
@@ -141,9 +141,9 @@ private fun ReadyNotices(state: ReadyState) {
 private val BAND_GAP = 12.dp
 
 /**
- * The photo-access explanation, on request (capability `join-event`): share-first (the automatic sharing is
+ * The photo-access explanation, on request: share-first (the automatic sharing is
  * the half that deserves informed consent, so it leads), then that the library is needed for BOTH halves,
- * then that picking specific photos is a first-class choice (capability `photo-access`), then the range.
+ * then that picking specific photos is a first-class choice, then the range.
  * Reading it raises nothing — closing is its only action.
  */
 @Composable
@@ -173,7 +173,7 @@ private fun AccessExplanation() {
 
 /**
  * What the album will collect, named exactly for the switches currently on, so the row can never claim a feed
- * the membership does not have (capability `event-album`). A folder album (Android) holds only what is received:
+ * the membership does not have. A folder album (Android) holds only what is received:
  * the member's own photos stay where their camera saved them, and the note says so.
  */
 @Composable
@@ -199,7 +199,7 @@ internal class ReadyState(
     val participation: ParticipationState,
     /** Confirming also raises iOS's photo-access dialog — see [ReadyLayout]. */
     val asksAccessOnJoin: Boolean,
-    /** The app has a network: without one, Join waits — the screen's notice says why (capability `join-event`). */
+    /** The app has a network: without one, Join waits — the screen's notice says why. */
     val online: Boolean = true,
 ) {
     /** The join button is enabled on the same rule the reduction commits on. */

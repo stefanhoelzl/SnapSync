@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.dp
  * The text-prompt sheet — the app's bottom sheet for collecting one piece of text, with a confirm and a
  * cancel action.
  *
- * **General, not purpose-named.** It serves the diagnostic dump's bug report (capability
- * `privacy-security`) and the event rename (capability `manage-membership`) as ONE component. It was
+ * **General, not purpose-named.** It serves the diagnostic dump's bug report
+ * and the event rename as ONE component. It was
  * `AppBugReportSheet` while it had a single caller; the second caller wanted the same sheet with a
  * pre-filled value, an error slot, and a busy state, and a second near-identical overlay would have been
  * two components for one meaning. The inventory grows demand-driven with the screens that need it.
@@ -100,7 +100,7 @@ fun AppTextPromptSheet(
     val submittable = written.isNotEmpty() && (field.submitUnchanged || written != field.initialValue.trim())
 
     // Busy refuses the swipe-down, a tap outside, the back gesture and the cancel button alike: a request in flight
-    // has no honest cancellation, so there is one answer for every dismissal route (capability `sync-status`).
+    // has no honest cancellation, so there is one answer for every dismissal route.
     val dismissIfIdle = {
         if (!field.busy) onDismiss()
     }
@@ -202,7 +202,7 @@ class PromptField(
     /**
      * Whether [initialValue] may be confirmed as it stands. `false` for an EDIT of an existing value (a rename),
      * where an unchanged text is a no-op; `true` for a text the app wrote for the user to send — a report it offered
-     * (capability `privacy-security`) — which the user may change but need not.
+     * — which the user may change but need not.
      */
     val submitUnchanged: Boolean = false,
 )

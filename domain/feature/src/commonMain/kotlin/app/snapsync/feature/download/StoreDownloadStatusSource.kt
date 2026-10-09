@@ -20,8 +20,8 @@ import kotlinx.coroutines.flow.asStateFlow
 class StoreDownloadStatusSource(
     private val store: DownloadService,
     // The current membership's event, or `null` with none. The store keeps every past event's imported rows
-    // (they are the suppression handles), so the counts must be scoped to the event on screen (capability
-    // `sync-status`): unscoped, "received" was every foreign photo the device ever imported.
+    // (they are the suppression handles), so the counts must be scoped to the event on screen: unscoped,
+    // "received" was every foreign photo the device ever imported.
     private val currentEvent: () -> String?,
 ) : DownloadStatusSource {
     private val _progress = MutableStateFlow(DownloadProgress.UNREAD)
@@ -29,13 +29,13 @@ class StoreDownloadStatusSource(
 
     /**
      * ONE read, so the published projection cannot be a torn composite of counts taken at three different
-     * instants (capability `receiving-photos`).
+     * instants.
      *
-     * **Keep-last-good on failure**, matching `ReadingLedgerCountsSource` — the group's other member — rather
-     * than throwing (capability `sync-status`, "The cheap local status reads are one bounded group"). Two
-     * callers make that load-bearing: the foreground refresh runs as one child of the `Foreground` flow's
-     * `coroutineScope`, so an escaping failure would cancel its SIBLINGS (the download reconcile, the
-     * staged-byte reclaim, the membership refresh) — which the spec forbids outright; and the poll ticks this
+     * **Keep-last-good on failure**, matching `ReadingLedgerCountsSource` — the other member of the one bounded
+     * group the cheap local status reads form — rather than throwing. Two callers make that load-bearing: the
+     * foreground refresh runs as one child of the `Foreground` flow's `coroutineScope`, so an escaping failure
+     * would cancel its SIBLINGS (the download reconcile, the staged-byte reclaim, the membership refresh) — which
+     * is forbidden outright; and the poll ticks this
      * every cadence, where a store error would otherwise be raised over and over.
      *
      * A failed read leaves the last good value standing, which is the honest answer: it is still the most

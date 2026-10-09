@@ -9,9 +9,9 @@ import app.snapsync.ports.GalleryReader
 import co.touchlab.kermit.Logger
 
 /**
- * The event album's and the denylist's album operations over the [GalleryReader] (capabilities `event-album`,
- * `photo-sharing`). The gallery only lists and fills albums; which titles are denied is decided here, by the
- * [SelectionCalibration] the caller passes, and matched per [SelectionCalibration.isDenylistedAlbum].
+ * The event album's and the denylist's album operations over the [GalleryReader]. The gallery only lists and
+ * fills albums; which titles are denied is decided here, by the [SelectionCalibration] the caller passes, and matched
+ * per [SelectionCalibration.isDenylistedAlbum].
  */
 class GalleryAlbums(
     private val gallery: GalleryReader,

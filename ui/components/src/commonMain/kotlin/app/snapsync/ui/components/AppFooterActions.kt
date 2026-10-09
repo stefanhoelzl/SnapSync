@@ -29,7 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /*
- * The footer actions (capability `sync-status`): borderless text actions, each led by its glyph, in rows of equal
+ * The footer actions: borderless text actions, each led by its glyph, in rows of equal
  * halves — on the joined screen the invite (share, QR code) above the membership (settings, Leave); on the join gate
  * Join above Cancel, a row each, so the longer "Join & allow photos" keeps its whole label. Emphasis and glyph are
  * design-time choices, so each meaning is its own component and the call site passes only a label and a click.

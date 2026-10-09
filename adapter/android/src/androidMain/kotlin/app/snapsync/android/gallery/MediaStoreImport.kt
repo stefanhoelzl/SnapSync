@@ -23,9 +23,9 @@ import java.io.IOException
 import kotlin.time.Instant
 
 /**
- * Rebuilding a foreign photo in the member's library (capability `receiving-photos`): one MediaStore item, owned by this
- * app, never visible half-written — in the event album's folder when the import names one (capability `event-album`:
- * a received photo is in the album the moment it exists, never loose first), in `DCIM/Camera` otherwise.
+ * Rebuilding a foreign photo in the member's library: one MediaStore item, owned by this app, never visible
+ * half-written — in the event album's folder when the import names one (a received photo is in the album the moment
+ * it exists, never loose first), in `DCIM/Camera` otherwise.
  *
  * 1. **Insert pending** (`IS_PENDING = 1`) into the image or video collection, by the `PRIMARY` resource's content
  *    type. A pending item is invisible to every other app and to this app's own reads, so its `_ID` — the asset's
@@ -49,8 +49,7 @@ import kotlin.time.Instant
  * **MediaStore stores whatever bytes it is given**, so the library's own "reject what I cannot read" is done here: an
  * original that does not decode (an image with no bounds, a video with no dimensions), and a content type that is
  * neither an image nor a video, are refused for good ([ImportResult.Failed] with `consumedResources`), so the photo is
- * settled rather than retried forever and never lands in the camera roll broken (capability `receiving-photos`, "A
- * photo the library rejects").
+ * settled rather than retried forever and never lands in the camera roll broken.
  */
 internal class MediaStoreImport(context: Context, private val log: Logger) {
 

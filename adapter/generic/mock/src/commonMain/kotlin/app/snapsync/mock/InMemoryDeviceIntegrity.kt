@@ -70,7 +70,7 @@ internal class EnclaveKeys {
 
 /**
  * The chain summary every fresh mock proof carries, as an Android Keystore proof does — so a report offered for a refused
- * phone has certificate facts to carry (capability `privacy-security`). Fixed: a report reads the same every run.
+ * phone has certificate facts to carry. Fixed: a report reads the same every run.
  */
 private const val MOCK_ROOT = "CN=Mock Root,O=SnapSync Mock"
 

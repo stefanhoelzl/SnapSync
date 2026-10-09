@@ -5,8 +5,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 
 /**
- * The minimum version out of a `426 Upgrade Required` body, or `null` when it does not carry one
- * (capability `app-update-required`).
+ * The minimum version out of a `426 Upgrade Required` body, or `null` when it does not carry one.
  *
  * A pure codec, here in `model/` rather than in the version gate that reads it, for the reason every
  * codec is here: it is the one definition of a wire shape, and it is unit-testable without a client, a

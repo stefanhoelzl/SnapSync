@@ -20,8 +20,8 @@ import kotlin.coroutines.cancellation.CancellationException
 private const val UNION_TIMEOUT_MS = 15_000L
 
 /**
- * The join-time adoption (capability `receiving-photos`, "A deleted received photo never comes back" and "Received
- * photos are never shared back"): at a provision into a **new** membership, recognise the photos still in the library
+ * The join-time adoption — a deleted received photo never comes back, and received photos are never shared back:
+ * at a provision into a **new** membership, recognise the photos still in the library
  * that an earlier install received for this event, by the SnapSync mark each one's filename carries
  * ([ReceivedPhotoName]), and record each as its ref's confirmed import.
  *
@@ -84,7 +84,7 @@ class ReceivedPhotoAdoption(
     }
 
     /**
-     * The app's answer to a photo grant (capability `receiving-photos`): a grant that is [usable] while [joined] first
+     * The app's answer to a photo grant: a grant that is [usable] while [joined] first
      * recognises the photos an earlier install received — BEFORE the uploads are armed and the staged downloads
      * imported, because a reinstall's rejoin always provisions with the access dialog still open (design
      * `mark-received-photos`, D4). Answers [usable], so the download drain may import only once this has run.

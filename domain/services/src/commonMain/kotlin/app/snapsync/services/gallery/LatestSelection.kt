@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 
 /**
- * **The latest selection snapshot** of a partial grant (capability `photo-access`) — set only by [follow], from the
+ * **The latest selection snapshot** of a partial grant — set only by [follow], from the
  * gallery's selection observer. The walk-vs-snapshot decision is DERIVED per read from the current grant and this cell
  * ([scopeUnder]), so it has exactly one owner and no stored mode can go stale across a permission flip. `null` is "not
  * read yet", which is NOT an empty selection: it derives `SelectionScope.Unread`, and the app's upload admission
@@ -45,8 +45,8 @@ class LatestSelection {
 
     /**
      * Follow the gallery's selection [changes]: each one becomes the latest snapshot, then [onChanged] runs — one
-     * emission, ONE read serving every consumer (capability `photo-access`, "One discovery serves both the status total
-     * and the enqueue"). Returns only when [changes] is closed.
+     * emission, ONE read serving every consumer: one discovery serves both the status total
+     * and the enqueue. Returns only when [changes] is closed.
      */
     suspend fun follow(changes: ReceiveChannel<SelectionSnapshot>, onChanged: suspend () -> Unit) {
         for (change in changes) {

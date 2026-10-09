@@ -11,7 +11,7 @@ import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 
 /*
- * Where each process writes its device log (capability `privacy-security`).
+ * Where each process writes its device log.
  *
  * The **app** writes its own `Documents/`[APP_LOG_FILE_NAME], exactly as it always has — a process can
  * always read its own container, so relocating it would buy no capability while breaking every

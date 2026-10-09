@@ -1,10 +1,10 @@
 package app.snapsync.model
 
 /**
- * Where the backend sends this device's silent pushes (capability `receiving-photos`) — the device's registered
- * push token, as the backend stores it. [kind] names the push service ([PUSH_KIND_APNS], [PUSH_KIND_FCM]), stated by
- * the `PushNotifications` adapter; [env] is the build's, never the delivery's: APNs' `"sandbox"` (dev/sideloaded
- * builds) or `"production"` (TestFlight/App Store), and on FCM the Firebase project the token belongs to.
+ * Where the backend sends this device's silent pushes — the device's registered push token, as the backend stores it.
+ * [kind] names the push service ([PUSH_KIND_APNS], [PUSH_KIND_FCM]), stated by the `PushNotifications` adapter; [env]
+ * is the build's, never the delivery's: APNs' `"sandbox"` (dev/sideloaded builds) or `"production"` (TestFlight/App
+ * Store), and on FCM the Firebase project the token belongs to.
  */
 data class PushEndpoint(val kind: String, val token: String, val env: String)
 
@@ -22,8 +22,7 @@ const val PUSH_KIND_FCM: String = "fcm"
 data class PushToken(val value: String)
 
 /**
- * A silent push as it arrived, its [payload] kept **whole** (capability `receiving-photos`): the `model/` codec
- * ([pushEventId]) is the one place that knows the payload's shape, so an adapter forwards what the platform handed
- * it and reads nothing out of it.
+ * A silent push as it arrived, its [payload] kept **whole**: the `model/` codec ([pushEventId]) is the one place that
+ * knows the payload's shape, so an adapter forwards what the platform handed it and reads nothing out of it.
  */
 class PushMessage(val payload: Map<Any?, *>)

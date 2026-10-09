@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * The longest event name the backend accepts (capability `event-creation`).
+ * The longest event name the backend accepts.
  *
  * **The backend's rule, mirrored — not a second rule.** `api/src/validators.ts` holds the authority
  * (`MAX_EVENT_NAME_LENGTH`); this is the client's copy of it, so the name field can cap typing and make

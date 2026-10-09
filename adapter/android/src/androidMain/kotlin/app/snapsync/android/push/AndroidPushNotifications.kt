@@ -41,7 +41,7 @@ class FirebaseConfig(
 }
 
 /**
- * The Android [PushNotifications] (capability `receiving-photos`): Firebase Cloud Messaging, the counterpart of APNs.
+ * The Android [PushNotifications]: Firebase Cloud Messaging, the counterpart of APNs.
  *
  * - **Its kind is [PUSH_KIND_FCM]**, which the device's registration carries, so the backend sends through FCM.
  * - **Firebase is started here, by hand**, from [config] — the manifest removes Firebase's auto-start provider, so a

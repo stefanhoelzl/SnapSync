@@ -88,10 +88,11 @@ class ProcessServices internal constructor(
     /** A logger over THIS process's writers, for the composition's own lines — see [ProcessLogWriters.logger]. */
     fun logger(tag: String): Logger = logging.logger(tag)
 
-    /** Where a bug report goes on this build (capability `privacy-security`) — [CrashReporting.reportDestination]. */
+    /** Where a bug report goes on this build — [CrashReporting.reportDestination]. */
     val reportDestination: ReportDestination get() = crash.reportDestination
 
-    /** Which build this is, as the app menu shows it (capability `sync-status`). */
+    /** Which build this is, as the app menu shows it. */
+
     val buildLabel: BuildLabel
         get() = BuildLabel(version = build.appVersion, buildNumber = build.diagnostics.buildNumber)
 }

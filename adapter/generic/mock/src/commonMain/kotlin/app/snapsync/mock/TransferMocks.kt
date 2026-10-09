@@ -62,7 +62,7 @@ class CreatedUpload(val filename: String, val contentType: String) {
  *   it is presented as terminal and handed back for re-creation.
  * - While [restricted] — the device on mobile data, a hotspot or under Low Data Mode — the OS performs NO job, whatever
  *   its request's network rule (measured on the SE2, iOS 26.6.2, 2026-10-03: PhotoKit held a job on a hotspot and in
- *   Low Data Mode with no rule set; capability `mobile-data`): `completeJob` leaves it pending.
+ *   Low Data Mode with no rule set): `completeJob` leaves it pending.
  */
 class UploadQueueMock(
     internal val network: UploadNetwork,
@@ -225,12 +225,12 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
  *
  * The operator plays the OS's network ([UploadSessionOperator.complete]): a transfer lands on [network] as the
  * backend's byte route receives it, and its answer is reported to the process that registered last. A transfer whose
- * request keeps it off the device's current network ([held], capability `mobile-data`) is not performed: it stays live
+ * request keeps it off the device's current network ([held]) is not performed: it stays live
  * until the network allows it.
  */
 class UploadSessionMock(
     internal val network: UploadNetwork,
-    /** Whether the device's network holds a transfer created under this rule (capability `mobile-data`). */
+    /** Whether the device's network holds a transfer created under this rule. */
     internal val held: (TransferNetwork) -> Boolean,
 ) {
     internal class Transfer(val tag: String, val target: UploadTarget)
@@ -377,7 +377,7 @@ fun interface TemporaryFiles {
  */
 class DownloadSessionMock(
     private val temporaryFiles: TemporaryFiles? = null,
-    /** Whether the device's network holds a transfer started under this rule (capability `mobile-data`). */
+    /** Whether the device's network holds a transfer started under this rule. */
     internal val held: (TransferNetwork) -> Boolean,
     /**
      * What the member who uploaded a transfer's bytes would have stored, given what the transfer brought: sealed under

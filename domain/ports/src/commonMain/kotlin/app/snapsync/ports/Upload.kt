@@ -9,7 +9,7 @@ import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 
 /**
- * **The platform's background uploads** (capability `background-upload`): on iOS ≥26.1 the PhotoKit upload-job queue
+ * **The platform's background uploads**: on iOS ≥26.1 the PhotoKit upload-job queue
  * the OS runs for the extension, and on every iOS the app's background `URLSession`. One external system, deciding
  * nothing: which ledger row a job belongs to, what a terminal job means, and when a failure is re-created are the upload
  * services' (`:domain:services`, services/upload).

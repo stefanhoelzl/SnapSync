@@ -46,7 +46,7 @@ import kotlinx.datetime.plus
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * The event's date range, picked inline on the create screen (capability `create-event`): a summary of both
+ * The event's date range, picked inline on the create screen: a summary of both
  * ends, a month calendar, and the From / Until time wheels — all in view at once, with nothing to open and
  * nothing to confirm. A tap on a day and a settle of a wheel each hand [onChange] the next [EventRange];
  * the rules live in `EventRange.kt`, so this only renders and routes gestures.
@@ -57,8 +57,8 @@ import org.jetbrains.compose.resources.stringResource
  * range — days outside them are greyed, and times outside them cannot be settled on.
  *
  * While the end time is incomplete, its summary is a tap target that calls [onPickEndTime]; each increment of
- * [showEndTime] brings the time wheels into view and briefly outlines the Until wheels (capability
- * `create-event`, "The next missing step leads to where it is done"). Starting to move the Until minutes with
+ * [showEndTime] brings the time wheels into view and briefly outlines the Until wheels —
+ * the next missing step leads to where it is done. Starting to move the Until minutes with
  * the hour blank fills the hour from [currentHour] — the clock's, which this module does not read — and the
  * calendar marks [today], the clock's date.
  *
@@ -235,7 +235,7 @@ private fun RangeTimes(
             onMinute = {
                 onChange(range.settleUntilMinute(it, bounds, currentHour()))
             },
-            // Moving the minutes with the hour blank means "this hour": the clock's (capability `create-event`).
+            // Moving the minutes with the hour blank means "this hour": the clock's.
             onMinuteDragStart = {
                 if (range.untilHour == null) onChange(range.fillUntilHour(currentHour(), bounds))
             },

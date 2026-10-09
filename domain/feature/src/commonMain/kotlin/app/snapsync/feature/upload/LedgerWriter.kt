@@ -61,16 +61,16 @@ class LedgerWriter(
     suspend fun recordFailed(resource: Resource) = record(resource, LedgerState.DISCOVERED)
 
     /**
-     * Delete exactly the rows keyed by [keys] — the cycle's one row deletion (capability `photo-sharing`,
-     * "Deletion is a presence diff over an authoritative walk"). A sync write by the single writer, and
+     * Delete exactly the rows keyed by [keys] — the cycle's one row deletion, since deletion is a presence
+     * diff over an authoritative walk. A sync write by the single writer, and
      * key-scoped on purpose: the caller holds evidence about individual rows, never about every row an
      * asset has.
      */
     suspend fun deleteKeys(keys: Collection<String>) = backend.deleteKeys(keys)
 
     /**
-     * Fill an already-recorded row's manifest detail from the freshly discovered [resource]
-     * (capability `photo-sharing`). A no-op unless the row is still bare.
+     * Fill an already-recorded row's manifest detail from the freshly discovered [resource]. A no-op
+     * unless the row is still bare.
      *
      * This is what makes the ledger-backed manifest survive a re-join: the reconcile seeds
      * `COMPLETED` rows from a filename listing, the engine then answers `AlreadyUploaded` for each
@@ -84,7 +84,7 @@ class LedgerWriter(
     suspend fun manifestRows(): List<LedgerEntry> = backend.manifestRows()
 
     /**
-     * Every row that needs an upload job — the cycle's **source of work** (capability `photo-sharing`): the
+     * Every row that needs an upload job — the cycle's **source of work**: the
      * `DISCOVERED` rows, never attempted or returned there by a failure, in a stable key order.
      *
      * Unbounded: the caller admits these rows against the membership's current policy and bounds what it

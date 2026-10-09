@@ -8,7 +8,7 @@ import app.snapsync.services.secure.persist
 import app.snapsync.services.secure.readExisting
 
 /**
- * The device token and its App Attest `keyId` (capability `privacy-security`): [AttestStore] over two [SecureStore]
+ * The device token and its App Attest `keyId`: [AttestStore] over two [SecureStore]
  * slots both processes read — the extension must read the token, and the OS invokes it while the device is locked.
  *
  * Reads use `readExisting`, never a mint: there is nothing to generate — a token comes from the backend, a keyId

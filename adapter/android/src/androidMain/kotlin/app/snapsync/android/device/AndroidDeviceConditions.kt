@@ -13,7 +13,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceConditions
 
 /**
- * The Android [DeviceConditions] (capability `privacy-security`): Battery Saver, the battery-optimisation exemption and
+ * The Android [DeviceConditions]: Battery Saver, the battery-optimisation exemption and
  * the thermal status from `PowerManager`, this app's standby bucket from `UsageStatsManager`, and the battery from
  * `BatteryManager`'s properties. None of them needs a permission — each answers about this app or the device it runs
  * on — and every one is a plain read on any thread.

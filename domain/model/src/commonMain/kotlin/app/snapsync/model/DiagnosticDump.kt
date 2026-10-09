@@ -1,15 +1,15 @@
 package app.snapsync.model
 
 /**
- * The **total** bytes of device log one diagnostic dump may carry (capability `privacy-security`).
+ * The **total** bytes of device log one diagnostic dump may carry.
  *
  * It is a hard bound, not a target. The reporting channel's server rejects an event over [MAX_EVENT_BYTES] with a
  * `413`, and the SDK surfaces no transport error, so the dump completes and tells the user nothing. The refused
  * dump is also not dropped: it stays queued and blocks every later report from the app, across launches, until 30
  * newer envelopes evict it (see [MAX_EVENT_BYTES]). The only defence is to stay clear of the ceiling.
  *
- * The dump rides in an event with other parts, so this budget is one row of a **whole-event sum**. Every other row
- * is capped too (capability `privacy-security`):
+ * The dump rides in an event with other parts, so this budget is one row of a **whole-event sum**. Every other row is
+ * capped too:
  *
  * | part | worst case |
  * |---|---|
@@ -37,17 +37,16 @@ package app.snapsync.model
 const val DIAGNOSTIC_LOG_BUDGET_BYTES: Int = 700_000
 
 /**
- * The longest reason a failed device fact carries in a report (capability `privacy-security`): a platform message can
- * be arbitrarily long, and the state section's share of the whole-event sum (see [DIAGNOSTIC_LOG_BUDGET_BYTES]) is
- * fixed.
+ * The longest reason a failed device fact carries in a report: a platform message can be arbitrarily long, and the
+ * state section's share of the whole-event sum (see [DIAGNOSTIC_LOG_BUDGET_BYTES]) is fixed.
  */
 const val DIAGNOSTIC_FAILURE_REASON_CHARS: Int = 80
 
-/** The state-section keys a report's device and screen facts are written under (capability `privacy-security`). */
+/** The state-section keys a report's device and screen facts are written under. */
 object DiagnosticKeys {
     const val NETWORK = "network"
 
-    /** The device's mobile-data choice (capability `mobile-data`): `on`, `off` or `unreadable`. */
+    /** The device's mobile-data choice: `on`, `off` or `unreadable`. */
     const val MOBILE_DATA = "mobile_data"
     const val POWER_SAVING = "power_saving"
     const val BACKGROUND_REFRESH = "background_refresh"
@@ -65,16 +64,15 @@ object DiagnosticKeys {
 }
 
 /**
- * One operator-initiated diagnostic dump (capability `privacy-security`): five labelled sections,
- * ready for a reporter to transmit as a single event.
+ * One operator-initiated diagnostic dump: five labelled sections, ready for a reporter to transmit as a single event.
  *
  * Deliberately plain strings and string maps: the transport renders them as structured sections, and
  * a value type that knew about the transport would put the reporting SDK's vocabulary in `model/`.
  *
- * Identifiers ride **verbatim** — a dump is a deliberate, confirmed act whose value is precisely the
- * event, asset and device ids a scrub would destroy (capability `privacy-security` carves this out;
- * automatic events stay redacted). That now covers the [note] and the message built from it: a report
- * reading "stuck on event ‹uuid›" has lost the one fact it carried.
+ * Identifiers ride **verbatim** — a dump is a deliberate, confirmed act whose value is precisely the event, asset and
+ * device ids a scrub would destroy (the privacy promise carves this out; automatic events stay redacted). That now
+ * covers the [note] and the message built from it: a report reading "stuck on event ‹uuid›" has lost the one fact it
+ * carried.
  */
 class DiagnosticDump(
     /**

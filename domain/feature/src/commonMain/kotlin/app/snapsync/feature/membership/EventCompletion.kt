@@ -13,8 +13,8 @@ import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 
 /**
- * The end of a wake, for an event that may be finished (capability `manage-membership`, "The app leaves on its own
- * once the event is finished for it"; decision record `changes/early-event-completion`, D3–D6).
+ * The end of a wake, for an event that may be finished — the app leaves on its own once the event is finished for
+ * it (decision record `changes/early-event-completion`, D3–D6).
  *
  * Every wake the app gets — a foreground, a silent push, the heartbeat, a transfer relaunch — ends in the tail, and
  * the tail's end runs [finish] once. It does, in order:
@@ -62,8 +62,8 @@ class EventCompletion(
 ) {
 
     /**
-     * The end of every wake whose tail covered the whole pass (capabilities `receiving-photos` and `manage-membership`;
-     * decision record `changes/timely-background-receiving`, D4–D5): first — when [checksPhotos] — the **bounded photo
+     * The end of every wake whose tail covered the whole pass (decision record `changes/timely-background-receiving`,
+     * D4–D5): first — when [checksPhotos] — the **bounded photo
      * check** for the joined event ([photoCheck], the union read at most once an hour per event, so others' photos arrive
      * when no push does), contained; then [finish], [bounded] as the wake's trigger says.
      */

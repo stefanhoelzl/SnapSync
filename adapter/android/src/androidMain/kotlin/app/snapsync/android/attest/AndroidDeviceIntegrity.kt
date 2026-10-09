@@ -55,8 +55,8 @@ class AndroidDeviceIntegrity : DeviceIntegrity {
         }.generateKeyPair()
         val chain = keyStore().getCertificateChain(alias)
         check(!chain.isNullOrEmpty()) { "the Keystore attested no certificate chain for $alias" }
-        // The summary rides beside the bytes, for a report the user may send if the backend refuses them (capability
-        // `privacy-security`); the backend never sees it.
+        // The summary rides beside the bytes, for a report the user may send if the backend refuses them; the backend
+        // never sees it.
         val der = chain.fold(ByteArray(0)) { all, cert -> all + cert.encoded }
         return Proof(alias, ProofFormat.ANDROID_KEY, der, chain = summarise(chain))
     }

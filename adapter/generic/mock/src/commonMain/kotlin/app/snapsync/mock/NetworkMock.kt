@@ -22,7 +22,7 @@ class NetworkMock(access: NetworkAccess = NetworkAccess.Online(restricted = fals
 class NetworkOperator internal constructor(private val mock: NetworkMock) {
     /**
      * What the operating system reports: switch it to take the device offline, to withhold the network from the app, or
-     * to put it on a restricted network (mobile data, a hotspot, Low Data Mode — capability `mobile-data`).
+     * to put it on a restricted network (mobile data, a hotspot, Low Data Mode).
      */
     var access: NetworkAccess by mock.cell::value
 }

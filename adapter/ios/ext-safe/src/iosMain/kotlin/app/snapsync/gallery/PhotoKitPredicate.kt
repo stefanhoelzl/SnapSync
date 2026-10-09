@@ -15,15 +15,15 @@ import platform.Foundation.distantPast
  * until someone states whether PhotoKit can express it. Before this, the predicate hardcoded a mask and a
  * cutoff, so a new rule simply never narrowed and nobody found out.
  *
- * Narrowing is an **optimization only** (capability `photo-sharing`): the caller's in-memory
+ * Narrowing is an **optimization only**: the caller's in-memory
  * admission runs over whatever comes back, so this may return a superset of the admitted set but never a
  * subset. Where the predicate could disagree with the authoritative decision at a boundary it is
  * **widened**, never narrowed.
  *
  * **What this returns is also the walk's presence set**, and a clause here is therefore not free even when
  * it agrees with the admission. The upload cycle deletes the in-window ledger rows of every asset an
- * authoritative walk did not return (capability `photo-sharing`, "Deletion is a presence diff over an
- * authoritative walk"), judging "in-window" by the rows' own admission, which knows only capture dates and
+ * authoritative walk did not return — deletion is a presence diff over an
+ * authoritative walk — judging "in-window" by the rows' own admission, which knows only capture dates and
  * id sets. So a new clause that excludes an asset still in the library — a subtype, a flag — makes the rows
  * such an asset **already** holds look departed, and they are deleted. The two subtype clauses below are
  * safe only because nothing they exclude can hold a row: the admission rejected it before any row was
@@ -89,7 +89,7 @@ internal fun predicateFor(policy: SelectionPolicy): NSPredicate? {
 }
 
 /**
- * Parse a canonical cutoff into an `NSDate`. Bounds are second precision (capability `photo-sharing`): the join gate
+ * Parse a canonical cutoff into an `NSDate`. Bounds are second precision: the join gate
  * normalizes the backend's milliseconds before anything is persisted, and every build since v0.1 has stored them so.
  */
 private fun parseBound(iso: String): NSDate? = Iso8601.parse(iso)

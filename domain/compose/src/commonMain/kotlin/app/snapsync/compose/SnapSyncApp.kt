@@ -150,7 +150,7 @@ class AppPorts(
      *  for the invite URL, the URL opener for the store link, and the app's Settings page (see [SystemUi]). */
     val systemUi: SystemUi,
     /**
-     * The platform's background downloads (capability `receiving-photos`). An event port: the host zone registers
+     * The platform's background downloads. An event port: the host zone registers
      * this core's [AppEvents.downloadHandlers] on it as the graph is composed, so a background relaunch that delivers
      * finished transfers finds them.
      */
@@ -186,7 +186,7 @@ class AppPorts(
     /** The runtime inputs only a rig build can set — the per-uploader pin, the invite-link hints and the reset. All
      *  inert in a production build (see [DevControls]). */
     val devControls: DevControls,
-    /** The platform's push service (capability `receiving-photos`): asked for the token at launch and at every
+    /** The platform's push service: asked for the token at launch and at every
      *  foreground entry; the host zone registers this core's [pushHandlers] on it as the graph is composed. */
     val pushNotifications: PushNotifications,
     /** The app's foreground life — an event port the host zone registers the foreground work on. */
@@ -196,13 +196,12 @@ class AppPorts(
     /** The platform's user interface — shown every state the status host reduces, from host assembly on. */
     val ui: Ui,
     /** What the OS says about this process — whether protected storage is readable right now, recorded by the
-     *  background entry points and deciding nothing (capability `sync-status`). */
+     *  background entry points and deciding nothing. */
     val processInfo: ProcessInfo,
     /** The device's network as the operating system reports it to this app — watched only while the app is in front,
-     *  to tell the member when it has none (capability `sync-status`). */
+     *  to tell the member when it has none. */
     val network: NetworkMonitor,
-    /** The device's power, battery, thermal state and background allowance — read only for a bug report
-     *  (capability `privacy-security`). */
+    /** The device's power, battery, thermal state and background allowance — read only for a bug report. */
     val deviceConditions: DeviceConditions,
     /** The platform's date formatting — how a date reads on the screen; the core formats no date
      *  (`docs/architecture.md`, "Localization"). The screen renders through it, and only the app has one. */
@@ -237,20 +236,20 @@ class AppCore internal constructor(
     internal val log get() = services.log
 
     /**
-     * The app's uploader (capability `background-upload`) — the app-driven tier on every OS version, over the app's own
+     * The app's uploader — the app-driven tier on every OS version, over the app's own
      * [AppPorts.appUpload]. Always the real one: a composition whose transport is mocked is driven at that transport.
      */
     internal val appUploader: AppUploader by lazy { AppUploader(this) }
 
     /**
-     * Whether the backend is refusing this build as too old (capability `app-update-required`). NOT lazy: the
+     * Whether the backend is refusing this build as too old. NOT lazy: the
      * status host observes it from its first frame, and a lazy cell created by a late reader could miss nothing
      * today but would invite a writer that captured an earlier one.
      */
     val versionGate: AppVersionGate = AppVersionGate()
 
     /**
-     * Device attestation (capability `privacy-security`) — the bearer token EVERY backend call
+     * Device attestation — the bearer token EVERY backend call
      * carries, and the app's recovery when the backend rejects it. Composed here; only the app process can
      * attest (`DCAppAttestService.isSupported` is false in an app extension — measured), and the extension
      * reads the token this writes.
@@ -258,7 +257,7 @@ class AppCore internal constructor(
     val attestation: DeviceAttestation by lazy { attestationFor(services, process.clock, versionGate) }
 
     /**
-     * The app's foreground life as the create screen's draft follows it (capability `create-event`), stamped by the
+     * The app's foreground life as the create screen's draft follows it, stamped by the
      * lifecycle handlers over the process clock.
      */
     val foregroundLife: ForegroundLife = ForegroundLife(process.clock)
@@ -269,28 +268,27 @@ class AppCore internal constructor(
     /** [attestation]'s health cell, for readers outside the core (the status host), which see no service type. */
     val attested: StateFlow<Boolean> get() = attestation.attested
 
-    /** Why the service refused this phone at the latest attempt to verify it (capability `privacy-security`). */
+    /** Why the service refused this phone at the latest attempt to verify it. */
     val refusal: StateFlow<DeviceRefusal?> get() = attestation.refusal
 
     /**
      * Every need-shaped backend service, over one authenticated backend whose credential is [attestation]
-     * (capability `privacy-security`: a rejected token is dropped, a new one obtained, and the call retried once)
+     * (a rejected token is dropped, a new one obtained, and the call retried once)
      * and whose verdicts reach [versionGate]. Public for the app root's uploader, which publishes its manifest
      * through [BackendServices.manifest] like every other caller.
      */
     val backend: BackendServices by lazy { backendServicesFor(services, attestation, versionGate) }
 
-    // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read
-    // (capability `sync-status`), counted by the status source over the gallery's admitted set. Read-only;
-    // on any failure the last good value is retained.
+    // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read,
+    // counted by the status source over the gallery's admitted set. Read-only; on any failure the last good
+    // value is retained.
     val ledgerCounts: ReadingLedgerCountsSource by lazy {
         ReadingLedgerCountsSource { LedgerCounts.of(services.ledger.assetProgress()) }
     }
 
     /**
-     * The one read seam the app's consumers hold — the grant decides the backing, not the consumer
-     * (capability `photo-access`). Built here because choosing between ports by a third port's
-     * state is composition.
+     * The one read seam the app's consumers hold — the grant decides the backing, not the consumer.
+     * Built here because choosing between ports by a third port's state is composition.
      *
      * Public for the same reason [gallery] is: the dev/test control channel's gallery read asks THIS seam
      * rather than walking PhotoKit itself, so what it reports is what the app would see — including the
@@ -307,9 +305,9 @@ class AppCore internal constructor(
 
     /**
      * The one presence source the download guard holds: full access queries the library, a partial grant
-     * answers from the snapshot and never says "absent", no grant answers unknown (capability
-     * `receiving-photos`). Built here for the same reason as [candidates] — choosing a source by the
-     * grant is composition, and both halves are available here.
+     * answers from the snapshot and never says "absent", no grant answers unknown. Built here for the
+     * same reason as [candidates] — choosing a source by the grant is composition, and both halves are
+     * available here.
      */
     private val assetPresence: ImportedAssetPresence by lazy {
         PermissionAwareAssetPresence(
@@ -319,14 +317,13 @@ class AppCore internal constructor(
         )
     }
 
-    // The own-device upload TOTAL N (capability `sync-status`): gallery enumeration minus downloaded
-    // foreign photos, scoped by the membership's cutoff and the origin exclusions
-    // (capability `photo-sharing`) — the SAME policy the upload cycle gets, because the
+    // The own-device upload TOTAL N: gallery enumeration minus downloaded foreign photos, scoped by the
+    // membership's cutoff and the origin exclusions — the SAME policy the upload cycle gets, because the
     // two enumerate independently and a rule applied to one and not the other would peg the joined
     // screen below 100% forever.
     val gallery: OwnDeviceGalleryStatusSource by lazy { OwnDeviceGalleryStatusSource(candidates) }
 
-    // The join-time shareable-count preview (capability `join-event`): the SAME policy the cycle and
+    // The join-time shareable-count preview: the SAME policy the cycle and
     // `gallery` (N) apply, over the same permission-aware source — so the preview and the total cannot
     // disagree about where candidates come from. No usable grant → null → the surface omits the row.
     private val shareableCountSource: ShareableCountSource by lazy {
@@ -340,9 +337,9 @@ class AppCore internal constructor(
     }
 
     /**
-     * The join surface's live "how many photos from your gallery will be shared" query (capability
-     * `join-event`): for a candidate [cutoff] with sharing on, the count of own photos the policy
-     * admits, or `null` when the grant permits no count. Purely local — no backend LIST.
+     * The join surface's live "how many photos from your gallery will be shared" query: for a
+     * candidate [cutoff] with sharing on, the count of own photos the policy admits, or `null` when
+     * the grant permits no count. Purely local — no backend LIST.
      */
     suspend fun loadShareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
         shareableCountSource.count(includesUpload = true, cutoff = cutoff, ceiling = until)
@@ -356,7 +353,7 @@ class AppCore internal constructor(
     /** What the screen reads of the joined event's key: the invite's, and whether it is lost ([EventKeyReads]). */
     val eventKeyReads: EventKeyReads by lazy { EventKeyReads(services.eventKeys, membership, scope) }
 
-    /** The device's mobile-data choice (capability `mobile-data`), for the status host's menu and waiting line. */
+    /** The device's mobile-data choice, for the status host's menu and waiting line. */
     val mobileDataChoice: StateFlow<Boolean> get() = services.mobileData.allowed
 
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
@@ -367,8 +364,7 @@ class AppCore internal constructor(
         LedgerBackedSyncStatusSource(ledgerCounts, galleryAccess, gallery.admitted, scope)
     }
 
-    // Download progress for the joined screen's received count and download arrow, scoped to the joined event
-    // (capabilities `receiving-photos`, `sync-status`).
+    // Download progress for the joined screen's received count and download arrow, scoped to the joined event.
     val downloadStatusSource: StoreDownloadStatusSource by lazy {
         StoreDownloadStatusSource(services.downloadStore, currentEvent = services.config::activeEventId)
     }
@@ -376,8 +372,8 @@ class AppCore internal constructor(
     // Background byte transfers → durable staging. The queue, bounded window, and cancellation
     // lifecycle live in the tested feature; the transport is the shell's adapter thunk.
     val downloadJobs: DownloadJobs by lazy {
-        // Staging is the port that also releases those bytes, so the two never name different directories
-        // (capability `receiving-photos`); the jobs record relative paths.
+        // Staging is the port that also releases those bytes, so the two never name different directories;
+        // the jobs record relative paths.
         DownloadJobs(
             scope = scope,
             staging = services.stagedBytes,
@@ -385,9 +381,9 @@ class AppCore internal constructor(
             // Deliver each staged resource back to the controller — a compose-built lambda whose body is one call (law
             // "Commands cross one door"). It reads the `downloadController` lazy when INVOKED, not here: the jobs are
             // built on paths that build nothing else — a background-`URLSession` relaunch touches only `downloadJobs` —
-            // and the callback must reach the controller on those paths too (capability `receiving-photos`, "A staged
-            // resource reaches the controller on every entry point"). No launch here: the jobs own it, so they can
-            // join the stagings before the session's OS handler is released.
+            // and the callback must reach the controller on those paths too — a staged resource reaches the
+            // controller on every entry point. No launch here: the jobs own it, so they can join the stagings before
+            // the session's OS handler is released.
             // Staging is recorded here and the import is the tail's: requested detached — a staging holds no OS
             // handler of its own, and a wake that delivered it requests (and holds) its own tail after its drain.
             onStaged = { ref, key, path ->
@@ -409,8 +405,8 @@ class AppCore internal constructor(
             jobs = downloadJobs,
             importer = GalleryImporter(ports.gallery, services.stagedBytes),
             presence = assetPresence,
-            // The import-time album: the membership's opt-in gate is the coordinator's rule (capability
-            // `event-album`); this only reads the current membership's facts.
+            // The import-time album: the membership's opt-in gate is the coordinator's rule; this only reads the
+            // current membership's facts.
             eventAlbum = { albumCoordinator.albumIdFor(services.config.config.value) },
             onImportedIntoAlbum = { album -> albumCoordinator.onImportedInto(services.config.config.value, album) },
             stagedBytes = services.stagedBytes,
@@ -422,7 +418,7 @@ class AppCore internal constructor(
         )
     }
 
-    // The silent-push receiver for the download arm (capability `receiving-photos`); its active-event
+    // The silent-push receiver for the download arm; its active-event
     // guard is the feature's rule.
     val downloadPushReceiver: DownloadPushReceiver by lazy {
         DownloadPushReceiver(
@@ -431,16 +427,16 @@ class AppCore internal constructor(
         )
     }
 
-    /** The album operations over the gallery (capabilities `event-album`, `photo-sharing`). */
+    /** The album operations over the gallery. */
     private val albumManager: GalleryAlbums by lazy { GalleryAlbums(ports.gallery) }
 
-    // Event album (capability `event-album`): the coordinator over the shared leave-surviving map.
+    // Event album: the coordinator over the shared leave-surviving map.
     // The APP is the SOLE creator (on the permission grant); both processes only add.
     val albumCoordinator: AlbumCoordinator by lazy {
         AlbumCoordinator(albumManager, services.albumMapStore, kind = ports.gallery.albumKind)
     }
 
-    // The event album's gather (capability `event-album`): place what the device already holds for the event.
+    // The event album's gather: place what the device already holds for the event.
     // Built HERE and nowhere in the extension's graph, so "the extension never gathers" holds by
     // construction. Started, never awaited, by the act that triggered it.
     val albumGather: AlbumGather by lazy {
@@ -455,9 +451,8 @@ class AppCore internal constructor(
     }
 
     /**
-     * Whether the upload extension may be registered now (capability `background-upload`, "Whether the extension
-     * may be registered is one pure fact") — read fresh wherever it is needed, never held: it is a function of
-     * the runtime grant, so a captured answer would be stale exactly when it mattered.
+     * Whether the upload extension may be registered now — one pure fact — read fresh wherever it is needed, never
+     * held: it is a function of the runtime grant, so a captured answer would be stale exactly when it mattered.
      */
     val extensionRegistrableNow: () -> Boolean = {
         extensionRegistrable(
@@ -468,8 +463,8 @@ class AppCore internal constructor(
     }
 
     /**
-     * Whether the app's uploader may create now — the app process's admission, which its entry gate consumes
-     * (capability `background-upload`, "The upload cycle owns its entry decision").
+     * Whether the app's uploader may create now — the app process's admission, which its entry gate consumes:
+     * the upload cycle owns its entry decision.
      */
     val appUploadAdmission: () -> UploadAdmission = {
         // The scope, not the raw cell: an unread partial-grant selection withholds (`appAdmission`), and it is
@@ -477,14 +472,14 @@ class AppCore internal constructor(
         appAdmission(ports.photoAccess.permission.value, selectionScope(), ports.devControls.uploaderPin())
     }
 
-    /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads (capability
-     *  `background-upload`, "The delegate records the terminal fact before it returns"). */
+    /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads; the delegate records the
+     *  terminal fact before it returns. */
     val appMayCreate: () -> Boolean = { appUploadAdmission().admits }
 
-    // The upload arm (capability `background-upload`): what each membership transition does to the two
+    // The upload arm: what each membership transition does to the two
     // uploaders. Stateless — every decision is derived from the registration fact, the grant and whether a
     // membership exists, at the moment of the transition; the root defaults nothing.
-    /** The OS-driven mechanism's registration ritual, over the registry port (capability `background-upload`). */
+    /** The OS-driven mechanism's registration ritual, over the registry port. */
     val extensionRegistration: ExtensionRegistration by lazy {
         OsDrivenRegistration(ports.extensionRegistry, services.log, process.entryContext)
     }
@@ -519,7 +514,7 @@ class AppCore internal constructor(
         )
     }
 
-    // The join-time load (capability `photo-sharing`), built in `shareSetLoadFor`. Public for
+    // The join-time load, built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.deviceFiles) }
     internal val receivedPhotoAdoption by lazy { receivedPhotoAdoptionFor(services, backend, ports.gallery, this) }
@@ -527,13 +522,13 @@ class AppCore internal constructor(
     /** The union one provision has read, handed from its adoption to its reconcile — see [JoinUnion]. */
     internal val joinUnion = JoinUnion()
 
-    // The in-place reconfigure use-case (capability `manage-membership`): rewrite the joined
+    // The in-place reconfigure use-case: rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
     // effects. Upload ARMS on enable but drains on disable (no stop); download reconciles on enable and
     // cancels in-flight on disable — the deliberate arm asymmetry lives in the tested use-case.
     val reconfigureEvent: ReconfigureEvent by lazy { reconfigureEventFor() }
 
-    // The join use-case (capability `join-event`): fetch details, enroll by writing the register-only
+    // The join use-case: fetch details, enroll by writing the register-only
     // EMPTY device manifest, then provision through the same path as create/scan.
     val joinEvent: JoinEvent by lazy {
         JoinEvent(
@@ -545,7 +540,7 @@ class AppCore internal constructor(
             // Every provision route — interactive join, switch, retry, `autoJoin`, a create routed into the
             // join gate — passes here, so the album gather is started once the provision returns. It starts
             // HERE rather than inside `flow/Provision`: a flow may not detach work (law "A trigger flow never
-            // outlives its own run"), and the gather must not hold up the join (capability `event-album`).
+            // outlives its own run"), and the gather must not hold up the join.
             // Built HERE, never supplied by a root, so every composition's join runs `flow/Provision`. Labelled
             // `provisionEvent` so the flow's steps carry it.
             provision = { cfg ->
@@ -557,7 +552,7 @@ class AppCore internal constructor(
         )
     }
 
-    // The membership-refresh rule (capability `join-event`): what a fetched details result MEANS for the
+    // The membership-refresh rule: what a fetched details result MEANS for the
     // persisted membership — seated in `feature/membership` because that config is the feature's durable
     // state. The *fetch* it pairs with is [fetchEventDetails], coordinated by the Foreground flow — the
     // sole trigger that refreshes. It reads the clock because the absence verdict needs a second,
@@ -574,13 +569,13 @@ class AppCore internal constructor(
     //
     // It carries the SEALED outcome, via the same `toJoinLoad` mapping the join gate uses; no fetch result is
     // destructive on its own — the rule requires a definitive `NotFound` AND the membership's own persisted
-    // deadline before it will tear anything down (capability `manage-membership`).
+    // deadline before it will tear anything down.
     private val fetchEventDetails: suspend (eventId: String) -> JoinLoad = { eventId ->
         backend.directory.fetch(eventId).toJoinLoad()
     }
 
     // Every event this device mints, emitted once the backend answered: the host zone collects it into its join gate —
-    // the SAME gate a scanned QR takes (capability `photo-sharing`) — from its composition on, before any tap can
+    // the SAME gate a scanned QR takes — from its composition on, before any tap can
     // create one, and nothing else does.
     private val minted = MutableSharedFlow<MintedEvent>()
 
@@ -590,11 +585,11 @@ class AppCore internal constructor(
     /** The create-event status the use-case drives and the container reads (same instance). */
     val creationStatus = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
 
-    /** The rename status the use-case drives and the container reads (same instance, capability
-     *  `manage-membership`) — the create twin, but carrying a success value the screen must clear. */
+    /** The rename status the use-case drives and the container reads (same instance) — the create twin, but
+     *  carrying a success value the screen must clear. */
     val renameStatus = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
 
-    // The rename use-case (capability `manage-membership`): rewrite the shared event's name on the backend,
+    // The rename use-case: rewrite the shared event's name on the backend,
     // then fold the ECHOED name into this membership's config. The fifth writer of that config, seated
     // in `feature/membership` beside the reconfigure for exactly that reason.
     val renameEvent: RenameEvent by lazy {
@@ -606,7 +601,7 @@ class AppCore internal constructor(
     }
 
     // The create-event use-case: mint via the backend, then route the minted event into the SAME
-    // join gate a scanned QR takes (capability `photo-sharing`).
+    // join gate a scanned QR takes.
     val eventCreator: EventCreator by lazy {
         CreateEvent(
             client = backend.creation,
@@ -622,7 +617,7 @@ class AppCore internal constructor(
      * everything in scope: every walk is a full enumeration, so there is no cursor to invalidate.
      *
      * Public because the dev/test control channel drives it directly. It has no user path by design —
-     * `manage-membership` deliberately keeps the ledger, and this is the one operation for which that reasoning
+     * leaving deliberately keeps the ledger, and this is the one operation for which that reasoning
      * stops holding — so there is no command-bundle entry to reach it through.
      */
     val resetDeviceState: ResetDeviceState by lazy {
@@ -643,7 +638,7 @@ class AppCore internal constructor(
         )
     }
 
-    // ---- Selection-driven reads under a partial grant (capability `photo-access`) -----------
+    // ---- Selection-driven reads under a partial grant -----------
     /** The latest selection snapshot, set only by the selection subscription below — see [LatestSelection]. */
     private val selection = LatestSelection()
 
@@ -667,7 +662,7 @@ class AppCore internal constructor(
     fun selectionScope(): SelectionScope = selection.scopeUnder(ports.photoAccess.permission.value)
 
     /**
-     * The one derivation, for this composition's status readers (capability `photo-sharing`).
+     * The one derivation, for this composition's status readers.
      *
      * Both `N` and the join preview must admit exactly what the upload cycle admits, so all three reach
      * the policy the same way — through `selectionPolicyFor`, with the same two port readers. The cycle
@@ -693,7 +688,7 @@ class AppCore internal constructor(
      * identical in every other respect, but resolving to `DenyAll` before either exclusion reader is
      * called — produced none.
      *
-     * That matters because the consumers stopped gating on the grant (capability `sync-status`): the
+     * That matters because the consumers stopped gating on the grant: the
      * policy must now be derived **before** the read seam can answer that it has nothing to say, and
      * `selectionRulesFor` reads its exclusion sets eagerly. Without this the status refresh would raise
      * an unrequested system dialog on every foreground of a joined device whose grant is undetermined —
@@ -702,7 +697,7 @@ class AppCore internal constructor(
      *
      * The empty set is the **honest** answer rather than a fallback: the denylist is a subtraction and
      * the policy admits on doubt, so "no denylisted assets" is what an unreadable album structure means
-     * anyway — which is why `photo-access` records the denylist as inert under a partial grant.
+     * anyway — which is why the denylist is recorded as inert under a partial grant.
      *
      * The grant gate itself lives in [denylistedAlbumMembers], shared with the upload cycle, and asks only
      * under a FULL grant: under `LIMITED` the album structure is unreadable, so the lookup could only ever
@@ -719,7 +714,7 @@ class AppCore internal constructor(
         )
 
     /**
-     * The status-refresh **rule** (capability `sync-status`): cheap local reads before the library
+     * The status-refresh **rule**: cheap local reads before the library
      * enumeration, and no count at all without a membership. Seated in `feature/status` because it has
      * three callers — the `Foreground` and `Provision` flows and `ReconfigureEvent`, which is a feature
      * and cannot hold a flow's ordering — so it is a rule rather than one flow's order (law "Rules in
@@ -744,7 +739,7 @@ class AppCore internal constructor(
     // flows"). Each is built here — features referenced directly, port/platform
     // touches injected from [ports] — and the shell entry points delegate to them. ────────────────
 
-    // The foreground-gated status-counts poll (capability `sync-status`): started by the Foreground flow,
+    // The foreground-gated status-counts poll: started by the Foreground flow,
     // stopped by the Background flow — the cadence is the feature's rule.
     //
     // It ticks the GROUP through `StatusRefresh`, not the ledger source directly. Handing it `ledgerCounts`
@@ -754,7 +749,7 @@ class AppCore internal constructor(
         StatusCountsPoller(scope, refreshCheapLocalReads = { statusRefresh.refreshCheapLocalReads() })
     }
 
-    /** The foreground-gated network watch and what it tells the member (capability `sync-status`). */
+    /** The foreground-gated network watch and what it tells the member. */
     val network: AppNetwork by lazy { AppNetwork(scope, ports.network, statusCountsPoller) }
 
     val foregroundFlow: Foreground by lazy {
@@ -794,7 +789,7 @@ class AppCore internal constructor(
     }
 
     /**
-     * Whether a push's wake joins the tail — the upload arm's active-event guard (capability `receiving-photos`).
+     * Whether a push's wake joins the tail — the upload arm's active-event guard.
      * The limited-grant read discipline is the tail's own (its walk runs only under a full grant).
      */
     val pushTailGuard: PushTailGuard by lazy { PushTailGuard(services.config, services.log) }
@@ -824,8 +819,7 @@ class AppCore internal constructor(
 
     val provisionFlow: Provision by lazy {
         Provision(
-            // From the union the entry's adoption read in this same provision, when it did (capability
-            // `receiving-photos`): one union read per join.
+            // From the union the entry's adoption read in this same provision, when it did: one union read per join.
             reconcileDownloads = { downloadController.reconcile(it, UnionTrigger.JOIN, known = joinUnion.take(it)) },
             albumCoordinator = albumCoordinator,
             activeEventId = services.config::activeEventId,
@@ -834,8 +828,7 @@ class AppCore internal constructor(
             saveConfig = saveConfig,
             refreshStatus = { statusRefresh.run() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
-            // parameter, and album creation works under a LIMITED grant (measured — capability
-            // `photo-access`).
+            // parameter, and album creation works under a LIMITED grant (measured).
             hasUsableAccess = { ports.photoAccess.permission.value.grantsPhotoAccess },
             registerPush = { pushRegistration.reRegister(services.pushTokens) },
         )
@@ -850,7 +843,7 @@ class AppCore internal constructor(
     /** The user-query bundle, lane-decorated beside the commands — see [userQueriesFor]. */
     val userQueries: UserQueries by lazy { userQueriesFor() }
 
-    /** The diagnostic dump assembly (capability `privacy-security`) — see [diagnosticDumpFor]. */
+    /** The diagnostic dump assembly — see [diagnosticDumpFor]. */
     internal val collectDiagnosticDump: CollectDiagnosticDump by lazy { diagnosticDumpFor() }
 
     /** How many photos a partial grant's selection holds, for a bug report — the snapshot cell is this core's. */
@@ -861,8 +854,8 @@ class AppCore internal constructor(
      * Install the **port-state-transition subscriptions** on the permission StateFlow (spec
      * `docs/architecture.md`, "Commands cross one door": installed in `compose/`; the transition
      * semantics — the upload permission-change transition, sole-creator album ensure — are feature rules),
-     * and run the upload **launch reconcile** (capability `background-upload`, "Launch reconciles by
-     * comparison; only a join forces the repair").
+     * and run the upload **launch reconcile**: launch reconciles by comparison; only a join forces the
+     * repair.
      *
      * The launch reconcile is explicit and the upload subscription skips the StateFlow's replayed value: riding
      * that replay would fire a "permission change" on every UI launch, forcing the extension's re-registration and
@@ -880,7 +873,7 @@ class AppCore internal constructor(
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.
         scope.launchAlbumGrantSubscription(services, albumGather)
         scope.launch {
-            // THE ONE ADJUDICATION CALL SITE (capability `receiving-photos`). Once per process, here, and
+            // THE ONE ADJUDICATION CALL SITE. Once per process, here, and
             // nowhere else — not in `reconcile`, not in `importReady`, not in `onResourceStaged`. Only a
             // process that DIED can leave a row no running import will settle, so a running process asking
             // again about rows it opened itself buys nothing and costs a synchronous XPC round-trip each
@@ -900,12 +893,12 @@ class AppCore internal constructor(
 
     /**
      * **The subscriptions every start installs, a background one included.** Start registering the device's APNs
-     * token, and keep the registration alive across a credential
-     * change (capability `receiving-photos`). Installed on **every cold start** — a foreground launch and a
-     * background wake alike (a silent push, a background-`URLSession` relaunch, the upload heartbeat) — by the
-     * shared host composition as it composes the graph (capability `sync-status`, "Push registration is started
-     * by the shared composition"). Unlike [installPermissionSubscriptions], which a cold background wake must not
-     * install, this one is needed there: a rotated APNs token or a renewed credential learned in a background wake
+     * token, and keep the registration alive across a credential change. Installed on **every cold start** — a
+     * foreground launch and a background wake alike (a silent push, a background-`URLSession` relaunch, the upload
+     * heartbeat) — by the shared host composition as it composes the graph. Unlike [installPermissionSubscriptions],
+     * which a cold background wake must not install, this one is needed there: a rotated APNs token or a renewed
+     * credential learned in a background wake
+
      * is published from that wake, never deferred to the next foreground. It is cheap there because the
      * registration publishes only on a changed (`token`, `env`, `deviceId`) triple, a join, or a fresh credential.
      *
@@ -930,13 +923,13 @@ class AppCore internal constructor(
      * The registration is composed here over the push ports (see [pushRegistrationFor]); the token source is
      * the shell's, delivered by the OS.
      *
-     * **And open the selection observer** and its collector (capability `photo-access`), for the same reason: under a
+     * **And open the selection observer** and its collector, for the same reason: under a
      * partial grant the observer's first emission is the start's baseline read and every later one a change the member
      * made — in the in-app picker, in Settings, or by iCloud sync; under any other grant it reads nothing. Without it a
      * background start under a partial grant never learns its selection, withholds every upload, and the app's own
-     * wake-ups upload nothing (capability `background-upload`, "Photos upload without the app being opened"). Measured
-     * on an SE2 / iOS 26.6.2: a background start reads the selection and raises no limited-library prompt (decision
-     * record `changes/timely-background-receiving`, D6).
+     * wake-ups upload nothing, where photos must upload without the app being opened. Measured on an SE2 / iOS 26.6.2:
+     * a background start reads the selection and raises no limited-library prompt (decision record
+     * `changes/timely-background-receiving`, D6).
      */
     fun installCompositionSubscriptions() {
         scope.launch {
@@ -944,8 +937,7 @@ class AppCore internal constructor(
             pushRegistration.run(services.pushTokens, attestation.tokenChanged)
         }
         scope.launch {
-            // One selection-change emission → ONE read serving both consumers (capability
-            // `photo-access`, "One discovery serves both the status total and the enqueue"):
+            // One selection-change emission → ONE read serving both consumers, the status total and the enqueue:
             // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
             // `refresh` recounts N over the very same snapshot — no second library read on this path, and
             // no snapshot-specific entry point for the total to drift through.
@@ -959,7 +951,8 @@ class AppCore internal constructor(
         ports.gallery.observeChanges(true)
     }
 
-    /** The device's push registration (capability `receiving-photos`) — see [pushRegistrationFor]. */
+    /** The device's push registration — see [pushRegistrationFor]. */
+
     val pushRegistration: PushRegistration by lazy { pushRegistrationFor(services, backend.pushTokens) }
 }
 

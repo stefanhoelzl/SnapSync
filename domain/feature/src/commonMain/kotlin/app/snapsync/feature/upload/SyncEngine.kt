@@ -14,7 +14,7 @@ import co.touchlab.kermit.Logger
  * answers with [SyncDecision]s. Its only state is the [ledger] — the durable per-key memory of
  * what was requested, completed, and still needs a job. The engine records requests and failures; a
  * completion is recorded by the platform itself, where it is told, through the ledger's guarded terminal
- * write (capability `photo-sharing`).
+ * write.
  *
  * Decision rules ([SyncEvent.ResourceChanged] is a **pure query** — it reads the ledger and mints a
  * request for `Work` answers, but writes nothing): a key is skipped when the ledger holds it
@@ -119,7 +119,7 @@ class SyncEngine(
     private suspend fun retry(failed: UploadRequest): SyncDecision.Retry {
         val resource = failed.resource
         // The retry's credential comes from the store of record: the failure may be the `401` of a token another
-        // process has renewed since this process last read it (capability `background-upload`).
+        // process has renewed since this process last read it.
         val request = provider.provideForRetry(resource)
         // Return the row to DISCOVERED only. The retry's REQUESTED is written when the platform reports
         // UploadStarted for the freshly created retry job (write-after-act).

@@ -17,9 +17,9 @@ import kotlin.coroutines.cancellation.CancellationException
 private const val LISTING_TIMEOUT_MS = 15_000L
 
 /**
- * The foreground settle (capability `photo-sharing`, "Foreground settles in-flight rows the backend
- * already stores"): ask the backend which resources it stores for this device in the joined event, and record
- * `COMPLETED` for every `REQUESTED` row whose key it lists.
+ * The foreground settle, which settles in-flight rows the backend already stores: ask the backend which resources
+ * it stores for this device in the joined event, and record `COMPLETED` for every `REQUESTED` row whose key it
+ * lists.
  *
  * **Why.** Bytes can land long before the OS acknowledges their job, and sometimes the acknowledgement never
  * reaches this ledger. Under a full grant the extension learns of a completion only at its next invocation; after

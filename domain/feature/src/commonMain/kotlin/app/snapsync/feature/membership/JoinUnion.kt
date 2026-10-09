@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.update
 
 /**
  * The event union one provision has already read, handed from the membership entry's adoption to the provision's
- * download reconcile (capability `receiving-photos`), so a join reads the union once. Both run inside one provision,
+ * download reconcile, so a join reads the union once. Both run inside one provision,
  * seconds apart, and ask the same question: a second read would only repeat the answer.
  *
  * Held only [during] a provision, and only for the event it provisions: outside one, an offer is dropped and a take

@@ -9,9 +9,9 @@ import co.touchlab.kermit.Logger
 
 /**
  * **The OS-driven mechanism's registration** (iOS ≥26.1) — the one thing the app does for the tier whose uploads
- * the system performs: register the background-upload extension so the OS can invoke it, and deregister it
- * (capability `background-upload`). Which of those a membership transition needs is `UploadTransitions`'
- * decision (capability `background-upload`); this class only performs them, correctly.
+ * the system performs: register the background-upload extension so the OS can invoke it, and deregister it.
+ * Which of those a membership transition needs is `UploadTransitions`' decision; this class only performs them,
+ * correctly.
  *
  * Named for the need rather than the technology, because it lives in the platform-free core. It reaches the
  * platform through one port — [ExtensionRegistry] for the registration record — so it names no platform
@@ -81,7 +81,7 @@ class OsDrivenRegistration(
 
     /**
      * Deregister the extension — **and nothing else**: at a leave (a switch leaves first), or the rig's
-     * `extension=off` (capability `background-upload`). The disable wipes every in-flight OS job; at a leave the
+     * `extension=off`. The disable wipes every in-flight OS job; at a leave the
      * ledger is cleared right after, and on the rig path the wipe is the test's intent.
      */
     override suspend fun deregister() = log.invocation(entryContext, "photokit.deregister") {
@@ -96,7 +96,7 @@ class OsDrivenRegistration(
 
     /**
      * One write, and its report: the classified outcome carries its own severity and message, so rendering it decides
-     * nothing — an `Error` here is what `privacy-security` carries onward as field telemetry. It used to be the
+     * nothing — an `Error` here is what crash reporting carries onward as field telemetry. It used to be the
      * adapter's line; the adapter reports raw answers now (phase 11f).
      */
     private suspend fun write(enabled: Boolean) {

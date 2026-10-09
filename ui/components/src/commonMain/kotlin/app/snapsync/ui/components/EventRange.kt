@@ -4,7 +4,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 
-// The rules of the create screen's range (capability `create-event`): what the range IS, and what a settle of
+// The rules of the create screen's range: what the range IS, and what a settle of
 // a time wheel does to it (what a day tap or drag does is `EventRangeDays.kt`). Pure, so every rule is
 // unit-tested without composing anything; [AppEventRangePicker] only renders a range and feeds these the
 // gestures.

@@ -10,8 +10,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * The leaves this device made that the backend has not confirmed yet (capability `event-lifetime`, "A leave made
- * offline still counts"; decision record `changes/early-event-completion`, D3).
+ * The leaves this device made that the backend has not confirmed yet — a leave made
+ * offline still counts (decision record `changes/early-event-completion`, D3).
  *
  * A leave is instant for the member and works offline, so its request to the backend used to be fire-and-forget:
  * one attempt, never retried. That was harmless while an event lived its full lifetime regardless, but a finished

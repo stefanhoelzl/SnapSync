@@ -4,7 +4,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 
-// What a tap or a drag on the calendar does to the range (capabilities `create-event`, `join-event`). Every
+// What a tap or a drag on the calendar does to the range. Every
 // result keeps the range inside its [RangeBounds] — the last day never before the start's day nor past the
 // latest end, the start never before the earliest — so a bad range is unreachable rather than refused. The
 // start's clock time is kept whenever its day moves.

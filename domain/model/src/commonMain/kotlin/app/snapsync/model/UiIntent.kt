@@ -23,24 +23,24 @@ sealed interface UiIntent {
     data object RenameOpen : UiIntent
     data object RenameDismiss : UiIntent
 
-    /** The invite's QR code (capability `manage-membership`): shown on request, and dismissed. */
+    /** The invite's QR code: shown on request, and dismissed. */
     data object QrOpen : UiIntent
     data object QrDismiss : UiIntent
     data object ReportBugOpen : UiIntent
 
     /**
-     * "Report this" beside a refusal the user can only tell us about (capability `privacy-security`, "A refused phone is
-     * told why"): the same sheet, opened with a description already written for [message].
+     * "Report this" beside a refusal the user can only tell us about: the same sheet, opened with a description already
+     * written for [message].
      */
     data class ReportRefusal(val message: ScreenMessage) : UiIntent
     data object ReportBugDismiss : UiIntent
 
-    /** The app menu (capability `sync-status`): open it, close it, and its "Report a problem" row. */
+    /** The app menu: open it, close it, and its "Report a problem" row. */
     data object MenuOpen : UiIntent
     data object MenuDismiss : UiIntent
     data object MenuReportBug : UiIntent
 
-    /** The app menu's mobile-data switch (capability `mobile-data`): the device's choice, applied as it is flipped. */
+    /** The app menu's mobile-data switch: the device's choice, applied as it is flipped. */
     data class MobileData(val on: Boolean) : UiIntent
 
     /** One of the app menu's links, opened outside the app. */
@@ -53,7 +53,7 @@ sealed interface UiIntent {
     data class RenameEvent(val eventId: String, val name: String) : UiIntent
     data object RenameStatusConsumed : UiIntent
 
-    /** The settings' "Stop sharing these photos?" (capability `manage-membership`): apply the held change, or drop it. */
+    /** The settings' "Stop sharing these photos?": apply the held change, or drop it. */
     data object ConfirmStopSharing : UiIntent
     data object KeepSharing : UiIntent
     data class ShareOn(val on: Boolean) : UiIntent

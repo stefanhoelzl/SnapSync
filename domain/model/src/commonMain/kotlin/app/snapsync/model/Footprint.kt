@@ -5,8 +5,7 @@ import kotlinx.serialization.json.Json
 import kotlin.time.Instant
 
 /**
- * What the process's own memory accounting says right now (capability `privacy-security`; the read is
- * `ports/ProcessInfo`).
+ * What the process's own memory accounting says right now (the read is `ports/ProcessInfo`).
  *
  * It exists for one question a process-metric report cannot answer: the platform tells us, a day late, that a
  * suspended app was ended for memory and what its footprint averaged — never what it was at the moment it was

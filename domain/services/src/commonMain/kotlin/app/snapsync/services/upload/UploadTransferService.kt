@@ -39,7 +39,7 @@ fun uploadStagingPath(key: String): String = "$UPLOAD_STAGING_DIR/$key"
 private const val PLAINTEXT_SUFFIX = ".plain"
 
 /**
- * **The upload cycle's transfer, over the thin [Upload] port** (capability `background-upload`): what used to live
+ * **The upload cycle's transfer, over the thin [Upload] port**: what used to live
  * inside each platform adapter — which ledger row a presented job belongs to, what a terminal job means, which offered
  * retry is a key's, exporting a resource for a platform that uploads from a file, and recording a terminal the moment
  * the platform reports it — decided once here, for every platform (phase 11f).
@@ -49,8 +49,8 @@ private const val PLAINTEXT_SUFFIX = ".plain"
  *
  * **It records.** A terminal fact is written into the ledger where the platform tells it — [drainTerminals] for a
  * platform that presents terminal jobs (PhotoKit), [recordFinished] for one that reports them as they happen
- * (`URLSession`) — through the narrow [TransferRecord]'s guarded, non-suspending write, and never handed to the cycle
- * (`photo-sharing`). A fact parked for a later cycle to collect does not survive the process.
+ * (`URLSession`) — through the narrow [TransferRecord]'s guarded, non-suspending write, and never handed to the cycle.
+ * A fact parked for a later cycle to collect does not survive the process.
  *
  * **Every presented job is acknowledged**, whatever its guarded write did — a write that applies to nothing is still a
  * job the platform expects back. PhotoKit reports `appex failed to acknowledge jobs for processing state` (error 50008)
@@ -66,7 +66,7 @@ class UploadTransferService(
     /** The shared area a file uploader's exported bytes wait in ([UPLOAD_STAGING_DIR]). */
     private val files: Files,
     /**
-     * The networks a job created or re-pointed NOW may use (capability `mobile-data`) — read at that moment, so a change
+     * The networks a job created or re-pointed NOW may use — read at that moment, so a change
      * of the member's choice governs the jobs that start after it, never the ones already handed to the platform.
      */
     private val network: () -> TransferNetwork,
@@ -321,7 +321,7 @@ class UploadTransferService(
     }
 
     /**
-     * Delete every staged upload file no in-flight job uploads from (capability `background-upload`) — what an export
+     * Delete every staged upload file no in-flight job uploads from — what an export
      * left when no job outlived it: the process died between the export and the job's creation, or a job ended
      * without this process being told. Nothing else ever reaches such a file; [recordFinished], a refused creation
      * and [cancelAll] each release only the file of a job they are handed.

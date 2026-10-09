@@ -8,7 +8,7 @@ import co.touchlab.kermit.Logger
 
 /**
  * Re-read every status the joined screen shows, **cheap local reads before the library enumeration**
- * (capability `sync-status`, "Foreground status refresh is not sequenced behind the upload pump").
+ * — the foreground status refresh is not sequenced behind the upload pump.
  *
  * The order is the rule, and it has a shipped regression behind it. The ledger `aggregates()` and the
  * download projection are two SQLite reads; the own-device walk is orders of magnitude slower (~6 s).
@@ -42,12 +42,12 @@ class StatusRefresh(
     private val ledgerCounts: LedgerCountsSource,
     /** The own-device upload total `N`. */
     private val gallery: OwnDeviceGalleryStatusSource,
-    /** The foreign-download line (capability `receiving-photos`) — a SIBLING feature, so a lambda. */
+    /** The foreign-download line — a SIBLING feature, so a lambda. */
     private val refreshDownloadLine: suspend () -> Unit,
     /** The joined membership, or `null` when unjoined. */
     private val configSource: ConfigService,
     /**
-     * What this membership contributes (capability `photo-sharing`) — the ONE derivation, run
+     * What this membership contributes — the ONE derivation, run
      * where the config and both port readers are in scope. Injected because deriving it costs two port
      * reads (echo suppression, the denylisted-album lookup) and this zone may not make them.
      */
@@ -56,8 +56,7 @@ class StatusRefresh(
 ) {
 
     /**
-     * The **cheap local status reads** — the group, defined ONCE (capability `sync-status`, "The cheap local
-     * status reads are one bounded group").
+     * The **cheap local status reads** — one bounded group, defined ONCE.
      *
      * It is its own entry point because the group has two callers with different jobs: [run] reads it before
      * the library enumeration, and the foreground-gated poll re-reads it on a cadence. Stating the membership
@@ -94,12 +93,12 @@ class StatusRefresh(
         // admitted set can be stated at all — and a gate here would restate the second half. It used to,
         // and restated it wrongly: `grantsPhotoAccess` is true under LIMITED, so it admitted the one case
         // that actually reaches members — a partial grant whose selection snapshot has not landed,
-        // counted as a zero and settling the screen at "Up to date" (capability `sync-status`).
+        // counted as a zero and settling the screen at "Up to date".
         val derived = runCatchingCancellable { policyFor(config) }
         derived.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed read: `runCatchingCancellable` rethrows it, so it never lands
             // here — swallowing it would break structured concurrency AND post an Error-severity line, which
-            // reaches the crash reporter on production builds (capability `privacy-security`), for an
+            // reaches the crash reporter on production builds, for an
             // ordinary teardown.
             // Bounded, not thrown: this runs as one child of the Foreground flow's `coroutineScope`, so
             // an escaping failure would cancel its SIBLINGS — the download reconcile, the staged-byte

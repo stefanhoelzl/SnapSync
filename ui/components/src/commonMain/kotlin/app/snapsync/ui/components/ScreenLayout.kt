@@ -46,11 +46,11 @@ import org.jetbrains.compose.resources.stringResource
  * off by a line along its top edge. Screens supply the footer's actions; this container stacks them centred
  * with consistent spacing, so the screen never hardcodes anchor geometry (spec: docs/architecture.md).
  *
- * [onMenu] opens the app menu (capability `sync-status`) from a button at the start of the title row; `null` draws no
+ * [onMenu] opens the app menu from a button at the start of the title row; `null` draws no
  * button — the screens that withhold the menu — while the row keeps its height, so the label never moves between
  * them.
  *
- * [onEditHeading] is the heading's edit affordance (capability `manage-membership`). It is the deliberate
+ * [onEditHeading] is the heading's edit affordance. It is the deliberate
  * OPPOSITE of [onTitleDoubleTap]: a visible control with click semantics and an accessibility label,
  * because renaming an event is something a member should be able to find. The two never collide — they
  * sit on different slots (the app-name label and the heading), and only one of them is a control.
@@ -153,7 +153,7 @@ private val TITLE_ROW_HEIGHT = 48.dp
 /**
  * The small app-name nav label — always present, top-anchored (mockup `.navtitle`).
  *
- * [onDoubleTap] is the hidden second way to the report sheet (capability `privacy-security`), and it is
+ * [onDoubleTap] is the hidden second way to the report sheet, and it is
  * deliberately a raw pointer-input gesture rather than `combinedClickable`: that would add click
  * semantics and a role to a label that must stay invisible to assistive tech and to a UI test that has
  * not been told where to look.

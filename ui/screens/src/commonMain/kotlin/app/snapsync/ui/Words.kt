@@ -104,7 +104,7 @@ internal class ReportCopy(val body: StringResource, val confirm: StringResource)
 
 /**
  * The bug-report sheet's words for [destination]. A build that reports nowhere keeps the report on the phone, and says
- * so — it never suggests a destination it does not have (capability `privacy-security`).
+ * so — it never suggests a destination it does not have.
  */
 internal fun reportCopy(destination: ReportDestination): ReportCopy = when (destination) {
     ReportDestination.DEVELOPER -> ReportCopy(Res.string.report_body_developer, Res.string.report_send)

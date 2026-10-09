@@ -23,7 +23,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * The Android [Ui]: the Compose screen an activity sets as its content (capability `sync-status`).
+ * The Android [Ui]: the Compose screen an activity sets as its content.
  *
  * **The activity pulls the screen** at its creation ([content]), so a process a worker or a push started in the
  * background builds none — the property iOS gets from its deferred scene, here for free: no activity, no screen. A pull

@@ -37,7 +37,7 @@ class StatusSources(
     val sync: SyncStatusSource,
     /**
      * The photo-permission read-model. Observed for the health rung, and for whether confirming a join
-     * also raises iOS's photo-access dialog (capability `join-event`).
+     * also raises iOS's photo-access dialog.
      */
     val permission: StateFlow<GalleryAccess>,
     /** The persisted membership. Config presence is the reduction's top rung. */
@@ -48,30 +48,29 @@ class StatusSources(
      */
     val creation: StateFlow<CreationStatus> = MutableStateFlow(CreationStatus.Idle),
     /**
-     * The rename-status read-model (capability `manage-membership`), the create twin, with the same inert
-     * default for the same reason.
+     * The rename-status read-model, the create twin, with the same inert default for the same reason.
      */
     val rename: StateFlow<RenameStatus> = MutableStateFlow(RenameStatus.Idle),
     /**
-     * Download progress (capability `receiving-photos`).
+     * Download progress.
      *
      * The default is a READ `(0, 0)`, and the distinction is the point: "this host has no download arm" is an
      * ANSWER, while `DownloadProgress.UNREAD` means "nothing has been read", which holds the health at `Loading`
      * forever. A host that never wires downloads means the first; the store-backed source on device means the
-     * second until its first refresh (capability `sync-status`).
+     * second until its first refresh.
      */
     val download: StateFlow<DownloadProgress> = MutableStateFlow(DownloadProgress(0, 0)),
     /** Whether this device is verified, and why the service refused it if it did (see [DeviceVerification]). */
     val verification: DeviceVerification = DeviceVerification(),
     /**
-     * The in-progress join/switch confirmation (capability `join-event`). Event-driven rather than
+     * The in-progress join/switch confirmation. Event-driven rather than
      * level-triggered: the gate sets it on a decoded interactive event link and clears it on
      * commit/cancel. Injected — defaulting to a fresh instance, which the gate drives.
      */
     val pending: MutableStateFlow<PendingJoin?> = MutableStateFlow(null),
     /**
-     * Whether the backend is refusing this build as too old, and the version it named (capability
-     * `app-update-required`) — `AppVersionGate.refusal`, written by the core's authenticated backend on every backend answer.
+     * Whether the backend is refusing this build as too old, and the version it named — `AppVersionGate.refusal`,
+     * written by the core's authenticated backend on every backend answer.
      *
      * An OBSERVATION, like every field here, so it does not cross `flow/` (`docs/architecture.md`,
      * "Commands cross one door": reads do not). Defaults to never-refused, so a host with no backend —
@@ -79,13 +78,13 @@ class StatusSources(
      */
     val versionRefusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),
     /**
-     * Whether the app can reach the network, as the member is told, and when a missing one comes back (capability
-     * `sync-status`, "The app says when it cannot reach the network"). Defaults to always-online, so a host that does
-     * not exercise it constructs unchanged.
+     * Whether the app can reach the network, as the member is told, and when a missing one comes back: the app says
+     * when it cannot reach the network. Defaults to always-online, so a host that does not exercise it constructs
+     * unchanged.
      */
     val network: NetworkStatusSource = AlwaysOnline,
     /**
-     * The device's mobile-data choice (capability `mobile-data`): what the menu's switch shows, and whether work on a
+     * The device's mobile-data choice: what the menu's switch shows, and whether work on a
      * restricted network reads as waiting for Wi-Fi. Inert default: photos may use any network.
      */
     val mobileData: StateFlow<Boolean> = MutableStateFlow(true),
@@ -96,7 +95,7 @@ class StatusSources(
      */
     val store: StoreLink? = null,
     /**
-     * The app's latest return to the foreground (capability `create-event`): the create screen's draft follows it.
+     * The app's latest return to the foreground: the create screen's draft follows it.
      * Defaults to none ever, so a host that never foregrounds keeps one draft.
      */
     val foreground: StateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
@@ -112,8 +111,8 @@ class EventKeyView(
     /** The key as the invite link carries it. Defaults to none: a plain event's invite carries no key. */
     val inviteKey: StateFlow<String?> = MutableStateFlow(null),
     /**
-     * Whether this device holds it (capability `sync-status`): a lost one is the joined screen's status line, and a
-     * reopened invite of the event gives it back (capability `join-event`). Defaults to none needed.
+     * Whether this device holds it: a lost one is the joined screen's status line, and a reopened invite of the event
+     * gives it back. Defaults to none needed.
      */
     val presence: StateFlow<KeyPresence> = MutableStateFlow(KeyPresence.NotNeeded),
 )
@@ -133,10 +132,9 @@ class StatusDiagnostics(
      */
     val log: (String) -> Unit,
     /**
-     * The container's ERROR seam (spec `sync-status`, "A failing command never disables the status
-     * container"): every throwable that escapes an intent arrives here instead of propagating. The
-     * composition binds it to `Error` severity, which is the threshold at which a Kermit line becomes a
-     * crash-reporting EVENT rather than a breadcrumb (capability `privacy-security`).
+     * The container's ERROR seam (a failing command never disables the status container): every throwable that
+     * escapes an intent arrives here instead of propagating. The composition binds it to `Error` severity, which is
+     * the threshold at which a Kermit line becomes a crash-reporting EVENT rather than a breadcrumb.
      *
      * Required: a host that binds nothing here must say so. The container stays alive either way, because
      * it is the handler's PRESENCE that stops Orbit's rethrow — a host binding a no-op loses the report,
@@ -152,7 +150,7 @@ private object AlwaysOnline : NetworkStatusSource {
 }
 
 /**
- * The attestation's verdict, as the status host reads it (capability `privacy-security`): its two halves travel together.
+ * The attestation's verdict, as the status host reads it: its two halves travel together.
  *
  * [attested] is false only when this device's token is UNUSABLE (absent, unreadable, or expired) and the refresh could
  * not obtain one. Never false for a token merely due for renewal — that one still authorizes every upload, and saying

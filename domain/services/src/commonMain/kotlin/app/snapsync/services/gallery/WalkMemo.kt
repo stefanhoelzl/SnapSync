@@ -11,8 +11,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * What the walk memo may do with an entry whose key matches (capability `photo-sharing`, "An unchanged library is
- * answered from the walk memo").
+ * What the walk memo may do with an entry whose key matches — an unchanged library is
+ * answered from the walk memo.
  */
 enum class WalkMemoUse {
     /**
@@ -29,8 +29,7 @@ enum class WalkMemoUse {
 
 /**
  * The app process's **walk memo**: an [UploadDiscovery] that answers a walk from the last one while the library is
- * unchanged (capability `photo-sharing`, "An unchanged library is answered from the walk memo"; decision record
- * `changes/own-work-per-wake`, D9).
+ * unchanged (decision record `changes/own-work-per-wake`, D9).
  *
  * An entry is keyed on all three of: the library's change token ([LibraryChangeToken.sameLibraryAs]), the
  * membership's [SelectionPolicy], and the photo grant. The policy stands in for the fetch predicate — it is a
@@ -52,7 +51,7 @@ enum class WalkMemoUse {
  * what a fresh walk over the same unchanged library, under the same policy and grant, returns.
  *
  * In memory only: nothing persists it, and a new process walks afresh. **The upload extension never holds one**
- * (capability `background-upload`: its 32 MB limit, and nothing held across `process()` calls); it is composed in
+ * (its 32 MB limit, and nothing held across `process()` calls); it is composed in
  * the app process's discovery binding only, by `appUploadDiscovery`.
  */
 class WalkMemo(

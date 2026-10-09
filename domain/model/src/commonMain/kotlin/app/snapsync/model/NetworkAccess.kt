@@ -9,10 +9,10 @@ package app.snapsync.model
  */
 sealed interface NetworkAccess {
     /**
-     * A path to the network exists for this app. [restricted] says the path is one the member may want photos kept
-     * off (capability `mobile-data`): mobile data, a personal hotspot or any other network the platform treats as
-     * costly, or a network under Low Data Mode (iOS) / Data Saver (Android). Anything that only asks "is there a
-     * network" matches [Online] and ignores the flag.
+     * A path to the network exists for this app. [restricted] says the path is one the member may want photos kept off:
+     * mobile data, a personal hotspot or any other network the platform treats as costly, or a network under Low Data
+     * Mode (iOS) / Data Saver (Android). Anything that only asks "is there a network" matches [Online] and ignores the
+     * flag.
      */
     data class Online(val restricted: Boolean) : NetworkAccess
 

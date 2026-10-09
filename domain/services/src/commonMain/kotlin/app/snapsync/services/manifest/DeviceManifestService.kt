@@ -14,7 +14,7 @@ const val LAST_UPLOADED_FILE: String = "last-uploaded.json"
 private const val LAST_UPLOADED: String = "$DEVICE_MANIFEST_DIR/$LAST_UPLOADED_FILE"
 
 /**
- * The device manifest's skip record (capability `photo-sharing`): [DeviceManifestService] over one file in the
+ * The device manifest's skip record: [DeviceManifestService] over one file in the
  * shared area, so the app and the extension agree on what was last published.
  *
  * Every non-answer reads as **not believed** — the record is a skip optimisation, and "no record" only costs a

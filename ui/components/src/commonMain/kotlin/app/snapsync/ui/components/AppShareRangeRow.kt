@@ -64,7 +64,7 @@ class RangeWindow(
 )
 
 /**
- * The capture-date **range** as ONE row (capabilities `join-event`, `manage-membership`): the resolved
+ * The capture-date **range** as ONE row: the resolved
  * range in the row's heaviest type, a [detail] line beneath it (the caller's "<preset> · <count>"), and an
  * edit affordance that opens the design system's range calendar bounded to the event [window], with the
  * **Whole event** / **From now** presets as chips above it. It replaced two captioned preset lists (three

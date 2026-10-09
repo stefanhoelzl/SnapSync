@@ -10,8 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Whether the backend is refusing this build as too old, and the version it named (capability
- * `app-update-required`).
+ * Whether the backend is refusing this build as too old, and the version it named.
  *
  * A **read-model**, in the shape the presentation already consumes: one cell, observed, never commanded. It is
  * written by the one place every backend answer passes through — [observe], called by the authenticated backend for
@@ -52,7 +51,7 @@ class AppVersionGate(
     /**
      * The backend refused this build (`426`), naming [minimumVersion] when it carried one.
      *
-     * Reported at **`Error`**, so it reaches crash reporting (capability `privacy-security`). That is not a
+     * Reported at **`Error`**, so it reaches crash reporting. That is not a
      * judgement about severity in the abstract — it is that this device now does nothing at all: every metadata call
      * is refused, no photo is shared and none arrives, and the member sees only a screen telling them to update. An
      * operator who cannot see that from the reports cannot tell a bad release from a quiet week. Logged on the

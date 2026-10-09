@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The Android [BackgroundTime] (capability `background-upload`): "keep this process running while I finish, and tell
+ * The Android [BackgroundTime]: "keep this process running while I finish, and tell
  * me when time is up", as WorkManager work.
  *
  * Each hold is an **expedited** one-time work ([HoldWorker]) that runs until the hold ends: a running worker keeps a

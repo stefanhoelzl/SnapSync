@@ -13,10 +13,10 @@ package app.snapsync.model
  *
  * No query has a default body: a host that cannot answer a query must say what it answers instead.
  *
- * - [loadJoinDetails] — the join gate's details read (capability `join-event`): `GET /events/:id` mapped to
+ * - [loadJoinDetails] — the join gate's details read: `GET /events/:id` mapped to
  *   a block / retry / ready outcome, and [JoinLoad.WrongLink] when the link's key (`linkKey`) does not open the event.
- * - [shareableCount] — how many of the member's own photos the range `[cutoff, until]` would share
- *   (capability `join-event`), or `null` when the grant permits no count. Purely local.
+ * - [shareableCount] — how many of the member's own photos the range `[cutoff, until]` would share,
+ *   or `null` when the grant permits no count. Purely local.
  */
 interface UserQueries {
     suspend fun loadJoinDetails(eventId: String, linkKey: String?): JoinLoad

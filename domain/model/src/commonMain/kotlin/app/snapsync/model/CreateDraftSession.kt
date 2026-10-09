@@ -5,13 +5,12 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
 /**
- * How long the app may stay in the background before the create screen starts a fresh draft (capability
- * `create-event`, "A long absence starts a fresh draft").
+ * How long the app may stay in the background before the create screen starts a fresh draft.
  */
 val CREATE_DRAFT_ABSENCE_LIMIT: Duration = 15.minutes
 
 /**
- * Where the create screen's draft stands against the app's foreground life (capability `create-event`).
+ * Where the create screen's draft stands against the app's foreground life.
  * [activation] changes on every return to the foreground — an untouched start moves to now; [epoch] changes
  * only on a return after [CREATE_DRAFT_ABSENCE_LIMIT] or more away — the whole draft starts over.
  */

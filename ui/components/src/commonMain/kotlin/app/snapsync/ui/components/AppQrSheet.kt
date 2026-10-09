@@ -20,7 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * The invite's QR code, shown on request in a bottom sheet (capability `manage-membership`): a [title] naming
+ * The invite's QR code, shown on request in a bottom sheet: a [title] naming
  * the event to join, the code for [content], and a [caption] addressed to the member holding the phone. It has
  * no action: every dismissal route (the scrim, the swipe-down) is the same [onDismiss], and showing it changes
  * nothing. The code stays dark on its white card in both appearances ([AppQrCode]).

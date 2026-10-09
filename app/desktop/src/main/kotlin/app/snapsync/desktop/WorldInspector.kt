@@ -94,8 +94,8 @@ fun WorldInspector(
         }
         Text("Joined event: ${snap.joinedEventId ?: "— none —"}", maxLines = 1, overflow = TextOverflow.Ellipsis)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Both sides of the event-start FLOOR, drivable through the real stack (capability
-            // `photo-sharing`). "started" is the ordinary case. "not started" is the interesting one:
+            // Both sides of the event-start FLOOR, drivable through the real stack. "started" is
+            // the ordinary case. "not started" is the interesting one:
             // the event's start is in the future, so the clamped cutoff admits NO photo — invoking the
             // extension must leave the backend column empty while the phone frame reads the clock line.
             OutlinedButton(onClick = { controller.createEvent("Harness event", PAST_START, PAST_END) }) {
@@ -115,7 +115,7 @@ fun WorldInspector(
         TwoUp(
             left = {
                 Button(onClick = { controller.addAsset() }) { Text("+ Add asset") }
-                // Selection policy (capability `photo-sharing`): each of these adds a real asset to
+                // Selection policy: each of these adds a real asset to
                 // the gallery that the policy EXCLUDES — it must appear here and then never upload, never
                 // enter the union, and never inflate N. "+ 1080p video" is the control: it is BELOW the
                 // image floor but above the video floor, so it must still upload.
@@ -194,7 +194,7 @@ fun WorldInspector(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // The membership read's THIRD state (capability `background-upload`). Not a mood: an
+                    // The membership read's THIRD state. Not a mood: an
                     // unreadable read must skip — touching no ledger, no manifest, no job — where an
                     // absent one reads as not joined. It is a switch because it is otherwise unreachable by a
                     // reviewer: the config cell has only joined/absent, and the dev SE2 has no passcode, so
@@ -332,7 +332,7 @@ private fun NetworkLevers(controller: WorldInspectorController) {
     Text("Network")
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = false)) }) { Text("Wi-Fi") }
-        // Capability `mobile-data`: mobile data, a hotspot or Low Data Mode — where photos kept off mobile data wait.
+        // Mobile data, a hotspot or Low Data Mode — where photos kept off mobile data wait.
         OutlinedButton(
             onClick = { controller.setNetwork(NetworkAccess.Online(restricted = true)) },
         ) { Text("Mobile data") }
@@ -366,7 +366,7 @@ private fun OneShotLevers(controller: WorldInspectorController) {
             }
         },
     ) { Text("Arm import failure") }
-    // The joined event's key gone while the membership stays (capability `sync-status`) — what a restore onto a new
+    // The joined event's key gone while the membership stays — what a restore onto a new
     // phone leaves. The status line follows at the next foreground; reopening the event's invite restores it.
     OutlinedButton(
         onClick = {

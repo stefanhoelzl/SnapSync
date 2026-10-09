@@ -26,7 +26,7 @@ import app.snapsync.model.WriteOutcome
  *
  * The upload extension gets this and nothing more; the app gets [Gallery], which extends it.
  *
- * **Every read is scoped to the member's default gallery**, which the platform defines (capability `photo-sharing`):
+ * **Every read is scoped to the member's default gallery**, which the platform defines:
  * on iOS the whole library, on Android `DCIM` and its subfolders — where a subfolder is also what [albums] lists. An
  * asset outside it is never returned, by any read, so no consumer can count, list or upload one.
  *
@@ -45,15 +45,15 @@ interface GalleryReader : PhotoGrantRead {
      * The assets [policy] may admit — facts only, no resources. The implementation narrows its native query by
      * whichever of the policy's rules it can express and ignores the rest: it MAY return assets the policy
      * rejects (the caller's admission is authoritative), and MUST NOT omit one it admits, because what comes
-     * back is also a walk's presence set (capability `photo-sharing`).
+     * back is also a walk's presence set.
      */
     suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>>
 
     /**
      * Every asset of the library [policy] narrows to — facts only — including the ones [assets] leaves out because they
      * are never this member's to share: on Android the event albums' own folders, where received photos are filed.
-     * What a reinstalled app reads to recognise the photos it received before (capability `receiving-photos`). Narrowed
-     * and over-returning exactly as [assets] is; where the platform keeps no such folders it answers what [assets] does.
+     * What a reinstalled app reads to recognise the photos it received before. Narrowed and over-returning exactly as
+     * [assets] is; where the platform keeps no such folders it answers what [assets] does.
      */
     suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>>
 
@@ -82,8 +82,8 @@ interface GalleryReader : PhotoGrantRead {
     suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>>
 
     /**
-     * How this library holds an album (capability `event-album`): a [AlbumKind.COLLECTION] an asset is added to, or
-     * the [AlbumKind.FOLDER] a file lives in. A fact of the platform, fixed for the adapter's life.
+     * How this library holds an album: a [AlbumKind.COLLECTION] an asset is added to, or the [AlbumKind.FOLDER] a
+     * file lives in. A fact of the platform, fixed for the adapter's life.
      */
     val albumKind: AlbumKind
 
@@ -124,7 +124,7 @@ class GalleryHandlers(
     val onChanged: (SelectionSnapshot) -> Unit,
     /**
      * The asset an import is creating, called INSIDE the platform's change block — before the asset can be
-     * observed — so the marker that keeps it from being uploaded back lands first (capability `receiving-photos`).
+     * observed — so the marker that keeps it from being uploaded back lands first.
      * The write is synchronous, on the delivering thread. If a change block runs again, the last call wins.
      */
     val onImportPlaceholder: (AssetRef, AssetId) -> Unit,
@@ -137,7 +137,7 @@ class GalleryHandlers(
 )
 
 /**
- * Rebuilding one foreign asset in the gallery (capability `receiving-photos`) — the one [Gallery] member the
+ * Rebuilding one foreign asset in the gallery — the one [Gallery] member the
  * download feature needs, on its own so the feature names nothing else of the app's gallery.
  */
 interface GalleryImport : Port {
@@ -145,7 +145,7 @@ interface GalleryImport : Port {
      * Create one asset from [request]'s staged resources in one platform transaction. The placeholder and the
      * outcome reach the registered [GalleryHandlers] (`onImportPlaceholder` inside the change, `onImportSettled` on
      * the completion); this returns the same outcome, only after `onImportSettled` has **returned**. Nothing bounds
-     * the wait: an import the platform never reports never returns (capability `receiving-photos`).
+     * the wait: an import the platform never reports never returns.
      */
     suspend fun import(request: ImportRequest): ImportResult
 }
@@ -172,10 +172,9 @@ interface Gallery : GalleryReader, LibraryChangeTokenRead, GalleryImport, Listen
     suspend fun requestAccess(): GalleryAccess
 
     /**
-     * Present the platform's surface for revising a **partial** grant's selection (capability `photo-access`)
-     * and answer the grant afterwards. The selection the member picks arrives through the selection observer,
-     * never as this answer. The app suppresses the platform's own automatic prompt, so this is the member's one
-     * route to widen what the app sees.
+     * Present the platform's surface for revising a **partial** grant's selection and answer the grant afterwards. The
+     * selection the member picks arrives through the selection observer, never as this answer. The app suppresses the
+     * platform's own automatic prompt, so this is the member's one route to widen what the app sees.
      */
     suspend fun widenSelection(): GalleryAccess
 }

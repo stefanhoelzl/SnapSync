@@ -7,7 +7,7 @@ import kotlin.time.Duration
  * woken for, never for a platform's task identifier, which stays in the adapter.
  */
 enum class WakeId {
-    /** The app uploader's heartbeat: a timed wake whose work is the process tail (capability `background-upload`). */
+    /** The app uploader's heartbeat: a timed wake whose work is the process tail. */
     Heartbeat,
 
     /**
@@ -19,8 +19,8 @@ enum class WakeId {
 }
 
 /**
- * How urgently a timed wake is wanted — the core's word; which task kind carries it is the adapter's (capability
- * `receiving-photos`; decision record `changes/timely-background-receiving`, D1–D2).
+ * How urgently a timed wake is wanted — the core's word; which task kind carries it is the adapter's (decision
+ * record `changes/timely-background-receiving`, D1–D2).
  */
 enum class WakeCadence {
     /** Work remains, or a new photo can only be noticed by looking: wake again soon. */
@@ -39,7 +39,7 @@ enum class WakeNetwork {
     ANY,
 
     /**
-     * A network that is neither costly nor data-restricted (capability `mobile-data`) — what a member who keeps photos
+     * A network that is neither costly nor data-restricted — what a member who keeps photos
      * off mobile data needs before the wake's transfers can run. A platform that cannot express it waits for [ANY].
      */
     UNRESTRICTED,

@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * The vocabulary of the `Upload` port (capability `background-upload`) — what an upload job is, platform-neutrally.
+ * The vocabulary of the `Upload` port — what an upload job is, platform-neutrally.
  * Each platform's own job states, error domains and limits stay in its adapter; what they mean for the ledger is the
  * upload services'.
  */
@@ -26,7 +26,7 @@ sealed interface UploadSource {
 
 /**
  * Where an upload job sends its bytes: the destination URL and the request headers — and which networks the platform
- * may send them over ([network], capability `mobile-data`), fixed when the job is created.
+ * may send them over ([network]), fixed when the job is created.
  */
 data class UploadTarget(val url: String, val headers: Map<String, String>, val network: TransferNetwork)
 

@@ -56,7 +56,7 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-// The range picker's time wheels (capabilities `create-event`, `join-event`). They are CONTROLLED: the value
+// The range picker's time wheels. They are CONTROLLED: the value
 // lives with the caller, a wheel reports only where the HOST made it come to rest, and it follows the value
 // when the caller moves it (a settle the rules pulled back, a start that moved under a blank end). That is
 // what lets an end time stay blank until touched, and what makes a disallowed time unreachable instead of

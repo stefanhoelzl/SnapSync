@@ -4,11 +4,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * One resource entry inside a [DeviceManifestAsset] (capability `photo-sharing`): a generic [role],
- * the resource's MIME [contentType], its [key] (the storage object name `<assetId>-<role>.<ext>` — its
- * `files/<deviceId>/` storage key minus that prefix, byte-identical to what the producer uploads under,
- * see [uploadKey]; the fetch handle), and the human [filename] as captured. These field names are shared
- * verbatim with the event-wide union read, so the union is a straight projection of the manifest.
+ * One resource entry inside a [DeviceManifestAsset]: a generic [role], the resource's MIME [contentType], its [key]
+ * (the storage object name `<assetId>-<role>.<ext>` — its `files/<deviceId>/` storage key minus that prefix,
+ * byte-identical to what the producer uploads under, see [uploadKey]; the fetch handle), and the human [filename] as
+ * captured. These field names are shared verbatim with the event-wide union read, so the union is a straight projection
+ * of the manifest.
  */
 @Serializable
 class ManifestResource(
@@ -19,10 +19,9 @@ class ManifestResource(
 )
 
 /**
- * One asset entry inside a [DeviceManifest] (capability `photo-sharing`): the device-local
- * [assetId], its [creationDate] (ISO-8601 capture timestamp), and a non-empty [resources] set of
- * generic, originals-only [ManifestResource]s. Carries no `version` (the document is mutable and
- * rewritten each cycle, not a write-once contract).
+ * One asset entry inside a [DeviceManifest]: the device-local [assetId], its [creationDate] (ISO-8601 capture
+ * timestamp), and a non-empty [resources] set of generic, originals-only [ManifestResource]s. Carries no `version` (the
+ * document is mutable and rewritten each cycle, not a write-once contract).
  */
 @Serializable
 class DeviceManifestAsset(
@@ -32,22 +31,21 @@ class DeviceManifestAsset(
 )
 
 /**
- * The per-event device manifest (capability `photo-sharing`): one object per (event, device) at
- * `/events/<eventId>/devices/<deviceId>.json`, carrying the stable [deviceId] and the device's
- * [assets] for that event. It **replaces** the per-asset manifest objects — one document instead of N
- * — and is a **mutable, full-state snapshot** rewritten each cycle (no read-modify-write, last-write
- * wins, self-healing). It is write-only in v1: nothing in-app reads it (status comes from the gallery
- * enumeration seam × the per-device file listing); it exists as forward-prep for restore / the
- * event-wide union.
+ * The per-event device manifest: one object per (event, device) at `/events/<eventId>/devices/<deviceId>.json`,
+ * carrying the stable [deviceId] and the device's [assets] for that event. It **replaces** the per-asset manifest
+ * objects — one document instead of N — and is a **mutable, full-state snapshot** rewritten each cycle (no
+ * read-modify-write, last-write wins, self-healing). It is write-only in v1: nothing in-app reads it (status comes from
+ * the gallery enumeration seam × the per-device file listing); it exists as forward-prep for restore / the event-wide
+ * union.
  */
 @Serializable
 class DeviceManifest(
     val deviceId: String,
     val assets: List<DeviceManifestAsset>,
     /**
-     * The ledger's **manifest version** this snapshot was projected under (capability `photo-sharing`, "A
-     * publish carries the manifest version"): the backend stores a publish only when it is not older than the
-     * one it holds, so two processes' publishes crossing in the network can never leave it a snapshot behind.
+     * The ledger's **manifest version** this snapshot was projected under: the backend stores a publish only when it is
+     * not older than the one it holds, so two processes' publishes crossing in the network can never leave it a
+     * snapshot behind.
      *
      * Not a projection input — the projection is a function of the rows and the policy alone, and
      * [projectDeviceManifest] leaves it absent; the producer stamps it. `null` is the wire's "no version"
@@ -55,10 +53,9 @@ class DeviceManifest(
      */
     val version: Long? = null,
     /**
-     * Whether this device declares its share SETTLED (capability `photo-sharing`, "A member's share is settled
-     * only after the event has ended"): the event's range has ended and the discovery this snapshot came from ran
-     * after the end, so every in-range photo is listed. Bytes may still be uploading. The backend ignores it before
-     * the end, and closes the event once every active member has declared it.
+     * Whether this device declares its share SETTLED: the event's range has ended and the discovery this snapshot came
+     * from ran after the end, so every in-range photo is listed. Bytes may still be uploading. The backend ignores it
+     * before the end, and closes the event once every active member has declared it.
      *
      * Like [version], stamped by the producer rather than projected.
      */
@@ -84,7 +81,7 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
 
 /**
  * Project the upload ledger's [rows] into a single event's [DeviceManifest], keeping exactly the assets
- * the membership's [policy] **admits** (capability `photo-sharing`).
+ * the membership's [policy] **admits**.
  *
  * **The manifest declares INTENT, not completion.** It lists what this device will provide to the event —
  * every non-absent row the policy admits, whatever its upload state. The backend records the roles each
@@ -95,7 +92,7 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
  * Listing only completed rows is what this replaced, and it had a defect of its own. A recipient plans
  * downloads per ASSET, so a Live Photo whose `primary` and `live` completed in different cycles was
  * offered mid-upload as a complete one-resource asset — and a recipient reconciling in that window
- * imported it as a still, marked it settled, and never took the video (capability `receiving-photos`).
+ * imported it as a still, marked it settled, and never took the video.
  *
  * It applies the *one* admission rather than a date comparison of its own — [admittedAssetIds], shared
  * verbatim with the upload cycle's enqueue, so what this device declares and what its bytes do cannot
@@ -113,8 +110,8 @@ suspend fun projectDeviceManifest(
     rows: Collection<LedgerEntry>,
     policy: SelectionPolicy,
 ): DeviceManifest {
-    // No row filter of its own: a departed asset's rows are deleted by the walk that shows it gone
-    // (capability `photo-sharing`), so every row here is one this device still holds. Admission is the policy's.
+    // No row filter of its own: a departed asset's rows are deleted by the walk that shows it gone, so every row here
+    // is one this device still holds. Admission is the policy's.
     val admitted = admittedAssetIds(rows, policy)
 
     val assets = rows.groupBy { it.assetId }.filterKeys { it in admitted }.map { (assetId, group) ->

@@ -4,8 +4,8 @@ import app.snapsync.model.DeviceConditionsReading
 
 /**
  * The device's power, battery, thermal and background-allowance state, as the operating system reports it to this app
- * — ONE external system, the platform's device-condition settings. Read only for a bug report (capability
- * `privacy-security`), and only by the app process: the upload extension sends none.
+ * — ONE external system, the platform's device-condition settings. Read only for a bug report, and only by the app
+ * process: the upload extension sends none.
  *
  * iOS answers with `NSProcessInfo`, `UIDevice` and `UIApplication`; Android with `PowerManager`, `UsageStatsManager` and
  * the battery's sticky broadcast. A field the platform has no notion of answers `Fact.Unsupported`, and one whose read

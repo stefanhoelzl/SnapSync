@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The current-push-token source (capability `receiving-photos`). The token is **OS-push-delivered**,
+ * The current-push-token source. The token is **OS-push-delivered**,
  * not pulled: the composition calls [deliver] from the `PushNotifications` port's `onToken` (on iOS the
  * AppDelegate's `didRegisterForRemoteNotificationsWithDeviceToken`, on Android FCM's `onNewToken`); tests call
  * [deliver] directly (it is its own settable fake — one implementation suffices). [kind] is the push service the

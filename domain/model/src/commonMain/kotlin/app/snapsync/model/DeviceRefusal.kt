@@ -3,8 +3,8 @@ package app.snapsync.model
 import kotlinx.serialization.Serializable
 
 /**
- * Why the service refused this phone as not genuine, as the user is told it (capability `privacy-security`, "A refused
- * phone is told why"). A CLOSED set, coarser than the backend's checks on purpose: the precise check stays in its log.
+ * Why the service refused this phone as not genuine, as the user is told it: a refused phone is told why. A CLOSED set,
+ * coarser than the backend's checks on purpose: the precise check stays in its log.
  *
  * Read off v2's `401 attestation rejected: <reason>` by [wireName]. A refusal that names no reason — v1's bare body, or
  * one this build does not know — is [DEVICE_UNVERIFIABLE], the one reason that never accuses the user.
@@ -30,8 +30,8 @@ enum class DeviceRefusal(val wireName: String) {
 }
 
 /**
- * What the app knows about the latest refused attestation, for a report the user sends from "Report this" (capability
- * `privacy-security`): the service's [reason] and diagnostic [detail] as it named them, and the [chain] the phone
- * presented, where the platform exposes it. Held in memory only.
+ * What the app knows about the latest refused attestation, for a report the user sends from "Report this": the
+ * service's [reason] and diagnostic [detail] as it named them, and the [chain] the phone presented, where the platform
+ * exposes it. Held in memory only.
  */
 data class RefusalFacts(val reason: DeviceRefusal, val detail: String?, val chain: AttestationChain?)

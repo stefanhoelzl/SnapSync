@@ -11,7 +11,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 const val UPLOAD_SESSION_ID = "app.snapsync.upload.session"
 
 /**
- * Where `handleEventsForBackgroundURLSession` goes (capability `sync-status`): to the session the operating system
+ * Where `handleEventsForBackgroundURLSession` goes: to the session the operating system
  * named — the app's [upload] session by its identifier, and **every other identifier to the [download] session**, the
  * one other session this app creates. An identifier this build does not know is thereby handed to a session that can
  * bring itself up and report its drain, rather than dropped with its handler held (decision record

@@ -4,7 +4,7 @@ import app.snapsync.model.JoinResult
 import app.snapsync.services.backend.EventJoin
 
 /**
- * Enrolls this device into an event (capability `join-event`) by making its manifest object exist
+ * Enrolls this device into an event by making its manifest object exist
  * under `events/<eventId>/devices/` — the physical fact of membership, so the event enumerates and can
  * notify the device immediately, before any photo upload. Returns `true` on a confirmed write.
  */
@@ -26,7 +26,7 @@ interface DeviceEnroller {
  * goes blank.
  *
  * A refusal is passed through rather than flattened, so the join surface can tell "this event is full"
- * from "the network failed" (capability `join-event`).
+ * from "the network failed".
  */
 class ManifestDeviceEnroller(
     private val join: EventJoin,

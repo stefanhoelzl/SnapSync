@@ -1,9 +1,8 @@
 package app.snapsync.model
 
 /**
- * The tuning of the origin exclusions (capability `photo-sharing`): the two resolution floors and the album
- * denylist — the three numbers and names the policy compares a photo against to decide it was *received*
- * rather than *taken*.
+ * The tuning of the origin exclusions: the two resolution floors and the album denylist — the three numbers and names
+ * the policy compares a photo against to decide it was *received* rather than *taken*.
  *
  * **Product policy, not a platform fact.** They were measured on iOS, but what they catch — messaging apps'
  * recompression and the albums those apps file into — is what the policy means on any platform, so there is

@@ -5,9 +5,9 @@ import co.touchlab.kermit.Severity
 import kotlin.time.TimeSource
 
 /**
- * The half of the ambient "what triggered this" seam that [invocation] drives (capability `privacy-security`): claim
- * the context on entry, release it on exit. The port `EntryContext` (`ports/`) extends it with the read the log
- * writers make; everything that only WRAPS work — a feature, a service, an adapter's callback — holds this.
+ * The half of the ambient "what triggered this" seam that [invocation] drives: claim the context on entry, release it
+ * on exit. The port `EntryContext` (`ports/`) extends it with the read the log writers make; everything that only WRAPS
+ * work — a feature, a service, an adapter's callback — holds this.
  *
  * It lives in `model/` rather than on the port because [invocation] must stay `inline`: its block suspends
  * wherever the call site is a coroutine, which a virtual (interface) member cannot offer, and an inline top-level
@@ -34,20 +34,19 @@ interface EntryScope {
 }
 
 /**
- * Wrap a platform invocation / app entry point / background trigger so it logs enter + exit with
- * its parameters, its result, and its elapsed duration, and sets the ambient [EntryScope] for the
- * duration so downstream lines trace back to it (capability `privacy-security`, D3).
+ * Wrap a platform invocation / app entry point / background trigger so it logs enter + exit with its parameters, its
+ * result, and its elapsed duration, and sets the ambient [EntryScope] for the duration so downstream lines trace back
+ * to it (D3).
  *
  * - `→ <name>(<params>)` on entry, `← <name> = <result> (<ms>ms)` on success, and a warn
  *   `✗ <name> threw (<ms>ms)` on throw (the throwable is re-thrown unchanged).
  * - [params] is an already-built short string and [result] a short-string renderer — the CALL SITE
  *   controls verbosity, so we never blanket-`toString()` a large or expensive object.
- * - [severity] chooses the enter/exit level. `Info` is the default and is right for anything that
- *   fires once per platform event. Entry points that fire once per ITEM — a per-asset library-change
- *   callback, a per-task transfer callback — pass `Debug`: at `Info` a single large import would
- *   flush the crash reporter's bounded breadcrumb window and roll the size-capped device log before
- *   anyone read it (capability `privacy-security`). A throw is always `Warn`, whatever [severity] is:
- *   it is never the routine case.
+ * - [severity] chooses the enter/exit level. `Info` is the default and is right for anything that fires once per
+ *   platform event. Entry points that fire once per ITEM — a per-asset library-change callback, a per-task transfer
+ *   callback — pass `Debug`: at `Info` a single large import would flush the crash reporter's bounded breadcrumb window
+ *   and roll the size-capped device log before anyone read it. A throw is always `Warn`, whatever [severity] is: it is
+ *   never the routine case.
  * - Not marked `suspend`: it is `inline`, so [block] is inlined into the caller and may suspend when
  *   the call site is a coroutine, while non-suspend entry points use the very same function.
  *

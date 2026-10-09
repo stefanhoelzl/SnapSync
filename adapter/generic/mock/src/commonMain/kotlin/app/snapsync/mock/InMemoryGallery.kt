@@ -38,8 +38,8 @@ import kotlinx.coroutines.flow.update
  * - **No grant, no read**: every read answers `NotReadable` unless the grant is full or partial. There is no
  *   selection here, so a partial grant reads the whole library — the core reads the held snapshot instead.
  * - **[assets] translates only the two REQUIRED narrowings** — the capture floor and deny-everything. The
- *   platform's predicate is an *optimization* the authoritative admission must be proven to work without
- *   (capability `photo-sharing`), so a mock that mirrored it would hide exactly the bug that matters: an
+ *   platform's predicate is an *optimization* the authoritative admission must be proven to work without,
+ *   so a mock that mirrored it would hide exactly the bug that matters: an
  *   admission relying on the fetch to have excluded something. The floor is mirrored because it is required
  *   rather than advisory: without it the real walk is unbounded.
  * - Albums: an asset added to an album is a member of it; an asset the library does not hold is skipped;

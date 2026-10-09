@@ -3,7 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.LinkDelivery
 
 /**
- * **The links the platform opens this app with** (capability `join-event`): a Universal Link delivered cold at
+ * **The links the platform opens this app with**: a Universal Link delivered cold at
  * launch or warm to a running app, and an opened URL. On iOS the scene delegate's user activities and SwiftUI's
  * `onOpenURL`; on Android the launching intent.
  *

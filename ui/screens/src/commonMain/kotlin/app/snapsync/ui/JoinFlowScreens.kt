@@ -44,13 +44,13 @@ import app.snapsync.ui.resources.waiting_network_body
 import app.snapsync.ui.resources.waiting_network_title
 import org.jetbrains.compose.resources.stringResource
 
-// The join gate (capability `join-event`): the full-screen surface a scanned link opens, and the
+// The join gate: the full-screen surface a scanned link opens, and the
 // status-plus-actions phases it dispatches over. The Ready decision surface lives in
 // `JoinReadySurface.kt`, the phase-window accessors with the derivation that reads them in
 // `JoinSelection.kt`.
 
 /**
- * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, the
+ * The full-screen "Join event" surface: the event summary is the hero, the
  * participation choices beneath it (share and receive, which photos, the album), with Join / Cancel pinned
  * to the bottom. Renders each [JoinPhase]: loading details, ready-to-join, blocked (invalid invite, full
  * event), a retryable load/commit failure.
@@ -64,12 +64,12 @@ internal fun JoiningEventScreen(
     actions: JoinActions,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // A rejected event link that arrived while this surface is open (capability `join-event`: the
+        // A rejected event link that arrived while this surface is open (the
         // self-clearing "not valid" message shows on whatever screen the user is on). Above the phase for the
         // joined layer's reason — it is about what the user JUST DID — and it changes nothing below.
         layer.notice?.let { AppErrorBanner(it.text()) }
-        // A missing network (capability `join-event`, "Without a network, the join screen waits for one"): said above
-        // the phase, and every step that would reach the backend — Join, a retried join, a retried load — waits.
+        // A missing network — without one, the join screen waits for one — is said above the
+        // phase, and every step that would reach the backend — Join, a retried join, a retried load — waits.
         val network = layer.network
         if (network != null) {
             Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
@@ -128,7 +128,7 @@ internal fun JoiningEventScreen(
  *   Committing → CommitFailed because the screen stays mounted throughout);
  * - a FULL event gets none: capacity does not heal, so a Retry would fail identically every time and turn a clear
  *   answer into a member pressing a button against a wall;
- * - a phone the service refused (capability `join-event`, "A refused phone is told why it cannot join") is told the
+ * - a phone the service refused — a refused phone is told why it cannot join — is told the
  *   cause, keeps a Retry that tries to verify it again, and — where only a report can help — offers the report.
  *
  * Cancel is the way out of every one.
@@ -198,7 +198,7 @@ private fun LoadingPhase() = PhaseScaffold(
 )
 
 /**
- * A dead end — the event does not exist, or has closed (capability `join-event`) — so no invitation hero, just an
+ * A dead end — the event does not exist, or has closed — so no invitation hero, just an
  * honest notice. There is nothing to be invited to, so this never shows a false invitation; Cancel is the only way
  * out, because no retry moves either wall.
  */
@@ -217,7 +217,7 @@ private fun WallPhase(title: String, body: String, onCancel: () -> Unit) = Phase
 )
 
 /**
- * The details could not load for want of a network (capability `join-event`): the notice above names the cause, and
+ * The details could not load for want of a network: the notice above names the cause, and
  * the details load by themselves once it returns — so the only action is Cancel.
  */
 @Composable
@@ -331,8 +331,8 @@ internal class JoinActions(
     val onRetryLoad: () -> Unit,
     /** The member's edits to the range form, bound to the container's intents. */
     val participation: ParticipationActions,
-    /** SnapSync's Settings page, offered while its network is blocked (capability `join-event`). */
+    /** SnapSync's Settings page, offered while its network is blocked. */
     val onOpenSettings: () -> Unit,
-    /** "Report this" beside a refusal the user can only tell us about (capability `privacy-security`). */
+    /** "Report this" beside a refusal the user can only tell us about. */
     val onReportRefusal: (ScreenMessage) -> Unit,
 )

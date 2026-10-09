@@ -10,9 +10,8 @@ import platform.UIKit.UIActivityViewController
 import platform.darwin.NSObject
 
 /**
- * The share sheet's one item (capability `manage-membership`, "The joined screen offers the invite"): the invite as a
- * URL, with link metadata titled [title] — the event's name — so the sheet's header names the event instead of
- * fetching the page for a preview of its own.
+ * The share sheet's one item: the invite as a URL, with link metadata titled [title] — the event's name — so the
+ * sheet's header names the event instead of fetching the page for a preview of its own.
  *
  * A URL rather than a string, so the receiving app gets a link; and the metadata is the app's own, so the header is
  * right before the page is ever fetched, offline included. An item whose [url] does not parse falls back to the text,

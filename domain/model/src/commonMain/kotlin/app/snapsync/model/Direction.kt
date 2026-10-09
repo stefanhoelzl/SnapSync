@@ -1,9 +1,8 @@
 package app.snapsync.model
 
 /**
- * This device's chosen **participation direction** for a joined event (capability
- * `join-direction-mode`), first set at join and persisted on [EventConfig] — changeable in place
- * afterward via `manage-membership`. It masks two independently wired arms:
+ * This device's chosen **participation direction** for a joined event, first set at join and persisted on [EventConfig]
+ * — changeable in place afterward from the event's settings. It masks two independently wired arms:
  * - the **upload** arm (the background-upload producer) runs only when [includesUpload];
  * - the **download** arm (the `DownloadController` reconcile) runs only when [includesDownload].
  *
@@ -17,9 +16,9 @@ enum class Direction(val wire: String) {
     DownloadOnly("download"),
 
     /**
-     * Neither arm runs: the member stays in the event and shares and receives nothing (capability
-     * `manage-membership`). Reached only by switching both off in the event's settings — a join always carries a
-     * direction, so [fromWire] refuses its token and no link can set it.
+     * Neither arm runs: the member stays in the event and shares and receives nothing. Reached only by switching both
+     * off in the event's settings — a join always carries a direction, so [fromWire] refuses its token and no link can
+     * set it.
      */
     Neither("none"),
     ;

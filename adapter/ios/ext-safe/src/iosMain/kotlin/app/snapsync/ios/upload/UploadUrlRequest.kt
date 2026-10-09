@@ -30,7 +30,7 @@ fun uploadUrlRequest(url: NSURL, target: UploadTarget): NSMutableURLRequest {
 }
 
 /**
- * The member's mobile-data choice (capability `mobile-data`) as the three per-request flags iOS holds a transfer on:
+ * The member's mobile-data choice as the three per-request flags iOS holds a transfer on:
  * no cellular interface, no EXPENSIVE path (cellular, or Wi-Fi from a personal hotspot), no CONSTRAINED path (Low Data
  * Mode). Per request, never per session: one background session carries transfers under both rules, and a transfer
  * keeps the rule it was created with.

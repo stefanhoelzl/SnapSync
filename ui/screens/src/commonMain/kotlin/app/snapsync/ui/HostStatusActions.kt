@@ -4,8 +4,7 @@ import app.snapsync.model.UiIntent
 import app.snapsync.ui.components.RangeChoiceActions
 
 /**
- * The status screen's callback bundle — **the one tap → [UiIntent] table** (spec `sync-status`, "The screen's
- * callback bundle is built in one place").
+ * The status screen's callback bundle — **the one tap → [UiIntent] table**.
  *
  * Every screen that renders the status screen builds its bundle here: the iOS UI adapter and the
  * desktop panes. Each tap becomes the one [UiIntent] naming it, handed to [dispatch] — the `Ui` port's `onIntent`
@@ -29,7 +28,7 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
             onStopSharing = { dispatch(UiIntent.ConfirmStopSharing) },
             onKeepSharing = { dispatch(UiIntent.KeepSharing) },
         ),
-        // The heading rename (capability `manage-membership`): the command, and the latch reset the screen fires once
+        // The heading rename: the command, and the latch reset the screen fires once
         // it has acted on a terminal value.
         onRenameEvent = { eventId, name -> dispatch(UiIntent.RenameEvent(eventId, name)) },
         onRenameStatusConsumed = { dispatch(UiIntent.RenameStatusConsumed) },
@@ -45,8 +44,8 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
         onCancelSwitch = { dispatch(UiIntent.CancelSwitch) },
     ),
     onCreateEvent = { name, startsAt, endsAt -> dispatch(UiIntent.CreateEvent(name, startsAt, endsAt)) },
-    // The store button's URL is read from state by the container (capability `app-update-required`), so the argument
-    // the screen passes is not needed; a state holding no store URL makes the intent inert.
+    // The store button's URL is read from state by the container, so the argument the screen
+    // passes is not needed; a state holding no store URL makes the intent inert.
     onOpenLink = { dispatch(UiIntent.OpenAppStore) },
     participation = ParticipationActions(
         choices = RangeChoiceActions(

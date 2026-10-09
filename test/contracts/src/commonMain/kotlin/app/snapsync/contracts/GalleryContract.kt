@@ -56,7 +56,7 @@ class GalleryChange(
  * What the app's [Gallery] promises beyond its [app.snapsync.ports.GalleryReader] (`docs/architecture.md` — this
  * list IS the specification of the port's obligations).
  *
- * The walk memo (capability `photo-sharing`) serves a stored walk as a **deletion authority** whenever two tokens
+ * The walk memo serves a stored walk as a **deletion authority** whenever two tokens
  * compare equal, so the safety clause is that a change moves the token; the liveness clause is that an unchanged
  * library keeps comparing equal across distinct reads (by value, not identity), or the memo would never serve.
  * What no clause can reach: a change made **outside** the process — a Camera photo, an iCloud sync (measured on

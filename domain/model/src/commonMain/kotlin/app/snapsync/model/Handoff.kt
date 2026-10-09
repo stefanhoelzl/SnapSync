@@ -25,7 +25,7 @@ enum class Availability { AVAILABLE, UNAVAILABLE }
  * Records a hand-off to the platform that did not happen, and answers it unchanged. Nothing acts on a [Handoff], but a
  * refusal is logged at `Error` by [log] as [name]'s, because the user then tapped and nothing happened — on the
  * update-required screen, to the only remedy the screen offers (`docs/architecture.md`, "Absence is never silent").
- * `Error` is what reaches the operator from a production build (capability `privacy-security`).
+ * `Error` is what reaches the operator from a production build.
  */
 fun Handoff.recordingRefusal(log: Logger, name: String): Handoff = also {
     if (it is Handoff.Refused) log.e { "$name: nothing was handed off — ${it.reason}" }

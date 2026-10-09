@@ -31,9 +31,9 @@ internal fun encodeFilenameSegment(filename: String): String {
  * The path of an absolute `http(s)` URL — everything from the `/` that ends the authority up to a `?` or
  * `#`, or `"/"` when there is none.
  *
- * Pure string work, so the ledger can record where an upload was addressed without a platform URL type
- * (capability `photo-sharing`). The PATH rather than the whole URL: it is what the platform must preserve
- * to perform the request at all, and it is unaffected by any handling of the query.
+ * Pure string work, so the ledger can record where an upload was addressed without a platform URL type. The PATH rather
+ * than the whole URL: it is what the platform must preserve to perform the request at all, and it is unaffected by any
+ * handling of the query.
  *
  * Percent-encoding is left exactly as composed. That is safe for what this addresses because a
  * canonical [AssetId] and a role token contain only unreserved characters, so the encoded and decoded

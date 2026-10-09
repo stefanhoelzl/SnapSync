@@ -11,13 +11,12 @@ import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.gallery.MarkedPhotoLookup
 
 /**
- * The join-time load (capability `photo-sharing`) over the app's ports: a provision into a new
+ * The join-time load over the app's ports: a provision into a new
  * membership makes the upload ledger its share set, from the device's stored-file listing ([files]).
  *
  * Composed in the APP on every tier. The load needs no `LedgerWriter`: `resetTo` and `clear` are the store's
  * reset family, owned by the membership use-cases, which a holder of the store may invoke whichever process's
- * cycle also records (capability `photo-sharing`, "Reader and writer capability split"; decision record
- * `changes/archive/2026-09-22-both-uploaders-active`).
+ * cycle also records (decision record `changes/archive/2026-09-22-both-uploaders-active`).
  *
  * A top-level factory rather than an `AppCore` body because `AppCore` is measured: the `compose` tier's
  * `LargeClass` ceiling is what keeps that class from absorbing every composition in the graph.
@@ -30,7 +29,7 @@ internal fun shareSetLoadFor(services: AppServices, files: DeviceFilesSource): S
 )
 
 /**
- * The join-time adoption (capability `receiving-photos`): the union over [backend], the download store, and the
+ * The join-time adoption: the union over [backend], the download store, and the
  * library's marked photos over [gallery] under the same read discipline as upload discovery ([AppCore.selectionScope]),
  * written through the download controller's locked write. Every union it reads is offered to [AppCore.joinUnion], so
  * the provision it runs in plans its downloads from the same answer. A top-level factory for the same reason as
@@ -63,14 +62,15 @@ internal suspend fun AppCore.onGrantChanged(permission: GalleryAccess) {
 }
 
 /**
- * Whether the download drain may import now (capability `receiving-photos`): only under a usable grant, and only once
+ * Whether the download drain may import now: only under a usable grant, and only once
  * the joined membership's received photos have been recognised — which this runs, so every import path waits for it.
  */
 internal suspend fun AppCore.importsReady(): Boolean =
     receivedPhotoAdoption.ensureAdoptedUnder(galleryAccess.usable, services.config.config.value)
 
 /**
- * Entering a new membership (capabilities `join-event`, `photo-sharing`, `receiving-photos`): the order is
+ * Entering a new membership: the order is
+
  * `MembershipEntry`'s rule — stop, backend leave, load, adopt, save, start uploads. [notifyLeave] is the composition's
  * best-effort leave, awaited here as it always was on this path. A top-level factory because `AppCore` is measured
  * (see [shareSetLoadFor]).

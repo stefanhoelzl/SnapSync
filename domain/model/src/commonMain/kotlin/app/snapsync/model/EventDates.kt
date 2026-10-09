@@ -11,8 +11,8 @@ import kotlin.jvm.JvmInline
 import kotlin.time.Instant
 
 /**
- * The **date vocabulary** (capability `photo-sharing`): one canonical instant type plus a
- * distinct type per *role* it can play, so a date can never be used as a date it is not.
+ * The **date vocabulary**: one canonical instant type plus a distinct type per *role* it can play, so a date can never
+ * be used as a date it is not.
  *
  * Every date in this system is the same *shape* — the canonical UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` the iOS
  * enumerator produces (`Cutoff.kt` is the single origin of that shape) — and therefore, as a bare
@@ -70,8 +70,8 @@ value class CaptureCutoff(val at: CaptureDate) : Comparable<CaptureCutoff> {
  * A membership's capture-date **upper** bound (the ceiling): the latest capture date this device
  * contributes, already clamped to `min(chosen, endsAt)` at join. Persisted as `EventConfig.maxPhotoDate`.
  *
- * This is the bound `add-event-date-range` dropped at two of four consumers. It reaches every consumer now
- * because they all read the one admitted set (capability `photo-sharing`).
+ * This is the bound `add-event-date-range` dropped at two of four consumers. It reaches every consumer now because they
+ * all read the one admitted set.
  */
 @Serializable(with = CaptureCeilingSerializer::class)
 @JvmInline
@@ -118,13 +118,11 @@ value class EventEnd(val at: CaptureDate) : Comparable<EventEnd> {
 }
 
 /**
- * When the backend deletes the event's shared data (capability `event-lifetime`) — derived **server-side**
- * from `max(createdAt, startsAt) + lifetime` and served on the details response. The device stores it and
- * never computes it.
+ * When the backend deletes the event's shared data — derived **server-side** from `max(createdAt, startsAt) + lifetime`
+ * and served on the details response. The device stores it and never computes it.
  *
- * Its own type because it is the one date that decides whether a membership is **destroyed** (the offline
- * second witness of the self-leave, capability `manage-membership`) — the single most expensive role to confuse
- * with any other.
+ * Its own type because it is the one date that decides whether a membership is **destroyed** (the offline second
+ * witness of the self-leave) — the single most expensive role to confuse with any other.
  */
 @Serializable(with = DeletesAtSerializer::class)
 @JvmInline
@@ -135,12 +133,12 @@ value class DeletesAt(val at: CaptureDate) : Comparable<DeletesAt> {
 
 /**
  * The four roles a membership's dates are read through (the floor, the ceiling, the event's start and end) hold a
- * readable instant BY CONSTRUCTION, so nothing downstream carries a branch for one that is not: a screen converts
- * them to local time unconditionally. Every producer already writes one — the wire boundary normalizes the
- * backend's dates (`EventDirectory`) and a local pick is canonical by construction ([localToCutoff]) — so the check
- * refuses only a value no build writes. Where such a value is DECODED (a corrupt stored config), the decode fails
- * and reads as unusable, which defers and never leaves (capability `join-event`). [CaptureDate] itself stays
- * unchecked: an asset's capture date may legitimately be absent (`""`).
+ * readable instant BY CONSTRUCTION, so nothing downstream carries a branch for one that is not: a screen converts them
+ * to local time unconditionally. Every producer already writes one — the wire boundary normalizes the backend's dates
+ * (`EventDirectory`) and a local pick is canonical by construction ([localToCutoff]) — so the check refuses only a
+ * value no build writes. Where such a value is DECODED (a corrupt stored config), the decode fails and reads as
+ * unusable, which defers and never leaves. [CaptureDate] itself stays unchecked: an asset's capture date may
+ * legitimately be absent (`""`).
  */
 private fun requireInstant(at: CaptureDate) {
     Instant.parse(at.iso)

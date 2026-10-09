@@ -36,7 +36,7 @@ enum class FolderAlbumState {
 class FolderAlbums(val gallery: Gallery, val seeded: Set<AssetId>, val stage: () -> List<StagedResource>)
 
 /**
- * What a [AlbumKind.FOLDER] gallery promises about the event album (capability `event-album`; decision record
+ * What a [AlbumKind.FOLDER] gallery promises about the event album (decision record
  * `changes/archive/2026-09-30-android-event-album` D2, D3, D6, D8) — this list IS the specification of those
  * obligations. The core
  * builds on each: an empty album that resolved would never read as deleted; a move that minted a new id would let echo
@@ -179,8 +179,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             assertEquals(
                 subject.seeded,
                 library.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
-                "a photo filed into an event album is still the library's: a reinstalled app must find it there " +
-                    "(capability `receiving-photos`)",
+                "a photo filed into an event album is still the library's: a reinstalled app must find it there",
             )
         }
     }

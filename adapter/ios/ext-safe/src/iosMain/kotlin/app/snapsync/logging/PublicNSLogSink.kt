@@ -11,7 +11,7 @@ import platform.Foundation.NSLog
  * interpreted as a specifier. Use only on the test device path; it makes log content world-readable, which is the
  * point here.
  *
- * Beside [FileLogSink] in `:adapter:ios:ext-safe` (capability `privacy-security`): both write the same formatted
+ * Beside [FileLogSink] in `:adapter:ios:ext-safe`: both write the same formatted
  * line, entry-point prefix included.
  */
 class PublicNSLogSink : LogSink {

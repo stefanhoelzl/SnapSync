@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.resume
 
 /**
- * The Android photo-permission adapter (capability `photo-access`): the status source, and — for the gallery — the
+ * The Android photo-permission adapter: the status source, and — for the gallery — the
  * permission dialog and the selection sheet.
  *
  * | Android grants | reads as |

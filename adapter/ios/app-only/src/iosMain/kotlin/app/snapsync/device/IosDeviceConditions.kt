@@ -20,7 +20,7 @@ import platform.UIKit.UIDeviceBatteryState
 import kotlin.math.roundToInt
 
 /**
- * The iOS [DeviceConditions] of the app process (capability `privacy-security`): Low Power Mode and the thermal state
+ * The iOS [DeviceConditions] of the app process: Low Power Mode and the thermal state
  * from `NSProcessInfo`, the battery from `UIDevice`, Background App Refresh from `UIApplication`. App-only, because the
  * last two are UIKit, which an app extension may not link — and only the app sends a bug report.
  *

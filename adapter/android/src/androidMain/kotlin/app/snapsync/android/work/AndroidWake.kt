@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.toJavaDuration
 
 /**
- * The Android [Wake] over WorkManager (capability `background-upload`): one unique one-time work per [WakeId].
+ * The Android [Wake] over WorkManager: one unique one-time work per [WakeId].
  *
  * - [WakeTrigger.After] — the heartbeat — waits at least its delay, and for a network when it asks for one. Both its
  *   cadences are the same unique work, so a busy request replaces a pending idle one and vice versa; the cadence
@@ -103,7 +103,7 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
                     WakeNetwork.ANY -> setConstraints(
                         Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
                     )
-                    // Capability `mobile-data`: WorkManager's own unmetered constraint, which stays unsatisfied on
+                    // WorkManager's own unmetered constraint, which stays unsatisfied on
                     // cellular and a metered Wi-Fi (measured on the API 36 emulator, 2026-10-03).
                     WakeNetwork.UNRESTRICTED ->
                         setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())

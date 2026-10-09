@@ -8,7 +8,7 @@ import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
 
 /**
- * How an uploader answers a denylisted-album lookup that fails (capability `photo-sharing`).
+ * How an uploader answers a denylisted-album lookup that fails.
  *
  * The tiers answer differently, deliberately and as before: the app admits on doubt (a failed lookup must never
  * drop a real photo, and the same answer feeds the status total), while the extension lets the failure fail its
@@ -27,8 +27,8 @@ enum class AlbumLookupFailure { AdmitOnDoubt, FailCycle }
  * the empty set with no platform call:
  *
  *  - **`LIMITED`** — the album structure is unreadable, so the user-album walk returns no albums and the lookup
- *    already answered the empty set (capability `photo-sharing`, "Under a limited grant the rule is
- *    inert" — measured on device). Asking only paid for an `assetsd` round-trip per cycle, and per status
+ *    already answered the empty set (under a limited grant the rule is inert —
+ *    measured on device). Asking only paid for an `assetsd` round-trip per cycle, and per status
  *    refresh, to learn nothing. The admitted set is therefore unchanged.
  *  - **`NOT_DETERMINED`** — a `PHAssetCollection` fetch issues a non-preflight TCC request and presents the
  *    photo-permission dialog (measured, simulator, iOS 26.4). The status readers already gated this; the cycle

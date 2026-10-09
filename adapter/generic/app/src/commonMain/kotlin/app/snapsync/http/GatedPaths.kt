@@ -2,8 +2,8 @@ package app.snapsync.http
 
 /**
  * Whether the backend's token gate guards [method] [path] — the client's copy of the gate's CLOSED ungated list in
- * `api/src/app.ts` (capability `privacy-security`, "Only a rejected credential is invalidated, and only that one";
- * decision record `harden-seam-bug-classes`, D10).
+ * `api/src/app.ts`: only a rejected credential is invalidated, and only that one (decision record
+ * `harden-seam-bug-classes`, D10).
  *
  * A `401` means "your credential is rejected" only where the gate ran. From an ungated route it is that route's own
  * answer: the `/attest/…` issuers refuse a stale challenge, a rejected attestation or a device with no record with
@@ -49,7 +49,7 @@ internal val PUBLIC_GETS = setOf(
     "/.well-known/assetlinks.json",
 )
 
-/** The event's own page, `/join/<eventId>` — exactly one segment (capability `event-site`). */
+/** The event's own page, `/join/<eventId>` — exactly one segment. */
 private val EVENT_PAGE = Regex("""^/join/[^/]+$""")
 
 /**

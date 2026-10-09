@@ -21,7 +21,7 @@ internal fun Overlays.maskedFor(layer: Layer): Overlays {
     val membership = when {
         layer !is Layer.Joined -> copy(confirmingLeave = false, renaming = false, showingQr = false)
         layer.closed -> copy(showingQr = false)
-        // No whole invite to show (capability `manage-membership`): a QR code already open closes.
+        // No whole invite to show: a QR code already open closes.
         layer.inviteUrl == null -> copy(showingQr = false)
         else -> this
     }

@@ -49,8 +49,8 @@ interface AttestStore : Port {
     fun clearToken()
 
     /**
-     * Drop the stored token only if it is still [expected] — compare-and-clear (capability `privacy-security`,
-     * "Only a rejected credential is invalidated, and only that one"). Returns whether it cleared.
+     * Drop the stored token only if it is still [expected] — compare-and-clear: only a rejected credential is
+     * invalidated, and only that one. Returns whether it cleared.
      *
      * A rejection names the token the refused request CARRIED. Several requests carrying T1 can be refused after a
      * renewal has already stored T2, in this process or in the other one (both read the one shared item); a plain

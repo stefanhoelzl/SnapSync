@@ -6,7 +6,7 @@ import app.snapsync.model.ImportResult
 import co.touchlab.kermit.Logger
 
 /**
- * What an import's two platform callbacks write (capability `receiving-photos`): the [downloads] store's guarded marker
+ * What an import's two platform callbacks write: the [downloads] store's guarded marker
  * writes, persisted inline on the platform's delivering thread — the placeholder inside the change block, the settle
  * from the completion, which runs even when the requester is gone. Non-suspending, like the writes, because both
  * callers are PhotoKit blocks.

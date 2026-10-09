@@ -52,10 +52,10 @@ enum class TailScope(internal val imports: Boolean, internal val topsUp: Boolean
 }
 
 /**
- * The wakes that request the tail, each with the part of it it needs and whether it re-arms the heartbeat after it
- * (capability `background-upload`, "The tail runner reimplements the OS scheduler"; decision records
- * `changes/own-work-per-wake`, D1 and D2, and `changes/timely-background-receiving`, D1). Every trigger's own work has
- * already run, outside the runner, before it requests. A trigger that re-arms applies the one cadence rule
+ * The wakes that request the tail, each with the part of it it needs and whether it re-arms the heartbeat after it —
+ * the tail runner reimplements the OS scheduler (decision records `changes/own-work-per-wake`, D1 and D2, and
+ * `changes/timely-background-receiving`, D1). Every trigger's own work has already run, outside the runner, before it
+ * requests. A trigger that re-arms applies the one cadence rule
  * ([heartbeatCadence]); one that does not arrived inside a process some other trigger already owns the re-arm of.
  */
 enum class TailTrigger(val scope: TailScope, val rearms: Boolean) {
@@ -66,8 +66,8 @@ enum class TailTrigger(val scope: TailScope, val rearms: Boolean) {
     FOREGROUND(TailScope.FULL, rearms = true),
 
     /**
-     * A missing network came back while the app was in front (capability `sync-status`, "The app says when it cannot
-     * reach the network"): whatever waited for it runs now rather than at the next opening.
+     * A missing network came back while the app was in front: whatever waited for it runs now rather than at the
+     * next opening.
      */
     NETWORK(TailScope.FULL, rearms = true),
 
@@ -99,10 +99,10 @@ enum class TailTrigger(val scope: TailScope, val rearms: Boolean) {
     ;
 
     /**
-     * Whether the end of this trigger's wake runs the **bounded photo check** (capabilities `receiving-photos` and
-     * `manage-membership`; decision record `changes/timely-background-receiving`, D4–D5). An arm's tail runs none: an arm
-     * is requested from inside a join or a reconfigure, which read the union in their own work, and the tail can end
-     * before that read has stamped the hour — one union read too many per join.
+     * Whether the end of this trigger's wake runs the **bounded photo check** (decision record
+     * `changes/timely-background-receiving`, D4–D5). An arm's tail runs none: an arm is requested from inside a join or
+     * a reconfigure, which read the union in their own work, and the tail can end before that read has stamped the hour
+     * — one union read too many per join.
      */
     val checksPhotos: Boolean get() = this != ARM
 
@@ -120,13 +120,13 @@ private val ASKS_THE_EVENT =
 /**
  * What the tail hands its import unit (①): Apple's stop, and the one wait a unit may give up on.
  *
- * An import is a photo-library transaction, and a transaction can stall and never report — the claim it holds keeps
- * any other drain off that photo, so nothing is lost by not waiting, but a tail that waited would hold every later
- * request hostage behind it (they join the running tail), which is exactly what "a stalled import blocks no other
- * work" rules out (capability `receiving-photos`). So the unit awaits each import through [awaitUnlessInterrupted]: it
- * completes normally, or the wait gives way — leaving the import claimed and running — when Apple's stop arrives
- * (capability `sync-status`, "Expiry stops work cooperatively at the next boundary") or when another request joins
- * the tail. No clock is involved: the tail stops waiting only because something else is due.
+ * An import is a photo-library transaction, and a transaction can stall and never report — the claim it holds keeps any
+ * other drain off that photo, so nothing is lost by not waiting, but a tail that waited would hold every later request
+ * hostage behind it (they join the running tail), which is exactly what "a stalled import blocks no other work" rules
+ * out. So the unit awaits each import through [awaitUnlessInterrupted]: it completes normally, or the wait gives way —
+ * leaving the import claimed and running — when Apple's stop arrives (expiry stops work cooperatively at the next
+ * boundary) or when another request joins the tail. No clock is involved: the tail stops waiting only because something
+ * else is due.
  */
 class TailSignal internal constructor(
     private val stop: () -> Boolean,
@@ -152,9 +152,9 @@ class TailSignal internal constructor(
 
     /**
      * Run [import] as its own job on [scope] and await it ([awaitUnlessInterrupted]) — unless the tail's time is up or
-     * another request is due, when the wait gives way and the import runs on, claimed (capability `receiving-photos`, "A
-     * stalled import blocks no other work"). An import that throws surfaces here when awaited — held as a `Result`, so
-     * a throw nobody awaits any more cannot fail the scope it runs in.
+     * another request is due, when the wait gives way and the import runs on, claimed: a stalled import blocks no other
+     * work. An import that throws surfaces here when awaited — held as a `Result`, so a throw nobody awaits any more
+     * cannot fail the scope it runs in.
      */
     suspend fun awaitImport(scope: CoroutineScope, import: suspend () -> Unit) {
         val job = scope.async { runCatchingCancellable { import() } }
@@ -179,10 +179,9 @@ data class TailOutcome(val result: CycleResult, val cut: Boolean)
 
 /**
  * The app process's **opportunistic tail**: one process-wide, single-flight runner of the work every OS wake leaves
- * after its own (capability `sync-status`, "Each OS wake does its own work, then hands the rest to one
- * opportunistic tail"; `background-upload`, "The tail runner reimplements the OS scheduler"; decision record
- * `changes/own-work-per-wake`). It is the successor of the retired `BackgroundUploadPump`, and carries over every one of its
- * rules.
+ * after its own — each OS wake does its own work, then hands the rest to this one tail, which reimplements the OS
+ * scheduler (decision record `changes/own-work-per-wake`). It is the successor of the retired `BackgroundUploadPump`,
+ * and carries over every one of its rules.
  *
  * **The units, in cost order.** A [TailScope.FULL] pass runs ① [importStaged] (staged bytes are already paid for and
  * are what the member sees), ② [topUp] (re-create retry-spent failures, enqueue known `DISCOVERED` rows), and — only
@@ -240,20 +239,20 @@ class TailRunner(
     /** Whether the app is foregrounded now: the only state in which a unit refreshes the counts. */
     private val foregrounded: () -> Boolean,
     private val refreshStatus: suspend () -> Unit,
-    /** The heartbeat the re-arm rule arms (capability `background-upload`). */
+    /** The heartbeat the re-arm rule arms. */
     private val heartbeat: Heartbeat,
     /**
      * Whether staged downloads are still waiting to be imported. Leftover imports are work remaining, so they keep the
-     * heartbeat busy until ① has drained them (declared in phase 11f; capability `receiving-photos`, "Photos arrive
-     * without the app being opened"). A read of the core's own store; a failed read counts as nothing left.
+     * heartbeat busy until ① has drained them (declared in phase 11f, so photos arrive without the app being
+     * opened). A read of the core's own store; a failed read counts as nothing left.
      */
     private val importsRemain: suspend () -> Boolean,
     /** What the device is, for the re-arm's cadence — read after each tail that re-arms (see [CadenceFacts]). */
     private val cadenceFacts: () -> CadenceFacts,
     /**
-     * What a stop left behind, beyond the units it kept from running — for the operating-system expiry line
-     * (capability `privacy-security`, "Operating-system expiry is logged"): at least the staged downloads not yet
-     * imported. A read of the core's own stores; best-effort, and never consulted unless a stop cut a tail.
+     * What a stop left behind, beyond the units it kept from running — for the operating-system expiry line: at least
+     * the staged downloads not yet imported. A read of the core's own stores; best-effort, and never consulted unless a
+     * stop cut a tail.
      */
     private val leftover: suspend () -> String,
     private val log: Logger = Logger.withTag("TailRunner"),
@@ -432,8 +431,8 @@ class TailRunner(
     }
 
     /**
-     * The second half of the operating-system expiry line (capability `privacy-security`): whether the unit that was
-     * running when the stop came completed or was abandoned, and what the stop left for a later wake.
+     * The second half of the operating-system expiry line: whether the unit that was running when the stop came
+     * completed or was abandoned, and what the stop left for a later wake.
      */
     private suspend fun logStopped(run: Run) {
         val unitEnd = if (run.abandonedWalk) "the walk was abandoned, recording nothing" else "${run.unit} completed"
@@ -450,8 +449,8 @@ class TailRunner(
     }
 
     /**
-     * The re-arm after [trigger]'s tail ended with [outcome] (capability `background-upload`, "Photos upload without
-     * the app being opened"; decision record `changes/timely-background-receiving`, D1).
+     * The re-arm after [trigger]'s tail ended with [outcome], so photos upload without the app being opened (decision
+     * record `changes/timely-background-receiving`, D1).
      *
      * After every tail that ran the uploads for a membership that contributes — any trigger that re-arms (every one
      * that runs the uploads; an import-only one does not, [TailTrigger.rearms]), any outcome but `SKIPPED` — the

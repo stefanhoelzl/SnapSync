@@ -37,7 +37,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * **With Background App Refresh off, iOS keeps neither.** Measured on the SE2 / iOS 26.6.2 (2026-09-30): both requests
  * are *accepted* and then nothing is pending — no refusal to react to, and a processing request is dropped exactly like
  * a refresh, so there is no fallback to make. Such a device wakes in the background only as the system allows otherwise
- * (capability `receiving-photos`, "as the phone's system allows"). ⏰ Re-measure at the next iOS major.
+ * — as the phone's system allows. ⏰ Re-measure at the next iOS major.
  *
  * iOS keeps one pending request per identifier, and the two identifiers coexist — so **each submission cancels the
  * other identifier** first, or an idle re-arm would leave the busy wake standing. [cancel] withdraws both, and both
@@ -140,7 +140,7 @@ class IosWake internal constructor(
     private fun processing(after: WakeTrigger.After?, earliestSeconds: Double) =
         BGProcessingTaskRequest(HEARTBEAT_TASK_IDENTIFIER).apply {
             // BGTaskScheduler can ask only for SOME network, so an unrestricted requirement waits for any connection: the
-            // transfers the wake runs carry their own request flags and hold themselves (capability `mobile-data`).
+            // transfers the wake runs carry their own request flags and hold themselves.
             requiresNetworkConnectivity = after?.network?.let { it != WakeNetwork.NONE } ?: true
             requiresExternalPower = false
             earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(earliestSeconds)

@@ -3,7 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.CycleResult
 
 /**
- * **The operating system's invocations of the upload extension** (capability `background-upload`): on iOS ≥26.1 the
+ * **The operating system's invocations of the upload extension**: on iOS ≥26.1 the
  * PhotoKit background-upload extension's `process()` and `notifyTermination()`. Android has none — a library change
  * reaches it as a `Wake` instead.
  *
@@ -20,8 +20,7 @@ class ExtensionHandlers(
     /**
      * The end of an invocation, NOT a kill. Measured on an SE2 (iOS 26.6, 2026-09-23): it arrives about 55 ms after
      * every normal return of [onProcess], and never before the kill that ends a call running past its ~60 s budget —
-     * that kill sends nothing at all (capability `background-upload`, "How the operating system invokes the extension
-     * is recorded as measured").
+     * that kill sends nothing at all.
      */
     val onTerminate: () -> Unit,
 )

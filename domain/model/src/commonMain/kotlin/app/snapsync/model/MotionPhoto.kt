@@ -1,11 +1,11 @@
 package app.snapsync.model
 
 /**
- * **Google's motion-photo format**, as bytes (capability `receiving-photos`, "A moving photo arrives moving"): one
- * image file whose XMP describes a video appended at its end. The receiving device converts at import, both ways:
- * Android builds one from a Live Photo's still and video ([motionPhotoStill], then the video appended as delivered),
- * and iPhone takes one apart into a Live Photo ([locateMotionVideo]). Both platforms' import adapters call these; the
- * pure half lives here so it is tested on the JVM.
+ * **Google's motion-photo format**, as bytes (a moving photo arrives moving): one image file whose XMP describes a
+ * video appended at its end. The receiving device converts at import, both ways: Android builds one from a Live Photo's
+ * still and video ([motionPhotoStill], then the video appended as delivered), and iPhone takes one apart into a Live
+ * Photo ([locateMotionVideo]). Both platforms' import adapters call these; the pure half lives here so it is tested on
+ * the JVM.
  *
  * **The packet is the one measured to play** (Galaxy A40, Google Photos 7.84, 2026-09-30; decision record
  * `changes/archive/2026-10-01-live-motion-unification` D2): ONE `rdf:Description` carrying both tag sets — the current `Camera:MotionPhoto`

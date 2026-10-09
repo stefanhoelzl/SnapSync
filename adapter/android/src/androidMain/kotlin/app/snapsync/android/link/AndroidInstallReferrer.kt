@@ -10,7 +10,7 @@ import com.android.installreferrer.api.InstallReferrerStateListener
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The invite a Google Play install carried, opened ONCE per installation (capability `join-event`). The event page's
+ * The invite a Google Play install carried, opened ONCE per installation. The event page's
  * Play button hands Play the invite's fragment payload as the install referrer; on the app's first foreground start
  * this reader asks Play for it and, when it is an invite ([inviteLinkFromInstallReferrer]), hands it to [links] as the
  * event link it came from — the join screen then opens exactly as for a tapped invite. An ORGANIC install, or a

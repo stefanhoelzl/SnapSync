@@ -17,12 +17,13 @@ class EventKeyReads internal constructor(keys: EventKeys, membership: StateFlow<
     /**
      * The joined event's key as its invite carries it, while the membership is ENCRYPTED: read from the secure store
      * each time the membership changes and on every [reread], `null` for a plain one or while the store cannot be read
-     * (a locked device, a lost key) — and then no invite is offered (capability `manage-membership`).
+     * (a locked device, a lost key) — and then no invite is offered.
      */
     val inviteKey: StateFlow<String?> = keys.inviteKeyOf(membership, rereads, scope)
 
     /**
-     * Whether this device holds the joined event's key (capability `sync-status`): re-read when the membership changes,
+     * Whether this device holds the joined event's key: re-read when the membership changes,
+
      * at every foreground and after a reopened invite gave it back — only [KeyPresence.Lost] is shown.
      */
     val presence: StateFlow<KeyPresence> = keys.presenceOf(membership, rereads, scope)

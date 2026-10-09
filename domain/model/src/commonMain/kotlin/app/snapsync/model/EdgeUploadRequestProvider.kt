@@ -38,8 +38,7 @@ package app.snapsync.model
  * the ledger matches its completion by the destination path it recorded when the request was made.
  *
  * [host]/[eventId]/[deviceId] are plain strings, injected by the consuming composition root (host baked at compile
- * time, the event from the cycle's config, deviceId from the shared Keychain via the `photo-sharing` seam). The
- * provider makes no platform call.
+ * time, the event from the cycle's config, deviceId from the shared Keychain). The provider makes no platform call.
  */
 class EdgeUploadRequestProvider(
     host: String,
@@ -52,8 +51,7 @@ class EdgeUploadRequestProvider(
      */
     private val freshToken: suspend () -> String?,
     /**
-     * The calling build's marketing version, declared on every v2 request (capability
-     * `app-update-required`).
+     * The calling build's marketing version, declared on every v2 request.
      *
      * Required HERE and not only on the shared HTTP client because **the OS performs this request**: it
      * is handed to the platform's background-upload subsystem and issued later, outside any client this

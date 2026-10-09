@@ -13,7 +13,7 @@ import kotlin.coroutines.CoroutineContext
 
 /**
  * Driving the **upload extension's** composition root from the control channel — the `/os/photokit-ext/…`
- * group (capability `background-upload`).
+ * group.
  *
  * On a simulator the OS never invokes the upload extension, so its root is never entered and the shipping
  * tier's cycle cannot run there at all. The channel invokes that root directly instead. Everything the

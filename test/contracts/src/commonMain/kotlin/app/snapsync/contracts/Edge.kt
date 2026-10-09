@@ -50,7 +50,7 @@ const val FOREIGN_TOKEN = "foreign.0.not-a-signature-this-edge-issued"
 const val SEEDED_STARTS_AT = "2030-01-01T00:00:00Z"
 const val SEEDED_ENDS_AT = "2030-01-08T00:00:00Z"
 
-/** The range of an event whose range has already ENDED (capability `event-lifetime`) — a back-dated event. */
+/** The range of an event whose range has already ENDED — a back-dated event. */
 const val SEEDED_ENDED_STARTS_AT = "2026-01-01T00:00:00Z"
 const val SEEDED_ENDED_ENDS_AT = "2026-01-05T00:00:00Z"
 
@@ -114,7 +114,7 @@ interface SoftwareAttester {
 interface BackendSetup {
     fun freshId(): String
 
-    /** Create an event — one whose range has already [ended] when asked (capability `event-lifetime`). */
+    /** Create an event — one whose range has already [ended] when asked. */
     suspend fun createEvent(name: String, ended: Boolean = false): CreatedEvent
     suspend fun join(eventId: String, deviceId: String)
 

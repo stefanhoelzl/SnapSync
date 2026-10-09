@@ -10,7 +10,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.runBlocking
 
 /**
- * The iOS [ExtensionHost] (capability `background-upload`): the PhotoKit background-upload extension's `process()`
+ * The iOS [ExtensionHost]: the PhotoKit background-upload extension's `process()`
  * and `notifyTermination()`, which the Swift principal class forwards to [deliverProcess] and [deliverTerminate].
  *
  * `process()` is synchronous by the operating system's own contract and the process does not outlive it, so

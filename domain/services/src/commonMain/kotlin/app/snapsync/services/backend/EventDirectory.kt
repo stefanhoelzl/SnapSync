@@ -26,8 +26,8 @@ fun interface EventDirectory {
  * [EventLookup.NotFound]; any other answer → [EventLookup.Failed].
  *
  * The `404` ↔ `Failed` split is load-bearing beyond the join gate: it is the ONLY place "the event is
- * definitively gone" is separated from "I could not tell", and a membership is destroyed (capability
- * `manage-membership`) on the former. Every ambiguous outcome must keep landing on [EventLookup.Failed].
+ * definitively gone" is separated from "I could not tell", and a membership is destroyed on the
+ * former. Every ambiguous outcome must keep landing on [EventLookup.Failed].
  */
 class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDirectory {
 
@@ -54,7 +54,7 @@ class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDi
                     startsAt = EventStart(startsAt),
                     endsAt = EventEnd(endsAt),
                     deletesAt = DeletesAt(deletesAt),
-                    // Presence is the fact (capability `event-lifetime`); the instants are the backend's record.
+                    // Presence is the fact; the instants are the backend's record.
                     completion = EventCompletionState(
                         closed = meta.closedAt != null || meta.completedAt != null,
                         completed = meta.completedAt != null,
