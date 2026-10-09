@@ -1,122 +1,47 @@
 import app.snapsync.model.AssetId;
 import app.snapsync.model.LedgerState;
 
--- THE "MUST MATCH <n>.sqm EXACTLY" NOTES BELOW ARE NOW ENFORCED, and were not always. They cite
--- `verifyCommonMainLedgerDatabaseMigration`, which applies every migration to the committed schema
--- snapshot (`databases/12.db`) and diffs the result against these CREATE statements. Before that snapshot
--- existed the task had nothing to compare and passed on anything — measured: a migration adding a column
--- absent from this file was green. It cost a build gate to say nothing, and it hid a real divergence for
--- as long as it existed (see the `destinationPath` index below). The snapshot and the contract that keeps
--- it honest live in `adapter/generic/app/build.gradle.kts`; read that before touching either.
+-- THE SCHEMA IS THE MIGRATION CHAIN (`deriveSchemaFromMigrations`): `11.sqm` is the baseline every device holds at
+-- v12, and each later `<n>.sqm` moves it one version on. A fresh install runs the whole chain, so it and an upgraded
+-- device cannot disagree — there is no second route to keep in step. This file holds the queries only; what the
+-- tables MEAN is described here, because the chain says only how they came to be.
 --
--- WHAT IT STILL DOES NOT COVER: schema only. A data-only change changes no schema and is invisible to
--- it, which is why a migration's row rewrites are asserted by `LedgerServiceTest` instead.
+-- `ledgerRow` — one row per resource this device has seen for the joined event.
+-- - THE ROW BELONGS TO ONE EVENT (12.sqm; change `event-scoped-local-state`). Each event holds its own bytes, so a
+--   `COMPLETED` row is true for its event only, and the primary key is `(eventId, key)`. Every statement below is
+--   scoped to one `:eventId` — `LedgerService` binds the joined one — so a row of any other event is inert: it can
+--   neither suppress an upload nor count as work. Such rows are removed by the next join's purge (`purgeExcept`),
+--   not by the leave. The empty event is where 12.sqm parked the rows that predate it, until `adoptParked`.
+-- - It carries no attempt count and no absence mark: 10.sqm dropped both, because nothing read them (decision record
+--   `changes/shrink-the-ledger-row`).
+-- - `creationDate`, `role`, `contentType`, `originalFilename` carry the DEVICE MANIFEST's presentation detail
+--   (capability `photo-sharing`), so the manifest is a projection of the `COMPLETED` rows rather than a parallel
+--   accumulator. `''` is the "not yet enriched" sentinel a join-time load's row starts in, swept by
+--   `backfillManifestDetail`.
+-- - `destinationPath` is the destination the row's upload was addressed to, NULL for a row recorded before the column
+--   existed. The ack path resolves a returned upload job to its row through `ledgerRow_destinationPath`; without that
+--   index every returned job would scan the table, on a path the OS invokes with a deadline. (`ALTER TABLE … ADD
+--   COLUMN` creates no index: a migration that adds an indexed column creates its index too.)
 --
--- 1.sqm–11.sqm ARE SQUASHED: every device has run 0.4, whose ledger is v12, so the chain starts at 12.sqm and the
--- snapshot `databases/12.db` is 0.4's schema. A "must match <n>.sqm" note below about a squashed file now means
--- "must match that snapshot", which is still enforced the same way.
-
--- The row carries no attempt count and no absence mark: 10.sqm dropped both, because nothing read them (decision
--- record `changes/shrink-the-ledger-row`).
---
--- THE ROW BELONGS TO ONE EVENT (12.sqm; change `event-scoped-local-state`). Each event holds its own bytes, so a
--- `COMPLETED` row is true for its event only, and the primary key is `(eventId, key)`. Every statement below is
--- scoped to one `:eventId` — `LedgerService` binds the joined one — so a row of any other event is inert: it can
--- neither suppress an upload nor count as work. Such rows are removed by the next join's purge (`purgeExcept`),
--- not by the leave. The empty event is where 12.sqm parked the rows that predate it, until `adoptParked`.
---
--- The four manifest columns carry the DEVICE MANIFEST's presentation detail (capability `photo-sharing`),
--- so the manifest is a projection of this table's COMPLETED rows rather than a parallel accumulator
--- that tracked the same deletion-aware asset set with different columns. `DEFAULT ''` must match
--- 5.sqm exactly (the verify task compares migrated vs created schemas); `''` is the "not yet
--- enriched" sentinel that a join-time load's row and a pre-5.sqm row both start in, swept by
--- `backfillManifestDetail`.
-CREATE TABLE ledgerRow (
-    eventId TEXT NOT NULL,
-    key TEXT NOT NULL,
-    assetId TEXT AS AssetId NOT NULL,
-    state TEXT AS LedgerState NOT NULL,
-    creationDate TEXT NOT NULL DEFAULT '',
-    role TEXT NOT NULL DEFAULT '',
-    contentType TEXT NOT NULL DEFAULT '',
-    originalFilename TEXT NOT NULL DEFAULT '',
-    -- The destination this row's upload was addressed to, or NULL for a row recorded before the column
-    -- existed. NULLABLE must match 7.sqm exactly (the verify task compares migrated vs created schemas).
-    destinationPath TEXT,
-    PRIMARY KEY (eventId, key)
-);
-
-CREATE INDEX ledgerRow_assetId ON ledgerRow(eventId, assetId);
-
--- The ack path resolves a returned upload job to its row through this index; without it every returned
--- job would scan the table, on a path the OS invokes with a deadline.
---
--- ⚠️ AN INDEX MUST BE CREATED BY BOTH ROUTES — this file AND the migration chain. This is the exact line
--- where that was got wrong: `7.sqm` added `destinationPath` with ALTER TABLE ... ADD COLUMN, which creates
--- NO index, while this statement was added here in the same change. The result was two schemas both called
--- current — a fresh install indexed, every device that upgraded through 7.sqm scanning the table on a
--- deadline path — and it stood until `9.sqm` repaired it. Adding a column here and indexing it is
--- therefore TWO obligations, not one. The verify task now catches a missed second one.
-CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
-
--- THE MANIFEST VERSION (capability `photo-sharing`, "The manifest version orders the device's manifest
--- snapshots"). One counter, one row, that advances on every change that could alter the device manifest's
--- projection. Each publish carries the value its cycle read FIRST, and the backend refuses a strictly older
--- one — which is what stops the app's and the upload extension's publishes, crossing in the network, from
+-- `manifestVersion` — THE MANIFEST VERSION (capability `photo-sharing`, "The manifest version orders the device's
+-- manifest snapshots"). One counter, one row (`id = 0`), that advances on every change that could alter the device
+-- manifest's projection. Each publish carries the value its cycle read FIRST, and the backend refuses a strictly
+-- older one — which is what stops the app's and the upload extension's publishes, crossing in the network, from
 -- leaving the backend a snapshot behind (decision record `changes/manifest-versions`).
---
--- The row is kept at `id = 0` and every advance is "create the row if absent, then add one", so an absent row
--- reads as 0 and the first advance creates it: nothing depends on a seed that a create route or a migration
--- could forget. NOT `INSERT OR REPLACE`: inside a trigger SQLite applies the OUTER statement's conflict
--- resolution, so fired by `recordUnlessSettled`'s upsert the replace became an abort (measured — a
--- `manifestVersion.id` PRIMARY KEY failure on the first re-record). The guarded insert never conflicts. The counter never moves backwards — the reset family deletes
--- `ledgerRow` rows only, and those deletes advance it like any other change.
-CREATE TABLE manifestVersion (
-    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
-    value INTEGER NOT NULL
-);
-
--- The advance, by TRIGGER, so that no write path — present or future — can change the projection without
--- it. Each fires inside its statement's transaction, so a reader that sees version N sees every change
--- numbered up to N: two publishes carrying one version carry one snapshot.
---
--- The UPDATE trigger compares values (a `WHERE` on `old`/`new` in its body — SQLDelight's parser does not
--- resolve them in a trigger's `WHEN` clause, measured), NOT `UPDATE OF`: `recordUnlessSettled` names every detail
--- column in its `SET` list, and `UPDATE OF` would fire on unchanged values and force a republish for
--- nothing. `state` and `destinationPath` are deliberately absent: the manifest carries no upload state, and
--- a bump per finished upload would force a republish per cycle.
---
--- ⚠️ SQLite REFUSES `DROP COLUMN` for a column a trigger names. A migration that drops one of the columns
--- below must DROP and re-CREATE `ledgerRow_version_update` around it — in the migration AND here.
-CREATE TRIGGER ledgerRow_version_insert AFTER INSERT ON ledgerRow
-BEGIN
-    INSERT INTO manifestVersion (id, value)
-    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
-    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
-END;
-
-CREATE TRIGGER ledgerRow_version_delete AFTER DELETE ON ledgerRow
-BEGIN
-    INSERT INTO manifestVersion (id, value)
-    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
-    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
-END;
-
-CREATE TRIGGER ledgerRow_version_update AFTER UPDATE ON ledgerRow
-BEGIN
-    INSERT INTO manifestVersion (id, value)
-    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
-    UPDATE manifestVersion SET value = value + 1
-    WHERE id = 0 AND (
-        old.eventId IS NOT new.eventId
-        OR old.key IS NOT new.key
-        OR old.assetId IS NOT new.assetId
-        OR old.creationDate IS NOT new.creationDate
-        OR old.role IS NOT new.role
-        OR old.contentType IS NOT new.contentType
-        OR old.originalFilename IS NOT new.originalFilename
-    );
-END;
+-- - Every advance is "create the row if absent, then add one", so an absent row reads as 0 and the first advance
+--   creates it: nothing depends on a seed. NOT `INSERT OR REPLACE`: inside a trigger SQLite applies the OUTER
+--   statement's conflict resolution, so fired by `recordUnlessSettled`'s upsert the replace became an abort
+--   (measured). The counter never moves backwards — the reset family deletes `ledgerRow` rows only, and those
+--   deletes advance it like any other change.
+-- - The advance is by TRIGGER (`ledgerRow_version_insert|delete|update`), so that no write path — present or future —
+--   can change the projection without it. Each fires inside its statement's transaction, so a reader that sees
+--   version N sees every change numbered up to N.
+-- - The UPDATE trigger compares values (a `WHERE` on `old`/`new` in its body — SQLDelight's parser does not resolve
+--   them in a trigger's `WHEN` clause, measured), NOT `UPDATE OF`: `recordUnlessSettled` names every detail column in
+--   its `SET` list, and `UPDATE OF` would fire on unchanged values. `state` and `destinationPath` are deliberately
+--   absent: the manifest carries no upload state, and a bump per finished upload would force a republish per cycle.
+-- - ⚠️ SQLite REFUSES `DROP COLUMN` for a column a trigger names. A migration that drops one of the columns the
+--   update trigger names must DROP and re-CREATE that trigger around it.
 
 get:
 SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath

@@ -1,13 +1,14 @@
 package app.snapsync.services.ledger
 
 import app.cash.sqldelight.db.SqlDriver
-import app.snapsync.contracts.LEDGER_V12
+import app.snapsync.contracts.at
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerState
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.Databases
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.databases.strings
+import app.snapsync.services.ledger.db.LedgerDatabase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,9 +19,8 @@ import kotlin.test.assertTrue
  * The ledger's one migration (capability `photo-sharing`): 12.sqm, which parks every row under the empty event,
  * because the joined event lives in a file the migration cannot read; the service adopts them at its first use.
  * v12 is the oldest ledger a device holds. The database is entered at that version THROUGH THE PORT, so the
- * service's own open runs the migration — the path an upgrading phone takes. The verify task compares schemas and
- * cannot see these rows move; that the migration also runs on each platform's own SQLite is `DatabasesContract`'s
- * `LEDGER_SCHEMA_MIGRATES_FROM_ITS_FIRST_VERSION`.
+ * service's own open runs the migration — the path an upgrading phone takes. That the migration also runs on each
+ * platform's own SQLite is `DatabasesContract`'s `LEDGER_SCHEMA_MIGRATES_FROM_ITS_FIRST_VERSION`.
  */
 class LedgerMigrationTest {
 
@@ -74,16 +74,13 @@ class LedgerMigrationTest {
 private const val JOINED = "E-joined"
 
 /** A v12 ledger — the oldest a device holds — with one settled row and one in flight. */
-private fun v12Ledger(): Pair<Databases, SqlDriver> = databaseAt(LEDGER_DB_NAME, 12, *V12_LEDGER)
+private fun v12Ledger(): Pair<Databases, SqlDriver> = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
 
 /** The distinct events the ledger holds rows for, sorted. */
 private fun SqlDriver.eventIds(): List<String> = strings("SELECT DISTINCT eventId FROM ledgerRow ORDER BY eventId")
 
-/** v12 with one settled row and one in flight. */
-private val V12_LEDGER: Array<String> = (
-    LEDGER_V12 + (
-        "INSERT INTO ledgerRow VALUES " +
-            "('C-photo.jpg', 'C', 'COMPLETED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_C.JPG', '/v2/files/C'), " +
-            "('R-photo.jpg', 'R', 'REQUESTED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_R.JPG', '/v2/files/R')"
-        )
-    ).toTypedArray()
+/** One settled row and one in flight, as v12 holds them. */
+private const val V12_ROWS: String =
+    "INSERT INTO ledgerRow VALUES " +
+        "('C-photo.jpg', 'C', 'COMPLETED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_C.JPG', '/v2/files/C'), " +
+        "('R-photo.jpg', 'R', 'REQUESTED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_R.JPG', '/v2/files/R')"

@@ -38,48 +38,29 @@ private class ProductionSchema<D : Transacter, Q>(
     val queries: (D) -> Q,
     val statements: SchemaStatements<Q>,
     val firstVersion: Long,
-    val firstSchema: List<String>,
+    val firstRow: String,
 )
 
-// ---- the oldest schemas a migration still ships from (shared with the services' migration suites) ----------------
+// ---- a schema as it stood at an older version -------------------------------------------------------------------
 
-/** `ledger.db` at version 12 — what the squashed migrations up to 11.sqm leave, and the shape 12.sqm meets. */
-val LEDGER_V12: List<String> = listOf(
-    "CREATE TABLE ledgerRow (key TEXT NOT NULL PRIMARY KEY, assetId TEXT NOT NULL, state TEXT NOT NULL, " +
-        "creationDate TEXT NOT NULL DEFAULT '', role TEXT NOT NULL DEFAULT '', contentType TEXT NOT NULL DEFAULT '', " +
-        "originalFilename TEXT NOT NULL DEFAULT '', destinationPath TEXT)",
-    "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)",
-    "CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath)",
-    "CREATE TABLE manifestVersion (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), value INTEGER NOT NULL)",
-    versionTrigger("insert", "INSERT", ""),
-    versionTrigger("delete", "DELETE", ""),
-    versionTrigger(
-        "update",
-        "UPDATE",
-        " AND (old.key IS NOT new.key OR old.assetId IS NOT new.assetId OR old.creationDate IS NOT new.creationDate " +
-            "OR old.role IS NOT new.role OR old.contentType IS NOT new.contentType " +
-            "OR old.originalFilename IS NOT new.originalFilename)",
-    ),
-)
+/**
+ * [this] schema as it stood at [version], holding [rows]: every migration below [version] run on an empty database.
+ * The migration chain is each schema's only source (`deriveSchemaFromMigrations`), so an older shape is never written
+ * out by hand — a copy would be a second source that could disagree with what devices hold. Shared with the services'
+ * migration suites.
+ */
+fun SqlSchema<QueryResult.Value<Unit>>.at(version: Long, vararg rows: String): SqlSchema<QueryResult.Value<Unit>> {
+    val current = this
+    return object : SqlSchema<QueryResult.Value<Unit>> {
+        override val version = version
+        override fun create(driver: SqlDriver) = QueryResult.Value(
+            current.migrate(driver, 0, version).value.also { rows.forEach { driver.execute(null, it, 0) } },
+        )
 
-private fun versionTrigger(name: String, event: String, condition: String) =
-    "CREATE TRIGGER ledgerRow_version_$name AFTER $event ON ledgerRow BEGIN " +
-        "INSERT INTO manifestVersion (id, value) SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0); " +
-        "UPDATE manifestVersion SET value = value + 1 WHERE id = 0$condition; END"
-
-/** `downloads.db` at version 5 — the shape 5.sqm meets. */
-val DOWNLOADS_V5: List<String> = listOf(
-    "CREATE TABLE downloadAsset (sourceDeviceId TEXT NOT NULL, sourceAssetId TEXT NOT NULL, state TEXT NOT NULL, " +
-        "creationDate TEXT NOT NULL, createdLocalId TEXT, eventId TEXT, PRIMARY KEY (sourceDeviceId, sourceAssetId))",
-    "CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId)",
-    "CREATE TABLE downloadResource (sourceDeviceId TEXT NOT NULL, sourceAssetId TEXT NOT NULL, resourceKey TEXT NOT NULL, " +
-        "url TEXT NOT NULL, role TEXT NOT NULL, contentType TEXT NOT NULL, originalFilename TEXT NOT NULL, stagedPath TEXT, " +
-        "enqueued INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey))",
-)
-
-/** `downloads.db` at version 6 — what 5.sqm leaves, the oldest a device holds, and the shape 6.sqm meets. */
-val DOWNLOADS_V6: List<String> =
-    DOWNLOADS_V5 + "CREATE TABLE unionCursor (eventId TEXT NOT NULL PRIMARY KEY, cursor INTEGER NOT NULL)"
+        override fun migrate(driver: SqlDriver, oldVersion: Long, newVersion: Long, vararg callbacks: AfterVersion) =
+            QueryResult.Value(Unit)
+    }
+}
 
 /** The column encoding is the services' business; a statement needs only a value it can bind and read back. */
 private object AssetIdText : ColumnAdapter<AssetId, String> {
@@ -99,7 +80,7 @@ private val LEDGER = ProductionSchema(
     queries = { it.ledgerQueries },
     statements = LedgerStatements,
     firstVersion = 12,
-    firstSchema = LEDGER_V12 + "INSERT INTO ledgerRow VALUES ('k', 'A', 'COMPLETED', '', '', '', '', NULL)",
+    firstRow = "INSERT INTO ledgerRow VALUES ('k', 'A', 'COMPLETED', '', '', '', '', NULL)",
 )
 
 private val DOWNLOADS = ProductionSchema(
@@ -119,18 +100,12 @@ private val DOWNLOADS = ProductionSchema(
     queries = { it.downloadStoreQueries },
     statements = DownloadStoreStatements,
     firstVersion = 5,
-    firstSchema = DOWNLOADS_V5 + "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'IMPORTED', '', 'LOCAL-OLD', 'E1')",
+    firstRow = "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'IMPORTED', '', 'LOCAL-OLD', 'E1')",
 )
 
 /** [production] at its oldest migrated-from version, as a schema the port can create: those tables, holding a row. */
-private fun firstVersionOf(production: ProductionSchema<*, *>) = object : SqlSchema<QueryResult.Value<Unit>> {
-    override val version = production.firstVersion
-    override fun create(driver: SqlDriver) =
-        QueryResult.Value(production.firstSchema.forEach { driver.execute(null, it, 0) })
-
-    override fun migrate(driver: SqlDriver, oldVersion: Long, newVersion: Long, vararg callbacks: AfterVersion) =
-        QueryResult.Value(Unit)
-}
+private fun firstVersionOf(production: ProductionSchema<*, *>) =
+    production.schema.at(production.firstVersion, production.firstRow)
 
 private fun Databases.openedReadWrite(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): SqlDriver {
     val opened = open(name, schema, readOnly = false)

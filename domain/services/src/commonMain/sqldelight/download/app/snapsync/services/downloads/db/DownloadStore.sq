@@ -1,74 +1,41 @@
 import app.snapsync.model.AssetId;
 import app.snapsync.model.DownloadState;
 
--- One row per foreign asset this device is downloading / has imported (capability `receiving-photos`).
--- Keyed by the SOURCE identity (the owning device + that device's assetId), which is stable across
--- syncs and events — so idempotency and cross-event dedup are by (sourceDeviceId, sourceAssetId).
--- `createdLocalId` is the local PHAsset identifier minted at import; it is the suppression handle the
--- upload extension reads to avoid re-uploading a downloaded asset. Null until imported.
-CREATE TABLE downloadAsset (
-    sourceDeviceId TEXT NOT NULL,
-    sourceAssetId  TEXT AS AssetId NOT NULL,
-    state          TEXT AS DownloadState NOT NULL,
-    creationDate   TEXT NOT NULL,
-    createdLocalId TEXT AS AssetId,
-    PRIMARY KEY (sourceDeviceId, sourceAssetId)
-);
+-- THE SCHEMA IS THE MIGRATION CHAIN (`deriveSchemaFromMigrations`): `4.sqm` is the baseline at v5, and each later
+-- `<n>.sqm` moves it one version on. A fresh install runs the whole chain, so it and an upgraded device cannot
+-- disagree. This file holds the queries only; what the tables MEAN is described here.
+--
+-- `downloadAsset` — one row per foreign asset this device is downloading or has imported (capability
+-- `receiving-photos`). Keyed by the SOURCE identity (the owning device + that device's assetId), which is stable across
+-- syncs and events — so idempotency and cross-event dedup are by (sourceDeviceId, sourceAssetId). `createdLocalId` is
+-- the local photo identifier minted at import; it is the suppression handle the upload extension reads to avoid
+-- re-uploading a downloaded asset. Null until imported. The suppression projection rides
+-- `downloadAsset_createdLocalId`.
+--
+-- `eventRef` — which event's union a foreign photo belongs to (capability `sync-status`; change
+-- `event-scoped-local-state`): one row per (event, photo), written by every reconcile for its union's foreign refs,
+-- settled ones included, and by an adoption for the event it adopts for. It scopes the joined screen's received count
+-- and the album gather to the CURRENT membership: `downloadAsset` rows outlive their event on purpose — an imported
+-- row's `createdLocalId` is the suppression handle — so without it the count would be every foreign photo the device
+-- ever imported. A photo two events share has a row in each. Rows of any other event are purged at the next join.
+--
+-- `downloadResource` — one row per expected resource of a downloading asset. `stagedPath` is null until the
+-- resource's bytes are downloaded and moved to durable App-Group staging; an asset is complete (importable) when every
+-- expected resource has a non-null `stagedPath`. `enqueued` is 1 once the download has been SENT to the OS; with
+-- `stagedPath IS NULL` it means "in flight" — the download analogue of the upload ledger's REQUESTED. `eventId` is the
+-- event whose folder the bytes are fetched from (each event holds its own bytes, change `per-event-storage-layout`),
+-- and so where they are staged; `''` is a row planned before 6.sqm whose asset no reconcile had tagged, which downloads
+-- and imports like any other.
+--
+-- `unionCursor` — the position each event's union was last read to (decision record `changes/incremental-union`, D6):
+-- a push or a background wake reads only what the union gained after it. Advanced only in the transaction that
+-- planned what the read served; no row means the next read is a full one.
+--
+-- `recognised` — the memberships whose received photos have been recognised (change `close-share-back-gaps`): written by
+-- a recognition pass that READ the event's union, so nothing of the member's is shared before it — the upload gate of
+-- both processes reads it. Event-scoped: rows of any other event are purged at the next join, so a rejoin recognises
+-- again.
 
--- The created-local-id suppression projection rides this partial index (only imported rows carry one).
-CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId);
-
--- Which event's union a foreign photo belongs to (capability `sync-status`; change `event-scoped-local-state`): one
--- row per (event, photo), written by every reconcile for its union's foreign refs, settled ones included, and by an
--- adoption for the event it adopts for. It scopes the joined screen's received count and the album gather to the
--- CURRENT membership: `downloadAsset` rows outlive their event on purpose — an imported row's `createdLocalId` is the
--- suppression handle — so without it the count would be every foreign photo the device ever imported. A photo two
--- events share has a row in each. Rows of any other event are purged at the next join.
-CREATE TABLE eventRef (
-    eventId        TEXT NOT NULL,
-    sourceDeviceId TEXT NOT NULL,
-    sourceAssetId  TEXT NOT NULL,
-    PRIMARY KEY (eventId, sourceDeviceId, sourceAssetId)
-);
-
--- One row per expected resource of a downloading asset. `stagedPath` is null until the resource's
--- bytes are downloaded and moved to durable App-Group staging; an asset is complete (importable) when
--- every expected resource has a non-null `stagedPath`.
-CREATE TABLE downloadResource (
-    sourceDeviceId TEXT NOT NULL,
-    sourceAssetId  TEXT AS AssetId NOT NULL,
-    resourceKey    TEXT NOT NULL,
-    url            TEXT NOT NULL,
-    role           TEXT NOT NULL,
-    contentType    TEXT NOT NULL,
-    originalFilename TEXT NOT NULL,
-    stagedPath     TEXT,
-    -- 1 once this resource's download has been SENT to the OS (a background URLSession task exists).
-    -- Combined with `stagedPath IS NULL` it means "in flight" — the download analogue of the upload
-    -- ledger's REQUESTED. Superseded implicitly once `stagedPath` becomes non-null.
-    enqueued       INTEGER NOT NULL DEFAULT 0,
-    -- The event whose folder the bytes are fetched from (each event holds its own bytes, change
-    -- `per-event-storage-layout`), and so where they are staged. `''` is a row planned before 6.sqm whose asset no
-    -- reconcile had tagged; it downloads and imports like any other.
-    eventId        TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey)
-);
-
--- The position each event's union was last read to (decision record `changes/incremental-union`, D6): a push or a
--- background wake reads only what the union gained after it. Advanced only in the transaction that planned what the
--- read served; no row means the next read is a full one.
-CREATE TABLE unionCursor (
-    eventId TEXT NOT NULL PRIMARY KEY,
-    cursor  INTEGER NOT NULL
-);
-
--- The memberships whose received photos have been recognised (capability `receiving-photos`, change
--- `close-share-back-gaps`): written by a recognition pass that READ the event's union, so nothing of the member's is
--- shared before it — the upload gate of both processes reads it. Event-scoped: rows of any other event are purged at
--- the next join, so a rejoin recognises again.
-CREATE TABLE recognised (
-    eventId TEXT NOT NULL PRIMARY KEY
-);
 
 -- --- recognition ---
 

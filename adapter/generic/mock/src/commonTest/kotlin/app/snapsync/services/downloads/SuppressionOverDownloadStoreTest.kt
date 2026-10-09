@@ -1,6 +1,6 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.contracts.DOWNLOADS_V6
+import app.snapsync.contracts.at
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -9,6 +9,7 @@ import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.databases.DatabaseUnavailable
 import app.snapsync.services.databases.databaseAt
+import app.snapsync.services.downloads.db.DownloadDatabase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -59,9 +60,10 @@ class SuppressionOverDownloadStoreTest {
     fun `an unmigrated store pauses the extension until the app migrates it - keeping every handle`() = runTest {
         val (databases, _) = databaseAt(
             DOWNLOADS_DB_NAME,
-            6,
-            *DOWNLOADS_V6.toTypedArray(),
-            "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'IMPORTED', '2026-08-08T12:00:00Z', 'LOCAL-OLD', 'E1')",
+            DownloadDatabase.Schema.at(
+                6,
+                "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'IMPORTED', '2026-08-08T12:00:00Z', 'LOCAL-OLD', 'E1')",
+            ),
         )
         val extension = SuppressionService(databases)
 
@@ -76,7 +78,7 @@ class SuppressionOverDownloadStoreTest {
 
     @Test
     fun `a store the extension cannot read never answers recognised`() = runTest {
-        val (old, _) = databaseAt(DOWNLOADS_DB_NAME, 6, *DOWNLOADS_V6.toTypedArray())
+        val (old, _) = databaseAt(DOWNLOADS_DB_NAME, DownloadDatabase.Schema.at(6))
         assertFailsWith<DatabaseUnavailable>(
             "an older schema is no answer",
         ) { SuppressionService(old).isRecognised("E1") }
