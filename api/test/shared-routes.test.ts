@@ -207,7 +207,7 @@ Deno.test("GET /events/:id → 404 when the event does not exist, 400 on a non-U
 });
 
 Deno.test("GET /events/:id → a store failure is 502, never 404", async () => {
-  // The distinction is load-bearing outside this file: `manage-membership`'s two-witness teardown acts on a
+  // The distinction is load-bearing outside this file: `event-lifetime`'s two-witness teardown acts on a
   // 404, so a transient fault reported as absence would tear a live membership down.
   const broken: Db = {
     execute: () => Promise.reject(new Error("store down")),

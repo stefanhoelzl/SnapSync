@@ -32,7 +32,7 @@
 	     and EMPTY userInfo, and disable with 3201 — after which the OS launches this extension never
 	     and nothing uploads on this tier, with one Error line to show for it. Xcode 26.6's own
 	     Background Resource Upload template declares the option Required. Capability
-	     `background-upload`; ⏰ re-measure at the next iOS major.
+	     `delivery`; ⏰ re-measure at the next iOS major.
 
 	     COMPOSED, not carried: an Info.plist substitution can only read a build setting, and `//`
 	     opens a comment anywhere on an xcconfig line with no escape (which truncated the Sentry DSN to

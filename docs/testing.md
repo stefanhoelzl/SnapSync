@@ -295,7 +295,7 @@ Where bindings live: beside their implementations.
   `changes/archive/2026-10-04-mobile-data-for-photos/design.md` (SE2: Low Data Mode and a hotspot; XS: cellular).
   iOS's blocked path (the per-app Cellular switch) has no host — no phone the project drives has a SIM — so its
   mapping is pinned by `IosNetworkMonitorTest` and documented, unmeasured, on `IosNetworkMonitor`.
-- The install referrer on Android (the invite a Play install carried, capability `join-event`): which referrers are an
+- The install referrer on Android (the invite a Play install carried, capability `invite-link`): which referrers are an
   invite is pure and runs on the JVM (`EventLinkTest`, `inviteLinkFromInstallReferrer`); the once-per-install
   bookkeeping runs on `ANDROID_EMU` over a scripted Play answer behind the reader's internal `ReferrerSource` seam and
   the real `SharedPreferences` (`AndroidInstallReferrerTest`). It is no port and has no contract — the Links port's

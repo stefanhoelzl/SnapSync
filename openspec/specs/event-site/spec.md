@@ -8,9 +8,11 @@ all of its photos in one download, with no app and no account, alongside a way t
 invite link reaches the app where it is installed, and what to do after installing, is capability
 `join-event`; what this page may reveal or record is capability `privacy-security`.
 Decision record: changes/archive/2026-07-21-web-event-download
+
 ## Requirements
+
 ### Requirement: An invite link without the app opens the event's page
-Opening an event's invite link, in either form (capability `join-event`), in a browser where SnapSync does
+Opening an event's invite link, in either form (capability `invite-link`), in a browser where SnapSync does
 not claim it SHALL show a page naming the event and how many photos are ready to download. The page SHALL
 also show:
 - the event's dates as the host chose them, in the host's own calendar, wherever the visitor is (an event
@@ -50,6 +52,7 @@ SHALL work in any modern browser on any platform, with no install, no account an
 #### Scenario: A browser without scripts
 - **WHEN** a visitor opens a valid invite of the path form in a browser that runs no script
 - **THEN** the page still names the event and shows its dates, status and members
+
 ### Requirement: A shared invite previews its event
 When an invite of the path form is shared in a messenger or anywhere else that shows a link preview, the
 preview SHALL name the event and SHALL show its dates and how many members it has, or once it has ended,
@@ -184,7 +187,7 @@ visitor to check their connection and reload, and SHALL NOT claim the link is in
 
 ### Requirement: An encrypted event's photos open only with the whole invite
 An encrypted event's page opened with its whole invite SHALL offer the event's photos exactly as a plain event's page
-does, opened in the visitor's browser (capability `privacy-security`). Opened without the key, or with another, the
+does, opened in the visitor's browser (capability `invite-link`). Opened without the key, or with another, the
 page SHALL still name the event and show its dates, status and members, SHALL say that only the whole invite opens
 its photos, SHALL still offer "Get SnapSync", and SHALL offer no download.
 

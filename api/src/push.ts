@@ -1,4 +1,4 @@
-// The silent-wake fan-out's one sender (capability `receiving-photos`): every wake — a photo that became
+// The silent-wake fan-out's one sender (capability `delivery`): every wake — a photo that became
 // available, and an event's close — goes through here, and each registered token is sent through the push
 // service its `kind` names. A device's kind is what its app's push adapter stated at registration (`apns` on
 // iPhone, `fcm` on Android); a kind no sender speaks is `skipped`, never an error. Never throws; outcomes keep the

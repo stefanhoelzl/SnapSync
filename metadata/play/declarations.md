@@ -109,6 +109,8 @@ Instructions, the Android wording of `metadata/review/notes.md`:
   - the random **install ID** and the **push token**: they exist only to move the event's photos (telling devices
     apart, waking a device for new photos), so they are part of providing the photos;
   - the **bug report** a user sends by hand, and the activity logs it carries: part of crash logs;
+  - the random **install, event and photo IDs** an automatic crash report may carry (never an event's key — capability
+    `privacy-security`): part of crash logs, so the operator can find what a failure affected;
   - the **read record** of an event's photo list (which install read it, why, when, how many photos it was given;
     browsers anonymously; deleted with the event's photos — capability `privacy-security`): **diagnostics**, covered by
     the diagnostics already declared in both stores (decided 2026-10-05, `changes/incremental-union`). It is not app
@@ -124,7 +126,7 @@ Instructions, the Android wording of `metadata/review/notes.md`:
   once everyone has them, never later than 30 days after the event is created or starts.
 - **Accounts:** none; the app has no account creation.
 
-**Reopen** if Play's review says this is under-declared (location, or the device or other IDs). Then
+**Reopen** if Play's review says this is under-declared (location, or the device or other IDs, crash logs' included). Then
 declare the named type with its purpose and change the content rating's location answer in the same step. The Privacy
 Policy already names all of them, so only the form would change.
 

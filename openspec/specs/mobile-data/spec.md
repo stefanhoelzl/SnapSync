@@ -15,7 +15,7 @@ Decision record: changes/archive/2026-10-07-mobile-data-per-device
 The device SHALL carry one choice whether photos may be sent and received over mobile data, and it SHALL govern
 the photo transfers of whichever event the device is in. The choice SHALL be on — photos may use mobile data —
 unless the member turns it off, so a member who never touches it shares and receives exactly as without the
-choice. It SHALL be made in the app menu (capability `sync-status`), with or without an event, and SHALL apply as
+choice. It SHALL be made in the app menu (capability `app-experience`), with or without an event, and SHALL apply as
 soon as it is switched, without a Save; it SHALL work offline. It SHALL keep its value when the member leaves an
 event, joins another and when the app is updated; a new installation of the app SHALL start with it on. It SHALL
 apply the same way to sharing and to receiving. If the choice cannot be saved, the switch SHALL return to the

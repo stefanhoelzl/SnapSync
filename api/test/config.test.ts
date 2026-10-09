@@ -53,7 +53,7 @@ Deno.test("readConfig: the secrets → Config, with every non-secret from the re
     attestTokenTtlSeconds: D.attestTokenTtlSeconds,
     // Derived from the team + bundle ids, so the gate's app id and the push topic cannot drift apart.
     attestAppId: `${D.teamId}.${D.bundleId}`,
-    // The event link's domain (capability `join-event`). The app's entitlement and LINK_ORIGIN are
+    // The event link's domain (capability `invite-link`). The app's entitlement and LINK_ORIGIN are
     // GENERATED from this same value now, so agreement is constructed rather than asserted.
     linkDomain: D.domain,
     appStoreUrl: D.appStoreUrl,

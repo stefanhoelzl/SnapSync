@@ -1,6 +1,6 @@
 #!/bin/sh
 # A force-stop stops receiving until the next opening, and the next opening restores the heartbeat (capability
-# `receiving-photos`, "A force-quit stops receiving until the next opening"; decision record
+# `delivery`, "A force-quit stops receiving until the next opening"; decision record
 # `changes/timely-background-receiving`, D8). NON-GATING: no CI job runs it — a contract clause cannot express it,
 # because a force-stop kills the process that would observe it, so it is checked from outside, over adb.
 #

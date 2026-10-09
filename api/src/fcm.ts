@@ -1,4 +1,4 @@
-// FCM HTTP v1 sender (capability `receiving-photos`) — the Android counterpart of `apns.ts`. Each push is a
+// FCM HTTP v1 sender (capability `delivery`) — the Android counterpart of `apns.ts`. Each push is a
 // high-priority DATA message carrying only the event id, so a receiving device reconciles that event in the
 // background; there is no notification block, so nothing is shown. Auth is Google's service-account flow: an
 // RS256 JWT signed with jose from the service account's private key, exchanged at the OAuth token endpoint for an

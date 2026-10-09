@@ -80,8 +80,8 @@ Stack: Kotlin 2.4.20 · Compose MP 1.12.1 · JDK 25 · min iOS 18.0 · Orbit MVI
 (Two uploaders, both active where both exist: the app-driven background `URLSession` on every iOS version
 under any usable grant, and — on iOS ≥26.1 — the OS-driven PhotoKit extension, registered from join to leave
 and creating only under a full grant. An overlap is a duplicate upload of the same object, never a loss;
-nothing is cancelled except at a leave. See the `background-upload` / `background-upload` /
-`background-upload` specs.)
+nothing is cancelled except at a leave. See the `delivery` spec.)
+
 (`gradle/libs.versions.toml` is the source of truth for versions.)
 
 ## Repo layout

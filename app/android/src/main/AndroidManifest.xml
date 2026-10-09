@@ -23,7 +23,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <!--
-      Other members' photos (capability `receiving-photos`) download through DownloadManager with no system notification:
+      Other members' photos (capability `delivery`) download through DownloadManager with no system notification:
       the app's own status line shows receiving, as on iPhone. Granted at install; no prompt.
     -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
@@ -44,17 +44,23 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SnapSync"
         tools:targetApi="33">
-        <!-- singleTop: an event link opened while the app runs reaches the running activity (onNewIntent). -->
+        <!-- singleTop: an event link opened while the app runs reaches the running activity (onNewIntent).
+             portrait: upright only, as on iPhone (capability `app-experience`); Android 16+ ignores it on displays of
+             600 dp and wider for an app targeting SDK 36, which the spec allows. Lint's two objections are to exactly
+             that lock (LockedOrientationActivity) and that large-screen exception (DiscouragedApi), so both are ignored
+             here. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            tools:ignore="LockedOrientationActivity,DiscouragedApi">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!--
-              The event link (capability `join-event`): https://<the resolved deployment's domain>/join, exactly (the
+              The event link (capability `invite-link`): https://<the resolved deployment's domain>/join, exactly (the
               fragment form), and /join/<eventId> (the path form) — the same narrow claim the AASA makes, so the
               marketing page and the device API keep opening in a browser. autoVerify asks Android to check the domain's /.well-known/assetlinks.json; until that names
               this app's signing certificate (phase 5), the link is unverified and opens in the browser.
@@ -71,7 +77,7 @@
             </intent-filter>
         </activity>
         <!--
-          The silent wake (capability `receiving-photos`): FCM's entry into the app. Not exported: only FCM, through
+          The silent wake (capability `delivery`): FCM's entry into the app. Not exported: only FCM, through
           Google Play services, delivers to it.
         -->
         <service
@@ -92,7 +98,7 @@
             tools:ignore="MissingClass"
             tools:node="remove" />
         <!--
-          DownloadManager's completion broadcast (capability `receiving-photos`): declared here so it reaches a dead
+          DownloadManager's completion broadcast (capability `delivery`): declared here so it reaches a dead
           process. Exported because the download provider sends it; only a sender holding its permission can.
         -->
         <receiver

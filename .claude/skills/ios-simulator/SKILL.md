@@ -98,7 +98,7 @@ State these before writing a scenario against this host, or you will write one t
 
 - **No background `URLSession` at all — so this target does not use one.** Bytes DO move here: the
   `iosSimulatorArm64` build binds an ordinary **default** session instead (`transferSessionConfiguration`
-  in `:adapter:ios:app-only`, capability `background-upload`). Uploads and downloads both work.
+  in `:adapter:ios:app-only`, capability `delivery`). Uploads and downloads both work.
   Verified 2026-08-25 end to end for uploads: three photos, ledger `completed=3`, objects in
   `api/.localstore`.
 

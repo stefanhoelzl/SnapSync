@@ -430,7 +430,7 @@ Deno.test("gate: the event link's AASA is served without a token", async () => {
   const { calls, app: a } = app();
   const res = await a.request("/.well-known/apple-app-site-association");
   // NOT 401 — Apple's CDN and the device fetch this with no Authorization header and cannot be made to
-  // send one, so gating it would silently defeat EVERY event link (capability `join-event`).
+  // send one, so gating it would silently defeat EVERY event link (capability `invite-link`).
   assertEquals(res.status, 200);
   assertEquals(calls.length, 0); // and serving it reads no storage
 });

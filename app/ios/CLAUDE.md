@@ -68,7 +68,7 @@ step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`swit
   placeholder. WHICH it returns is Kotlin's tested decision (`resolveScene`), never Swift's. Why: iOS
   connects UI scenes in the BACKGROUND, so a silent-push wake would otherwise stand up a Compose runtime
   and Metal renderer in a process that cannot draw and present it hours later drawing dead textures
-  (capability `sync-status`; mitigation for CMP-5978 — delete when fixed upstream). ⚠️ Key on the
+  (capability `app-experience`; mitigation for CMP-5978 — delete when fixed upstream). ⚠️ Key on the
   APP-level notification, not `sceneDidBecomeActive`: `dvt launch` foregrounds the process WITHOUT
   connecting a scene session, so a scene-level hook gives a black screen and kills the headless
   screenshot loop (measured 2026-08-06).
@@ -110,7 +110,7 @@ is no per-root cycle or feature assembly any more.
 - The app-driven tier's uploader (`compose/AppUploader.kt`) runs the same cycle assembly (`uploadCycle`) over the
   app's own services and `Upload` port (the background-`URLSession` adapter); the app's `TailRunner` drives it.
 
-**Neither is the direction gate** (capability `background-upload`). Whether a membership uploads **at all** is
+**Neither is the direction gate** (capability `delivery`). Whether a membership uploads **at all** is
 decided inside `UploadCycle`, from a required `Contribution` (`:domain` `model/`) carrying the membership's
 direction *and* its cutoff: `None` → the cycle returns `CycleResult.SKIPPED` before any walk, job, manifest, or
 notify, and the tail then re-arms no heartbeat `BGProcessingTask`. The roots only pass **facts** —
@@ -129,7 +129,7 @@ feature/upload, from `model/`'s `extensionRegistrable` read fresh at that moment
 extension's `register()` (the disable → enable ritual — never a bare enable) and `deregister()`, and the app
 engine's `arm()`, `disarm()` (the heartbeat only) and `cancelTransfers()` (a leave only). **None of them clears
 the ledger**: only a leave clears it and only a join loads it, as the membership use-cases' own steps
-(`background-upload`, `join-event`). And **no transition but a leave stops in-flight work**: the registration spans
+(`delivery`, `join-event`). And **no transition but a leave stops in-flight work**: the registration spans
 the membership (never removed by a reconfigure or a permission change), a revoke stops only new creation, and a
 re-provision of the joined event does nothing — so nothing is ever orphaned, and nothing needs repair
 (decision record `openspec/changes/both-uploaders-active`).
@@ -186,7 +186,7 @@ family, a transport's guarded terminal write, and the membership reset family. O
   is pinned in `:test:architecture` — a *new* unscoped seat fails the build, including a
   reconstructed config one.
 - **Associated domain `applinks:snapsync.stho.net`** (app entitlements only, via
-  `$(ASSOCIATED_DOMAIN)`): claims the event link's Universal Link (capability `join-event`), which is
+  `$(ASSOCIATED_DOMAIN)`): claims the event link's Universal Link (capability `invite-link`), which is
   how a Camera-scanned QR opens the app. Like App Groups (and unlike keychain groups) **it must be
   enabled on the app.snapsync App ID in the portal**, or signed builds fail to provision — and
   enabling it *invalidates existing profiles*, so the dev build loop's baked secret needs refreshing
@@ -223,7 +223,7 @@ Whether the extension may be **registered** is `model/`'s pure `extensionRegistr
 photo permission, and the rig's per-uploader switch (always `null` on a production build — its only writer is the
 rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
 
-- **iOS ≥26.1 — PhotoKit (`background-upload`).** The OS-driven upload extension, using the
+- **iOS ≥26.1 — PhotoKit (`delivery`).** The OS-driven upload extension, using the
   **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
   devices). `setUploadJobExtensionEnabled` is confined to `PhotoKitExtensionRegistry` (`:adapter:ios:app-only`), the
   sole caller of that selector and of its read-back, reached through the `UploadExtensionRegistry` port by
@@ -234,7 +234,7 @@ rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
   attempted (every one is refused — 3311); a surviving record is invoked by the OS, and its extension withholds
   at its own gate — it records and acknowledges, and creates nothing. A later move to the iOS 27 async
   `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target.
-- **app-driven `URLSession` (`background-upload`) — every iOS version, whenever access is usable.** The
+- **app-driven `URLSession` (`delivery`) — every iOS version, whenever access is usable.** The
   **main app process** uploads over a background `URLSession` + `BGProcessingTask`, via
   `IosUrlSessionUploadPlatform` / `IosWake` (`:adapter:ios:app-only`) driving the same `:domain`
   feature/upload `UploadCycle`, whose units (`topUp`, `walkAndPublish`) run in the app's one `TailRunner`. Below 26.1 it is the only uploader; from 26.1

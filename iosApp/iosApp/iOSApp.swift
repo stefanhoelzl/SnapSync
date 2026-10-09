@@ -11,7 +11,7 @@ import UIKit
 //      (Apple requires registration before launch finishes; the identifier MUST be in Info.plist
 //      BGTaskSchedulerPermittedIdentifiers — the registration moved to Kotlin's `IosWake` in phase 11f),
 //      asks for an APNs token (at every cold start, and again at every foreground entry from its
-//      didBecomeActive observer — capability `receiving-photos`) and installs the Kotlin-side
+//      didBecomeActive observer — capability `delivery`) and installs the Kotlin-side
 //      NSNotificationCenter lifecycle observers (didBecomeActive/willResignActive — the scenePhase `if` that
 //      used to live in the App body is a decision, so it moved to Kotlin with the OS notifications as its input).
 //   2. `handleEventsForBackgroundURLSession` — the OS relaunches the app to finish background photo
@@ -19,7 +19,7 @@ import UIKit
 //      in the core's tail, under the app's own background time.
 //   3. remote notifications — the OS-delivered APNs token is forwarded as hex (an encoding, not a
 //      decision); an incoming silent push forwards its `userInfo` dictionary WHOLE — the `eventId`
-//      extraction is Kotlin's tested payload codec (capability `receiving-photos`).
+//      extraction is Kotlin's tested payload codec (capability `delivery`).
 final class AppDelegate: NSObject, UIApplicationDelegate {
     // The upload heartbeat's BGTask launch handler is registered by Kotlin (`IosWake.listen`), which `onLaunch`
     // reaches by composing the graph — inside this callback, as Apple requires. Kotlin also observes the
@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     // Route scene callbacks to SnapSyncSceneDelegate — the ONLY way this app can receive an event link
-    // (capability `join-event`). A SwiftUI `WindowGroup` IS a scene, so per Apple ("Supporting universal
+    // (capability `invite-link`). A SwiftUI `WindowGroup` IS a scene, so per Apple ("Supporting universal
     // links in your app") the system delivers the link's NSUserActivity to the SCENE delegate, and in a
     // SwiftUI app only `didFinishLaunchingWithOptions` and `applicationWillTerminate` are called on THIS
     // delegate — so an `application(_:continue:restorationHandler:)` here would never fire. It was tried
@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
-// THE event-link entry point (capability `join-event`). iOS delivers a Universal Link as an
+// THE event-link entry point (capability `invite-link`). iOS delivers a Universal Link as an
 // NSUserActivity of type NSUserActivityTypeBrowsingWeb, and because a SwiftUI `WindowGroup` IS a scene,
 // it arrives HERE — at the scene delegate — and nowhere else. Apple, "Supporting universal links in
 // your app": *if your app has opted into Scenes, and your app is not running, the system delivers the
@@ -263,7 +263,7 @@ struct iOSApp: App {
                 // banner alike), and this modifier fired for only 2 of 4 deliveries on 26.6 (build 687).
                 // The union delivered in every configuration tested, so both are declared and the
                 // duplicates they produce are absorbed by the gate, which acts on a repeated link once
-                // (capability `join-event`). That is why "delivery exactly once" is no longer a property
+                // (capability `invite-link`). That is why "delivery exactly once" is no longer a property
                 // we hope the hooks have.
                 //
                 // Reported independently with our exact signature — SwiftUI + custom scene delegate,

@@ -199,7 +199,7 @@ export function v2Routes(deps: RouteDeps): Hono {
         ]),
     );
     // AFTER the commit, and best-effort: this asset is now servable, so the event's other members are
-    // woken to come and fetch it (capability `receiving-photos`). The manifest publish cannot
+    // woken to come and fetch it (capability `delivery`). The manifest publish cannot
     // announce this — a declaration and its later completion project identical manifest fields, so the
     // publish does not change when the bytes land. A byte that completed nothing wakes nobody.
     // The clock's landing anchor (capability `event-lifetime`): an event is completed 3 days after its
@@ -429,7 +429,7 @@ export function v2Routes(deps: RouteDeps): Hono {
     // is the transaction's outcome and is never changed by a push that failed, the same split the byte
     // route already draws for its database write. Only a publish that WON wakes anyone: a refused one
     // changed nothing the union serves.
-    // The close wakes every member once (capability `receiving-photos`): every byte may already have
+    // The close wakes every member once (capability `delivery`): every byte may already have
     // landed, so no landing would wake anyone, and each device must learn the close to finish and leave.
     // The publisher is skipped like any fan-out — it made the close and learns it from its own next read.
     if (closed) c.var.log.field("closed", true);

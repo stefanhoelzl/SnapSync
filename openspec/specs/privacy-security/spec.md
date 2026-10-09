@@ -2,14 +2,16 @@
 
 ## Purpose
 Serves every host, guest and web visitor with the promises they rely on but cannot inspect: who can see and
-change an event's photos, what leaves their phone or their browser and when, and what the operator can
-learn from a failure. SnapSync has no accounts — an event's invite link is its key — so the promises are
-stated in those terms: anyone holding the link can see the event, only a genuine SnapSync app can add to
-it, nothing tracks a visitor, the app's automatic failure reports carry no identifiers, and a detailed bug report
-leaves the phone only when the user writes and sends one. How long an event and its photos are kept is
-capability `event-lifetime`; which of a member's photos are shared at all is capability `photo-sharing`.
+change an event's photos, what leaves their phone or their browser and when, and what the operator can learn from a
+failure. SnapSync has no accounts — an event's invite is its key (capability `invite-link`) — so the promises are
+stated in those terms: only a genuine SnapSync app can add to an event, nothing tracks a visitor, the app's automatic
+failure reports carry nothing that identifies a person and never an event's key, and a detailed bug report leaves the
+phone only when the user writes and sends one. How long an event and its photos are kept is capability
+`event-lifetime`; which of a member's photos are shared at all is capability `photo-sharing`.
 Decision record: changes/archive/2026-07-14-add-device-attestation
+
 ## Requirements
+
 ### Requirement: No account and no personal identity
 SnapSync SHALL NOT ask for or store a name, email address, phone number, password or contacts. Each install
 SHALL be known to the service only by a random identifier that is not linked to the person using it.
@@ -18,22 +20,6 @@ SHALL be known to the service only by a random identifier that is not linked to 
 - **WHEN** a guest installs SnapSync and joins an event
 - **THEN** at no point are they asked for a name, email, phone number, password or access to contacts
 
-### Requirement: The invite link is the key to an event
-Anyone who holds an event's invite link or QR code SHALL be able to join the event with the app (capability
-`join-event`) and to see, in a browser, the event's name, its dates, how many members it has and how many
-have finished sharing, and to download all of its shared photos (capability `event-site`). There SHALL be no
-other gate — no account, approval or password — so sharing the QR code shares the event. Without the link,
-an event's photos SHALL NOT be discoverable: the service offers no listing or search of events, and stored
-photos are not publicly browsable.
-
-#### Scenario: A forwarded link grants access
-- **WHEN** a member forwards the invite link to someone outside the event
-- **THEN** that person can see the event's name, its dates and its members' count, and download its shared photos in a browser
-
-#### Scenario: Without the link there is no way in
-- **WHEN** someone without the invite link looks for an event's photos on SnapSync's web address or its storage
-- **THEN** they can find neither the event nor any of its photos
-
 ### Requirement: A link to a single photo lasts only as long as the photo is shared
 A link to a single stored photo, as handed to a member's app, SHALL work only while that photo is part of the
 event: once its member withdraws it (capability `photo-sharing`) or the event's photos are deleted (capability
@@ -41,7 +27,7 @@ event: once its member withdraws it (capability `photo-sharing`) or the event's 
 for about an hour after the page received it, and never longer: a photo withdrawn within that hour MAY still be
 served through such a link until it lapses, and once it has lapsed the link SHALL NOT serve the photo, whether
 or not the photo is still shared. Either link names its event, so whoever holds one SHALL be able to reach what
-the event's invite link reaches (requirement "The invite link is the key to an event"); neither the app nor the
+the event's invite link reaches (requirement "The invite link is the key to an event", capability `invite-link`); neither the app nor the
 event page SHALL show it to the user.
 
 #### Scenario: A copied photo link after the photo is withdrawn
@@ -154,8 +140,8 @@ exception is a visitor's own act: when a visitor follows the event page's Google
 hand that invite to Google Play so the Android app can open it once installed. Google Play then learns the
 event's identity, and with it the ability to see the event's photos. The page SHALL hand it over only for a
 valid invite and only through that button. Nothing else on the site SHALL carry an invite to Google Play,
-including the landing page's Google Play button. The event's identity SHALL NOT appear in any automatic
-failure report.
+including the landing page's Google Play button. An automatic failure report MAY carry the event's identity (requirement "Automatic failure reports are minimal
+and anonymous"), which goes only to the operator's error-tracking service.
 
 #### Scenario: Opening a link where no app is installed
 - **WHEN** a visitor opens an invite link in a browser
@@ -239,19 +225,21 @@ deleted together with the event's photos (capability `event-lifetime`).
 Only builds distributed through the App Store, TestFlight or Google Play SHALL report failures automatically, and
 they SHALL report only crashes, errors and the app freezing until the system closes it — with the recent app
 activity leading up to them and technical facts such as device model, OS version, app version and how the app's
-previous runs ended. They SHALL NOT carry analytics, usage tracking, performance monitoring or screen recording.
-Before a report leaves the phone every identifier SHALL be removed from it — no event, device or membership
-identifier is sent — except one random identifier per install, created by the reporting itself and linked to
-nothing else, so the operator can count how many installs a problem affects. Reporting SHALL change nothing the
-user sees or experiences.
+previous runs ended. They SHALL NOT carry analytics, usage tracking, performance monitoring or screen recording. A
+report MAY carry the random identifiers SnapSync already exchanges with its own service — of the device, the event
+and its photos — so the operator can find what a failure affected, and one random identifier per install created by
+the reporting itself, so the operator can count how many installs a problem affects. A report SHALL NEVER carry an
+event's key, nor anything that identifies the person using the app. Reports SHALL go only to the operator's
+error-tracking service. Reporting SHALL change nothing the user sees or experiences.
 
 #### Scenario: The app hits an error during an upload
-- **WHEN** a distributed build hits an error while sharing a photo of an event
-- **THEN** a report of the error reaches the operator, and it contains no identifier of the event or the device
+- **WHEN** a distributed build hits an error while sharing a photo of an encrypted event
+- **THEN** a report of the error reaches the operator; it may name the event and the device, and it does not contain
+  the event's key
 
 #### Scenario: The app freezes and the system closes it
 - **WHEN** a Google Play build stops responding and the system closes it
-- **THEN** a report of the freeze reaches the operator, and it contains no identifier of the event or the device
+- **THEN** a report of the freeze reaches the operator, and it does not contain the key of the event the phone is in
 
 #### Scenario: A development build
 - **WHEN** a build not distributed through the App Store, TestFlight or Google Play crashes
@@ -410,44 +398,3 @@ platform's provider. It SHALL be updated in the same release as any change to wh
 #### Scenario: An Android user reads the policy
 - **WHEN** someone who uses SnapSync on Android reads the Privacy Policy
 - **THEN** it names the provider that issues and carries their phone's notification token and describes how their phone's app-integrity check works, as it does for an iPhone
-
-### Requirement: Only the whole invite opens an event's photos
-Every event this version creates SHALL be encrypted with a key of its own, made on the host's phone and carried to
-everyone else only inside the event's invite (capability `join-event`). Its photos SHALL be stored only encrypted
-under that key, and SHALL be opened only on a member's phone or in the browser of someone holding the whole invite
-(capability `event-site`). SnapSync's service SHALL never be given the event's key. The one exception is an iPhone
-whose system uploads photos in the background on the app's behalf: there, for each photo, the service SHALL receive
-a key that opens only that photo, use it to encrypt that photo as it arrives, and keep neither the key nor the
-unencrypted photo. The key SHALL NOT appear in any log, failure report or user-sent bug report. A member's phone
-SHALL never upload an encrypted event's photo unencrypted: when it cannot read the key, it uploads nothing.
-
-#### Scenario: The stored photos cannot be opened without the invite
-- **WHEN** someone with access to SnapSync's storage, but not the invite, reads an encrypted event's stored photos
-- **THEN** they cannot open any of them
-
-#### Scenario: The service never learns the event's key
-- **WHEN** a host creates an event and its members join, share and receive photos
-- **THEN** the event's key never reaches SnapSync's service, except as one photo's own key for a photo the iPhone's
-  system uploads in the background
-
-#### Scenario: A bug report carries no key
-- **WHEN** a member of an encrypted event sends a detailed bug report
-- **THEN** the report does not contain the event's key
-
-#### Scenario: A phone that cannot read the key uploads nothing
-- **WHEN** a member's phone cannot read the event's key
-- **THEN** none of their photos is uploaded until it can, and none is ever uploaded unencrypted
-
-### Requirement: The invite handed to Google Play carries its key
-When a visitor follows an encrypted event's page's Google Play button (as "The event's identity goes only to
-SnapSync's own service" allows), the invite the page hands to Google Play SHALL include the event's key, so the app
-installed from it can join the event. Google Play then holds the whole invite. The page SHALL hand it over only
-through that button and only from a page opened with the whole invite.
-
-#### Scenario: Following the button from an encrypted event's page
-- **WHEN** a visitor on an encrypted event's page, opened with its whole invite, follows its Google Play button
-- **THEN** Google Play receives that whole invite, key included, and no other third party receives any of it
-
-#### Scenario: A page without the key hands over no key
-- **WHEN** a visitor on an encrypted event's page opened without its key follows its Google Play button
-- **THEN** Google Play receives no key

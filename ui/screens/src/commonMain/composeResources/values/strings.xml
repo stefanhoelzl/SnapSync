@@ -148,7 +148,7 @@
     <string name="timing_starts_in">starts in %1$s</string>
     <string name="timing_ends_in">ends in %1$s</string>
     <string name="timing_ended">ended</string>
-    <!-- The shown QR code's caption, addressed to the member holding the phone (capability `manage-membership`). -->
+    <!-- The shown QR code's caption, addressed to the member holding the phone (capability `invite-link`). -->
     <string name="invite_caption">Let family and friends scan this with their camera</string>
     <string name="choose_more_photos">Choose more photos</string>
     <string name="allow_full_access">Allow full access</string>

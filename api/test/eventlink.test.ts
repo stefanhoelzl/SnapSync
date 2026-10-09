@@ -5,7 +5,7 @@ import { NO_CACHE } from "../src/routes/support.ts";
 import { createApp, type FetchLike } from "../src/app.ts";
 import { DEPLOYMENT, readConfig } from "../src/config.ts";
 
-// The event link's two public routes (capability `join-event`): the AASA that makes the link a Universal
+// The event link's two public routes (capability `invite-link`): the AASA that makes the link a Universal
 // Link, and the `/join` no-app download page for someone who opened an invite without the app (capability
 // `event-site`). These tests exercise the served RESPONSES. The gate interaction (served without a
 // token; the exceptions do not leak) lives in attest.test.ts, next to the gate itself.

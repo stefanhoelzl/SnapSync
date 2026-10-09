@@ -212,7 +212,7 @@ import PlayOffer from "../components/PlayOffer.astro";
     async function main() {
       const view = $("join").dataset.view;
 
-      // A fragment invite (`/join#v=3&d=…`, capability `join-event`): the server could not see which event, so
+      // A fragment invite (`/join#v=3&d=…`, capability `invite-link`): the server could not see which event, so
       // move to the event's own page, which it renders. `replace` keeps the fragment page out of history.
       if (view === "pending") {
         const invite = decodeInvite(location.hash);

@@ -115,7 +115,7 @@ export type Config = {
    */
   attestAppId: string;
   /**
-   * The event link's domain — the host this script serves the AASA for (capability `join-event`). The
+   * The event link's domain — the host this script serves the AASA for (capability `invite-link`). The
    * SAME resolved value the app's `LINK_ORIGIN`, the `applinks:` entitlement and the compile-time upload
    * host are generated from, so agreement is constructed rather than asserted.
    */

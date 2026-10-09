@@ -178,7 +178,7 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // An event past its WINDOW (`endsAt`) serves normally — the window closes nothing. An event past its
   // derived `deletesAt` ALSO serves normally until the nightly sweep removes it: no route deletes on
   // touch. The 404 a client acts on is therefore always a real deletion, which is what makes it safe as
-  // one of the two witnesses the client's self-leave requires (capability `manage-membership`).
+  // one of the two witnesses the client's self-leave requires (capability `event-lifetime`).
   //
   // A bearer token is OPTIONAL, as on the union: present, it must verify (`401` otherwise, so the app re-attests);
   // absent, the read is served as before. The app sends one on every read of an event; builds that predate it

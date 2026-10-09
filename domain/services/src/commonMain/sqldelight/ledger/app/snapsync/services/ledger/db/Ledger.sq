@@ -157,7 +157,7 @@ VALUES (
     :eventId, :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
 );
 
--- Resolve a row from the destination its upload was addressed to (capability `background-upload`).
+-- Resolve a row from the destination its upload was addressed to (capability `delivery`).
 -- A NULL column never matches, which is correct: such a row predates the write and is recovered by the
 -- tier's fallback instead.
 selectByDestinationPath:

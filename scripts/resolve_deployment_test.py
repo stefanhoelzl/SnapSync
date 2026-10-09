@@ -321,7 +321,7 @@ class RenderingTest(unittest.TestCase):
         in each bundle's OWN `Info.plist` — a file no generated value can reach, so the version there is
         AUTHORED and the version in `uploadBase` is RENDERED. Move one without the other and the build
         is fine, the archive is fine, and the registration may well succeed; the uploads are simply
-        refused, with nothing logged anywhere (capability `background-upload`).
+        refused, with nothing logged anywhere (capability `delivery`).
 
         ci.yml's `ios-build` compares the two for real after archiving, which is the authoritative check — but it
         needs a Mac and a signed build, so it reports a half-move hours later. This reads the committed
@@ -417,7 +417,7 @@ class RenderingTest(unittest.TestCase):
 
         Recomposed here exactly as the plists do it, because `assetsd` validates the registration
         against that composed value and a mismatch fails with a bare `PHPhotosErrorDomain -1`
-        (capability `background-upload`).
+        (capability `delivery`).
         """
         for domain, scheme in (
             ("example.invalid", "https"),
