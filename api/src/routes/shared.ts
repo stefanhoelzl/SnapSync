@@ -20,6 +20,7 @@ import { RESOURCE_ROLES } from "../object-names.ts";
 import { APP_VERSION_HEADER, splitVersion } from "../version.ts";
 import { refuse } from "../refusal.ts";
 import {
+  canonicalFromMs,
   canonicalPlusSeconds,
   validateEndsAt,
   validateEventName,
@@ -150,7 +151,7 @@ export function sharedRoutes(deps: RouteDeps): Hono {
     const event: EventRow = {
       eventId: crypto.randomUUID(),
       name,
-      createdAt: new Date(now()).toISOString(),
+      createdAt: canonicalFromMs(now()),
       startsAt,
       endsAt,
       capacity: config.eventCapacity,
@@ -270,7 +271,7 @@ export function sharedRoutes(deps: RouteDeps): Hono {
     const nowMs = now();
     // A closed event cannot close again, and before the end nothing closes.
     const closeAt = !event.closedAt && nowMs > Date.parse(event.endsAt)
-      ? new Date(nowMs).toISOString()
+      ? canonicalFromMs(nowMs)
       : null;
     const closed = await tryUpstream(
       `leave: depart failed for ${eventId}/${deviceId}`,

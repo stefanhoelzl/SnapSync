@@ -50,8 +50,8 @@ const CUTOFF_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
  * `startsAt` is consumed directly as a capture-date cutoff: it is compared LEXICOGRAPHICALLY against
  * PhotoKit `creationDate` and parsed by a bare `NSISO8601DateFormatter` (whose default options reject a
  * fractional second). A marker holding the canonical form is usable as a cutoff with NO client-side
- * normalization — unlike `createdAt`, which we mint with `toISOString()` and which therefore always
- * carries milliseconds.
+ * normalization — and it is the ONE time shape on the wire: every instant the backend mints and serves
+ * (`createdAt`, `closedAt`, `completedAt`, `deletesAt`) is rendered by {@link canonicalFromMs}.
  *
  * The empty string is rejected like any other non-match, and that matters more than it looks: the cutoff
  * compare is `creationDate >= cutoff` and EVERY string is `>= ""`, so an empty floor is no floor at all —

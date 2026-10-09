@@ -22,6 +22,7 @@ import {
   storeWithEvent,
   VERSION_HEADER,
 } from "./support/harness.ts";
+import { canonicalFromMs } from "../src/validators.ts";
 
 const JOIN = (d: string) => `/api/v2/events/${E}/devices/${d}`;
 const MANIFEST = (d: string) => `/api/v2/events/${E}/devices/${d}/manifest`;
@@ -126,13 +127,13 @@ Deno.test("close → the publish that settles the LAST sharing member closes the
     body: body([ASSET], { final: true }),
   });
   assertEquals(res.status, 200);
-  assertEquals(await closedAt(db), new Date(NOW).toISOString());
+  assertEquals(await closedAt(db), canonicalFromMs(NOW));
   assertEquals(pushed, ["recipient"]);
   assert(lines.at(-1)!.endsWith(" closed=true recipients=1 pushed=1"), lines.at(-1));
 
   // The waiting line's counts.
   const details = await (await app.request(DETAILS)).json() as Record<string, unknown>;
-  assertEquals(details.closedAt, new Date(NOW).toISOString());
+  assertEquals(details.closedAt, canonicalFromMs(NOW));
   assertEquals(details.completedAt, null);
   assertEquals(details.members, { active: 2, final: 2 });
   db.close();
@@ -143,7 +144,7 @@ Deno.test("close → a member that left is not waited for", async () => {
   const { app } = await twoMembers(db);
   await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
   await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: true }) });
-  assertEquals(await closedAt(db), new Date(NOW).toISOString());
+  assertEquals(await closedAt(db), canonicalFromMs(NOW));
   db.close();
 });
 
@@ -324,7 +325,7 @@ Deno.test("close → the leave that takes away the LAST sharing member closes th
   assertEquals(await closedAt(db), null);
   // D leaves without settling: every member still in the event has settled → closed, D2 woken once.
   assertEquals((await app.request(LEAVE(D), { method: "DELETE" })).status, 200);
-  assertEquals(await closedAt(db), new Date(NOW).toISOString());
+  assertEquals(await closedAt(db), canonicalFromMs(NOW));
   assertEquals(pushed, ["recipient"]);
   assert(lines.at(-1)!.endsWith(" closed=true recipients=1 pushed=1"), lines.at(-1));
   const details = await (await app.request(DETAILS)).json() as Record<string, unknown>;

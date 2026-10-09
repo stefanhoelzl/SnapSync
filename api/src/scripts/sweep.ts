@@ -59,7 +59,7 @@ import {
   eventsWithCounts,
   liveEventIds,
 } from "../db.ts";
-import { validateUUID } from "../validators.ts";
+import { canonicalFromMs, validateUUID } from "../validators.ts";
 import { sweepVerdict } from "../lifecycle.ts";
 import { compareVersions } from "../version.ts";
 import type { Config } from "../config.ts";
@@ -159,7 +159,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
         } else {
           // No notification, for the same reason as a delete below: a device still joined learns the
           // event completed from its own next read, and leaves on it (capability `event-lifetime`).
-          await completeEvent(tx, event.eventId, new Date(now()).toISOString());
+          await completeEvent(tx, event.eventId, canonicalFromMs(now()));
           log(`completed event ${event.eventId} (${active}/${total} active)`);
         }
         summary.events.completed++;

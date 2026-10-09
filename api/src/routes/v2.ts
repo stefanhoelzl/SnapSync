@@ -21,7 +21,7 @@ import {
 } from "../db.ts";
 import { RESOURCE_ROLES } from "../object-names.ts";
 import { eventBytePath, storageKey } from "../storage.ts";
-import { validateFilename } from "../validators.ts";
+import { canonicalFromMs, validateFilename } from "../validators.ts";
 import { type Fault, refuse } from "../refusal.ts";
 import type { RequestLog } from "../request-log.ts";
 import { APP_VERSION_HEADER } from "../version.ts";
@@ -98,7 +98,7 @@ export function v2Routes(deps: RouteDeps): Hono {
   ): Promise<{ won: boolean; closed: boolean }> {
     const nowMs = now();
     const ended = nowMs > Date.parse(event.endsAt);
-    const closeAt = ended ? new Date(nowMs).toISOString() : null;
+    const closeAt = ended ? canonicalFromMs(nowMs) : null;
     const results = await tryUpstream(
       `v2 manifest: publish failed for ${event.eventId}/${deviceId}`,
       () =>

@@ -14,7 +14,7 @@ import kotlin.time.Instant
  * cutoff`), so it MUST be byte-identical in shape to what the iOS enumerator produces — a bare
  * `NSISO8601DateFormatter()`: UTC `yyyy-MM-dd'T'HH:mm:ss'Z'`, **second** precision, no offset, no
  * fractional seconds. These helpers are the single origin of that shape for "now" and manual picks;
- * a cutoff sourced from an event's fetched `createdAt` is already this shape and is reused verbatim.
+ * an event's fetched `startsAt` floor is already this shape (the wire's one time shape) and is reused verbatim.
  *
  * The [Clock] is injected (DI, not `expect`/`actual`) so "now" is unit-testable in `commonTest`.
  */
