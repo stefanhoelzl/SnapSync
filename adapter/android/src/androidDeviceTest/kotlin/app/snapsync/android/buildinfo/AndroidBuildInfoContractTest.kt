@@ -36,6 +36,7 @@ class AndroidBuildInfoContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(
             BuildInfoState.REPORTING_AND_LISTED,
+            BuildInfoState.BUNDLED,
             BuildInfoState.UNREPORTED_AND_UNLISTED,
             BuildInfoState.ON_ANDROID,
         )

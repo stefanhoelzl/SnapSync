@@ -4,6 +4,7 @@ package app.snapsync.contract
 
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.config.IosBuildInfo
+import app.snapsync.config.iosBootLines
 import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
@@ -369,11 +370,15 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
 class SimAppBuildInfoBinding : Binding<BuildInfoState, BuildInfo> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(BuildInfoState.OS_DRIVEN_UPLOAD, BuildInfoState.ON_IOS)
+    override val reaches = setOf(BuildInfoState.BUNDLED, BuildInfoState.OS_DRIVEN_UPLOAD, BuildInfoState.ON_IOS)
 
     override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
         if (state in reaches) {
-            val adapter = IosBuildInfo(osSupportsOsDrivenUpload = osCarriesOsDrivenUpload(), bootLines = emptyList())
+            // The banner the app's root hands its build facts, as the root builds it.
+            val adapter = IosBuildInfo(
+                osSupportsOsDrivenUpload = osCarriesOsDrivenUpload(),
+                bootLines = iosBootLines("app"),
+            )
             Entered.Ready(adapter.recorded(log))
         } else {
             Entered.Unreachable("a rig build on a simulator is neither distributed nor bundle-less")

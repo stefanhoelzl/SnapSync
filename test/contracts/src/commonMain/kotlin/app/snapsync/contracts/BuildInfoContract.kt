@@ -13,6 +13,9 @@ enum class BuildInfoState {
     /** A build that reports crashes and is listed in a store (a distributed build's facts handed in). */
     REPORTING_AND_LISTED,
 
+    /** A process with a bundle of its own — every app and extension build, distributed or not. */
+    BUNDLED,
+
     /** A build that reports nowhere and is listed nowhere — every dev, sideload and simulator build. */
     UNREPORTED_AND_UNLISTED,
 
@@ -39,12 +42,24 @@ object BuildInfoContract : Contract<BuildInfoState, BuildInfo>("BuildInfo") {
     override val clauses = clauses {
 
         clause(
-            "REPORTING_AND_LISTED_NAMES_ITS_CHANNEL_STORE_AND_PROCESS",
+            "REPORTING_AND_LISTED_NAMES_ITS_CHANNEL_AND_STORE",
             BuildInfoState.REPORTING_AND_LISTED,
             covers = cells {
                 on<BuildInfo> {
                     answers(BuildInfo::dsn).returns()
                     answers(BuildInfo::store).returns()
+                }
+            },
+        ) { build ->
+            assertTrue(assertNotNull(build.dsn, "a reporting build names its channel").isNotBlank())
+            assertTrue(assertNotNull(build.store, "a listed build names its store page").url.isNotBlank())
+        }
+
+        clause(
+            "BUNDLED_NAMES_ITS_PROCESS_VERSION_AND_BACKEND",
+            BuildInfoState.BUNDLED,
+            covers = cells {
+                on<BuildInfo> {
                     answers(BuildInfo::processId).returns()
                     answers(BuildInfo::appVersion).returns()
                     answers(BuildInfo::uploadHost).returns()
@@ -54,8 +69,6 @@ object BuildInfoContract : Contract<BuildInfoState, BuildInfo>("BuildInfo") {
                 }
             },
         ) { build ->
-            assertTrue(assertNotNull(build.dsn, "a reporting build names its channel").isNotBlank())
-            assertTrue(assertNotNull(build.store, "a listed build names its store page").url.isNotBlank())
             assertTrue(assertNotNull(build.processId, "a process with a bundle names it").isNotBlank())
             assertTrue(build.appVersion.isNotBlank(), "every request declares the build's version")
             assertTrue(build.uploadHost.isNotBlank(), "and the backend it talks to")
