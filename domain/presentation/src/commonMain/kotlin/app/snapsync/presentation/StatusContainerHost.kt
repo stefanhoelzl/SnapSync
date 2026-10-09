@@ -1015,22 +1015,10 @@ class StatusContainerHost(
     }
 
     /**
-     * The event's `createdAt` **normalized** into a cutoff, falling back to **now**. A
-     * membership always carries a cutoff, so a missing or unparseable
-     * `createdAt` — a malformed event marker — must not leave the join surface with an empty cutoff row
-     * and an enabled confirm, which would join at whole-library scope and upload the whole camera roll to
-     * the event.
-     *
-     * **Normalized, not verbatim.** The backend mints `createdAt` with `new Date().toISOString()`, which
-     * always carries **milliseconds** (`2026-07-09T19:24:17.182Z`). The cutoff invariant is second
-     * precision (`yyyy-MM-dd'T'HH:mm:ss'Z'`), and a fractional-second cutoff breaks the iOS walk's
-     * `NSISO8601DateFormatter` (whose default options omit `.withFractionalSeconds`), silently costing the
-     * bounded fetch. Round-tripping through the formatter both validates and truncates to the invariant.
-     * Truncation drops sub-second precision *downward*, so the cutoff moves marginally earlier — the
-     * inclusive direction, which is the safe one.
-     *
-     * Erring toward `now` shares too few photos, which the user can fix by re-joining with an earlier
-     * date; erring toward whole-library cannot be undone.
+     * Load the event's join details into the pending surface. The cutoff's floor is
+     * the event's `startsAt`, canonical by construction (`BackendEventDirectory`): a membership always carries a
+     * cutoff, so a details read that cannot supply one lands on a retryable failure, never on an empty cutoff row
+     * and an enabled confirm, which would join at whole-library scope and upload the whole camera roll.
      */
     private suspend fun loadInto(eventId: String, linkKey: String?) {
         val load = try {

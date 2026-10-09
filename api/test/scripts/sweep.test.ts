@@ -15,6 +15,7 @@ import { eventBytePath } from "../../src/storage.ts";
 import { replay } from "../../src/dev/replay.ts";
 import { DEAD_TOKEN, enrolDevice, LIVE_TOKEN } from "../support/db.ts";
 import { NOW } from "../support/harness.ts";
+import { canonicalFromMs } from "../../src/validators.ts";
 
 // The sweep (capability `event-lifetime`) MARKS FROM THE DATABASE and DELETES FROM STORAGE. These
 // tests therefore drive two doubles: a real in-process SQLite for the relational half (so cascades and
@@ -238,8 +239,8 @@ Deno.test("event phase → an EMPTIED event is COMPLETED early: memberships gone
   // The row stays until its deadline so a device still joined is told "completed", not "not found".
   assertEquals(await eventIds(d), [E]);
   const row = (await d.execute(`SELECT closed_at, completed_at FROM events`)).rows[0];
-  assertEquals(row.completed_at, new Date(NOW).toISOString());
-  assertEquals(row.closed_at, new Date(NOW).toISOString());
+  assertEquals(row.completed_at, canonicalFromMs(NOW));
+  assertEquals(row.closed_at, canonicalFromMs(NOW));
   assertEquals((await d.execute(`SELECT * FROM memberships`)).rows.length, 0);
   assertEquals((await d.execute(`SELECT * FROM event_assets`)).rows.length, 0);
   assertEquals((await d.execute(`SELECT * FROM resources`)).rows.length, 0);
