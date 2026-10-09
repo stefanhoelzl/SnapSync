@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
@@ -30,10 +31,16 @@ enum class FolderAlbumState {
 }
 
 /**
- * A folder-album library as a clause receives it: the gallery, the [seeded] own photos, and a way to [stage] a fresh
- * photo for an import (a library takes the staged file when it ingests it).
+ * A folder-album library as a clause receives it: the gallery, the [seeded] own photos, the [ownFolder] they live in —
+ * the member's camera folder, no event album — and a way to [stage] a fresh photo for an import (a library takes the
+ * staged file when it ingests it).
  */
-class FolderAlbums(val gallery: Gallery, val seeded: Set<AssetId>, val stage: () -> List<StagedResource>)
+class FolderAlbums(
+    val gallery: Gallery,
+    val seeded: Set<AssetId>,
+    val ownFolder: AlbumId,
+    val stage: () -> List<StagedResource>,
+)
 
 /**
  * What a [AlbumKind.FOLDER] gallery promises about the event album (decision record
@@ -159,7 +166,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             assertEquals(1, byId.value.size, "and in the library once")
         }
 
-        // Last, so no earlier clause's capture window moves.
+        // Appended, so no earlier clause's capture window moves.
         clause(
             "A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY",
             FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
@@ -180,6 +187,30 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
                 subject.seeded,
                 library.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
                 "a photo filed into an event album is still the library's: a reinstalled app must find it there",
+            )
+        }
+
+        clause(
+            "A_MEMBERS_OWN_FOLDER_TAKES_NO_PHOTO",
+            FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Failed::class)
+                    answers(GalleryReader::assets).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
+        ) { subject ->
+            val clauseId = "A_MEMBERS_OWN_FOLDER_TAKES_NO_PHOTO"
+            assertIs<WriteOutcome.Failed>(
+                subject.gallery.addToAlbum(subject.ownFolder, subject.seeded),
+                "only an event album's folder takes a photo; ${subject.ownFolder} is the member's",
+            )
+            val policy = PhotoLibrary.policy(name, clauseId)
+            val after = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(policy))
+            assertEquals(
+                subject.seeded,
+                after.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
+                "nothing moved",
             )
         }
     }
