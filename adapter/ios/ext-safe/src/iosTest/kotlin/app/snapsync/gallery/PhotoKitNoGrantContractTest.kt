@@ -37,10 +37,15 @@ class PhotoKitNoGrantContractTest {
         override val kind = BindingKind.Live
 
         // With no grant, the library refuses this process's writes too (measured on this host: `createAlbum` → null).
-        override val reaches = setOf(GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES)
+        // This process reads refused, as one the member refused does (the Gallery binding's TOKEN_WITHHELD rests on it).
+        override val reaches =
+            setOf(GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSED, GalleryReaderState.REFUSING_WRITES)
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
             if (state !in reaches || !holdsNoGrant()) return Entered.Unreachable(unreachable)
+            if (state == GalleryReaderState.REFUSED && currentPhotoPermission() != GalleryAccess.DENIED) {
+                return Entered.Unreachable(unreachable)
+            }
             return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))
         }
     }
