@@ -9,7 +9,6 @@ import app.snapsync.compose.AppPorts
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.config.IosBuildInfo
-import app.snapsync.config.bakedUploadBase
 import app.snapsync.config.iosBootLines
 import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.crypto.IosCrypto
@@ -22,7 +21,7 @@ import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
-import app.snapsync.http.HttpBackend
+import app.snapsync.http.KtorHttpTransport
 import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.ios.qos.newUserInitiatedLane
 import app.snapsync.ios.urlsession.BackgroundSessions
@@ -34,7 +33,6 @@ import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosEntryContext
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.appLogDestination
-import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.invocation
 import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.membership.darwinHttpClient
@@ -211,13 +209,6 @@ object SnapSyncRoot {
     /** The platform's background downloads — one per process, since it owns the download session's delegate. */
     private val downloadAdapter: IosDownload by lazy { IosDownload() }
 
-    // The device-facing backend host (baked at compile time); shared by the backend port and the app's uploader.
-    // Reads through
-    // `:adapter:ios:ext-safe`'s [bakedUploadBase] — the same call the boot diagnostic makes, so a
-    // banner that disagreed with the host the adapters use is impossible, and the absent-key
-    // defaulting decision stays out of this wiring-only shell.
-    private val backendHost: String by lazy { bakedUploadBase() }
-
     /**
      * This process's ports onto the device's systems, as its REAL adapters (`AppDevicePorts`): each built on first use.
      * What the graph composes over is what the build's adapter set hands back ([adapters]) — these on a production
@@ -248,9 +239,9 @@ object SnapSyncRoot {
         network = lazy { IosNetworkMonitor() },
         // Power saving, battery, thermal state and Background App Refresh — read only for a bug report.
         deviceConditions = lazy { IosDeviceConditions() },
-        // The backend — ONE `HttpBackend` over the platform's HTTP client, declaring this bundle's version, which every
-        // backend call goes through. The credential and the backend's verdicts are the core's (`AppCore.backend`).
-        backend = lazy { HttpBackend(darwinHttpClient(), backendHost, appMarketingVersion()) },
+        // Plain HTTP over the platform's client, which every backend call goes through. The backend's protocol — its
+        // base, the declared version, the credential and its verdicts — is the core's gateway (`AppCore.exchange`).
+        http = lazy { KtorHttpTransport(darwinHttpClient()) },
         // The process's background time (`beginBackgroundTask`): what a push or a transfer wake holds across its own
         // work and its tail, and the only "time is up" those wakes get.
         backgroundTime = lazy { IosBackgroundTime(log) },

@@ -13,21 +13,20 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.Ack
 import app.snapsync.model.DeviceIdentityRole
-import app.snapsync.model.DeviceManifest
 import app.snapsync.model.EventConfig
-import app.snapsync.model.Reply
+import app.snapsync.model.HttpResult
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
-import app.snapsync.ports.Backend
+import app.snapsync.ports.HttpTransport
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.identity.AttestState
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -78,15 +77,14 @@ class ExtensionEntryTest {
     /** The token each manifest publish carried, in order. */
     private val publishedWith = mutableListOf<String?>()
 
-    private val backend: Backend = object : Backend by BackendMock().port() {
-        override suspend fun publishManifest(
-            token: String?,
-            eventId: String,
-            deviceId: String,
-            manifest: DeviceManifest,
-        ): Ack<Unit> {
-            publishedWith += token
-            return Reply.Ok(Unit)
+    private val backend = BackendMock().port().let { mock ->
+        HttpTransport { request ->
+            if (request.method == Routes.PublishManifest.METHOD && request.url.endsWith("/manifest")) {
+                publishedWith += request.headers["Authorization"]?.removePrefix("Bearer ")
+                HttpResult.Response(200, emptyMap(), "")
+            } else {
+                mock.send(request)
+            }
         }
     }
 
@@ -130,7 +128,7 @@ class ExtensionEntryTest {
             UploadNetwork { _, _, _ -> error("no upload is expected") },
             restricted = { false },
         ).port(),
-        backend = backend,
+        http = backend,
         host = host.port(),
     )
 }

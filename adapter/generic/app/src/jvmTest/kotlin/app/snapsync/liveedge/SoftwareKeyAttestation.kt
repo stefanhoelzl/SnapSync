@@ -36,7 +36,7 @@ internal class SoftwareKeyAttestation(private val packageName: String = PACKAGE)
     private val intermediate = p256()
     private val leaf = p256()
 
-    override fun attest(challenge: String): ByteArray {
+    override fun attest(challenge: String): List<ByteArray> {
         val rootName = X500Name("CN=SnapSync contract attestation root")
         val intermediateName = X500Name("CN=SnapSync contract attestation intermediate")
         val rootCert = certificate(rootName, rootName, root, root) { }
@@ -44,7 +44,7 @@ internal class SoftwareKeyAttestation(private val packageName: String = PACKAGE)
         val leafCert = certificate(X500Name("CN=Android Keystore Key"), intermediateName, leaf, intermediate) {
             addExtension(KEY_ATTESTATION, false, keyDescription(sha256(challenge.encodeToByteArray())))
         }
-        return leafCert + intermediateCert + rootCert
+        return listOf(leafCert, intermediateCert, rootCert)
     }
 
     override fun sign(challenge: String): ByteArray =

@@ -23,7 +23,6 @@ Roots found:
 | `CutoffFormatter` | x | x | |
 | `ExtensionDevicePorts` | | | x |
 | `FileLogSink` | x | x | x |
-| `HttpBackend` | x | x | x |
 | `IosBackgroundTime` | x | x | |
 | `IosBuildInfo` | x | x | x |
 | `IosCrypto` | x | x | x |
@@ -46,6 +45,7 @@ Roots found:
 | `IosUi` | x | x | |
 | `IosUrlSessionUploadPlatform` | x | x | |
 | `IosWake` | x | x | |
+| `KtorHttpTransport` | x | x | x |
 | `MetricKitProcessMetrics` | x | x | |
 | `NoPlatformDeviceId` | x | x | x |
 | `PhotoLibraryPermission` | x | x | |

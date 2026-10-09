@@ -1,10 +1,8 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.Reply
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.AttestStore
-import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
@@ -17,6 +15,9 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Wake
+import app.snapsync.wire.api.ChallengeReply
+import app.snapsync.wire.api.EventNotFound
+import app.snapsync.wire.api.Routes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -32,7 +33,8 @@ class CoversTest {
         val covers = cells {
             on<SecureStore>().answers(SecureStore::read).with(SecureStoreRead.Unavailable::class)
             on<AttestStore>().answers(AttestStore::token).throws()
-            on<Backend>().answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
+            backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
+            backend(Routes.GetEvent.ID, EventNotFound::class)
             on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.LIMITED)
             on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
             on<LibraryChangeTokenRead>().answers(LibraryChangeTokenRead::changeToken).with(null)
@@ -46,7 +48,8 @@ class CoversTest {
             listOf(
                 "SecureStore.read → SecureStoreRead.Unavailable",
                 "AttestStore.token → throws",
-                "Backend.challenge → Reply.Ok",
+                "Backend.challenge → Issued",
+                "Backend.* → EventNotFound",
                 "PhotoGrantRead.access → GalleryAccess.LIMITED",
                 "PhotoAccessStatusSource.permission → GalleryAccess.DENIED",
                 "LibraryChangeTokenRead.changeToken → null",

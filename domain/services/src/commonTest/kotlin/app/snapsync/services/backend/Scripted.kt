@@ -1,87 +1,63 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.Ack
-import app.snapsync.model.CreateEventRequest
-import app.snapsync.model.DeviceFile
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.EventCreated
-import app.snapsync.model.EventMeta
-import app.snapsync.model.EventRenamed
-import app.snapsync.model.MintRequest
-import app.snapsync.model.PushEndpoint
-import app.snapsync.model.RenewRequest
-import app.snapsync.model.Reply
-import app.snapsync.model.UnionPage
-import app.snapsync.model.UnionTrigger
-import app.snapsync.ports.Backend
+import app.snapsync.model.HttpRequest
+import app.snapsync.model.HttpResult
+import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.identityOf
+import app.snapsync.services.version.AppVersionGate
+
+/** The base every scripted exchange addresses — the device API's, one version prefix included. */
+internal const val BASE = "https://backend.test/api/v2"
+
+/** The version every scripted exchange declares. */
+internal const val VERSION = "1.4"
 
 /**
- * A [Backend] whose every route answers from [answer], recording each call as `"<route> <token>"` — enough to
- * assert which token a call carried and how many times it was sent. Hand-written here because a `:domain:*` build
- * file names no module (the in-memory backend lives beside the fakes).
+ * An [HttpTransport] whose every request is answered by [answer], recording each as `"<METHOD> <path> <token>"` — the
+ * path relative to [BASE], the token the bearer it carried (`null` for none): enough to assert which token a request
+ * carried and how many times it was sent. Hand-written here because a `:domain:*` build file names no module (the
+ * backend mock lives beside the fakes).
  */
-internal class ScriptedBackend(
-    var answer: (route: String, token: String?) -> Reply<*> = { _, _ ->
-        Reply.Ok(
-            Unit,
-        )
-    },
-) : Backend {
-    val calls = mutableListOf<String>()
+internal class ScriptedTransport(var answer: (HttpRequest) -> HttpResult = { ok() }) : HttpTransport {
+    val requests = mutableListOf<HttpRequest>()
 
-    @Suppress("UNCHECKED_CAST")
-    private fun <T> call(route: String, token: String?): Reply<T> {
-        calls += "$route $token"
-        return answer(route, token) as Reply<T>
+    val calls: List<String>
+        get() = requests.map { r ->
+            val token = r.headers["Authorization"]?.removePrefix("Bearer ")
+            "${r.method} ${r.url.removePrefix(BASE)} $token"
+        }
+
+    override suspend fun send(request: HttpRequest): HttpResult {
+        requests += request
+        return answer(request)
     }
-
-    /** [call], for a route whose body is never read: a scripted answer is never `Malformed` there. */
-    @Suppress("UNCHECKED_CAST")
-    private fun ack(route: String, token: String?): Ack<Unit> = call<Unit>(route, token) as Ack<Unit>
-
-    override suspend fun challenge(): Reply<String> = call("challenge", null)
-    override suspend fun mintToken(req: MintRequest): Reply<String> = call("mint", null)
-    override suspend fun renewToken(req: RenewRequest): Reply<String> = call("renew", null)
-
-    /** The last create's request, as the service built it. */
-    var lastCreate: CreateEventRequest? = null
-
-    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> {
-        lastCreate = req
-        return call("create", token)
-    }
-    override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = call("get", token)
-    override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = call(
-        "rename",
-        token,
-    )
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Ack<Unit> = ack("join", token)
-    override suspend fun publishManifest(
-        token: String?,
-        eventId: String,
-        deviceId: String,
-        manifest: DeviceManifest,
-    ): Ack<Unit> =
-        ack("manifest", token)
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Ack<Unit> =
-        ack("leave", token)
-    override suspend fun eventFiles(
-        token: String?,
-        eventId: String,
-        cursor: Long?,
-        trigger: UnionTrigger,
-    ): Reply<UnionPage> =
-        call("union", token)
-    override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
-        call("files", token)
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Ack<Unit> = ack(
-        "config",
-        token,
-    )
 }
+
+/** An answer of [status] with no body. */
+internal fun ok(status: Int = 200): HttpResult = HttpResult.Response(status, emptyMap(), "")
+
+/** A text answer. */
+internal fun text(status: Int, body: String): HttpResult =
+    HttpResult.Response(status, mapOf("Content-Type" to "text/plain; charset=UTF-8"), body)
+
+/** A JSON answer. */
+internal fun json(status: Int, body: String, headers: Map<String, String> = emptyMap()): HttpResult =
+    HttpResult.Response(status, mapOf("Content-Type" to "application/json") + headers, body)
+
+/** The backend's verdict on a token: `401 unattested`. */
+internal val UNAUTHORIZED: HttpResult = text(401, "unattested")
+
+/** The backend refusing this build, naming [minimum]. */
+internal fun appTooOld(minimum: String): HttpResult = json(
+    426,
+    """{"error":"app too old","minAppVersion":"$minimum"}""",
+)
+
+/** The exchange over [transport], declaring [VERSION] at [BASE], reporting to [gate]. */
+internal fun exchangeOver(transport: HttpTransport, gate: AppVersionGate? = null): BackendExchange =
+    BackendExchange(transport, { BASE }, { VERSION }, gate)
 
 /** A [Credential] holding [current], which a rejection replaces with [recovered] (or keeps, for `null`). */
 internal class ScriptedCredential(
@@ -109,10 +85,14 @@ internal class ScriptedCredential(
     }
 }
 
-/** Services over an authenticated backend that answers every call with [reply], for the need-shaped mappings. */
-internal fun servicesAnswering(reply: Reply<*>, store: SecureStore = MapSecureStore()): BackendServices =
+/** Services over a gateway whose transport answers every request with [reply], for the need-shaped mappings. */
+internal fun servicesAnswering(reply: HttpResult, store: SecureStore = MapSecureStore()): BackendServices =
+    servicesOver(ScriptedTransport { reply }, store)
+
+/** Services over a gateway on [transport], holding no token. */
+internal fun servicesOver(transport: HttpTransport, store: SecureStore = MapSecureStore()): BackendServices =
     BackendServices(
-        CredentialedBackend(ScriptedBackend { _, _ -> reply }, ScriptedCredential(null), versionGate = null),
+        BackendGateway(exchangeOver(transport), ScriptedCredential(null)),
         identityOf("D", store),
         zone = { null },
     )

@@ -1,20 +1,26 @@
 package app.snapsync.services.trust
 
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.MintRequest
+import app.snapsync.model.ProofFormat
 import app.snapsync.model.RefusalFacts
-import app.snapsync.model.RenewRequest
-import app.snapsync.model.Reply
 import app.snapsync.model.TokenOutcome
-import app.snapsync.model.okOrNull
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AttestStore
-import app.snapsync.ports.Backend
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.Credential
 import app.snapsync.services.identity.PersistedDeviceIdentity
-import app.snapsync.services.version.AppVersionGate
+import app.snapsync.wire.api.ChallengeReply
+import app.snapsync.wire.api.ClientError
+import app.snapsync.wire.api.MintTokenReply
+import app.snapsync.wire.api.RenewTokenReply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.StaleChallenge
+import app.snapsync.wire.models.AndroidKeyProof
+import app.snapsync.wire.models.AppleAppAttestProof
+import app.snapsync.wire.models.MintRequest
+import app.snapsync.wire.models.RenewRequest
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,6 +30,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Renew once the token has less than this left. The token lives 30 days, so renewal is attempted from
@@ -53,10 +61,10 @@ fun tokenExpirySeconds(token: String): Long? = token.split(".").getOrNull(1)?.to
  * [AttestStore.token], sends whatever it finds, and drops a token the backend rejects ([ExtensionCredential]).
  * Everything here — attest, renew, the staleness check — happens in the app.
  *
- * It reaches the backend on the RAW [Backend] port, never through the authenticated one: the three `/attest/…`
- * routes it calls are ungated (their `401`s are that route's own answer, never a verdict on a token), and a
- * recovery that went through the backend it recovers for would re-enter itself. It reports those routes' `426`
- * to [versionGate] itself, so a refused build learns so on its first contact even before it holds a token.
+ * It reaches the backend through the [BackendExchange], never the gateway: the three `/attest/…` routes it calls are
+ * open (their `401`s are that route's own answer, never a verdict on a token), and a recovery that went through the
+ * gateway it recovers for would re-enter itself. The exchange reports those routes' [app.snapsync.wire.api.AppTooOld]
+ * to the version gate like any other, so a refused build learns so on its first contact, before it holds a token.
  *
  * [refresh] is called at **every** point the app process is already awake: launch, foreground, a
  * silent-push wake, and each `BGTask` handler. Not on a schedule and not from a dedicated background task:
@@ -72,11 +80,10 @@ fun tokenExpirySeconds(token: String): Long? = token.split(".").getOrNull(1)?.to
  */
 class DeviceAttestation(
     private val integrity: DeviceIntegrity,
-    private val backend: Backend,
+    private val exchange: BackendExchange,
     store: AttestStore,
     private val identity: PersistedDeviceIdentity,
     private val clock: Clock,
-    private val versionGate: AppVersionGate? = null,
     private val log: Logger = Logger.withTag("DeviceAttestation"),
 ) : Credential {
 
@@ -389,7 +396,9 @@ class DeviceAttestation(
             log.w(it) { "could not produce a renewal assertion — attesting afresh" }
             return@withFreshChallenge TokenOutcome.ProofFailed
         }
-        tokenOutcome(backend.renewToken(RenewRequest(deviceId, assertion.bytes, challenge)))
+        renewOutcome(
+            exchange.send(Routes.RenewToken.request(RenewRequest(deviceId, base64(assertion.bytes), challenge))),
+        )
     }
 
     /**
@@ -400,8 +409,12 @@ class DeviceAttestation(
     private suspend fun mint(deviceId: String): TokenOutcome = withFreshChallenge { challenge ->
         runCatchingCancellable {
             val proof = integrity.prove(challenge)
-            val outcome = tokenOutcome(
-                backend.mintToken(MintRequest(deviceId, proof.handle, proof.format, proof.bytes, challenge)),
+            val outcome = mintOutcome(
+                exchange.send(
+                    Routes.MintToken.request(
+                        MintRequest(deviceId, challenge, wireProof(proof.handle, proof.format, proof.bytes)),
+                    ),
+                ),
             )
             if (outcome is TokenOutcome.Minted) store.setKeyId(proof.handle)
             if (outcome is TokenOutcome.Refused) facts = RefusalFacts(outcome.reason, outcome.detail, proof.chain)
@@ -426,41 +439,55 @@ class DeviceAttestation(
     }
 
     private suspend fun attempt(step: suspend (challenge: String) -> TokenOutcome): TokenOutcome {
-        val challenge = observed(backend.challenge()).okOrNull() ?: return TokenOutcome.Unreachable.also {
-            log.w { "could not obtain a challenge — leaving the existing token in place" }
-        }
-        return step(challenge)
-    }
-
-    private fun <T> observed(reply: Reply<T>): Reply<T> = reply.also { versionGate?.observe(it) }
-
-    /**
-     * An `/attest/token` or `/attest/renew` answer, classified — the route's own vocabulary, read only here (decision
-     * record `harden-seam-bug-classes`, D10). A success with no readable token is no answer at all.
-     */
-    private fun tokenOutcome(reply: Reply<String>): TokenOutcome = when (val seen = observed(reply)) {
-        is Reply.Ok -> TokenOutcome.Minted(seen.value)
-        is Reply.Refused -> tokenRefusal(seen.status, seen.body)
-        is Reply.Malformed, is Reply.Unreachable -> TokenOutcome.Unreachable
+        val issued = exchange.send(Routes.Challenge.request()) as? ChallengeReply.Issued
+            ?: return TokenOutcome.Unreachable.also {
+                log.w { "could not obtain a challenge — leaving the existing token in place" }
+            }
+        return step(issued.challenge.challenge)
     }
 }
 
 /**
- * A refused `/attest/token` or `/attest/renew`, classified by its status and the backend's plain-text body.
- *
- * `409` is v2's stale challenge. Under v1, which is frozen, a stale challenge is still a `401` whose body says so,
- * and it is classified the same way, because the remedy is the same: one fresh challenge. `401 not attested` is the
- * renewal's "no record on file". Any other `4xx` is a verdict on what was sent; a `5xx` is no verdict at all.
- *
- * v2 names a refused attestation's reason — `attestation rejected: <reason>` — and that reason is what the user is told
- * ([DeviceRefusal.fromWire]); v1's bare body, or a reason this build does not know, reads as the default.
+ * An `/attest/token` answer, classified — the route's own vocabulary, read only here (decision record
+ * `harden-seam-bug-classes`, D10). [MintTokenReply.Rejected] names the reason the user is told ([refused]).
  */
-internal fun tokenRefusal(status: Int, body: String): TokenOutcome = when {
-    status == 409 || (status == 401 && body.trim() == "stale challenge") -> TokenOutcome.ChallengeStale
-    status == 401 && body.trim() == "not attested" -> TokenOutcome.NotAttested
-    status in 400..499 -> refused(body.substringAfter(REFUSAL_PREFIX, "").trim())
+internal fun mintOutcome(reply: MintTokenReply): TokenOutcome = when (reply) {
+    is MintTokenReply.Minted -> TokenOutcome.Minted(reply.token.token)
+    is MintTokenReply.Rejected -> refused(reply.text.substringAfter(REFUSAL_PREFIX, "").trim())
+    else -> otherAnswer(reply)
+}
+
+/** An `/attest/renew` answer, classified: [RenewTokenReply.NotAttested] is "no record on file — attest afresh". */
+internal fun renewOutcome(reply: RenewTokenReply): TokenOutcome = when (reply) {
+    is RenewTokenReply.Renewed -> TokenOutcome.Minted(reply.token.token)
+    RenewTokenReply.NotAttested -> TokenOutcome.NotAttested
+    else -> otherAnswer(reply)
+}
+
+/**
+ * Every issuer answer that is not the route's own: a stale challenge — one fresh challenge is the remedy; any other
+ * refusal — a verdict on what was sent, told as the default reason; no answer, or a server's, is no verdict at all.
+ */
+private fun otherAnswer(reply: app.snapsync.wire.api.Reply): TokenOutcome = when (reply) {
+    StaleChallenge -> TokenOutcome.ChallengeStale
+    is ClientError -> refused("")
     else -> TokenOutcome.Unreachable
 }
+
+/** A proof as the mint takes it (`Proof`): its `format` names the verifier the backend runs. */
+@OptIn(ExperimentalEncodingApi::class)
+internal fun wireProof(
+    handle: String,
+    format: ProofFormat,
+    bytes: ByteArray,
+): app.snapsync.wire.models.Proof = when (format) {
+    ProofFormat.APP_ATTEST -> AppleAppAttestProof(keyId = handle, attestation = Base64.encode(bytes))
+    // The chain crosses the integrity port as concatenated DER; the backend takes its certificates one by one.
+    ProofFormat.ANDROID_KEY -> AndroidKeyProof(chain = derElements(bytes).map { Base64.encode(it) })
+}
+
+@OptIn(ExperimentalEncodingApi::class)
+private fun base64(bytes: ByteArray): String = Base64.encode(bytes)
 
 /** What precedes the reason in v2's refused-attestation body. */
 private const val REFUSAL_PREFIX = "attestation rejected:"

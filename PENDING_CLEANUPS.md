@@ -85,11 +85,11 @@ middle of an event.
   - Update `docs/architecture.md`, and the api tests that use the old path (`v2`, `app`, `completion`,
     `encrypted-upload`, `union-log`, `dev/fallback`, …).
   - In the app:
-    - `BackendMock`'s event-less routes.
+    - `BackendMock`'s and `BackendRouter`'s event-less routes.
     - `test/rig/.../MockWorld.kt`.
     - The `LedgerStoreContract` clause "a row keeps the destination its own request carried across a route
       change".
-    - The doc note in `domain/model/.../EdgeUploadRequestProvider.kt`.
+    - The doc note in `domain/services/.../backend/BackendUploadRequests.kt`.
 - **Also blocks:** concurrent multi-event membership.
 - **Record:** `openspec/changes/archive/2026-10-06-per-event-storage-layout` (design D4/D5).
 

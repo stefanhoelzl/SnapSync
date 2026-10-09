@@ -2,7 +2,6 @@ package app.snapsync.contracts
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.ResourceRole
-import app.snapsync.ports.Backend
 
 /** The backend states a [BackendContract] clause needs, each entered through the backend's public surface. */
 enum class BackendState {
@@ -61,6 +60,12 @@ enum class BackendState {
      */
     UNREADABLE_SUCCESS,
 
+    /** A server whose store or upstream fails every request — `502`, a wire fixture standing in for the failure. */
+    SERVER_FAILING,
+
+    /** A deploy's migration window: every request is answered `503 maintenance` with a `Retry-After`. */
+    IN_MAINTENANCE,
+
     /**
      * A backend that accepts a software Android key attestation (the local rig's `any` policy), and a key the binding
      * can attest and sign with ([EdgeSubject.attester]).
@@ -69,14 +74,16 @@ enum class BackendState {
 }
 
 /**
- * What the backend promises the app (`docs/testing.md` — this list IS the `Backend` port's specification): each
- * route's answers, in the backend's own vocabulary. A status is part of the promise wherever a service above the
- * port decides on it — `404` "gone", `409` "full", `401` "rejected credential", `426` "refused build", `400`
- * "refused input" — and nowhere else: a refusal the app only needs to tell from success is asserted as a refusal.
+ * What the backend promises the app (`docs/testing.md`; the backend boundary: `docs/architecture.md`): each operation's
+ * outcomes, as `api/openapi.yaml` names them and the app's generated replies read them, through the production
+ * gateway. An outcome is part of the promise wherever a service above the gateway decides on it — `EventNotFound`
+ * "gone", `Full`, `Unauthorized` "rejected credential", `AppTooOld` "refused build", `InvalidName` "refused input".
+ * Each outcome a clause sees is a grid cell (`Backend.<operationId> → <Outcome>`, or `Backend.* → <Outcome>` for one
+ * shared by several operations), recorded by the [BackendClient].
  *
- * The clauses are split by route area for size only (the parts beside this file); every binding runs all of them.
+ * The clauses are split by area for size only (the parts beside this file); every binding runs all of them.
  */
-object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend") {
+object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Backend") {
 
     /** The two assets [BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS] holds bytes for. */
     val FIRST = SeededAsset(AssetId("asset-first"), listOf(ResourceRole.PRIMARY))
@@ -97,6 +104,8 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
         BackendState.NO_SUCH_EVENT,
         BackendState.NO_BACKEND,
         BackendState.UNREADABLE_SUCCESS,
+        BackendState.SERVER_FAILING,
+        BackendState.IN_MAINTENANCE,
         BackendState.ATTESTABLE,
         -> Seeded(
             eventId = setup.freshId(),
@@ -150,6 +159,7 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
 
     override val clauses = clauses {
         eventClauses()
+        changeClauses()
         membershipClauses()
         listingClauses()
         attestClauses()

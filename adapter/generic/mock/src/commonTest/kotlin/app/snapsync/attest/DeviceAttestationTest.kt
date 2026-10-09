@@ -5,32 +5,24 @@ package app.snapsync.attest
 import app.snapsync.mock.InMemoryAttestStore
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.Ack
-import app.snapsync.model.CreateEventRequest
-import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceIdentityRole
-import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.EventCreated
-import app.snapsync.model.EventMeta
-import app.snapsync.model.EventRenamed
-import app.snapsync.model.MintRequest
+import app.snapsync.model.HttpRequest
+import app.snapsync.model.HttpResult
 import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
-import app.snapsync.model.PushEndpoint
-import app.snapsync.model.RenewRequest
-import app.snapsync.model.Reply
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.TokenOutcome
-import app.snapsync.model.UnionPage
-import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.AttestStore
-import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.trust.tokenExpirySeconds
+import app.snapsync.services.version.AppVersionGate
+import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -83,7 +75,7 @@ private class FakeClient(
     var challenge: String? = "chal",
     var mint: String? = token(30),
     var renew: String? = token(30),
-) : Backend {
+) : HttpTransport {
     var mintCalls = 0
     var renewCalls = 0
     var challengeCalls = 0
@@ -92,71 +84,67 @@ private class FakeClient(
     val mintAnswers = ArrayDeque<TokenOutcome>()
     val renewAnswers = ArrayDeque<TokenOutcome>()
 
-    /** When set, `challenge()` suspends on it, so a test can observe a refresh while it is in flight. */
+    /** An answer that replaces the scripted one on its route — what the attestation's vocabulary cannot say. */
+    var challengeAnswer: HttpResult? = null
+    var renewAnswer: HttpResult? = null
+
+    /** When set, the challenge suspends on it, so a test can observe a refresh while it is in flight. */
     var challengeGate: CompletableDeferred<Unit>? = null
 
-    override suspend fun challenge(): Reply<String> {
-        challengeGate?.await()
-        challengeCalls++
-        return challenge?.let { Reply.Ok(it) } ?: Reply.Unreachable(IllegalStateException("no challenge"))
+    override suspend fun send(request: HttpRequest): HttpResult {
+        val path = request.url.removePrefix(BASE)
+        return when (path) {
+            Routes.Challenge.TEMPLATE -> {
+                challengeGate?.await()
+                challengeCalls++
+                challengeAnswer ?: challenge?.let { json(200, """{"challenge":"$it"}""") }
+                    ?: HttpResult.Unreachable("no challenge")
+            }
+            Routes.MintToken.TEMPLATE -> {
+                mintCalls++
+                reply(mintAnswers.removeFirstOrNull() ?: mint?.let(TokenOutcome::Minted) ?: REFUSED, renewal = false)
+            }
+            Routes.RenewToken.TEMPLATE -> {
+                renewCalls++
+                renewAnswer
+                    ?: reply(renewAnswers.removeFirstOrNull() ?: renew?.let(TokenOutcome::Minted) ?: REFUSED, renewal = true)
+            }
+            else -> error("attestation reaches only the /attest/… routes, not $path")
+        }
     }
 
-    override suspend fun mintToken(req: MintRequest): Reply<String> {
-        mintCalls++
-        return reply(mintAnswers.removeFirstOrNull() ?: mint?.let(TokenOutcome::Minted) ?: REFUSED)
-    }
-
-    override suspend fun renewToken(req: RenewRequest): Reply<String> {
-        renewCalls++
-        return reply(renewAnswers.removeFirstOrNull() ?: renew?.let(TokenOutcome::Minted) ?: REFUSED)
-    }
+    /** The exchange the attestation reaches the issuers through, reporting to [gate]. */
+    fun exchange(gate: AppVersionGate? = null) = BackendExchange(this, { BASE }, { "1.0" }, gate)
 
     /** What the backend answers for [outcome] — the statuses and bodies the attestation service classifies. */
-    private fun reply(outcome: TokenOutcome): Reply<String> = when (outcome) {
-        is TokenOutcome.Minted -> Reply.Ok(outcome.token)
-        TokenOutcome.ChallengeStale -> Reply.Refused(409, "stale challenge")
-        TokenOutcome.NotAttested -> Reply.Refused(401, "not attested")
-        is TokenOutcome.Refused ->
-            Reply.Refused(
-                401,
-                "attestation rejected: ${outcome.reason.wireName}" + (outcome.detail?.let { " ($it)" } ?: ""),
-            )
+    private fun reply(outcome: TokenOutcome, renewal: Boolean): HttpResult = when (outcome) {
+        is TokenOutcome.Minted -> json(201, """{"token":"${outcome.token}"}""")
+        TokenOutcome.ChallengeStale -> text(409, "stale challenge")
+        TokenOutcome.NotAttested -> text(401, "not attested")
+        is TokenOutcome.Refused -> if (renewal) {
+            text(401, "assertion rejected")
+        } else {
+            text(401, "attestation rejected: ${outcome.reason.wireName}" + (outcome.detail?.let { " ($it)" } ?: ""))
+        }
         TokenOutcome.ProofFailed -> error("a local proof failure is the device's, never the backend's answer")
-        TokenOutcome.Unreachable -> Reply.Unreachable(IllegalStateException("offline"))
+        TokenOutcome.Unreachable -> HttpResult.Unreachable("offline")
     }
 
-    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = unused()
-    override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = unused()
-    override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = unused()
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Ack<Unit> = unused()
-    override suspend fun publishManifest(
-        token: String?,
-        eventId: String,
-        deviceId: String,
-        manifest: DeviceManifest,
-    ): Ack<Unit> =
-        unused()
-    override suspend fun leaveEvent(
-        token: String?,
-        eventId: String,
-        deviceId: String,
-        received: Boolean,
-    ): Ack<Unit> = unused()
-    override suspend fun eventFiles(
-        token: String?,
-        eventId: String,
-        cursor: Long?,
-        trigger: UnionTrigger,
-    ): Reply<UnionPage> =
-        unused()
-    override suspend fun deviceFiles(
-        token: String?,
-        eventId: String,
-        deviceId: String,
-    ): Reply<List<DeviceFile>> = unused()
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Ack<Unit> = unused()
+    private fun json(status: Int, body: String) = HttpResult.Response(
+        status,
+        mapOf("Content-Type" to "application/json"),
+        body,
+    )
 
-    private fun unused(): Nothing = error("attestation reaches only the /attest/… routes")
+    private fun text(status: Int, body: String) = HttpResult.Response(
+        status,
+        mapOf("Content-Type" to "text/plain"),
+        body,
+    )
+
+    companion object {
+        const val BASE = "https://backend.test/api/v2"
+    }
 }
 
 private fun attestation(
@@ -166,7 +154,7 @@ private fun attestation(
 ) = Triple(
     DeviceAttestation(
         key,
-        client,
+        client.exchange(),
         store,
         identityOf(DEVICE),
         clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
@@ -766,16 +754,19 @@ class DeviceAttestationTest {
     @Test
     fun `a refused build is reported from the attest routes too`() = runTest {
         val gate = app.snapsync.services.version.AppVersionGate()
-        val refusing = object : Backend by FakeClient() {
-            override suspend fun challenge(): Reply<String> = Reply.Refused(426, """{"minAppVersion":"0.7"}""")
+        val refusing = FakeClient().apply {
+            challengeAnswer = HttpResult.Response(
+                426,
+                mapOf("Content-Type" to "application/json"),
+                """{"error":"app too old","minAppVersion":"0.7"}""",
+            )
         }
         val attest = DeviceAttestation(
             FakeKey(),
-            refusing,
+            refusing.exchange(gate),
             InMemoryAttestStore(),
             identityOf(DEVICE),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
-            versionGate = gate,
         )
 
         attest.refresh()
@@ -809,7 +800,7 @@ class DeviceAttestationTest {
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
             key,
-            client,
+            client.exchange(),
             store,
             unreadableIdentity(),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
@@ -823,14 +814,13 @@ class DeviceAttestationTest {
 
     @Test
     fun `a backend answer that names no token is no answer and keeps the token held`() = runTest {
-        val client = object : Backend by FakeClient() {
-            override suspend fun challenge(): Reply<String> = Reply.Ok("chal")
-            override suspend fun renewToken(req: RenewRequest): Reply<String> = Reply.Malformed("no token")
+        val client = FakeClient().apply {
+            renewAnswer = HttpResult.Response(201, mapOf("Content-Type" to "application/json"), """{"no":"token"}""")
         }
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
             FakeKey(),
-            client,
+            client.exchange(),
             store,
             identityOf(DEVICE),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),

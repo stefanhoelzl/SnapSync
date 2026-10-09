@@ -1,12 +1,12 @@
 package app.snapsync.rig
 
+import app.snapsync.http.KtorHttpTransport
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.liveedge.LiveEdge
 import app.snapsync.mock.BackendOperator
-import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.Backend
+import app.snapsync.ports.HttpTransport
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
@@ -33,8 +33,8 @@ internal sealed interface RigBackend {
     /** The network an OS upload crosses to this backend, or `null` for the mocks' own byte route. */
     val network: UploadNetwork?
 
-    /** The backend port a launch of the app — or the host's own seeding — talks through, declaring [declared]. */
-    fun port(mocks: JvmMocks, declared: DeclaredVersion): Backend
+    /** The device API's transport a launch of the app — or the host's own seeding — talks through. */
+    fun port(mocks: JvmMocks): HttpTransport
 
     /** The mock's operator face, or `null` on a backend that has none. */
     fun operator(mocks: JvmMocks): BackendOperator?
@@ -61,13 +61,13 @@ internal sealed interface RigBackend {
         override val base = "https://in-memory.backend/api/v2"
         override val attests = true
         override val network: UploadNetwork? = null
-        override fun port(mocks: JvmMocks, declared: DeclaredVersion): Backend = mocks.backend.port(declared)
+        override fun port(mocks: JvmMocks): HttpTransport = mocks.backend.port()
         override fun operator(mocks: JvmMocks): BackendOperator = mocks.backend.operator
     }
 
     /**
-     * The real `api/`, as a local loopback process (`:test:edge`'s [LiveEdge]). Requests carry no token: the dev
-     * server's fallback bearer serves an unauthenticated request as the simulator is served. The app does not attest
+     * The real `api/`, as a local loopback process (`:test:edge`'s [LiveEdge]). The app's requests carry no token: the
+     * dev server's fallback bearer serves an unauthenticated request as the simulator is served. The app does not attest
      * here — the real edge verifies a genuine App Attest attestation, which nothing off a device produces.
      */
     data object DenoBackend : RigBackend {
@@ -78,8 +78,7 @@ internal sealed interface RigBackend {
         override val base: String get() = LiveEdge.base
         override val attests = false
         override val network: UploadNetwork = httpNetwork { HttpClient(engine) }
-        override fun port(mocks: JvmMocks, declared: DeclaredVersion): Backend =
-            VersionedHttpBackend(HttpClient(engine), base, declared)
+        override fun port(mocks: JvmMocks): HttpTransport = KtorHttpTransport(HttpClient(engine))
         override fun operator(mocks: JvmMocks): BackendOperator? = null
     }
 }

@@ -21,14 +21,15 @@ import app.snapsync.model.TransferOutcome
 interface Download : Listenable<DownloadHandlers> {
 
     /**
-     * Begin fetching [url], tagging the transfer with [tag] — the one field the platform keeps across a relaunch — over
+     * Begin fetching [url] with [headers] — the version the app declares on every request; the redirect it fetches needs
+     * no token — tagging the transfer with [tag] — the one field the platform keeps across a relaunch — over
      * the networks [network] allows: under [TransferNetwork.UNRESTRICTED_ONLY] the platform
      * holds the transfer until the phone is on a network that is neither costly nor data-restricted, keeping it across
      * a relaunch like any other. Never throws: an unusable [url] is the caller's to filter (it does), and anything else
      * is [StartResult.NotStarted], which converges with a started-then-failed transfer (the resource stays pending until
      * the next reconcile).
      */
-    fun start(url: String, tag: String, network: TransferNetwork): StartResult
+    fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult
 
     /**
      * Cancel **every** transfer the session holds when called — this process's and any a relaunched process inherited —

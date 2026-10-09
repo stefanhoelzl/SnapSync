@@ -28,7 +28,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** The address and body are `HttpBackend`'s (`HttpBackendTest`); this double records what was published. */
+/** The address and body are the generated route's (`BackendGatewayTest`); this double records what was published. */
 private class FakePushTokenPublisher(private val result: Result<Unit> = Result.success(Unit)) : PushTokenPublisher {
     val calls = mutableListOf<PushEndpoint>()
 

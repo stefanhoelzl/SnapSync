@@ -32,7 +32,12 @@ import kotlin.time.Instant
 /** A download session that holds nothing and starts nothing. */
 private object InertDownload : Download {
     override fun listen(handlers: DownloadHandlers) = Unit
-    override fun start(url: String, tag: String, network: TransferNetwork): StartResult = StartResult.NotStarted
+    override fun start(
+        url: String,
+        headers: Map<String, String>,
+        tag: String,
+        network: TransferNetwork,
+    ): StartResult = StartResult.NotStarted
     override suspend fun cancelAll() = Unit
 }
 
@@ -55,7 +60,14 @@ internal fun CoroutineScope.flowDownloadController(union: EventUnionSource): Dow
     return DownloadController(
         union = union,
         store = DownloadService(inMemoryDatabases()),
-        jobs = DownloadJobs(this, staging, InertDownload, onStaged = { _, _, _ -> }, network = { TransferNetwork.ANY }),
+        jobs = DownloadJobs(
+            this,
+            staging,
+            InertDownload,
+            onStaged = { _, _, _ -> },
+            network = { TransferNetwork.ANY },
+            headers = { emptyMap() },
+        ),
         importer = GalleryImporter(NoImports, staging),
         presence = UnknownPresence,
         eventAlbum = { null },

@@ -169,8 +169,8 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | How a date reads is one thin port, `DateFormatting`, in the app's bundle only (the extension renders nothing): `formats(languageTag)` answers a `DateFormats` (`model/`) over the platform's CLDR data — `java.time` on the JVM, ICU on Android, `NSDateFormatter` on iOS — its locale chosen by `resolveDateLocale` (`model/`). Each root builds a `ScreenDates` (`:domain:presentation`) over it, as `CutoffFormatter` over `Clock`, and hands that to its UI adapter — which may take no port — and on to `StatusScreen`; a rig build keeps the platform's, since it keeps no state to mock | `DateFormattingContract` (live on `JVM`, `IOS_SIM_KEXE`, `ANDROID_EMU`) + `DateLocaleTest` |
 | Cryptography is one thin port, `Crypto`: primitives only, each answered by the platform's own implementation (CryptoKit through cryptography-kotlin's bridge and CommonCrypto on iOS, the JCA provider on Android and the JVM). No adapter knows the encrypted file format: its layout is `EncryptedFileFormat` (`model/`, pure; HKDF over the port's HMAC) and its files are sealed and opened a segment at a time by `FileCipher` (`services/crypto`). The TypeScript twin the edge and the event page run is `api/src/encrypted-file.ts` | `CryptoContract` (published vectors; live on `JVM`, `IOS_SIM_KEXE`, `ANDROID_EMU`) + both halves held to `test/vectors/encrypted-file.json` and, on the JVM, to Google Tink itself (`EncryptedFileFormatTest`, `api/test/encrypted-file.test.ts`) |
 | Ports never call ports: no adapter's constructor takes a port. Combining two external systems is a service's job (`services/`) or a feature's, so no decision hides inside an adapter where a mock cannot see it and a second platform would have to re-make it | `PortsNeverCallPortsTest` (every constructor parameter of the adapter modules' production source sets typed as a `ports/` interface; the rig's decorators are exempt). Its allowlist is exact both ways and only shrinks: 11d, 11e and 11f emptied their holdings; what remains is named with its owner |
-| The backend is ONE port, `Backend`: one method per route, answering a typed `Reply` (`Ok`, `Refused(status, body)`, `Malformed`, `Unreachable`), deciding nothing. A method takes a `token` exactly when its route is gated. `HttpBackend` is its one implementation on every platform, over the HTTP client each composition supplies | `BackendContract` (live against `api/`) + `HttpBackendTest` (the token-taking routes are exactly `isGatedRequest`'s) |
-| The backend's verdicts are `AuthenticatedBackend`'s, in `services/`, and nowhere else: it reads the credential per call; a `401` on a gated call that carried a token drops THAT token, recovers, and retries the call once with the recovered token; a `426` on any route refuses the build; a success clears the refusal. The app's credential re-attests; the extension's only drops the token and never retries. Every need-shaped backend service (directory, join, manifest, leave, union, device files, create, rename, push token) sits over it; attestation reaches the ungated `/attest/…` routes on the raw port, so recovery never re-enters itself | `CredentialedBackendTest`, `BackendServicesTest`, `CredentialRecoveryWorldTest` (the loop, composed) |
+| The backend is reached over ONE plain port, `HttpTransport`: send a request, answer what came back — a status, headers and text, or `Unreachable` — whatever the status, and never throw. `KtorHttpTransport` is its one implementation on every platform, over the engine each composition supplies. What a route is, which token it carries and what an answer means are not the transport's: they are the backend boundary's ("The backend boundary", §8) | `HttpTransportContract` (live on `JVM`; `ANDROID_EMU` and the simulator compile it) |
+| The backend's protocol and verdicts are `BackendGateway`'s, in `services/`, and nowhere else (`BackendExchange` is it without a credential, for the `/attest/…` issuers): every request declares the build's version; the credential is read per request; an `Unauthorized` to a gated request that carried a token drops THAT token, recovers, and retries the request once with the recovered token; an `AppTooOld` on any route refuses the build; a `Success` clears the refusal. The app's credential re-attests; the extension's only drops the token and never retries. Every need-shaped backend service (directory, join, manifest, leave, union, device files, create, change, push token) sits over it and reads its route's generated reply; attestation reaches the open issuers through the exchange, so recovery never re-enters itself | `BackendGatewayTest`, `BackendServicesTest`, `CredentialRecoveryWorldTest` (the loop, composed), `BackendContract` (the real gateway against `api/` and the mock) |
 | `DeviceIntegrity` only proves (`prove(challenge, handle?)`: a fresh key's attestation, or an assertion by an existing one). The attestation service decides when, and `AttestState` keeps the token and key handle | `DeviceIntegrityContract` (recorded on a device, replayed every build) + `DeviceAttestationTest` |
 | Paths are area-relative (`FileArea.SHARED`/`PRIVATE`); only an adapter resolves a platform path, and `locate` is the one exit, for a platform API that must be handed a file. No absolute container path is stored | **review** (the download store's staged paths: `DownloadStoreMigrationTest`) |
 | `Files` answers `NotFound` for a definite absence only: a present file that cannot be read is `Denied`, never absent — a config file read as absent is a false leave | `FilesContract` (`DENIED_IS_NEVER_NOT_FOUND`, live on JVM and `IOS_SIM_KEXE`) |
@@ -254,7 +254,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | Swift is a transcriber: decision keywords only at pinned occurrences, and every Swift shell function forwards to Kotlin | `SwiftShellGuardTest` |
 | A tap crosses from a platform UI as a `UiIntent`: the screen's one tap table (`statusActions(dispatch)`) names each tap, and the container's one exhaustive table (`StatusContainerHost.onIntent`) decides what it means. No UI binds a container method itself | `HostStatusActionsTest` (the table clicked is the table that ships) + the compiler (the intent table is exhaustive) |
 | The scene-mode resolver (`SceneRecord.resolve`) has one caller, the UI adapter's pull, and the scene generation one writer; SwiftUI pulls the scene at one site and binds only the generation `onSceneActive()` answers | `SceneRecordCompletenessTest` + `SwiftShellGuardTest` |
-| The credential-recovery loop is composed, never wired by a shell: `snapSyncApp` builds the authenticated backend over the `Backend` port a root supplies, with the attestation service as its credential. (It used to need a text pin on the iOS root, which handed the core's rejection hook to the HTTP client — a cycle `compose/` could not close) | `PushIntegrationTest` (the JVM root composes the phone's loop) + `CredentialedBackendTest` |
+| The credential-recovery loop is composed, never wired by a shell: `snapSyncApp` builds the backend gateway over the `HttpTransport` port a root supplies, with the attestation service as its credential. (It used to need a text pin on the iOS root, which handed the core's rejection hook to the HTTP client — a cycle `compose/` could not close) | `PushIntegrationTest` (the JVM root composes the phone's loop) + `BackendGatewayTest` |
 
 ### Concurrency and failure
 
@@ -922,7 +922,63 @@ kept log (`docs/deployment.md` §3).
   `main.js.map`, and the `/bugsink` skill maps frames back to `api/src` through the map of the event's
   `release`.
 
+### The backend boundary
+
+**`api/openapi.yaml` is the ONE source of the wire format** (OpenAPI 3.1.2, hand-written, linted by Redocly in
+`api-test`'s `OpenAPI lint`). Everything else is generated from it at build time and never committed, on both sides:
+
+- **The backend's half** — `api/src/gen/wire.ts` (`deno task gen`, `src/scripts/generate-wire.ts`): every device
+  operation mounted at the description's own method and path, its input validated by zod schemas generated from the
+  description before its handler runs, and a `Handlers` type that makes a missing handler a type error. A route the
+  description does not declare cannot exist, nor take a shape it does not declare.
+- **The app's half** — `:domain:wire` (build-logic's `snapsync.wire`): Fabrikt's DTOs (`app.snapsync.wire.models`)
+  and our own generator's routes, replies and limits (`app.snapsync.wire.api`). Each operation gets a `Routes.<Op>`
+  object — its `ID`, `METHOD`, `TEMPLATE`, `path(…)`, and, for one the app sends itself, a typed `request(…)` and the
+  `decide` that reads an answer — and one sealed `<Op>Reply`.
+
+**Validation lives in the description**, through a closed `x-snapsync-*` vocabulary (`outcome`, `instant`, `after`,
+`max-span`, `check`, `gate`, `export`, `transport`, `refusals`, `on-invalid`, `trim`), read by both generators; a name
+outside it fails both builds. `x-snapsync-export` hands a constraint to the app as a constant
+(`Limits.EVENT_NAME_MAX_LENGTH`), so the screen and the route bound a name by one value.
+
+**Every declared response names its outcome** (`x-snapsync-outcome`), and an outcome is a type: a route's own is
+nested in its reply (`JoinEventReply.Full`), one defined once under `components/responses` is ONE type every reply
+that references it implements (`EventNotFound`, `Unauthorized`, `AppTooOld`, …). Each outcome belongs to one group by
+its status — `Success` (2xx–3xx), `ClientError` (4xx — a refused build is the client's), `ServerIssue` (5xx) — and
+every reply also answers `NoAnswer`: `Unreachable` (nothing came back) or `Malformed` (an answer outside the
+description: an undeclared status, a media type or text it does not name, a body that does not decode). One status
+may name several outcomes, by media type or by the body's text (an annotated enumeration, `oneOf` + `const`).
+
+**The layers, app side:**
+
+| layer | owns | where |
+|---|---|---|
+| `HttpTransport` (port) | send one request, answer what came back — never throws | `ports/`; `KtorHttpTransport` in `:adapter:generic:app` |
+| `:domain:wire` (generated) | routes, request shapes, replies — the description, in Kotlin | `domain/wire`, from `api/openapi.yaml` |
+| `BackendExchange` / `BackendGateway` | the protocol: the build's base and version header on every request, the bearer on a `GatedRequest` only, `Unauthorized` → recover → retry once, `AppTooOld`/`Success` → the version gate | `services/backend/BackendGateway.kt` |
+| need-shaped services | what a reply MEANS to the app (`EventNotFound` is "gone" to the directory, "nothing to leave" to the leave) | `services/backend/` |
+
+**Two kinds of route.** An operation whose `security` admits no token is `OpenRequest` (the `/attest/…` issuers);
+every other one is `GatedRequest`, which alone can carry the token — the two legacy optional reads (`getEvent`,
+`eventFiles`) included: the app always sends its token there (`PENDING_CLEANUPS.md`, "Anonymous event reads").
+
+**The byte routes** are performed by the OS transfer services (`x-snapsync-transport: os`): the app builds them —
+`BackendUploadRequests` (the upload's address and headers) and the union source (each download's address) through
+the same exchange, so they carry the version header too — and decodes no reply. The download redirect serves a
+request without the header (builds that predate it) until a minimum app version retires them (`PENDING_CLEANUPS.md`,
+"Header-less download redirects").
+
+**Instants are one shape** — whole-second UTC (`2026-07-01T00:00:00Z`), compared as text on the backend, so the
+description's `Timestamp` pattern is the contract (migration `0013` truncated the stored ones).
+
+**Held by:** `BackendContract` — the production gateway against the real `api/` (`Live`) and against the backend
+mock's HTTP face (`Fake`, which also plays a failing store and a maintenance window through its fault lever); its
+cells are the replies' outcomes (`Backend.<operationId> → <Outcome>`, one `Backend.* → <Outcome>` for a shared one),
+derived by the port grid from `:domain:wire`. `HttpTransportContract` holds each platform's engine.
+
 ### HTTP API (v2, current)
+
+**`api/openapi.yaml` is the authority**; this table is the reading guide, not a second definition.
 
 All device routes are under `/api/v2`. `<eventId>`/`<deviceId>` are UUIDs (`400` otherwise), and a
 `<deviceId>` other than the one the token was minted for is `403` on every route that names one. Anything
@@ -935,7 +991,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies by the STORED row's `attest_platform`: an App Attest assertion, or an Android ECDSA-P256 signature over the challenge's UTF-8 bytes, against the stored key (no vendor call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
 | `POST` | `/events` `{name, startsAt, endsAt?, zone?, keyId?}` | name trimmed, non-empty, ≤100 chars; window rules; `zone` stored when usable, else NULL (never a `400`); `keyId` (16 lowercase hex — the encrypted file format's key id) makes the event **encrypted**, and a present invalid one is a `400`, never a plain event; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt, keyId?}` (`keyId` only on an encrypted event, in every event body) · `400` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>` (ungated; an optional bearer token is verified, `changes/separate-event-page-from-device-api` D7) | metadata; `deletesAt` derived per response; `closedAt`, `completedAt`, `members {active, final}`, `keyId` | `200` (a completed event too, with `completedAt`) · `401` a sent token that does not verify · `404` sealed absence · `502` read failure |
-| `PATCH` | `/events/<eventId>` `{name}` | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` closed · `502` |
+| `PATCH` | `/events/<eventId>` `{name}` (`changeEvent`) | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` closed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` closed · `502` |
 | `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; after `endsAt` the leave that leaves no member `sharing` closes the event and wakes the rest; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), honoured only after `endsAt` and only for a present membership; the publish leaving no member `sharing` closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
@@ -944,7 +1000,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `GET` | `/events/<eventId>/files/devices/<deviceId>` | what the backend holds for me **in this event**, from the DB — never another event's | `200 [{assetId, role, filename}]` · `502` |
 | `GET` | `/files/devices/<deviceId>` | the event-less listing: the same answer for the device's present membership, `[]` with none | `200 [{assetId, role, filename}]` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>/files[?cursor=<n>][&urls=false]` (ungated; an optional bearer token is verified) | the event union: one query over every membership, present or gone; an asset is included only when **every declared role** has a resource (a set comparison, not a count). `cursor` serves only assets the union log says were gained after it (`changes/incremental-union`); `urls=false` omits `url`, which is otherwise the download redirect's absolute address. Every answer carries `SnapSync-Cursor: <n>`, the position it covers. The `SnapSync-Trigger` header (`push`·`wake`·`foreground`·`join`·`grant`·`reconfigure`·`leave-check`) and the verified device, if any, go into the read's `fetch` log row, best-effort | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url?}]}]` · `400` bad cursor · `401` a sent token that does not verify · `404` · `502` |
-| `GET`/`HEAD` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>` (ungated, exempt from the version gate) | the **download redirect**: the stored path of that role, when the event still declares the asset with it and its bytes are recorded; each segment percent-encoded | `302` to a 7-day presign, `Cache-Control: no-store, no-cache, max-age=0` · `404` · `502` |
+| `GET`/`HEAD` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>` (ungated; behind the version gate, but a request with no version header is served — legacy builds) | the **download redirect**: the stored path of that role, when the event still declares the asset with it and its bytes are recorded; each segment percent-encoded | `302` to a 7-day presign, `Cache-Control: no-store, no-cache, max-age=0` · `404` · `502` |
 | `PUT` | `/devices/<deviceId>` `{pushToken: {kind, token, env}}` (`kind` is the push adapter's — `apns` or `fcm`) or explicit absence | updates the push columns | `201` · `400` · **`401` when no row was affected** (device never attested; the client re-attests and re-sends) · `502` |
 
 Served at the root under no version: `OPTIONS` on any path (`204`, no resumable upload advertised, so
@@ -1369,7 +1425,7 @@ SE2), so:
   with no state of its own. Whoever owns "when may this run" honours it: iOS's request flags (`applyTransferNetwork`,
   one builder for both upload tiers and the download), `DownloadManager`'s metered flag, and on Android's in-process
   uploader the adapter's own wait — resumed after a process death by the busy heartbeat, whose `WakeNetwork` is
-  `UNRESTRICTED` while photos are kept off mobile data. Every other call — the `Backend` port — ignores it.
+  `UNRESTRICTED` while photos are kept off mobile data. Every other request — the device API over `HttpTransport` — ignores it.
 
 **On Android** there is one process and one uploader. The `Wake`, `BackgroundTime` and `Upload` adapters
 (`:adapter:android`'s `work/`) are WorkManager's:

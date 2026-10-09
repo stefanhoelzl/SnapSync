@@ -1,18 +1,19 @@
 package app.snapsync.mock
 
-import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DeviceRefusal
+import app.snapsync.model.HttpRequest
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.model.withFinal
-import app.snapsync.ports.Backend
+import app.snapsync.ports.HttpTransport
+import app.snapsync.wire.api.Limits
 import kotlin.concurrent.Volatile
 import kotlin.time.Instant
 
@@ -21,35 +22,42 @@ import kotlin.time.Instant
  * device configs and the pushes it would send, which a relaunch of the app does not touch — the [port] a process
  * talks to, and the [operator] face a test or harness pulls levers and reads outcomes through.
  *
- * The app only ever holds what [port] returns, typed as the [Backend] port; nothing here reaches it otherwise.
+ * The app only ever holds what [port] returns — the device API at the [HttpTransport] port, answered as
+ * `api/openapi.yaml` declares ([BackendRouter]); nothing here reaches it otherwise.
  */
 class BackendMock internal constructor(internal val state: BackendState) {
     constructor(
         /** Devices an event admits, active or departed, before a join answers `409`. */
         capacity: Int = DEFAULT_CAPACITY,
-        /**
-         * The creation time every event it mints is stamped with — carrying milliseconds, as the real backend's
-         * `toISOString()` does, so the app's normalization of it is exercised rather than assumed.
-         */
+        /** The creation time every event it mints is stamped with — whole-second UTC, as the real backend's. */
         createdAt: Instant = Instant.parse(DEFAULT_CREATED_AT),
-    ) : this(mutableMapOf(), capacity, createdAt)
+    ) : this(BackendState(mutableMapOf(), capacity, createdAt))
 
-    /** Over a byte store [storedFiles] the caller holds — what [inMemoryBackend] hands a contract binding. */
-    internal constructor(
-        storedFiles: MutableMap<Pair<String, String>, MutableSet<DeviceFile>>,
-        capacity: Int = DEFAULT_CAPACITY,
-        createdAt: Instant = Instant.parse(DEFAULT_CREATED_AT),
-    ) : this(BackendState(storedFiles, capacity, createdAt))
+    /**
+     * One process's face: the device API over HTTP. The version a request declares is its own header, as the
+     * gateway sends it from the process's build facts.
+     */
+    fun port(): HttpTransport = BackendRouter(state)
 
-    /** One process's face: [declared] is the version its build declares, read per call. */
-    fun port(declared: DeclaredVersion = DeclaredVersion(null)): Backend = InMemoryBackend(state, declared)
+    /**
+     * [port], for a process whose build's version is baked but which an operator plays as another one: every request
+     * declares what [declared] holds now in place of its own header — nothing, when it holds none.
+     */
+    fun port(declared: DeclaredVersion): HttpTransport {
+        val router = BackendRouter(state)
+        return HttpTransport { request ->
+            val headers = request.headers.filterKeys { !it.equals(Limits.VERSION_HEADER, ignoreCase = true) } +
+                listOfNotNull(declared.value?.let { Limits.VERSION_HEADER to it })
+            router.send(HttpRequest(request.method, request.url, headers, request.body))
+        }
+    }
 
     /** The levers and reads — what the backend's operator, and a test, can do to it. */
     val operator: BackendOperator = BackendOperator(state)
 
     companion object {
         const val DEFAULT_CAPACITY: Int = 40
-        const val DEFAULT_CREATED_AT: String = "2026-01-01T00:00:00.000Z"
+        const val DEFAULT_CREATED_AT: String = "2026-01-01T00:00:00Z"
     }
 }
 
@@ -103,7 +111,7 @@ data class UnionFetch(
 
 /**
  * What the backend's operator can do to it and read from it — the levers a real backend has no route for, and the
- * outcomes a test asserts. Nothing here is on the [Backend] port.
+ * outcomes a test asserts. Nothing here is on the device API.
  */
 class BackendOperator internal constructor(private val state: BackendState) {
 
@@ -201,7 +209,14 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** The diagnostic code the refusal names beside its reason — `certificate` — or `null` for none. */
     var refuseAttestationDetail: String? by state::refuseAttestationDetail
 
-    /** The next token-bearing call to a gated route is answered `401`, once. */
+    /**
+     * Whether a request carrying no `Authorization` header is served, as the local dev server's fallback bearer
+     * serves it (`api/src/dev/serve.ts`) — on by default, which the rig and the seeding stand on. Off, it is `401`,
+     * as deployed.
+     */
+    var fallbackBearer: Boolean by state::fallbackBearer
+
+    /** The next token-bearing call to a route that checks its token is answered `401`, once. */
     fun refuseNextCredential() {
         state.refuseNextCredential = true
     }
@@ -211,6 +226,14 @@ class BackendOperator internal constructor(private val state: BackendState) {
      * every run. `null` mints a random one, as the real backend does.
      */
     var nextEventId: String? by state::nextEventId
+
+    /**
+     * The next [times] requests to [operationId] (`Routes.<Op>.ID`) are answered with [fault] before the route runs —
+     * nothing they ask for happens.
+     */
+    fun fail(operationId: String, fault: BackendFault, times: Int = 1) {
+        state.locked { state.faults[operationId] = fault to times }
+    }
 
     /** Every [call] waits until [release]: the backend that has not answered yet. */
     fun hold(call: BackendCall) {
@@ -243,6 +266,14 @@ class BackendOperator internal constructor(private val state: BackendState) {
      * the HTTP status the backend would, or stores the object and answers `201`.
      */
     fun receive(url: String, headers: Map<String, String>): Int = state.locked { state.receive(url, headers) }
+
+    /** Another member joining [eventId] and publishing [manifest] there — the routes' rules, without the requests. */
+    fun seedMember(eventId: String, manifest: DeviceManifest) {
+        state.locked {
+            state.join(eventId, manifest.deviceId)
+            state.publish(eventId, manifest.deviceId, manifest)
+        }
+    }
 
     /**
      * One resource's bytes land for [deviceId] in [eventId] — the byte route without the request; by default in the
@@ -320,10 +351,27 @@ internal class BackendState(
 
     @Volatile var refuseNextCredential = false
 
+    @Volatile var fallbackBearer = true
+
     @Volatile var refuseAttestation: DeviceRefusal? = null
 
     @Volatile var refuseAttestationDetail: String? = null
     val holds = mutableMapOf<BackendCall, OperatorHold>()
+
+    /** The fault each operation answers with, and how many more requests it answers so. */
+    val faults = mutableMapOf<String, Pair<BackendFault, Int>>()
+
+    /** The fault an operator set for [operationId]'s next request, taken — or `null`. */
+    fun takeFault(operationId: String): BackendFault? {
+        val (fault, left) = faults[operationId] ?: return null
+        if (left <= 1) faults.remove(operationId) else faults[operationId] = fault to left - 1
+        return fault
+    }
+
+    /** A read of the event's details reached the backend — counted before an operator's hold answers it. */
+    fun countEventRead(eventId: String) {
+        eventReads[eventId] = (eventReads[eventId] ?: 0) + 1
+    }
 
     @Volatile var nextEventId: String? = null
 
@@ -340,11 +388,11 @@ internal class BackendState(
     fun mint(deviceId: String, challenge: String): String =
         "$deviceId.$TOKEN_EXPIRES_AT_EPOCH_SECONDS.$challenge".also { minted += it }
 
-    /** The `426` body for a build declaring [declared], or null while the gate is off or the build is new enough. */
-    fun refusalFor(declared: String?): String? {
+    /** The minimum a build declaring [declared] falls short of, or null while the gate is off or the build is new enough. */
+    fun minimumRefusing(declared: String?): String? {
         val minimum = minAppVersion ?: return null
         if (declared != null && compareAppVersions(declared, minimum) >= 0) return null
-        return """{"error":"app too old","minAppVersion":"$minimum"}"""
+        return minimum
     }
 
     fun join(eventId: String, deviceId: String): JoinOutcome {
@@ -500,8 +548,8 @@ internal class BackendState(
             ?.key?.first
 
     fun receive(url: String, headers: Map<String, String>): Int {
-        val version = headers.entries.firstOrNull { it.key.equals(APP_VERSION_HEADER, ignoreCase = true) }?.value
-        if (refusalFor(version) != null) return UPGRADE_REQUIRED
+        val version = headers.entries.firstOrNull { it.key.equals(Limits.VERSION_HEADER, ignoreCase = true) }?.value
+        if (minimumRefusing(version) != null) return UPGRADE_REQUIRED
         val route = url.substringAfter("/files/devices/", missingDelimiterValue = "")
         // `/events/<event>/files/devices/…` names its event; the event-less form of an earlier build does not.
         val named = url.substringBefore("/files/devices/").substringAfter("/events/", missingDelimiterValue = "")
@@ -548,9 +596,6 @@ internal class BackendState(
 
         /** Epoch seconds a minted token expires at: 90 days, which outlives any test's pinned clock. */
         const val TOKEN_EXPIRES_AT_EPOCH_SECONDS: Long = 90L * 24 * 60 * 60
-
-        /** The download handle a union resource carries — `https`, so the real download guard fetches it. */
-        fun syntheticUrl(deviceId: String, key: String): String = "https://in-memory.store/$deviceId/$key"
     }
 }
 
@@ -574,7 +619,7 @@ internal fun compareAppVersions(a: String, b: String): Int {
 }
 
 /** `%XX` escapes decoded byte-wise as UTF-8 — the byte route's path and query arrive as the app's request builder encoded them. */
-private fun percentDecoded(raw: String): String {
+internal fun percentDecoded(raw: String): String {
     val bytes = mutableListOf<Byte>()
     var i = 0
     while (i < raw.length) {

@@ -1,14 +1,18 @@
 package app.snapsync.mock
 
-import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.EncryptedFileFormat
-import app.snapsync.model.EventCreated
 import app.snapsync.model.FileHead
 import app.snapsync.model.Hmac
-import app.snapsync.model.Reply
+import app.snapsync.model.HttpRequest
+import app.snapsync.model.HttpResult
 import app.snapsync.model.roleFromUploadKey
-import app.snapsync.ports.Backend
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.HttpTransport
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.models.Event
+import app.snapsync.wire.models.EventCreate
+import app.snapsync.wire.runtime.WireJson
 import kotlin.concurrent.Volatile
 
 /**
@@ -36,10 +40,9 @@ class EventKeyLedger {
         }
     }
 
-    /** The backend port, recording the key id each keyed create answered with an event id. */
-    fun recording(delegate: Backend): Backend = object : Backend by delegate {
-        override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> =
-            delegate.createEvent(token, req).also { reply -> record(reply, req.keyId) }
+    /** The backend's transport, recording the key id each keyed create (`createEvent`) answered with an event id. */
+    fun recording(delegate: HttpTransport): HttpTransport = HttpTransport { request ->
+        delegate.send(request).also { result -> record(request, result) }
     }
 
     /** [eventId]'s key, or `null` for an event this device did not create encrypted. */
@@ -82,15 +85,24 @@ class EventKeyLedger {
         return file
     }
 
-    private fun record(reply: Reply<EventCreated>, keyId: String?) {
-        val created = (reply as? Reply.Ok)?.value ?: return
-        if (keyId != null) lock.locked { keyIds[created.eventId] = keyId }
+    private fun record(request: HttpRequest, result: HttpResult) {
+        val created = result as? HttpResult.Response ?: return
+        if (request.method != Routes.CreateEvent.METHOD || !request.url.substringBefore('?').endsWith(Routes.CreateEvent.TEMPLATE)) return
+        if (created.status != CREATED) return
+        val keyId = request.body?.let {
+            runCatchingCancellable { WireJson.decodeFromString(EventCreate.serializer(), it) }.getOrNull()
+        }
+            ?.keyId ?: return
+        val eventId = runCatchingCancellable { WireJson.decodeFromString(Event.serializer(), created.body) }.getOrNull()
+            ?.eventId ?: return
+        lock.locked { keyIds[eventId] = keyId }
     }
 
     private fun idOf(key: ByteArray, hmac: Hmac): String =
         EncryptedFileFormat.keyIdOf(key, hmac).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 
     private companion object {
+        const val CREATED = 201
         const val TAG_FIELDS = 4
         const val DEVICE = 0
         const val ASSET = 1

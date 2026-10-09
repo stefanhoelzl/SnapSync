@@ -76,7 +76,7 @@ class RecordingDownload(var accept: Boolean = true) : Download {
 
     override fun listen(handlers: DownloadHandlers) = Unit
 
-    override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
+    override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
         started += Start(url, tag, network)
         return if (accept) StartResult.Started else StartResult.NotStarted
     }
@@ -97,7 +97,9 @@ fun downloadJobs(
     download: Download = RecordingDownload(),
     staging: StagingService = StagingService(RecordingFiles()),
     network: () -> TransferNetwork = { TransferNetwork.ANY },
-): DownloadJobs = DownloadJobs(scope, staging, download, onStaged = { _, _, _ -> }, network = network)
+): DownloadJobs = DownloadJobs(scope, staging, download, onStaged = { _, _, _ -> }, network = network, headers = {
+    emptyMap()
+})
 
 /**
  * [Databases] over real in-memory SQLite that records every statement a service's driver ran, and the transaction it

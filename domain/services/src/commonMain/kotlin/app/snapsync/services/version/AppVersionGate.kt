@@ -1,9 +1,9 @@
 package app.snapsync.services.version
 
-import app.snapsync.model.Reply
 import app.snapsync.model.VersionRefusal
-import app.snapsync.model.minAppVersionFromRefusal
-import app.snapsync.services.backend.HttpStatus
+import app.snapsync.wire.api.AppTooOld
+import app.snapsync.wire.api.Reply
+import app.snapsync.wire.api.Success
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,8 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * Whether the backend is refusing this build as too old, and the version it named.
  *
  * A **read-model**, in the shape the presentation already consumes: one cell, observed, never commanded. It is
- * written by the one place every backend answer passes through — [observe], called by the authenticated backend for
- * every route and by the attestation service for the `/attest/…` issuers — so no service has to remember to report
+ * written by the one place every backend answer passes through — [observe], called by the backend exchange
+ * (`BackendExchange`) for every route, the `/attest/…` issuers included — so no service has to remember to report
  * a refusal, and a route added later is covered for free.
  *
  * **It is a coordination primitive, not authority.** Nothing durable is written and nothing is recovered across a
@@ -36,15 +36,14 @@ class AppVersionGate(
     val refusal: StateFlow<VersionRefusal?> = state.asStateFlow()
 
     /**
-     * Read one backend answer: a `426` is a refusal, naming the minimum its body carries; any success clears one.
+     * Read one backend answer: [AppTooOld] is a refusal, naming the minimum it carries; any [Success] clears one.
      * Every other answer says nothing about this build and changes nothing.
      */
-    fun observe(reply: Reply<*>) {
-        when {
-            reply is Reply.Refused && reply.status == HttpStatus.UPGRADE_REQUIRED -> refused(
-                minAppVersionFromRefusal(reply.body),
-            )
-            reply is Reply.Ok -> served()
+    fun observe(reply: Reply) {
+        when (reply) {
+            is AppTooOld -> refused(reply.appTooOldError.minAppVersion)
+            is Success -> served()
+            else -> Unit
         }
     }
 

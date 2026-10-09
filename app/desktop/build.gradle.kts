@@ -23,7 +23,7 @@ dependencies {
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
     // pane, so the components module is a direct dependency rather than transitive through `:ui:screens`.
     implementation(project(":ui:components"))
-    // The generic adapters (`HttpBackend`, the system clock) the JVM root composes the app over.
+    // The generic adapters (`KtorHttpTransport`, the system clock) the JVM root composes the app over.
     implementation(project(":adapter:generic:app"))
     // The full-stack harness: the JVM root, whose app IS the shared `snapSyncHost` composition over the mocks.
     implementation(project(":app:jvm"))

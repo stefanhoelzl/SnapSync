@@ -45,6 +45,9 @@ kotlin {
             // A rig build's launch adapters hand a root back its `DevicePorts`, some swapped for mocks
             // (`:test:launch-adapters`).
             api(project(":domain:compose"))
+            // The backend's mock answers the device API as `api/openapi.yaml` declares it: the generated routes
+            // and DTOs.
+            implementation(project(":domain:wire"))
             api(libs.coroutines.core)
             // The Clock double answers a zone (`TimeFactories.kt`).
             implementation(libs.kotlinx.datetime)

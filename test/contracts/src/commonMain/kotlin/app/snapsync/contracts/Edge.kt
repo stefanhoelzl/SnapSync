@@ -1,41 +1,41 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.AssetId
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.ManifestResource
+import app.snapsync.model.HttpRequest
+import app.snapsync.model.HttpResult
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
-import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.put
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
-import io.ktor.http.isSuccess
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import app.snapsync.ports.HttpTransport
+import app.snapsync.services.backend.BackendExchange
+import app.snapsync.services.backend.BackendGateway
+import app.snapsync.services.backend.Credential
+import app.snapsync.wire.api.CreateEventReply
+import app.snapsync.wire.api.EventFilesReply
+import app.snapsync.wire.api.GatedRequest
+import app.snapsync.wire.api.JoinEventReply
+import app.snapsync.wire.api.Limits
+import app.snapsync.wire.api.OpenRequest
+import app.snapsync.wire.api.PublishManifestReply
+import app.snapsync.wire.api.Reply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.SHARED_OUTCOMES
+import app.snapsync.wire.models.EventCreate
+import app.snapsync.wire.models.Manifest
+import app.snapsync.wire.models.ManifestAsset
+import app.snapsync.wire.models.ManifestResource
+import app.snapsync.wire.models.Role
+import app.snapsync.wire.runtime.WireResponse
+import kotlin.reflect.KClass
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 // ---- The Backend contract's shared vocabulary (`docs/testing.md`) ------------------------------------
 //
-// The contract is about the backend, seen through the port the app ships. A binding pairs an implementation of the
-// port — the production `HttpBackend` in front of the real `api/` (`Live`), or the in-memory mock (`Fake`) — with a
-// way to enter each clause's state: [BackendSetup], through the backend's PUBLIC
-// surface, never by writing a stand-in's store directly. A setup step one backend cannot follow is a state that
-// backend does not reach, and it says so with `Unreachable`.
+// The contract is about the backend, seen through the gateway the app ships (`docs/architecture.md`, "The backend
+// boundary"): the real [BackendGateway] — routes, replies, the version header, the token — over a transport to the real
+// `api/` (`Live`) or to the backend mock's HTTP face (`Fake`). A binding enters each clause's state through
+// [EdgeSetup], the backend's PUBLIC surface, never by writing a stand-in's store directly. A setup step one backend
+// cannot follow is a state that backend does not reach, and it says so with `Unreachable`.
 
 /** A version every edge serves: the setup declares it, and so does a client under contract by default. */
 const val SERVED_APP_VERSION = "99.0"
@@ -55,8 +55,9 @@ const val SEEDED_ENDED_STARTS_AT = "2026-01-01T00:00:00Z"
 const val SEEDED_ENDED_ENDS_AT = "2026-01-05T00:00:00Z"
 
 /**
- * What the app declares about itself in a clause's state: the build version (the HTTP adapter's constructor value)
- * and the token the clause passes to the port's gated routes.
+ * What the app declares about itself in a clause's state: the build version (the version header every request
+ * carries) and the token the gateway attaches to the gated routes — `null` for none, which the dev edge's fallback
+ * bearer serves (`api/src/dev/serve.ts`).
  */
 class ClientIdentity(val appVersion: String, val token: String?) {
     companion object {
@@ -79,7 +80,7 @@ class Seeded(
     val asset: SeededAsset? = null,
 )
 
-/** A backend clause's subject: the port, the addresses and identity its state was entered with, and the setup. */
+/** A backend clause's subject: the client, the addresses and identity its state was entered with, and the setup. */
 class EdgeSubject<P>(
     val port: P,
     val seeded: Seeded,
@@ -90,12 +91,49 @@ class EdgeSubject<P>(
     private val edge: BackendSetup? = null,
     /** A key the binding attests with; required of a binding that reaches [BackendState.ATTESTABLE]. */
     val attester: SoftwareAttester? = null,
+    /** The client under contract as another [ClientIdentity] declares itself — a token a clause obtained, say. */
+    private val reidentify: ((ClientIdentity) -> P)? = null,
 ) {
-    /** The token this state's calls carry. */
-    val token: String? get() = seeded.identity.token
+    /** The client under contract, declaring [identity] instead; a binding that cannot build one fails naming that. */
+    fun declaring(
+        identity: ClientIdentity,
+    ): P = requireNotNull(reidentify) { "this binding builds no other client" }(identity)
 
     /** The backend's public surface; a clause asking for it on a binding with none fails naming that. */
     val setup: BackendSetup get() = requireNotNull(edge) { "this binding has no backend to read through" }
+}
+
+/**
+ * The backend as the app reaches it — the production [BackendGateway] over [transport] at [base], declaring
+ * [identity] — sending what a clause asks and recording each answer on the clause's [log] as the grid writes it
+ * ([backendCell]). The credential is the identity's token, never renewed: a rejected one is the request's answer.
+ */
+class BackendClient(transport: HttpTransport, base: String, identity: ClientIdentity, private val log: CallLog) {
+    private val exchange = BackendExchange(transport, { base }, { identity.appVersion }, versionGate = null)
+    private val gateway = BackendGateway(exchange, HeldToken(identity.token))
+
+    /** One gated request, answered in its route's reply. */
+    suspend fun <R : Reply> send(request: GatedRequest<R>): R =
+        gateway.send(request).also { log.record(backendCell(request.operationId, it::class)) }
+
+    /** One open request — the `/attest/…` issuers — answered in its route's reply. */
+    suspend fun <R : Reply> send(request: OpenRequest<R>): R =
+        exchange.send(request).also { log.record(backendCell(request.operationId, it::class)) }
+
+    private class HeldToken(private val token: String?) : Credential {
+        override fun token(): String? = token
+        override suspend fun rejected(sent: String): String? = null
+        override suspend fun missing(): String? = null
+    }
+}
+
+/**
+ * The grid cell an [outcome] of [operationId] is (`docs/testing.md`, "The port grid"): `Backend.<operationId> →
+ * <Outcome>` for the operation's own, `Backend.* → <Outcome>` for one several operations answer with ONE type.
+ */
+fun backendCell(operationId: String, outcome: KClass<out Reply>): String {
+    val name = simpleNameOf(outcome)
+    return if (name in SHARED_OUTCOMES) "Backend.* → $name" else "Backend.$operationId → $name"
 }
 
 /**
@@ -103,8 +141,8 @@ class EdgeSubject<P>(
  * accepts, and what proves the route and its verifier, never hardware trust.
  */
 interface SoftwareAttester {
-    /** The key's attestation chain over [challenge], leaf first, concatenated DER — the bytes an Android device mints with. */
-    fun attest(challenge: String): ByteArray
+    /** The key's attestation chain over [challenge], leaf first, each certificate DER — what an Android device mints with. */
+    fun attest(challenge: String): List<ByteArray>
 
     /** The key's ECDSA P-256 signature over [challenge]'s UTF-8 bytes, DER — what a renewal sends. */
     fun sign(challenge: String): ByteArray
@@ -132,96 +170,93 @@ interface BackendSetup {
 }
 
 /**
- * [BackendSetup] over the edge's public HTTP surface. Setup is not under contract, and every step checks its own
- * status so a setup failure names the step, not the clause.
+ * [BackendSetup] over the backend's public HTTP surface — the real `api/`'s or the backend mock's, the one [transport]
+ * reaches at [base]. Setup is not under contract: it sends no token (the dev edge's fallback bearer serves it, as the
+ * mock's does), and every step checks its own answer so a setup failure names the step, not the clause.
  */
-class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
+class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSetup {
     private val base = base.trimEnd('/')
-    private val json = Json { ignoreUnknownKeys = true }
 
     @OptIn(ExperimentalUuidApi::class)
     override fun freshId(): String = Uuid.random().toString()
 
     override suspend fun createEvent(name: String, ended: Boolean): CreatedEvent {
-        val body = buildJsonObject {
-            put("name", JsonPrimitive(name))
-            put("startsAt", JsonPrimitive(if (ended) SEEDED_ENDED_STARTS_AT else SEEDED_STARTS_AT))
-            put("endsAt", JsonPrimitive(if (ended) SEEDED_ENDED_ENDS_AT else SEEDED_ENDS_AT))
-        }
-        val response = client.post("$base/events") {
-            header(APP_VERSION_HEADER, SERVED_APP_VERSION)
-            contentType(ContentType.Application.Json)
-            setBody(body.toString())
-        }
-        val created = json.parseToJsonElement(checked("create event", response).bodyAsText()).jsonObject
-        return CreatedEvent(
-            eventId = created.getValue("eventId").jsonPrimitive.content,
-            name = created["name"]?.jsonPrimitive?.content ?: name,
-            createdAt = created.getValue("createdAt").jsonPrimitive.content,
+        val body = EventCreate(
+            name = name,
+            startsAt = if (ended) SEEDED_ENDED_STARTS_AT else SEEDED_STARTS_AT,
+            endsAt = if (ended) SEEDED_ENDED_ENDS_AT else SEEDED_ENDS_AT,
         )
+        val reply = send(Routes.CreateEvent.request(body))
+        val created = (reply as? CreateEventReply.Created ?: refused("create event", reply)).event
+        return CreatedEvent(created.eventId, created.name, created.createdAt)
     }
 
     override suspend fun join(eventId: String, deviceId: String) {
-        checked("join $deviceId", client.put("$base/events/$eventId/devices/$deviceId") { served() })
+        val reply = send(Routes.JoinEvent.request(eventId, deviceId))
+        if (reply != JoinEventReply.Joined) refused("join $deviceId", reply)
     }
 
     /**
-     * Joins fresh devices until the edge answers `409` — how a binding fills an event to capacity without
-     * restating the edge's configured capacity here, where it would drift from the deployment it came from.
+     * Joins fresh devices until the backend answers full — how a binding fills an event to capacity without restating
+     * the backend's configured capacity here, where it would drift from the deployment it came from.
      */
     override suspend fun fillToCapacity(eventId: String) {
         repeat(MAX_CAPACITY_PROBE) {
-            val response = client.put("$base/events/$eventId/devices/${freshId()}") { served() }
-            if (response.status == HttpStatusCode.Conflict) return
-            checked("fill to capacity", response)
+            when (val reply = send(Routes.JoinEvent.request(eventId, freshId()))) {
+                JoinEventReply.Full -> return
+                JoinEventReply.Joined -> Unit
+                else -> refused("fill to capacity", reply)
+            }
         }
         error("setup step 'fill to capacity': still admitting after $MAX_CAPACITY_PROBE joins")
     }
 
     override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean) {
-        val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() }, version = 0, final = final)
-        checked(
-            "publish manifest",
-            client.put("$base/events/$eventId/devices/$deviceId/manifest") {
-                served()
-                contentType(ContentType.Application.Json)
-                setBody(manifest.encodeToJson())
-            },
-        )
+        val manifest = manifestOf(deviceId, assets, version = 0, final = final)
+        val reply = send(Routes.PublishManifest.request(eventId, deviceId, manifest))
+        if (reply != PublishManifestReply.Published) refused("publish manifest", reply)
     }
 
     /** The asset ids the event's union serves — a read of the backend's public surface, as a member makes it. */
     override suspend fun unionAssetIds(eventId: String): Set<AssetId> {
-        val response = checked("read the union", client.get("$base/events/$eventId/files") { served() })
-        return json.parseToJsonElement(response.bodyAsText()).jsonArray
-            .mapTo(mutableSetOf()) { AssetId(it.jsonObject.getValue("assetId").jsonPrimitive.content) }
+        val reply = send(Routes.EventFiles.request(eventId))
+        val page = reply as? EventFilesReply.Page ?: refused("read the union", reply)
+        return page.items.mapTo(mutableSetOf()) { AssetId(it.assetId) }
     }
 
     /** Uploads one resource's bytes, as the app's uploader addresses them. */
     override suspend fun upload(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole) {
-        checked(
-            "upload ${asset.assetId}/${role.wire}",
-            client.put(
-                "$base/events/$eventId/files/devices/$deviceId/${asset.assetId}/${role.wire}?filename=${asset.filename}",
-            ) {
-                served()
-                contentType(ContentType.Image.JPEG)
-                setBody(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte()))
-            },
-        )
+        val path = Routes.UploadResource.path(eventId, deviceId, asset.assetId.value, role.wire, asset.filename)
+        val headers = mapOf(Limits.VERSION_HEADER to SERVED_APP_VERSION, "Content-Type" to "image/jpeg")
+        val result = transport.send(HttpRequest(Routes.UploadResource.METHOD, base + path, headers, JPEG))
+        check(result is HttpResult.Response && result.status in SUCCESS) {
+            "setup step 'upload ${asset.assetId}/${role.wire}' was refused by the backend: ${result.describe()}"
+        }
     }
 
-    private fun io.ktor.client.request.HttpRequestBuilder.served() = header(APP_VERSION_HEADER, SERVED_APP_VERSION)
+    private suspend fun <R : Reply> send(request: GatedRequest<R>): R {
+        val wire = request.wire
+        val headers = wire.headers + (Limits.VERSION_HEADER to SERVED_APP_VERSION)
+        return when (val result = transport.send(HttpRequest(wire.method, base + wire.path, headers, wire.body))) {
+            is HttpResult.Response -> request.decide(WireResponse(result.status, result.headers, result.body))
+            is HttpResult.Unreachable -> request.unreachable(result.reason)
+        }
+    }
+
+    private fun refused(step: String, reply: Reply): Nothing =
+        error("setup step '$step' was refused by the backend: $reply")
+
+    private fun HttpResult.describe(): String = when (this) {
+        is HttpResult.Response -> "HTTP $status $body"
+        is HttpResult.Unreachable -> "no answer ($reason)"
+    }
 
     private companion object {
         const val MAX_CAPACITY_PROBE = 200
-    }
+        val SUCCESS = 200..299
 
-    private fun checked(step: String, response: HttpResponse): HttpResponse {
-        check(
-            response.status.isSuccess(),
-        ) { "setup step '$step' was refused by the edge: HTTP ${response.status.value}" }
-        return response
+        /** A body for a route that stores whatever it is sent: setup never reads the bytes back. */
+        const val JPEG = "seeded bytes"
     }
 }
 
@@ -231,9 +266,17 @@ class SeededAsset(val assetId: AssetId, val roles: List<ResourceRole>, val filen
 
     fun key(role: ResourceRole) = uploadKey(assetId, role, filename)
 
-    fun manifestEntry() = DeviceManifestAsset(
-        assetId = assetId,
+    /** This asset as a manifest declares it. */
+    fun onWire() = ManifestAsset(
+        assetId = assetId.value,
         creationDate = creationDate,
-        resources = roles.map { ManifestResource(it, "image/jpeg", key(it), filename) },
+        resources = roles.map { ManifestResource(it.onWire(), "image/jpeg", key(it), filename) },
     )
 }
+
+/** A manifest declaring [assets] for [deviceId], projected under [version], settled when [final]. */
+fun manifestOf(deviceId: String, assets: List<SeededAsset>, version: Long = 0, final: Boolean = false) =
+    Manifest(deviceId = deviceId, assets = assets.map { it.onWire() }, version = version, `final` = final)
+
+/** A role, as the description names it. */
+fun ResourceRole.onWire(): Role = Role.fromValue(wire) ?: error("no described role for $this")

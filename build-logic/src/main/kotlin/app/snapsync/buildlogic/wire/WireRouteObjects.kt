@@ -39,6 +39,10 @@ internal object WireRouteObjects {
         val type = TypeSpec.objectBuilder(op.id.capitalized())
             .addKdoc("`${op.method} ${op.path}`${if (op.os) " — performed by the OS transfer services." else "."}")
             .addProperty(
+                PropertySpec.builder("ID", String::class, KModifier.CONST).initializer("%S", op.id)
+                    .addKdoc("The operationId — the name the grid's cells and the log use.").build(),
+            )
+            .addProperty(
                 PropertySpec.builder("TEMPLATE", String::class, KModifier.CONST).initializer("%S", op.path).build(),
             )
             .addProperty(
@@ -111,13 +115,13 @@ internal object WireRouteObjects {
             CodeBlock.of("%T.encodeToString(%T.serializer(), body)", json, ClassName(MODELS, it))
         } ?: CodeBlock.of("null")
         return fn.addCode(
-            "return %T(%T(%S, path(%L), %L, %L), ::decide)\n",
+            "return %T(ID, %T(METHOD, path(%L), %L, %L), ::decide, ::%T)\n",
             request,
             WIRE_REQUEST,
-            op.method,
             pathArgs,
             headers.build(),
             body,
+            ClassName(PACKAGE, "Unreachable"),
         ).build()
     }
 

@@ -1,7 +1,6 @@
 package app.snapsync.jvm
 
 import app.snapsync.mock.BuildInfoMock
-import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
@@ -15,6 +14,7 @@ import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Files
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.LogSink
@@ -32,7 +32,7 @@ import app.snapsync.ports.Wake
 /**
  * **One launch's adapters** — every port the JVM root composes the app and its upload extension over, chosen by the
  * root's caller. A launch gets a fresh set ([JvmApp.relaunch] asks for one), built over whatever durable state the
- * caller keeps: the mocks' ([JvmMocks.adapters]), real JVM storage, or the real `api/` behind the backend port.
+ * caller keeps: the mocks' ([JvmMocks.adapters]), real JVM storage, or the real `api/` behind the HTTP transport.
  *
  * Bundled by what they stand for: the [device] a process runs on, the operating system's [entries] into the app, and
  * the external [systems] the app talks to.
@@ -85,7 +85,7 @@ class JvmEntries(
 
 /** The external systems the app talks to: the backend, the photo library, and the OS's background machinery. */
 class JvmSystems(
-    val backend: Backend,
+    val http: HttpTransport,
     val backgroundTime: BackgroundTime,
     val wake: Wake,
     val extensionRegistry: ExtensionRegistry,

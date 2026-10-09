@@ -1,9 +1,15 @@
-package app.snapsync.http
+package app.snapsync.services.trust
 
+import app.snapsync.model.ProofFormat
+import app.snapsync.wire.models.AndroidKeyProof
+import app.snapsync.wire.models.AppleAppAttestProof
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 /** A chain handed across the port as concatenated DER comes apart into exactly its certificates. */
 class DerChainTest {
@@ -35,5 +41,14 @@ class DerChainTest {
             "a long form cut inside its length" to byteArrayOf(0x30, 0x82.toByte(), 0x01),
         )
         refused.forEach { (what, bytes) -> assertFailsWith<IllegalArgumentException>(what) { derElements(bytes) } }
+    }
+
+    @Test
+    @OptIn(ExperimentalEncodingApi::class)
+    fun `a proof crosses to the mint in its format - an Android chain one certificate at a time`() {
+        val android = assertIs<AndroidKeyProof>(wireProof("k", ProofFormat.ANDROID_KEY, short + long))
+        assertEquals(listOf(Base64.encode(short), Base64.encode(long)), android.chain)
+        val apple = assertIs<AppleAppAttestProof>(wireProof("k", ProofFormat.APP_ATTEST, short))
+        assertEquals(AppleAppAttestProof("k", Base64.encode(short)), apple)
     }
 }

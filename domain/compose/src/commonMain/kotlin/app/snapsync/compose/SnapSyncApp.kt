@@ -60,7 +60,6 @@ import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
-import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Databases
@@ -72,6 +71,7 @@ import app.snapsync.ports.Download
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
@@ -86,6 +86,7 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Upload
 import app.snapsync.ports.Wake
+import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.EventKeyMinting
@@ -156,12 +157,12 @@ class AppPorts(
      */
     val download: Download,
     /**
-     * The backend (`docs/architecture.md`, "Ports are the I/O boundary named for the need") — production passes
-     * `:adapter:generic:app`'s `HttpBackend` over the platform's HTTP client. Every need-shaped backend service is
-     * composed over it here, behind ONE authenticated backend, so no root can wire a call without the credential or
-     * without the version verdicts.
+     * HTTP, and nothing above it (`docs/architecture.md`, "The backend boundary") — production passes
+     * `:adapter:generic:app`'s `KtorHttpTransport` over the platform's HTTP client. The backend's protocol is composed
+     * over it here — ONE exchange, ONE gateway — so no root can wire a call without the credential or without the
+     * version verdicts.
      */
-    val backend: Backend,
+    val http: HttpTransport,
     /** The platform's device-integrity service (App Attest on iOS) — what the attestation service proves with. */
     val integrity: DeviceIntegrity,
     /**
@@ -254,7 +255,14 @@ class AppCore internal constructor(
      * attest (`DCAppAttestService.isSupported` is false in an app extension — measured), and the extension
      * reads the token this writes.
      */
-    val attestation: DeviceAttestation by lazy { attestationFor(services, process.clock, versionGate) }
+    val attestation: DeviceAttestation by lazy { attestationFor(services, process.clock, exchange) }
+
+    /**
+     * The backend's protocol over [AppPorts.http] (`docs/architecture.md`, "The backend boundary"): where every request
+     * goes, the version it declares, and the reply it reads — reporting a refused build to [versionGate]. The
+     * attestation service sends the token issuers through it; every other request goes through [backend]'s gateway.
+     */
+    val exchange: BackendExchange by lazy { BackendExchange(ports.http, process.build, versionGate) }
 
     /**
      * The app's foreground life as the create screen's draft follows it, stamped by the
@@ -272,23 +280,24 @@ class AppCore internal constructor(
     val refusal: StateFlow<DeviceRefusal?> get() = attestation.refusal
 
     /**
-     * Every need-shaped backend service, over one authenticated backend whose credential is [attestation]
-     * (a rejected token is dropped, a new one obtained, and the call retried once)
-     * and whose verdicts reach [versionGate]. Public for the app root's uploader, which publishes its manifest
+     * Every need-shaped backend service, over one gateway whose credential is [attestation] (a rejected
+     * token is dropped, a new one obtained, and the request retried once) and whose
+     * verdicts reach [versionGate] through [exchange]. Public for the app root's uploader, which publishes its manifest
      * through [BackendServices.manifest] like every other caller.
      */
-    val backend: BackendServices by lazy { backendServicesFor(services, attestation, versionGate) }
+    val backend: BackendServices by lazy { backendServicesFor(services, attestation, exchange) }
 
     // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read,
-    // counted by the status source over the gallery's admitted set. Read-only; on any failure the last good
-    // value is retained.
+    // counted by the status source over the gallery's admitted set. Read-only;
+    // on any failure the last good value is retained.
     val ledgerCounts: ReadingLedgerCountsSource by lazy {
         ReadingLedgerCountsSource { LedgerCounts.of(services.ledger.assetProgress()) }
     }
 
     /**
      * The one read seam the app's consumers hold — the grant decides the backing, not the consumer.
-     * Built here because choosing between ports by a third port's state is composition.
+     * Built here because choosing between ports by a third port's
+     * state is composition.
      *
      * Public for the same reason [gallery] is: the dev/test control channel's gallery read asks THIS seam
      * rather than walking PhotoKit itself, so what it reports is what the app would see — including the
@@ -391,6 +400,8 @@ class AppCore internal constructor(
                 if (recorded) tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
             },
             network = services.mobileData::transferNetwork,
+            // The version every request declares — the download redirect's too (`downloadResource`).
+            headers = exchange::versionHeaders,
             // An encrypted event's bytes are opened before they are staged (the encrypted file format).
             opening = DownloadOpening(services.eventKeys, services.fileCipher, services.config, process.files),
             entryContext = process.entryContext,

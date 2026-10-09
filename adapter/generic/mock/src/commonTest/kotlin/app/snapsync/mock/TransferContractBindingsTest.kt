@@ -155,8 +155,8 @@ class TransferContractBindingsTest {
     ) : Download by double {
         private val urls = mutableMapOf<String, String>()
 
-        override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
-            val started = double.start(url, tag, network)
+        override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
+            val started = double.start(url, headers, tag, network)
             if (started != StartResult.Started) return started
             urls[tag] = url
             answer(tag, url)

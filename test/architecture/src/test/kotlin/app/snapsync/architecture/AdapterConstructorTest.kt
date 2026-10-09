@@ -103,7 +103,7 @@ class AdapterConstructorTest {
             "found only $implementations port implementations in the adapters — the scan is broken",
         )
         assertTrue(adapterSources.any { "/src/rig/" in it.path }, "the rig source sets are in scope")
-        val sample = "internal class Probe(private val f: () -> Unit, val n: Int) : Backend, Other {\n}"
+        val sample = "internal class Probe(private val f: () -> Unit, val n: Int) : HttpTransport, Other {\n}"
         assertEquals(setOf("Probe"), portImplementations(sample), "a class naming a port among its supertypes is one")
         assertEquals(
             listOf("Probe.f"),

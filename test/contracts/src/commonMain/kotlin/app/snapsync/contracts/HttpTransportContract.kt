@@ -42,7 +42,10 @@ object HttpTransportContract : Contract<HttpTransportState, TransportUnderTest>(
             HttpTransportState.PEER,
             covers = cells { on<HttpTransport>().answers(HttpTransport::send).with(HttpResult.Response::class) },
         ) { s ->
-            val url = s.url("A_SUCCESS_IS_A_RESPONSE_WITH_ITS_HEADERS_AND_BODY", FixtureAnswer.Respond(200, length = 64))
+            val url = s.url(
+                "A_SUCCESS_IS_A_RESPONSE_WITH_ITS_HEADERS_AND_BODY",
+                FixtureAnswer.Respond(200, length = 64),
+            )
             val response = assertIs<HttpResult.Response>(s.transport.send(HttpRequest("GET", url, emptyMap(), null)))
             assertEquals(200, response.status)
             assertEquals(64, response.body.length, "the whole body is read")
@@ -68,7 +71,12 @@ object HttpTransportContract : Contract<HttpTransportState, TransportUnderTest>(
             HttpTransportState.PEER,
             covers = cells { on<HttpTransport>().answers(HttpTransport::send).with(HttpResult.Response::class) },
         ) { s ->
-            val path = TransferFixture.path(name, "A_SENT_BODY_ARRIVES_WITH_ITS_MEDIA_TYPE", "put", FixtureAnswer.Respond(201))
+            val path = TransferFixture.path(
+                name,
+                "A_SENT_BODY_ARRIVES_WITH_ITS_MEDIA_TYPE",
+                "put",
+                FixtureAnswer.Respond(201),
+            )
             val body = """{"name":"Anna's Birthday"}"""
             val sent = s.transport.send(
                 HttpRequest("PUT", s.base.trimEnd('/') + path, mapOf("Content-Type" to "application/json"), body),

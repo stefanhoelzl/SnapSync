@@ -11,11 +11,12 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.Upload
+import app.snapsync.services.backend.BackendExchange
+import app.snapsync.services.backend.BackendUploadRequests
 import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
@@ -128,17 +129,15 @@ internal class UploadServices(
     val token: suspend () -> String?,
     /**
      * The attestation bearer token read from its store of record, bypassing any in-process copy — what a retry's
-     * request carries, so a retry picks up a refreshed token. Required, like [token]: `{ null }` must be stated.
+     * request carries, since a retry picks up a refreshed token. Required, like
+     * [token]: `{ null }` must be stated.
      */
     val freshToken: suspend () -> String?,
     /**
-     * The calling build's marketing version, declared on the byte upload.
-     *
-     * A plain value, and required: each process builds its own bundle in its own root and reads its own
-     * bundle there, so there is no other process's answer to bind. It used to be a thunk defaulting to `""`,
-     * which let a composition declare no version to the min-app-version gate without saying so.
+     * The process's backend exchange: where a byte upload goes and the version it declares — the same every
+     * backend request carries, read off the process's own bundle.
      */
-    val appVersion: String,
+    val exchange: BackendExchange,
     /**
      * The joined event's key, when it is encrypted (the encrypted file format, `docs/architecture.md`): what each
      * upload is sealed under. Required: the app passes its own, the extension one over its read of the shared slot.
@@ -191,13 +190,12 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         engineFor = { config ->
             // Built per cycle because the host arrives with the gate's config, not at composition time.
             SyncEngine(
-                EdgeUploadRequestProvider(
-                    config.host,
+                BackendUploadRequests(
+                    ports.exchange,
                     config.eventId,
                     ports.deviceIdentity.deviceId(),
                     ports.token,
                     ports.freshToken,
-                    ports.appVersion,
                 ),
                 ledger,
             )

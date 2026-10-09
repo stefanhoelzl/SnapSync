@@ -6,14 +6,11 @@ import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.CrashOptions
-import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.Crumb
-import app.snapsync.model.DeviceManifest
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
-import app.snapsync.model.Reply
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadError
@@ -23,8 +20,24 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.CrashHandlers
+import app.snapsync.wire.api.ChallengeReply
+import app.snapsync.wire.api.CreateEventReply
+import app.snapsync.wire.api.GetEventReply
+import app.snapsync.wire.api.MintTokenReply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.Unauthorized
+import app.snapsync.wire.models.AppleAppAttestProof
+import app.snapsync.wire.models.DeviceConfig
+import app.snapsync.wire.models.EventCreate
+import app.snapsync.wire.models.Manifest
+import app.snapsync.wire.models.ManifestAsset
+import app.snapsync.wire.models.ManifestResource
+import app.snapsync.wire.models.MintRequest
+import app.snapsync.wire.models.PushRegistration
+import app.snapsync.wire.models.Role
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
+import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -38,6 +51,7 @@ import kotlin.time.Instant
  * driven through its ports and levers, encoded and restored into a fresh device, encodes to the same text — and the
  * restored mocks answer as the originals did.
  */
+@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
 class MockStateTest {
 
     /** [device]'s state for every system, as text. */
@@ -82,7 +96,7 @@ class MockStateTest {
         assertTrue(position > 0)
         assertEquals(listOf(SentPush(event, OTHER, "other-token", seq = position)), copy.backend.operator.pushesSent())
         assertEquals(position, copy.backend.operator.unionPositionOf(event), "and so does the union's position")
-        assertIs<Reply.Ok<*>>(copy.backend.port(app.snapsync.mock.DeclaredVersion("99.0")).getEvent(null, event))
+        assertIs<GetEventReply.Found>(Wire(copy.backend.port()).send(Routes.GetEvent.request(event)))
     }
 
     @Test
@@ -92,29 +106,20 @@ class MockStateTest {
         val copy = copyOf(device)
         assertEquals(app.snapsync.model.DeviceRefusal.DEVICE_MODIFIED, copy.backend.operator.refuseAttestation)
 
-        val backend = copy.backend.port()
-        val challenge = (backend.challenge() as Reply.Ok).value
-        val proof = "attestation:k:$challenge".encodeToByteArray()
-        val mint = backend.mintToken(
-            app.snapsync.model.MintRequest(DEVICE, "k", app.snapsync.model.ProofFormat.APP_ATTEST, proof, challenge),
-        )
+        val backend = Wire(copy.backend.port())
+        val challenge = assertIs<ChallengeReply.Issued>(backend.send(Routes.Challenge.request())).challenge.challenge
+        val proof = AppleAppAttestProof("k", Base64.encode("attestation:k:$challenge".encodeToByteArray()))
+        val mint = backend.send(Routes.MintToken.request(MintRequest(DEVICE, challenge, proof)))
         assertEquals(
-            Reply.Refused(401, "attestation rejected: device-modified"),
+            MintTokenReply.Rejected("attestation rejected: device-modified"),
             mint,
             "even a genuine proof, as v2 names it",
         )
-        assertEquals(
-            401,
-            (
-                backend.createEvent(
-                    null,
-                    CreateEventRequest("Party", "2026-06-01T00:00:00Z", null),
-                ) as Reply.Refused
-                ).status,
-        )
+        val create = Routes.CreateEvent.request(EventCreate("Party", "2026-06-01T00:00:00Z"))
+        assertEquals(Unauthorized, backend.send(create))
 
         copy.backend.operator.refuseAttestation = null
-        assertIs<Reply.Ok<*>>(backend.createEvent(null, CreateEventRequest("Party", "2026-06-01T00:00:00Z", null)))
+        assertIs<CreateEventReply.Created>(backend.send(create))
     }
 
     @Test
@@ -164,19 +169,15 @@ class MockStateTest {
     /** A device driven through its ports and levers into a state every system has something of. */
     private suspend fun drive(): MockDevice {
         val device = MockDevice(ownDeviceId = DEVICE, osDrivenUpload = true)
-        val backend = device.backend.port()
-        val event = (
-            backend.createEvent(
-                null,
-                CreateEventRequest("Party", "2026-06-01T00:00:00Z", null),
-            ) as Reply.Ok
-            ).value.eventId
-        backend.joinEvent(null, event, DEVICE)
-        backend.joinEvent(null, event, OTHER)
-        backend.putDeviceConfig(null, DEVICE, PushEndpoint("apns", "tok", "sandbox"))
-        backend.putDeviceConfig(null, OTHER, PushEndpoint("apns", "other-token", "sandbox"))
+        val backend = Wire(device.backend.port())
+        val created = backend.send(Routes.CreateEvent.request(EventCreate("Party", "2026-06-01T00:00:00Z")))
+        val event = assertIs<CreateEventReply.Created>(created).event.eventId
+        backend.send(Routes.JoinEvent.request(event, DEVICE))
+        backend.send(Routes.JoinEvent.request(event, OTHER))
+        backend.send(Routes.PutDevice.request(DEVICE, DeviceConfig(PushRegistration("apns", "tok", "sandbox"))))
+        backend.send(Routes.PutDevice.request(OTHER, DeviceConfig(PushRegistration("apns", "other-token", "sandbox"))))
         val asset = foreignAsset("A1")
-        backend.publishManifest(null, event, DEVICE, DeviceManifest(DEVICE, listOf(asset), version = 3))
+        backend.send(Routes.PublishManifest.request(event, DEVICE, manifestOf(listOf(asset), version = 3)))
         device.backend.operator.deposit(
             DEVICE,
             AssetId("A1"),
@@ -229,7 +230,12 @@ class MockStateTest {
         )
         device.uploadQueue.operator.failJob("A1-primary.jpg", UploadError.Http(503))
         device.uploadSession.handbacks = 2
-        device.downloads.port().start("https://in-memory.store/D2/F1", "F1-primary", TransferNetwork.UNRESTRICTED_ONLY)
+        device.downloads.port().start(
+            "https://in-memory.backend/api/v2/events/E/files/devices/D2/F1/primary",
+            emptyMap(),
+            "F1-primary",
+            TransferNetwork.UNRESTRICTED_ONLY,
+        )
         device.lifecycle.everActive = true
         device.pushService.port().register()
         device.systemUi.port().share("hello", "Party")
@@ -237,18 +243,14 @@ class MockStateTest {
         return device
     }
 
-    private fun foreignAsset(id: String) = app.snapsync.model.DeviceManifestAsset(
-        AssetId(id),
+    private fun foreignAsset(id: String) = ManifestAsset(
+        id,
         LibraryAssets.DEFAULT_DATE,
-        listOf(
-            app.snapsync.model.ManifestResource(
-                app.snapsync.model.ResourceRole.PRIMARY,
-                "image/jpeg",
-                "$id-primary.jpg",
-                "$id-primary.jpg",
-            ),
-        ),
+        listOf(ManifestResource(Role.PRIMARY, "image/jpeg", "$id-primary.jpg", "$id-primary.jpg")),
     )
+
+    private fun manifestOf(assets: List<ManifestAsset>, version: Long) =
+        Manifest(deviceId = DEVICE, assets = assets, version = version, `final` = false)
 
     private companion object {
         const val DEVICE = "00000000-0000-4000-9000-00000000000d"

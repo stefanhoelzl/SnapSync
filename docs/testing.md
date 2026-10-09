@@ -45,7 +45,7 @@ differently at runtime; every real platform bug came from an adapter or a driver
 difference between runtimes in shared code is what the journeys catch — they run the composed app on each runtime.
 The Kotlin/Native compile of every shared source set is still checked by `ios-build` and the journeys' app builds.
 
-**Deno is a hard prerequisite of `build`.** `:adapter:generic:app:jvmTest` runs the `Backend` port's
+**Deno is a hard prerequisite of `build`.** `:adapter:generic:app:jvmTest` runs the `Backend`
 contract against the real `api/`, started as `src/dev/serve.ts --ephemeral` (loopback only, filesystem
 store, no bunny zone reachable). Without Deno those tests **fail naming it**. They never turn into
 `NotRunHere`. `api/src` is declared as an input of that task, so a backend-only change re-runs them
@@ -222,14 +222,19 @@ end of this section.
   delete what they seed.
 
 Where bindings live: beside their implementations.
-- Fakes: `:adapter:generic:mock` `commonTest` — the in-memory `Backend` mock (`BackendContractBindingTest`), the
+- Fakes: `:adapter:generic:mock` `commonTest` — the backend mock's HTTP face (`BackendContractBindingTest`), the
   in-memory `DeviceIntegrity`, and the upload-job queue and download session mocks (`TransferContractBindingsTest`)
   among them.
-- The `Backend` port is ONE contract (`BackendContract`, split into part files by route area for size), held by
-  two bindings: `HttpBackend` against the real `api/` (`Live`, the coverage) and the in-memory mock (`Fake`). Its clauses state each route's answers in the backend's own vocabulary —
-  statuses and bodies — because what they MEAN is the services' decision above the port, tested beside those
-  services (`CredentialedBackendTest`, `BackendServicesTest`). A binding enters states through the backend's public
-  surface: `EdgeSetup` over HTTP, `PortSetup` through the port itself for a backend with no HTTP surface.
+- The backend is ONE contract (`BackendContract`, split into part files by area for size; `docs/architecture.md`,
+  "The backend boundary"), whose subject is the production gateway (`BackendClient` over `BackendGateway`), held by
+  two bindings: over `KtorHttpTransport` to the real `api/` (`Live`, the coverage) and over the backend mock's HTTP
+  face (`Fake`). Its clauses state each operation's OUTCOMES as `api/openapi.yaml` names them — `Full`,
+  `EventNotFound`, `AppTooOld` — and its cells are those outcomes (`Backend.<operationId> → <Outcome>`, one
+  `Backend.* → <Outcome>` for an outcome several operations share), which the port grid derives from the generated
+  replies; what an outcome MEANS is the services' decision above the gateway, tested beside those services
+  (`BackendGatewayTest`, `BackendServicesTest`). A binding enters states through the backend's public surface,
+  `EdgeSetup` over HTTP — the real `api/`'s and the mock's alike. The `HttpTransport` port beneath it has its own
+  contract, held per engine (CIO and OkHttp on the JVM, OkHttp on `ANDROID_EMU`).
 - The live backend, and the JVM `Databases` and `Files` adapters: `:adapter:generic:app` `jvmTest` — so every
   `build` runs them, not only CI's simulator job.
 - The iOS `Databases`, `Files` and `Preferences` adapters on Kotlin/Native: `:adapter:ios:ext-safe` tests.
@@ -395,7 +400,8 @@ clause(
 ```
 
 The forms are `answers(member).with(LeafClass::class | ENUM_ENTRY | true | null)`, `.withGenericLeaf(…)`
-(a leaf of a generic sealed type such as `Reply.Ok`, which the compiler cannot check), `.returns()`,
+(a leaf of a generic sealed type such as `FileResult.Ok`, which the compiler cannot check), `.returns()`,
+`backend(Routes.<Op>.ID, Outcome::class)` for one of the backend's outcomes,
 `.throws()`, `emits(flowMember)` for a `Flow`, `calls(XHandlers::field, args…)` for an event port's
 handler, `callsBack(member, "param", args…)` for a callback handed to a member, and `handle<H>()` for a
 handle's members. The port is a reified `on<P>()` because a Kotlin/Native member reference carries only its
@@ -486,12 +492,13 @@ the binding stands up only to *receive* (the Sentry ingest), or to *answer with 
 input or observer. It does not change the binding's kind. A receiving endpoint must not be more lenient
 than production on a limit production is measured to enforce.
 
-One exception is deliberate and narrow: a **wire fixture** for the `Backend` port's HTTP adapter. A loopback server
-answering every route with success and bytes no backend version this build speaks would send stands in for a backend
-of another version, and its binding counts as `Live` for `BackendState.UNREADABLE_SUCCESS` alone — the one state
-whose clause judges only what the client's own decoding makes of the bytes (`Reply.Malformed`), never what a backend
-answers. The real `api/` never sends such a body, so nothing else could produce that answer; every other backend
-state stays the real `api/`'s or the in-memory mock's.
+One exception is deliberate and narrow: a **wire fixture** for the backend gateway. A loopback server answering every
+route one way — success in bytes no backend version this build speaks would send, a `502` failing store, or a `503`
+maintenance window with its `Retry-After` — stands in for a backend in that condition, and its binding counts as `Live`
+for `BackendState.UNREADABLE_SUCCESS`, `SERVER_FAILING` and `IN_MAINTENANCE` alone — states whose clauses judge only
+what the client's own reading makes of the answer (`Malformed`, `ServerError`, `Maintenance`), never what a backend
+decides. The local `api/` never enters them on request, so nothing else could produce those answers; every other
+backend state stays the real `api/`'s or the backend mock's.
 
 No host can enter "protected data unavailable before first unlock", and the reason is mechanical rather
 than a gap in the fleet: before first unlock the App-Group file the launch-time adapters read sits in a
@@ -600,19 +607,25 @@ are under `openspec/changes/archive/`.
   and the pushes the backend would send).
 
 A mock with nothing to pull (`PreferencesMock`, `SecureStoreMock`, `DeviceIntegrityMock`) has no operator face;
-`DatabasesMock`'s answers only which databases the device saw opened. The port-typed factories the contract bindings use (`inMemoryBackend()`, `inMemoryGallery()`, ...)
+`DatabasesMock`'s answers only which databases the device saw opened. The port-typed factories the contract bindings use (`inMemoryGallery()`, ...)
 build the same classes over caller-held cells.
 
-- **The backend mock** (`BackendMock`) is the JVM default backend. Its port face answers in the backend's own
-  vocabulary and declares the version its build declares (`DeclaredVersion`, a cell an operator may change to play
-  an update in place). It holds the real backend's rules the contract checks and the ones it does not: membership is
+- **The backend mock** (`BackendMock`) is the JVM default backend. Its port face is the device API at the
+  `HttpTransport` port (`BackendRouter`): it routes each request on the generated templates and answers the statuses,
+  texts and JSON bodies `api/openapi.yaml` declares, so the app's real gateway, routes and replies run over it. The
+  version a request declares is its own header — `BuildInfoMock`'s cell, which an operator may change to play an
+  update in place (`port(declared)` plays it for a baked build). It serves a request with no `Authorization` as the
+  dev server's fallback bearer does (`fallbackBearer`, on by default), checks a token it is sent, refuses one minted
+  for another device than the path names, and its operator can make any operation answer a fault before it runs
+  (`fail(operationId, BackendFault, times)` — a failing store, a maintenance window, no answer, a malformed body). It holds the real backend's rules the contract checks and the ones it does not: membership is
   one record with an active/departed state (the real backend's `done`/`left` split is observable through no route,
   so the mock keeps none), the union spans departed members, the publish or leave that leaves no active member
   unsettled closes the event, capacity counts every device ever
   enrolled, a rejoin clears the stored manifest version, a strictly older manifest is answered and changes nothing,
   names are 1–100 characters, and a write that makes something newly servable records a silent push to every other
-  active member holding a token (`pushesSent`, the APNs mock). Bytes are not a port route: an OS upload reaches the
-  mock through `BackendOperator.receive`, the byte route, which the upload-job queue mock's network is by default.
+  active member holding a token (`pushesSent`, the APNs mock). An OS upload reaches the mock through
+  `BackendOperator.receive`, the byte route, which the upload-job queue mock's network is by default; a request to
+  the byte route over the port is answered the same.
 - **The transfer mocks are the transfer contracts' `Fake` bindings** (`TransferContractBindingsTest`, beside them). A
   clause the mock fails is fixed in the mock. The PhotoKit tier's one free retry, which no real host shows, stays
   uncontracted.
@@ -630,8 +643,8 @@ build the same classes over caller-held cells.
 and nothing else — and the upload extension beside it exactly as `UploadExtensionRoot` does (`snapSyncExtension` over
 `ExtensionPorts`), over the adapters **its caller** chooses for each launch, from a durable state the caller keeps:
 `JvmApp(scope, durable) { durable -> adapters }`. `JvmMocks` is that durable state as one mock per external system, and
-`JvmMocks.adapters(build, attests, backend, logSinks)` its launch's adapters (`build` is a `BuildInfoMock`, its declared version a cell the caller holds); a
-caller may put the real `api/` behind the backend port instead (`VersionedHttpBackend`). **`relaunch()` is process
+`JvmMocks.adapters(build, attests, http, logSinks)` its launch's adapters (`build` is a `BuildInfoMock`, its declared version a cell the caller holds, which every request declares); a
+caller may put the real `api/` behind the `HttpTransport` port instead (`KtorHttpTransport` over CIO). **`relaunch()` is process
 death**: the running app's collectors and launches end, and a new app is composed over a fresh set of port faces over the
 same durable state. It is wiring only — no lever, no test DSL — and gated as a shell.
 
@@ -674,7 +687,7 @@ tests are rig tests now (section 7). `DeletionLedgerTest` keeps them deleted.
 - the **app host**: the rig build of the iOS app (`-Psnapsync.rig=true`) on a device or simulator, over
   real ports. It is contained at compile time.
 - the **JVM host**: the app the JVM root composes (section 5) over the mocks, with the backend mock or the real
-  `api/` behind the backend port: `./gradlew :test:rig:runJvmHost -Psnapsync.rigBackend=mock|deno`. No device and no
+  `api/` behind the HTTP transport: `./gradlew :test:rig:runJvmHost -Psnapsync.rigBackend=mock|deno`. No device and no
   lock needed.
 
 The hosts differ only in the hook they hand the server. They never differ in a route or in the state
@@ -1007,7 +1020,7 @@ deno task schema:check   # the generated schema.sql is fresh
   `migrations.test.ts`. The rules themselves are in `docs/deployment.md`.
 - Every task resolves a deployment first (`deno task config`), and there is no default.
 
-**The Kotlin side also tests the backend.** The `Backend` port contract's Live binding in `build` runs the
+**The Kotlin side also tests the backend.** The `Backend` contract's Live binding in `build` runs the
 real `api/` through `:test:edge` (`serve.ts --ephemeral`: loopback only, fresh filesystem store). The
 journeys run it too. A backend change that breaks a client contract therefore fails `./gradlew build`, not
 only `deno task test`.

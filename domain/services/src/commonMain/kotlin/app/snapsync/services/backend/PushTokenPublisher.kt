@@ -2,8 +2,11 @@ package app.snapsync.services.backend
 
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.toResult
 import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.wire.api.PutDeviceReply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.models.DeviceConfig
+import app.snapsync.wire.models.PushRegistration
 
 /**
  * Where this device's push token is published so the backend can wake it. The
@@ -27,12 +30,16 @@ fun interface PushTokenPublisher {
  * identity the secure store could not yet serve is retried rather than fixed at construction.
  */
 class BackendPushTokenPublisher(
-    private val backend: AuthenticatedBackend,
+    private val gateway: BackendGateway,
     private val identity: PersistedDeviceIdentity,
 ) : PushTokenPublisher {
 
     override suspend fun publish(token: PushEndpoint): Result<Unit> {
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
-        return backend.putDeviceConfig(id, token).toResult("config PUT $id")
+        val config = DeviceConfig(PushRegistration(kind = token.kind, token = token.token, env = token.env))
+        return when (val reply = gateway.send(Routes.PutDevice.request(id, config))) {
+            PutDeviceReply.Recorded -> Result.success(Unit)
+            else -> Result.failure(IllegalStateException("config PUT $id: $reply"))
+        }
     }
 }

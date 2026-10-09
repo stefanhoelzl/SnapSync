@@ -1,19 +1,19 @@
 package app.snapsync.liveedge
 
+import app.snapsync.contracts.BackendClient
 import app.snapsync.contracts.BackendContract
 import app.snapsync.contracts.BackendState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
+import app.snapsync.contracts.ClientIdentity
 import app.snapsync.contracts.EdgeSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.SERVED_APP_VERSION
 import app.snapsync.contracts.Seeded
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.http.HttpBackend
-import app.snapsync.ports.Backend
+import app.snapsync.http.KtorHttpTransport
 import com.sun.net.httpserver.HttpServer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -25,15 +25,14 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * The `Backend` port contract against the REAL backend (`docs/testing.md`): the production [HttpBackend] over a
- * socket to `api/`, served locally by [LiveEdge]. This is the binding that makes every backend clause covered; the
- * backend mock's in `:adapter:generic:mock` is the `Fake` held to it.
+ * The `Backend` contract against the REAL backend (`docs/testing.md`): the production gateway ([BackendClient]) over
+ * [KtorHttpTransport] and a socket to `api/`, served locally by [LiveEdge]. This is the binding that makes every
+ * backend clause covered; the backend mock's in `:adapter:generic:mock` is the `Fake` held to it.
  *
  * JVM only, and the coverage that forgoes is stated here (`docs/testing.md`, "Every test runs on every target its
  * module declares"): a Kotlin/Native test executable under `simctl` cannot launch the backend as a process. Nothing
- * is lost by it: [HttpBackend] is `commonMain` code, identical on every target, and its Kotlin/Native compilation is
- * covered by this module's `commonTest`. What differs on a device is the Ktor ENGINE (Darwin), which no binding here
- * — or anywhere yet — puts in front of a real backend.
+ * is lost by it: the gateway and the generated wire are `commonMain` code, identical on every target. What differs on
+ * a device is the Ktor ENGINE, which the `HttpTransport` contract holds on each platform.
  *
  * Every state is reachable here: the dev edge enrols the device a token-less call names (`api/src/dev/fallback.ts`),
  * because on a host without App Attest nothing else ever could, and it verifies every token it is shown.
@@ -41,7 +40,7 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 class LiveEdgeContractsTest {
 
-    private val backend = object : Binding<BackendState, EdgeSubject<Backend>> {
+    private val backend = object : Binding<BackendState, EdgeSubject<BackendClient>> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
         override val reaches = setOf(
@@ -62,51 +61,60 @@ class LiveEdgeContractsTest {
             BackendState.ATTESTABLE,
         )
 
-        override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<Backend>> {
+        override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<BackendClient>> {
             if (state !in reaches) {
                 return Entered.Unreachable(
                     "the real backend answers what it sends; a fixture is apart",
                 )
             }
-            val entered = LiveEdge.enter<Backend>(
+            val address = if (state == BackendState.NO_BACKEND) closedLoopbackAddress() else null
+            val entered = LiveEdge.enter(
                 { BackendContract.seed(state, clauseId, it) },
-            ) { client, base, seeded ->
-                val address = if (state == BackendState.NO_BACKEND) closedLoopbackAddress() else base
-                HttpBackend(client, address, seeded.identity.appVersion).recorded(log)
+            ) { transport, base, identity ->
+                BackendClient(transport.recorded(log), address ?: base, identity, log)
             }
             if (state != BackendState.ATTESTABLE || entered !is Entered.Ready) return entered
             // The local rig trusts any attestation: a software chain, as an emulator presents, is what it accepts.
             val subject = entered.subject
             return Entered.Ready(
-                EdgeSubject(subject.port, subject.seeded, subject.setup, SoftwareKeyAttestation()),
+                EdgeSubject(subject.port, subject.seeded, subject.setup, SoftwareKeyAttestation(), subject::declaring),
                 entered.dispose,
             )
         }
     }
 
     /**
-     * HttpBackend against a wire fixture (`docs/testing.md`, "Hosts"): a loopback server that answers every route with
-     * success and bytes no backend version this build speaks would send. It stands in for a backend of another
-     * version, and counts as live for [BackendState.UNREADABLE_SUCCESS] alone, because the clause judges only the
-     * client's decoding — the real engine and socket, reading bytes the clause chose.
+     * The gateway against a wire fixture (`docs/testing.md`, "Hosts"): a loopback server that answers every route one
+     * way — success in bytes no backend version this build speaks would send, a failing store, or a migration window.
+     * It stands in for a backend in that condition, and counts as live for those states alone, because each clause
+     * judges only the client's reading — the real engine and socket, reading bytes the clause chose.
      */
-    private val wireFixture = object : Binding<BackendState, EdgeSubject<Backend>> {
+    private val wireFixture = object : Binding<BackendState, EdgeSubject<BackendClient>> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
-        override val reaches = setOf(BackendState.UNREADABLE_SUCCESS)
+        override val reaches =
+            setOf(BackendState.UNREADABLE_SUCCESS, BackendState.SERVER_FAILING, BackendState.IN_MAINTENANCE)
 
-        override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<Backend>> {
+        override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<BackendClient>> {
             if (state !in reaches) return Entered.Unreachable("a wire fixture is no backend: it answers one thing")
+            val (status, headers, text) = when (state) {
+                BackendState.SERVER_FAILING -> Triple(HTTP_BAD_GATEWAY, mapOf(CONTENT_TYPE to TEXT), "upstream error")
+                BackendState.IN_MAINTENANCE ->
+                    Triple(HTTP_UNAVAILABLE, mapOf(CONTENT_TYPE to TEXT, "Retry-After" to "60"), "maintenance")
+                else -> Triple(HTTP_OK, emptyMap(), "<html>a page from somewhere else</html>")
+            }
             val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
                 createContext("/") { exchange ->
-                    val body = "<html>a page from somewhere else</html>".encodeToByteArray()
-                    exchange.sendResponseHeaders(HTTP_OK, body.size.toLong())
+                    val body = text.encodeToByteArray()
+                    headers.forEach { (name, value) -> exchange.responseHeaders.add(name, value) }
+                    exchange.sendResponseHeaders(status, body.size.toLong())
                     exchange.responseBody.use { it.write(body) }
                 }
                 start()
             }
             val client = HttpClient(CIO)
-            val port = HttpBackend(client, "http://127.0.0.1:${server.address.port}", SERVED_APP_VERSION).recorded(log)
+            val base = "http://127.0.0.1:${server.address.port}"
+            val port = BackendClient(KtorHttpTransport(client).recorded(log), base, ClientIdentity.SERVED, log)
             val seeded = Seeded(eventId = Uuid.random().toString(), deviceId = Uuid.random().toString())
             return Entered.Ready(EdgeSubject(port, seeded)) {
                 client.close()
@@ -119,7 +127,8 @@ class LiveEdgeContractsTest {
     fun `the real edge satisfies the Backend contract`() = verify(BackendContract, backend)
 
     @Test
-    fun `HttpBackend reads no value out of bytes it cannot decode`() = verify(BackendContract, wireFixture)
+    fun `the gateway reads what a fixture answers - and no value out of bytes it cannot decode`() =
+        verify(BackendContract, wireFixture)
 
     /** A loopback port nothing listens on: bound to learn a free one, then closed, so a connect is refused. */
     private fun closedLoopbackAddress(): String =
@@ -127,5 +136,9 @@ class LiveEdgeContractsTest {
 
     private companion object {
         const val HTTP_OK = 200
+        const val HTTP_BAD_GATEWAY = 502
+        const val HTTP_UNAVAILABLE = 503
+        const val CONTENT_TYPE = "Content-Type"
+        const val TEXT = "text/plain; charset=UTF-8"
     }
 }

@@ -1,8 +1,14 @@
 package app.snapsync.services.version
 
-import app.snapsync.model.Reply
 import app.snapsync.model.VersionRefusal
 import app.snapsync.services.CapturingLogWriter
+import app.snapsync.wire.api.AppTooOld
+import app.snapsync.wire.api.JoinEventReply
+import app.snapsync.wire.api.Malformed
+import app.snapsync.wire.api.Unauthorized
+import app.snapsync.wire.api.Unreachable
+import app.snapsync.wire.models.AppTooOldError
+import app.snapsync.wire.models.AppTooOldErrorError
 import co.touchlab.kermit.Severity
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -87,13 +93,13 @@ class AppVersionGateTest {
     }
 
     @Test
-    fun observing_a_426_refuses_naming_the_minimum_and_a_success_clears_it() {
+    fun observing_a_refused_build_names_the_minimum_and_a_success_clears_it() {
         val gate = AppVersionGate()
-        gate.observe(Reply.Refused(426, """{"error":"app too old","minAppVersion":"0.4"}"""))
+        gate.observe(AppTooOld(AppTooOldError(AppTooOldErrorError.APP_TOO_OLD, "0.4")))
         assertEquals(VersionRefusal("0.4"), gate.refusal.value)
-        gate.observe(Reply.Refused(426, "too old"))
+        gate.observe(AppTooOld(AppTooOldError(AppTooOldErrorError.APP_TOO_OLD)))
         assertEquals(VersionRefusal(null), gate.refusal.value, "a refusal naming no version is still a refusal")
-        gate.observe(Reply.Ok(Unit))
+        gate.observe(JoinEventReply.Joined)
         assertNull(gate.refusal.value)
     }
 
@@ -101,9 +107,9 @@ class AppVersionGateTest {
     fun observing_any_other_answer_says_nothing_about_this_build() {
         val gate = AppVersionGate()
         gate.refused("0.4")
-        gate.observe(Reply.Refused(401, "invalid token"))
-        gate.observe(Reply.Malformed("x"))
-        gate.observe(Reply.Unreachable(IllegalStateException("offline")))
+        gate.observe(Unauthorized)
+        gate.observe(Malformed("x"))
+        gate.observe(Unreachable("offline"))
         assertEquals(VersionRefusal("0.4"), gate.refusal.value, "only a success heals the screen")
     }
 }

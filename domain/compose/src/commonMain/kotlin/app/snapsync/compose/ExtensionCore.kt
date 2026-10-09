@@ -6,20 +6,21 @@ import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.invocation
 import app.snapsync.model.orNullLogged
-import app.snapsync.ports.Backend
 import app.snapsync.ports.Databases
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Upload
 import app.snapsync.services.album.AlbumMapService
+import app.snapsync.services.backend.BackendExchange
+import app.snapsync.services.backend.BackendGateway
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.backend.CredentialedBackend
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.SuppressionService
@@ -59,8 +60,8 @@ class ExtensionPorts(
     val gallery: GalleryReader,
     /** The upload-job queue the cycle creates its jobs on. */
     val upload: Upload,
-    /** The backend, behind a credential that only drops a rejected token (see [extensionBackend]). */
-    val backend: Backend,
+    /** HTTP: the backend's protocol is composed over it, behind a credential that only drops a rejected token. */
+    val http: HttpTransport,
     /** The operating system's invocations of this extension — the one entry port, listened to at composition. */
     val host: ExtensionHost,
 )
@@ -130,6 +131,8 @@ private fun extensionServices(
     }
     val albums = GalleryAlbums(ports.gallery)
     val build = ports.process.build
+    // No version gate: the extension has no screen to show a refusal on.
+    val exchange = BackendExchange(ports.http, build, versionGate = null)
     val config = ConfigService(process.files, process.clock)
     return UploadServices(
         config = config,
@@ -149,7 +152,7 @@ private fun extensionServices(
         // before any read.
         selectionScope = { SelectionScope.Unrestricted },
         manifestStore = DeviceManifestService(process.files),
-        manifestPublisher = extensionBackend(ports.backend, attestStore, identity).manifest,
+        manifestPublisher = extensionBackend(exchange, attestStore, identity).manifest,
         suppression = SuppressionService(ports.databases),
         // A failed denylisted-album lookup fails the cycle here; the next invocation retries.
         albumExclusions = { cutoff ->
@@ -167,7 +170,7 @@ private fun extensionServices(
             attestStore.reread()
             token()
         },
-        appVersion = build.appVersion,
+        exchange = exchange,
         // Read only: the extension derives each file's key from the kept one and never writes the slot.
         eventKeys = EventKeys(process.crypto, ports.secureStore),
         log = log,
@@ -220,21 +223,20 @@ internal fun extensionHandlers(
 
 /**
  * The upload extension's backend services: the same need-shaped services the app
-
- * composes, over an authenticated backend whose credential only DROPS a rejected token ([ExtensionCredential]) —
- * the extension cannot attest, so it never retries a rejected call — and with no version gate, because the
+ * composes, over a gateway whose credential only DROPS a rejected token ([ExtensionCredential]) — the extension
+ * cannot attest, so it never retries a rejected request — over an [exchange] with no version gate, because the
  * extension has no screen to show a refusal on.
  *
  * [attestStore] is the root's one in-memory copy of the shared token, the one it re-reads at every invocation.
  */
 internal fun extensionBackend(
-    backend: Backend,
+    exchange: BackendExchange,
     attestStore: CachedAttestStore,
     identity: PersistedDeviceIdentity,
 ): BackendServices =
     // The extension never creates an event, so it has no zone to send.
     BackendServices(
-        CredentialedBackend(backend, ExtensionCredential(attestStore), versionGate = null),
+        BackendGateway(exchange, ExtensionCredential(attestStore)),
         identity,
         zone = { null },
     )

@@ -3,6 +3,7 @@ package app.snapsync.services.upload
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJobState
+import app.snapsync.wire.api.Routes
 
 /*
  * The per-job decisions over a platform's upload jobs — what the PhotoKit adapter
@@ -64,14 +65,17 @@ fun jobRowOf(path: String, rowByDestination: String?): JobRow = when {
 }
 
 /**
- * Whether [path] is the byte-route shape this build creates jobs for: the v2 identity-in-path
- * `/files/devices/<deviceId>/<assetId>/<role>`. The v1 `/files/devices/<deviceId>/<key>` is deliberately NOT one any
- * more — a job carrying it is unmappable, and reported (`changes/retire-legacy-key-fallback`, D2).
+ * Whether [path] — a job's destination, its base's version prefix included — is a byte route: the description's
+ * upload (`uploadResource`), or the event-less one builds before it created (`uploadResourceEventless`). Read off the
+ * generated routes' templates, never a hand-kept copy. The v1 `/files/devices/<deviceId>/<key>` matches neither, so a
+ * job carrying it is unmappable, and reported (`changes/retire-legacy-key-fallback`, D2).
  */
-fun isByteRoute(path: String): Boolean {
-    val segments = path.split('/').filter { it.isNotEmpty() }
-    val devices = segments.indexOf("devices")
-    return devices > 0 && segments[devices - 1] == "files" && segments.size == devices + 4
+fun isByteRoute(path: String): Boolean = BYTE_ROUTES.any { it.containsMatchIn(path) }
+
+// A template holds only path literals (letters, `-`, `/`) and `{parameter}`s, so a parameter's `[^/]+` is the one
+// pattern it needs; anchored at the end, after whatever version prefix the build's base carries.
+private val BYTE_ROUTES = listOf(Routes.UploadResource.TEMPLATE, Routes.UploadResourceEventless.TEMPLATE).map {
+    Regex(it.replace(Regex("""\{\w+\}"""), "[^/]+") + "$")
 }
 
 /**

@@ -81,7 +81,7 @@ class DownloadJobsTest {
 
         override fun listen(handlers: DownloadHandlers) = Unit
 
-        override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
+        override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
             started += Started(url, tag, network)
             return StartResult.Started
         }
@@ -138,6 +138,7 @@ class DownloadJobsTest {
             download = transport,
             onStaged = { ref, key, path -> deliver(ref, key, path) },
             network = { network },
+            headers = { emptyMap() },
         ).also { transport.jobs = it }
     }
 

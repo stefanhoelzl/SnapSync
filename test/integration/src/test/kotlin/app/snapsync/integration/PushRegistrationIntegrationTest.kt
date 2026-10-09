@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The REAL device-side push registration (`PushRegistration` + the push-token service over `HttpBackend`, installed by the host
+ * The REAL device-side push registration (`PushRegistration` + the push-token service over the backend gateway, installed by the host
  * assembly exactly as the iOS shell installs it) driven through the control protocol against the backend mock,
  * asserting the backend outcome: the registration it stored (`backend/device-config`). The backend's own
  * promise — a token is published, a rotated one overwrites — is `BackendContract`'s `DEVICE_CONFIG_*` clauses; the backend

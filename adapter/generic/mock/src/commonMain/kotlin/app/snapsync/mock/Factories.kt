@@ -2,10 +2,8 @@ package app.snapsync.mock
 
 import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
-import app.snapsync.model.DeviceFile
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.AttestStore
-import app.snapsync.ports.Backend
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.NetworkMonitor
@@ -27,15 +25,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * and observes it there.
  */
 fun inMemoryDeviceIntegrity(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available)
-
-/**
- * A [BackendMock]'s port, over a byte store the caller holds: [storedFiles] is what the OS's uploader writes, keyed by
- * (event id, device id); [minimumAppVersion] set is a backend refusing this build. Every other default is [BackendMock]'s.
- */
-fun inMemoryBackend(
-    storedFiles: MutableMap<Pair<String, String>, MutableSet<DeviceFile>> = mutableMapOf(),
-    minimumAppVersion: String? = null,
-): Backend = BackendMock(storedFiles).also { it.operator.minAppVersion = minimumAppVersion }.port()
 
 fun inMemoryAttestStore(token: String? = null, keyId: String? = null): AttestStore =
     InMemoryAttestStore(token, keyId)

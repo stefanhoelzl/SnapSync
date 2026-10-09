@@ -414,7 +414,7 @@ class DownloadSessionMock(
             current = this
         }
 
-        override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
+        override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
             realized = true
             if (url.isBlank()) return StartResult.NotStarted
             locked { started += Started(url, tag, network) }

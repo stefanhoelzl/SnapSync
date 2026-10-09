@@ -340,7 +340,7 @@ class WorldInspectorController(
             device.adapters(
                 build,
                 attests = true,
-                backend = device.backend.port(build.declaredVersion),
+                http = device.backend.port(),
                 logSinks = emptyList(),
             )
         }
@@ -387,17 +387,14 @@ class WorldInspectorController(
             .let { (it?.layer as? Layer.Joined)?.membership?.eventId }
     }
 
-    /** Another member, through the backend: it joins, its photo's bytes land, and it publishes its manifest. */
-    private suspend fun injectMember(eventId: String, deviceId: String) {
-        val backend = mocks.backend.port()
+    /** Another member, through the backend's operator: its photo's bytes land, and it joins and publishes its manifest. */
+    private fun injectMember(eventId: String, deviceId: String) {
+        val backend = mocks.backend.operator
         val asset = AssetId("$deviceId-a1")
         val key = uploadKey(asset, ResourceRole.PRIMARY, FOREIGN_FILENAME)
-        backend.joinEvent(null, eventId, deviceId)
-        mocks.backend.operator.deposit(deviceId, asset, ResourceRole.PRIMARY, FOREIGN_FILENAME)
-        backend.publishManifest(
-            null,
+        backend.deposit(deviceId, asset, ResourceRole.PRIMARY, FOREIGN_FILENAME, eventId)
+        backend.seedMember(
             eventId,
-            deviceId,
             DeviceManifest(
                 deviceId,
                 listOf(

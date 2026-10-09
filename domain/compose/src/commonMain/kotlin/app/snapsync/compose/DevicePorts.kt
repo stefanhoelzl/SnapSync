@@ -1,6 +1,5 @@
 package app.snapsync.compose
 
-import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
@@ -16,6 +15,7 @@ import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Files
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
@@ -57,7 +57,7 @@ class AppDevicePorts(
     val network: Lazy<NetworkMonitor>,
     /** The device's power, battery, thermal state and background allowance, read for a bug report. */
     val deviceConditions: Lazy<DeviceConditions>,
-    val backend: Lazy<Backend>,
+    val http: Lazy<HttpTransport>,
     val backgroundTime: Lazy<BackgroundTime>,
     val wake: Lazy<Wake>,
     val extensionRegistry: Lazy<ExtensionRegistry>,
@@ -97,8 +97,8 @@ class AppDevicePorts(
         gallery = gallery.value,
         // The platform's background downloads — an event port the host zone listens to.
         download = download.value,
-        // The backend: every need-shaped service is composed over it inside the core.
-        backend = backend.value,
+        // HTTP: the backend's protocol, and every need-shaped service, are composed over it inside the core.
+        http = http.value,
         integrity = integrity.value,
         // The app's uploader transport (a background `URLSession` on iOS; Android's only uploader).
         appUpload = appUpload.value,
@@ -143,7 +143,7 @@ class ExtensionDevicePorts(
     val galleryReader: Lazy<GalleryReader>,
     /** The upload-job queue the upload cycle creates its jobs on. */
     val cycleUpload: Lazy<Upload>,
-    val backend: Lazy<Backend>,
+    val http: Lazy<HttpTransport>,
 ) {
     /**
      * The extension process's [ExtensionPorts] over these ports, its own [process] ports and the operating system's
@@ -159,7 +159,7 @@ class ExtensionDevicePorts(
         platformDeviceId = platformDeviceId.value,
         gallery = galleryReader.value,
         upload = cycleUpload.value,
-        backend = backend.value,
+        http = http.value,
         host = host,
     )
 }
