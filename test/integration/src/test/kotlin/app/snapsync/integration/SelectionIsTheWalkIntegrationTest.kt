@@ -1,13 +1,14 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Under a partial grant the selection is the walk (capability `photo-access`; decision record
- * `changes/selection-is-the-walk`), over the REAL composed core, driven through the control protocol.
+ * Under a partial grant the selection is the walk (decision record `changes/selection-is-the-walk`), over the REAL
+ * composed core, driven through the control protocol.
  *
  * The first test replays the downgrade measured on an SE2 (iOS 26.6, 2026-09-22): four uploads in flight under a
  * full grant, access narrowed to two of the four photos, and every object landing on the backend while the
@@ -19,6 +20,11 @@ import kotlin.test.assertTrue
 class SelectionIsTheWalkIntegrationTest {
 
     @Test
+    @Verifies(
+        spec = "photo-access",
+        requirement = "Switching between full and limited access never re-uploads",
+        scenario = "Narrowing to a selection",
+    )
     fun a_downgrade_withdraws_the_unselected_and_the_foreground_settles_the_selected() = rigTest {
         val all = listOf("A", "B", "C", "D")
         // The OS-driven cycle alone under the full grant: its four jobs are the ones the downgrade strands.
@@ -54,6 +60,7 @@ class SelectionIsTheWalkIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-access", requirement = "A selection the app has not yet looked at withdraws nothing")
     fun an_unread_selection_withholds_the_cycle_and_deletes_nothing() = rigTest {
         // A cold launch under a partial grant: the selection has not been read yet. Collapsed to an empty
         // selection, the enqueue resolved every waiting row against it and deleted each one as gone.
@@ -81,6 +88,11 @@ class SelectionIsTheWalkIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Deleting or no longer sharing a photo withdraws it",
+        scenario = "Deselecting under limited access withdraws",
+    )
     fun re_selecting_a_withdrawn_photo_shares_it_again() = rigTest {
         // Under a partial grant the app's uploader is the one that runs (the extension withholds), each selection
         // change's tail walking the read selection.

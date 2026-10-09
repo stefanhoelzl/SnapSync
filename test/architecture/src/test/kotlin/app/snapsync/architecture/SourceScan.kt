@@ -42,15 +42,18 @@ internal object SourceScan {
      * scan fails rather than returning empty, since a guard that scans nothing passes vacuously — the one
      * failure mode these tests may not have.
      */
-    fun kotlinFiles(): List<Source> {
+    fun kotlinFiles(): List<Source> = files(setOf("kt"))
+
+    /** As [kotlinFiles], over every file with one of [extensions] — `kts` for the build scripts. */
+    fun files(extensions: Set<String>): List<Source> {
         val files = repoRoot.walkTopDown()
             .onEnter { it.name != "build" && it.name != ".git" && it.name != ".gradle" }
-            .filter { it.isFile && it.extension == "kt" }
+            .filter { it.isFile && it.extension in extensions }
             .map(::Source)
             .toList()
         assertTrue(
             files.isNotEmpty(),
-            "the source scan matched no Kotlin files under $repoRoot — the repository layout moved, and " +
+            "the source scan matched no $extensions files under $repoRoot — the repository layout moved, and " +
                 "every guard standing on this scan would pass while reading nothing",
         )
         return files

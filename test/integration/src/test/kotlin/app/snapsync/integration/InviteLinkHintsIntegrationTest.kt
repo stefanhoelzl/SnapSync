@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.Layer
 import app.snapsync.model.encodeEventUrl
@@ -9,14 +10,19 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 /**
- * Capability `join-event`, "Joining happens only on confirmation": on a shipped build, no invite link, however it is
- * crafted, joins, switches or starts sharing without the member confirming on the join screen.
+ * On a shipped build, no invite link, however it is crafted, joins, switches or starts sharing without the member
+ * confirming on the join screen.
  *
  * The host starts as a rig build, which honours a link's hints; `device/invite-link-hints?honoured=false` plays the
  * shipped build, which ignores them. The positive control — a rig build auto-confirming the same link — is
  * `JoinGateIntegrationTest.autoJoin_auto_confirms_without_a_confirmation`, so the negatives here cannot pass by the
  * link simply failing to decode or load.
  */
+@Verifies(
+    spec = "join-event",
+    requirement = "Joining happens only on confirmation and needs a connection",
+    scenario = "A crafted link cannot skip the confirmation",
+)
 class InviteLinkHintsIntegrationTest {
 
     /** Every hint the decoder accepts, set to its most damaging value, on the event's whole invite. */

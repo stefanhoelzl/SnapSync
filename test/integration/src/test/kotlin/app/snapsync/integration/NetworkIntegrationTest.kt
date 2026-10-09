@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
@@ -13,8 +14,8 @@ import kotlin.test.assertIs
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * **The app says when it cannot reach the network** (capabilities `sync-status`, `create-event`, `join-event`; decision
- * record `changes/tell-when-offline`), over the real composed stack, driven through the control protocol.
+ * **The app says when it cannot reach the network** (decision record `changes/tell-when-offline`), over the real
+ * composed stack, driven through the control protocol.
  *
  * The operator plays both halves of a network going away: what the operating system reports to the app (the network
  * lever) and that the backend cannot be reached (the backend mock's offline lever) — on a phone they are one event.
@@ -30,9 +31,15 @@ class NetworkIntegrationTest {
     private suspend fun Rig.awaitCreateNotice(notice: NetworkNotice?): Layer.CreateEvent =
         awaitState(NOTICE) { (it.ui.layer as? Layer.CreateEvent)?.network == notice }.ui.layer as Layer.CreateEvent
 
-    // ── the joined status line (capability `sync-status`) ────────────────────────────────────
+    // ── the joined status line ───────────────────────────────────────────────────────────────────────────
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "The app says when it cannot reach the network")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "One status line in a fixed priority",
+        scenario = "A missing network outranks everything else",
+    )
     fun a_missing_network_outranks_in_sync_and_clears_when_it_returns() = rigTest {
         createAndJoin()
         foreground()
@@ -44,6 +51,11 @@ class NetworkIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "One status line in a fixed priority",
+        scenario = "Missing access outranks a missing network",
+    )
     fun missing_access_outranks_a_missing_network() = rigTest {
         createAndJoin()
         foreground()
@@ -54,6 +66,11 @@ class NetworkIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The app says when it cannot reach the network",
+        scenario = "The network returns while the app is open",
+    )
     fun the_network_s_return_resumes_the_app_s_work_without_an_opening() = rigTest {
         createAndJoin()
         foreground()
@@ -83,9 +100,10 @@ class NetworkIntegrationTest {
         assertFalse("onNetworkReturned" in client.logs(), "a backgrounded app resumed work on the network's return")
     }
 
-    // ── the create screen (capability `create-event`) ────────────────────────────────────────
+    // ── the create screen ────────────────────────────────────────────────────────────────────────────────
 
     @Test
+    @Verifies(spec = "create-event", requirement = "Without a network, Create waits")
     fun the_create_screen_names_the_cause_and_clears_when_the_network_returns() = rigTest {
         foreground()
         network("offline")
@@ -96,9 +114,14 @@ class NetworkIntegrationTest {
         awaitCreateNotice(null)
     }
 
-    // ── the join screen (capability `join-event`) ────────────────────────────────────────────
+    // ── the join screen ──────────────────────────────────────────────────────────────────────────────────
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "Without a network, the join screen waits for one",
+        scenario = "An invite opened offline loads once the network returns",
+    )
     fun an_invite_opened_offline_loads_by_itself_once_the_network_returns() = rigTest {
         val event = registerEvent()
         foreground()

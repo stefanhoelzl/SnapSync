@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.jsonArray
@@ -8,8 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * A process the OS relaunches **only** to deliver download-session events (capability `receiving-photos`, "A
- * staged resource reaches the controller on every entry point").
+ * A process the OS relaunches **only** to deliver download-session events.
  *
  * That process builds the download jobs and nothing else: the shell's relaunch entry point adopts the
  * session's events, and no UI host, flow or controller is ever touched. The staging callback used to be a
@@ -23,6 +23,7 @@ import kotlin.test.assertTrue
  * never started — through `onBackgroundTransfers` on the download session, with nothing reading its state (so
  * nothing touching its host) until the assertions.
  */
+@Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
 class ColdDownloadRelaunchIntegrationTest {
     @Test
     fun a_download_relaunch_imports_what_the_session_staged() = rigTest {

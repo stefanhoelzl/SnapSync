@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlin.test.Test
@@ -8,9 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The operating system's completion handlers and its expiry, as it plays them (capability `sync-status`, "OS
- * completion handlers are released only after their work completes" and "Time is up is learned only from the operating
- * system"; `background-upload`, "The tail runner reimplements the OS scheduler"; decision record `own-work-per-wake`):
+ * The operating system's completion handlers and its expiry, as it plays them (decision record `own-work-per-wake`):
  * the heartbeat task, the transfer sessions' relaunches and the silent push, each over the control protocol, with the
  * OS's expiry delivered by `/os/app/onExpiry`.
  *
@@ -38,6 +37,11 @@ class OsCompletionIntegrationTest {
     // ---- the heartbeat task --------------------------------------------------------------------------------------
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Photos travel without the app being opened",
+        scenario = "A save that ran out of time completes later",
+    )
     fun a_heartbeat_wake_runs_the_tail_then_completes_once_and_re_arms() = rigTest {
         stagedBacklog()
         device("relaunch", "scene" to "false")
@@ -102,6 +106,11 @@ class OsCompletionIntegrationTest {
     // ---- the transfer sessions' relaunches ------------------------------------------------------------------------
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Photos travel without the app being opened",
+        scenario = "A save that ran out of time completes later",
+    )
     fun upload_session_events_release_at_the_drain_then_run_the_tail() = rigTest {
         stagedBacklog()
         device("relaunch", "scene" to "false")
@@ -182,6 +191,11 @@ class OsCompletionIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Photos travel without the app being opened",
+        scenario = "A save that ran out of time completes later",
+    )
     fun a_push_whose_union_read_fails_still_imports_what_is_staged() = rigTest {
         val event = stagedBacklog()
         device("relaunch", "scene" to "false")

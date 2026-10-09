@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Layer
 import app.snapsync.model.ShareCount
 import kotlin.test.Test
@@ -7,14 +8,20 @@ import kotlin.test.assertEquals
 import kotlin.test.fail
 
 /**
- * The join-time **shareable-count preview** over the **real** stack (capability `join-event`): the count the
- * join surface shows must equal the set the real `UploadCycle` uploads for the same cutoff — the one-universe
- * requirement (capability `photo-sharing`). Same `snapSyncApp` core the device shells call; only PhotoKit
- * is faked. The preview is read where a member reads it: on the open join gate, before the commit.
+ * The join-time **shareable-count preview** over the **real** stack: the count the join surface shows must equal
+ * the set the real `UploadCycle` uploads for the same cutoff — the one-universe requirement. Same `snapSyncApp`
+ * core the device shells call; only PhotoKit is faked. The preview is read where a member reads it: on the open join
+ * gate, before the commit.
  */
 class ShareableCountIntegrationTest {
 
     @Test
+    @Verifies(spec = "join-event", requirement = "The join screen shows how many photos will be shared")
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "What the member is told is shared is exactly what is shared",
+        scenario = "The preview matches the upload",
+    )
     fun the_preview_count_equals_the_set_the_cycle_uploads() = rigTest {
         extensionUploadsOnly()
         addPhoto("CAM") // an ordinary camera photo — admitted
@@ -33,6 +40,11 @@ class ShareableCountIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen shows how many photos will be shared",
+        scenario = "The count follows the range",
+    )
     fun a_later_candidate_cutoff_previews_fewer_photos() = rigTest {
         addPhoto("OLD", date = "2026-05-20T00:00:00Z")
         addPhoto("NEW", date = "2026-06-10T00:00:00Z")
@@ -48,6 +60,11 @@ class ShareableCountIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen shows how many photos will be shared",
+        scenario = "No count without access",
+    )
     fun no_count_without_a_usable_grant() = rigTest {
         addPhoto("CAM")
         create()

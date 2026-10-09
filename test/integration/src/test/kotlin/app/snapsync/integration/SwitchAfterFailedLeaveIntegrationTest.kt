@@ -6,10 +6,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **A join is a switch whenever the device is still joined** (capabilities `join-event`, `manage-membership`): a leave
- * whose membership file the platform would not delete leaves the device joined to the old event, and the next join
- * then switches — it stops the old event's uploads and tells the backend this device left it — instead of entering
- * the new event beside a membership it never ended.
+ * **A join is a switch whenever the device is still joined**: a leave whose membership file the platform would not
+ * delete leaves the device joined to the old event, and the next join then switches — it stops the old event's
+ * uploads and tells the backend this device left it — instead of entering the new event beside a membership it never
+ * ended.
  */
 class SwitchAfterFailedLeaveIntegrationTest {
 

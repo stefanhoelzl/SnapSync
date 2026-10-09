@@ -1,11 +1,12 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertIs
 
 /**
- * The **bounded staleness** pins (capability `sync-status`), over the real composed stack, driven through the
+ * The **bounded staleness** pins, over the real composed stack, driven through the
  * control protocol.
  *
  * These cover a defect that every other test in the repository was blind to, for a structural reason:
@@ -15,8 +16,8 @@ import kotlin.test.assertIs
  * session.
  *
  * The mechanism, and why re-ordering is not the fix. `Foreground` launches the status refresh and the
- * download reconcile as **siblings**, deliberately: sequencing the refresh behind its siblings is what
- * `sync-status` forbids, because a cycle's discovery walk can stay outstanding for 774 s and a member's
+ * download reconcile as **siblings**, deliberately: sequencing the refresh behind its siblings is
+ * forbidden, because a cycle's discovery walk can stay outstanding for 774 s and a member's
  * whole visit can be shorter than that. So the refresh typically reads the download projection *before*
  * the reconcile's union fetch has planned anything, and the only available repair is a later **re-read**.
  *
@@ -28,6 +29,7 @@ import kotlin.test.assertIs
  * what a member actually sees. The load-bearing part of each is that **no status read** is requested between
  * the stale read and the assertion: no `status/refresh`, no second foreground.
  */
+@Verifies(spec = "sync-status", requirement = "The status stays current while the app is open")
 class BoundedStatusStalenessIntegrationTest {
 
     @Test

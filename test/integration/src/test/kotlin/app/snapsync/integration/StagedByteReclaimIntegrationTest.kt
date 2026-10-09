@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -8,8 +9,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * The staged-byte backlog reclaim, driven through the **trigger** rather than through the method
- * (capability `receiving-photos`, requirement "Staged bytes are released only once their row is settled").
+ * The staged-byte backlog reclaim, driven through the **trigger** rather than through the method.
  *
  * `DownloadController.releaseSettledBytes()` was built, spec'd, and pinned at the store layer (then the
  * `DownloadStoreContract`, now `DownloadServiceTest`) — and never called from anywhere. Every one of those checks stayed green while
@@ -25,6 +25,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * `staging/seed-legacy-backlog` — an upgraded install's confirmed import whose resource rows, with their staged
  * paths, are still there.
  */
+@Verifies(spec = "receiving-photos", requirement = "Received photos do not take up space twice")
 class StagedByteReclaimIntegrationTest {
 
     @Test

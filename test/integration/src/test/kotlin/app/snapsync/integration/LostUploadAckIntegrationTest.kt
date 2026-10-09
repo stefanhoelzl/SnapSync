@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -8,8 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **A terminal upload outcome survives the process that learned it** (capability `photo-sharing`,
- * `background-upload`; decision record `changes/fix-lost-upload-acks`).
+ * **A terminal upload outcome survives the process that learned it** (decision record
+ * `changes/fix-lost-upload-acks`).
  *
  * The defect these pin is Bugsink `SNAPSYNC-11`. iOS delivers a background-`URLSession` completion
  * exactly once — `URLSessionTask.State.completed` is documented as *"the task has completed (without
@@ -28,6 +29,8 @@ import kotlin.test.assertTrue
 class LostUploadAckIntegrationTest {
 
     @Test
+    @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
+    @Verifies(spec = "delivery", requirement = "A finished upload is recognised no later than the next opening")
     fun a_completion_learned_by_a_dead_process_is_settled_and_never_re_uploaded() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -58,6 +61,7 @@ class LostUploadAckIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-album", requirement = "The album holds the event as this device holds it")
     fun a_platform_that_reports_within_the_cycle_settles_in_that_same_cycle_and_places_once() = rigTest {
         extensionUploadsOnly()
         // The PhotoKit tier's shape: that tier has no callback outside the cycle — its adapter fetches the

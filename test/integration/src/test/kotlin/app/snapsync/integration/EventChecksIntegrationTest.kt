@@ -6,11 +6,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **A background wake asks the event at most once an hour** (capability `receiving-photos`, "New photos are announced
- * by a silent wake, and never only by it"; decision record `changes/timely-background-receiving`, D4–D5), counted at
- * the backend: a heartbeat reads the union when none was read within the hour, and — after the event's end — its
- * state the same way; a push reads both whenever it comes, and resets the hour. A join and a reconfigure read the union
- * once each.
+ * **A background wake asks the event at most once an hour** (decision record `changes/timely-background-receiving`,
+ * D4–D5), counted at the backend: a heartbeat reads the union when none was read within the hour, and — after the
+ * event's end — its state the same way; a push reads both whenever it comes, and resets the hour. A join and a
+ * reconfigure read the union once each.
  */
 class EventChecksIntegrationTest {
 

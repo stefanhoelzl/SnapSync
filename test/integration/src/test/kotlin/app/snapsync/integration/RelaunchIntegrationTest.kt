@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +17,7 @@ import kotlin.test.assertTrue
 class RelaunchIntegrationTest {
 
     @Test
+    @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
     fun the_upload_ledger_survives_so_a_relaunched_app_uploads_nothing_twice() = rigTest {
         extensionUploadsOnly()
         createAndJoin()

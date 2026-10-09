@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -7,8 +8,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 
 /**
- * The version gate end to end (capability `app-update-required`), over the REAL composed core, driven through the
- * control protocol.
+ * The version gate end to end, over the REAL composed core, driven through the control protocol.
  *
  * Nothing here is simulated between the backend port and the screen. The backend mock answers a genuine `426`, as the
  * real backend does; the REAL authenticated backend composed in `AppCore` hands it to the
@@ -24,6 +24,16 @@ import kotlin.test.assertNotNull
 class VersionGateIntegrationTest {
 
     @Test
+    @Verifies(
+        spec = "app-update-required",
+        requirement = "An outdated app is told so at first contact",
+        scenario = "Joined member with an outdated app",
+    )
+    @Verifies(
+        spec = "app-update-required",
+        requirement = "The notice says what to install and where",
+        scenario = "Minimum version named",
+    )
     fun a_refused_build_reaches_the_update_screen_carrying_the_minimum_and_the_remedy() = rigTest {
         createAndJoin()
         device("backend/min-app-version", "minimum" to "0.4")
@@ -40,6 +50,7 @@ class VersionGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "app-update-required", requirement = "The notice clears by itself")
     fun updating_clears_the_refusal_and_the_screen_goes_away() = rigTest {
         createAndJoin()
         device("backend/min-app-version", "minimum" to "0.4")

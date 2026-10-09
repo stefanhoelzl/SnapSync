@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -17,6 +18,11 @@ import kotlin.test.assertEquals
  * nothing outside the app to observe it; it is `UploadCycleTest`'s
  * `a_truncated_cycle_resumes_its_remainder_from_the_ledger_without_re_discovering`.
  */
+@Verifies(
+    spec = "photo-sharing",
+    requirement = "Other members see a photo only once it is complete",
+    scenario = "Photos flow while a backlog uploads",
+)
 class CapTruncatedPublishIntegrationTest {
 
     @Test

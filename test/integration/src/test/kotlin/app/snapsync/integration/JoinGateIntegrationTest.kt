@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Direction
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
@@ -20,7 +21,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /**
- * Seam ↔ UI-state integration for the join gate (capability `join-event`) over the real
+ * Seam ↔ UI-state integration for the join gate over the real
  * `engine → status → presentation` stack, driven through the control protocol against the backend mock: the deeplink
  * decode, `GET /event/:id` details gate, register-only enrollment PUT, and the switch composition — asserting both
  * `UiState` (the membership the joined layer carries) and backend outcomes (the device manifest, the departure).
@@ -28,6 +29,12 @@ import kotlin.time.TimeSource
 class JoinGateIntegrationTest {
 
     @Test
+    @Verifies(spec = "join-event", requirement = "The join screen verifies the event before offering to join")
+    @Verifies(
+        spec = "join-event",
+        requirement = "Joining happens only on confirmation and needs a connection",
+        scenario = "Confirming joins",
+    )
     fun first_join_loads_details_then_enrolls_and_joins() = rigTest {
         val event = registerEvent(name = "Anna's Wedding") // exists, but not yet joined
 
@@ -48,6 +55,11 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen verifies the event before offering to join",
+        scenario = "An event that does not exist cannot be joined",
+    )
     fun a_missing_event_blocks_the_join() = rigTest {
         // A well-formed id no backend ever minted.
         val event = "33333333-3333-4333-8333-333333333333"
@@ -60,6 +72,11 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen verifies the event before offering to join",
+        scenario = "An unreachable server can be retried",
+    )
     fun a_load_failure_is_retryable() = rigTest {
         val event = registerEvent(name = "Anna's Wedding")
 
@@ -73,6 +90,11 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "Joining happens only on confirmation and needs a connection",
+        scenario = "A failed join is retryable and leaves nothing behind",
+    )
     fun a_failed_enrollment_does_not_join() = rigTest {
         val event = registerEvent(name = "Anna's Wedding")
 
@@ -96,6 +118,11 @@ class JoinGateIntegrationTest {
      * shape at all. Here the switch lands a **receive-only, album-on** membership.
      */
     @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Opening another event's invite asks before switching",
+        scenario = "Confirming leaves, then configures the new event",
+    )
     fun a_switch_leaves_the_current_event_then_joins_the_new_one_as_configured() = rigTest {
         val next = registerEvent(name = "Anna's Wedding") // F exists to switch to
         val current = createAndJoin(name = "Summer Trip") // already joined to E
@@ -119,6 +146,7 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "Opening another event's invite asks before switching")
     fun a_switch_does_not_block_on_the_departed_events_delete() = rigTest {
         val next = registerEvent(name = "Anna's Wedding") // F exists to switch to
         val current = createAndJoin(name = "Summer Trip") // already joined to E
@@ -145,8 +173,9 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "An invite opens the app on its join screen")
     fun the_same_link_delivered_twice_enrolls_once() = rigTest {
-        // The platform delivers one opened link MORE THAN ONCE (capability `join-event`): measured on
+        // The platform delivers one opened link MORE THAN ONCE: measured on
         // build 687, the scene delegate's connection and SwiftUI's `.onOpenURL` both fired for the same
         // URL — ~130 ms apart on an iOS 18.7.9 cold launch, and 8 ms apart on iOS 26.6 while running.
         // Both hooks stay live because neither is reliable on every OS, so "exactly once" is enforced by
@@ -172,6 +201,7 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "Reopening the current event's invite changes nothing")
     fun re_scanning_the_joined_event_does_not_clobber_the_manifest() = rigTest {
         val event = createAndJoin(name = "Anna's Wedding")
         // A real (non-empty) manifest already written by a prior upload cycle.
@@ -185,10 +215,10 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-album", requirement = "The album is offered on by default and declinable in one tap")
     fun an_untouched_gate_commits_the_album() = rigTest {
         // The seed is only a claim until it crosses `JoinEvent`. Every other join case here sets the album
-        // explicitly, so without this one nothing covers the default actually reaching the persisted membership
-        // (capability `event-album`).
+        // explicitly, so without this one nothing covers the default actually reaching the persisted membership.
         val event = registerEvent(name = "Anna's Wedding")
 
         openLink(inviteLink(event))
@@ -210,7 +240,7 @@ class JoinGateIntegrationTest {
         assertEquals(event, membership.eventId)
         assertNotNull(manifest(event))
         // The headless path does NOT inherit the surface's seeds wholesale: the cutoff and direction mirror them,
-        // but the album stays off unless the link says otherwise (capability `event-album`). A default-on here
+        // but the album stays off unless the link says otherwise. A default-on here
         // would have every dev/test launch write an album.
         assertEquals(false, membership.saveToAlbum)
     }
@@ -233,6 +263,10 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "The shared capture range always has a lower bound inside the event window",
+    )
     fun a_hostile_autoJoin_deeplink_cannot_widen_the_membership_below_the_event_start() = rigTest {
         // THE attack the floor closes, proven end-to-end through the real stack.
         //
@@ -258,13 +292,18 @@ class JoinGateIntegrationTest {
         )
     }
 
-    // ── The membership self-leave (capability `manage-membership`) ────────────────────────────────────────
+    // ── The membership self-leave ─────────────────────────────────────────────────────────────────────────────
     //
     // The one path that destroys user state without a tap. It runs over the REAL composition — the same
     // `Foreground` flow and `MembershipRefresh` rule the iOS shell wires — so these prove the WIRING, not
     // just the rule (`MembershipRefreshTest` covers the verdict matrix in isolation).
 
     @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "The app leaves on its own once the event is finished for it",
+        scenario = "A deleted event past its date is left automatically",
+    )
     fun a_swept_event_returns_the_device_to_unjoined_on_the_next_foreground() = rigTest {
         val event = registerEvent(name = "Anna's Wedding")
         openLink(inviteLink(event))
@@ -286,6 +325,11 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "The app leaves on its own once the event is finished for it",
+        scenario = "A server error never ends a membership",
+    )
     fun a_transient_details_failure_never_tears_the_membership_down() = rigTest {
         val event = registerEvent(name = "Anna's Wedding")
         openLink(inviteLink(event))

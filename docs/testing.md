@@ -894,6 +894,12 @@ in its zone or a contract clause — which tail unit ran is `TailRunnerTest`'s, 
 over the composition). A seam with no presentation effect is fully covered by its outside outcomes: a
 selection-policy exclusion is proved by missing bytes and a missing manifest entry.
 
+**Each test claims the requirements it verifies.** A test that verifies a requirement of `openspec/specs/`
+carries `@Verifies(spec = "…", requirement = "…")` (on the class when every test in it does, on the function
+otherwise, repeated for several; `scenario = "…"` narrows it). The journeys carry it too. `VerifiesGateTest` holds
+every claim to a heading that exists; `./gradlew :test:architecture:verifiesReport` shows the requirements no test
+claims (`docs/architecture.md`, "Tests verify requirements").
+
 A test that needs a missing lever or read adds it **to the vocabulary, classified on both hosts**. It
 never reaches past the protocol.
 

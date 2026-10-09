@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -7,16 +8,20 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Silent pushes and the push registration, read back off the backend (capability `receiving-photos`, "Registration
- * timing — launch, join, and rotation"; capability `sync-status`, "Push registration is started by the shared
- * composition"): the backend pushes a registered member when a fellow member's photo becomes servable; the
- * registration is installed on every cold start, a background one that builds no screen included, and publishes a
- * delivered token only when it differs from the last one the backend accepted. The join and fresh-credential
- * re-registrations are `PushRegistrationIntegrationTest`'s.
+ * Silent pushes and the push registration, read back off the backend: the backend pushes a registered member when a
+ * fellow member's photo becomes servable; the registration is installed on every cold start, a background one that
+ * builds no screen included, and publishes a delivered token only when it differs from the last one the backend
+ * accepted. The join and fresh-credential re-registrations are `PushRegistrationIntegrationTest`'s.
  */
 class PushIntegrationTest {
 
     @Test
+    @Verifies(spec = "delivery", requirement = "New photos are announced by a silent wake, and never only by it")
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "The notification token is used only to deliver new photos",
+        scenario = "Another member shares a photo",
+    )
     fun a_fellow_members_completed_photo_is_pushed_to_a_registered_device() = rigTest {
         val event = createAndJoin()
         os("app", "onPushToken", "DEADBEEF")
@@ -71,9 +76,8 @@ class PushIntegrationTest {
     }
 
     /**
-     * The credential-recovery loop (capability `privacy-security`, "Only a rejected credential is invalidated, and only
-     * that one"): the backend rejects the token the registration carried, the app obtains a new one, and the SAME call
-     * is sent once more and stored. That it is retried exactly once, and never without a token, is
+     * The credential-recovery loop: the backend rejects the token the registration carried, the app obtains a new one,
+     * and the SAME call is sent once more and stored. That it is retried exactly once, and never without a token, is
      * `CredentialedBackendTest`'s (`:domain:services`).
      */
     @Test

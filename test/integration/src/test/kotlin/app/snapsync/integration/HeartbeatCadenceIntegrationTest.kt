@@ -5,11 +5,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * **The heartbeat stays pending while the device is joined, busy or idle** (capability `receiving-photos`, "New photos
- * are announced by a silent wake, and never only by it"; decision record `changes/timely-background-receiving`, D1),
- * read off the operating system's record after a heartbeat wake. The JVM host carries no OS uploader, so its
- * full-grant sharer is the one that notices its own photos only by looking — iOS below 26.1; the confirmed-uploader row
- * is `TailRunnerTest`'s and `HeartbeatCadenceTest`'s.
+ * **The heartbeat stays pending while the device is joined, busy or idle** (decision record
+ * `changes/timely-background-receiving`, D1), read off the operating system's record after a heartbeat wake. The JVM
+ * host carries no OS uploader, so its full-grant sharer is the one that notices its own photos only by looking — iOS
+ * below 26.1; the confirmed-uploader row is `TailRunnerTest`'s and `HeartbeatCadenceTest`'s.
  */
 class HeartbeatCadenceIntegrationTest {
 

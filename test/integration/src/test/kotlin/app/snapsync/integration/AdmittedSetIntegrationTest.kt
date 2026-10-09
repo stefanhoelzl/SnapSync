@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.AssetId
 import app.snapsync.model.Layer
 import app.snapsync.model.ShareCount
@@ -10,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **One admitted set, over the real stack** (capability `photo-sharing`).
+ * **One admitted set, over the real stack**.
  *
  * The unit tests assert the property over one policy value. This asserts it over the composed core the device
  * shells actually run — the same `snapSyncApp`/`uploadCore`, the real `UploadCycle`, the real status source, the
@@ -21,6 +22,10 @@ import kotlin.test.assertTrue
  * The fixture is the shape that surfaced it on device: a **closed** capture window (an event whose end has passed)
  * holding a photo taken after the ceiling.
  */
+@Verifies(
+    spec = "photo-sharing",
+    requirement = "What the member is told is shared is exactly what is shared",
+)
 class AdmittedSetIntegrationTest {
 
     private val inWindow = "2026-06-15T12:00:00Z"
@@ -31,6 +36,11 @@ class AdmittedSetIntegrationTest {
     private val closedEnd = "2026-06-30T00:00:00"
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Only photos taken inside the member's capture range are shared",
+        scenario = "A photo from after the event's end stays private",
+    )
     fun a_post_ceiling_photo_reaches_no_consumer() = rigTest {
         extensionUploadsOnly()
         addPhoto("IN", date = inWindow)
@@ -86,6 +96,7 @@ class AdmittedSetIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "Media that is certainly not an event photo is excluded")
     fun the_origin_exclusions_reach_every_consumer_too() = rigTest {
         extensionUploadsOnly()
         // The ceiling is the bound that drifted, but the property is about the SET, not about one rule: a

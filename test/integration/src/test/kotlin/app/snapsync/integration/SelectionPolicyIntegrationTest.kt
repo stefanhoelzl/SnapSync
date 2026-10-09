@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.AssetId
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.assetIdFromUploadKey
@@ -8,9 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The selection policy over the **real** stack (capability `photo-sharing`): the real `UploadCycle`,
- * engine, ledger and device-manifest producer over the backend mock, with only PhotoKit faked — driven through the control
- * protocol.
+ * The selection policy over the **real** stack: the real `UploadCycle`, engine, ledger and device-manifest producer
+ * over the backend mock, with only PhotoKit faked — driven through the control protocol.
  *
  * Each test asserts the consequences an exclusion must have, because getting one and missing another is exactly
  * the failure mode this change exists to close:
@@ -22,6 +22,11 @@ import kotlin.test.assertTrue
 class SelectionPolicyIntegrationTest {
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A screenshot is never shared",
+    )
     fun a_screenshot_is_neither_uploaded_nor_shared() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -43,6 +48,11 @@ class SelectionPolicyIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A photo in a WhatsApp album is excluded",
+    )
     fun a_whatsapp_album_photo_is_neither_uploaded_nor_shared() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -60,6 +70,16 @@ class SelectionPolicyIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A compressed image received from a messenger is excluded",
+    )
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A 1080p video is shared",
+    )
     fun a_compressed_received_image_is_excluded_but_a_1080p_recording_is_not() = rigTest {
         extensionUploadsOnly()
         // The single most dangerous line in this policy: 1080p video is 2.07 MP, BELOW the 3 MP image floor.
@@ -76,6 +96,12 @@ class SelectionPolicyIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "What the member is told is shared is exactly what is shared")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Progress counts only what this membership shares",
+        scenario = "An excluded screenshot does not hold the status open",
+    )
     fun the_status_total_excludes_what_the_cycle_refuses_so_the_screen_reaches_in_sync() = rigTest {
         extensionUploadsOnly()
         // The two components enumerate INDEPENDENTLY. If the total counted the screenshot the cycle will never

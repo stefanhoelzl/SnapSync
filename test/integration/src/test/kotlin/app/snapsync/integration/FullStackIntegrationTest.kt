@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Arrow
 import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventTiming
@@ -21,9 +22,14 @@ import kotlin.test.assertTrue
 class FullStackIntegrationTest {
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Nothing is shared before the event starts",
+        scenario = "A joined member of a future event shares nothing yet",
+    )
     fun a_future_start_event_uploads_nothing_and_reads_not_started() = rigTest {
         extensionUploadsOnly()
-        // THE THEOREM the whole design rests on (capability `photo-sharing`).
+        // THE THEOREM the whole design rests on.
         //
         // Nothing syncs before the event starts — and NOT because a gate refuses. There is no gate. The join-time
         // clamp makes the effective cutoff `max(chosen, startsAt)`, and a photo's capture date cannot lie in the
@@ -60,10 +66,11 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "The joined screen counts what was shared and received")
     fun the_counts_line_tracks_what_was_shared_and_received() = rigTest {
         extensionUploadsOnly()
-        // Capability `sync-status`, "The joined screen counts what was shared and received": the same numbers the
-        // arrows derive from, through the real stack — own photos out, the other members' photos in.
+        // The same numbers the arrows derive from, through the real stack — own photos out, the other members' photos
+        // in.
         createAndJoin()
         addPhoto("A")
         addPhoto("B")
@@ -85,6 +92,12 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "A not-yet-started event says when it starts")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen counts what was shared and received",
+        scenario = "No counts before the start or before the app has looked",
+    )
     fun a_future_event_says_how_long_until_it_starts_and_shows_no_counts() = rigTest {
         createAndJoin(startsAt = "2099-12-01T00:00:00", endsAt = "2099-12-31T00:00:00")
         refresh()
@@ -94,6 +107,7 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "Direction arrows show remaining work and live transfer")
     fun upload_completion_advances_uistate_and_world_outcomes() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -115,6 +129,11 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "\"Up to date\" is never claimed before the app has looked",
+        scenario = "Nothing to share still settles",
+    )
     fun create_event_lifts_the_setup_gate() = rigTest {
         assertEquals(Layer.CreateEvent(), state().ui.layer)
 
@@ -127,6 +146,7 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "Progress counts only what this membership shares")
     fun foreign_download_imports_and_own_status_excludes_it() = rigTest {
         createAndJoin()
         foreignDevice("DEV-F", "FQ")
@@ -141,6 +161,11 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos keep full fidelity",
+        scenario = "The sender's filename is kept",
+    )
     fun an_imported_foreign_photo_carries_the_capturing_devices_filename() = rigTest {
         createAndJoin()
         foreignDevice("DEV-F", "FQ", filename = "IMG_4471.HEIC")
@@ -158,9 +183,10 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-access", requirement = "Receive-only with limited access is never nagged")
     fun a_limited_grant_receives_foreign_photos_and_never_reads_needs_access() = rigTest {
-        // Receive-only under a LIMITED grant is a valid resting state (capability `photo-access`): imports
-        // work, no upload work is created, and the screen shows the ordinary health line — never NeedsAccess.
+        // Receive-only under a LIMITED grant is a valid resting state: imports work, no upload work is created, and
+        // the screen shows the ordinary health line — never NeedsAccess.
         permission("LIMITED")
         createAndJoin()
         addPhoto("A") // present in the library — must NOT be enumerated or uploaded
@@ -182,9 +208,13 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "photo-access",
+        requirement = "Limited access is a working membership whose scope is the selection",
+    )
     fun a_selection_change_under_limited_raises_n_and_uploads_the_selected_photos() = rigTest {
         // One selection-change emission serves N and the cycle's discovery; the cycle under LIMITED reads the
-        // snapshot (never the library) and uploads through the ordinary engine (capability `photo-access`).
+        // snapshot (never the library) and uploads through the ordinary engine.
         permission("LIMITED")
         createAndJoin()
         addPhoto("A")
@@ -211,6 +241,15 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "photo-access",
+        requirement = "Limited access is a working membership whose scope is the selection",
+    )
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A screenshot is never shared",
+    )
     fun the_policy_applies_unchanged_to_a_limited_selection() = rigTest {
         // Cutoff and origin exclusions filter hand-picked photos exactly as a full-library walk: picking a
         // pre-cutoff photo or a screenshot does not smuggle it past the policy.
@@ -234,9 +273,10 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
     fun an_imported_foreign_asset_in_the_selection_never_reuploads() = rigTest {
         // The app's own import auto-joins the platform selection (measured); the snapshot then carries it, and
-        // echo-suppression drops it at the cycle (capability `photo-access`).
+        // echo-suppression drops it at the cycle.
         createAndJoin()
         foreignDevice("DEV-F", "FQ")
         downloadAll()
@@ -258,6 +298,11 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The status stays current while the app is open",
+        scenario = "A failed read does not flip the status",
+    )
     fun upload_completeness_is_ledger_local_and_backend_independent() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -277,6 +322,11 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Leaving deletes no one's photos",
+        scenario = "Shared photos outlive the member's leave",
+    )
     fun leaving_as_the_last_member_returns_to_the_setup_gate_and_keeps_the_event() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -291,9 +341,8 @@ class FullStackIntegrationTest {
         // UiState reduces to the setup gate the instant the membership clears...
         awaitState { it.ui.layer is Layer.CreateEvent }
         assertTrue(!state().ready.configResolved)
-        // ...and the backend outcome lands when the fire-and-forget DELETE does. Leaving is RENAME-ONLY
-        // (capability `event-leave-endpoint`): the device is departed, but the event and its bytes are RETAINED
-        // until the nightly sweep reclaims them (capability `event-lifetime`).
+        // ...and the backend outcome lands when the fire-and-forget DELETE does. Leaving is RENAME-ONLY: the
+        // device is departed, but the event and its bytes are RETAINED until the nightly sweep reclaims them.
         eventually(read = { deviceJson("backend/departed", "event" to event) }) {
             it.getValue("departed").jsonPrimitive.boolean
         }
@@ -302,6 +351,11 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Each direction runs only if the member chose it",
+        scenario = "Share-only receives nothing",
+    )
     fun upload_only_uploads_own_but_imports_no_foreign() = rigTest {
         extensionUploadsOnly()
         createAndJoin("direction" to "upload")
@@ -323,6 +377,16 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Each direction runs only if the member chose it",
+        scenario = "Receive-only uploads nothing",
+    )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Direction arrows show remaining work and live transfer",
+        scenario = "Receive-only ignores the member's own gallery",
+    )
     fun download_only_imports_foreign_and_reads_in_sync_through_a_zero_total() = rigTest {
         extensionUploadsOnly()
         createAndJoin("direction" to "download")
@@ -344,9 +408,14 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Each direction runs only if the member chose it",
+        scenario = "Receive-only uploads nothing",
+    )
     fun download_only_uploads_nothing_when_the_cycle_actually_runs() = rigTest {
         extensionUploadsOnly()
-        // THE PRIVACY INVARIANT (capability `background-upload`). The join gate promises "Only receive the event's
+        // THE PRIVACY INVARIANT. The join gate promises "Only receive the event's
         // photos — you won't share yours". On the app-driven tier the APP invokes the cycle — foreground entry, the
         // heartbeat, a silent push — and every one of those reaches exactly this call.
         val event = createAndJoin("direction" to "download")
@@ -363,11 +432,12 @@ class FullStackIntegrationTest {
         )
         assertTrue(objects().isEmpty(), "download-only must upload no bytes")
         // The union leak, distinct from the bytes: a manifest listing the member's assets offers them to every
-        // other member (capability `photo-sharing`, "One policy gates both byte upload and manifest listing").
+        // other member: one policy gates both the byte upload and the manifest listing.
         assertTrue(manifest(event).isNullOrEmpty(), "download-only must list no asset in its device manifest")
     }
 
     @Test
+    @Verifies(spec = "manage-membership", requirement = "Leaving asks first, then is instant and works offline")
     fun leaving_flips_the_screen_before_the_backend_delete_completes() = rigTest {
         val event = createAndJoin()
         // The backend holds the leave's DELETE open: the backend that has not answered yet.

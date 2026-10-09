@@ -1,6 +1,7 @@
 package app.snapsync.journeys
 
 import app.snapsync.control.RigClient
+import app.snapsync.control.Verifies
 import app.snapsync.control.done
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.ConfigDecodeResult
@@ -58,6 +59,16 @@ class Journeys {
     private val backend = address("backend").trimEnd('/')
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The creator joins through the same join screen as every guest",
+        scenario = "A created event opens its join screen",
+    )
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Other members' photos arrive in the photo library automatically",
+        scenario = "A co-member's photo appears in the library",
+    )
     fun a_member_creates_shares_and_receives_another_members_photos() = runBlocking {
         RigClient(appA).use { a ->
             // Never drive an app baked for another backend: that is the shared production one, and these journeys

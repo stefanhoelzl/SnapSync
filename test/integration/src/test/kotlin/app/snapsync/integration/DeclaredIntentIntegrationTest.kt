@@ -1,12 +1,13 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.ResourceRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **The manifest declares intent** (capability `photo-sharing`), over the real stack.
+ * **The manifest declares intent**, over the real stack.
  *
  * The unit tests assert the projection over a list of rows. This asserts the consequence the change exists for,
  * through the composed core the device shells actually run and the backend mock, driven through the control
@@ -17,13 +18,19 @@ import kotlin.test.assertTrue
  * in different cycles. With a manifest that listed only COMPLETED rows, the asset was declared with `primary` alone
  * in between, so the union served it as a complete one-resource asset — and a recipient reconciling in that window
  * imported it as a plain still, marked the asset settled, and never took the video, because a recipient plans per
- * ASSET (capability `receiving-photos`).
+ * ASSET.
  */
+@Verifies(spec = "photo-sharing", requirement = "Other members see a photo only once it is complete")
 class DeclaredIntentIntegrationTest {
 
     private val bothRoles = setOf(ResourceRole.LIVE.wire, ResourceRole.PRIMARY.wire)
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Other members see a photo only once it is complete",
+        scenario = "Half a Live Photo is never offered",
+    )
     fun a_live_photo_is_declared_whole_and_stays_hidden_until_it_is_whole() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()

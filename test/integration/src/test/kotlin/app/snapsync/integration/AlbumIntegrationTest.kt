@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.Layer
 import kotlin.test.Test
@@ -7,7 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The event album over the real stack (capability `event-album`), read back off the photo library: an opted-in
+ * The event album over the real stack, read back off the photo library: an opted-in
  * member's own photos are placed when their upload is first enqueued, one album per event however often it is
  * ensured, and neither a Save nor a join waits for the gather it starts.
  *
@@ -17,6 +18,7 @@ import kotlin.test.assertTrue
 class AlbumIntegrationTest {
 
     @Test
+    @Verifies(spec = "event-album", requirement = "The album holds the event as this device holds it")
     fun enqueued_uploads_are_placed_in_the_album_before_they_finish_and_only_once() = rigTest {
         extensionUploadsOnly()
         createAndJoin("saveToAlbum" to "true", name = "Party")
@@ -34,8 +36,19 @@ class AlbumIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-album", requirement = "The album is offered on by default and declinable in one tap")
+    @Verifies(
+        spec = "event-album",
+        requirement = "The album holds the event as this device holds it",
+        scenario = "On Android only received photos are in the album",
+    )
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "On Android, only photos in the DCIM folder are shared",
+        scenario = "The event album's photos are not shared",
+    )
     fun an_android_phone_is_offered_the_album_and_it_collects_received_photos_only() = rigTest {
-        // Capability `event-album`: an Android album is the folder received photos are saved into, so the join screen
+        // An Android album is the folder received photos are saved into, so the join screen
         // offers it on, and it holds what arrives — never the member's own camera photo.
         androidLibrary()
         create(name = "Party")
@@ -60,6 +73,11 @@ class AlbumIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "Turning the album on gathers what is already there",
+        scenario = "On Android, turning the album on later moves received photos into it",
+    )
     fun on_android_a_photo_received_with_the_album_off_is_gathered_when_it_is_turned_on() = rigTest {
         androidLibrary()
         createAndJoin("saveToAlbum" to "false")
@@ -75,6 +93,7 @@ class AlbumIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-album", requirement = "A deleted album is recreated only when the member asks")
     fun on_android_a_deleted_album_stays_deleted_until_the_member_turns_it_on_again() = rigTest {
         androidLibrary()
         createAndJoin("saveToAlbum" to "true", name = "Party")
@@ -101,6 +120,11 @@ class AlbumIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "The album survives leaving and is reused on rejoin",
+        scenario = "Rejoin reuses the album",
+    )
     fun rejoining_the_event_reuses_its_album() = rigTest {
         val event = createAndJoin("saveToAlbum" to "true", name = "Party")
         assertEquals(1, awaitAlbum().size)
@@ -114,6 +138,7 @@ class AlbumIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-album", requirement = "Turning the album on gathers what is already there")
     fun neither_a_save_nor_a_join_waits_for_the_gather_it_starts() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin("saveToAlbum" to "false")

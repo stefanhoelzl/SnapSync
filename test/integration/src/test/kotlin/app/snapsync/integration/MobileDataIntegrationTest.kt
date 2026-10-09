@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Arrow
 import app.snapsync.model.Layer
 import app.snapsync.model.SyncHealth
@@ -8,8 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **Photos kept off mobile data wait for Wi-Fi** (capability `mobile-data`), over the real composed stack, driven
- * through the control protocol.
+ * **Photos kept off mobile data wait for Wi-Fi**, over the real composed stack, driven through the control protocol.
  *
  * The operator plays the device's network (`network?access=restricted` — mobile data, a hotspot, Low Data Mode) and the
  * operating system's transfers: it lands what the platform would run, and the platform runs no transfer held to an
@@ -44,6 +44,11 @@ class MobileDataIntegrationTest {
     private suspend fun Rig.landed(photo: String): Boolean = objects().any { it.startsWith(photo) }
 
     @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "The member chooses for the device whether photos may use mobile data",
+        scenario = "Untouched, photos use any network",
+    )
     fun an_untouched_choice_shares_over_mobile_data() = rigTest {
         appUploadsOnly()
         createAndJoin()
@@ -55,6 +60,12 @@ class MobileDataIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "mobile-data", requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Direction arrows show remaining work and live transfer",
+        scenario = "Photos waiting for Wi-Fi are named",
+    )
     fun with_mobile_data_off_an_upload_waits_for_wifi_and_says_so() = rigTest {
         appUploadsOnly()
         createAndJoin()
@@ -79,6 +90,12 @@ class MobileDataIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "mobile-data", requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi")
+    @Verifies(
+        spec = "delivery",
+        requirement = "Photos travel without the app being opened",
+        scenario = "Downloads wait for Wi-Fi when the member chose so",
+    )
     fun with_mobile_data_off_a_received_photo_waits_for_wifi() = rigTest {
         createAndJoin("direction" to "download")
         mobileData(false)
@@ -96,6 +113,7 @@ class MobileDataIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "mobile-data", requirement = "A change applies to transfers that start afterwards")
     fun a_change_governs_only_the_transfers_that_start_after_it() = rigTest {
         appUploadsOnly()
         createAndJoin()
@@ -114,6 +132,7 @@ class MobileDataIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "mobile-data", requirement = "Everything but photo transfers keeps working on any network")
     fun joining_and_renaming_work_on_mobile_data_with_photos_kept_off_it() = rigTest {
         network("restricted")
         mobileData(false)
@@ -125,6 +144,11 @@ class MobileDataIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "The member chooses for the device whether photos may use mobile data",
+        scenario = "The choice carries to the next event",
+    )
     fun the_choice_carries_to_the_next_event() = rigTest {
         appUploadsOnly()
         createAndJoin()
@@ -142,6 +166,11 @@ class MobileDataIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "The member chooses for the device whether photos may use mobile data",
+        scenario = "Chosen before joining",
+    )
     fun chosen_before_joining() = rigTest {
         appUploadsOnly()
         mobileData(false)

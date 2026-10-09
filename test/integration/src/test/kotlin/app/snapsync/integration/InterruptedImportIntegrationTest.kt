@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.rig.DownloadView
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -34,6 +35,7 @@ class InterruptedImportIntegrationTest {
     private val foreignAsset = "FQ"
 
     @Test
+    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
     fun an_interrupted_import_is_not_repeated_on_the_next_pass() = rigTest {
         val before = stageWithAbandonedImport()
 
@@ -53,6 +55,7 @@ class InterruptedImportIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
     fun the_first_copy_is_never_uploaded_back_into_the_event() = rigTest {
         extensionUploadsOnly()
         stageWithAbandonedImport()
@@ -109,6 +112,8 @@ class InterruptedImportIntegrationTest {
 
     /** The full leave/switch shape: the row survives, adjudicates correctly afterwards, and never echoes. */
     @Test
+    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
+    @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
     fun after_a_leave_the_interrupted_import_still_settles_without_a_duplicate() = rigTest {
         extensionUploadsOnly()
         val before = stageWithAbandonedImport()
@@ -142,8 +147,7 @@ class InterruptedImportIntegrationTest {
     }
 
     /**
-     * The whole change, end to end: a transaction held OPEN while a full trigger cycle runs against it
-     * (capability `receiving-photos`).
+     * The whole change, end to end: a transaction held OPEN while a full trigger cycle runs against it.
      *
      * This is the state the field defect was adjudicated in — the library answering *absent* about an
      * asset whose change block has committed nothing yet. Every trigger must complete without waiting on
@@ -153,6 +157,8 @@ class InterruptedImportIntegrationTest {
      * Asserted on how many assets EXIST: creating the second asset is the harm.
      */
     @Test
+    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
+    @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
     fun a_live_transaction_survives_a_full_trigger_cycle_without_a_duplicate() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -191,13 +197,15 @@ class InterruptedImportIntegrationTest {
     }
 
     /**
-     * THE ORDERING GUARANTEE, asserted directly because nothing enforces it at compile time (capability
-     * `receiving-photos`): adjudication is no longer any trigger's business, so the only thing that settles a
+     * THE ORDERING GUARANTEE, asserted directly because nothing enforces it at compile time: adjudication is no
+     * longer any trigger's business, so the only thing that settles a
      * row a dead process left behind is the composition's own startup sweep. If a future edit drops that
      * call, every interrupted import stalls forever and no other test notices — the rows simply sit there,
      * correct and unimported.
      */
     @Test
+    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
+    @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
     fun the_composition_startup_sweep_settles_what_a_dead_process_left() = rigTest {
         extensionUploadsOnly()
         val before = stageWithAbandonedImport()
@@ -220,8 +228,7 @@ class InterruptedImportIntegrationTest {
     }
 
     /**
-     * D3's SECOND ordering requirement, and the one whose failure would be systematic rather than racy
-     * (capability `receiving-photos`).
+     * D3's SECOND ordering requirement, and the one whose failure would be systematic rather than racy.
      *
      * Under a partial grant the presence source answers from the held selection snapshot, which is `null`
      * until the observer's first emission. A sweep that ran before it would answer *unknown* for every

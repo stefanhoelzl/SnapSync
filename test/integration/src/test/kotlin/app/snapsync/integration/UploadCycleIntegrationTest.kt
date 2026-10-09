@@ -1,14 +1,15 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
  * The upload cycle over the real stack, driven through the control protocol and read back off the systems outside the
- * app — the operating system's upload jobs, the backend's objects, manifest and union (capabilities `photo-sharing`,
- * `background-upload`): the upload extension's answers, the grant's admission, the capture-date cutoff, the job's
- * retry, the presence walk, and a storage reset healed by the next join.
+ * app — the operating system's upload jobs, the backend's objects, manifest and union: the upload extension's
+ * answers, the grant's admission, the capture-date cutoff, the job's retry, the presence walk, and a storage reset
+ * healed by the next join.
  *
  * What each ledger row holds on the way is the app's own bookkeeping; `UploadCycleTest` (`:test:feature`) pins it.
  */
@@ -42,9 +43,15 @@ class UploadCycleIntegrationTest {
         assertEquals(0, jobs().created, "nothing is uploaded")
     }
 
-    // ---- the grant's admission (capability `background-upload`, "The upload cycle owns its entry decision") -----
+    // ---- the grant's admission ------------------------------------------------------------------------------------
 
     @Test
+    @Verifies(spec = "delivery", requirement = "Losing photo access stops new uploads but lets in-flight ones finish")
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Deleting or no longer sharing a photo withdraws it",
+        scenario = "Revoked access withdraws nothing",
+    )
     fun a_revoked_grant_withholds_the_cycle_and_leaves_the_published_union_intact() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -64,6 +71,11 @@ class UploadCycleIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Losing photo access stops new uploads but lets in-flight ones finish",
+        scenario = "Access returns",
+    )
     fun a_restored_grant_resumes_where_it_left_off() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -78,8 +90,8 @@ class UploadCycleIntegrationTest {
     }
 
     /**
-     * A process that may not create never opens the download store (capability `receiving-photos`): its suppression
-     * read is the gate's last step, taken only for an admitted cycle — so a withheld cycle never pauses on it either.
+     * A process that may not create never opens the download store: its suppression read is the gate's last step,
+     * taken only for an admitted cycle — so a withheld cycle never pauses on it either.
      */
     @Test
     fun a_withheld_cycle_never_opens_the_download_store() = rigTest {
@@ -98,10 +110,15 @@ class UploadCycleIntegrationTest {
         )
     }
 
-    // ---- the capture-date cutoff (capability `photo-sharing`) -----------------------------------------------------
+    // ---- the capture-date cutoff ----------------------------------------------------------------------------------
 
     /** One cutoff drives BOTH the byte upload and the manifest projection. */
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Only photos taken inside the member's capture range are shared",
+        scenario = "A photo from before the range stays private",
+    )
     fun a_cutoff_keeps_a_pre_cutoff_photo_out_of_the_upload_and_the_union() = rigTest {
         extensionUploadsOnly()
         createAndJoin("cutoff" to "2026-06-01T00:00:00Z")
@@ -118,6 +135,11 @@ class UploadCycleIntegrationTest {
     // ---- the job's retry ------------------------------------------------------------------------------------------
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "A photo is never lost on the way",
+        scenario = "A failed upload is retried",
+    )
     fun a_failed_job_is_retried_once_in_place_then_re_created() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -135,9 +157,10 @@ class UploadCycleIntegrationTest {
         assertTrue(primaryKey("A") in jobs().live)
     }
 
-    // ---- the presence walk (capability `photo-sharing`, "Deletion is a presence diff over an authoritative walk") --
+    // ---- the presence walk ----------------------------------------------------------------------------------------
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "Deleting or no longer sharing a photo withdraws it")
     fun an_unreadable_walk_retracts_nothing_and_the_next_readable_walk_retracts_the_deleted_photo() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -161,8 +184,8 @@ class UploadCycleIntegrationTest {
     // ---- a storage reset ------------------------------------------------------------------------------------------
 
     /**
-     * A storage wipe followed by a join re-uploads everything instead of hanging (capability `photo-sharing`): the
-     * join's reconcile sees the empty listing and re-baselines, so the walk re-discovers what the bytes lost.
+     * A storage wipe followed by a join re-uploads everything instead of hanging: the join's reconcile sees the empty
+     * listing and re-baselines, so the walk re-discovers what the bytes lost.
      */
     @Test
     fun a_storage_reset_then_a_new_event_re_uploads_everything() = rigTest {

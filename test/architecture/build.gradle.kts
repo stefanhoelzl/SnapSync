@@ -41,8 +41,8 @@ kotlin {
 
 dependencies {
     testImplementation(kotlin("test"))
-    // ProducerExclusivityTest drives the REAL UploadTransitions and admission functions over fakes (capability
-    // `docs/architecture.md`, "The upload transitions stop in-flight work only at a leave") — the one guard here
+    // ProducerExclusivityTest drives the REAL UploadTransitions and admission functions over fakes
+    // (`docs/architecture.md`, "The upload transitions stop in-flight work only at a leave") — the one guard here
     // that executes domain code rather than reading source: the invariant is behavioral (no reachable sequence
     // orphans in-flight work), which no text scan can see.
     testImplementation(project(":domain:model"))
@@ -96,7 +96,7 @@ tasks.test {
             // The armed grid gate's list. Without it a list-only edit — a line deleted that a clause does
             // not cover — leaves this task UP-TO-DATE and the gate passes a list it never read. Measured.
             include("test/contracts/open-cells.txt")
-            // The event-link domain guard's subjects (capability `join-event`). Without these the task
+            // The event-link domain guard's subjects. Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing
             // `LINK_DOMAIN` alone left the task UP-TO-DATE until they were declared here.
@@ -110,9 +110,14 @@ tasks.test {
             // GatedPathPinTest reads the backend gate's closed ungated list, so a route the backend opens re-runs it.
             include("api/src/app.ts")
             // `CLAUDE.md` is declared for `RunbookSkillsTest` (below), its ONLY reader here: the runbook
-            // pointers depend on it. No guard reads anything under `openspec/` — `ModuleSetTest` and
-            // `RuntimeIdentityTest` hold their enumerations in code.
+            // pointers depend on it.
             include("CLAUDE.md")
+            // The specs: `VerifiesGateTest` holds every `@Verifies` to a heading here, and `NoSpecCitationTest`
+            // derives the capability names it forbids from the directory. Without them a requirement renamed by an
+            // OpenSpec change leaves this task UP-TO-DATE, and the claims that now point nowhere pass.
+            include("openspec/specs/*/spec.md")
+            // `NoSpecCitationTest` also reads every build script.
+            include("**/*.kts")
             // `ModuleSetTest`'s subjects: the include set it compares against its in-code groups, and
             // the core zones' build files whose project edges it pins. Without them an include-only or
             // edge-only edit leaves this task UP-TO-DATE.
@@ -137,4 +142,18 @@ tasks.test {
         },
     ).withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("guardedSources")
+}
+
+// `./gradlew :test:architecture:verifiesReport` — which requirements a test claims with `@Verifies`, and which none
+// does (`docs/architecture.md`, "Tests verify requirements"). Non-gating and never committed: it is in no lifecycle
+// task, and it reads the same text the gate does, through the gate's own parser on the test classpath.
+tasks.register<JavaExec>("verifiesReport") {
+    group = "verification"
+    description = "Lists the requirements no test @Verifies (build/reports/verifies.md)."
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("app.snapsync.architecture.VerifiesReportKt")
+    workingDir = rootDir
+    val out = layout.buildDirectory.file("reports/verifies.md")
+    args(out.get().asFile.absolutePath)
+    outputs.upToDateWhen { false }
 }
