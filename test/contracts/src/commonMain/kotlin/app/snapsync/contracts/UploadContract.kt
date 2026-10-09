@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalAtomicApi::class)
+
 package app.snapsync.contracts
 
 import app.snapsync.model.AssetId
@@ -16,6 +18,9 @@ import app.snapsync.model.uploadKey
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.update
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -481,12 +486,21 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
         ) { subject ->
             val id = "REPORTS_AS_IT_HAPPENS_AN_END_REACHES_THE_HANDLER"
             val route = path(id, ACCEPT)
+            // The clause's own owner, listened last: the platform tells whoever listened, not whoever listened first.
+            val told = AtomicReference<List<UploadJob>>(emptyList())
+            subject.upload.listen(
+                UploadHandlers(
+                    onFinished = { job -> told.update { it + job } },
+                    onBackgroundEvents = { it.complete() },
+                    onEventsDrained = {},
+                ),
+            )
             assertEquals(
                 UploadCreateOutcome.CREATED,
                 subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)),
             )
             awaitWithin {
-                subject.ended().any { it.destinationPath == subject.destination(route) && it.state == UploadJobState.SUCCEEDED }
+                told.load().any { it.destinationPath == subject.destination(route) && it.state == UploadJobState.SUCCEEDED }
             }
             assertTrue(
                 subject.upload.jobs(UploadJobSet.TERMINAL).isEmpty(),
