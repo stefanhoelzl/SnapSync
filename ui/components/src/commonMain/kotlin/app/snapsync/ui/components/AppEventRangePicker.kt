@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.snapsync.model.PickerView
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.range_end_pick_time
 import app.snapsync.ui.components.resources.range_ends
@@ -48,31 +49,22 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * The event's date range, picked inline on the create screen: a summary of both
  * ends, a month calendar, and the From / Until time wheels — all in view at once, with nothing to open and
- * nothing to confirm. A tap on a day and a settle of a wheel each hand [onChange] the next [EventRange];
- * the rules live in `EventRange.kt`, so this only renders and routes gestures.
+ * nothing to confirm. It draws [picker] and hands each tap on a day, drag and settle of a wheel to [gestures];
+ * what a gesture makes, and what may be picked, is the app's — this decides nothing.
  *
- * The last day starts on the start's day and its time starts BLANK: settling either Until wheel sets the
- * time. The first tap on a later day places the last day there; after that a tap starts a new range. An
- * endpoint can also be dragged, and a long press then a sweep selects a new range. [bounds] limit the
- * range — days outside them are greyed, and times outside them cannot be settled on.
- *
- * While the end time is incomplete, its summary is a tap target that calls [onPickEndTime]; each increment of
- * [showEndTime] brings the time wheels into view and briefly outlines the Until wheels —
- * the next missing step leads to where it is done. Starting to move the Until minutes with
- * the hour blank fills the hour from [currentHour] — the clock's, which this module does not read — and the
- * calendar marks [today], the clock's date.
+ * Days outside the picker's first and last day are greyed, and times outside its spans are struck through. While
+ * the end time is incomplete, its summary is a tap target that calls [EndTimeGuide.onPickEndTime]; each increment
+ * of [EndTimeGuide.showRequests] brings the time wheels into view and briefly outlines the Until wheels
+ * (the next missing step leads to where it is done).
  *
  * Appearance-free like the rest of the design system's API: the caller hands over values and callbacks only.
  */
 @Composable
 fun AppEventRangePicker(
-    range: EventRange,
-    bounds: RangeBounds,
+    picker: PickerView,
     note: String,
-    today: LocalDate,
-    currentHour: () -> Int,
+    gestures: RangeGestures,
     endTime: EndTimeGuide = EndTimeGuide.NONE,
-    onChange: (EventRange) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     Surface(
@@ -82,11 +74,25 @@ fun AppEventRangePicker(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RangeEditor(range, bounds, today, currentHour, endTime, onChange)
+            RangeEditor(picker, gestures, endTime)
             Text(text = note, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
     }
 }
+
+/** What a range calendar reports: where it was touched. The app decides what each gesture makes. */
+class RangeGestures(
+    val onDay: (LocalDate) -> Unit,
+    val onDragStart: (LocalDate) -> Unit,
+    val onDragEnd: (LocalDate) -> Unit,
+    val onSweep: (anchor: LocalDate, day: LocalDate) -> Unit,
+    val onFromHour: (Int) -> Unit,
+    val onFromMinute: (Int) -> Unit,
+    val onUntilHour: (Int) -> Unit,
+    val onUntilMinute: (Int) -> Unit,
+    /** The end's minute wheel started moving while its hour is blank. */
+    val onUntilMinuteDrag: () -> Unit,
+)
 
 /**
  * How a caller leads the host to a missing end time: [onPickEndTime] is called when the incomplete end's
@@ -103,20 +109,13 @@ class EndTimeGuide(val showRequests: Int, val onPickEndTime: (() -> Unit)?) {
 /**
  * The range picker itself — both ends in words, the calendar, the From / Until wheels — without a frame, so
  * the create screen's card and the join surfaces' dialog ([RangePickerDialog]) are the same component and
- * differ only in their [bounds].
+ * differ only in what their [picker] allows.
  */
 @Composable
-internal fun RangeEditor(
-    range: EventRange,
-    bounds: RangeBounds,
-    today: LocalDate,
-    currentHour: () -> Int,
-    endTime: EndTimeGuide = EndTimeGuide.NONE,
-    onChange: (EventRange) -> Unit,
-) {
-    RangeEnds(range, endTime.onPickEndTime)
-    RangeCalendar(range, bounds, today, onChange)
-    RangeTimes(range, bounds, currentHour, endTime.showRequests, onChange)
+internal fun RangeEditor(picker: PickerView, gestures: RangeGestures, endTime: EndTimeGuide = EndTimeGuide.NONE) {
+    RangeEnds(picker, endTime.onPickEndTime)
+    RangeCalendar(picker, gestures)
+    RangeTimes(picker, gestures, endTime.showRequests)
 }
 
 /**
@@ -124,7 +123,7 @@ internal fun RangeEditor(
  * [onPickEndTime], a button that leads there.
  */
 @Composable
-private fun RangeEnds(range: EventRange, onPickEndTime: (() -> Unit)?) {
+private fun RangeEnds(range: PickerView, onPickEndTime: (() -> Unit)?) {
     val end = range.until?.let { formatStart(it) }
         ?: stringResource(Res.string.range_end_pick_time, appDateLabel(LocalDateTime(range.endDay, range.from.time)))
     Row(modifier = Modifier.fillMaxWidth()) {
@@ -161,7 +160,7 @@ private fun RowScope.RangeEnd(
 }
 
 @Composable
-private fun RangeCalendar(range: EventRange, bounds: RangeBounds, today: LocalDate, onChange: (EventRange) -> Unit) {
+private fun RangeCalendar(range: PickerView, gestures: RangeGestures) {
     var visibleMonth by remember {
         mutableStateOf(LocalDate(range.from.year, range.from.month.ordinal.plus(1), 1))
     }
@@ -171,27 +170,19 @@ private fun RangeCalendar(range: EventRange, bounds: RangeBounds, today: LocalDa
         onNext = { visibleMonth = visibleMonth.plus(1L, DateTimeUnit.MONTH) },
     )
     WeekdayHeader()
-    Box(modifier = Modifier.rangeDrags(visibleMonth, range, bounds, onChange)) {
+    Box(modifier = Modifier.rangeDrags(visibleMonth, range, gestures)) {
         RangeCalendarGrid(
             visibleMonth = visibleMonth,
             rangeStart = range.from.date,
             rangeEnd = range.endDay,
-            bounds = CalendarBounds(today, floor = bounds.earliest?.date, ceiling = range.lastPickableDay(bounds)),
-            onPick = {
-                onChange(range.pickDay(it, bounds))
-            },
+            bounds = CalendarBounds(range.today, floor = range.firstDay, ceiling = range.lastDay),
+            onPick = gestures.onDay,
         )
     }
 }
 
 @Composable
-private fun RangeTimes(
-    range: EventRange,
-    bounds: RangeBounds,
-    currentHour: () -> Int,
-    showRequests: Int,
-    onChange: (EventRange) -> Unit,
-) {
+private fun RangeTimes(range: PickerView, gestures: RangeGestures, showRequests: Int) {
     val requester = remember { BringIntoViewRequester() }
     val highlight = rememberUntilHighlight(showRequests) { requester.bringIntoView() }
     Row(
@@ -207,15 +198,9 @@ private fun RangeTimes(
             hour = range.from.hour,
             minute = range.from.minute,
             anchor = range.from.time,
-            allowed = {
-                range.fromAllowed(it, bounds)
-            },
-            onHour = {
-                onChange(range.settleFromHour(it, bounds))
-            },
-            onMinute = {
-                onChange(range.settleFromMinute(it, bounds))
-            },
+            allowed = { range.fromTimes?.contains(it) == true },
+            onHour = gestures.onFromHour,
+            onMinute = gestures.onFromMinute,
         )
         SettlingTimeWheels(
             caption = WheelCaption(
@@ -226,19 +211,11 @@ private fun RangeTimes(
             hour = range.untilHour,
             minute = range.untilMinute,
             anchor = range.from.time,
-            allowed = {
-                range.untilAllowed(it, bounds)
-            },
-            onHour = {
-                onChange(range.settleUntilHour(it, bounds))
-            },
-            onMinute = {
-                onChange(range.settleUntilMinute(it, bounds, currentHour()))
-            },
-            // Moving the minutes with the hour blank means "this hour": the clock's.
-            onMinuteDragStart = {
-                if (range.untilHour == null) onChange(range.fillUntilHour(currentHour(), bounds))
-            },
+            allowed = { range.untilTimes?.contains(it) == true },
+            onHour = gestures.onUntilHour,
+            onMinute = gestures.onUntilMinute,
+            // Moving the minutes with the hour blank means "this hour".
+            onMinuteDragStart = { if (range.untilHour == null) gestures.onUntilMinuteDrag() },
             highlight = highlight,
         )
     }

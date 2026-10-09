@@ -2,6 +2,7 @@ package app.snapsync.model
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import kotlinx.serialization.Serializable
 
 /**
@@ -155,12 +156,12 @@ sealed interface Layer {
      * (`config == null`) and no create is in flight. Carries an optional inline
      * [error] — the last create failure (sticky until the next attempt) or a transient
      * invalid link. Config-absent outranks everything, so this is the top reduction rung.
-     * [draft] is where the screen's draft stands against the app's foreground life ([CreateDraftSession]).
      */
     @Serializable
     data class CreateEvent(
+        /** What the host has entered so far, and what it makes (capability `create-event`). */
+        val form: CreateForm,
         val error: ScreenMessage? = null,
-        val draft: CreateDraftSession = CreateDraftSession(),
         /**
          * The network is missing: the hint line shows it instead of [error] — which stays, and returns with the network
          * — and Create is unavailable.
@@ -697,6 +698,8 @@ data class RangeView(
     val commitEnabled: Boolean,
     /** How many of the member's own photos the range would share. */
     val shareCount: ShareCount,
+    /** The range calendar, while it is open over the surface; `null` while closed. */
+    val picker: PickerView? = null,
 )
 
 /**
@@ -728,4 +731,98 @@ sealed interface ShareCount {
     /** The chosen range would share [count] of the member's photos. */
     @Serializable
     data class Ready(val count: Int) : ShareCount
+}
+
+/**
+ * The create form (capability `create-event`): the name and the range the host has entered — kept by the app across a
+ * failed create's round trip, and started over after a long absence — and what they make.
+ */
+@Serializable
+data class CreateForm(
+    val name: String,
+    /** Which draft this is: a new value is a fresh draft, so a field holding its own copy of [name] takes it again. */
+    val draft: Int,
+    val picker: PickerView,
+    /** The next thing the host still has to do before Create is offered — or, once there is none, how long it lasts. */
+    val nextStep: CreateStep,
+    /** The draft may be created: complete, and inside the event window. */
+    val canCreate: Boolean,
+    /** The longest event window, in whole days — what the range's note states. */
+    val maxDays: Int,
+)
+
+/** What the create form asks for next, in the order it asks (capability `create-event`). */
+@Serializable
+sealed interface CreateStep {
+    @Serializable
+    data object Name : CreateStep
+
+    @Serializable
+    data object EndTime : CreateStep
+
+    /** Nothing is missing: the event lasts [lasts]. */
+    @Serializable
+    data class Complete(val lasts: CoarseDuration) : CreateStep
+}
+
+/**
+ * A range calendar with its time wheels, as the screen draws it (capabilities `create-event`, `join-event`): the range
+ * so far — its start, its last day, and the end time an hour and a minute at a time, each `null` while blank — and
+ * what may be picked next. The rules that decide all of it are the app's; the calendar only draws it and reports
+ * what was touched.
+ */
+@Serializable
+data class PickerView(
+    val from: LocalDateTime,
+    val endDay: LocalDate,
+    val untilHour: Int?,
+    val untilMinute: Int?,
+    /** The next tap on a day places the last day (rather than starting a new range). */
+    val endPending: Boolean,
+    /** The device's date, which the calendar marks. */
+    val today: LocalDate,
+    /** The first and the last day that may be picked; `null` where any day may. */
+    val firstDay: LocalDate?,
+    val lastDay: LocalDate?,
+    /** The start times and the end times that may be settled on; `null` where none may. */
+    val fromTimes: TimeSpan?,
+    val untilTimes: TimeSpan?,
+    /** The range is complete and inside its bounds — what a calendar that confirms offers OK on. */
+    val complete: Boolean,
+) {
+    /** The chosen end, or `null` while its time is still blank. */
+    val until: LocalDateTime?
+        get() = if (untilHour != null && untilMinute != null) {
+            LocalDateTime(
+                endDay,
+                LocalTime(untilHour, untilMinute),
+            )
+        } else {
+            null
+        }
+}
+
+/** The times of day from [first] to [last], both included, to the minute. */
+@Serializable
+data class TimeSpan(val first: LocalTime, val last: LocalTime) {
+    operator fun contains(time: LocalTime): Boolean = time in first..last
+}
+
+/** A duration named by its coarsest whole unit ("lasts 2 weeks"). */
+@Serializable
+sealed interface CoarseDuration {
+    @Serializable
+    data class Weeks(val count: Int) : CoarseDuration
+
+    @Serializable
+    data class Days(val count: Int) : CoarseDuration
+
+    @Serializable
+    data class Hours(val count: Int) : CoarseDuration
+
+    @Serializable
+    data class Minutes(val count: Int) : CoarseDuration
+
+    @Serializable
+    data object UnderAMinute : CoarseDuration
 }

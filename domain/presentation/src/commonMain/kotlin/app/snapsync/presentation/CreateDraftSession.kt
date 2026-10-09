@@ -1,6 +1,5 @@
-package app.snapsync.model
+package app.snapsync.presentation
 
-import kotlinx.serialization.Serializable
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -14,7 +13,6 @@ val CREATE_DRAFT_ABSENCE_LIMIT: Duration = 15.minutes
  * [activation] changes on every return to the foreground — an untouched start moves to now; [epoch] changes
  * only on a return after [CREATE_DRAFT_ABSENCE_LIMIT] or more away — the whole draft starts over.
  */
-@Serializable
 data class CreateDraftSession(val activation: Int = 0, val epoch: Int = 0) {
     /**
      * The session after the app's [count]th return to the foreground, [awayFor] after it left (`null`: it had

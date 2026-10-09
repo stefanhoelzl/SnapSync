@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
@@ -24,10 +23,7 @@ import kotlin.test.assertTrue
 class CalendarTodayTest {
 
     private companion object {
-        val TEN_DAYS = RangeBounds.lastingAtMost { from ->
-            LocalDateTime(from.date.plus(10, DateTimeUnit.DAY), from.time)
-        }
-        val RANGE = EventRange(LocalDateTime(2026, 3, 10, 9, 0), endDay = LocalDate(2026, 3, 12), endPending = false)
+        val RANGE = picker(LocalDateTime(2026, 3, 10, 9, 0), endDay = LocalDate(2026, 3, 12), endPending = false)
     }
 
     @get:Rule
@@ -67,14 +63,7 @@ class CalendarTodayTest {
         rule.setContent {
             CompositionLocalProvider(LocalReduceMotion provides true, LocalDateFormats provides dateFormats(null)) {
                 primary = MaterialTheme.colorScheme.primary
-                AppEventRangePicker(
-                    range = RANGE,
-                    bounds = TEN_DAYS,
-                    note = "note",
-                    today = today,
-                    currentHour = { 15 },
-                    onChange = {},
-                )
+                AppEventRangePicker(picker = RANGE.copy(today = today), note = "note", gestures = GestureLog().gestures)
             }
         }
     }

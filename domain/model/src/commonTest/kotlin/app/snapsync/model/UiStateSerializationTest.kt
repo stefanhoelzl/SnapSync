@@ -64,11 +64,29 @@ class UiStateSerializationTest {
 
     @Test
     fun the_create_layers_round_trip() {
-        roundTrip(UiState(Layer.CreateEvent()))
-        roundTrip(UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)))
-        roundTrip(UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 3, epoch = 1))))
-        roundTrip(UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED, network = NetworkNotice.OFFLINE)))
-        roundTrip(UiState(Layer.CreateEvent(network = NetworkNotice.BLOCKED)))
+        roundTrip(UiState(Layer.CreateEvent(FRESH_CREATE_FORM)))
+        roundTrip(UiState(Layer.CreateEvent(FRESH_CREATE_FORM, error = ScreenMessage.CREATE_FAILED)))
+        roundTrip(
+            UiState(
+                Layer.CreateEvent(
+                    FRESH_CREATE_FORM.copy(
+                        name = "Party",
+                        draft = 3,
+                        nextStep = CreateStep.Complete(CoarseDuration.Days(2)),
+                    ),
+                ),
+            ),
+        )
+        roundTrip(
+            UiState(
+                Layer.CreateEvent(
+                    FRESH_CREATE_FORM,
+                    error = ScreenMessage.CREATE_FAILED,
+                    network = NetworkNotice.OFFLINE,
+                ),
+            ),
+        )
+        roundTrip(UiState(Layer.CreateEvent(FRESH_CREATE_FORM, network = NetworkNotice.BLOCKED)))
         roundTrip(UiState(Layer.CreatingEvent))
     }
 
@@ -242,12 +260,12 @@ class UiStateSerializationTest {
         val overlays = listOf(Overlays(confirmingLeave = true), Overlays(renaming = true), Overlays(reportingBug = true)) +
             Overlays(menuOpen = true) + ReportOutcome.entries.map { Overlays(reportNotice = it) }
         for (overlay in overlays) {
-            roundTrip(UiState(Layer.CreateEvent(), overlay))
+            roundTrip(UiState(Layer.CreateEvent(FRESH_CREATE_FORM), overlay))
         }
         // The build constants the menu's footer and the report sheet read.
         roundTrip(
             UiState(
-                Layer.CreateEvent(),
+                Layer.CreateEvent(FRESH_CREATE_FORM),
                 reportDestination = ReportDestination.THIS_DEVICE,
                 build = BuildLabel("0.12", "2140"),
             ),

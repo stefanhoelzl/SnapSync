@@ -15,8 +15,10 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Instant
 
 /** The domain's words as the screen states them, and the container's display half as a state of its own. */
 class ScreenModelTest {
@@ -44,8 +46,35 @@ class ScreenModelTest {
         // A change of the domain half alone shows nothing new.
         source.value = creating.copy(shown = Shown(store = StoreLink("https://apps.apple.com/app/id1", StoreKind.APP_STORE)))
         yield()
-        source.value = ScreenModel(UiState(Layer.CreateEvent()), Shown())
+        source.value = ScreenModel(
+            UiState(
+                Layer.CreateEvent(
+                    freshCreateForm(
+                        CutoffFormatter(now = {
+                            Instant.DISTANT_PAST
+                        }, zone = TimeZone.UTC),
+                    ),
+                ),
+            ),
+            Shown(),
+        )
         collecting.join()
-        assertEquals(listOf(UiState(Layer.CreatingEvent), UiState(Layer.CreateEvent())), seen)
+        assertEquals(
+            listOf(
+                UiState(
+                    Layer.CreatingEvent,
+                ),
+                UiState(
+                    Layer.CreateEvent(
+                        freshCreateForm(
+                            CutoffFormatter(now = {
+                                Instant.DISTANT_PAST
+                            }, zone = TimeZone.UTC),
+                        ),
+                    ),
+                ),
+            ),
+            seen,
+        )
     }
 }

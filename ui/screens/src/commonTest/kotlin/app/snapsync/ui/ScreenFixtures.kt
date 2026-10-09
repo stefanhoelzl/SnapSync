@@ -1,12 +1,20 @@
 package app.snapsync.ui
 
 import app.snapsync.model.AlbumStyle
+import app.snapsync.model.CreateForm
+import app.snapsync.model.CreateStep
 import app.snapsync.model.JoinedEvent
+import app.snapsync.model.Layer
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.PickerView
 import app.snapsync.model.RangeChoice
 import app.snapsync.model.RangeView
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.ShareCount
+import app.snapsync.model.TimeSpan
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 
 /**
  * What a member chose on a participation surface — a screen test's input to [over], which states the range the
@@ -62,3 +70,50 @@ internal fun joinedEvent(
     receives: Boolean = true,
     savesToAlbum: Boolean = false,
 ) = JoinedEvent(eventId, name, startsAt, endsAt, sharesFrom, sharesUntil, shares, receives, savesToAlbum)
+
+/** A create form as a fresh draft shows it at 12:00 on Monday 6 July 2026: no name, the end time blank. */
+internal val FRESH_CREATE_FORM = CreateForm(
+    name = "",
+    draft = 0,
+    picker = PickerView(
+        from = LocalDateTime(2026, 7, 6, 12, 0),
+        endDay = LocalDate(2026, 7, 6),
+        untilHour = null,
+        untilMinute = null,
+        endPending = true,
+        today = LocalDate(2026, 7, 6),
+        firstDay = null,
+        lastDay = LocalDate(2026, 8, 5),
+        fromTimes = TimeSpan(LocalTime(0, 0), LocalTime(23, 59)),
+        untilTimes = TimeSpan(LocalTime(12, 1), LocalTime(23, 59)),
+        complete = false,
+    ),
+    nextStep = CreateStep.Name,
+    canCreate = false,
+    maxDays = 30,
+)
+
+/** The create layer over a fresh draft — what a test about everything but the form shows. */
+internal fun createLayer(error: ScreenMessage? = null, network: NetworkNotice? = null) =
+    Layer.CreateEvent(FRESH_CREATE_FORM, error, network)
+
+/** The range calendar as the app opens it over a participation surface: on [from]..[until], complete, held to the window. */
+internal fun calendarOver(
+    from: LocalDateTime,
+    until: LocalDateTime,
+    windowStart: LocalDateTime,
+    windowEnd: LocalDateTime,
+) =
+    PickerView(
+        from = from,
+        endDay = until.date,
+        untilHour = until.hour,
+        untilMinute = until.minute,
+        endPending = false,
+        today = LocalDate(2026, 7, 6),
+        firstDay = windowStart.date,
+        lastDay = windowEnd.date,
+        fromTimes = TimeSpan(LocalTime(0, 0), LocalTime(23, 59)),
+        untilTimes = TimeSpan(LocalTime(0, 0), LocalTime(23, 59)),
+        complete = true,
+    )

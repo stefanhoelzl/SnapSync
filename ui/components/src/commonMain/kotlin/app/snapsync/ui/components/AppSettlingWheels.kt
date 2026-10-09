@@ -341,3 +341,7 @@ private fun SettlingRow(text: String, distance: Int, blocked: Boolean, onClick: 
         )
     }
 }
+
+/** Whether any minute of [hour] may be settled on — what decides if an hour row is offered. */
+private fun hourHasAllowedMinute(hour: Int, allowed: (LocalTime) -> Boolean): Boolean =
+    (0 until MINUTES_PER_HOUR).any { allowed(LocalTime(hour, it)) }

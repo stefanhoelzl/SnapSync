@@ -217,7 +217,10 @@ class StatusContainerHostNetworkTest {
     @Test
     fun `offline the create layer carries the notice`() = runTest {
         assertEquals(
-            Layer.CreateEvent(network = NetworkNotice.OFFLINE),
+            Layer.CreateEvent(
+                freshCreateForm(CutoffFormatter(now = { NOW }, zone = TimeZone.UTC)),
+                network = NetworkNotice.OFFLINE,
+            ),
             host(FakeNetwork(NetworkAccess.Offline), config = null).screen.value.layer,
         )
     }
@@ -228,12 +231,22 @@ class StatusContainerHostNetworkTest {
         val host = host(network, config = null, creation = CreationStatus.Failed(CreationFailureReason.SERVER))
         driving(host) {
             assertEquals(
-                Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED, network = NetworkNotice.OFFLINE),
+                Layer.CreateEvent(
+                    freshCreateForm(CutoffFormatter(now = { NOW }, zone = TimeZone.UTC)),
+                    error = ScreenMessage.CREATE_FAILED,
+                    network = NetworkNotice.OFFLINE,
+                ),
                 host.screen.value.layer,
             )
             network.comeBack()
             runCurrent()
-            assertEquals(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED), host.screen.value.layer)
+            assertEquals(
+                Layer.CreateEvent(
+                    freshCreateForm(CutoffFormatter(now = { NOW }, zone = TimeZone.UTC)),
+                    error = ScreenMessage.CREATE_FAILED,
+                ),
+                host.screen.value.layer,
+            )
         }
     }
 

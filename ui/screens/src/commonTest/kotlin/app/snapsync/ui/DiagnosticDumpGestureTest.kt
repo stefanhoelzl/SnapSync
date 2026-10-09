@@ -21,17 +21,14 @@ import app.snapsync.model.PendingSwitch
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.save
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.time.Instant
 
 /**
  * The hidden bug-report affordance (capability `privacy-security`).
@@ -46,11 +43,6 @@ import kotlin.time.Instant
  */
 class DiagnosticDumpGestureTest {
 
-    private fun fixedCutoff() = CutoffFormatter(
-        now = { Instant.parse("2026-07-06T12:00:00Z") },
-        zone = TimeZone.UTC,
-    )
-
     /** The app-name nav label — rendered uppercase by the layout, in every state. */
     private val navLabel = "SNAPSYNC"
 
@@ -64,8 +56,7 @@ class DiagnosticDumpGestureTest {
         var opened = 0
         setContent {
             TestStatusScreen(
-                UiState(Layer.CreateEvent()),
-                cutoff = fixedCutoff(),
+                UiState(createLayer()),
                 actions = testActions(
                     onSendDiagnostics = { _, _ -> },
                     surfaces = testSurfaceActions(onReportBugOpen = { opened++ }),
@@ -81,7 +72,7 @@ class DiagnosticDumpGestureTest {
     @Test
     fun `the sheet renders when the state says it is open`() = runComposeUiTest {
         setContent {
-            TestStatusScreen(reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = diagnosticsActions())
+            TestStatusScreen(reporting(createLayer()), actions = diagnosticsActions())
         }
         onNodeWithText(sheetTitle).assertExists()
     }
@@ -93,8 +84,7 @@ class DiagnosticDumpGestureTest {
         var sent = 0
         setContent {
             TestStatusScreen(
-                reporting(Layer.CreateEvent()),
-                cutoff = fixedCutoff(),
+                reporting(createLayer()),
                 actions = testActions(onSendDiagnostics = { _, _ -> sent++ }),
             )
         }
@@ -111,8 +101,7 @@ class DiagnosticDumpGestureTest {
         var sent = 0
         setContent {
             TestStatusScreen(
-                reporting(Layer.CreateEvent()),
-                cutoff = fixedCutoff(),
+                reporting(createLayer()),
                 actions = testActions(onSendDiagnostics = { _, _ -> sent++ }),
             )
         }
@@ -129,8 +118,7 @@ class DiagnosticDumpGestureTest {
         var dismissed = 0
         setContent {
             TestStatusScreen(
-                reporting(Layer.CreateEvent()),
-                cutoff = fixedCutoff(),
+                reporting(createLayer()),
                 actions = testActions(
                     onSendDiagnostics = { note, screen -> sent += note to screen },
                     surfaces = testSurfaceActions(onReportBugDismiss = { dismissed++ }),
@@ -155,8 +143,7 @@ class DiagnosticDumpGestureTest {
         var dismissed = 0
         setContent {
             TestStatusScreen(
-                reporting(Layer.CreateEvent()),
-                cutoff = fixedCutoff(),
+                reporting(createLayer()),
                 actions = testActions(
                     onSendDiagnostics = { _, _ -> sent++ },
                     surfaces = testSurfaceActions(onReportBugDismiss = { dismissed++ }),
@@ -178,8 +165,7 @@ class DiagnosticDumpGestureTest {
         val saved = mutableListOf<String>()
         setContent {
             TestStatusScreen(
-                reporting(Layer.CreateEvent()).copy(reportDestination = ReportDestination.THIS_DEVICE),
-                cutoff = fixedCutoff(),
+                reporting(createLayer()).copy(reportDestination = ReportDestination.THIS_DEVICE),
                 actions = testActions(onSendDiagnostics = { note, _ -> saved += note }),
             )
         }
@@ -205,7 +191,6 @@ class DiagnosticDumpGestureTest {
                         JoinStage.Unloaded(JoinPhase.LoadFailed),
                     ),
                 ),
-                cutoff = fixedCutoff(),
                 actions = testActions(
                     onSendDiagnostics = { _, screen -> sent += screen },
                 ),
@@ -225,8 +210,7 @@ class DiagnosticDumpGestureTest {
         // control, and would put the hidden affordance into the accessibility tree.
         setContent {
             TestStatusScreen(
-                UiState(Layer.CreateEvent()),
-                cutoff = fixedCutoff(),
+                UiState(createLayer()),
                 actions = testActions(onSendDiagnostics = { _, _ -> }),
             )
         }
@@ -243,7 +227,6 @@ class DiagnosticDumpGestureTest {
         setContent {
             TestStatusScreen(
                 reportingOver(joinedWith(SyncHealth.InSync)),
-                cutoff = fixedCutoff(),
                 actions = testActions(
                     onSendDiagnostics = { _, _ -> },
                 ),

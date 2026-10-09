@@ -93,7 +93,6 @@ fun WorldHarnessRoot() {
                 key(controller.generation) {
                     ScreenPane(
                         shown = controller.shown,
-                        cutoffFormatter = controller.app.composed.cutoffFormatter,
                         dateFormatting = controller.app.composed.dateFormatting,
                         onIntent = controller::tap,
                         darkThemeOverride = dark,

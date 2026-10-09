@@ -8,9 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import app.snapsync.model.DateFormats
 import app.snapsync.model.UiState
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.RangeChoiceActions
-import kotlinx.datetime.LocalDateTime
+import app.snapsync.ui.components.RangeGestures
 
 /*
  * Test-only builders for the status screen's action bundles, carrying the inert defaults the production
@@ -24,12 +23,30 @@ internal fun testActions(
     access: AccessActions = testAccessActions(),
     switch: SwitchActions = testSwitchActions(),
     surfaces: SurfaceActions = testSurfaceActions(),
-    onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit = { _, _, _ -> },
+    create: CreateActions = testCreateActions(),
     onOpenStore: () -> Unit = {},
     participation: ParticipationActions = testParticipationActions(),
     onSendDiagnostics: (note: String, screen: String) -> Unit = { _, _ -> },
     menu: MenuActions = testMenuActions(onSendDiagnostics = onSendDiagnostics),
-) = StatusActions(join, joined, access, switch, surfaces, onCreateEvent, onOpenStore, participation, menu)
+) = StatusActions(join, joined, access, switch, surfaces, create, onOpenStore, participation, menu)
+
+internal fun testCreateActions(
+    onName: (String) -> Unit = {},
+    range: RangeGestures = testRangeGestures(),
+    onCreate: () -> Unit = {},
+) = CreateActions(onName, range, onCreate)
+
+internal fun testRangeGestures() = RangeGestures(
+    onDay = {},
+    onDragStart = {},
+    onDragEnd = {},
+    onSweep = { _, _ -> },
+    onFromHour = {},
+    onFromMinute = {},
+    onUntilHour = {},
+    onUntilMinute = {},
+    onUntilMinuteDrag = {},
+)
 
 internal fun testMenuActions(
     onSendDiagnostics: (note: String, screen: String) -> Unit = { _, _ -> },
@@ -110,8 +127,11 @@ internal fun testParticipationActions(
 
 internal fun testRangeChoiceActions(
     onPreset: (app.snapsync.model.RangeChoice) -> Unit = {},
-    onCustom: (LocalDateTime, LocalDateTime) -> Unit = { _, _ -> },
-) = RangeChoiceActions(onPreset, onCustom)
+    onOpen: () -> Unit = {},
+    gestures: RangeGestures = testRangeGestures(),
+    onConfirm: () -> Unit = {},
+    onDismiss: () -> Unit = {},
+) = RangeChoiceActions(onPreset, onOpen, gestures, onConfirm, onDismiss)
 
 /**
  * The platform's date formatting every screen test renders through. The screen tests run on the JVM only
@@ -122,8 +142,8 @@ internal expect val testDates: (languageTag: String?) -> DateFormats
 
 /** The status screen with inert actions unless a test supplies its own. */
 @Composable
-internal fun TestStatusScreen(state: UiState, cutoff: CutoffFormatter, actions: StatusActions = testActions()) =
-    WithoutKeyboardInsets { StatusScreen(state = state, cutoff = cutoff, dateFormats = testDates, actions = actions) }
+internal fun TestStatusScreen(state: UiState, actions: StatusActions = testActions()) =
+    WithoutKeyboardInsets { StatusScreen(state = state, dateFormats = testDates, actions = actions) }
 
 /**
  * [content] laid out as if no soft keyboard were up — as it is on the JVM and the iOS simulator, which have none.

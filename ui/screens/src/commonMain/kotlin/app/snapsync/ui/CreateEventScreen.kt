@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -18,13 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
+import app.snapsync.model.CreateStep
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
-import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.Layer
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.StoreName
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppEventRangePicker
 import app.snapsync.ui.components.AppIdentityHeader
@@ -33,7 +33,6 @@ import app.snapsync.ui.components.AppQuestionHeading
 import app.snapsync.ui.components.AppTextField
 import app.snapsync.ui.components.EndTimeGuide
 import app.snapsync.ui.components.PrimaryButton
-import app.snapsync.ui.components.RangeBounds
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
@@ -59,15 +58,10 @@ import app.snapsync.ui.resources.update_eyebrow
 import app.snapsync.ui.resources.update_headline
 import app.snapsync.ui.resources.update_subtitle
 import app.snapsync.ui.resources.update_title
-import kotlinx.datetime.LocalDateTime
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Duration.Companion.seconds
 
 // Event creation: the name/date form and its in-flight state.
-
-/** The longest event window, in whole days, as the create screen states it. */
-private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWholeDays
 
 /**
  * The create-event landing layer (create-event) — the app's front door for a HOST, brought to the
@@ -75,27 +69,21 @@ private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWho
  * header leads, then the two questions the surface asks — what is it called, and when is it — with the name
  * field and the inline range picker answering them. Create + one line under it stay pinned to the bottom.
  *
- * The name and the range live in the [draft] (only the submitted values cross the container). The range
- * has NO complete default: the start is preset to now (following the clock until the host chooses something
- * in the range, see [CreateDraft]) and the last day to today, but the end TIME must be chosen, because a
- * pre-filled window the host never looked at was almost always wrong and silently bounds every member's
- * photos. Create is disabled until [nextStep] is complete; a line ABOVE Create
- * names the next missing step — a button that leads to it: the name field, focused with the keyboard up, or
- * the end-time wheels, brought into view and outlined — and turns into the event's duration once there is
- * none. The picker cannot produce an inverted or over-long range, so the window guards in [creatableEnd]
- * only restate it.
+ * The form is the app's ([Layer.CreateEvent.form]): the name, the range and what they make arrive in the state, and
+ * every edit crosses as an intent. The range has NO complete default: the start is preset to now (following the
+ * clock until the host chooses something in the range) and the last day to today, but the end TIME must be chosen,
+ * because a pre-filled window the host never looked at was almost always wrong and silently bounds every member's
+ * photos. Create is offered only once the form may be created; a line ABOVE Create
+ * names the next missing step — a button that leads to it: the name field, focused with the keyboard up, or the
+ * end-time wheels, brought into view and outlined — and turns into the event's duration once there is none.
  *
  * A returned failure is a *submission* failure (the server was unreachable or rejected it), not the current
  * input being malformed. It replaces the scan hint BELOW Create — never a red field, which would blame the
  * host's typing, and never a banner that grows the pinned area over the range picker.
  */
 @Composable
-internal fun CreateEventScreen(
-    state: Layer.CreateEvent,
-    draft: CreateDraft,
-    callbacks: CreateCallbacks,
-    cutoff: CutoffFormatter,
-) {
+internal fun CreateEventScreen(state: Layer.CreateEvent, callbacks: CreateCallbacks) {
+    val form = state.form
     val nameFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var endTimeRequests by remember { mutableIntStateOf(0) }
@@ -106,6 +94,10 @@ internal fun CreateEventScreen(
         },
         toEndTime = { endTimeRequests++ },
     )
+    // The text being edited is the field's own (the input-mechanics exception, `ScreenStateContainmentTest`): a field
+    // fed from the app's state a frame late would lose keystrokes and break the keyboard's composition. Each edit is
+    // handed on, and the app's name is what decides; a fresh draft seeds the field again.
+    var name by remember(form.draft) { mutableStateOf(form.name) }
     Column(modifier = Modifier.fillMaxSize()) {
         // Identity, pinned to the top so it holds its place across the form / creating swap.
         AppEventHeaderHost(
@@ -121,8 +113,11 @@ internal fun CreateEventScreen(
         ) {
             CreateQuestion(stringResource(Res.string.create_name_question), Modifier.padding(top = 18.dp)) {
                 AppTextField(
-                    value = draft.name,
-                    onValueChange = { draft.name = it },
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        callbacks.create.onName(it)
+                    },
                     placeholder = stringResource(Res.string.create_name_placeholder),
                     maxLength = EVENT_NAME_MAX_LENGTH,
                     focusRequester = nameFocus,
@@ -130,19 +125,15 @@ internal fun CreateEventScreen(
             }
             CreateQuestion(stringResource(Res.string.create_when_question)) {
                 AppEventRangePicker(
-                    range = draft.range,
-                    bounds = RangeBounds.lastingAtMost(cutoff::latestEnd),
-                    // The truthfulness line: this window is the event's capture-date bound — stated
-                    // once, where it is set — and the one limit on it.
-                    note = stringResource(Res.string.create_window_note, EVENT_WINDOW_MAX_DAYS),
-                    today = cutoff.nowLocal().date,
-                    currentHour = { cutoff.nowLocal().hour },
+                    picker = form.picker,
+                    // The truthfulness line: this window is the event's capture-date bound — stated once, where it is set — and the one limit on it.
+                    note = stringResource(Res.string.create_window_note, form.maxDays),
+                    gestures = callbacks.create.range,
                     endTime = EndTimeGuide(showRequests = endTimeRequests, onPickEndTime = guide.toEndTime),
-                    onChange = draft::choose,
                 )
             }
         }
-        CreateActions(state, draft, callbacks, cutoff, guide)
+        CreateActionsBar(state, callbacks, guide)
     }
 }
 
@@ -158,13 +149,16 @@ private fun CreateQuestion(question: String, modifier: Modifier = Modifier, answ
     }
 }
 
-/** What the create screen can ask for: the create itself, and SnapSync's Settings page when its network is blocked. */
+/** What the create screen can ask for: the form's own, and SnapSync's Settings page when its network is blocked. */
 internal class CreateCallbacks(
-    val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
+    val create: CreateActions,
     val onOpenSettings: () -> Unit,
     /** "Report this" on a refusal the user can only tell us about. */
     val onReportRefusal: (ScreenMessage) -> Unit,
-)
+) {
+    /** The tap that reports [message]. */
+    fun reporting(message: ScreenMessage): () -> Unit = { onReportRefusal(message) }
+}
 
 /**
  * The pinned bottom: what is still missing (or how long the event lasts), Create, and one line under it —
@@ -172,32 +166,21 @@ internal class CreateCallbacks(
  * also takes Create away. A constant height, so nothing here ever covers the picker.
  */
 @Composable
-private fun CreateActions(
-    state: Layer.CreateEvent,
-    draft: CreateDraft,
-    callbacks: CreateCallbacks,
-    cutoff: CutoffFormatter,
-    guide: StepGuide,
-) {
+private fun CreateActionsBar(state: Layer.CreateEvent, callbacks: CreateCallbacks, guide: StepGuide) {
     // ONE value: the reduction already coalesced a sticky create failure and a self-clearing invalid-link
     // notice, the transient winning, so the screen renders what it is given.
     val error: String? = state.error?.text()
+    val form = state.form
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        val step = draft.nextStep()
-        val toStep = when (step) {
+        val toStep = when (form.nextStep) {
             CreateStep.Name -> guide.toName
             CreateStep.EndTime -> guide.toEndTime
             is CreateStep.Complete -> null
         }
-        StatusHint(nextStepLine(step, draft.range.from, cutoff).text(), onClick = toStep)
-        val end = creatableEnd(draft, cutoff)
+        StatusHint(nextStepLine(form.nextStep).text(), onClick = toStep)
         PrimaryButton(
             label = stringResource(Res.string.create_button),
-            onClick = if (end != null && state.network == null) {
-                { callbacks.onCreateEvent(draft.name, draft.range.from, end) }
-            } else {
-                null
-            },
+            onClick = callbacks.create.onCreate.takeIf { form.canCreate && state.network == null },
         )
         val network = state.network
         if (network != null) {
@@ -216,28 +199,17 @@ private fun CreateActions(
                     error ?: stringResource(Res.string.create_join_hint)
                 },
                 isError = error != null,
-                onClick = reportable?.let { { callbacks.onReportRefusal(it) } },
+                onClick = reportable?.let(callbacks::reporting),
             )
         }
     }
 }
 
 /** The line above Create: the next missing step, or — once there is none — the event's duration. */
-internal fun nextStepLine(step: CreateStep, from: LocalDateTime, cutoff: CutoffFormatter): Phrase = when (step) {
+internal fun nextStepLine(step: CreateStep): Phrase = when (step) {
     CreateStep.Name -> Phrase.Of(Res.string.create_step_name)
     CreateStep.EndTime -> Phrase.Of(Res.string.create_step_end_time)
-    is CreateStep.Complete ->
-        Phrase.Of(Res.string.create_lasts, listOf(cutoff.coarseDuration(from, step.until).phrase()))
-}
-
-/**
- * The end a draft may be created with, or `null` while Create is not offered: only a complete draft has one. The
- * window checks restate what the picker already cannot produce (an inverted or over-long range), so a regression
- * there is refused rather than submitted.
- */
-internal fun creatableEnd(draft: CreateDraft, cutoff: CutoffFormatter): LocalDateTime? {
-    val complete = draft.nextStep() as? CreateStep.Complete ?: return null
-    return complete.until.takeIf { draft.range.from < it && cutoff.fitsEventWindow(draft.range.from, it) }
+    is CreateStep.Complete -> Phrase.Of(Res.string.create_lasts, listOf(step.lasts.phrase()))
 }
 
 /**

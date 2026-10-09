@@ -13,7 +13,7 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.CreateDraftSession
+import app.snapsync.model.CreateForm
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Direction
@@ -62,6 +62,10 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventTiming
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.step
+import app.snapsync.presentation.range.EventRange
+import app.snapsync.presentation.range.RangeEdit
+import app.snapsync.presentation.range.after
+import app.snapsync.presentation.range.validUntil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -158,7 +162,9 @@ class StatusContainerHost(
 
     // Declared here rather than beside their use because `container`'s initializer reduces over it:
     // a property initialized later is null at that moment.
-    private val local = MutableStateFlow(Local(form = freshForm))
+    private val local = MutableStateFlow(
+        Local(form = freshForm, create = CreateDraft.fresh(CreateDraftSession(), cutoffFormatter.nowToTheMinute())),
+    )
     private var transientErrorClear: Job? = null
     private var reportNoticeClear: Job? = null
 
@@ -325,12 +331,39 @@ class StatusContainerHost(
             // The create draft follows the app's returns to the foreground.
             intent {
                 foreground.collect { back ->
-                    local.update { it.copy(createDraft = it.createDraft.afterReturn(back.count, back.awayFor)) }
+                    val now = cutoffFormatter.nowToTheMinute()
+                    local.update { it.copy(create = it.create.afterReturn(back.count, back.awayFor, now)) }
                 }
             }
-            // A missing network came back (without a network, the join screen waits for one): a join whose details
-            // could not load loads them now, untapped. Only on that return — a load that failed while the network was
-            // there (an unreachable server) still waits for the member's Retry.
+            // The draft belongs to one visit of the create flow: leaving it for anything else —
+            // a join, the joined layer — drops it, so a later visit starts afresh.
+            intent {
+                container.stateFlow
+                    .map { it.ui.layer is Layer.CreateEvent || it.ui.layer == Layer.CreatingEvent }
+                    .distinctUntilChanged()
+                    .collect { inCreateFlow ->
+                        if (!inCreateFlow) {
+                            val now = cutoffFormatter.nowToTheMinute()
+                            local.update { it.copy(create = CreateDraft.fresh(it.create.session, now)) }
+                        }
+                    }
+            }
+            // While the create form shows an untouched range, its start follows the clock minute by minute (the start follows the clock until the host chooses the range).
+            intent {
+                container.stateFlow
+                    .map { it.ui.layer is Layer.CreateEvent && !local.value.create.rangeTouched }
+                    .distinctUntilChanged()
+                    .collectLatest { following ->
+                        while (following) {
+                            val now = cutoffFormatter.nowToTheMinute()
+                            local.update { it.copy(create = it.create.followNow(now)) }
+                            delay(cutoffFormatter.millisToNextMinute())
+                        }
+                    }
+            }
+            // A missing network came back (without a network, the join screen waits for one):
+            // a join whose details could not load loads them now, untapped. Only on that return — a load that failed
+            // while the network was there (an unreachable server) still waits for the member's Retry.
             intent {
                 network.returned.collect {
                     if (pending.value?.phase == JoinProgress.LoadFailed) onRetryLoad()
@@ -360,6 +393,9 @@ class StatusContainerHost(
             }
         }
 
+    /** The conversions from the domain into what the screen shows (see [Display]). */
+    private val display: Display get() = Display(cutoffFormatter, ::resolveRange)
+
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
     private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: GalleryAccess)
 
@@ -379,7 +415,7 @@ class StatusContainerHost(
         val reduced = if (refused != null) {
             Reduced(Layer.UpdateRequired(minimumVersion = refused.minimumVersion, store = store?.let { it.kind.shown }))
         } else {
-            reduceFrom(membership, interaction, local, now, Display(cutoffFormatter, ::resolveRange))
+            reduceFrom(membership, interaction, local, now, display)
         }
         val ui = UiState(
             reduced.layer,
@@ -390,7 +426,10 @@ class StatusContainerHost(
         )
         // The count row renders only while sharing is on, so no photo-library read is made for a row nobody sees.
         val counted = reduced.range?.takeIf { local.form.shareOn }
-        return ScreenModel(ui, Shown(store = store.takeIf { refused != null }, countedRange = counted))
+        return ScreenModel(
+            ui,
+            Shown(store = store.takeIf { refused != null }, range = reduced.range, countedRange = counted),
+        )
     }
 
     /**
@@ -435,6 +474,66 @@ class StatusContainerHost(
                 EventEnd(cutoffFormatter.toCutoff(endsAt)),
             )
         }
+
+    /** The create form's own taps (capability `create-event`): its name as typed, and Create. */
+    val create: CreateCommands = CreateCommands()
+
+    inner class CreateCommands internal constructor() {
+        /**
+         * The name as typed so far. Applied at once rather than as an intent, so a Create tapped right after the last
+         * keystroke submits it.
+         */
+        fun onName(name: String) = local.update { it.copy(create = it.create.copy(name = name)) }
+
+        /** Create the event the form describes — inert unless the draft may be created: complete, inside the window. */
+        fun onConfirm() {
+            val draft = local.value.create
+            val end = display.creatableEnd(draft) ?: return
+            onCreateEvent(draft.name, draft.range.from, end)
+        }
+    }
+
+    /**
+     * The range calendars (capabilities `create-event`, `join-event`, `manage-membership`): the gestures on the create
+     * form's calendar or the open one's; and the calendar over a participation surface, which opens on the range the
+     * surface resolves, complete — so the first tap on a day starts a new range — held to the event's window. OK takes
+     * its span as a custom range; a preset chip takes the preset; closing changes nothing.
+     */
+    val picker: PickerCommands = PickerCommands()
+
+    inner class PickerCommands internal constructor() {
+        /**
+         * A gesture on a range calendar (capabilities `create-event`, `join-event`): the open calendar's, or else the
+         * create form's. Applied at once, in the order the gestures came, so a drag's moves land one after another.
+         */
+        internal fun onEdit(edit: RangeEdit) = local.update { l ->
+            val picking = l.picking
+            if (picking != null) {
+                l.copy(
+                    picking = picking.copy(range = picking.range.after(edit, picking.bounds, picking.range.from.hour)),
+                )
+            } else {
+                val hour = cutoffFormatter.nowLocal().hour
+                l.copy(create = l.create.choose(l.create.range.after(edit, display.createBounds, hour)))
+            }
+        }
+
+        fun onOpen() {
+            val r = container.stateFlow.value.shown.range ?: return
+            val range = EventRange(r.from, r.until.date, r.until.time, endPending = false)
+            local.update { it.copy(picking = Picking(range, r.windowStart, r.windowEnd)) }
+        }
+
+        fun onDismiss() = local.update { it.copy(picking = null) }
+
+        fun onConfirm() {
+            val open = local.value.picking ?: return
+            val until = open.range.validUntil(open.bounds) ?: return
+            onDismiss()
+            val window = open.windowStart..open.windowEnd
+            form.onRangeCustom(open.range.from.coerceIn(window), until.coerceIn(window))
+        }
+    }
 
     /**
      * The three photo-access taps, grouped —
@@ -601,6 +700,7 @@ class StatusContainerHost(
             local.update {
                 it.copy(
                     form = form,
+                    picking = null,
                     settings = Owned(config.eventId, SettingsSurface.Open),
                     pendingWithdrawal = Owned(null, null),
                     lastApplied = Owned(null, null),
@@ -618,6 +718,7 @@ class StatusContainerHost(
                 it.copy(
                     settings = Owned(null, SettingsSurface.Closed),
                     pendingWithdrawal = Owned(null, null),
+                    picking = null,
                 )
             }
         }
@@ -813,7 +914,11 @@ class StatusContainerHost(
             }
         }
 
-        fun onRangePreset(preset: RangeChoice) = formIntent { editRange { it.copy(preset = preset) } }
+        fun onRangePreset(preset: RangeChoice) {
+            // A preset chip is a complete choice: the calendar it sits on closes.
+            local.update { it.copy(picking = null) }
+            formIntent { editRange { it.copy(preset = preset) } }
+        }
 
         /** A custom range from the calendar; a `null` bound keeps the one already picked. */
         fun onRangeCustom(from: LocalDateTime?, until: LocalDateTime?) = formIntent {
@@ -1017,7 +1122,7 @@ class StatusContainerHost(
         // A fresh surface starts from the defaults — all on, the full event window. Seeding HERE rather
         // than in the reduction is what keeps the member's edits from being overwritten by every
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
-        local.editForm { freshForm }
+        local.update { it.copy(form = freshForm, picking = null) }
         pending.value = PendingJoin(eventId, JoinProgress.Loading, linkKey)
         loadInto(eventId, linkKey)
     }
@@ -1241,12 +1346,13 @@ private fun unjoinedLayer(
     pending: PendingJoin?,
     create: Creation,
     transient: ScreenMessage?,
-    form: RangeForm,
+    choices: Choices,
     permission: GalleryAccess,
     network: NetworkNotice?,
     refusal: DeviceRefusal?,
     display: Display,
 ): Reduced {
+    val form = choices.form
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
     // lands here — a transient no-event, shown full-screen with a Retry).
     if (pending != null) {
@@ -1257,7 +1363,7 @@ private fun unjoinedLayer(
         val layer = Layer.JoiningEvent(
             eventId = pending.eventId,
             stage = when (val shown = phase.shows) {
-                is JoinPhase.Detailed -> JoinStage.Loaded(shown, form.view(checkNotNull(range)))
+                is JoinPhase.Detailed -> JoinStage.Loaded(shown, form.view(checkNotNull(range), choices.picking))
                 is JoinPhase.Eventless -> JoinStage.Unloaded(shown)
             },
             // The same transient cell the create and joined layers read: a rejected link is rejected
@@ -1284,17 +1390,20 @@ private fun unjoinedLayer(
         CreationStatus.InFlight -> Layer.CreatingEvent
         is CreationStatus.Failed ->
             Layer.CreateEvent(
+                form = create.form,
                 error = transient ?: creation.reason.message(refused),
-                draft = create.draft,
                 network = network,
             )
-        CreationStatus.Idle -> Layer.CreateEvent(error = transient ?: refused, draft = create.draft, network = network)
+        CreationStatus.Idle -> Layer.CreateEvent(form = create.form, error = transient ?: refused, network = network)
     }
     return Reduced(layer)
 }
 
-/** The create surface's two inputs: the create request's status, and where its draft stands. */
-private class Creation(val status: CreationStatus, val draft: CreateDraftSession)
+/** The create surface's two inputs: the create request's status, and the form as it stands. */
+private class Creation(val status: CreationStatus, val form: CreateForm)
+
+/** A participation surface's choices, and the calendar open over them, if any. */
+private class Choices(val form: RangeForm, val picking: Picking?)
 
 /**
  * Which of the worlds the app is in — unjoined (the join gate or the create surface) or joined — and, for the
@@ -1321,8 +1430,17 @@ private fun reduceFrom(
         askingToStopSharing = local.pendingWithdrawal.forMembership(config?.eventId, null) != null,
     )
     if (config == null) {
-        val create = Creation(creation, local.createDraft)
-        return unjoinedLayer(pending, create, transient, form, permission, network, membership.refusal, display)
+        val create = Creation(creation, display.create(local.create))
+        return unjoinedLayer(
+            pending,
+            create,
+            transient,
+            Choices(form, local.picking),
+            permission,
+            network,
+            membership.refusal,
+            display,
+        )
     }
     val health = joinedHealth(membership, config, network, nowCutoff, local.keyLost)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
@@ -1338,7 +1456,7 @@ private fun reduceFrom(
         ?.let { syncCounts(it.progress, download, config.direction) }
     return joinedLayer(
         config, health, pendingSwitch, permission, JoinedFacts(timing, counts, display.today()),
-        rename, reconfiguring, transient, form, display, local.inviteKey,
+        rename, reconfiguring, transient, Choices(form, local.picking), display, local.inviteKey,
     )
 }
 
@@ -1435,10 +1553,11 @@ private fun joinedLayer(
     rename: RenameStatus,
     reconfiguring: SettingsShown,
     transient: ScreenMessage?,
-    form: RangeForm,
+    choices: Choices,
     display: Display,
     inviteKey: String?,
 ): Reduced {
+    val form = choices.form
     // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window. A closed event's settings are
     // fixed: a surface left open when the close lands gives way to the status.
     val settingsOpen = reconfiguring.surface != SettingsSurface.Closed && !config.closed
@@ -1468,7 +1587,7 @@ private fun joinedLayer(
         notice = transient,
         surface = if (range != null) {
             JoinedSurface.Reconfigure(
-                range = form.view(range),
+                range = form.view(range, choices.picking),
                 saveFailed = reconfiguring.surface == SettingsSurface.SaveFailed,
                 askingToStopSharing = reconfiguring.askingToStopSharing,
             )
@@ -1708,8 +1827,10 @@ private data class Local(
      * re-seeds, so nothing can leak from one surface into the other.
      */
     val form: RangeForm,
-    /** Where the create screen's draft stands against the app's foreground life. */
-    val createDraft: CreateDraftSession = CreateDraftSession(),
+    /** What the host has entered on the create form. */
+    val create: CreateDraft,
+    /** The range calendar open over a participation surface, or `null`. */
+    val picking: Picking? = null,
     /**
      * Whether the joined layer is showing its settings surface (decision record `add-reconfigure-membership` D4:
      * opening is client-side navigation that touches no port). OWNED by the membership it was opened in (see

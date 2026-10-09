@@ -75,7 +75,7 @@ class SnapSyncRoot(internal val application: Application) {
     internal val links: AndroidLinks by lazy { AndroidLinks(log) }
 
     /** The screen an activity pulls. */
-    internal val ui: AndroidUi by lazy { AndroidUi(cutoffFormatter, screenDates, log) }
+    internal val ui: AndroidUi by lazy { AndroidUi(screenDates, log) }
 
     /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
     private val screenDates: ScreenDates by lazy { ScreenDates(ports.dateFormatting.value::formats) }

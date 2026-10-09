@@ -11,7 +11,6 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.model.UiState
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.ScreenDates
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
@@ -41,13 +40,11 @@ import platform.UIKit.systemBackgroundColor
  * [SceneRecord.generation] SwiftUI binds to `.id(…)` — a value the shell binds, not a command it obeys, so the "when
  * does the scene exist" rule stays in tested Kotlin rather than in a Swift conditional.
  *
- * [cutoff] is the process's one formatter — the same instance the status host reduces with — so the screen and the
- * host render one capture date one way. [dates] is the process's date formatting, the screen's every date read through
+ * [dates] is the process's date formatting, the screen's every date read through
  * it.
  */
 class IosUi(
     private val record: SceneRecord,
-    private val cutoff: CutoffFormatter,
     private val dates: ScreenDates,
     private val log: Logger,
 ) : Ui {
@@ -99,7 +96,7 @@ class IosUi(
             val state by shown.collectAsState()
             CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
                 state?.let {
-                    StatusScreen(state = it, cutoff = cutoff, dateFormats = dates::formats, actions = actions)
+                    StatusScreen(state = it, dateFormats = dates::formats, actions = actions)
                 }
             }
         }

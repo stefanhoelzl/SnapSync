@@ -2,6 +2,7 @@ package app.snapsync.ui
 
 import app.snapsync.model.UiIntent
 import app.snapsync.ui.components.RangeChoiceActions
+import app.snapsync.ui.components.RangeGestures
 
 /**
  * The status screen's callback bundle — **the one tap → [UiIntent] table**.
@@ -12,7 +13,24 @@ import app.snapsync.ui.components.RangeChoiceActions
  * never this one: this binds taps to names, and nothing else. It is clicked (`HostStatusActionsTest`), and the table
  * clicked is the table that ships.
  */
-fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
+fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = rangeGestures(dispatch).let { range ->
+    statusActions(dispatch, range)
+}
+
+/** The range calendars' gestures, each one intent — the create form's and the participation surfaces' alike. */
+private fun rangeGestures(dispatch: (UiIntent) -> Unit) = RangeGestures(
+    onDay = { dispatch(UiIntent.RangeDay(it)) },
+    onDragStart = { dispatch(UiIntent.RangeDragStart(it)) },
+    onDragEnd = { dispatch(UiIntent.RangeDragEnd(it)) },
+    onSweep = { anchor, day -> dispatch(UiIntent.RangeSweep(anchor, day)) },
+    onFromHour = { dispatch(UiIntent.RangeFromHour(it)) },
+    onFromMinute = { dispatch(UiIntent.RangeFromMinute(it)) },
+    onUntilHour = { dispatch(UiIntent.RangeUntilHour(it)) },
+    onUntilMinute = { dispatch(UiIntent.RangeUntilMinute(it)) },
+    onUntilMinuteDrag = { dispatch(UiIntent.RangeUntilMinuteDrag) },
+)
+
+private fun statusActions(dispatch: (UiIntent) -> Unit, range: RangeGestures) = StatusActions(
     join = JoinGateActions(
         onConfirmJoin = { dispatch(UiIntent.ConfirmJoin) },
         onCancelJoin = { dispatch(UiIntent.CancelJoin) },
@@ -43,14 +61,21 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
         onConfirmSwitch = { dispatch(UiIntent.ConfirmSwitch) },
         onCancelSwitch = { dispatch(UiIntent.CancelSwitch) },
     ),
-    onCreateEvent = { name, startsAt, endsAt -> dispatch(UiIntent.CreateEvent(name, startsAt, endsAt)) },
+    create = CreateActions(
+        onName = { dispatch(UiIntent.CreateName(it)) },
+        range = range,
+        onCreate = { dispatch(UiIntent.ConfirmCreate) },
+    ),
     // The store page is the build's, opened by the container; a state that names
     // no store makes the intent inert.
     onOpenStore = { dispatch(UiIntent.OpenAppStore) },
     participation = ParticipationActions(
         choices = RangeChoiceActions(
             onPreset = { dispatch(UiIntent.RangePreset(it)) },
-            onCustom = { from, until -> dispatch(UiIntent.RangeCustom(from, until)) },
+            onOpen = { dispatch(UiIntent.RangePickerOpen) },
+            gestures = range,
+            onConfirm = { dispatch(UiIntent.RangePickerConfirm) },
+            onDismiss = { dispatch(UiIntent.RangePickerDismiss) },
         ),
         onShareOn = { dispatch(UiIntent.ShareOn(it)) },
         onReceiveOn = { dispatch(UiIntent.ReceiveOn(it)) },

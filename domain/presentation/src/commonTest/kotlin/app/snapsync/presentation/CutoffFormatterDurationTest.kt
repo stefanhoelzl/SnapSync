@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.CoarseDuration
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test

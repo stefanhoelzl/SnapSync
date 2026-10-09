@@ -11,7 +11,6 @@ import app.snapsync.model.Arrow
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.CreateDraftSession
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Direction
@@ -78,7 +77,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -655,30 +653,7 @@ class StatusContainerHostTest {
     @Test
     fun `config absent with idle creation shows the create input`() = runTest {
         val host = createHost(CreationStatus.Idle, scope = backgroundScope)
-        assertEquals(shownAs(Layer.CreateEvent(error = null)), host.screen.value)
-    }
-
-    @Test
-    fun `each return to the foreground reaches the create layer and only a long absence starts a fresh draft`() = runTest {
-        // Capability `create-event`, "A long absence starts a fresh draft".
-        val foreground = MutableStateFlow(ForegroundReturn.NONE)
-        val failed = ScreenMessage.CREATE_FAILED
-        createHost(
-            CreationStatus.Failed(CreationFailureReason.SERVER),
-            scope = backgroundScope,
-            foreground = foreground,
-        )
-            .testWithInternalState(this) {
-                runOnCreate()
-                foreground.value = ForegroundReturn(1, awayFor = null)
-                expectShown(shownAs(Layer.CreateEvent(failed, CreateDraftSession(activation = 1, epoch = 0))))
-                foreground.value = ForegroundReturn(2, awayFor = 14.minutes + 59.seconds)
-                expectShown(shownAs(Layer.CreateEvent(failed, CreateDraftSession(activation = 2, epoch = 0))))
-                // A fresh draft keeps the failure message: it stays until the next attempt.
-                foreground.value = ForegroundReturn(3, awayFor = 15.minutes)
-                expectShown(shownAs(Layer.CreateEvent(failed, CreateDraftSession(activation = 3, epoch = 1))))
-                cancelAndIgnoreRemainingItems()
-            }
+        assertEquals(shownAs(createLayerAt(fixedCutoffFormatter(), error = null)), host.screen.value)
     }
 
     @Test
@@ -694,14 +669,17 @@ class StatusContainerHostTest {
             CreationFailureReason.INVALID_WINDOW to ScreenMessage.CREATE_DATES_REFUSED,
         )) {
             val host = createHost(CreationStatus.Failed(reason), scope = backgroundScope)
-            assertEquals(shownAs(Layer.CreateEvent(error = copy)), host.screen.value)
+            assertEquals(shownAs(createLayerAt(fixedCutoffFormatter(), error = copy)), host.screen.value)
         }
     }
 
     @Test
     fun `config absent with a server failure shows the input with the server error`() = runTest {
         val host = createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope)
-        assertEquals(shownAs(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)), host.screen.value)
+        assertEquals(
+            shownAs(createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.CREATE_FAILED)),
+            host.screen.value,
+        )
     }
 
     @Test
@@ -712,7 +690,7 @@ class StatusContainerHostTest {
             scope = backgroundScope,
         )
         // Config absent outranks a non-granted permission — still the create input, not the joined layer.
-        assertEquals(shownAs(Layer.CreateEvent()), host.screen.value)
+        assertEquals(shownAs(createLayerAt(fixedCutoffFormatter())), host.screen.value)
     }
 
     @Test
@@ -832,7 +810,7 @@ class StatusContainerHostTest {
             // The use-case reports a transient failure through the status source and never fires
             // `onMinted` (CreateEventTest pins that) — the inline error shows and no gate opens.
             creationStatus.value = CreationStatus.Failed(CreationFailureReason.SERVER)
-            expectShown(shownAs(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)))
+            expectShown(shownAs(createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.CREATE_FAILED)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -967,7 +945,7 @@ class StatusContainerHostTest {
         val container =
             host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
 
-        assertEquals(shownAs(Layer.CreateEvent()), container.stateFlow.value.ui)
+        assertEquals(shownAs(createLayerAt(fixedCutoffFormatter())), container.stateFlow.value.ui)
     }
 
     @Test
@@ -995,7 +973,7 @@ class StatusContainerHostTest {
         val container =
             host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
 
-        assertEquals(shownAs(Layer.CreateEvent()), container.stateFlow.value.ui)
+        assertEquals(shownAs(createLayerAt(fixedCutoffFormatter())), container.stateFlow.value.ui)
     }
 
     @Test
@@ -1270,7 +1248,7 @@ class StatusContainerHostTest {
             assertJoining(awaitShown(), EVENT_ID, JoinPhase.NotFound)
             containerHost.confirmJoinAs() // inert when not Ready
             containerHost.onCancelJoin()
-            expectShown(shownAs(Layer.CreateEvent()))
+            expectShown(shownAs(createLayerAt(fixedCutoffFormatter())))
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(0, commits)
@@ -1686,7 +1664,7 @@ class StatusContainerHostTest {
             containerHost.onConfirmSwitch()
             skipItems(1)
             containerHost.onCancelJoin()
-            expectShown(shownAs(Layer.CreateEvent()))
+            expectShown(shownAs(createLayerAt(fixedCutoffFormatter())))
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(0, commits)
@@ -2303,7 +2281,7 @@ class StatusContainerHostTest {
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             skipItems(1)
             containerHost.onCancelJoin()
-            expectShown(shownAs(Layer.CreateEvent()))
+            expectShown(shownAs(createLayerAt(fixedCutoffFormatter())))
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(0, requester.requests)
@@ -2812,7 +2790,8 @@ class StatusContainerHostRefusalTest {
     fun `a refused phone is told why on the front screen before it taps anything in place of the scan hint`() = runTest {
         for (reason in DeviceRefusal.entries) {
             val host = createHost(CreationStatus.Idle, scope = backgroundScope, refusal = MutableStateFlow(reason))
-            assertEquals(shownAs(Layer.CreateEvent(error = ScreenMessage.of(reason))), host.screen.value)
+            val told = createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.of(reason))
+            assertEquals(shownAs(told), host.screen.value)
         }
     }
 
@@ -2822,7 +2801,7 @@ class StatusContainerHostRefusalTest {
         createHost(CreationStatus.Idle, scope = backgroundScope, refusal = refusal).testWithInternalState(this) {
             runOnCreate()
             refusal.value = null
-            expectShown(shownAs(Layer.CreateEvent(error = null)))
+            expectShown(shownAs(createLayerAt(fixedCutoffFormatter(), error = null)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -2832,10 +2811,13 @@ class StatusContainerHostRefusalTest {
         val unverified = CreationStatus.Failed(CreationFailureReason.UNVERIFIED)
         val told =
             createHost(unverified, scope = backgroundScope, refusal = MutableStateFlow(DeviceRefusal.APP_NOT_GENUINE))
-        assertEquals(shownAs(Layer.CreateEvent(error = ScreenMessage.APP_NOT_GENUINE)), told.screen.value)
+        assertEquals(
+            shownAs(createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.APP_NOT_GENUINE)),
+            told.screen.value,
+        )
         val noVerdict = createHost(unverified, scope = backgroundScope)
         assertEquals(
-            shownAs(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)),
+            shownAs(createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.CREATE_FAILED)),
             noVerdict.screen.value,
         )
     }

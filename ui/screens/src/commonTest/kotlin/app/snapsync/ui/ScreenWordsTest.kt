@@ -1,5 +1,7 @@
 package app.snapsync.ui
 
+import app.snapsync.model.CoarseDuration
+import app.snapsync.model.CreateStep
 import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventTiming
 import app.snapsync.model.JoinPhase
@@ -14,9 +16,6 @@ import app.snapsync.model.StoreName
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.TimeLeft
 import app.snapsync.model.UiState
-import app.snapsync.presentation.CoarseDuration
-import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.ui.components.EventRange
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.counts_not_sharing
 import app.snapsync.ui.resources.counts_shared
@@ -56,12 +55,9 @@ import app.snapsync.ui.resources.timing_ends_in
 import app.snapsync.ui.resources.timing_starts_in
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.LocalTime
-import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.time.Instant
 
 /**
  * The words the screens CHOOSE, checked where they are chosen: in plain mapping functions, with no Compose. Each
@@ -137,30 +133,12 @@ class ScreenWordsTest {
 
     @Test
     fun `the line above Create names the next missing step — then the event's duration`() {
-        val from = LocalDateTime(2026, 7, 6, 10, 0)
-        assertEquals(listOf(Res.string.create_step_name), nextStepLine(CreateStep.Name, from, cutoff).said())
-        assertEquals(listOf(Res.string.create_step_end_time), nextStepLine(CreateStep.EndTime, from, cutoff).said())
+        assertEquals(listOf(Res.string.create_step_name), nextStepLine(CreateStep.Name).said())
+        assertEquals(listOf(Res.string.create_step_end_time), nextStepLine(CreateStep.EndTime).said())
         assertEquals(
             listOf(Res.string.create_lasts, listOf(Res.plurals.duration_days, 3, 3)),
-            nextStepLine(CreateStep.Complete(LocalDateTime(2026, 7, 9, 10, 0)), from, cutoff).said(),
+            nextStepLine(CreateStep.Complete(CoarseDuration.Days(3))).said(),
         )
-    }
-
-    @Test
-    fun `Create is offered only for a named draft whose end follows its start within the event window`() {
-        val from = LocalDateTime(2026, 7, 6, 12, 0)
-        fun draft(name: String, endDay: LocalDate, until: LocalTime) =
-            CreateDraft(name, EventRange(from, endDay, until, endPending = false))
-        assertEquals(
-            LocalDateTime(2026, 7, 6, 13, 0),
-            creatableEnd(draft("Party", from.date, LocalTime(13, 0)), cutoff),
-        )
-        assertNull(creatableEnd(draft(" ", from.date, LocalTime(13, 0)), cutoff), "no name")
-        assertNull(creatableEnd(CreateDraft("Party", EventRange(from)), cutoff), "no end")
-        // What the picker cannot produce is still refused rather than submitted: an end before the start, or past the
-        // event window (capability `create-event`).
-        assertNull(creatableEnd(draft("Party", from.date, LocalTime(11, 0)), cutoff), "inverted")
-        assertNull(creatableEnd(draft("Party", LocalDate(2026, 9, 6), LocalTime(13, 0)), cutoff), "too long")
     }
 
     @Test
@@ -234,7 +212,7 @@ class ScreenWordsTest {
             joined,
             joined.copy(pendingSwitch = PendingSwitch("F", JoinPhase.LoadFailed)),
             joined.copy(surface = JoinedSurface.Reconfigure(range)),
-            Layer.CreateEvent(),
+            createLayer(),
             Layer.CreatingEvent,
             Layer.UpdateRequired(),
         ).map { screenLabel(UiState(it)) }
@@ -262,8 +240,6 @@ class ScreenWordsTest {
             is Phrase.Counted -> listOf(res, count) + values
         }
     }
-
-    private val cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T10:00:00Z") }, zone = TimeZone.UTC)
 
     private val membership = joinedEvent(
         name = "Anna's Birthday",

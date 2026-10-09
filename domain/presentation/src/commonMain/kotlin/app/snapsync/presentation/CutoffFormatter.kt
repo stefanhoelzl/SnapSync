@@ -3,6 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
+import app.snapsync.model.CoarseDuration
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
@@ -10,6 +11,7 @@ import app.snapsync.model.iso
 import app.snapsync.model.localToCutoff
 import app.snapsync.model.runCatchingCancellable
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.periodUntil
 import kotlinx.datetime.toInstant
@@ -34,6 +36,15 @@ class CutoffFormatter(
 ) {
     /** The current instant as a local wall-clock value — seeds the "Now" preset and the create screen. */
     fun nowLocal(): LocalDateTime = now().toLocalDateTime(zone)
+
+    /**
+     * Now, cut to the minute: a form states a start to the minute, so seconds the host cannot see would make the
+     * created start differ from the shown one.
+     */
+    fun nowToTheMinute(): LocalDateTime = nowLocal().let { LocalDateTime(it.date, LocalTime(it.hour, it.minute)) }
+
+    /** How long until the clock's next minute begins — never zero, so a clock that does not move waits a minute. */
+    fun millisToNextMinute(): Long = MILLIS_PER_MINUTE - now().toEpochMilliseconds().mod(MILLIS_PER_MINUTE)
 
     /** Convert a picked local wall-clock value to the UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` cutoff string. */
     fun toCutoff(local: LocalDateTime): CaptureDate = localToCutoff(local, zone)
@@ -106,14 +117,6 @@ class CutoffFormatter(
         const val DAYS_PER_WEEK = 7
         const val DAYS_PER_MONTH = 30
         const val DAYS_PER_YEAR = 365
+        const val MILLIS_PER_MINUTE = 60_000L
     }
-}
-
-/** A duration named by its coarsest whole unit — see [CutoffFormatter.coarseDuration]. */
-sealed interface CoarseDuration {
-    data class Weeks(val count: Int) : CoarseDuration
-    data class Days(val count: Int) : CoarseDuration
-    data class Hours(val count: Int) : CoarseDuration
-    data class Minutes(val count: Int) : CoarseDuration
-    data object UnderAMinute : CoarseDuration
 }

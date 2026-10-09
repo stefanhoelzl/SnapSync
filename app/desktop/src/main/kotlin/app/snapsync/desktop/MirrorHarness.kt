@@ -24,10 +24,10 @@ import app.snapsync.model.Layer
 import app.snapsync.model.RangeChoice
 import app.snapsync.model.RangeView
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.rig.DeviceAdvertisement
 import app.snapsync.rig.RigState
 import app.snapsync.ui.AccessActions
+import app.snapsync.ui.CreateActions
 import app.snapsync.ui.JoinGateActions
 import app.snapsync.ui.JoinedActions
 import app.snapsync.ui.MenuActions
@@ -38,6 +38,7 @@ import app.snapsync.ui.SurfaceActions
 import app.snapsync.ui.SwitchActions
 import app.snapsync.ui.WithdrawalActions
 import app.snapsync.ui.components.RangeChoiceActions
+import app.snapsync.ui.components.RangeGestures
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -46,7 +47,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
-import kotlin.time.Clock
 
 /**
  * The **mirror** (`docs/testing.md`, "The harness can mirror a remote host"): `:app:desktop:run
@@ -85,7 +85,6 @@ fun MirrorHarnessRoot(url: String) {
     }
 
     // The screen reads the wall clock and zone of the machine it is drawn on, as both desktop harnesses do.
-    val cutoff = remember { CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.currentSystemDefault()) }
     // And its dates read as this machine's JVM writes them: the mirror re-composes the screen here, not on the device.
     val dates = remember { JvmDateFormatting() }
     val actions = remember { mirrorActions(client, scope, { state }, note) }
@@ -94,7 +93,7 @@ fun MirrorHarnessRoot(url: String) {
         Surface {
             Row(modifier = Modifier.padding(16.dp)) {
                 PhoneFrame {
-                    state?.let { StatusScreen(state = it.ui, cutoff = cutoff, dateFormats = dates::formats, actions = actions) }
+                    state?.let { StatusScreen(state = it.ui, dateFormats = dates::formats, actions = actions) }
                         ?: Text("waiting for $url …")
                 }
                 Column(
@@ -130,6 +129,17 @@ private fun mirrorActions(
         }
     }
     fun inert(what: String): () -> Unit = { note("$what: no /user intent — the surface lives in the host's container") }
+    val inertGestures = RangeGestures(
+        onDay = { note("a range calendar's day: no /user intent") },
+        onDragStart = { note("a range drag: no /user intent") },
+        onDragEnd = { note("a range drag: no /user intent") },
+        onSweep = { _, _ -> note("a range sweep: no /user intent") },
+        onFromHour = { note("a time wheel: no /user intent") },
+        onFromMinute = { note("a time wheel: no /user intent") },
+        onUntilHour = { note("a time wheel: no /user intent") },
+        onUntilMinute = { note("a time wheel: no /user intent") },
+        onUntilMinuteDrag = inert("a time wheel"),
+    )
     val form: () -> RangeView? = { (latest()?.ui?.layer as? Layer.JoiningEvent)?.range }
     fun instant(local: LocalDateTime) = local.toInstant(TimeZone.currentSystemDefault()).toString()
     fun direction(share: Boolean, receive: Boolean): String? = when {
@@ -179,9 +189,26 @@ private fun mirrorActions(
             onReportBugDismiss = inert("dismiss bug report"),
             onReportRefusal = { inert("open bug report about a refusal")() },
         ),
-        onCreateEvent = { name, startsAt, endsAt ->
-            post("create", "name" to name, "startsAt" to startsAt.toString(), "endsAt" to endsAt.toString())()
-        },
+        // The form is the host's: Create posts it as the host shows it. The mirror does not edit it — its typing and its
+        // calendar have no `/user` verb — so a form is filled on the host, or created whole with `/user/create`.
+        create = CreateActions(
+            onName = { note("type the name on the host: the mirror's field has no /user verb") },
+            range = inertGestures,
+            onCreate = {
+                val form = (latest()?.ui?.layer as? Layer.CreateEvent)?.form
+                val until = form?.picker?.until
+                if (form != null && until != null) {
+                    post(
+                        "create",
+                        "name" to form.name,
+                        "startsAt" to form.picker.from.toString(),
+                        "endsAt" to until.toString(),
+                    )()
+                } else {
+                    note("the host's form is not complete")
+                }
+            },
+        ),
         onOpenStore = { note("open the store: the mirror opens no browser") },
         participation = ParticipationActions(
             choices = RangeChoiceActions(
@@ -192,9 +219,10 @@ private fun mirrorActions(
                         RangeChoice.CUSTOM -> note("a custom range is set by picking dates")
                     }
                 },
-                onCustom = { from, until ->
-                    post("setRange", "cutoff" to instant(from), "until" to instant(until))()
-                },
+                onOpen = inert("open the range calendar"),
+                gestures = inertGestures,
+                onConfirm = inert("take the calendar's range"),
+                onDismiss = inert("close the range calendar"),
             ),
             onShareOn = { on -> form()?.let { setDirection(on, it.receiveOn) } ?: note("no join form open") },
             onReceiveOn = { on -> form()?.let { setDirection(it.shareOn, on) } ?: note("no join form open") },

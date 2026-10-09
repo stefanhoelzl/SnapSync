@@ -1,6 +1,8 @@
 package app.snapsync.model
 
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.plus
 import kotlin.test.Test
 
 /**
@@ -11,10 +13,24 @@ import kotlin.test.Test
 class UiIntentVocabularyTest {
 
     private val at = LocalDateTime(2026, 7, 6, 14, 0)
+    private val day = at.date
 
     @Suppress("CyclomaticComplexMethod") // one arm per case of a closed set: a table, not a decision tree
     private fun kind(intent: UiIntent): String = when (intent) {
-        is UiIntent.CreateEvent -> "CreateEvent"
+        UiIntent.ConfirmCreate -> "ConfirmCreate"
+        is UiIntent.CreateName -> "CreateName"
+        is UiIntent.RangeDay -> "RangeDay"
+        is UiIntent.RangeDragStart -> "RangeDragStart"
+        is UiIntent.RangeDragEnd -> "RangeDragEnd"
+        is UiIntent.RangeSweep -> "RangeSweep"
+        is UiIntent.RangeFromHour -> "RangeFromHour"
+        is UiIntent.RangeFromMinute -> "RangeFromMinute"
+        is UiIntent.RangeUntilHour -> "RangeUntilHour"
+        is UiIntent.RangeUntilMinute -> "RangeUntilMinute"
+        UiIntent.RangeUntilMinuteDrag -> "RangeUntilMinuteDrag"
+        UiIntent.RangePickerOpen -> "RangePickerOpen"
+        UiIntent.RangePickerConfirm -> "RangePickerConfirm"
+        UiIntent.RangePickerDismiss -> "RangePickerDismiss"
         UiIntent.RequestPermission -> "RequestPermission"
         UiIntent.ChoosePhotos -> "ChoosePhotos"
         UiIntent.OpenSettings -> "OpenSettings"
@@ -60,7 +76,20 @@ class UiIntentVocabularyTest {
     fun `every intent is a value no other intent equals`() {
         assertEveryCaseDistinct(
             listOf(
-                UiIntent.CreateEvent("Picnic", at, at),
+                UiIntent.ConfirmCreate,
+                UiIntent.CreateName("Picnic"),
+                UiIntent.RangeDay(day),
+                UiIntent.RangeDragStart(day),
+                UiIntent.RangeDragEnd(day),
+                UiIntent.RangeSweep(day, day),
+                UiIntent.RangeFromHour(1),
+                UiIntent.RangeFromMinute(1),
+                UiIntent.RangeUntilHour(1),
+                UiIntent.RangeUntilMinute(1),
+                UiIntent.RangeUntilMinuteDrag,
+                UiIntent.RangePickerOpen,
+                UiIntent.RangePickerConfirm,
+                UiIntent.RangePickerDismiss,
                 UiIntent.RequestPermission,
                 UiIntent.ChoosePhotos,
                 UiIntent.OpenSettings,
@@ -107,7 +136,6 @@ class UiIntentVocabularyTest {
 
     @Test
     fun `a payload intent compares by its payload`() {
-        assertValueEquality({ UiIntent.CreateEvent("Picnic", at, at) }, UiIntent.CreateEvent("Party", at, at))
         assertValueEquality(
             { UiIntent.ReportRefusal(ScreenMessage.DEVICE_UNVERIFIABLE) },
             UiIntent.ReportRefusal(ScreenMessage.DEVICE_MODIFIED),
@@ -123,6 +151,15 @@ class UiIntentVocabularyTest {
             UiIntent.RangePreset(RangeChoice.FROM_NOW),
         )
         assertValueEquality({ UiIntent.RangeCustom(at, null) }, UiIntent.RangeCustom(null, at))
+        assertValueEquality({ UiIntent.CreateName("Picnic") }, UiIntent.CreateName("Party"))
+        assertValueEquality({ UiIntent.RangeDay(day) }, UiIntent.RangeDay(day.plus(1, DateTimeUnit.DAY)))
+        assertValueEquality({ UiIntent.RangeDragStart(day) }, UiIntent.RangeDragStart(day.plus(1, DateTimeUnit.DAY)))
+        assertValueEquality({ UiIntent.RangeDragEnd(day) }, UiIntent.RangeDragEnd(day.plus(1, DateTimeUnit.DAY)))
+        assertValueEquality({ UiIntent.RangeSweep(day, day) }, UiIntent.RangeSweep(day, day.plus(1, DateTimeUnit.DAY)))
+        assertValueEquality({ UiIntent.RangeFromHour(1) }, UiIntent.RangeFromHour(2))
+        assertValueEquality({ UiIntent.RangeFromMinute(1) }, UiIntent.RangeFromMinute(2))
+        assertValueEquality({ UiIntent.RangeUntilHour(1) }, UiIntent.RangeUntilHour(2))
+        assertValueEquality({ UiIntent.RangeUntilMinute(1) }, UiIntent.RangeUntilMinute(2))
         assertValueEquality({ UiIntent.SendDiagnostics("note", "joined") }, UiIntent.SendDiagnostics("note", "create"))
     }
 }

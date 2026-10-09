@@ -1,4 +1,4 @@
-package app.snapsync.ui.components
+package app.snapsync.presentation.range
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime

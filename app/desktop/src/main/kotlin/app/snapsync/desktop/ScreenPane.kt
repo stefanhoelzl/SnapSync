@@ -8,7 +8,6 @@ import androidx.compose.runtime.getValue
 import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
 import app.snapsync.ports.DateFormatting
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import app.snapsync.ui.statusActions
@@ -22,7 +21,6 @@ import kotlinx.coroutines.flow.StateFlow
 @Composable
 fun ScreenPane(
     shown: StateFlow<UiState?>,
-    cutoffFormatter: CutoffFormatter,
     /** The app's date formatting — the one its screen renders through. */
     dateFormatting: DateFormatting,
     onIntent: (UiIntent) -> Unit,
@@ -35,7 +33,6 @@ fun ScreenPane(
             state?.let {
                 StatusScreen(
                     state = it,
-                    cutoff = cutoffFormatter,
                     dateFormats = dateFormatting::formats,
                     actions = statusActions(onIntent),
                 )

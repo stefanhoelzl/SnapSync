@@ -20,14 +20,15 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
 | `CandidateSource` | `:domain:services` | `:adapter:generic:mock` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:feature` FactsSource, UnreadableSource; `:domain:services` GalleryCandidateSource, PermissionAwareCandidateSource, RecordingWalk; `:test:feature` OneAsset | yes |
 | `ChangeOutcome` | `:domain:model` | `:domain:model` Applied, Refused | no |
-| `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:test:contracts` ClockProxy, FixedClock; `:ui:screens` MovableClock | yes |
-| `CoarseDuration` | `:domain:presentation` | `:domain:presentation` Days, Hours, Minutes, UnderAMinute, Weeks | no |
+| `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:test:contracts` ClockProxy, FixedClock | yes |
+| `CoarseDuration` | `:domain:model` | `:domain:model` Days, Hours, Minutes, UnderAMinute, Weeks | no |
 | `Completion` | `:domain:ports` | `:adapter:android` OnceCompletion; `:adapter:ios:app-only` PushCompletion, SessionCompletion; `:test:contracts` CompletionProxy | no |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigRead` | `:domain:model` | `:domain:model` Joined, None, Unavailable | no |
 | `CrashReporter` | `:domain:ports` | `:adapter:generic:mock` InMemoryCrashReporter, Recording; `:adapter:generic:sentry` SentryCrashReporter, SettledStart; `:test:contracts` CrashReporterProxy | yes |
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient, Unverified | no |
+| `CreateStep` | `:domain:model` | `:domain:model` Complete, EndTime, Name | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `Credential` | `:domain:services` | `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential; `:test:contracts` HeldToken | yes |
 | `Crypto` | `:domain:ports` | `:adapter:android` AndroidCrypto; `:adapter:generic:app` JcaCrypto; `:adapter:generic:mock` FakeCrypto; `:adapter:ios:ext-safe` IosCrypto; `:test:contracts` CryptoProxy | yes |
@@ -116,6 +117,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics; `:test:contracts` ProcessMetricsProxy | no |
 | `PushNotifications` | `:domain:ports` | `:adapter:android` AndroidPushNotifications; `:adapter:ios:app-only` IosPushNotifications; `:test:contracts` PushNotificationsProxy | no |
 | `PushTokenPublisher` | `:domain:services` | `:domain:services` BackendPushTokenPublisher; `:test:feature` FakePushTokenPublisher | yes |
+| `RangeEdit` | `:domain:presentation` | `:domain:presentation` Day, DragEnd, DragStart, FromHour, FromMinute, Sweep, UntilHour, UntilMinute, UntilMinuteDrag | no |
 | `RegistrationAnswer` | `:domain:model` | `:domain:model` Answered, Unsupported | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable, Unsupported | no |
 | `RenameOutcome` | `:domain:model` | `:domain:model` InvalidName, Renamed, Transient | no |
@@ -144,7 +146,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, ProofFailed, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |
 | `Ui` | `:domain:ports` | `:adapter:android` AndroidUi; `:adapter:ios:ui` IosUi; `:test:contracts` UiProxy; `:test:rig` RigUi | yes |
-| `UiIntent` | `:domain:model` | `:domain:model` CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmStopSharing, ConfirmSwitch, CreateEvent, KeepSharing, LeaveEvent, MenuDismiss, MenuOpen, MenuReportBug, MobileData, OpenAppStore, OpenLink, OpenReconfigure, OpenSettings, QrDismiss, QrOpen, RangeCustom, RangePreset, ReceiveOn, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, ReportNoticeDismiss, ReportRefusal, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn | no |
+| `UiIntent` | `:domain:model` | `:domain:model` CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmCreate, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmStopSharing, ConfirmSwitch, CreateName, KeepSharing, LeaveEvent, MenuDismiss, MenuOpen, MenuReportBug, MobileData, OpenAppStore, OpenLink, OpenReconfigure, OpenSettings, QrDismiss, QrOpen, RangeCustom, RangeDay, RangeDragEnd, RangeDragStart, RangeFromHour, RangeFromMinute, RangePickerConfirm, RangePickerDismiss, RangePickerOpen, RangePreset, RangeSweep, RangeUntilHour, RangeUntilMinute, RangeUntilMinuteDrag, ReceiveOn, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, ReportNoticeDismiss, ReportRefusal, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn | no |
 | `Upload` | `:domain:ports` | `:adapter:android` AndroidUpload; `:adapter:generic:mock` NetworkedUpload; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` ScriptedUpload; `:test:contracts` UploadProxy; `:test:feature` Platform | yes |
 | `UploadDiscovery` | `:domain:services` | `:domain:feature` RecordingDelegate, SelectionScopedDiscovery; `:domain:services` GalleryDiscovery, Library, Resources, WalkMemo; `:test:feature` FakePlatform, Library | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |

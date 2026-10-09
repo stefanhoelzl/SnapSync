@@ -1,6 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.model.UiIntent
+import app.snapsync.presentation.range.RangeEdit
 
 /**
  * What a person did on the screen, handed over by the platform's UI (the `Ui` port's `onIntent` handler) — **the one
@@ -12,7 +13,20 @@ import app.snapsync.model.UiIntent
 @Suppress("CyclomaticComplexMethod") // one arm per case of a closed set: a table, not a decision tree
 fun StatusContainerHost.onIntent(intent: UiIntent) {
     when (intent) {
-        is UiIntent.CreateEvent -> onCreateEvent(intent.name, intent.startsAt, intent.endsAt)
+        UiIntent.ConfirmCreate -> create.onConfirm()
+        is UiIntent.CreateName -> create.onName(intent.name)
+        is UiIntent.RangeDay -> picker.onEdit(RangeEdit.Day(intent.day))
+        is UiIntent.RangeDragStart -> picker.onEdit(RangeEdit.DragStart(intent.day))
+        is UiIntent.RangeDragEnd -> picker.onEdit(RangeEdit.DragEnd(intent.day))
+        is UiIntent.RangeSweep -> picker.onEdit(RangeEdit.Sweep(intent.anchor, intent.day))
+        is UiIntent.RangeFromHour -> picker.onEdit(RangeEdit.FromHour(intent.value))
+        is UiIntent.RangeFromMinute -> picker.onEdit(RangeEdit.FromMinute(intent.value))
+        is UiIntent.RangeUntilHour -> picker.onEdit(RangeEdit.UntilHour(intent.value))
+        is UiIntent.RangeUntilMinute -> picker.onEdit(RangeEdit.UntilMinute(intent.value))
+        UiIntent.RangeUntilMinuteDrag -> picker.onEdit(RangeEdit.UntilMinuteDrag)
+        UiIntent.RangePickerOpen -> picker.onOpen()
+        UiIntent.RangePickerConfirm -> picker.onConfirm()
+        UiIntent.RangePickerDismiss -> picker.onDismiss()
         UiIntent.RequestPermission -> access.onRequestPermission()
         UiIntent.ChoosePhotos -> access.onChoosePhotos()
         UiIntent.OpenSettings -> access.onOpenSettings()
