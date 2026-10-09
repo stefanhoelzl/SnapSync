@@ -206,8 +206,10 @@ export const NO_CACHE = "no-store, no-cache, max-age=0";
  * Stream `body` into ONE bunny native Storage PUT at `key` — pass-through, never buffered or hashed. Returns
  * once bunny confirmed the stored object; otherwise refused `502` — `upstream error` when the PUT itself
  * errored, `upstream rejected` when bunny refused it — recorded under the route's `route`. A PUT that errored
- * because the CLIENT's body broke off is recorded as that (`aborted=true`), not as a fault: it is the network
- * between the phone and the edge, which the device's retry absorbs, not a fault of ours or of storage.
+ * because the CLIENT's body broke off is refused `400` `upload aborted` and recorded as that (`aborted=true`),
+ * not as a fault: it is the network between the phone and the edge, which the device's retry absorbs, not a
+ * fault of ours or of storage — so it is not a 5xx either, and stays out of the nightly 5xx report. The phone
+ * has usually hung up and reads no answer; one that does retries it like any failed upload.
  */
 export async function streamPut(
   fetchImpl: FetchLike,
@@ -229,7 +231,7 @@ export async function streamPut(
     } as StreamInit);
   } catch (e) {
     if (!watch.clientAborted) upstream502(`${route}: upstream PUT errored for ${key}`, e);
-    refuse(502, "upstream error", { fields: { aborted: true } });
+    refuse(400, "upload aborted", { fields: { aborted: true } });
   }
   if (!upstream.ok) {
     refuse(502, "upstream rejected", {

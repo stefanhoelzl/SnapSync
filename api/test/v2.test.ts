@@ -353,9 +353,10 @@ const draining: Parameters<typeof v2>[0]["fetch"] = async (_url, init) => {
   return new Response(null, { status: 201 });
 };
 
-Deno.test("byte PUT → a client whose body breaks off is logged as aborting, not as a storage error", async () => {
+Deno.test("byte PUT → a client whose body breaks off is a 400 logged as aborting, not a storage error", async () => {
   // A weak mobile uplink: the phone's upload dies mid-body. That is the network the device's retry
-  // absorbs, so it must not read as storage failing: the request's line says `aborted=true`, with no `errors=`.
+  // absorbs, so it must not read as storage failing: a 4xx, not a 5xx, and the request's line says
+  // `aborted=true`, with no `errors=`.
   const db = await memberStore();
   const body = new ReadableStream<Uint8Array>({
     start(c) {
@@ -366,8 +367,8 @@ Deno.test("byte PUT → a client whose body breaks off is logged as aborting, no
   const lines: string[] = [];
   const res = await v2({ config: CONFIG, db, fetch: draining, logSink: lineSink(lines) })
     .request(BYTE_PATH, { method: "PUT", body, duplex: "half" } as RequestInit);
-  assertEquals(res.status, 502);
-  await res.text();
+  assertEquals(res.status, 400);
+  assertEquals(await res.text(), "upload aborted");
   assertEquals(lines.length, 1);
   assert(lines[0].endsWith(" aborted=true"), lines[0]);
   assert(!lines[0].includes("errors="), lines[0]);
