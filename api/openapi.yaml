@@ -1,0 +1,1150 @@
+openapi: 3.1.2
+info:
+  title: SnapSync device API
+  version: "2"
+  summary: The HTTP surface the SnapSync app speaks to its backend.
+  description: |
+    The ONE source of the wire format (`docs/architecture.md`, "The backend boundary"). Hand-written; everything
+    else is generated from it at build time and never committed: the backend's routes, types and zod validation
+    (`api/src/gen/`), the app's DTOs, typed routes, sealed replies and shared limits (`:domain:wire`).
+
+    ## Conventions
+
+    - **Time** is ONE shape everywhere — `Timestamp`, whole-second UTC. Backend and app compare timestamps as
+      TEXT, so the shape is the contract, not a formatting choice.
+    - **Every declared response names its outcome** with `x-snapsync-outcome`, the name the app's generated reply
+      variant carries. A status this document does not declare is an answer outside the contract (`Malformed` on
+      the app). A response defined under `components/responses` is ONE shared outcome on every route that
+      references it. Where one status carries several meanings, they are told apart by media type (each Media
+      Type Object names its outcome) or by an annotated enumeration of the body text (`oneOf` of `const`
+      subschemas, each naming its outcome).
+    - **Checks a schema cannot state** are `x-snapsync-*` annotations (the specification's "Extended Validation
+      with Annotations"), a CLOSED vocabulary — both generators refuse a name they do not know:
+      - `x-snapsync-instant: true` — the string names a real instant (a pattern admits `2026-02-30T…Z`);
+      - `x-snapsync-after: <property>` — strictly later than the sibling property;
+      - `x-snapsync-max-span: {from: <property>, policy: <name>}` — at most the deployment policy value `<name>`
+        (seconds, `deployments/components/policy.json`) after the sibling property;
+      - `x-snapsync-check: <name>` — a runtime-only check the backend implements by that name;
+      - `x-snapsync-gate: version` — a parameter the version gate answers (`426`), never field validation;
+      - `x-snapsync-export: <NAME>` — a constraint the app reads as a generated constant;
+      - `x-snapsync-transport: os` — a byte route the app builds but the OS transfer services perform, so it
+        has no generated reply.
+servers:
+  - url: /api/v2
+    description: The device API, version 2, on the deployment's origin.
+security:
+  - deviceToken: []
+tags:
+  - name: attest
+    description: The token issuers — the only device routes reachable without a token.
+  - name: events
+    description: An event's details, creation and change.
+  - name: membership
+    description: Joining, sharing into and leaving an event.
+  - name: files
+    description: The event's photos — the union, a device's listing, and the byte routes.
+  - name: devices
+    description: A device's own registration.
+
+paths:
+  /attest/challenge:
+    get:
+      operationId: challenge
+      tags: [attest]
+      summary: A server-issued nonce, stateless and short-lived.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/AppVersion"
+      responses:
+        "200":
+          description: The challenge.
+          x-snapsync-outcome: Issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Challenge"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /attest/token:
+    post:
+      operationId: mintToken
+      tags: [attest]
+      summary: A device token for a fresh attestation.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/AppVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MintRequest"
+      responses:
+        "201":
+          description: The attestation verified and was recorded; the token.
+          x-snapsync-outcome: Minted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Token"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          description: "The attestation was refused — `attestation rejected: <reason>[ (<detail>)]`."
+          x-snapsync-outcome: Rejected
+          content:
+            text/plain:
+              schema:
+                type: string
+                pattern: "^attestation rejected: "
+        "409":
+          $ref: "#/components/responses/StaleChallenge"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /attest/renew:
+    post:
+      operationId: renewToken
+      tags: [attest]
+      summary: A device token for an assertion by an attested key.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/AppVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenewRequest"
+      responses:
+        "201":
+          description: The assertion verified against the recorded key; the token.
+          x-snapsync-outcome: Renewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Token"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          description: Renewal refused.
+          content:
+            text/plain:
+              schema:
+                oneOf:
+                  - const: not attested
+                    title: No attestation is on file for the device — attest afresh.
+                    x-snapsync-outcome: NotAttested
+                  - const: assertion rejected
+                    title: The assertion did not verify against the recorded key.
+                    x-snapsync-outcome: AssertionRejected
+        "409":
+          $ref: "#/components/responses/StaleChallenge"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events:
+    post:
+      operationId: createEvent
+      tags: [events]
+      summary: Mint an event.
+      parameters:
+        - $ref: "#/components/parameters/AppVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventCreate"
+      responses:
+        "201":
+          description: The event exists.
+          x-snapsync-outcome: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          description: The request names no event that may exist.
+          content:
+            text/plain:
+              schema:
+                oneOf:
+                  - const: invalid name
+                    title: The name is missing, blank or too long.
+                    x-snapsync-outcome: InvalidName
+                  - enum: [invalid startsAt, invalid endsAt]
+                    title: The date range is not one an event may have.
+                    x-snapsync-outcome: InvalidWindow
+                  - enum: [invalid body, invalid keyId]
+                    title: The request is malformed.
+                    x-snapsync-outcome: Invalid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events/{eventId}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/AppVersion"
+    get:
+      operationId: getEvent
+      tags: [events]
+      summary: An event's details.
+      description: |
+        Public: the event id is the read capability. A token, when sent, is verified — its `401` is a verdict on
+        it. The anonymous half is legacy (`PENDING_CLEANUPS.md`, "Anonymous event reads"); the app always sends
+        its token here.
+      security:
+        - deviceToken: []
+        - {}
+      responses:
+        "200":
+          description: The event.
+          x-snapsync-outcome: Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetails"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/EventNotFound"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+    patch:
+      operationId: changeEvent
+      tags: [events]
+      summary: Change an event — today, its name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventChange"
+      responses:
+        "200":
+          description: The event as changed.
+          x-snapsync-outcome: Changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/EventNotFound"
+        "410":
+          $ref: "#/components/responses/Closed"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events/{eventId}/devices/{deviceId}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AppVersion"
+    put:
+      operationId: joinEvent
+      tags: [membership]
+      summary: Create or reactivate this device's membership. No body.
+      responses:
+        "200":
+          description: The device is a member.
+          x-snapsync-outcome: Joined
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/NotThisDevice"
+        "404":
+          $ref: "#/components/responses/EventNotFound"
+        "409":
+          description: The event admits no more devices.
+          x-snapsync-outcome: Full
+          content:
+            text/plain:
+              schema:
+                const: event full
+        "410":
+          $ref: "#/components/responses/Closed"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+    delete:
+      operationId: leaveEvent
+      tags: [membership]
+      summary: End this device's membership. Idempotent and non-destructive.
+      parameters:
+        - name: received
+          in: query
+          description: The device's word that it holds every photo of the others; anything but `true` is "no".
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The device is no longer in the event (or never was).
+          x-snapsync-outcome: Left
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/NotThisDevice"
+        "404":
+          $ref: "#/components/responses/EventNotFound"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events/{eventId}/devices/{deviceId}/manifest:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AppVersion"
+    put:
+      operationId: publishManifest
+      tags: [membership]
+      summary: Replace what this device shares in the event.
+      description: |
+        Ordered by the body's `version`: a publish older than the one stored is answered `200` like a won one and
+        changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Manifest"
+      responses:
+        "200":
+          description: Published (or already superseded by a newer publish).
+          x-snapsync-outcome: Published
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/NotThisDevice"
+        "404":
+          $ref: "#/components/responses/EventNotFound"
+        "409":
+          description: Refused for good — by media type, why.
+          content:
+            text/plain:
+              x-snapsync-outcome: NotAMember
+              schema:
+                const: not a member
+            application/json:
+              x-snapsync-outcome: SetFixed
+              schema:
+                $ref: "#/components/schemas/ClosedError"
+        "410":
+          $ref: "#/components/responses/Closed"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events/{eventId}/files:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/AppVersion"
+    get:
+      operationId: eventFiles
+      tags: [files]
+      summary: The event-wide union of complete assets, or what was gained after a cursor.
+      description: |
+        Public: the event id is the read capability. A token, when sent, is verified and names the reader in the
+        read log. The anonymous half is legacy (`PENDING_CLEANUPS.md`, "Anonymous event reads"); the app always
+        sends its token here.
+      security:
+        - deviceToken: []
+        - {}
+      parameters:
+        - name: cursor
+          in: query
+          description: Serve only what the union log gained after this position.
+          schema:
+            type: string
+            pattern: "^[0-9]{1,15}$"
+        - name: urls
+          in: query
+          description: "`false` omits every resource's `url`: the client builds the download address itself."
+          schema:
+            type: boolean
+            default: true
+        - name: SnapSync-Trigger
+          in: header
+          description: Why the client reads. A value outside the list is recorded as unknown, never refused.
+          schema:
+            $ref: "#/components/schemas/UnionTrigger"
+      responses:
+        "200":
+          description: The assets, and the position the answer covers.
+          x-snapsync-outcome: Page
+          headers:
+            SnapSync-Cursor:
+              $ref: "#/components/headers/SnapSyncCursor"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UnionAsset"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/EventNotFound"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events/{eventId}/files/devices/{deviceId}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AppVersion"
+    get:
+      operationId: deviceFiles
+      tags: [files]
+      summary: What the backend holds for this device in this event.
+      responses:
+        "200":
+          description: The stored resources, in identity terms.
+          x-snapsync-outcome: Listed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StoredResource"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/NotThisDevice"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events/{eventId}/files/devices/{deviceId}/{assetId}/{role}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AssetId"
+      - $ref: "#/components/parameters/Role"
+      - $ref: "#/components/parameters/AppVersion"
+    put:
+      operationId: uploadResource
+      tags: [files]
+      summary: Store one resource's bytes in the event.
+      description: |
+        Streamed through, never buffered. A plain event stores the body as it came; an encrypted one requires a
+        body already encrypted for its key, or the two file-key headers with which the edge seals it.
+      x-snapsync-transport: os
+      parameters:
+        - name: filename
+          in: query
+          required: true
+          description: The resource's capture name. It never reaches the storage key.
+          schema:
+            type: string
+            minLength: 1
+        - name: x-snapsync-file-key
+          in: header
+          description: The one file's 32-byte key, base64url — only with `x-snapsync-file-head`. A secret.
+          schema:
+            type: string
+        - name: x-snapsync-file-head
+          in: header
+          description: The file's 49 opening bytes, base64url — only with `x-snapsync-file-key`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          image/*: {}
+          video/*: {}
+          application/octet-stream: {}
+      responses:
+        "201":
+          description: Stored and recorded.
+          x-snapsync-outcome: Stored
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Refused for this device — not a member, another device, or another event's key.
+          x-snapsync-outcome: Forbidden
+          content:
+            text/plain:
+              schema:
+                enum: [not a member, not this device, another key]
+        "422":
+          description: An encrypted event's upload that is not encrypted for its key.
+          x-snapsync-outcome: NotEncrypted
+          content:
+            text/plain:
+              schema:
+                const: not encrypted for this event
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+    get:
+      operationId: downloadResource
+      tags: [files]
+      summary: Download one resource — a redirect to a freshly presigned URL.
+      description: |
+        Public like the union; fetched by the OS download services. Builds that predate the version header on
+        this route send none, and are served until a minimum app version retires them (`PENDING_CLEANUPS.md`,
+        "Header-less download redirects").
+      security: []
+      x-snapsync-transport: os
+      responses:
+        "302":
+          description: The presigned URL, valid for up to 7 days.
+          x-snapsync-outcome: Redirected
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri
+        "404":
+          description: The event no longer serves this resource.
+          x-snapsync-outcome: Gone
+          content:
+            text/plain:
+              schema:
+                const: not found
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /files/devices/{deviceId}/{assetId}/{role}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AssetId"
+      - $ref: "#/components/parameters/Role"
+      - $ref: "#/components/parameters/AppVersion"
+    put:
+      operationId: uploadResourceEventless
+      tags: [files]
+      summary: The event-less upload, filed under the device's one present membership.
+      deprecated: true
+      description: Kept for builds that predate the event-scoped upload (`PENDING_CLEANUPS.md`).
+      x-snapsync-transport: os
+      parameters:
+        - name: filename
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          image/*: {}
+          video/*: {}
+          application/octet-stream: {}
+      responses:
+        "201":
+          description: Stored and recorded.
+          x-snapsync-outcome: Stored
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/NotThisDevice"
+        "409":
+          description: The device is in no event.
+          x-snapsync-outcome: NoEvent
+          content:
+            text/plain:
+              schema:
+                const: no event
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /files/devices/{deviceId}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AppVersion"
+    get:
+      operationId: deviceFilesEventless
+      tags: [files]
+      summary: The event-less listing, for the device's present membership.
+      deprecated: true
+      description: Kept for builds that predate the event-scoped listing (`PENDING_CLEANUPS.md`).
+      x-snapsync-transport: os
+      responses:
+        "200":
+          description: The stored resources; `[]` with no present membership.
+          x-snapsync-outcome: Listed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StoredResource"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/NotThisDevice"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /devices/{deviceId}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AppVersion"
+    put:
+      operationId: putDevice
+      tags: [devices]
+      summary: Record this device's push registration (last write wins).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceConfig"
+      responses:
+        "201":
+          description: Recorded.
+          x-snapsync-outcome: Recorded
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/NotThisDevice"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+components:
+  securitySchemes:
+    deviceToken:
+      type: http
+      scheme: bearer
+      description: |
+        The device token `/attest/token` and `/attest/renew` issue — minted for one device, which every route
+        naming a device in its path must be (`403` otherwise).
+
+  parameters:
+    AppVersion:
+      name: x-snapsync-app-version
+      in: header
+      required: true
+      description: The calling build's marketing version. Absent, unparseable or too old is answered `426`.
+      x-snapsync-gate: version
+      schema:
+        type: string
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    AssetId:
+      name: assetId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/AssetId"
+    Role:
+      name: role
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Role"
+
+  headers:
+    SnapSyncCursor:
+      required: true
+      description: The union-log position the answer covers — the cursor of the next delta read.
+      schema:
+        type: string
+        pattern: "^[0-9]{1,15}$"
+    RetryAfter:
+      required: true
+      description: Seconds after which to try again.
+      schema:
+        type: string
+        pattern: "^[0-9]+$"
+
+  responses:
+    Invalid:
+      description: The request is malformed — a path segment, a parameter or the body. A bug, never a condition.
+      x-snapsync-outcome: Invalid
+      content:
+        text/plain:
+          schema:
+            type: string
+    Unauthorized:
+      description: No token, or one this backend does not accept — drop it and attest afresh.
+      x-snapsync-outcome: Unauthorized
+      content:
+        text/plain:
+          schema:
+            const: unattested
+    NotThisDevice:
+      description: The token was minted for another device than the path names.
+      x-snapsync-outcome: NotThisDevice
+      content:
+        text/plain:
+          schema:
+            const: not this device
+    EventNotFound:
+      description: The event was never created, or the nightly sweep deleted it — a sealed deletion.
+      x-snapsync-outcome: EventNotFound
+      content:
+        text/plain:
+          schema:
+            const: event not found
+    Closed:
+      description: The event has closed (or completed) and changes no more.
+      x-snapsync-outcome: Closed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ClosedError"
+    StaleChallenge:
+      description: The challenge expired — fetch a fresh one.
+      x-snapsync-outcome: StaleChallenge
+      content:
+        text/plain:
+          schema:
+            const: stale challenge
+    AppTooOld:
+      description: This build is too old to be served; the body names the minimum.
+      x-snapsync-outcome: AppTooOld
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AppTooOldError"
+    ServerError:
+      description: A store or upstream failure — never mistaken for absence, never a partial success.
+      x-snapsync-outcome: ServerError
+      content:
+        text/plain:
+          schema:
+            type: string
+    Maintenance:
+      description: A deploy's migration window.
+      x-snapsync-outcome: Maintenance
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        text/plain:
+          schema:
+            const: maintenance
+
+  schemas:
+    Uuid:
+      type: string
+      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    Timestamp:
+      description: An instant, whole-second UTC. Compared as text, so this one shape is the contract.
+      type: string
+      format: date-time
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+      x-snapsync-instant: true
+      examples: ["2026-07-09T19:24:17Z"]
+    EventName:
+      description: What an event is called — trimmed, non-blank.
+      type: string
+      maxLength: 100
+      pattern: "\\S"
+      x-snapsync-export: EVENT_NAME_MAX_LENGTH
+    KeyId:
+      description: An encrypted event's key id — 16 lowercase hex characters. The key itself never reaches the backend.
+      type: string
+      pattern: "^[0-9a-f]{16}$"
+    Zone:
+      description: An IANA time zone name. One this runtime cannot use is dropped, never refused.
+      type: string
+      maxLength: 64
+      x-snapsync-check: knownZone
+    AssetId:
+      description: A device-local asset id — one path segment.
+      type: string
+      minLength: 1
+      pattern: "^(?!.*\\.\\.)[^/]+$"
+    Role:
+      description: Which resource of an asset.
+      type: string
+      enum: [primary, live]
+    UnionTrigger:
+      description: |
+        Why a client reads the union. OPEN: a value this backend does not know is recorded as unknown, never
+        refused, so a newer client never loses its reads to an older backend's vocabulary.
+      type: string
+      examples: [push, wake, foreground, join, grant, reconfigure, leave-check]
+
+    Challenge:
+      type: object
+      required: [challenge]
+      properties:
+        challenge:
+          type: string
+    Token:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    MintRequest:
+      type: object
+      required: [deviceId, challenge, proof]
+      properties:
+        deviceId:
+          $ref: "#/components/schemas/Uuid"
+        challenge:
+          type: string
+          minLength: 1
+        proof:
+          $ref: "#/components/schemas/Proof"
+    Proof:
+      description: An attestation; its `format` chooses the verifier, which is never trusted, only tried.
+      oneOf:
+        - $ref: "#/components/schemas/AppleAppAttestProof"
+        - $ref: "#/components/schemas/AndroidKeyProof"
+      discriminator:
+        propertyName: format
+        mapping:
+          apple-appattest: "#/components/schemas/AppleAppAttestProof"
+          android-key: "#/components/schemas/AndroidKeyProof"
+    AppleAppAttestProof:
+      type: object
+      required: [format, keyId, attestation]
+      properties:
+        format:
+          const: apple-appattest
+        keyId:
+          description: The App Attest key id, base64.
+          type: string
+          minLength: 1
+        attestation:
+          description: The attestation object, base64.
+          type: string
+          minLength: 1
+    AndroidKeyProof:
+      type: object
+      required: [format, chain]
+      properties:
+        format:
+          const: android-key
+        chain:
+          description: The Keystore key attestation chain, leaf first, each certificate base64 DER.
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+    RenewRequest:
+      type: object
+      required: [deviceId, assertion, challenge]
+      properties:
+        deviceId:
+          $ref: "#/components/schemas/Uuid"
+        assertion:
+          description: An assertion over the challenge by the attested key, base64.
+          type: string
+          minLength: 1
+        challenge:
+          type: string
+          minLength: 1
+
+    EventCreate:
+      type: object
+      required: [name, startsAt]
+      properties:
+        name:
+          $ref: "#/components/schemas/EventName"
+        startsAt:
+          $ref: "#/components/schemas/Timestamp"
+        endsAt:
+          description: The capture-date ceiling. Absent is `startsAt` plus the window maximum.
+          $ref: "#/components/schemas/Timestamp"
+          x-snapsync-after: startsAt
+          x-snapsync-max-span:
+            from: startsAt
+            policy: eventWindowMaxSeconds
+        zone:
+          $ref: "#/components/schemas/Zone"
+        keyId:
+          $ref: "#/components/schemas/KeyId"
+    EventChange:
+      description: What may change about an event once created.
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          $ref: "#/components/schemas/EventName"
+    Event:
+      type: object
+      required:
+        - eventId
+        - name
+        - createdAt
+        - startsAt
+        - endsAt
+        - capacity
+        - deletesAt
+        - closedAt
+        - completedAt
+      properties:
+        eventId:
+          $ref: "#/components/schemas/Uuid"
+        name:
+          $ref: "#/components/schemas/EventName"
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+        startsAt:
+          $ref: "#/components/schemas/Timestamp"
+        endsAt:
+          $ref: "#/components/schemas/Timestamp"
+        capacity:
+          description: Devices the event admits, present or departed.
+          type: integer
+        deletesAt:
+          description: The latest the event lives — derived, never stored.
+          $ref: "#/components/schemas/Timestamp"
+        closedAt:
+          description: When the event closed; `null` while open.
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+        completedAt:
+          description: When the event completed; `null` until then.
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+        keyId:
+          description: Present exactly for an encrypted event.
+          $ref: "#/components/schemas/KeyId"
+    EventDetails:
+      allOf:
+        - $ref: "#/components/schemas/Event"
+        - type: object
+          required: [members]
+          properties:
+            members:
+              $ref: "#/components/schemas/MemberCounts"
+    MemberCounts:
+      description: The event's present members, and how many of them have settled what they share.
+      type: object
+      required: [active, final]
+      properties:
+        active:
+          type: integer
+          minimum: 0
+        final:
+          type: integer
+          minimum: 0
+
+    Manifest:
+      description: What a device shares in an event — a full snapshot, replacing the last.
+      type: object
+      required: [assets, version, final]
+      properties:
+        deviceId:
+          description: Ignored by the backend; the path names the device.
+          $ref: "#/components/schemas/Uuid"
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManifestAsset"
+        version:
+          description: The snapshot's order; a publish older than the stored one changes nothing.
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        final:
+          description: Whether the device declares its share settled.
+          type: boolean
+    ManifestAsset:
+      type: object
+      required: [assetId, creationDate, resources]
+      properties:
+        assetId:
+          $ref: "#/components/schemas/AssetId"
+        creationDate:
+          description: The capture date, as the device's gallery states it.
+          type: string
+        resources:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ManifestResource"
+    ManifestResource:
+      type: object
+      required: [role, contentType, key, filename]
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        contentType:
+          type: string
+        key:
+          type: string
+          minLength: 1
+        filename:
+          type: string
+
+    UnionAsset:
+      type: object
+      required: [deviceId, assetId, creationDate, resources]
+      properties:
+        deviceId:
+          $ref: "#/components/schemas/Uuid"
+        assetId:
+          $ref: "#/components/schemas/AssetId"
+        creationDate:
+          type: string
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/UnionResource"
+    UnionResource:
+      type: object
+      required: [role, contentType, key, filename]
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        contentType:
+          type: string
+        key:
+          type: string
+        filename:
+          type: string
+        url:
+          description: The download address; absent under `urls=false`.
+          type: string
+          format: uri
+    StoredResource:
+      description: One resource the backend holds for a device, in identity terms.
+      type: object
+      required: [assetId, role, filename]
+      properties:
+        assetId:
+          $ref: "#/components/schemas/AssetId"
+        role:
+          $ref: "#/components/schemas/Role"
+        filename:
+          description: The capture name.
+          type: string
+
+    DeviceConfig:
+      type: object
+      required: [pushToken]
+      properties:
+        pushToken:
+          description: The device's push registration; `null` says it has none.
+          oneOf:
+            - $ref: "#/components/schemas/PushRegistration"
+            - type: "null"
+    PushRegistration:
+      type: object
+      required: [kind, token, env]
+      properties:
+        kind:
+          description: The push service — `apns` or `fcm`.
+          type: string
+        token:
+          type: string
+        env:
+          description: The push environment the token belongs to.
+          type: string
+
+    ClosedError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          const: closed
+    AppTooOldError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          const: app too old
+        minAppVersion:
+          type: string

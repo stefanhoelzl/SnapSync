@@ -1,0 +1,6 @@
+# This file instructs Redocly's linter to ignore the rules contained for specific parts of your API.
+# See https://redocly.com/docs/cli/ for more information.
+openapi.yaml:
+  # The download redirect answers `302` by design: it hands the OS a presigned URL and serves no body itself.
+  operation-2xx-response:
+    - "#/paths/~1events~1{eventId}~1files~1devices~1{deviceId}~1{assetId}~1{role}/get/responses"
