@@ -12,7 +12,11 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The rig source set and the embedded contract recordings.
     id("snapsync.ios-rig-sources")
+    // The loopback transfer fixture the `HttpTransport` contract's Darwin binding exchanges with.
+    id("snapsync.transfer-fixture")
 }
+
+transferFixture.consumedBy("iosSimulatorArm64Test")
 
 // ---- Port contracts (`docs/architecture.md`) ---------------------------------------------------
 //

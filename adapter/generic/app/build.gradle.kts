@@ -22,6 +22,8 @@ plugins {
     id("snapsync.simulator-test-output")
     // `jvmTest` starts the real backend (`liveEdge.consumedBy`, below).
     id("snapsync.live-edge")
+    // The loopback transfer fixture the `HttpTransport` contract's JVM bindings exchange with.
+    id("snapsync.transfer-fixture")
 }
 
 kotlin {
@@ -71,8 +73,10 @@ kotlin {
                 // The software key-attestation chain the Backend contract's mint is proved with
                 // (`BackendAttestClauses`).
                 implementation(libs.bouncycastle.pkix)
-                // The wire fixture's client: the engine the live edge is reached with (`LiveEdge`).
+                // The wire fixture's client: the engine the live edge is reached with (`LiveEdge`) — and, with OkHttp
+                // (Android's engine, a JVM library), what the `HttpTransport` contract binds on the JVM.
                 implementation(libs.ktor.client.cio)
+                implementation(libs.ktor.client.okhttp)
             }
         }
         named("iosSimulatorArm64Test") {
@@ -92,6 +96,7 @@ kotlin {
 // backend's sources are inputs of the test task, so a change touching only `api/` re-runs the contracts that exist
 // to catch it.
 liveEdge.consumedBy(tasks.named<Test>("jvmTest"))
+transferFixture.consumedBy(tasks.named<Test>("jvmTest"))
 
 // The encrypted file format's reference vectors (`test/vectors/encrypted-file.json`), shared with `api/`'s tests: an
 // input of the test task, so regenerating them re-runs the tests held to them.
