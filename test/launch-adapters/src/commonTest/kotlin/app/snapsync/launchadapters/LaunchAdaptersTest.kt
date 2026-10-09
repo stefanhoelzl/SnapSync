@@ -6,7 +6,7 @@ import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.CycleResult
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.NetworkAccess
@@ -226,7 +226,7 @@ class LaunchAdaptersTest {
         chosenExtensionHost(host.port(), launch(AdapterProcess.APP)).listen(
             ExtensionHandlers(onProcess = {
                 composed = true
-                CycleResult.COMPLETED
+                ProcessingAnswer.COMPLETED
             }, onTerminate = {}),
         )
         host.operator.process()
@@ -238,7 +238,7 @@ class LaunchAdaptersTest {
         chosenExtensionHost(host.port(), launch).listen(
             ExtensionHandlers(onProcess = { error("composed under $launch") }, onTerminate = { error("composed") }),
         )
-        assertEquals(CycleResult.COMPLETED, host.operator.process())
+        assertEquals(ProcessingAnswer.COMPLETED, host.operator.process())
         host.operator.terminate()
     }
 

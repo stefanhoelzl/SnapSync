@@ -12,8 +12,8 @@ import SnapSyncUploadKit
 /// `PHBackgroundResourceUploadProcessingResult` is **Swift-only** — declared in the SDK's
 /// swiftinterface with no ObjC header — so Kotlin cannot construct it and the construction cannot
 /// leave this file. But it is RawRepresentable over Int, so the DECISION lives in Kotlin:
-/// `processRawValue()` returns the tested `CycleResult → raw Int` mapping (exhaustive, compiler
-/// checked, pinned in commonTest), and this shell forwards it into `init?(rawValue:)` verbatim. The
+/// `processRawValue()` returns the raw Int of the core's `ProcessingAnswer` (exhaustive, compiler
+/// checked, pinned in iosTest), and this shell forwards it into `init?(rawValue:)` verbatim. The
 /// `?? .failure` is the nil fallback for a raw value the SDK enum does not carry — the same
 /// visible-retry posture the previous `switch`'s `default:` arm had: an untaught value surfaces as
 /// a retried, logged failure, never a silently "successful" cycle.

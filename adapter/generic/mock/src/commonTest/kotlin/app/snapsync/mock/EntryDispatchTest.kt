@@ -1,6 +1,6 @@
 package app.snapsync.mock
 
-import app.snapsync.model.CycleResult
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UiIntent
@@ -112,13 +112,13 @@ class EntryDispatchTest {
             ExtensionHandlers(
                 onProcess = {
                     ran += "process"
-                    CycleResult.FAILED
+                    ProcessingAnswer.FAILED
                 },
                 onTerminate = { ran += "terminate" },
             ),
         )
 
-        assertEquals(CycleResult.FAILED, host.operator.process())
+        assertEquals(ProcessingAnswer.FAILED, host.operator.process())
         host.operator.terminate()
 
         assertEquals(listOf("process", "terminate"), ran)
