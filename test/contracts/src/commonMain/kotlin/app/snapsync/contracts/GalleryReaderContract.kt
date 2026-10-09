@@ -471,6 +471,23 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.assetsById(seeded.ids))
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.resources(seeded.ids))
         }
+
+        clause(
+            "THE_LIBRARY_READ_HOLDS_EVERY_SEEDED_ASSET",
+            GalleryReaderState.GRANTED_SEEDED,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::libraryAssets).withGenericLeaf(GalleryRead.Read::class)
+            },
+        ) { seeded ->
+            val read = assertIs<GalleryRead.Read<*>>(
+                seeded.port.libraryAssets(policy("THE_LIBRARY_READ_HOLDS_EVERY_SEEDED_ASSET")),
+            )
+            val returned = seeded.port.assetIdsOf(read)
+            assertTrue(
+                returned.containsAll(seeded.ids),
+                "the wider library holds every asset the policy read holds: missing ${seeded.ids - returned}",
+            )
+        }
     }
 
     private fun GalleryReader.assetIdsOf(read: GalleryRead.Read<*>): Set<AssetId> =

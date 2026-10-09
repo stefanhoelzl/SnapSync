@@ -38,10 +38,17 @@ class PhotoKitNoGrantContractTest {
     private val photoAccess = object : Binding<PhotoAccessState, PhotoAccess> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
-        override val reaches = setOf(PhotoAccessState.NO_GRANT)
+
+        // This process reads refused, as one the member refused does (the Gallery binding's TOKEN_WITHHELD rests on it).
+        override val reaches = setOf(PhotoAccessState.NO_GRANT, PhotoAccessState.REFUSED)
 
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
-            if (state != PhotoAccessState.NO_GRANT || !holdsNoGrant()) return Entered.Unreachable(unreachable)
+            val holds = when (state) {
+                PhotoAccessState.NO_GRANT -> holdsNoGrant()
+                PhotoAccessState.REFUSED -> currentPhotoPermission() == GalleryAccess.DENIED
+                else -> false
+            }
+            if (!holds) return Entered.Unreachable(unreachable)
             val adapter = PhotoLibraryPermission().recorded(log)
             return Entered.Ready(PhotoAccess(adapter))
         }
