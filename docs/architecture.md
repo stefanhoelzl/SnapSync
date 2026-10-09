@@ -488,6 +488,9 @@ the allowance is an upper bound, it is withheld from a line that also holds a us
 report does not list as run in full. Kover leaves a lambda whose body sits on its caller's line out of its method list
 while counting that body in the line (measured 2026-10-08), so **a lambda's body goes on its own line** — there an unrun
 body is a miss of its own. The gate's failure says so.
+The compiler's trace guard, `if (isTraceInProgress()) traceEventEnd()`, shares a composable's last body line (a
+`return remember(…) { … }` included); Kover filters it, so it is not counted as that line's user branch — recognised
+exactly, an `ifeq` on `isTraceInProgress` skipping only the trace call. A branch someone writes on it stays theirs.
 
 *The dead arm of an exhaustive `when`, on body lines.* Kotlin ends a `when` over a sealed or enum subject with a
 `NoWhenBranchMatchedException` no value reaches; inside a composable the compiler wraps it in a replace group. Kover

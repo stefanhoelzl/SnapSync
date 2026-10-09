@@ -7,6 +7,7 @@ import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes.ACC_PUBLIC
 import org.objectweb.asm.Opcodes.ACC_STATIC
 import org.objectweb.asm.Opcodes.ALOAD
+import org.objectweb.asm.Opcodes.ASTORE
 import org.objectweb.asm.Opcodes.ATHROW
 import org.objectweb.asm.Opcodes.BIPUSH
 import org.objectweb.asm.Opcodes.DUP
@@ -14,14 +15,22 @@ import org.objectweb.asm.Opcodes.GOTO
 import org.objectweb.asm.Opcodes.IAND
 import org.objectweb.asm.Opcodes.ICONST_0
 import org.objectweb.asm.Opcodes.ICONST_1
+import org.objectweb.asm.Opcodes.ICONST_4
+import org.objectweb.asm.Opcodes.ICONST_M1
 import org.objectweb.asm.Opcodes.IFEQ
+import org.objectweb.asm.Opcodes.IFNE
 import org.objectweb.asm.Opcodes.IFNULL
 import org.objectweb.asm.Opcodes.IF_ICMPEQ
+import org.objectweb.asm.Opcodes.IF_ICMPLE
+import org.objectweb.asm.Opcodes.IF_ICMPNE
 import org.objectweb.asm.Opcodes.ILOAD
 import org.objectweb.asm.Opcodes.INSTANCEOF
 import org.objectweb.asm.Opcodes.INVOKEINTERFACE
 import org.objectweb.asm.Opcodes.INVOKESPECIAL
+import org.objectweb.asm.Opcodes.INVOKESTATIC
+import org.objectweb.asm.Opcodes.IOR
 import org.objectweb.asm.Opcodes.ISTORE
+import org.objectweb.asm.Opcodes.IXOR
 import org.objectweb.asm.Opcodes.NEW
 import org.objectweb.asm.Opcodes.RETURN
 import org.objectweb.asm.Opcodes.SIPUSH
@@ -78,6 +87,58 @@ class ComposeGlueTest {
         }
         assertTrue(glue.getValue(20).userBranch)
         assertEquals(listOf(20), judge(glue, Line(20, mi = 8, mb = 3)).misses.map { it.line })
+    }
+
+    @Test
+    fun `the trace epilogue on a remember's return line is not a user branch`() {
+        // `return remember(language, formats) { formats(language) }`: the compiler's trace epilogue shares its line.
+        val glue = scan {
+            line(27)
+            rememberKeyedOnParameters()
+            visitVarInsn(ALOAD, 5)
+            visitVarInsn(ASTORE, 4)
+            traceGuard("traceEventEnd", "()V")
+        }
+        assertFalse(glue.getValue(27).userBranch)
+        assertEquals(emptyList(), judge(glue, Line(27, mi = 5, mb = 1)).misses)
+    }
+
+    @Test
+    fun `the trace prologue is not a user branch either`() {
+        val glue = scan {
+            line(25)
+            traceGuard("traceEventStart", "(IIILjava/lang/String;)V") {
+                visitLdcInsn(1893993446)
+                visitVarInsn(ILOAD, CHANGED)
+                visitInsn(ICONST_M1)
+                visitLdcInsn("Screen (Screen.kt:24)")
+            }
+        }
+        assertFalse(glue[25]?.userBranch ?: false)
+    }
+
+    @Test
+    fun `a user branch on isTraceInProgress is the user's, and a user if beside the epilogue still withholds`() {
+        val userGuard = scan {
+            line(27)
+            visitMethodInsn(INVOKESTATIC, COMPOSER_KT, "isTraceInProgress", "()Z", false)
+            val skip = Label()
+            visitJumpInsn(IFEQ, skip)
+            visitMethodInsn(INVOKESTATIC, CLASS, "log", "()V", false)
+            visitLabel(skip)
+        }
+        assertTrue(userGuard.getValue(27).userBranch)
+        val beside = scan {
+            line(27)
+            rememberKeyedOnParameters()
+            visitVarInsn(ALOAD, 0)
+            val skip = Label()
+            visitJumpInsn(IFNULL, skip)
+            visitLabel(skip)
+            traceGuard("traceEventEnd", "()V")
+        }
+        assertTrue(beside.getValue(27).userBranch)
+        assertEquals(listOf(27), judge(beside, Line(27, mi = 5, mb = 1)).misses.map { it.line })
     }
 
     @Test
@@ -180,6 +241,55 @@ class ComposeGlueTest {
         visitVarInsn(ISTORE, 3)
     }
 
+    /**
+     * `remember(language, formats)`'s cache test, read off `rememberDateFormats` (`formats` in slot 0, `language` in 3):
+     * `changed(language) | ((dirty & 14 ^ 6) > 4 && changed(formats) || (dirty & 6) == 4)`.
+     */
+    private fun MethodVisitor.rememberKeyedOnParameters() {
+        val unchanged = Label()
+        val yes = Label()
+        val no = Label()
+        val or = Label()
+        visitVarInsn(ALOAD, COMPOSER_SLOT)
+        visitVarInsn(ALOAD, 3)
+        visitMethodInsn(INVOKEINTERFACE, COMPOSER, "changed", "(Ljava/lang/Object;)Z", true)
+        visitVarInsn(ILOAD, CHANGED)
+        visitIntInsn(BIPUSH, 14)
+        visitInsn(IAND)
+        visitIntInsn(BIPUSH, 6)
+        visitInsn(IXOR)
+        visitInsn(ICONST_4)
+        visitJumpInsn(IF_ICMPLE, unchanged)
+        visitVarInsn(ALOAD, COMPOSER_SLOT)
+        visitVarInsn(ALOAD, 0)
+        visitMethodInsn(INVOKEINTERFACE, COMPOSER, "changed", "(Ljava/lang/Object;)Z", true)
+        visitJumpInsn(IFNE, yes)
+        visitLabel(unchanged)
+        visitVarInsn(ILOAD, CHANGED)
+        visitIntInsn(BIPUSH, 6)
+        visitInsn(IAND)
+        visitInsn(ICONST_4)
+        visitJumpInsn(IF_ICMPNE, no)
+        visitLabel(yes)
+        visitInsn(ICONST_1)
+        visitJumpInsn(GOTO, or)
+        visitLabel(no)
+        visitInsn(ICONST_0)
+        visitLabel(or)
+        visitInsn(IOR)
+        visitVarInsn(ISTORE, 7)
+    }
+
+    /** `if (isTraceInProgress()) <event>(…)`, [args] pushing the event's arguments. */
+    private fun MethodVisitor.traceGuard(event: String, desc: String, args: MethodVisitor.() -> Unit = {}) {
+        val skip = Label()
+        visitMethodInsn(INVOKESTATIC, COMPOSER_KT, "isTraceInProgress", "()Z", false)
+        visitJumpInsn(IFEQ, skip)
+        args()
+        visitMethodInsn(INVOKESTATIC, COMPOSER_KT, event, desc, false)
+        visitLabel(skip)
+    }
+
     /** A sealed `when`'s last `is` arm (line 30) and its dead default: a replace group around the throw (30–32). */
     private fun MethodVisitor.deadArm() {
         val dead = Label()
@@ -263,6 +373,7 @@ class ComposeGlueTest {
         const val CLASS = "app/ui/ScreenKt"
         const val LAMBDA = "Screen\$lambda\$0"
         const val COMPOSER = "androidx/compose/runtime/Composer"
+        const val COMPOSER_KT = "androidx/compose/runtime/ComposerKt"
         const val NO_WHEN = "kotlin/NoWhenBranchMatchedException"
         const val SCREEN = "(Ljava/lang/Object;Landroidx/compose/runtime/Composer;I)V"
         const val COMPOSER_SLOT = 1

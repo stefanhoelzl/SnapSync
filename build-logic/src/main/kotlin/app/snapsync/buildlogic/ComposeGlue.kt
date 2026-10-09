@@ -37,6 +37,11 @@ import org.objectweb.asm.tree.VarInsnNode
  *    allowance is exact: the block's instructions other than the throw sequence, and one arm per conditional jump into
  *    it (a switch's default into it Kover already filters).
  *
+ * One jump is neither shape nor the user's: the compiler's trace guard, `if (isTraceInProgress()) traceEventEnd()`,
+ * which it attributes to a composable's last body line (and `traceEventStart` to its declaration). Kover filters it, so
+ * it earns no allowance; it is only kept from counting as a [LineGlue.userBranch]. Recognised exactly: an `ifeq` on
+ * `isTraceInProgress`'s result, skipping only the trace call.
+ *
  * Nothing else is recognised: a shape outside these two is a miss for a test or a restructure, never for this file.
  */
 object ComposeGlue {
@@ -60,6 +65,7 @@ object ComposeGlue {
     )
 
     private const val COMPOSER = "androidx/compose/runtime/Composer"
+    private const val COMPOSER_KT = "androidx/compose/runtime/ComposerKt"
     private const val NO_WHEN = "kotlin/NoWhenBranchMatchedException"
     private val VALIDITY_CALLS = setOf("changed", "changedInstance")
 
@@ -107,6 +113,7 @@ object ComposeGlue {
                 insn is JumpInsnNode && dead.any { it.first == insn.label } ->
                     merge(nr) { it.copy(deadArm = it.deadArm + Allowance(0, 1), userBranch = true) }
                 insn in deadInsns -> Unit
+                insn is JumpInsnNode && insn.isTraceGuard() -> Unit
                 else -> merge(nr) { it.copy(userBranch = true) }
             }
         }
@@ -168,6 +175,21 @@ object ComposeGlue {
                 label.takeIf { block.any { it.callsComposer(null) } }?.let { it to block }
             }
     }
+
+    /**
+     * The compiler's trace guard, `if (isTraceInProgress()) traceEventStart(…)` / `traceEventEnd()`: an `ifeq` on the
+     * boolean `isTraceInProgress` just pushed, skipping a block whose one call is the trace event.
+     */
+    private fun JumpInsnNode.isTraceGuard(): Boolean {
+        val condition = previous { it.opcode >= 0 }
+        if (opcode != Opcodes.IFEQ || !(condition is MethodInsnNode && condition.isTrace("isTraceInProgress"))) return false
+        val guarded = generateSequence(next) { it.next }.takeWhile { it != label }.filterIsInstance<MethodInsnNode>().toList()
+        return guarded.singleOrNull()?.run { isTrace("traceEventStart") || isTrace("traceEventEnd") } == true
+    }
+
+    private fun MethodInsnNode.isTrace(name: String) = opcode == Opcodes.INVOKESTATIC && owner == COMPOSER_KT && this.name == name
+
+    private fun AbstractInsnNode.previous(p: (AbstractInsnNode) -> Boolean) = generateSequence(previous) { it.previous }.firstOrNull(p)
 
     private fun AbstractInsnNode.isThrowSequence() = when (this) {
         is TypeInsnNode -> desc == NO_WHEN
