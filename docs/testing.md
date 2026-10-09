@@ -449,22 +449,19 @@ that cell to be recorded; and each `THROWS` map equals the port's `@Throws` decl
 port no contract binds yet is held to the grid all the same. `ProxyRenderingTest` runs the rendering on
 every target `:test:contracts` tests, the iOS simulator included.
 
-### Open cells
+### Every cell is covered
 
 A cell is **covered** when a clause that runs against a real implementation on some host
-(`ContractCoverageTest`'s reading) declares it. A claim by a clause only a mock answers does not count.
-Every grid cell must be covered or listed in **`test/contracts/open-cells.txt`**: the cells no clause
-covers yet, one per line in the grid's own text, sorted. `ClauseCoversTest` fails when:
-- a grid cell is neither covered nor listed. That is new port surface (a member, a variant, a handler)
-  without a clause. Write the clause; list the cell only where none can be written yet.
-- a listed cell is covered. Delete the line: the list only shrinks.
-- a listed cell is not in the grid: a member or variant was renamed or removed. Delete it; the cells it
-  became fail under the first rule.
-- the list is unsorted or names a cell twice.
+(`ContractCoverageTest`'s reading) declares it. A claim by a clause only a mock answers does not count,
+and neither does a claim inside a one-of group. `ClauseCoversTest` fails on any grid cell that is not
+covered. There is no list of exceptions, no annotation and no opt-out: new port surface (a member, a
+variant, a handler) needs its clause in the same change, or the port changes so the cell does not exist.
+`ClauseCoversTest` also fails on any file beside the contracts module's build file, sources and
+recordings, and `DeletionLedgerTest` keeps the retired open-cells list dead.
 
 The one reading of "covered" is `ContractCoverage.coveredCells`, so a rule that counts a claim for less
-changes that function only. A renamed port member moves its cells, so it fails the first and third rule
-together: the messages print the lines to add and delete.
+changes that function only. A renamed port member moves its cells, so it fails twice: its old cells are
+declared by clauses but no longer in the grid, and its new cells are uncovered.
 
 ### Hosts
 
