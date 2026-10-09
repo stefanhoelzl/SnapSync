@@ -81,6 +81,8 @@ kotlin {
             implementation(project(":adapter:generic:mock"))
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
+            // `BackendReach` speaks the device API as `api/openapi.yaml` declares it: the generated routes and DTOs.
+            implementation(project(":domain:wire"))
             implementation(project(":domain:compose"))
             // The device-log writer the rig re-points at the extension's log for an invoked cycle.
             implementation(project(":domain:services"))
@@ -123,7 +125,7 @@ kotlin {
         // locally by `:test:edge`, as the second backend choice.
         jvmMain.dependencies {
             implementation(project(":app:jvm"))
-            // `HttpBackend`, behind `VersionedHttpBackend` — the `deno` backend's port.
+            // `KtorHttpTransport` over CIO — the `deno` backend's transport.
             implementation(project(":adapter:generic:app"))
             implementation(project(":test:edge"))
             implementation(project(":domain:feature"))

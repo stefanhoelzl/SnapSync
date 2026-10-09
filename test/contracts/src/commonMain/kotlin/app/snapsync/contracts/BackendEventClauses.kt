@@ -1,78 +1,84 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.CreateEventRequest
-import app.snapsync.model.Reply
-import app.snapsync.model.minAppVersionFromRefusal
-import app.snapsync.ports.Backend
+import app.snapsync.wire.api.AppTooOld
+import app.snapsync.wire.api.ChangeEventReply
+import app.snapsync.wire.api.Closed
+import app.snapsync.wire.api.CreateEventReply
+import app.snapsync.wire.api.EventNotFound
+import app.snapsync.wire.api.GetEventReply
+import app.snapsync.wire.api.Invalid
+import app.snapsync.wire.api.Limits
+import app.snapsync.wire.api.Reply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.Unauthorized
+import app.snapsync.wire.models.EventChange
+import app.snapsync.wire.models.EventCreate
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 /**
- * The event registry's routes — create, read, rename — and the version gate every route sits behind. Part of
- * [BackendContract]'s clause list, a split for size only.
+ * The event registry's operations — create and read here, change in [changeClauses] — and the version gate every
+ * operation sits behind. Part of [BackendContract]'s clause list, a split for size only.
  */
-internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
+internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.eventClauses() {
     clause(
         "CREATE_A_VALID_EVENT_IS_CREATED",
         BackendState.SERVING,
-        covers = cells { on<Backend>().answers(Backend::createEvent).withGenericLeaf(Reply.Ok::class) },
+        covers = cells { backend(Routes.CreateEvent.ID, CreateEventReply.Created::class) },
     ) { s ->
-        val created =
-            assertOk(
-                s.port.createEvent(s.token, CreateEventRequest("Anna's Birthday", SEEDED_STARTS_AT, SEEDED_ENDS_AT)),
-            )
+        val created = assertAnswer<CreateEventReply.Created>(s.create("Anna's Birthday")).event
         assertTrue(UUID.matches(created.eventId), "the backend mints a UUID event id: ${created.eventId}")
         assertEquals("Anna's Birthday", created.name, "the backend echoes the name it stored")
+        assertTrue(WHOLE_SECOND.matches(created.createdAt), "an instant is whole-second UTC: ${created.createdAt}")
     }
 
     clause(
         "CREATE_AN_ABSENT_END_IS_ACCEPTED",
         BackendState.SERVING,
-        covers = cells { on<Backend>().answers(Backend::createEvent).withGenericLeaf(Reply.Ok::class) },
+        covers = cells { backend(Routes.CreateEvent.ID, CreateEventReply.Created::class) },
     ) { s ->
-        assertOk(
-            s.port.createEvent(s.token, CreateEventRequest("No end", SEEDED_STARTS_AT, null)),
+        val created = assertAnswer<CreateEventReply.Created>(
+            s.create("No end", endsAt = null),
             "the backend supplies the end",
         )
+        assertSameInstant("2030-01-31T00:00:00Z", created.event.endsAt, "an absent end is the start + 30 days")
+    }
+
+    // The name cap is ONE value (`x-snapsync-export` in `api/openapi.yaml`): the screen bounds the field to it, so a
+    // name the screen accepts is never refused, and one past it always is.
+    clause(
+        "CREATE_A_NAME_AT_THE_CAP_IS_CREATED_AND_ONE_PAST_IT_REFUSED",
+        BackendState.SERVING,
+        covers = cells {
+            backend(Routes.CreateEvent.ID, CreateEventReply.Created::class)
+            backend(Routes.CreateEvent.ID, CreateEventReply.InvalidName::class)
+        },
+    ) { s ->
+        val atCap = "n".repeat(Limits.EVENT_NAME_MAX_LENGTH)
+        assertEquals(atCap, assertAnswer<CreateEventReply.Created>(s.create(atCap)).event.name, "the cap is admitted")
+        assertAnswer<CreateEventReply.InvalidName>(s.create(atCap + "n"), "one past the cap is refused as the name")
     }
 
     clause(
         "CREATE_WITH_A_KEY_ID_IS_AN_ENCRYPTED_EVENT_AND_ONLY_THEN",
         BackendState.SERVING,
         covers = cells {
-            on<Backend> {
-                answers(Backend::createEvent).withGenericLeaf(Reply.Ok::class)
-                answers(Backend::createEvent).with(Reply.Refused::class)
-                answers(Backend::getEvent).withGenericLeaf(Reply.Ok::class)
-            }
+            backend(Routes.CreateEvent.ID, CreateEventReply.Created::class)
+            backend(Routes.CreateEvent.ID, Invalid::class)
+            backend(Routes.GetEvent.ID, GetEventReply.Found::class)
         },
     ) { s ->
         // The encrypted file format (`docs/architecture.md`): the backend keeps the key's id, never the key.
         val keyId = "de30249b854310c8"
-        val encrypted =
-            assertOk(
-                s.port.createEvent(
-                    s.token,
-                    CreateEventRequest("Secret", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = keyId),
-                ),
-            )
-        assertEquals(
-            keyId,
-            assertOk(s.port.getEvent(null, encrypted.eventId)).keyId,
-            "an encrypted event names its key id",
-        )
-        val plain = assertOk(s.port.createEvent(s.token, CreateEventRequest("Open", SEEDED_STARTS_AT, SEEDED_ENDS_AT)))
-        assertEquals(null, assertOk(s.port.getEvent(null, plain.eventId)).keyId, "a plain event names none")
-        assertRefused(
-            BAD_REQUEST,
-            s.port.createEvent(
-                s.token,
-                CreateEventRequest("Bad", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = "DE30249B854310C8"),
-            ),
+        val encrypted = assertAnswer<CreateEventReply.Created>(s.create("Secret", keyId = keyId)).event
+        assertEquals(keyId, s.details(encrypted.eventId).keyId, "an encrypted event names its key id")
+        val plain = assertAnswer<CreateEventReply.Created>(s.create("Open")).event
+        assertEquals(null, s.details(plain.eventId).keyId, "a plain event names none")
+        assertAnswer<Invalid>(
+            s.create("Bad", keyId = "DE30249B854310C8"),
             "a malformed key id is refused, never created as a plain event",
         )
     }
@@ -80,74 +86,63 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
     clause(
         "CREATE_A_BLANK_NAME_IS_REFUSED_AS_THE_NAME",
         BackendState.SERVING,
-        covers = cells { on<Backend>().answers(Backend::createEvent).with(Reply.Refused::class) },
+        covers = cells { backend(Routes.CreateEvent.ID, CreateEventReply.InvalidName::class) },
     ) { s ->
-        val refused =
-            assertRefused(
-                BAD_REQUEST,
-                s.port.createEvent(s.token, CreateEventRequest("   ", SEEDED_STARTS_AT, SEEDED_ENDS_AT)),
-            )
-        assertFalse(WINDOW_FIELDS.any { it in refused.body }, "a refused name names no date field: ${refused.body}")
+        assertAnswer<CreateEventReply.InvalidName>(s.create("   "))
     }
 
     clause(
         "CREATE_AN_END_BEFORE_THE_START_IS_REFUSED_AS_THE_WINDOW",
         BackendState.SERVING,
-        covers = cells { on<Backend>().answers(Backend::createEvent).with(Reply.Refused::class) },
+        covers = cells { backend(Routes.CreateEvent.ID, CreateEventReply.InvalidWindow::class) },
     ) { s ->
-        val refused =
-            assertRefused(
-                BAD_REQUEST,
-                s.port.createEvent(s.token, CreateEventRequest("Backwards", SEEDED_ENDS_AT, SEEDED_STARTS_AT)),
-            )
-        assertTrue(
-            WINDOW_FIELDS.any { it in refused.body },
-            "a refused window names the date it refused: ${refused.body}",
-        )
+        assertAnswer<CreateEventReply.InvalidWindow>(s.create("Backwards", SEEDED_ENDS_AT, SEEDED_STARTS_AT))
     }
 
     clause(
         "CREATE_A_WINDOW_LONGER_THAN_30_DAYS_IS_REFUSED_AS_THE_WINDOW",
         BackendState.SERVING,
-        covers = cells { on<Backend>().answers(Backend::createEvent).with(Reply.Refused::class) },
+        covers = cells { backend(Routes.CreateEvent.ID, CreateEventReply.InvalidWindow::class) },
     ) { s ->
-        val refused = assertRefused(
-            BAD_REQUEST,
-            s.port.createEvent(s.token, CreateEventRequest("Too long", SEEDED_STARTS_AT, "2030-02-15T00:00:00Z")),
-        )
-        assertTrue(
-            WINDOW_FIELDS.any { it in refused.body },
-            "a refused window names the date it refused: ${refused.body}",
-        )
+        assertAnswer<CreateEventReply.InvalidWindow>(s.create("Too long", endsAt = "2030-02-15T00:00:00Z"))
     }
 
     clause(
         "GET_AN_EXISTING_EVENT_IS_SERVED_WITH_ITS_WINDOW",
         BackendState.EVENT_EXISTS,
-        covers = cells { on<Backend>().answers(Backend::getEvent).withGenericLeaf(Reply.Ok::class) },
+        covers = cells { backend(Routes.GetEvent.ID, GetEventReply.Found::class) },
     ) { s ->
-        val meta = assertOk(s.port.getEvent(null, s.seeded.eventId))
+        val meta = s.details(s.seeded.eventId)
         assertEquals(s.seeded.event!!.name, meta.name)
         assertSameInstant(SEEDED_STARTS_AT, meta.startsAt, "the start the creator chose")
         assertSameInstant(SEEDED_ENDS_AT, meta.endsAt, "the end the creator chose")
         // The lifetime is 30 days from max(createdAt, startsAt); the seeded start is in the future.
         assertSameInstant("2030-01-31T00:00:00Z", meta.deletesAt, "deletesAt is startsAt + 30 days")
+        listOf(meta.createdAt, meta.startsAt, meta.endsAt, meta.deletesAt).forEach {
+            assertTrue(WHOLE_SECOND.matches(it), "an instant is whole-second UTC: $it")
+        }
     }
 
     clause(
         "GET_AN_UNKNOWN_EVENT_IS_NOT_FOUND",
         BackendState.NO_SUCH_EVENT,
-        covers = cells { on<Backend>().answers(Backend::getEvent).with(Reply.Refused::class) },
+        covers = cells { backend(Routes.GetEvent.ID, EventNotFound::class) },
     ) { s ->
-        assertRefused(NOT_FOUND, s.port.getEvent(null, s.seeded.eventId), "absent is 404, which the app reads as gone")
+        assertAnswer<EventNotFound>(
+            s.port.send(Routes.GetEvent.request(s.seeded.eventId)),
+            "absent is a sealed deletion, which the app reads as gone",
+        )
     }
 
     clause(
         "GET_NEEDS_NO_CREDENTIAL",
-        BackendState.FOREIGN_TOKEN,
-        covers = cells { on<Backend>().answers(Backend::getEvent).withGenericLeaf(Reply.Ok::class) },
+        BackendState.EVENT_EXISTS,
+        covers = cells { backend(Routes.GetEvent.ID, GetEventReply.Found::class) },
     ) { s ->
-        assertOk(s.port.getEvent(null, s.seeded.eventId), "the event read is authorized by the id alone")
+        assertAnswer<GetEventReply.Found>(
+            s.port.send(Routes.GetEvent.request(s.seeded.eventId)),
+            "the event read is authorized by the id alone",
+        )
     }
 
     // Public, but a token it is SENT is verified, so its 401 is a verdict on that token (decision record
@@ -155,71 +150,104 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
     clause(
         "GET_A_SENT_TOKEN_THE_BACKEND_NEVER_ISSUED_IS_REFUSED",
         BackendState.FOREIGN_TOKEN,
-        covers = cells { on<Backend>().answers(Backend::getEvent).with(Reply.Refused::class) },
+        covers = cells { backend(Routes.GetEvent.ID, Unauthorized::class) },
     ) { s ->
-        assertRefused(UNAUTHORIZED, s.port.getEvent(s.token, s.seeded.eventId), "a sent token is checked")
+        assertAnswer<Unauthorized>(s.port.send(Routes.GetEvent.request(s.seeded.eventId)), "a sent token is checked")
     }
 
     clause(
         "A_REFUSED_BUILD_IS_TOLD_THE_MINIMUM",
         BackendState.VERSION_REFUSED,
-        covers = cells { on<Backend>().answers(Backend::getEvent).with(Reply.Refused::class) },
+        covers = cells { backend(Routes.GetEvent.ID, AppTooOld::class) },
     ) { s ->
-        val refused =
-            assertRefused(
-                UPGRADE_REQUIRED,
-                s.port.getEvent(null, s.seeded.eventId),
-                "a refused build is served nothing",
-            )
-        val minimum =
-            assertNotNull(minAppVersionFromRefusal(refused.body), "the backend names the minimum: ${refused.body}")
+        val refused = assertAnswer<AppTooOld>(
+            s.port.send(Routes.GetEvent.request(s.seeded.eventId)),
+            "a refused build is served nothing",
+        )
+        val minimum = assertNotNull(refused.appTooOldError.minAppVersion, "the backend names the minimum")
         assertTrue(Regex("""\d+\.\d+""").matches(minimum), "the minimum is an X.Y marketing version: $minimum")
-    }
-
-    clause(
-        "RENAME_ANSWERS_THE_STORED_NAME",
-        BackendState.EVENT_EXISTS,
-        covers = cells { on<Backend>().answers(Backend::renameEvent).withGenericLeaf(Reply.Ok::class) },
-    ) { s ->
-        assertEquals("Renamed", assertOk(s.port.renameEvent(s.token, s.seeded.eventId, "Renamed")).name)
-    }
-
-    clause(
-        "RENAME_A_BLANK_NAME_IS_REFUSED",
-        BackendState.EVENT_EXISTS,
-        covers = cells { on<Backend>().answers(Backend::renameEvent).with(Reply.Refused::class) },
-    ) { s ->
-        assertRefused(BAD_REQUEST, s.port.renameEvent(s.token, s.seeded.eventId, "   "))
-    }
-
-    clause(
-        "RENAME_AN_UNKNOWN_EVENT_IS_REFUSED",
-        BackendState.NO_SUCH_EVENT,
-        covers = cells { on<Backend>().answers(Backend::renameEvent).with(Reply.Refused::class) },
-    ) { s ->
-        assertIs<Reply.Refused>(s.port.renameEvent(s.token, s.seeded.eventId, "Nobody"))
     }
 }
 
-internal const val BAD_REQUEST = 400
-internal const val UNAUTHORIZED = 401
-internal const val NOT_FOUND = 404
-internal const val CONFLICT = 409
-internal const val UPGRADE_REQUIRED = 426
+/** The event's one change — its name — and what a closed event refuses of it. */
+internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.changeClauses() {
+    clause(
+        "CHANGE_ANSWERS_THE_STORED_NAME",
+        BackendState.EVENT_EXISTS,
+        covers = cells { backend(Routes.ChangeEvent.ID, ChangeEventReply.Changed::class) },
+    ) { s ->
+        val changed = assertAnswer<ChangeEventReply.Changed>(s.rename(" Renamed "))
+        assertEquals("Renamed", changed.event.name, "the backend answers the name it stored, trimmed")
+        assertEquals(s.seeded.eventId, changed.event.eventId)
+    }
+
+    clause(
+        "CHANGE_A_BLANK_NAME_IS_REFUSED",
+        BackendState.EVENT_EXISTS,
+        covers = cells { backend(Routes.ChangeEvent.ID, Invalid::class) },
+    ) { s ->
+        assertAnswer<Invalid>(s.rename("   "))
+    }
+
+    clause(
+        "CHANGE_A_NAME_PAST_THE_CAP_IS_REFUSED",
+        BackendState.EVENT_EXISTS,
+        covers = cells {
+            backend(Routes.ChangeEvent.ID, ChangeEventReply.Changed::class)
+            backend(Routes.ChangeEvent.ID, Invalid::class)
+        },
+    ) { s ->
+        val atCap = "n".repeat(Limits.EVENT_NAME_MAX_LENGTH)
+        assertAnswer<ChangeEventReply.Changed>(s.rename(atCap), "the cap is admitted")
+        assertAnswer<Invalid>(s.rename(atCap + "n"), "one past the cap is refused")
+    }
+
+    clause(
+        "CHANGE_AN_UNKNOWN_EVENT_IS_NOT_FOUND",
+        BackendState.NO_SUCH_EVENT,
+        covers = cells { backend(Routes.ChangeEvent.ID, EventNotFound::class) },
+    ) { s ->
+        assertAnswer<EventNotFound>(s.rename("Nobody"))
+    }
+
+    clause(
+        "CHANGE_A_CLOSED_EVENT_IS_CLOSED",
+        BackendState.ENDED_MEMBER,
+        covers = cells {
+            backend(Routes.ChangeEvent.ID, Closed::class)
+            backend(Routes.GetEvent.ID, GetEventReply.Found::class)
+        },
+    ) { s ->
+        settle(s)
+        assertAnswer<Closed>(s.rename("Renamed"), "a closed event changes no more")
+        assertEquals(s.seeded.event?.name, s.details(s.seeded.eventId).name)
+    }
+}
 
 private val UUID = Regex("""[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}""")
 
-/** The fields a date-range refusal names. */
-private val WINDOW_FIELDS = listOf("startsAt", "endsAt")
+/** The description's `Timestamp`: whole-second UTC, the one shape it admits. */
+private val WHOLE_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
 
-internal fun <T> assertOk(reply: Reply<T>, message: String? = null): T =
-    assertIs<Reply.Ok<T>>(reply, listOfNotNull(message, "answered $reply").joinToString(" — ")).value
+/** [reply], which must be a [T] — the outcome a clause pins. */
+internal inline fun <reified T : Reply> assertAnswer(reply: Reply, message: String? = null): T =
+    assertIs<T>(reply, listOfNotNull(message, "answered $reply").joinToString(" — "))
 
-internal fun assertRefused(status: Int, reply: Reply<*>, message: String? = null): Reply.Refused {
-    val refused = assertIs<Reply.Refused>(reply, listOfNotNull(message, "answered $reply").joinToString(" — "))
-    assertEquals(status, refused.status, listOfNotNull(message, "body: ${refused.body}").joinToString(" — "))
-    return refused
-}
+/** Create an event as the app does, over the seeded window unless told otherwise. */
+private suspend fun EdgeSubject<BackendClient>.create(
+    name: String,
+    startsAt: String = SEEDED_STARTS_AT,
+    endsAt: String? = SEEDED_ENDS_AT,
+    keyId: String? = null,
+): CreateEventReply = port.send(Routes.CreateEvent.request(EventCreate(name, startsAt, endsAt, keyId = keyId)))
+
+/** Change this state's event's name. */
+private suspend fun EdgeSubject<BackendClient>.rename(name: String): ChangeEventReply =
+    port.send(Routes.ChangeEvent.request(seeded.eventId, EventChange(name)))
+
+/** The details of [eventId], which must be found. */
+internal suspend fun EdgeSubject<BackendClient>.details(eventId: String) =
+    assertAnswer<GetEventReply.Found>(port.send(Routes.GetEvent.request(eventId))).eventDetails
 
 private fun assertSameInstant(expected: String, actual: String?, message: String) {
     assertEquals(Instant.parse(expected), actual?.let(Instant::parse), "$message: $actual")

@@ -82,8 +82,8 @@ class AndroidDownload(
         if (recovered > 0) log.i { "delivered $recovered transfer(s) a previous process left finished" }
     }
 
-    override fun start(url: String, tag: String, network: TransferNetwork): StartResult = runCatchingCancellable {
-        manager.enqueue(request(url, tag, restarts = 0, network))
+    override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult = runCatchingCancellable {
+        manager.enqueue(request(url, headers, tag, restarts = 0, network))
     }.fold(
         onSuccess = { StartResult.Started },
         onFailure = {
@@ -93,8 +93,9 @@ class AndroidDownload(
     )
 
     /**
-     * [url] into a fresh destination, tagged [tag]; the title carries how often the transfer was [restart]ed and the
-     * [network] it may use, so a restart keeps the rule the transfer started with.
+     * [url] with [headers] into a fresh destination, tagged [tag]; the title carries how often the transfer was
+     * [restart]ed, the [network] it may use and the [headers] — one per line after the first — so a restart keeps the
+     * rule and the headers the transfer started with.
      *
      * Under [TransferNetwork.UNRESTRICTED_ONLY] DownloadManager holds the transfer off every
      * metered network — cellular, a hotspot, a metered Wi-Fi — in its own persisted queue, and runs it once the phone is
@@ -102,15 +103,23 @@ class AndroidDownload(
      * cellular, finished within ~6 s of unmetered Wi-Fi). Data Saver needs nothing here: it applies to metered networks
      * only, and DownloadManager already honours it there.
      */
-    private fun request(url: String, tag: String, restarts: Int, network: TransferNetwork): DownloadManager.Request =
+    private fun request(
+        url: String,
+        headers: Map<String, String>,
+        tag: String,
+        restarts: Int,
+        network: TransferNetwork,
+    ): DownloadManager.Request =
         DownloadManager.Request(Uri.parse(url))
+            .apply { headers.forEach { (name, value) -> addRequestHeader(name, value) } }
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
             .setDestinationInExternalFilesDir(appContext, DIRECTORY, UUID.randomUUID().toString())
             .setAllowedOverMetered(network == TransferNetwork.ANY)
             .setAllowedOverRoaming(network == TransferNetwork.ANY)
             .setDescription(tag)
             .setTitle(
-                "$RESTARTS_TITLE$restarts" + if (network == TransferNetwork.UNRESTRICTED_ONLY) UNMETERED_TITLE else "",
+                "$RESTARTS_TITLE$restarts" + (if (network == TransferNetwork.UNRESTRICTED_ONLY) UNMETERED_TITLE else "") +
+                    headers.entries.joinToString("") { (name, value) -> "\n$name: $value" },
             )
 
     override suspend fun cancelAll() {
@@ -217,7 +226,7 @@ class AndroidDownload(
             handlers.onCompleted(tag, "DownloadManager ran the transfer twice; its file cannot be trusted")
             return
         }
-        runCatchingCancellable { manager.enqueue(request(url, tag, restarts + 1, network)) }.fold(
+        runCatchingCancellable { manager.enqueue(request(url, headers, tag, restarts + 1, network)) }.fold(
             onSuccess = { log.w { "$tag: DownloadManager ran the transfer twice; fetching it again (${restarts + 1})" } },
             onFailure = {
                 log.w(it) { "$tag: DownloadManager refused the restart" }
@@ -237,6 +246,8 @@ class AndroidDownload(
         val status = int(DownloadManager.COLUMN_STATUS)
         if (status != DownloadManager.STATUS_SUCCESSFUL && status != DownloadManager.STATUS_FAILED) return null
         val tag = string(DownloadManager.COLUMN_DESCRIPTION) ?: return null
+        val title = string(DownloadManager.COLUMN_TITLE).orEmpty().lines()
+        val unmetered = title.first().endsWith(UNMETERED_TITLE)
         return FinishedRow(
             id = long(DownloadManager.COLUMN_ID),
             tag = tag,
@@ -246,13 +257,9 @@ class AndroidDownload(
             total = long(DownloadManager.COLUMN_TOTAL_SIZE_BYTES),
             received = long(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR),
             url = string(DownloadManager.COLUMN_URI),
-            restarts = string(DownloadManager.COLUMN_TITLE)?.removePrefix(RESTARTS_TITLE)?.removeSuffix(UNMETERED_TITLE)
-                ?.toIntOrNull() ?: 0,
-            network = if (string(DownloadManager.COLUMN_TITLE)?.endsWith(UNMETERED_TITLE) == true) {
-                TransferNetwork.UNRESTRICTED_ONLY
-            } else {
-                TransferNetwork.ANY
-            },
+            restarts = title.first().removePrefix(RESTARTS_TITLE).removeSuffix(UNMETERED_TITLE).toIntOrNull() ?: 0,
+            network = if (unmetered) TransferNetwork.UNRESTRICTED_ONLY else TransferNetwork.ANY,
+            headers = title.drop(1).associate { it.substringBefore(": ") to it.substringAfter(": ") },
         )
     }
 
@@ -267,6 +274,7 @@ class AndroidDownload(
         val url: String?,
         val restarts: Int,
         val network: TransferNetwork,
+        val headers: Map<String, String>,
     ) {
         /**
          * The facts of a successful row whose file holds [onDisk] bytes. The bytes received are the FILE's, never the

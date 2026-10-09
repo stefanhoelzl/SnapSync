@@ -2,6 +2,7 @@ package app.snapsync.architecture
 
 import app.snapsync.ports.Listenable
 import app.snapsync.ports.Port
+import app.snapsync.wire.api.Reply
 import kotlinx.coroutines.flow.Flow
 import java.io.File
 import kotlin.coroutines.Continuation
@@ -20,8 +21,9 @@ import kotlin.test.assertTrue
 
 /**
  * **The port grid's derivation** (`docs/testing.md`, "The port grid"): every cell an adapter can answer, read by
- * reflection over the compiled `:domain:ports`. [PortGridTest] reports it; [ClauseCoversTest] holds every clause's
- * declared cells to it. One derivation, so the two can never disagree about what a cell's text is.
+ * reflection over the compiled `:domain:ports` — and every outcome the backend can answer, read off the generated
+ * replies of `:domain:wire` ([wireCells]). [PortGridTest] reports it; [ClauseCoversTest] holds every clause's declared
+ * cells to it. One derivation, so the two can never disagree about what a cell's text is.
  */
 internal object PortGrid {
 
@@ -34,7 +36,28 @@ internal object PortGrid {
             .sortedBy { it.simpleName }
     }
 
-    val cells: List<Cell> by lazy { ports.flatMap(::cellsOf).sortedBy { it.text } }
+    val cells: List<Cell> by lazy { (ports.flatMap(::cellsOf) + wireCells()).sortedBy { it.text } }
+
+    /**
+     * The backend's cells (`docs/architecture.md`, "The backend boundary"): one per outcome of every operation's
+     * generated reply — `Backend.<operationId> → <Outcome>` for the operation's own, and ONE `Backend.* → <Outcome>`
+     * for an outcome several operations answer with a single type. The backend is no port: the app reaches it over
+     * the `HttpTransport` port through the gateway, so its owner is named, not a port class.
+     */
+    private fun wireCells(): List<Cell> {
+        val reply = Reply::class
+        val routeReplies = reply.sealedSubclasses.filter { it.isSealed && it.simpleName!!.endsWith(REPLY) }
+        assertTrue(routeReplies.size >= 10, "port grid: only ${routeReplies.size} route replies — the wire read broke")
+        return routeReplies.flatMap { route ->
+            val operation = route.simpleName!!.removeSuffix(REPLY).replaceFirstChar { it.lowercase() }
+            leaves(route).map { outcome ->
+                val name = outcome.simpleName!!
+                val own = outcome.java.enclosingClass == route.java
+                val owner = if (own) operation else "*"
+                Cell(BACKEND, "$BACKEND.$owner → $name", owner, listOf(name))
+            }
+        }.distinctBy { it.text }
+    }
 
     private fun cellsOf(port: KClass<*>): List<Cell> {
         val name = port.simpleName!!
@@ -138,6 +161,10 @@ internal object PortGrid {
     }
 
     private const val PORTS_PACKAGE = "app.snapsync.ports"
+    private const val REPLY = "Reply"
+
+    /** The owner of the wire cells — what a clause's `backend(…)` renders, and what the gateway records. */
+    const val BACKEND = "Backend"
     const val RETURNS = "returns"
     const val THROWS = "throws"
 }

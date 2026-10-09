@@ -1,16 +1,26 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.MintRequest
-import app.snapsync.model.ProofFormat
-import app.snapsync.model.RenewRequest
-import app.snapsync.model.Reply
-import app.snapsync.ports.Backend
-import kotlin.test.assertIs
+import app.snapsync.wire.api.AppTooOld
+import app.snapsync.wire.api.ChallengeReply
+import app.snapsync.wire.api.MintTokenReply
+import app.snapsync.wire.api.NotThisDevice
+import app.snapsync.wire.api.PutDeviceReply
+import app.snapsync.wire.api.RenewTokenReply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.StaleChallenge
+import app.snapsync.wire.models.AndroidKeyProof
+import app.snapsync.wire.models.AppleAppAttestProof
+import app.snapsync.wire.models.DeviceConfig
+import app.snapsync.wire.models.MintRequest
+import app.snapsync.wire.models.PushRegistration
+import app.snapsync.wire.models.RenewRequest
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * The three ungated `/attest/…` routes that issue the credential: the challenge, every **refusal**, and a mint and
+ * The three open `/attest/…` operations that issue the credential: the challenge, every **refusal**, and a mint and
  * renewal through the Android verifier. Part of [BackendContract]'s clause list.
  *
  * A successful **App Attest** mint has no clause, and cannot: it needs a genuine attestation over a challenge the
@@ -24,65 +34,97 @@ import kotlin.test.assertTrue
  * The refusal inputs are shaped like what the in-memory integrity's own key would produce, so a double that minted
  * for any bytes — or over any challenge — fails here rather than passing by accident.
  */
-internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
+@OptIn(ExperimentalEncodingApi::class)
+internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.attestClauses() {
     clause(
         "ATTEST_A_CHALLENGE_IS_ISSUED",
         BackendState.SERVING,
-        covers = cells { on<Backend>().answers(Backend::challenge).withGenericLeaf(Reply.Ok::class) },
+        covers = cells { backend(Routes.Challenge.ID, ChallengeReply.Issued::class) },
     ) { s ->
-        assertTrue(assertOk(s.port.challenge(), "the ungated challenge route answers").isNotBlank())
+        assertTrue(s.challenge().isNotBlank(), "the open challenge route answers")
     }
 
     // The version gate stands in front of the issuers too: a build too old for the API is told so before it attests.
     clause(
         "ATTEST_A_REFUSED_BUILD_IS_ISSUED_NO_CHALLENGE",
         BackendState.VERSION_REFUSED,
-        covers = cells { on<Backend>().answers(Backend::challenge).with(Reply.Refused::class) },
+        covers = cells { backend(Routes.Challenge.ID, AppTooOld::class) },
     ) { s ->
-        assertRefused(UPGRADE_REQUIRED, s.port.challenge(), "the issuers are behind the version gate")
+        assertAnswer<AppTooOld>(s.port.send(Routes.Challenge.request()), "the issuers are behind the version gate")
     }
 
     clause(
         "ATTESTABLE_A_SOFTWARE_KEY_ATTESTATION_MINTS_AND_ITS_KEY_RENEWS",
         BackendState.ATTESTABLE,
         covers = cells {
-            on<Backend> {
-                answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
-                answers(Backend::mintToken).withGenericLeaf(Reply.Ok::class)
-                answers(Backend::renewToken).withGenericLeaf(Reply.Ok::class)
-            }
+            backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
+            backend(Routes.MintToken.ID, MintTokenReply.Minted::class)
+            backend(Routes.RenewToken.ID, RenewTokenReply.Renewed::class)
         },
     ) { s ->
-        val key = assertNotNull(s.attester, "a binding that reaches this state attests with a key of its own")
-        val device = s.seeded.deviceId
-        val first = assertOk(s.port.challenge())
-        val minted = assertOk(
-            s.port.mintToken(MintRequest(device, KEY_ID, ProofFormat.ANDROID_KEY, key.attest(first), first)),
-            "an attestation over a challenge the backend issued mints a token",
-        )
+        val minted = s.mintWithSoftwareKey()
         assertTrue(minted.isNotBlank())
-        val second = assertOk(s.port.challenge())
-        val renewed = assertOk(
-            s.port.renewToken(RenewRequest(device, key.sign(second), second)),
+        val key = s.attester!!
+        val challenge = s.challenge()
+        val renewed = assertAnswer<RenewTokenReply.Renewed>(
+            s.port.send(
+                Routes.RenewToken.request(RenewRequest(s.seeded.deviceId, b64(key.sign(challenge)), challenge)),
+            ),
             "the attested key's signature over a fresh challenge renews it",
         )
-        assertTrue(renewed.isNotBlank())
+        assertTrue(renewed.token.token.isNotBlank())
+    }
+
+    clause(
+        "ATTESTABLE_A_SIGNATURE_OVER_ANYTHING_BUT_THE_CHALLENGE_IS_REJECTED",
+        BackendState.ATTESTABLE,
+        covers = cells {
+            backend(Routes.MintToken.ID, MintTokenReply.Minted::class)
+            backend(Routes.RenewToken.ID, RenewTokenReply.AssertionRejected::class)
+        },
+    ) { s ->
+        s.mintWithSoftwareKey()
+        // The challenge is stateless — two issued within one second are one — so the signature is over other text.
+        val signed = s.attester!!.sign("not the challenge")
+        assertAnswer<RenewTokenReply.AssertionRejected>(
+            s.port.send(Routes.RenewToken.request(RenewRequest(s.seeded.deviceId, b64(signed), s.challenge()))),
+            "an assertion is over the challenge it is sent with",
+        )
+    }
+
+    // A token acts for the one device it was minted for (`api/openapi.yaml`, `deviceToken`).
+    clause(
+        "ATTESTABLE_A_TOKEN_ACTS_ONLY_FOR_ITS_OWN_DEVICE",
+        BackendState.ATTESTABLE,
+        covers = cells {
+            backend(Routes.MintToken.ID, MintTokenReply.Minted::class)
+            backend(Routes.PutDevice.ID, PutDeviceReply.Recorded::class)
+            backend(Routes.PutDevice.ID, NotThisDevice::class)
+        },
+    ) { s ->
+        val holder = s.declaring(ClientIdentity(SERVED_APP_VERSION, s.mintWithSoftwareKey()))
+        val config = DeviceConfig(PushRegistration("fcm", "a-token", "production"))
+        assertAnswer<PutDeviceReply.Recorded>(
+            holder.send(Routes.PutDevice.request(s.seeded.deviceId, config)),
+            "the token acts for its own device",
+        )
+        assertAnswer<NotThisDevice>(
+            holder.send(Routes.PutDevice.request(s.setup.freshId(), config)),
+            "and for no other",
+        )
     }
 
     clause(
         "ATTEST_A_FORGED_ATTESTATION_IS_REFUSED",
         BackendState.SERVING,
         covers = cells {
-            on<Backend> {
-                answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
-                answers(Backend::mintToken).with(Reply.Refused::class)
-            }
+            backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
+            backend(Routes.MintToken.ID, MintTokenReply.Rejected::class)
         },
     ) { s ->
-        val challenge = assertOk(s.port.challenge())
-        val forged = "not an attestation".encodeToByteArray()
-        assertIs<Reply.Refused>(
-            s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, ProofFormat.APP_ATTEST, forged, challenge)),
+        val proof = AppleAppAttestProof(KEY_ID, b64("not an attestation".encodeToByteArray()))
+        assertAnswer<MintTokenReply.Rejected>(
+            s.port.send(Routes.MintToken.request(MintRequest(s.seeded.deviceId, s.challenge(), proof))),
             "no token for a forgery",
         )
     }
@@ -91,31 +133,28 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
         "ATTEST_A_FORGED_ANDROID_KEY_ATTESTATION_IS_REFUSED",
         BackendState.SERVING,
         covers = cells {
-            on<Backend> {
-                answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
-                answers(Backend::mintToken).with(Reply.Refused::class)
-            }
+            backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
+            backend(Routes.MintToken.ID, MintTokenReply.Rejected::class)
         },
     ) { s ->
-        val challenge = assertOk(s.port.challenge())
         // Shaped as a chain of one DER certificate, and not one: the Android verifier, not a body check, refuses it.
-        val forged = byteArrayOf(0x30, 0x03, 0x02, 0x01, 0x00)
-        assertIs<Reply.Refused>(
-            s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, ProofFormat.ANDROID_KEY, forged, challenge)),
+        val proof = AndroidKeyProof(listOf(b64(byteArrayOf(0x30, 0x03, 0x02, 0x01, 0x00))))
+        assertAnswer<MintTokenReply.Rejected>(
+            s.port.send(Routes.MintToken.request(MintRequest(s.seeded.deviceId, s.challenge(), proof))),
             "no token for a forged key attestation",
         )
     }
 
     clause(
-        "ATTEST_A_CHALLENGE_THE_BACKEND_NEVER_ISSUED_IS_REFUSED",
+        "ATTEST_A_CHALLENGE_THE_BACKEND_NEVER_ISSUED_IS_STALE",
         BackendState.SERVING,
-        covers = cells { on<Backend>().answers(Backend::mintToken).with(Reply.Refused::class) },
+        covers = cells { backend(Routes.MintToken.ID, StaleChallenge::class) },
     ) { s ->
         val notIssued = "a-challenge-no-edge-issued"
-        val overIt = "attestation:$KEY_ID:$notIssued".encodeToByteArray()
-        assertIs<Reply.Refused>(
-            s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, ProofFormat.APP_ATTEST, overIt, notIssued)),
-            "no replay against another nonce",
+        val proof = AppleAppAttestProof(KEY_ID, b64("attestation:$KEY_ID:$notIssued".encodeToByteArray()))
+        assertAnswer<StaleChallenge>(
+            s.port.send(Routes.MintToken.request(MintRequest(s.seeded.deviceId, notIssued, proof))),
+            "no replay against another nonce — and a stale challenge rejects no credential",
         )
     }
 
@@ -123,19 +162,36 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
         "ATTEST_AN_UNATTESTED_DEVICE_CANNOT_RENEW",
         BackendState.SERVING,
         covers = cells {
-            on<Backend> {
-                answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
-                answers(Backend::renewToken).with(Reply.Refused::class)
-            }
+            backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
+            backend(Routes.RenewToken.ID, RenewTokenReply.NotAttested::class)
         },
     ) { s ->
-        val challenge = assertOk(s.port.challenge())
-        val assertion = "assertion:$KEY_ID:$challenge".encodeToByteArray()
-        assertIs<Reply.Refused>(
-            s.port.renewToken(RenewRequest(s.seeded.deviceId, assertion, challenge)),
+        val challenge = s.challenge()
+        val assertion = b64("assertion:$KEY_ID:$challenge".encodeToByteArray())
+        assertAnswer<RenewTokenReply.NotAttested>(
+            s.port.send(Routes.RenewToken.request(RenewRequest(s.seeded.deviceId, assertion, challenge))),
             "renewal needs an enrolment",
         )
     }
 }
 
 internal const val KEY_ID = "contract-key"
+
+/** A challenge the backend issues. */
+private suspend fun EdgeSubject<BackendClient>.challenge(): String =
+    assertAnswer<ChallengeReply.Issued>(port.send(Routes.Challenge.request())).challenge.challenge
+
+/** This state's device attested with the binding's software key: the token minted for it. */
+@OptIn(ExperimentalEncodingApi::class)
+private suspend fun EdgeSubject<BackendClient>.mintWithSoftwareKey(): String {
+    val key = assertNotNull(attester, "a binding that reaches this state attests with a key of its own")
+    val challenge = challenge()
+    val proof = AndroidKeyProof(key.attest(challenge).map(::b64))
+    return assertAnswer<MintTokenReply.Minted>(
+        port.send(Routes.MintToken.request(MintRequest(seeded.deviceId, challenge, proof))),
+        "an attestation over a challenge the backend issued mints a token",
+    ).token.token
+}
+
+@OptIn(ExperimentalEncodingApi::class)
+private fun b64(bytes: ByteArray): String = Base64.encode(bytes)

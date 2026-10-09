@@ -1,40 +1,37 @@
 package app.snapsync.compose
 
 import app.snapsync.ports.Clock
+import app.snapsync.services.backend.BackendExchange
+import app.snapsync.services.backend.BackendGateway
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.backend.CredentialedBackend
 import app.snapsync.services.trust.DeviceAttestation
-import app.snapsync.services.version.AppVersionGate
 
 /**
- * The app's attestation service: proves with the platform's integrity service,
-
- * reaches the backend's ungated `/attest/…` routes on the raw port, and reports a refused build from them to
- * [versionGate].
+ * The app's attestation service: proves with the platform's integrity service and
+ * reaches the backend's open `/attest/…` routes through [exchange], which reports a refused build to the version gate.
  *
  * A top-level factory rather than an `AppCore` body because `AppCore` is measured (see [shareSetLoadFor]).
  */
-internal fun attestationFor(services: AppServices, clock: Clock, versionGate: AppVersionGate): DeviceAttestation =
+internal fun attestationFor(services: AppServices, clock: Clock, exchange: BackendExchange): DeviceAttestation =
     DeviceAttestation(
         integrity = services.ports.integrity,
-        backend = services.ports.backend,
+        exchange = exchange,
         store = services.attestStore,
         identity = services.deviceIdentity,
         clock = clock,
-        versionGate = versionGate,
     )
 
 /**
- * Every need-shaped backend service over ONE authenticated backend whose credential is [attestation] — a rejected
- * token is dropped, a new one obtained, and the call retried once — and whose verdicts reach [versionGate].
+ * Every need-shaped backend service over ONE gateway whose credential is [attestation] — a rejected token is dropped,
+ * a new one obtained, and the request retried once — over [exchange], whose verdicts reach the version gate.
  */
 internal fun backendServicesFor(
     services: AppServices,
     attestation: DeviceAttestation,
-    versionGate: AppVersionGate,
+    exchange: BackendExchange,
 ): BackendServices =
     BackendServices(
-        CredentialedBackend(services.ports.backend, attestation, versionGate),
+        BackendGateway(exchange, attestation),
         services.deviceIdentity,
         zone = { services.process.clock.timeZone().id },
     )

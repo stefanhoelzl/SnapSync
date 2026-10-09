@@ -139,7 +139,7 @@ class ModuleSetTest {
             "wire" to emptySet<String>(),
             "ports" to setOf(":domain:model"),
             // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
-            "services" to setOf(":domain:model", ":domain:ports"),
+            "services" to setOf(":domain:model", ":domain:ports", ":domain:wire"),
             // Features see services, never ports: with no `ports` edge a port type does not resolve in the zone.
             "feature" to setOf(":domain:model", ":domain:services"),
             "flow" to setOf(":domain:model", ":domain:feature"),

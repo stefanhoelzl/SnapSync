@@ -5,7 +5,7 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.InviteLinkHints
-import app.snapsync.ports.Backend
+import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.LogSink
 
 /**
@@ -20,13 +20,13 @@ class JvmMocks(
 
     /**
      * One launch's adapters over these mocks. [attests] is whether the app process has App Attest (a simulator has
-     * not); [backend] is the backend port — the mock's own face, or one reaching the real `api/`; [logSinks] where the
-     * app process's log lines go (see [JvmDevice.logSinks]).
+     * not); [http] is the device API's transport — the backend mock's own face, or one reaching the real `api/`;
+     * [logSinks] where the app process's log lines go (see [JvmDevice.logSinks]).
      */
     fun adapters(
         build: BuildInfoMock,
         attests: Boolean,
-        backend: Backend,
+        http: HttpTransport,
         logSinks: List<LogSink>,
     ): JvmAdapters =
         JvmAdapters(
@@ -56,7 +56,7 @@ class JvmMocks(
                 extensionHost = extensionHost.port(),
             ),
             systems = JvmSystems(
-                backend = eventKeys.recording(backend),
+                http = eventKeys.recording(http),
                 backgroundTime = backgroundTime.port(),
                 wake = wakes.port(),
                 extensionRegistry = extensionRegistry.port(),

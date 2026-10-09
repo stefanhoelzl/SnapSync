@@ -139,7 +139,7 @@ export function zodOf(schema: Node | boolean, where: string): string {
 function nullableType(schema: Node, where: string): string {
   const types = schema.type as string[];
   const one = types.filter((t) => t !== "null");
-  if (types.length !== 2 || one.length !== 1) fail(where, "a type list is only `[<type>, \"null\"]`");
+  if (types.length !== 2 || one.length !== 1) fail(where, 'a type list is only `[<type>, "null"]`');
   return `${zodOf({ ...schema, type: one[0] }, where)}.nullable()`;
 }
 

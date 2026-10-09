@@ -26,6 +26,8 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
+            // The backend's HTTP shapes (`api/openapi.yaml`): the gateway sends its routes and reads its replies.
+            implementation(project(":domain:wire"))
             // The per-zone library allowlist (`docs/architecture.md`): coroutines (the stores' `Flow` shapes),
             // the SQLDelight runtime (the generated databases below), kermit (the stores' own diagnostics),
             // serialization-json.

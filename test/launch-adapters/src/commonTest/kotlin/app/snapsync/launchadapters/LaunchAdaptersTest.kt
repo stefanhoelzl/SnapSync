@@ -257,7 +257,7 @@ class LaunchAdaptersTest {
         databases = unbuilt("databases"), preferences = unbuilt("preferences"), secureStore = unbuilt("secureStore"),
         platformDeviceId = unbuilt("platformDeviceId"), integrity = unbuilt("integrity"),
         processInfo = unbuilt("processInfo"), network = network, deviceConditions = unbuilt("deviceConditions"),
-        backend = unbuilt("backend"), backgroundTime = unbuilt("backgroundTime"), wake = unbuilt("wake"),
+        http = unbuilt("http"), backgroundTime = unbuilt("backgroundTime"), wake = unbuilt("wake"),
         extensionRegistry = unbuilt("extensionRegistry"), gallery = unbuilt("gallery"),
         photoAccess = unbuilt("photoAccess"), appUpload = unbuilt("appUpload"), download = unbuilt("download"),
         systemUi = systemUi, lifecycle = unbuilt("lifecycle"), links = unbuilt("links"),
@@ -269,7 +269,7 @@ class LaunchAdaptersTest {
         clock = unbuilt("clock"), crypto = unbuilt("crypto"), crashReporter = unbuilt("crashReporter"),
         files = unbuilt("files"), databases = unbuilt("databases"), preferences = unbuilt("preferences"),
         secureStore = unbuilt("secureStore"), platformDeviceId = unbuilt("platformDeviceId"),
-        galleryReader = unbuilt("galleryReader"), cycleUpload = unbuilt("cycleUpload"), backend = unbuilt("backend"),
+        galleryReader = unbuilt("galleryReader"), cycleUpload = unbuilt("cycleUpload"), http = unbuilt("http"),
     )
 
     private fun <T> unbuilt(port: String): Lazy<T> = lazy { error("the real $port was built") }

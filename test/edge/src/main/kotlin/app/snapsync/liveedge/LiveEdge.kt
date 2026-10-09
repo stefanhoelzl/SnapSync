@@ -1,9 +1,12 @@
 package app.snapsync.liveedge
 
+import app.snapsync.contracts.ClientIdentity
 import app.snapsync.contracts.EdgeSetup
 import app.snapsync.contracts.EdgeSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Seeded
+import app.snapsync.http.KtorHttpTransport
+import app.snapsync.ports.HttpTransport
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.runBlocking
@@ -46,25 +49,27 @@ object LiveEdge {
     /** The v2 device API base of the running edge, started on first use. */
     val base: String by lazy { start() + "/api/v2" }
 
-    /** A client for [EdgeSetup]: no interceptor, because setup is not under contract. */
-    fun setup(): Pair<EdgeSetup, HttpClient> = HttpClient(CIO).let { EdgeSetup(it, base) to it }
+    /** The backend's public surface for [EdgeSetup], over a client of its own: setup is not under contract. */
+    fun setup(): Pair<EdgeSetup, HttpClient> = HttpClient(CIO).let { EdgeSetup(KtorHttpTransport(it), base) to it }
 
     /**
-     * Enters one clause's state on the live edge through [seed], then builds the port under contract over a client
-     * of its own. Setup is blocking because `Binding.create` is; the clause itself suspends.
+     * Enters one clause's state on the live edge through [seed], then builds the client under contract over a
+     * transport of its own — as the [seeded] identity declares itself, or as another one ([EdgeSubject.declaring]).
+     * Setup is blocking because `Binding.create` is; the clause itself suspends.
      */
     fun <P> enter(
         seed: suspend (EdgeSetup) -> Seeded,
-        port: (client: HttpClient, base: String, seeded: Seeded) -> P,
+        client: (transport: HttpTransport, base: String, identity: ClientIdentity) -> P,
     ): Entered<EdgeSubject<P>> = runBlocking {
         val (setup, setupClient) = setup()
         val seeded = seed(setup)
-        val client = HttpClient(CIO)
+        val http = HttpClient(CIO)
+        val transport = KtorHttpTransport(http)
         // The setup client stays open for the clause: a clause may read another route through it.
         Entered.Ready(
-            EdgeSubject(port(client, base, seeded), seeded, setup),
+            EdgeSubject(client(transport, base, seeded.identity), seeded, setup) { client(transport, base, it) },
             dispose = {
-                client.close()
+                http.close()
                 setupClient.close()
             },
         )

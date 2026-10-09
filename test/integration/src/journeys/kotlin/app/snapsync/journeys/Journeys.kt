@@ -3,12 +3,12 @@ package app.snapsync.journeys
 import app.snapsync.control.RigClient
 import app.snapsync.control.Verifies
 import app.snapsync.control.done
-import app.snapsync.model.APP_VERSION_HEADER
-import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.AssetId
+import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
+import app.snapsync.model.decodeEventUrl
+import app.snapsync.wire.api.Limits
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
@@ -16,7 +16,6 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
@@ -31,6 +30,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -152,7 +152,7 @@ class Journeys {
 
     /** The asset ids the event's union serves — the backend's public surface, read as a member reads it. */
     private suspend fun unionAssetIds(http: HttpClient, event: String): Set<AssetId> {
-        val body = http.get("$backend/events/$event/files") { header(APP_VERSION_HEADER, SERVED_VERSION) }.bodyAsText()
+        val body = http.get("$backend/events/$event/files") { header(Limits.VERSION_HEADER, SERVED_VERSION) }.bodyAsText()
         return runCatching {
             Json.parseToJsonElement(body).jsonArray
                 .mapTo(mutableSetOf()) { AssetId(it.jsonObject.getValue("assetId").jsonPrimitive.content) }

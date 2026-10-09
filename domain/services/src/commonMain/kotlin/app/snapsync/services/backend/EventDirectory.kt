@@ -6,9 +6,12 @@ import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLookup
 import app.snapsync.model.EventStart
-import app.snapsync.model.Reply
+import app.snapsync.model.MemberCounts
 import app.snapsync.model.instantToCutoff
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.wire.api.EventNotFound
+import app.snapsync.wire.api.GetEventReply
+import app.snapsync.wire.api.Routes
 import kotlin.time.Instant
 
 /**
@@ -20,34 +23,37 @@ fun interface EventDirectory {
 }
 
 /**
- * [EventDirectory] over the backend's public event read: a served read with a **non-blank name** and a **readable
- * `startsAt`, `endsAt`, AND `deletesAt`** → [EventLookup.Found]; a served read missing **any** — or carrying an
- * empty/whitespace-only name — → [EventLookup.Failed] (malformed/transient, retryable); `404` →
- * [EventLookup.NotFound]; any other answer → [EventLookup.Failed].
+ * [EventDirectory] over the backend's event read (`getEvent`): a found event with a **non-blank name** and a **readable
+ * `startsAt`, `endsAt`, AND `deletesAt`** → [EventLookup.Found]; one whose name is empty or whitespace-only, or whose
+ * dates do not read — or an answer that does not decode at all — → [EventLookup.Failed] (malformed/transient,
+ * retryable); [EventNotFound] → [EventLookup.NotFound]; any other answer → [EventLookup.Failed].
  *
  * The `404` ↔ `Failed` split is load-bearing beyond the join gate: it is the ONLY place "the event is
  * definitively gone" is separated from "I could not tell", and a membership is destroyed on the
  * former. Every ambiguous outcome must keep landing on [EventLookup.Failed].
  */
-class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDirectory {
+class BackendEventDirectory(private val gateway: BackendGateway) : EventDirectory {
 
-    override suspend fun fetch(eventId: String): EventLookup = when (val reply = backend.getEvent(eventId)) {
-        is Reply.Ok -> {
-            val meta = reply.value
-            // All four are required: a served read missing any is malformed → retryable Failed. Never a nameless
+    override suspend fun fetch(eventId: String): EventLookup = when (
+        val reply = gateway.send(
+            Routes.GetEvent.request(eventId),
+        )
+    ) {
+        is GetEventReply.Found -> {
+            val meta = reply.eventDetails
+            // All four are required: a found event missing any is malformed → retryable Failed. Never a nameless
             // Found (the event-album title needs a name), never a Found with an invented floor (that would silently
             // LOWER it), and never one with an invented deadline (that would decide whether a membership is
             // destroyed).
             //
-            // ⚠️ The name is rejected when BLANK, not merely when absent, and this check is the ONLY guard against a
-            // blank one entering a membership: `EventConfig` requires the name KEY, not a non-blank VALUE (so
-            // `{"name":""}` decodes), and the album coordinator's former empty-name clause — the one place a blank
-            // title became a permanent artifact — is gone. Nothing downstream re-checks.
-            // Decision record: `changes/archive/…-remove-nameless-config-fallback`.
-            val name = meta.name?.takeIf { it.isNotBlank() }
-            val startsAt = meta.startsAt?.let(::canonicalOrNull)
-            val endsAt = meta.endsAt?.let(::canonicalOrNull)
-            val deletesAt = meta.deletesAt?.let(::canonicalOrNull)
+            // ⚠️ The name is rejected when BLANK, and this check is the ONLY guard against a blank one entering a
+            // membership: `EventConfig` requires the name KEY, not a non-blank VALUE (so `{"name":""}` decodes), and the
+            // album coordinator's former empty-name clause — the one place a blank title became a permanent artifact —
+            // is gone. Nothing downstream re-checks. Decision record: `changes/archive/…-remove-nameless-config-fallback`.
+            val name = meta.name.takeIf { it.isNotBlank() }
+            val startsAt = canonicalOrNull(meta.startsAt)
+            val endsAt = canonicalOrNull(meta.endsAt)
+            val deletesAt = canonicalOrNull(meta.deletesAt)
             if (name != null && startsAt != null && endsAt != null && deletesAt != null) {
                 EventLookup.Found(
                     name = name,
@@ -58,7 +64,7 @@ class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDi
                     completion = EventCompletionState(
                         closed = meta.closedAt != null || meta.completedAt != null,
                         completed = meta.completedAt != null,
-                        members = meta.members,
+                        members = MemberCounts(meta.members.active, meta.members.`final`),
                     ),
                     keyId = meta.keyId,
                 )
@@ -66,8 +72,8 @@ class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDi
                 EventLookup.Failed
             }
         }
-        is Reply.Refused -> if (reply.status == HttpStatus.NOT_FOUND) EventLookup.NotFound else EventLookup.Failed
-        is Reply.Malformed, is Reply.Unreachable -> EventLookup.Failed
+        EventNotFound -> EventLookup.NotFound
+        else -> EventLookup.Failed
     }
 
     /**

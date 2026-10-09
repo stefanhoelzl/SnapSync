@@ -1,11 +1,17 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.Reply
+import app.snapsync.model.AssetId
 import app.snapsync.model.StoredResource
+import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionResource
 import app.snapsync.model.UnionTrigger
-import app.snapsync.model.toResult
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
+import app.snapsync.wire.api.DeviceFilesReply
+import app.snapsync.wire.api.EventFilesReply
+import app.snapsync.wire.api.Malformed
+import app.snapsync.wire.api.Routes
 
 /**
  * What a **device** has already stored **in one event**. Each event holds its own bytes (change
@@ -52,31 +58,71 @@ fun interface EventUnionSource {
  * service cannot invent a key the client would not have composed. The recomposition is exact even when the capture
  * name is unavailable or is itself a storage key, because only its extension is consumed.
  *
- * A listing the port could not decode ([Reply.Malformed]) is a [DeviceListingShapeException], distinguishable from a
- * transport failure. The port decodes STRICTLY for exactly this reason: see [DeviceListingShapeException].
+ * A listing that does not decode ([Malformed]) is a [DeviceListingShapeException], distinguishable from a transport
+ * failure. Decoding is STRICT for exactly this reason (`StoredResource`'s every field is required, its role a closed
+ * vocabulary): see [DeviceListingShapeException].
  */
-class BackendDeviceFilesSource(private val backend: AuthenticatedBackend) : DeviceFilesSource {
+class BackendDeviceFilesSource(private val gateway: BackendGateway) : DeviceFilesSource {
 
     override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> =
-        when (val reply = backend.deviceFiles(eventId, deviceId)) {
-            is Reply.Malformed -> Result.failure(
+        when (val reply = gateway.send(Routes.DeviceFiles.request(eventId, deviceId))) {
+            is DeviceFilesReply.Listed -> runCatchingCancellable {
+                // A non-canonical id fails the constructor: a listing this build cannot read, never an invented row.
+                reply.items.map {
+                    StoredResource(
+                        uploadKey(AssetId(it.assetId), it.role.inApp(), it.filename),
+                        AssetId(it.assetId),
+                    )
+                }
+            }.recoverCatching {
+                throw DeviceListingShapeException(
+                    "the per-device listing named a non-canonical asset: $it",
+                )
+            }
+            is Malformed -> Result.failure(
                 DeviceListingShapeException(
                     "the per-device listing did not decode into {assetId, role, filename}: ${reply.detail}",
                 ),
             )
-            else -> reply.toResult("list device $deviceId in $eventId").map { files ->
-                files.map { StoredResource(uploadKey(it.assetId, it.role, it.filename), it.assetId) }
-            }
+            else -> Result.failure(IllegalStateException("list device $deviceId in $eventId: $reply"))
         }
 }
 
-/** [EventUnionSource] over the backend's public union read: any answer but a served one is a failed [Result]. */
-class BackendEventUnionSource(private val backend: AuthenticatedBackend) : EventUnionSource {
+/**
+ * [EventUnionSource] over the backend's union read: any answer but a [EventFilesReply.Page] is a failed [Result].
+ *
+ * It reads with `urls=false` and builds each resource's download address itself (decision record
+ * `changes/incremental-union`, D1): the route `downloadResource` on this build's backend, which redirects to the bytes.
+ */
+class BackendEventUnionSource(private val gateway: BackendGateway) : EventUnionSource {
 
-    override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> =
-        backend.eventFiles(
+    override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
+        val request = Routes.EventFiles.request(
             eventId,
-            cursor,
-            trigger,
-        ).toResult("union $eventId (${trigger.wire}, from ${cursor ?: "start"})")
+            cursor?.toString(),
+            urls = false,
+            snapSyncTrigger = trigger.wire,
+        )
+        val what = "union $eventId (${trigger.wire}, from ${cursor ?: "start"})"
+        return when (val reply = gateway.send(request)) {
+            // A non-canonical asset id, or a position that is not a number, is a page the app could not continue from.
+            is EventFilesReply.Page -> runCatchingCancellable {
+                UnionPage(reply.items.map { asset(eventId, it) }, reply.snapSyncCursor.toLong())
+            }
+            else -> Result.failure(IllegalStateException("$what: $reply"))
+        }
+    }
+
+    private fun asset(eventId: String, dto: app.snapsync.wire.models.UnionAsset): UnionAsset {
+        val assetId = AssetId(dto.assetId)
+        return UnionAsset(
+            deviceId = dto.deviceId,
+            assetId = assetId,
+            creationDate = dto.creationDate,
+            resources = dto.resources.map {
+                val path = Routes.DownloadResource.path(eventId, dto.deviceId, assetId.value, it.role.value)
+                UnionResource(it.key, gateway.open.url(path), it.role.value, it.contentType, it.filename)
+            },
+        )
+    }
 }

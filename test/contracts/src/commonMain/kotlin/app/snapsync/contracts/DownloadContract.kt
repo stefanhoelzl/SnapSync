@@ -135,7 +135,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
         download.listen(owner.handlers)
         assertEquals(
             StartResult.Started,
-            download.start(base + path(clauseId, answer), "d-$clauseId", TransferNetwork.ANY),
+            download.start(base + path(clauseId, answer), NO_HEADERS, "d-$clauseId", TransferNetwork.ANY),
             "a fetchable URL starts",
         )
         awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
@@ -164,6 +164,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
                 StartResult.Started,
                 download.start(
                     subject.base + path(id, FixtureAnswer.Respond(200, length = 64)),
+                    NO_HEADERS,
                     "d-$id",
                     TransferNetwork.ANY,
                 ),
@@ -323,7 +324,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             download.listen(owner.handlers)
             assertEquals(
                 StartResult.Started,
-                download.start(subject.base + path(id, FixtureAnswer.Hold), "d-$id", TransferNetwork.ANY),
+                download.start(subject.base + path(id, FixtureAnswer.Hold), NO_HEADERS, "d-$id", TransferNetwork.ANY),
             )
             download.cancelAll()
             awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
@@ -356,6 +357,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
                 StartResult.Started,
                 download.start(
                     subject.base + path(id, FixtureAnswer.Respond(200, length = 8)),
+                    NO_HEADERS,
                     tag,
                     TransferNetwork.ANY,
                 ),
@@ -387,7 +389,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             download.listen(owner.handlers)
             val tag = "d-$id"
             val route = subject.base + path(id, FixtureAnswer.Respond(200, length = 8))
-            assertEquals(StartResult.Started, download.start(route, tag, TransferNetwork.UNRESTRICTED_ONLY))
+            assertEquals(StartResult.Started, download.start(route, NO_HEADERS, tag, TransferNetwork.UNRESTRICTED_ONLY))
             heldSettle()
             assertEquals(
                 emptyList(),
@@ -413,7 +415,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             download.listen(owner.handlers)
             assertEquals(
                 StartResult.NotStarted,
-                download.start("ftp://contract.invalid/$id", "d-$id", TransferNetwork.ANY),
+                download.start("ftp://contract.invalid/$id", NO_HEADERS, "d-$id", TransferNetwork.ANY),
                 "a scheme the queue cannot fetch is refused as it is asked, never started to fail later",
             )
             transferSettle()
@@ -438,7 +440,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             // "started, then failed" because they converge — so either answer is honest, and what is asserted is the
             // convergence: nothing finished, and a transfer that did start completes with an error. Measured
             // 2026-09-23 (iOS 26.5 simulator): `NSURL.URLWithString("")` is NOT nil, so the real session starts one.
-            when (download.start("", "d-$id", TransferNetwork.ANY)) {
+            when (download.start("", NO_HEADERS, "d-$id", TransferNetwork.ANY)) {
                 StartResult.NotStarted -> {
                     transferSettle()
                     assertEquals(emptyList(), owner.events, "a transfer never started tells its owner nothing")
@@ -475,3 +477,6 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
         }
     }
 }
+
+/** A clause's transfers carry no headers of their own: the fixture answers what the route asks, whoever asks. */
+private val NO_HEADERS = emptyMap<String, String>()

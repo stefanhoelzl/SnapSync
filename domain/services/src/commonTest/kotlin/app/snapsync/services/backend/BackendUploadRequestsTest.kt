@@ -1,12 +1,18 @@
-package app.snapsync.model
+package app.snapsync.services.backend
 
+import app.snapsync.model.AssetId
+import app.snapsync.model.HttpResult
+import app.snapsync.model.RESOURCE_META_MIME
+import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
+import app.snapsync.model.Resource
+import app.snapsync.wire.api.Limits
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-class EdgeUploadRequestProviderTest {
+class BackendUploadRequestsTest {
 
     private val deviceId = "11111111-1111-4111-8111-111111111111"
     private val eventId = "7a3f9c21-0000-4000-8000-000000000001"
@@ -24,7 +30,13 @@ class EdgeUploadRequestProviderTest {
         token: suspend () -> String? = { "tok-1" },
         freshToken: suspend () -> String? = token,
         appVersion: String = "0.4",
-    ) = EdgeUploadRequestProvider(host, eventId, deviceId, token, freshToken, appVersion)
+    ) = BackendUploadRequests(
+        BackendExchange({ HttpResult.Unreachable("never sent") }, { host }, { appVersion }, versionGate = null),
+        eventId,
+        deviceId,
+        token,
+        freshToken,
+    )
 
     @Test
     fun names_identity_in_the_path_and_the_capture_name_in_the_query() = runTest {
@@ -91,13 +103,13 @@ class EdgeUploadRequestProviderTest {
         // The shared HTTP client cannot add this: the platform issues this request later, outside any
         // client this app controls (capability `app-update-required`).
         val req = provider(appVersion = "0.4").provide(resource("x-primary.jpg"))
-        assertEquals("0.4", req.headers[APP_VERSION_HEADER])
+        assertEquals("0.4", req.headers[Limits.VERSION_HEADER])
     }
 
     @Test
     fun a_build_that_declares_no_version_sends_no_version_header() = runTest {
         val req = provider(appVersion = "").provide(resource("x-primary.jpg"))
-        assertEquals(null, req.headers[APP_VERSION_HEADER])
+        assertEquals(null, req.headers[Limits.VERSION_HEADER])
     }
 
     @Test
@@ -123,7 +135,7 @@ class EdgeUploadRequestProviderTest {
         assertEquals(
             mapOf(
                 "Content-Type" to "image/heic",
-                APP_VERSION_HEADER to "0.4",
+                Limits.VERSION_HEADER to "0.4",
                 "Authorization" to "Bearer tok-1",
             ),
             req.headers,
@@ -168,7 +180,7 @@ class EdgeUploadRequestProviderTest {
         // request from this provider on every retry. A provider that captured the token at construction
         // would keep re-sending the dead one forever.
         var current: String? = "stale"
-        val p = EdgeUploadRequestProvider("https://edge.example", eventId, deviceId, { current }, { current }, "0.4")
+        val p = provider("https://edge.example", { current }, { current }, "0.4")
 
         val before = p.provide(resource("x.jpg"))
         assertEquals("Bearer stale", before.headers["Authorization"])
@@ -206,7 +218,7 @@ class EdgeUploadRequestProviderTest {
         // attested yet — and of the extension on a device whose token expired, since it cannot renew.
         val req = provider(token = { null }).provide(resource("x.jpg", contentType = "image/heic"))
         assertEquals(
-            mapOf("Content-Type" to "image/heic", APP_VERSION_HEADER to "0.4"),
+            mapOf("Content-Type" to "image/heic", Limits.VERSION_HEADER to "0.4"),
             req.headers,
         )
     }

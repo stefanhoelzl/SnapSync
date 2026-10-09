@@ -1,9 +1,19 @@
-package app.snapsync.model
+package app.snapsync.services.backend
+
+import app.snapsync.model.RESOURCE_META_MIME
+import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
+import app.snapsync.model.Resource
+import app.snapsync.model.UploadRequest
+import app.snapsync.model.UploadRequestProvider
+import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.roleFromUploadKey
+import app.snapsync.wire.api.Routes
 
 /**
  * The production [UploadRequestProvider] (specs: sync-engine, bunny-upload-endpoint, device-attestation):
  * a thin **local URL builder** for the bunny edge proxy. It maps a [Resource] to a plain `PUT` against
- * `<host>/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<capture name>` — no network, no signing, no
+ * the generated route `uploadResource` (`api/openapi.yaml`) — `<base>/events/<e>/files/devices/<d>/<asset>/<role>?filename=…`,
+ * no network, no signing, no
  * crypto — carrying `Content-Type`, the device token as `Authorization: Bearer`, and the calling build's
  * marketing version. No `Host` (URL-implied) and **no custom metadata headers** (the bunny native Storage
  * API has none). iOS's background-upload job system performs the actual `PUT`; this only composes the
@@ -37,11 +47,11 @@ package app.snapsync.model
  * `<host>/files/devices/<deviceId>/…` — still completes: the backend files it under the device's present event, and
  * the ledger matches its completion by the destination path it recorded when the request was made.
  *
- * [host]/[eventId]/[deviceId] are plain strings, injected by the consuming composition root (host baked at compile
- * time, the event from the cycle's config, deviceId from the shared Keychain). The provider makes no platform call.
+ * The base and the declared version are the [BackendExchange]'s — the same every backend request carries; [eventId] and
+ * [deviceId] come from the cycle's config and the shared Keychain. The provider makes no platform call.
  */
-class EdgeUploadRequestProvider(
-    host: String,
+class BackendUploadRequests(
+    private val exchange: BackendExchange,
     private val eventId: String,
     private val deviceId: String,
     private val token: suspend () -> String?,
@@ -50,19 +60,7 @@ class EdgeUploadRequestProvider(
      * Required, like [token]: a composition with no credential states `{ null }` for both.
      */
     private val freshToken: suspend () -> String?,
-    /**
-     * The calling build's marketing version, declared on every v2 request.
-     *
-     * Required HERE and not only on the shared HTTP client because **the OS performs this request**: it
-     * is handed to the platform's background-upload subsystem and issued later, outside any client this
-     * app controls, so a header that client adds cannot reach it. Injected as a plain string because the
-     * provider is platform-free and must make no platform call.
-     */
-    private val appVersion: String = "",
 ) : UploadRequestProvider {
-
-    // Trim a trailing slash so the baked host (with or without one) never yields `//files`.
-    private val base = host.trimEnd('/')
 
     override suspend fun provide(resource: Resource): UploadRequest = mint(resource, token())
 
@@ -80,12 +78,10 @@ class EdgeUploadRequestProvider(
         // request rebuilt on the retry path — where metadata is empty — address a byte-identical object.
         val captureName = resource.metadata[RESOURCE_META_ORIGINAL_FILENAME]
             ?.takeIf { it.isNotBlank() } ?: resource.filename
-        val url = "$base/events/$eventId/files/devices/$deviceId/" +
-            "${encodeFilenameSegment(assetId.value)}/${encodeFilenameSegment(role)}" +
-            "?filename=${encodeFilenameSegment(captureName)}"
+        val url = exchange.url(Routes.UploadResource.path(eventId, deviceId, assetId.value, role, captureName))
         val headers = buildMap {
             put("Content-Type", contentTypeOf(resource))
-            if (appVersion.isNotBlank()) put(APP_VERSION_HEADER, appVersion)
+            putAll(exchange.versionHeaders())
             bearer?.let { put("Authorization", "Bearer $it") }
         }
         return UploadRequest(url = url, headers = headers, resource = resource)

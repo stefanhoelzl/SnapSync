@@ -37,6 +37,7 @@ module :tools:detekt-rules
 module :tools:diagrams
 module :ui:components
 module :ui:screens
+edge :adapter:android :adapter:generic:app
 edge :adapter:android :domain:feature
 edge :adapter:android :domain:model
 edge :adapter:android :domain:ports
@@ -56,6 +57,7 @@ edge :adapter:generic:mock :domain:flow
 edge :adapter:generic:mock :domain:model
 edge :adapter:generic:mock :domain:ports
 edge :adapter:generic:mock :domain:services
+edge :adapter:generic:mock :domain:wire
 edge :adapter:generic:mock :test:contracts
 edge :adapter:generic:sentry :domain:model
 edge :adapter:generic:sentry :domain:ports
@@ -148,16 +150,19 @@ edge :domain:presentation :domain:feature
 edge :domain:presentation :domain:model
 edge :domain:services :domain:model
 edge :domain:services :domain:ports
+edge :domain:services :domain:wire
 edge :test:architecture :adapter:generic:app
 edge :test:architecture :adapter:generic:mock
 edge :test:architecture :domain:feature
 edge :test:architecture :domain:model
 edge :test:architecture :domain:ports
 edge :test:architecture :domain:services
+edge :test:architecture :domain:wire
 edge :test:architecture :test:contracts
 edge :test:contracts :domain:model
 edge :test:contracts :domain:ports
 edge :test:contracts :domain:services
+edge :test:contracts :domain:wire
 edge :test:control :domain:feature
 edge :test:control :domain:model
 edge :test:control :domain:presentation
@@ -173,6 +178,7 @@ edge :test:harness-driver :app:desktop
 edge :test:integration :domain:feature
 edge :test:integration :domain:model
 edge :test:integration :domain:presentation
+edge :test:integration :domain:wire
 edge :test:integration :test:control
 edge :test:launch-adapters :adapter:generic:mock
 edge :test:launch-adapters :domain:compose
@@ -198,6 +204,7 @@ edge :test:rig :domain:model
 edge :test:rig :domain:ports
 edge :test:rig :domain:presentation
 edge :test:rig :domain:services
+edge :test:rig :domain:wire
 edge :test:rig :test:contracts
 edge :test:rig :test:edge
 edge :test:rig :test:launch-adapters

@@ -1,17 +1,17 @@
 package app.snapsync.journeys
 
-import app.snapsync.model.APP_VERSION_HEADER
+import app.snapsync.model.AssetId
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileHead
 import app.snapsync.model.Hmac
-import app.snapsync.model.decodeEventKey
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.decodeEventKey
 import app.snapsync.model.encodeToJson
-import app.snapsync.model.AssetId
 import app.snapsync.model.uploadKey
+import app.snapsync.wire.api.Limits
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
@@ -126,7 +126,7 @@ class Member(private val http: HttpClient, backend: String) {
         filename = FILENAME,
     )
 
-    private fun HttpRequestBuilder.served() = header(APP_VERSION_HEADER, SERVED_VERSION)
+    private fun HttpRequestBuilder.served() = header(Limits.VERSION_HEADER, SERVED_VERSION)
 
     private suspend fun checked(step: String, response: HttpResponse): HttpResponse {
         check(response.status.isSuccess()) {

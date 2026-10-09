@@ -4,7 +4,7 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.Reply
+import app.snapsync.model.HttpResult
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreUnavailable
@@ -12,13 +12,15 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AttestStore
-import app.snapsync.ports.Backend
 import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Files
+import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.wire.api.ChallengeReply
+import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
@@ -49,10 +51,15 @@ class ProxyRenderingTest {
             override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.Ok(ByteArray(0))
         }.recorded(log)
         files.read(FileArea.SHARED, "p")
-        val backend = object : Backend by UnusedBackend {
-            override suspend fun challenge(): Reply<String> = Reply.Ok("c")
-        }.recorded(log)
-        backend.challenge()
+        val backend = HttpTransport {
+            HttpResult.Response(200, mapOf("Content-Type" to "application/json"), """{"challenge":"c"}""")
+        }
+        BackendClient(
+            backend,
+            "https://backend.test/api/v2",
+            ClientIdentity.SERVED,
+            log,
+        ).send(Routes.Challenge.request())
         val attest = attestStore { null }.recorded(log)
         attest.token()
 
@@ -60,7 +67,7 @@ class ProxyRenderingTest {
             on<SecureStore>().answers(SecureStore::read).with(SecureStoreRead.Absent::class)
             on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.LIMITED)
             on<Files>().answers(Files::read).withGenericLeaf(FileResult.Ok::class)
-            on<Backend>().answers(Backend::challenge).withGenericLeaf(Reply.Ok::class)
+            backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
             on<AttestStore>().answers(AttestStore::token).with(null)
         }.cells
         assertEquals(declared.toSet(), log.cells)
@@ -155,34 +162,6 @@ private object UnusedFiles : Files {
     override fun move(area: FileArea, from: String, to: String) = error("unused")
     override fun adopt(osPath: String, area: FileArea, to: String) = error("unused")
     override fun list(area: FileArea, directory: String) = error("unused")
-}
-
-private object UnusedBackend : Backend {
-    override suspend fun challenge() = error("unused")
-    override suspend fun mintToken(req: app.snapsync.model.MintRequest) = error("unused")
-    override suspend fun renewToken(req: app.snapsync.model.RenewRequest) = error("unused")
-    override suspend fun createEvent(token: String?, req: app.snapsync.model.CreateEventRequest) = error("unused")
-    override suspend fun getEvent(token: String?, eventId: String) = error("unused")
-    override suspend fun renameEvent(token: String?, eventId: String, name: String) = error("unused")
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String) = error("unused")
-    override suspend fun publishManifest(
-        token: String?,
-        eventId: String,
-        deviceId: String,
-        manifest: app.snapsync.model.DeviceManifest,
-    ) = error("unused")
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean) = error(
-        "unused",
-    )
-    override suspend fun eventFiles(
-        token: String?,
-        eventId: String,
-        cursor: Long?,
-        trigger: app.snapsync.model.UnionTrigger,
-    ) = error("unused")
-    override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String) = error("unused")
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: app.snapsync.model.PushEndpoint) =
-        error("unused")
 }
 
 private object UnusedAttestStore : AttestStore {

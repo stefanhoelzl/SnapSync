@@ -191,6 +191,7 @@ class EncryptedTransfersTest {
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
+            headers = { emptyMap() },
             opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
         )
         jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY\n$EVENT", HEALTHY, "mem:/shared/os-tmp/1")
@@ -255,6 +256,7 @@ class EncryptedTransfersTest {
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
+            headers = { emptyMap() },
             opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
         )
         // Plaintext, as a build predating encryption would have stored it — or anything else that is not a file of this key.
@@ -367,6 +369,7 @@ class EncryptedTransfersTest {
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
+            headers = { emptyMap() },
             opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
         )
         receiver.files.write(FileArea.SHARED, "os-tmp/0", photo)

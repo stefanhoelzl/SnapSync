@@ -49,6 +49,9 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
+            // The Backend contract speaks the device API as `api/openapi.yaml` declares it: the generated routes,
+            // replies and DTOs are its clauses' vocabulary, so a binding names them too.
+            api(project(":domain:wire"))
             // `DatabasesContract` brings its own schema and reads through the driver it is handed.
             implementation(libs.sqldelight.runtime)
             // The schema clauses (`SchemaClauses.kt`) run every statement through the databases' generated code.

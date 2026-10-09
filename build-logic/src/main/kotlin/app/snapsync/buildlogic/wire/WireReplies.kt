@@ -13,13 +13,18 @@ import app.snapsync.buildlogic.wire.WireRoutes.WIRE_RESPONSE
 import app.snapsync.buildlogic.wire.WireRoutes.fields
 import app.snapsync.buildlogic.wire.WireRoutes.replyName
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.LambdaTypeName
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.SET
+import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeVariableName
+import com.squareup.kotlinpoet.asTypeName
 
 /** `Replies.kt`: the sealed `Reply` hierarchy — groups, shared outcomes, and one sealed reply per app operation. */
 internal object WireReplies {
@@ -42,6 +47,15 @@ internal object WireReplies {
         val all = d.appOperations.map(::replyName)
         file.addType(fixedOutcome(UNREACHABLE, "reason", "No answer reached the app.", all))
         file.addType(fixedOutcome(MALFORMED, "detail", "An answer outside the contract.", all))
+        val shared = d.sharedOutcomes.keys + listOf(UNREACHABLE.simpleName, MALFORMED.simpleName)
+        file.addProperty(
+            PropertySpec.builder("SHARED_OUTCOMES", SET.parameterizedBy(STRING))
+                .addKdoc(
+                    "The outcomes several operations answer with ONE type, by simple name — a cell `Backend.* → X`.",
+                )
+                .initializer("setOf(%L)", shared.joinToString(", ") { CodeBlock.of("%S", it).toString() })
+                .build(),
+        )
         file.addType(requestType(GATED, "A request to a gated operation: only it may carry the device token."))
         file.addType(requestType(OPEN, "A request to an open operation: it never carries a token."))
         return file.build()
@@ -79,15 +93,26 @@ internal object WireReplies {
             .apply { replies.forEach { addSuperinterface(it) } }
             .build()
 
+    /**
+     * A request of one operation: its [operationId], the wire request, how an answer [decide]s into its reply — and how
+     * NO answer does ([unreachable]), so a sender can answer in the reply's own type without knowing it.
+     */
     private fun requestType(name: ClassName, doc: String): TypeSpec {
         val r = TypeVariableName("R", listOf(REPLY), KModifier.OUT)
-        val decide = LambdaTypeName.get(parameters = arrayOf(WIRE_RESPONSE), returnType = TypeVariableName("R"))
+        val reply = TypeVariableName("R")
+        val decide = LambdaTypeName.get(parameters = arrayOf(WIRE_RESPONSE), returnType = reply)
+        val unreachable = LambdaTypeName.get(parameters = arrayOf(String::class.asTypeName()), returnType = reply)
+        val fields = listOf(
+            "operationId" to String::class.asTypeName(),
+            "wire" to WIRE_REQUEST,
+            "decide" to decide,
+            "unreachable" to unreachable,
+        )
         return TypeSpec.classBuilder(name).addKdoc(doc).addTypeVariable(r)
             .primaryConstructor(
-                FunSpec.constructorBuilder().addParameter("wire", WIRE_REQUEST).addParameter("decide", decide).build(),
+                FunSpec.constructorBuilder().apply { fields.forEach { (n, t) -> addParameter(n, t) } }.build(),
             )
-            .addProperty(PropertySpec.builder("wire", WIRE_REQUEST).initializer("wire").build())
-            .addProperty(PropertySpec.builder("decide", decide).initializer("decide").build())
+            .apply { fields.forEach { (n, t) -> addProperty(PropertySpec.builder(n, t).initializer(n).build()) } }
             .build()
     }
 }

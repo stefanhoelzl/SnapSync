@@ -46,7 +46,7 @@ internal class AppUploader(private val core: AppCore) {
         uploadCycle(
             core.process,
             UploadServices(
-                appVersion = build.appVersion,
+                exchange = core.exchange,
                 eventKeys = app.eventKeys,
                 process = UploaderProcess.App(core.appUploadAdmission),
                 // The THREE-state membership read, never the core's StateFlow.

@@ -30,9 +30,10 @@ private const val REQUEST_TIMEOUT_MILLIS = 5_000L
  * default ATS (HTTPS-only).
  *
  * What this file OWNS is the engine and the timeout above — the two genuinely iOS facts. Everything that happens to
- * a request or a response is someone else's: the routes, the declared build version and the bearer header are
- * `HttpBackend`'s (the technology-neutral adapter, identical on every platform), and what an answer means — a
- * rejected credential, a refused build — is the authenticated backend's, in `:domain:services`.
+ * a request or a response is someone else's: sending it and answering whatever came back is `KtorHttpTransport`'s
+ * (the technology-neutral adapter, identical on every platform), and the routes, the declared build version, the
+ * bearer header and what an answer means — a rejected credential, a refused build — are the backend gateway's, in
+ * `:domain:services`.
  */
 fun darwinHttpClient(): HttpClient = HttpClient(Darwin) {
     install(HttpTimeout) { requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS }

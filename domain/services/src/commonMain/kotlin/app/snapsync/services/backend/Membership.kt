@@ -2,10 +2,15 @@ package app.snapsync.services.backend
 
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.JoinResult
-import app.snapsync.model.Reply
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.toResult
 import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.wire.api.Closed
+import app.snapsync.wire.api.EventNotFound
+import app.snapsync.wire.api.JoinEventReply
+import app.snapsync.wire.api.LeaveEventReply
+import app.snapsync.wire.api.PublishManifestReply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.Unauthorized
 
 /**
  * Create or reactivate this device's membership in an event.
@@ -51,48 +56,41 @@ fun interface LeaveNotifier {
 
 /**
  * [EventJoin] over the backend. The refusals are mapped rather than flattened, because the caller can act on the
- * difference: a `409` is the event at capacity — a sentence the join surface can show — while a `404` means the
- * event is gone and anything else is a failure a retry may heal.
+ * difference: [JoinEventReply.Full] is the event at capacity — a sentence the join surface can show — while
+ * [EventNotFound] means the event is gone and anything else is a failure a retry may heal.
  */
-class BackendEventJoin(private val backend: AuthenticatedBackend) : EventJoin {
+class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
 
     override suspend fun join(eventId: String, deviceId: String): JoinResult =
-        when (val reply = backend.joinEvent(eventId, deviceId)) {
-            is Reply.Ok -> JoinResult.JOINED
-            is Reply.Refused -> when (reply.status) {
-                HttpStatus.CONFLICT -> JoinResult.EVENT_FULL
-                // A closed (or completed) event admits nobody.
-                HttpStatus.GONE -> JoinResult.EVENT_CLOSED
-                HttpStatus.NOT_FOUND -> JoinResult.EVENT_NOT_FOUND
-                // Still refused after the recovery: no credential the service accepts (the attestation says why).
-                HttpStatus.UNAUTHORIZED -> JoinResult.UNVERIFIED
-                else -> JoinResult.FAILED
-            }
-            is Reply.Unreachable -> JoinResult.FAILED
+        when (gateway.send(Routes.JoinEvent.request(eventId, deviceId), obtainFirst = true)) {
+            JoinEventReply.Joined -> JoinResult.JOINED
+            JoinEventReply.Full -> JoinResult.EVENT_FULL
+            // A closed (or completed) event admits nobody.
+            is Closed -> JoinResult.EVENT_CLOSED
+            EventNotFound -> JoinResult.EVENT_NOT_FOUND
+            // Still refused after the recovery: no credential the service accepts (the attestation says why).
+            Unauthorized -> JoinResult.UNVERIFIED
+            else -> JoinResult.FAILED
         }
 }
 
 /**
- * [ManifestPublisher] over the backend: `true` exactly when the backend served the write — or refused it for good
- * because the event has closed. A publish from a device holding no membership is refused (`409`) rather than
- * silently creating one.
+ * [ManifestPublisher] over the backend: `true` exactly when the backend published the snapshot — or refused it for
+ * good because the event has closed. A publish from a device holding no membership is refused
+ * ([PublishManifestReply.NotAMember]) rather than silently creating one.
  */
-class BackendManifestPublisher(private val backend: AuthenticatedBackend) : ManifestPublisher {
+class BackendManifestPublisher(private val gateway: BackendGateway) : ManifestPublisher {
 
-    override suspend fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): Boolean =
-        when (val reply = backend.publishManifest(eventId, deviceId, manifest)) {
-            is Reply.Ok -> true
+    override suspend fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): Boolean {
+        val body = manifest.onWire() ?: return false
+        return when (gateway.send(Routes.PublishManifest.request(eventId, deviceId, body))) {
+            PublishManifestReply.Published -> true
             // A CLOSED event's asset sets are fixed and a COMPLETED one holds none: the
             // refusal is final, so it is recorded like a publish — re-sending the same snapshot every cycle could
             // never change the answer.
-            is Reply.Refused ->
-                reply.status == HttpStatus.GONE ||
-                    (reply.status == HttpStatus.CONFLICT && CLOSED_MARK in reply.body)
-            is Reply.Unreachable -> false
+            is Closed, is PublishManifestReply.SetFixed -> true
+            else -> false
         }
-
-    private companion object {
-        const val CLOSED_MARK = "\"closed\""
     }
 }
 
@@ -104,15 +102,17 @@ class BackendManifestPublisher(private val backend: AuthenticatedBackend) : Mani
  * and abort a locked background launch. An unreadable identity is a failed [Result] like any other.
  */
 class BackendLeaveNotifier(
-    private val backend: AuthenticatedBackend,
+    private val gateway: BackendGateway,
     private val identity: PersistedDeviceIdentity,
 ) : LeaveNotifier {
 
     override suspend fun notifyLeaving(eventId: String, received: Boolean): Result<Unit> {
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
-        val reply = backend.leaveEvent(eventId, id, received)
-        // An event the backend no longer holds has nothing left to leave: the leave is as done as it will ever be.
-        if (reply is Reply.Refused && reply.status == HttpStatus.NOT_FOUND) return Result.success(Unit)
-        return reply.toResult("leave $eventId/$id")
+        return when (val reply = gateway.send(Routes.LeaveEvent.request(eventId, id, received))) {
+            LeaveEventReply.Left -> Result.success(Unit)
+            // An event the backend no longer holds has nothing left to leave: the leave is as done as it will ever be.
+            EventNotFound -> Result.success(Unit)
+            else -> Result.failure(IllegalStateException("leave $eventId/$id: $reply"))
+        }
     }
 }

@@ -91,7 +91,8 @@ class PortGridTest {
     fun `the grid expands a generic sealed return, an enum, a nullable, a handle and a declared throw`() {
         val texts = cells.map { it.text }.toSet()
         val canaries = listOf(
-            "Backend.challenge → Reply.Unreachable",
+            "Backend.challenge → Issued",
+            "Backend.* → Unreachable",
             "SecureStore.read → SecureStoreRead.Unavailable",
             "LibraryChangeTokenRead.changeToken → null",
             "Wake.ExpiringCompletion.complete → returns",

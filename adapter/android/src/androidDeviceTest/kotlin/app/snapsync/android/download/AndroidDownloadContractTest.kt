@@ -103,7 +103,7 @@ class AndroidDownloadContractTest {
         val first = AndroidDownload(context)
         first.listen(ClauseDownloadHandlers { null }.handlers)
         val path = DownloadContract.path("MISSED_BROADCAST", FixtureAnswer.Respond(HTTP_OK, length = MISSED_LENGTH))
-        assertEquals(StartResult.Started, first.start(fixture() + path, "d-missed", TransferNetwork.ANY))
+        assertEquals(StartResult.Started, first.start(fixture() + path, emptyMap(), "d-missed", TransferNetwork.ANY))
         withTimeout(TRANSFER_WAIT_MILLIS) {
             while (!finished()) delay(POLL_MILLIS)
         }

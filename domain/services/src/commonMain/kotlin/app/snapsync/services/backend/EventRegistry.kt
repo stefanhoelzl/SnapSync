@@ -1,9 +1,14 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.RenameOutcome
-import app.snapsync.model.Reply
+import app.snapsync.wire.api.ChangeEventReply
+import app.snapsync.wire.api.CreateEventReply
+import app.snapsync.wire.api.Invalid
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.Unauthorized
+import app.snapsync.wire.models.EventChange
+import app.snapsync.wire.models.EventCreate
 
 /**
  * Minting an event. [endsAt] is the host's chosen event-window end (a canonical `…Z` string); it is **nullable**
@@ -27,14 +32,11 @@ fun interface EventRename {
 }
 
 /**
- * [EventCreation] over the backend: a served create answers [CreateOutcome.Created] with the minted id and the name
- * the backend stored; a `400` refusing the date range (its body names `startsAt` or `endsAt`) is
- * [CreateOutcome.InvalidWindow] and any other `400` is [CreateOutcome.InvalidName]; every other answer is
- * [CreateOutcome.Transient].
- *
- * The body is the only place the backend says WHICH field it refused, so it is read — but only to pick between two
- * refusals: a `400` whose body names neither date stays a refused name, as every `400` was before the range could
- * be refused on its own.
+ * [EventCreation] over the backend: a created event answers [CreateOutcome.Created] with the minted id and the name
+ * the backend stored; a refused date range is [CreateOutcome.InvalidWindow] and any other refused request
+ * ([CreateEventReply.InvalidName], [Invalid]) is [CreateOutcome.InvalidName]; a refused credential is
+ * [CreateOutcome.Unverified]; every other answer is [CreateOutcome.Transient]. Which field was refused is the
+ * description's to say (`api/openapi.yaml`, `createEvent`'s `400`), so it is read off the reply, never the body.
  *
  * `startsAt` is sent **verbatim**: the caller's contract is that it is already the canonical cutoff shape,
  * and the backend rejects anything else with a `400`. Reformatting or re-deriving it
@@ -44,45 +46,41 @@ fun interface EventRename {
  * backend keeps for the event page alone. It never refuses a create.
  */
 class BackendEventCreation(
-    private val backend: AuthenticatedBackend,
+    private val gateway: BackendGateway,
     private val zone: () -> String?,
 ) : EventCreation {
 
-    override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome =
-        when (val reply = backend.createEvent(CreateEventRequest(name, startsAt, endsAt, zone(), keyId))) {
-            is Reply.Ok -> CreateOutcome.Created(eventId = reply.value.eventId, name = reply.value.name)
-            is Reply.Refused -> when (reply.status) {
-                HttpStatus.BAD_REQUEST -> refusal(reply.body)
-                HttpStatus.UNAUTHORIZED -> CreateOutcome.Unverified
-                else -> CreateOutcome.Transient
-            }
-            is Reply.Malformed, is Reply.Unreachable -> CreateOutcome.Transient
+    override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome {
+        val request = Routes.CreateEvent.request(
+            EventCreate(name = name, startsAt = startsAt, endsAt = endsAt, zone = zone(), keyId = keyId),
+        )
+        return when (val reply = gateway.send(request, obtainFirst = true)) {
+            is CreateEventReply.Created -> CreateOutcome.Created(eventId = reply.event.eventId, name = reply.event.name)
+            CreateEventReply.InvalidWindow -> CreateOutcome.InvalidWindow
+            CreateEventReply.InvalidName, is Invalid -> CreateOutcome.InvalidName
+            Unauthorized -> CreateOutcome.Unverified
+            else -> CreateOutcome.Transient
         }
-
-    private fun refusal(body: String): CreateOutcome =
-        if (WINDOW_FIELDS.any { it in body }) CreateOutcome.InvalidWindow else CreateOutcome.InvalidName
+    }
 }
 
-/** The fields a date-range refusal names (`invalid startsAt` / `invalid endsAt`). */
-private val WINDOW_FIELDS = listOf("startsAt", "endsAt")
-
 /**
- * [EventRename] over the backend: a served rename answers the name the backend's echo carries; a `400` is
- * [RenameOutcome.InvalidName]; every other answer is [RenameOutcome.Transient].
+ * [EventRename] over the backend's event change: a changed event answers the name the backend stored; a refused
+ * request ([Invalid]) is [RenameOutcome.InvalidName]; every other answer is [RenameOutcome.Transient].
  *
- * ⚠️ A `404` maps to [RenameOutcome.Transient] like every other non-`400` status, and that collapse is deliberate
+ * ⚠️ A `404` maps to [RenameOutcome.Transient] like every other answer but a refused request, and that collapse is deliberate
  * rather than incidental — see [RenameOutcome.Transient] for why a lone `404` must never acquire a distinct meaning
  * on this path.
  *
- * The echoed name is what the caller persists. It is **required**: a served rename whose echo carries no name is a
- * malformed answer mapped to [RenameOutcome.Transient] rather than a success reporting a name this client invented.
+ * The stored name is what the caller persists. It is **required** (`Event.name`): an answer that carries none does
+ * not decode, and is [RenameOutcome.Transient] rather than a success reporting a name this client invented.
  */
-class BackendEventRename(private val backend: AuthenticatedBackend) : EventRename {
+class BackendEventRename(private val gateway: BackendGateway) : EventRename {
 
     override suspend fun rename(eventId: String, name: String): RenameOutcome =
-        when (val reply = backend.renameEvent(eventId, name)) {
-            is Reply.Ok -> reply.value.name?.let { RenameOutcome.Renamed(it) } ?: RenameOutcome.Transient
-            is Reply.Refused -> if (reply.status == HttpStatus.BAD_REQUEST) RenameOutcome.InvalidName else RenameOutcome.Transient
-            is Reply.Malformed, is Reply.Unreachable -> RenameOutcome.Transient
+        when (val reply = gateway.send(Routes.ChangeEvent.request(eventId, EventChange(name = name)))) {
+            is ChangeEventReply.Changed -> RenameOutcome.Renamed(reply.event.name)
+            is Invalid -> RenameOutcome.InvalidName
+            else -> RenameOutcome.Transient
         }
 }

@@ -38,7 +38,7 @@ import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
-import app.snapsync.http.HttpBackend
+import app.snapsync.http.KtorHttpTransport
 import app.snapsync.model.EntryScope
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.invocation
@@ -116,7 +116,8 @@ class SnapSyncRoot(internal val application: Application) {
         // ANDROID_ID, as a v5 UUID: it survives a reinstall, so a first mint adopts it.
         platformDeviceId = lazy { AndroidPlatformDeviceId(application) },
         integrity = lazy { AndroidDeviceIntegrity() },
-        backend = lazy { HttpBackend(androidHttpClient(), BuildConfig.UPLOAD_BASE, BuildConfig.APP_VERSION) },
+        // Plain HTTP over OkHttp; the backend's protocol — base, version, credential — is the core's gateway.
+        http = lazy { KtorHttpTransport(androidHttpClient()) },
         lifecycle = lazy { lifecycle },
         links = lazy { links },
         ui = lazy { ui },

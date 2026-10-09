@@ -15,6 +15,7 @@ import co.touchlab.kermit.Logger
 import platform.Foundation.NSError
 import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
+import platform.Foundation.setValue
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
@@ -85,11 +86,13 @@ class IosDownload internal constructor(
         return if (current.compareAndSet(null, session)) session else checkNotNull(current.load())
     }
 
-    override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
+    override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
         val nsUrl = NSURL.URLWithString(url) ?: return StartResult.NotStarted
         // The member's mobile-data choice rides on the request, so this transfer keeps the rule it started
         // with while the one session carries others under another.
         val request = NSMutableURLRequest(uRL = nsUrl).apply { applyTransferNetwork(network) }
+        // What the backend asks of every request — the version this build declares — rides along.
+        headers.forEach { (name, value) -> request.setValue(value, forHTTPHeaderField = name) }
         val session = session()
         update { it + tag }
         session.download(request, tag)

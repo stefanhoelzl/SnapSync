@@ -89,7 +89,12 @@ class AndroidDownloadRescheduleTest {
         removeAllDownloads()
         val download = AndroidDownload(context)
         download.listen(ClauseDownloadHandlers { null }.handlers)
-        download.start("http://127.0.0.1:${server.localPort}/reschedule-$run", "d-reschedule-$run", TransferNetwork.ANY)
+        download.start(
+            "http://127.0.0.1:${server.localPort}/reschedule-$run",
+            emptyMap(),
+            "d-reschedule-$run",
+            TransferNetwork.ANY,
+        )
         val first = checkNotNull(
             arrivals.poll(ARRIVAL_SECONDS, TimeUnit.SECONDS),
         ) { "run $run: the download never asked" }

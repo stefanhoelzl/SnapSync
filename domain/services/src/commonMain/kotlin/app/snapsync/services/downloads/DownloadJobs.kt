@@ -141,6 +141,11 @@ class DownloadJobs(
      */
     private val network: () -> TransferNetwork,
     /**
+     * The headers every download carries (`BackendExchange.versionHeaders`): the version the app declares on every
+     * request — the download redirect's too (`api/openapi.yaml`, `downloadResource`). Read per transfer.
+     */
+    private val headers: () -> Map<String, String>,
+    /**
      * How an encrypted event's download is opened before it is staged (the encrypted file format,
      * `docs/architecture.md`); `null` where nothing is ever sealed.
      */
@@ -323,7 +328,7 @@ class DownloadJobs(
                 log.w { "skipping unfetchable download url for ${next.resource.resourceKey}" }
                 continue
             }
-            when (download.start(next.resource.url, tag, network())) {
+            when (download.start(next.resource.url, headers(), tag, network())) {
                 StartResult.Started -> inFlight += tag
                 StartResult.NotStarted -> log.w { "the download was not started for ${next.resource.resourceKey} — left pending" }
             }

@@ -4,17 +4,34 @@ import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.AssetId
-import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceManifest
+import app.snapsync.model.HttpRequest
+import app.snapsync.model.HttpResult
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.Reply
+import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionResource
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.uploadKey
-import app.snapsync.ports.Backend
+import app.snapsync.ports.HttpTransport
+import app.snapsync.wire.api.CreateEventReply
+import app.snapsync.wire.api.DeviceFilesReply
+import app.snapsync.wire.api.EventFilesReply
+import app.snapsync.wire.api.EventNotFound
+import app.snapsync.wire.api.GatedRequest
+import app.snapsync.wire.api.GetEventReply
+import app.snapsync.wire.api.JoinEventReply
+import app.snapsync.wire.api.Limits
+import app.snapsync.wire.api.PublishManifestReply
+import app.snapsync.wire.api.Reply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.models.EventCreate
+import app.snapsync.wire.models.Manifest
+import app.snapsync.wire.models.ManifestAsset
+import app.snapsync.wire.models.Role
+import app.snapsync.wire.runtime.WireResponse
 
 /**
  * **What the control channel's operator levers act on** (`docs/testing.md`, "One control protocol, served by two
@@ -63,57 +80,68 @@ class MockWorld(
 }
 
 /**
- * The backend as another member, or its operator's seeding, reaches it: its public surface only — the port, credential
- * free, and the byte route an OS upload crosses. Written once for every backend a host may serve.
+ * The backend as another member, or its operator's seeding, reaches it: its public surface only — the device API over
+ * [transport], credential free (the dev server's fallback bearer serves it, as the mock's does), and the byte route an
+ * OS upload crosses. Written once for every backend a host may serve.
  */
 class BackendReach(
     /** The device-facing base, carrying exactly one version prefix. */
     private val base: String,
     /** A short name for errors — `mock` or `deno`. */
     private val name: String,
-    private val port: Backend,
+    private val transport: HttpTransport,
     private val network: UploadNetwork,
     private val declared: DeclaredVersion,
 ) {
     /** The object keys the backend lists for [deviceId] in [eventId] — each event holds its own. */
-    suspend fun objectsOf(eventId: String, deviceId: String): Set<String> =
-        read("the listing", port.deviceFiles(null, eventId, deviceId)).mapTo(mutableSetOf()) {
-            uploadKey(it.assetId, it.role, it.filename)
-        }
+    suspend fun objectsOf(eventId: String, deviceId: String): Set<String> {
+        val reply = send(Routes.DeviceFiles.request(eventId, deviceId))
+        val listed = reply as? DeviceFilesReply.Listed ?: refused("the listing", reply)
+        return listed.items.mapTo(mutableSetOf()) { uploadKey(AssetId(it.assetId), it.role.inApp(), it.filename) }
+    }
 
     /**
-     * The union the backend serves for [eventId] — read through the port with no token, so the backend logs it as an
-     * anonymous full read (decision record `changes/incremental-union`, D5), like a browser's.
+     * The union the backend serves for [eventId] — read with no token, so the backend logs it as an anonymous full
+     * read (decision record `changes/incremental-union`, D5), like a browser's.
      */
-    suspend fun unionOf(eventId: String): List<UnionAsset> =
-        read("the union", port.eventFiles(null, eventId, null, UnionTrigger.FOREGROUND)).assets
-
-    /** The event's name, or `null` for an event the backend does not hold (a `404`). */
-    suspend fun eventOf(eventId: String): Pair<Boolean, String?> = when (val reply = port.getEvent(null, eventId)) {
-        is Reply.Ok -> true to reply.value.name
-        is Reply.Refused -> if (reply.status == NOT_FOUND) {
-            false to null
-        } else {
-            error(
-                "the event details route answered $reply",
+    suspend fun unionOf(eventId: String): List<UnionAsset> {
+        val reply = send(Routes.EventFiles.request(eventId, snapSyncTrigger = UnionTrigger.FOREGROUND.wire))
+        val page = reply as? EventFilesReply.Page ?: refused("the union", reply)
+        return page.items.map { asset ->
+            UnionAsset(
+                deviceId = asset.deviceId,
+                assetId = AssetId(asset.assetId),
+                creationDate = asset.creationDate,
+                resources = asset.resources.map {
+                    UnionResource(it.key, it.url.orEmpty(), it.role.value, it.contentType, it.filename)
+                },
             )
         }
+    }
+
+    /** The event's name, or `null` for an event the backend does not hold (a `404`). */
+    suspend fun eventOf(
+        eventId: String,
+    ): Pair<Boolean, String?> = when (val reply = send(Routes.GetEvent.request(eventId))) {
+        is GetEventReply.Found -> true to reply.eventDetails.name
+        EventNotFound -> false to null
         else -> error("the event details route answered $reply for $eventId")
     }
 
     /** `POST /events` — an event the backend mints. */
-    suspend fun createEvent(name: String, startsAt: String): String =
-        read("create event", port.createEvent(null, CreateEventRequest(name, startsAt, null))).eventId
+    suspend fun createEvent(name: String, startsAt: String): String {
+        val reply = send(Routes.CreateEvent.request(EventCreate(name = name, startsAt = startsAt)))
+        return (reply as? CreateEventReply.Created ?: refused("create event", reply)).event.eventId
+    }
 
     suspend fun join(eventId: String, deviceId: String) {
-        read("join $deviceId to $eventId", port.joinEvent(null, eventId, deviceId))
+        val reply = send(Routes.JoinEvent.request(eventId, deviceId))
+        if (reply != JoinEventReply.Joined) refused("join $deviceId to $eventId", reply)
     }
 
     suspend fun publish(eventId: String, manifest: DeviceManifest) {
-        read(
-            "publish ${manifest.deviceId}'s manifest",
-            port.publishManifest(null, eventId, manifest.deviceId, manifest),
-        )
+        val reply = send(Routes.PublishManifest.request(eventId, manifest.deviceId, manifest.onWire()))
+        if (reply != PublishManifestReply.Published) refused("publish ${manifest.deviceId}'s manifest", reply)
     }
 
     /**
@@ -128,26 +156,59 @@ class BackendReach(
         bytes: ByteArray = SEEDED_BYTES,
         eventId: String? = null,
     ) {
-        val scope = eventId?.let { "/events/$it" }.orEmpty()
-        val url = "$base$scope/files/devices/$deviceId/$assetId/${resource.role.wire}?filename=${resource.filename}"
-        val status = network.put(
-            url,
-            mapOf(APP_VERSION_HEADER to declared.value.orEmpty(), CONTENT_TYPE to JPEG),
-            bytes,
-        )
+        val role = resource.role.wire
+        val path = eventId?.let { Routes.UploadResource.path(it, deviceId, assetId.value, role, resource.filename) }
+            ?: Routes.UploadResourceEventless.path(deviceId, assetId.value, role, resource.filename)
+        val status = network.put(base + path, versionHeaders() + (CONTENT_TYPE to JPEG), bytes)
         check(status != null && status in SUCCESS) {
             "upload ${resource.key} for $deviceId was answered $status by the $name backend"
         }
     }
 
-    private fun <T> read(step: String, reply: Reply<T>): T =
-        (reply as? Reply.Ok)?.value ?: error("step '$step' was refused by the $name backend: $reply")
+    /** [request], sent as the gateway would send it without a credential: the declared version, no token. */
+    private suspend fun <R : Reply> send(request: GatedRequest<R>): R {
+        val wire = request.wire
+        val sent = HttpRequest(wire.method, base + wire.path, wire.headers + versionHeaders(), wire.body)
+        return when (val result = transport.send(sent)) {
+            is HttpResult.Response -> request.decide(WireResponse(result.status, result.headers, result.body))
+            is HttpResult.Unreachable -> request.unreachable(result.reason)
+        }
+    }
+
+    private fun versionHeaders(): Map<String, String> =
+        declared.value?.let { mapOf(Limits.VERSION_HEADER to it) }.orEmpty()
+
+    private fun refused(step: String, reply: Reply): Nothing = error(
+        "step '$step' was refused by the $name backend: $reply",
+    )
 
     private companion object {
-        const val NOT_FOUND = 404
         const val CONTENT_TYPE = "Content-Type"
         const val JPEG = "image/jpeg"
         val SUCCESS = 200..299
         val SEEDED_BYTES = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
     }
 }
+
+private fun Role.inApp(): ResourceRole = ResourceRole.entries.first { it.wire == value }
+
+/** A seeded member's snapshot as the backend takes it; an unstamped one is version 0, the oldest. */
+private fun DeviceManifest.onWire(): Manifest = Manifest(
+    deviceId = deviceId,
+    assets = assets.map { asset ->
+        ManifestAsset(
+            assetId = asset.assetId.value,
+            creationDate = asset.creationDate,
+            resources = asset.resources.map {
+                app.snapsync.wire.models.ManifestResource(
+                    Role.fromValue(it.role.wire) ?: error("no described role for ${it.role}"),
+                    it.contentType,
+                    it.key,
+                    it.filename,
+                )
+            },
+        )
+    },
+    version = version ?: 0L,
+    `final` = final,
+)

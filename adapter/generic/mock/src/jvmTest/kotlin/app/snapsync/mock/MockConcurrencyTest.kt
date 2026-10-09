@@ -4,15 +4,16 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
-import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.FileArea
-import app.snapsync.model.Reply
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadTarget
 import app.snapsync.ports.DbOpen
+import app.snapsync.wire.api.CreateEventReply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.models.EventCreate
 import kotlinx.coroutines.runBlocking
 import kotlin.concurrent.thread
 import kotlin.test.Test
@@ -46,17 +47,18 @@ class MockConcurrencyTest {
     fun backend_read_while_devices_join_and_read() {
         val device = MockDevice()
         val backend = device.backend
-        val port = backend.port()
+        val port = Wire(backend.port())
         backend.operator.capacity = Int.MAX_VALUE
         val event = runBlocking {
-            (port.createEvent(null, CreateEventRequest("E", "2026-06-01T00:00:00Z", null)) as Reply.Ok).value.eventId
+            val created = port.send(Routes.CreateEvent.request(EventCreate("E", "2026-06-01T00:00:00Z")))
+            (created as CreateEventReply.Created).event.eventId
         }
         assertWhole(
             tears(
                 write = { round ->
                     runBlocking {
-                        port.joinEvent(null, event, "D$round")
-                        port.getEvent(null, "absent-$round")
+                        port.send(Routes.JoinEvent.request(event, "D$round"))
+                        port.send(Routes.GetEvent.request("absent-$round"))
                     }
                 },
                 read = {
@@ -135,6 +137,7 @@ class MockConcurrencyTest {
                     if (round < CAP) {
                         port.start(
                             "https://in-memory/$round",
+                            emptyMap(),
                             "t$round",
                             TransferNetwork.ANY,
                         )

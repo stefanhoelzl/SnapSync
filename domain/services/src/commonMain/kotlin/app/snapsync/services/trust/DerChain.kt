@@ -1,4 +1,4 @@
-package app.snapsync.http
+package app.snapsync.services.trust
 
 /**
  * The top-level DER elements of [bytes], in order — how an Android key attestation's certificate chain, handed across

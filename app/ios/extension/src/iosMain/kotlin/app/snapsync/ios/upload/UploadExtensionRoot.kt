@@ -14,13 +14,12 @@ import app.snapsync.databases.IosDatabases
 import app.snapsync.extension.IosExtensionHost
 import app.snapsync.files.IosFiles
 import app.snapsync.gallery.IosGalleryReader
-import app.snapsync.http.HttpBackend
+import app.snapsync.http.KtorHttpTransport
 import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.keychain.platformSecureStore
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosEntryContext
 import app.snapsync.logging.PublicNSLogSink
-import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.extensionLogDestination
 import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
@@ -96,8 +95,8 @@ object UploadExtensionRoot {
         // root is unchanged either way: it names the need, and the target answers it.
 
         cycleUpload = lazy { uploadJobQueue(log) },
-        // The same `HttpBackend` the app runs, over this process's own Darwin client.
-        backend = lazy { HttpBackend(darwinHttpClient(), bakedUploadBase(), appMarketingVersion()) },
+        // The same transport the app runs, over this process's own Darwin client.
+        http = lazy { KtorHttpTransport(darwinHttpClient()) },
     )
 
     private val device: ExtensionDevicePorts = extensionPorts(real)

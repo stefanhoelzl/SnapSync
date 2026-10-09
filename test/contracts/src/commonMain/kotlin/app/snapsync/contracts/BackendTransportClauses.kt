@@ -1,43 +1,38 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.CreateEventRequest
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.MintRequest
-import app.snapsync.model.ProofFormat
-import app.snapsync.model.PushEndpoint
-import app.snapsync.model.RenewRequest
-import app.snapsync.model.Reply
-import app.snapsync.model.UnionTrigger
-import app.snapsync.ports.Backend
+import app.snapsync.wire.api.JoinEventReply
+import app.snapsync.wire.api.LeaveEventReply
+import app.snapsync.wire.api.Maintenance
+import app.snapsync.wire.api.Malformed
+import app.snapsync.wire.api.PublishManifestReply
+import app.snapsync.wire.api.Reply
+import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.ServerError
+import app.snapsync.wire.api.Success
+import app.snapsync.wire.api.Unreachable
+import app.snapsync.wire.models.AppleAppAttestProof
+import app.snapsync.wire.models.DeviceConfig
+import app.snapsync.wire.models.EventChange
+import app.snapsync.wire.models.EventCreate
+import app.snapsync.wire.models.MintRequest
+import app.snapsync.wire.models.PushRegistration
+import app.snapsync.wire.models.RenewRequest
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
- * What every route answers when no backend answers at all: the request did not complete, which is neither a refusal
- * nor a body. Part of [BackendContract]'s clause list, a split for size only.
+ * What every operation answers when no backend answers at all — the request did not complete, which is neither a
+ * refusal nor a body — when an answer is one this build cannot read, and when the server fails or is in a migration
+ * window. Part of [BackendContract]'s clause list, a split for size only.
  */
-internal fun ClauseList<BackendState, EdgeSubject<Backend>>.transportClauses() {
+internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.transportClauses() {
     clause(
-        "NO_BACKEND_EVERY_ROUTE_IS_UNREACHABLE",
+        "NO_BACKEND_EVERY_OPERATION_IS_UNREACHABLE",
         BackendState.NO_BACKEND,
-        covers = cells {
-            on<Backend> {
-                answers(Backend::challenge).with(Reply.Unreachable::class)
-                answers(Backend::mintToken).with(Reply.Unreachable::class)
-                answers(Backend::renewToken).with(Reply.Unreachable::class)
-                answers(Backend::createEvent).with(Reply.Unreachable::class)
-                answers(Backend::getEvent).with(Reply.Unreachable::class)
-                answers(Backend::renameEvent).with(Reply.Unreachable::class)
-                answers(Backend::joinEvent).with(Reply.Unreachable::class)
-                answers(Backend::publishManifest).with(Reply.Unreachable::class)
-                answers(Backend::leaveEvent).with(Reply.Unreachable::class)
-                answers(Backend::eventFiles).with(Reply.Unreachable::class)
-                answers(Backend::deviceFiles).with(Reply.Unreachable::class)
-                answers(Backend::putDeviceConfig).with(Reply.Unreachable::class)
-            }
-        },
+        covers = cells { backend(Routes.Challenge.ID, Unreachable::class) },
     ) { s ->
-        everyRoute(s).forEach { (route, reply) ->
-            assertIs<Reply.Unreachable>(reply, "$route: nothing answered, so nothing was refused or read")
+        everyOperation(s).forEach { (operation, reply) ->
+            assertIs<Unreachable>(reply, "$operation: nothing answered, so nothing was refused or read")
         }
     }
 
@@ -45,58 +40,69 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.transportClauses() {
         "UNREADABLE_SUCCESS_EVERY_READ_IS_MALFORMED",
         BackendState.UNREADABLE_SUCCESS,
         covers = cells {
-            on<Backend> {
-                answers(Backend::challenge).with(Reply.Malformed::class)
-                answers(Backend::mintToken).with(Reply.Malformed::class)
-                answers(Backend::renewToken).with(Reply.Malformed::class)
-                answers(Backend::createEvent).with(Reply.Malformed::class)
-                answers(Backend::getEvent).with(Reply.Malformed::class)
-                answers(Backend::renameEvent).with(Reply.Malformed::class)
-                answers(Backend::eventFiles).with(Reply.Malformed::class)
-                answers(Backend::deviceFiles).with(Reply.Malformed::class)
-                answers(Backend::joinEvent).withGenericLeaf(Reply.Ok::class)
-            }
+            backend(Routes.Challenge.ID, Malformed::class)
+            backend(Routes.JoinEvent.ID, JoinEventReply.Joined::class)
+            backend(Routes.LeaveEvent.ID, LeaveEventReply.Left::class)
+            backend(Routes.PublishManifest.ID, PublishManifestReply.Published::class)
         },
     ) { s ->
-        val read = setOf(
-            "challenge",
-            "mintToken",
-            "renewToken",
-            "createEvent",
-            "getEvent",
-            "renameEvent",
-            "eventFiles",
-            "deviceFiles",
-        )
-        everyRoute(s).forEach { (route, reply) ->
-            if (route in read) {
-                assertIs<Reply.Malformed>(reply, "$route: a success whose body this build cannot read is never a value")
+        val bodyless = setOf(Routes.JoinEvent.ID, Routes.LeaveEvent.ID, Routes.PublishManifest.ID)
+        everyOperation(s).forEach { (operation, reply) ->
+            if (operation in bodyless) {
+                assertIs<Success>(reply, "$operation: a body-less answer at its declared status is served by any body")
             } else {
-                assertIs<Reply.Ok<*>>(reply, "$route: a body-less route is served by any success")
+                assertIs<Malformed>(reply, "$operation: an answer this build cannot read is never a value")
             }
+        }
+    }
+
+    clause(
+        "SERVER_FAILING_EVERY_OPERATION_IS_A_SERVER_ERROR",
+        BackendState.SERVER_FAILING,
+        covers = cells { backend(Routes.Challenge.ID, ServerError::class) },
+    ) { s ->
+        everyOperation(s).forEach { (operation, reply) ->
+            assertIs<ServerError>(reply, "$operation: a failing store is never absence, nor a refusal")
+        }
+    }
+
+    clause(
+        "IN_MAINTENANCE_EVERY_OPERATION_IS_TOLD_WHEN_TO_RETURN",
+        BackendState.IN_MAINTENANCE,
+        covers = cells { backend(Routes.Challenge.ID, Maintenance::class) },
+    ) { s ->
+        everyOperation(s).forEach { (operation, reply) ->
+            val maintenance = assertIs<Maintenance>(reply, "$operation: a migration window is its own answer")
+            assertTrue(
+                maintenance.retryAfter.all(Char::isDigit),
+                "$operation: Retry-After is seconds: ${maintenance.retryAfter}",
+            )
         }
     }
 }
 
-/** One call of every route, named — each with inputs any backend would accept, so only the transport can fail it. */
-private suspend fun everyRoute(s: EdgeSubject<Backend>): List<Pair<String, Reply<*>>> {
+/** One request of every operation the app sends, named — each with inputs any backend would accept. */
+private suspend fun everyOperation(s: EdgeSubject<BackendClient>): List<Pair<String, Reply>> {
     val event = s.seeded.eventId
     val device = s.seeded.deviceId
     val challenge = "a-challenge"
+    val c = s.port
     return listOf(
-        "challenge" to s.port.challenge(),
-        "mintToken" to s.port.mintToken(
-            MintRequest(device, KEY_ID, ProofFormat.APP_ATTEST, "attestation".encodeToByteArray(), challenge),
+        Routes.Challenge.ID to c.send(Routes.Challenge.request()),
+        Routes.MintToken.ID to c.send(
+            Routes.MintToken.request(MintRequest(device, challenge, AppleAppAttestProof(KEY_ID, "YXR0ZXN0YXRpb24="))),
         ),
-        "renewToken" to s.port.renewToken(RenewRequest(device, "assertion".encodeToByteArray(), challenge)),
-        "createEvent" to s.port.createEvent(s.token, CreateEventRequest("Unanswered", SEEDED_STARTS_AT, SEEDED_ENDS_AT)),
-        "getEvent" to s.port.getEvent(s.token, event),
-        "renameEvent" to s.port.renameEvent(s.token, event, "Unanswered"),
-        "joinEvent" to s.port.joinEvent(s.token, event, device),
-        "publishManifest" to s.port.publishManifest(s.token, event, device, DeviceManifest(device, emptyList(), 0)),
-        "leaveEvent" to s.port.leaveEvent(s.token, event, device, received = false),
-        "eventFiles" to s.port.eventFiles(s.token, event, null, UnionTrigger.FOREGROUND),
-        "deviceFiles" to s.port.deviceFiles(s.token, event, device),
-        "putDeviceConfig" to s.port.putDeviceConfig(s.token, device, PushEndpoint("apns", "a-token", "development")),
+        Routes.RenewToken.ID to c.send(Routes.RenewToken.request(RenewRequest(device, "YXNzZXJ0aW9u", challenge))),
+        Routes.CreateEvent.ID to c.send(Routes.CreateEvent.request(EventCreate("Unanswered", SEEDED_STARTS_AT, SEEDED_ENDS_AT))),
+        Routes.GetEvent.ID to c.send(Routes.GetEvent.request(event)),
+        Routes.ChangeEvent.ID to c.send(Routes.ChangeEvent.request(event, EventChange("Unanswered"))),
+        Routes.JoinEvent.ID to c.send(Routes.JoinEvent.request(event, device)),
+        Routes.PublishManifest.ID to c.send(Routes.PublishManifest.request(event, device, manifestOf(device, emptyList()))),
+        Routes.LeaveEvent.ID to c.send(Routes.LeaveEvent.request(event, device, received = false)),
+        Routes.EventFiles.ID to c.send(Routes.EventFiles.request(event, urls = false)),
+        Routes.DeviceFiles.ID to c.send(Routes.DeviceFiles.request(event, device)),
+        Routes.PutDevice.ID to c.send(
+            Routes.PutDevice.request(device, DeviceConfig(PushRegistration("apns", "a-token", "development"))),
+        ),
     )
 }

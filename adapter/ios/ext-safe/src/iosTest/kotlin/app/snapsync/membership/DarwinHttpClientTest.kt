@@ -6,9 +6,9 @@ import kotlin.test.Test
 import kotlin.test.assertFailsWith
 
 /**
- * The iOS HTTP client the backend port runs over.
+ * The iOS HTTP client the HTTP transport runs over.
  *
- * **A transport failure propagates.** `HttpBackend` turns it into `Reply.Unreachable`, which every service above
+ * **A transport failure propagates.** `KtorHttpTransport` turns it into `HttpResult.Unreachable`, which every service above
  * it keeps apart from an answer — `DownloadController.reconcile` keeps last-good state on a failure by contract; a
  * swallowed error would instead present an empty union as the truth.
  *

@@ -59,6 +59,8 @@ val journeys: SourceSet = sourceSets.create("journeys")
 dependencies {
     "journeysImplementation"(project(":test:control"))
     "journeysImplementation"(project(":domain:model"))
+    // The version header's one name, generated from `api/openapi.yaml`.
+    "journeysImplementation"(project(":domain:wire"))
     "journeysImplementation"(project(":domain:presentation"))
     "journeysImplementation"(project(":domain:feature"))
     "journeysImplementation"(libs.kotlinx.datetime)

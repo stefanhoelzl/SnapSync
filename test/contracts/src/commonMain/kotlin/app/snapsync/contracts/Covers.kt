@@ -1,6 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.ports.Port
+import app.snapsync.wire.api.Reply
 import kotlinx.coroutines.flow.Flow
 import kotlin.reflect.KCallable
 import kotlin.reflect.KClass
@@ -45,6 +46,13 @@ class CellsBuilder internal constructor() {
 
     /** [on], for several cells of one port: `on<SecureStore> { answers(SecureStore::read).with(…); … }`. */
     inline fun <reified P : Port> on(declare: PortCells.() -> Unit) = on<P>().declare()
+
+    /**
+     * A backend operation's [outcome] (`docs/architecture.md`, "The backend boundary") — `Backend.<operationId> →
+     * <Outcome>`, or `Backend.* → <Outcome>` for one several operations answer with one type. [operationId] is a
+     * generated route's `ID`; the outcome its reply's leaf.
+     */
+    fun backend(operationId: String, outcome: KClass<out Reply>) = add(backendCell(operationId, outcome))
 
     @PublishedApi
     internal fun add(cell: String) {

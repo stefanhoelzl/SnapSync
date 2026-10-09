@@ -30,14 +30,6 @@ enum class ResourceRole(val wire: String) {
 // adapter was reporting the raw type *beside* it rather than instead of it.
 
 /**
- * The header a versioned backend request declares its marketing version in. Declared here because BOTH
- * transports must send it — the shared HTTP client and
- * the byte-upload request the OS performs — and two spellings of one header name is exactly the drift
- * this vocabulary exists to prevent.
- */
-const val APP_VERSION_HEADER: String = "x-snapsync-app-version"
-
-/**
  * Pure construction of an asset resource's ledger key / object name — the single place the role-based
  * `"<assetId>-<role>.<ext>"` layout lives, `assetId` being the canonical [AssetId]. Kept platform-free so
  * the layout is unit-tested in `commonTest` instead of trapped inside the PhotoKit adapter; the adapter (and

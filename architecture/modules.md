@@ -45,6 +45,7 @@ flowchart LR
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
   ui_screens[":ui:screens"]
+  adapter_android --> adapter_generic_app
   adapter_android --> domain_feature
   adapter_android --> domain_model
   adapter_android --> domain_ports
@@ -64,6 +65,7 @@ flowchart LR
   adapter_generic_mock --> domain_model
   adapter_generic_mock --> domain_ports
   adapter_generic_mock --> domain_services
+  adapter_generic_mock --> domain_wire
   adapter_generic_mock --> test_contracts
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
@@ -156,16 +158,19 @@ flowchart LR
   domain_presentation --> domain_model
   domain_services --> domain_model
   domain_services --> domain_ports
+  domain_services --> domain_wire
   test_architecture --> adapter_generic_app
   test_architecture --> adapter_generic_mock
   test_architecture --> domain_feature
   test_architecture --> domain_model
   test_architecture --> domain_ports
   test_architecture --> domain_services
+  test_architecture --> domain_wire
   test_architecture --> test_contracts
   test_contracts --> domain_model
   test_contracts --> domain_ports
   test_contracts --> domain_services
+  test_contracts --> domain_wire
   test_control --> domain_feature
   test_control --> domain_model
   test_control --> domain_presentation
@@ -181,6 +186,7 @@ flowchart LR
   test_integration --> domain_feature
   test_integration --> domain_model
   test_integration --> domain_presentation
+  test_integration --> domain_wire
   test_integration --> test_control
   test_launch_adapters --> adapter_generic_mock
   test_launch_adapters --> domain_compose
@@ -206,6 +212,7 @@ flowchart LR
   test_rig --> domain_ports
   test_rig --> domain_presentation
   test_rig --> domain_services
+  test_rig --> domain_wire
   test_rig --> test_contracts
   test_rig --> test_edge
   test_rig --> test_launch_adapters

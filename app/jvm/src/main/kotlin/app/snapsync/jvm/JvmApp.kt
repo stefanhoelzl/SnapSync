@@ -90,7 +90,7 @@ class JvmApp<D>(
             processInfo = lazyOf(ports.device.processInfo),
             network = lazyOf(ports.device.network),
             deviceConditions = lazyOf(ports.device.deviceConditions),
-            backend = lazyOf(ports.systems.backend),
+            http = lazyOf(ports.systems.http),
             backgroundTime = lazyOf(ports.systems.backgroundTime),
             wake = lazyOf(ports.systems.wake),
             extensionRegistry = lazyOf(ports.systems.extensionRegistry),
@@ -119,7 +119,7 @@ class JvmApp<D>(
             platformDeviceId = lazyOf(NoPlatformDeviceId()),
             galleryReader = lazyOf(ports.systems.cycleGallery),
             cycleUpload = lazyOf(ports.systems.cycleUpload),
-            backend = lazyOf(ports.systems.backend),
+            http = lazyOf(ports.systems.http),
         )
 
         val composed: ComposedApp = snapSyncHost(

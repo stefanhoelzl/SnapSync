@@ -34,7 +34,7 @@ fun chosenAppPorts(real: AppDevicePorts, choice: AdapterChoice, device: MockDevi
             MockedSystem.DEVICE_CONDITIONS,
             real.deviceConditions,
         ) { device.deviceConditions.port() },
-        backend = pick(MockedSystem.BACKEND, real.backend) { device.backend.port(device.declaredVersion) },
+        http = pick(MockedSystem.BACKEND, real.http) { device.backend.port(device.declaredVersion) },
         backgroundTime = pick(MockedSystem.BACKGROUND_TIME, real.backgroundTime) { device.backgroundTime.port() },
         wake = pick(MockedSystem.WAKE, real.wake) { device.wakes.port() },
         extensionRegistry = pick(
@@ -76,6 +76,6 @@ fun chosenExtensionPorts(real: ExtensionDevicePorts, choice: AdapterChoice, devi
         platformDeviceId = real.platformDeviceId,
         galleryReader = pick(MockedSystem.LIBRARY, real.galleryReader) { device.library.port() },
         cycleUpload = pick(MockedSystem.UPLOAD_QUEUE, real.cycleUpload) { device.uploadQueue.port() },
-        backend = pick(MockedSystem.BACKEND, real.backend) { device.backend.port(device.declaredVersion) },
+        http = pick(MockedSystem.BACKEND, real.http) { device.backend.port(device.declaredVersion) },
     )
 }

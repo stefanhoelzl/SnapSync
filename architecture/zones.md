@@ -35,6 +35,7 @@ flowchart LR
     ui_components[":ui:components"]
     ui_screens[":ui:screens"]
   end
+  adapter_android --> adapter_generic_app
   adapter_android --> domain_feature
   adapter_android --> domain_model
   adapter_android --> domain_ports
@@ -54,6 +55,7 @@ flowchart LR
   adapter_generic_mock --> domain_model
   adapter_generic_mock --> domain_ports
   adapter_generic_mock --> domain_services
+  adapter_generic_mock --> domain_wire
   adapter_generic_mock --> test_contracts
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
@@ -96,6 +98,7 @@ flowchart LR
   domain_presentation --> domain_model
   domain_services --> domain_model
   domain_services --> domain_ports
+  domain_services --> domain_wire
   ui_components --> adapter_generic_app
   ui_components --> domain_model
   ui_screens --> adapter_generic_app

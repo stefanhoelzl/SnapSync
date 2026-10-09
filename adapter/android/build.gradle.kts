@@ -44,7 +44,7 @@ kotlin {
             // The `Databases` adapter: SQLDelight over the platform's SQLite, and the open helper it is handed.
             implementation(libs.sqldelight.driver.android)
             implementation(libs.androidx.sqlite.framework)
-            // The backend port's HTTP engine (`AndroidHttpClient`); `HttpBackend` itself is `:adapter:generic:app`'s.
+            // The HTTP engine (`AndroidHttpClient`) under `KtorHttpTransport`, which is `:adapter:generic:app`'s.
             api(libs.ktor.client.core)
             implementation(libs.ktor.client.okhttp)
         }
