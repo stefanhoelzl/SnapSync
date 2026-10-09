@@ -416,7 +416,8 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
 - **Request-log phase** (`src/scripts/request-log-report.ts`): deletes `request_log` rows older than 30
   days, counts the previous UTC day (`[00:00, 24:00)`; total, 4xx, 5xx, rows with faults) and the table's
   size, and — when that day had **any 5xx** — sends one Bugsink report (project 1, `platform=api`, fixed
-  fingerprint `api-5xx-elevated`, so a run of bad days is one issue that alerts on its first event and again
+  fingerprint `api-5xx-elevated` and fixed message `api: requests answered 5xx` — the day and its counts ride
+  as the `day` tag and the extras — so a run of bad days is one issue that alerts on its first event and again
   after it is resolved). The report carries every 5xx row as its console line, newest first, cut at a
   512 KB budget (`omitted` counts the rest) to stay well under Bugsink's 1 MiB event cap. The DSN is the
   deployment's: the resolve step is handed `SENTRY_DSN`. ⚠️ **A report that did not leave fails the run**,

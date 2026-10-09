@@ -6,8 +6,8 @@
 // budget so the event stays well under Bugsink's 1 MiB event cap (CLAUDE.md, "Logging & errors": an
 // oversized event is not dropped but cached and resent, blocking every report behind it); what the budget
 // cut is counted in `omitted`, and the table keeps every row for 30 days. Every report carries ONE fixed
-// fingerprint, so a run of bad days is one issue: Bugsink alerts on its first event, and again on the first
-// one after the issue is resolved.
+// fingerprint and ONE fixed message, so a run of bad days is one issue: Bugsink alerts on its first event,
+// and again on the first one after the issue is resolved.
 //
 // THE WINDOW IS A CALENDAR DAY, `[D 00:00, D+1 00:00)` UTC — by default the day before the run, or `--date`.
 // A late cron run checks the same day; a rerun reports the same rows into the same issue; a skipped day is
@@ -35,6 +35,13 @@ export const REPORT_BUDGET_BYTES = 512 * 1024;
 
 /** The one fingerprint every 5xx report shares, so a run of bad days stays one issue. */
 export const REPORT_FINGERPRINT = "api-5xx-elevated";
+
+/**
+ * The one message every 5xx report carries — never the day or its counts, which ride as the `day` tag and the
+ * extras. The message is the issue's title and what Bugsink groups by, so a message that varied by day made
+ * every bad day an issue of its own despite the fixed fingerprint.
+ */
+export const REPORT_TITLE = "api: requests answered 5xx";
 
 /** One day's 5xx, as reported. */
 export type ServerErrorReport = {
@@ -188,9 +195,7 @@ export function bugsinkSender(dsn: string, release: string): ReportSender {
         omitted: report.omitted,
         lines: report.lines,
       });
-      Sentry.captureMessage(
-        `api: ${report.serverErrors} of ${report.total} requests answered 5xx on ${report.day}`,
-      );
+      Sentry.captureMessage(REPORT_TITLE);
     });
     if (!(await Sentry.flush(FLUSH_MS))) throw new Error(`not sent within ${FLUSH_MS} ms`);
   };
