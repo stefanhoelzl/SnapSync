@@ -14,9 +14,9 @@ import app.snapsync.model.UiState
 import app.snapsync.model.invocation
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
-import app.snapsync.presentation.ScreenDates
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
+import app.snapsync.ui.components.ScreenDates
 import app.snapsync.ui.statusActions
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,7 +58,11 @@ class AndroidUi(
             val state by shown.collectAsState()
             CompositionLocalProvider(LocalReduceMotion provides animationsOff()) {
                 state?.let {
-                    StatusScreen(state = it, dateFormats = dates::formats, actions = actions)
+                    StatusScreen(
+                        state = it,
+                        dateFormats = dates.forLanguage,
+                        actions = actions,
+                    )
                 }
             }
         }

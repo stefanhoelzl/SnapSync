@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import app.snapsync.model.DateFormats
 import app.snapsync.model.UiState
+import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeGestures
 
@@ -138,7 +138,7 @@ internal fun testRangeChoiceActions(
  * (`docs/testing.md`, "Where each test runs"), so its one real answer is the JVM adapter's, and a date is asserted as
  * the suite's en-GB locale writes it.
  */
-internal expect val testDates: (languageTag: String?) -> DateFormats
+internal expect val testDates: (languageTag: String?) -> DateFormatter
 
 /** The status screen with inert actions unless a test supplies its own. */
 @Composable

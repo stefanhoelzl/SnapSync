@@ -82,7 +82,6 @@ import app.snapsync.model.eventStart
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
-import app.snapsync.presentation.ScreenDates
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
@@ -93,6 +92,10 @@ import app.snapsync.ui.components.resources.share_range_change
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.wheel_end_hour
+import app.snapsync.ui.components.resources.wheel_start_minute
+import app.snapsync.ui.components.resources.wheel_start_hour
+import app.snapsync.ui.components.ScreenDates
+import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.resources.wheel_end_minute
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_toggle
@@ -196,7 +199,10 @@ private fun str(res: StringResource): String = runBlocking { getString(res) }
  */
 class AndroidUiContractTest {
 
-    private val ui = AndroidUi(ScreenDates(AndroidDateFormatting()::formats), Logger.withTag("contract"))
+    private val ui = AndroidUi(
+        dates = ScreenDates { tag -> DateFormatter(AndroidDateFormatting().formats(tag)::format) },
+        log = Logger.withTag("contract"),
+    )
 
     /**
      * [ui] as the clause's call log sees it: what the tour shows each state through, since showing is the clause's own

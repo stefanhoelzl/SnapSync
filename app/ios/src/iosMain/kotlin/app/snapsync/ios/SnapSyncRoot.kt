@@ -43,7 +43,6 @@ import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.ScreenDates
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.protection.IosProcessInfo
 import app.snapsync.push.IosPushNotifications
@@ -53,6 +52,8 @@ import app.snapsync.scene.SceneRecord
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.systemui.IosSystemUi
 import app.snapsync.time.SystemClock
+import app.snapsync.ui.components.DateFormatter
+import app.snapsync.ui.components.ScreenDates
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -162,7 +163,9 @@ object SnapSyncRoot {
     }
 
     /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
-    private val screenDates: ScreenDates by lazy { ScreenDates(ports.dateFormatting.value::formats) }
+    private val screenDates: ScreenDates by lazy {
+        ScreenDates { tag -> DateFormatter(ports.dateFormatting.value.formats(tag)::format) }
+    }
 
     /** What this process knows about its scenes — shared by the UI and the lifecycle adapters, on the main thread. */
     private val sceneRecord: SceneRecord by lazy { SceneRecord() }

@@ -9,6 +9,7 @@ import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
 import app.snapsync.ports.DateFormatting
 import app.snapsync.ui.StatusScreen
+import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import app.snapsync.ui.statusActions
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +34,7 @@ fun ScreenPane(
             state?.let {
                 StatusScreen(
                     state = it,
-                    dateFormats = dateFormatting::formats,
+                    dateFormats = { tag -> DateFormatter(dateFormatting.formats(tag)::format) },
                     actions = statusActions(onIntent),
                 )
             } ?: Text("the app has shown nothing yet")

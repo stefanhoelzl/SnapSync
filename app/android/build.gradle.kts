@@ -160,6 +160,8 @@ dependencies {
     implementation(project(":domain:host"))
     implementation(project(":adapter:generic:app"))
     implementation(project(":adapter:android"))
+    // The screen's date formatting the root builds over the `DateFormatting` port, for the UI adapter (`ScreenDates`).
+    implementation(project(":ui:components"))
     // The crash-reporting seat both platforms share.
     implementation(project(":adapter:generic:sentry"))
     implementation(libs.coroutines.core)

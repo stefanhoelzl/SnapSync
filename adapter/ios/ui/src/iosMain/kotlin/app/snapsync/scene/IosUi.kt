@@ -11,9 +11,9 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.model.UiState
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
-import app.snapsync.presentation.ScreenDates
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
+import app.snapsync.ui.components.ScreenDates
 import app.snapsync.ui.statusActions
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,7 +96,11 @@ class IosUi(
             val state by shown.collectAsState()
             CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
                 state?.let {
-                    StatusScreen(state = it, dateFormats = dates::formats, actions = actions)
+                    StatusScreen(
+                        state = it,
+                        dateFormats = dates.forLanguage,
+                        actions = actions,
+                    )
                 }
             }
         }

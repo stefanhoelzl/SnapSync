@@ -43,10 +43,11 @@ import app.snapsync.model.EntryScope
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.invocation
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.ScreenDates
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
+import app.snapsync.ui.components.DateFormatter
+import app.snapsync.ui.components.ScreenDates
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -78,7 +79,9 @@ class SnapSyncRoot(internal val application: Application) {
     internal val ui: AndroidUi by lazy { AndroidUi(screenDates, log) }
 
     /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
-    private val screenDates: ScreenDates by lazy { ScreenDates(ports.dateFormatting.value::formats) }
+    private val screenDates: ScreenDates by lazy {
+        ScreenDates { tag -> DateFormatter(ports.dateFormatting.value.formats(tag)::format) }
+    }
 
     /**
      * The process's ONE cutoff formatter: the zone read once from the process's clock; the

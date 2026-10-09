@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import app.snapsync.model.DateFormats
 import kotlinx.datetime.LocalDateTime
 import org.junit.Rule
 import kotlin.test.Test
@@ -33,8 +32,14 @@ class AppThemeDatesTest {
             AppTheme(platform) { Text(appDateLabel(AT)) }
         }
         rule.onNodeWithText("5 Oct 2026").assertExists()
-        platform = { DateFormats { _, _ -> "another platform's date" } }
+        platform = { DateFormatter { _, _ -> "another platform's date" } }
         rule.onNodeWithText("another platform's date").assertExists()
+    }
+
+    @Test
+    fun `the screen's date formatting answers the platform's for a language`() {
+        rule.setContent { AppTheme(ScreenDates(platformDates).forLanguage) { Text(appDateLabel(AT)) } }
+        rule.onNodeWithText("5 Oct 2026").assertExists()
     }
 
     @Test
@@ -43,7 +48,7 @@ class AppThemeDatesTest {
             rule.setContent { Text(appDateLabel(AT)) }
         }
         assertEquals(
-            "no DateFormats provided — AppTheme provides the platform's, a test provides its own",
+            "no DateFormatter provided — AppTheme provides the platform's, a test provides its own",
             failure.message,
         )
     }

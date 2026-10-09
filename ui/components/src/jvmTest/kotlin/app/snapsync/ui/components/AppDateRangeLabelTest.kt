@@ -1,6 +1,5 @@
 package app.snapsync.ui.components
 
-import app.snapsync.model.DateFormats
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
@@ -15,7 +14,7 @@ class AppDateRangeLabelTest {
 
     private val today = LocalDate(2026, 7, 13)
 
-    private fun label(start: LocalDateTime, end: LocalDateTime?, formats: DateFormats = dateFormats("en-GB")) =
+    private fun label(start: LocalDateTime, end: LocalDateTime?, formats: DateFormatter = dateFormats("en-GB")) =
         rendered(formats) { appDateRangeLabel(start, end, today) }
 
     @Test

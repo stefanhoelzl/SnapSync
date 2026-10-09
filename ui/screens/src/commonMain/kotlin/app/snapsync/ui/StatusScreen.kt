@@ -9,7 +9,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
-import app.snapsync.model.DateFormats
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
 import app.snapsync.model.JoinedEvent
 import app.snapsync.model.JoinedSurface
@@ -34,6 +33,7 @@ import app.snapsync.ui.components.AppNotice
 import app.snapsync.ui.components.AppQrSheet
 import app.snapsync.ui.components.AppTextPromptSheet
 import app.snapsync.ui.components.AppTheme
+import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.DialogCopy
 import app.snapsync.ui.components.LeaveTextAction
 import app.snapsync.ui.components.PromptField
@@ -104,7 +104,7 @@ fun StatusScreen(
     state: UiState,
     // How a date reads — the platform's (the `DateFormatting` port's `formats`), asked in the language the strings
     // resolved to. Required, with no default: the screen knows no platform's CLDR data.
-    dateFormats: (languageTag: String?) -> DateFormats,
+    dateFormats: (languageTag: String?) -> DateFormatter,
     // Everything this screen can ask for, bundled (see [StatusActions]). Required: every host builds it
     // through the one factory, `statusActions(dispatch)`, so a forgotten action is a compile error.
     actions: StatusActions,
