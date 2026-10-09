@@ -157,4 +157,24 @@ class DeletionLedgerTest {
                 "the same commit with the argument in the PR:\n  " + resurrections.joinToString("\n  "),
         )
     }
+
+    /**
+     * The open-cells list: the port-grid cells no clause covered yet, scaffolding while the gap clauses were written.
+     * Emptied and deleted; every grid cell is covered with no exception (`ClauseCoversTest`, which also refuses any
+     * other file beside the contracts module's sources and recordings). Same reversal clause as the ledger above.
+     */
+    @Test
+    fun `the open-cells list stays dead`() {
+        val resurrections = buildList {
+            if (File(repoRoot, "test/contracts/open-" + "cells.txt").exists()) add("test/contracts/open-cells.txt")
+            declared(sources(), """\b(open""" + "Cells|OPEN_" + "CELLS)" + "\\w*\\b").forEach {
+                add("an open-cells exemption in $it")
+            }
+        }
+        assertTrue(
+            resurrections.isEmpty(),
+            "every grid cell is covered, with no list of exceptions — write the clause instead:\n  " +
+                resurrections.joinToString("\n  "),
+        )
+    }
 }

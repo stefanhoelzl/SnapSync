@@ -90,16 +90,12 @@ internal object ContractCoverage {
 
     /**
      * The grid cells COVERED: declared OUTRIGHT by a clause that [isReal] — a cell in a clause's one-of group is a weak
-     * claim, held apart in `oneOf`. The one reading the open-cells list
-     * ([openCellsFile]) is held to — a claim that should count for less (a mock-only one, a weak one) is excluded here
-     * and nowhere else.
+     * claim, held apart in `oneOf`. The one reading `ClauseCoversTest` holds every grid cell to — a claim that should
+     * count for less (a mock-only one, a weak one) is excluded here and nowhere else.
      */
     val coveredCells: Set<String> by lazy {
         ContractCatalog.contracts.flatMap { c -> c.clauses.filter { isReal(c, it) }.flatMap { it.covers } }.toSet()
     }
-
-    /** The committed list of the grid cells not yet [coveredCells]: one per line, sorted, `#` lines comments. */
-    fun openCellsFile() = File(SourceScan.repoRoot, "test/contracts/open-cells.txt")
 
     /** Whether [b] is a `Live` binding CI runs: not on a recorded host, and registered if its host runs in-app. */
     private fun runsLiveOnCi(b: BindingDecl, recordedHosts: Set<String>) =

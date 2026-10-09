@@ -14,10 +14,9 @@ import kotlin.test.fail
  * clause with no declared cell, and on a declared cell the grid does not hold: a stale name, or a combination no
  * adapter can answer.
  *
- * **Armed against the open cells** (`docs/testing.md`, "Open cells"): every grid cell is either COVERED — declared by a
- * clause that runs against a real implementation on some host ([ContractCoverage.coveredCells]) — or listed in the
- * committed `test/contracts/open-cells.txt`, never both, and every entry there is a grid cell. So new port surface
- * without a clause fails at once, and the list only shrinks.
+ * **Every grid cell is covered** (`docs/testing.md`, "Every cell is covered"): declared by a clause that runs against a
+ * real implementation on some host ([ContractCoverage.coveredCells]). There is no exception: new port surface without
+ * a clause fails at once, and the fix is the clause, or a port that no longer has the cell.
  *
  * REPORTS the grid cells no clause claims, and — separately — the cells claimed only by clauses that run against no
  * real implementation on any host ([ContractCoverage.isReal]), and the cells claimed only WEAKLY, inside a clause's
@@ -68,53 +67,30 @@ class ClauseCoversTest {
 
     private val covered = ContractCoverage.coveredCells
 
-    private val openLines: List<String> =
-        ContractCoverage.openCellsFile().readLines().filter { it.isNotBlank() && !it.startsWith("#") }
-
-    private val open = openLines.toSet()
-
     @Test
-    fun `every grid cell is covered or an open cell`() {
-        val novel = (grid - covered - open).sorted()
-        if (novel.isNotEmpty()) {
+    fun `every grid cell is covered`() {
+        val uncovered = (grid - covered).sorted()
+        if (uncovered.isNotEmpty()) {
             fail(
-                "these port-grid cells are covered by no clause run against a real implementation, and are not on " +
-                    "${OPEN_CELLS}. Write the clause that covers them; only where none can be written yet, add these " +
-                    "lines to the list:\n  " + novel.joinToString("\n  "),
+                "these port-grid cells are covered by no clause run against a real implementation. Write the clause " +
+                    "that covers them, or change the port so the cell does not exist:\n  " +
+                    uncovered.joinToString("\n  "),
             )
         }
     }
 
+    /**
+     * Fails closed against an exemption list's return under any name: the contracts module's top level holds its build
+     * file, its sources and its recordings, and nothing else a gate could be taught to read as "not yet covered".
+     */
     @Test
-    fun `no open cell is covered`() {
-        val stale = (open intersect covered).sorted()
-        if (stale.isNotEmpty()) {
+    fun `the contracts module holds no list beside its recordings`() {
+        val dir = File(SourceScan.repoRoot, "test/contracts")
+        val stray = dir.list().orEmpty().filterNot { it in CONTRACTS_TOP_LEVEL }.sorted()
+        if (stray.isNotEmpty()) {
             fail(
-                "these cells on $OPEN_CELLS are now covered by a clause run against a real implementation. Delete " +
-                    "these lines — the list only shrinks:\n  " + stale.joinToString("\n  "),
-            )
-        }
-    }
-
-    @Test
-    fun `every open cell is a cell of the grid`() {
-        val unknown = (open - grid).sorted()
-        if (unknown.isNotEmpty()) {
-            fail(
-                "these entries on $OPEN_CELLS name no port-grid cell (build/reports/port-grid/port-grid.txt) — a " +
-                    "port member or variant was renamed or removed. Delete these lines; a cell it became is reported " +
-                    "by `every grid cell is covered or an open cell`:\n  " + unknown.joinToString("\n  "),
-            )
-        }
-    }
-
-    @Test
-    fun `the open cells are sorted and listed once`() {
-        val first = openLines.zipWithNext().firstOrNull { (a, b) -> a >= b }
-        if (first != null) {
-            fail(
-                "$OPEN_CELLS must list each cell once, sorted (`LC_ALL=C sort -u`): " +
-                    "\"${first.second}\" follows \"${first.first}\"",
+                "test/contracts holds $stray beside ${CONTRACTS_TOP_LEVEL.sorted()}. Every grid cell is covered, " +
+                    "with no list of exceptions: write the clause instead, and move anything else into src/.",
             )
         }
     }
@@ -152,6 +128,6 @@ class ClauseCoversTest {
     }
 
     private companion object {
-        const val OPEN_CELLS = "test/contracts/open-cells.txt"
+        val CONTRACTS_TOP_LEVEL = setOf("build.gradle.kts", "src", "recordings", "build")
     }
 }

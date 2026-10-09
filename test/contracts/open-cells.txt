@@ -1,8 +1,0 @@
-# The port-grid cells no clause covers yet (`docs/testing.md`, "Open cells").
-#
-# A cell is COVERED when a clause run against a real implementation on some host declares it outright; a claim
-# inside a one-of group is weak and covers nothing. ClauseCoversTest fails on a grid cell that is neither covered
-# nor listed here, on a listed cell that is now covered, and on an entry the grid does not hold. So this list only
-# shrinks: write the clause, then delete its lines.
-#
-# One cell per line, in the grid's own text (build/reports/port-grid/port-grid.txt), sorted.
