@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.CycleResult
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.LinkDelivery
@@ -253,7 +253,7 @@ class ExtensionHostMock {
 
 class ExtensionHostOperator internal constructor(private val mock: ExtensionHostMock) {
     /** The operating system invokes the extension's `process()`. */
-    suspend fun process(): CycleResult = mock.handlers.require("process()").onProcess()
+    suspend fun process(): ProcessingAnswer = mock.handlers.require("process()").onProcess()
 
     /** The operating system ends the invocation. */
     fun terminate() = mock.handlers.require("notifyTermination()").onTerminate()

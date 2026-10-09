@@ -9,9 +9,9 @@ import app.snapsync.ios.upload.callsFor
 import app.snapsync.ios.upload.extensionTransferClauses
 import app.snapsync.ios.upload.transferRunStep
 import app.snapsync.logging.appGroupDirectory
-import app.snapsync.model.CycleResult
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
+import app.snapsync.ports.ProcessingAnswer
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -117,7 +117,7 @@ class ContractRunningExtensionHost(private val inner: ExtensionHost) : Extension
         ExtensionHandlers(onProcess = { contractOr(handlers.onProcess) }, onTerminate = handlers.onTerminate),
     )
 
-    private suspend fun contractOr(cycle: suspend () -> CycleResult): CycleResult {
+    private suspend fun contractOr(cycle: suspend () -> ProcessingAnswer): ProcessingAnswer {
         val requestPath = contractRunFile(RUN_REQUEST_FILE) ?: return cycle()
         val request = readContractRunFile(requestPath)?.trim() ?: return cycle()
         deleteContractRunFile(requestPath)
@@ -139,13 +139,13 @@ class ContractRunningExtensionHost(private val inner: ExtensionHost) : Extension
                 contractRunFile(RUN_CALL_FILE)?.let { writeContractRunFile(it, "${call + 1}") }
                 writeContractRunFile(requestPath, request)
                 log.i { "[contract] $request: call $call prepared; asking for the next" }
-                CycleResult.PROCESSING
+                ProcessingAnswer.PROCESSING
             }
             is Step.Done -> {
                 clearRunProgress()
                 val written = contractRunFile(RUN_RESULT_FILE)?.let { writeContractRunFile(it, step.body) } ?: false
                 log.i { "[contract] $request: finished; result written=$written" }
-                CycleResult.COMPLETED
+                ProcessingAnswer.COMPLETED
             }
         }
     }

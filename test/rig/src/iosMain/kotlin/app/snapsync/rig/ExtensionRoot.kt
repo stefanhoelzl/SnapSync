@@ -141,7 +141,7 @@ internal expect suspend fun endUploadJobCycle(raw: Int): String
 
 /**
  * How a `PHBackgroundResourceUploadProcessingResult` raw value reads back — the inverse of the tested
- * `CycleResult.processingResultRawValue()` mapping, for the caller's benefit only.
+ * `ProcessingAnswer.processingResultRawValue()` mapping, for the caller's benefit only.
  *
  * Rendered rather than re-derived: the raw value IS what the Swift shell forwards to the OS, so reporting
  * it verbatim beside a name keeps the answer honest if the two ever disagree.

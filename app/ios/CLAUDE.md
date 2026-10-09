@@ -75,7 +75,7 @@ step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`swit
 - **Extension principal** (`iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift`):
   `@main` class conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension`; its `process()`
   constructs `PHBackgroundResourceUploadProcessingResult(rawValue:)` from the raw `Int` Kotlin's
-  tested `CycleResult.processingResultRawValue()` decided (`?? .failure` — the one remaining Swift
+  core decided — the `ProcessingAnswer` it returned, through `processingResultRawValue()` (`?? .failure` — the one remaining Swift
   pin; the system type is Swift-only, so the construction cannot leave the shell).
 
 ## Composition roots (manual DI — no expect/actual; both call the SHARED composition)

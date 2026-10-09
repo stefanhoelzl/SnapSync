@@ -8,7 +8,7 @@ import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockState
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.TemporaryFiles
-import app.snapsync.model.CycleResult
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.runCatchingCancellable
@@ -228,6 +228,6 @@ fun chosenExtensionHost(inner: ExtensionHost, launch: LaunchAdapters): Extension
 /** An extension host whose invocations are answered without a composition — see [chosenExtensionHost]. */
 private class UncomposedExtensionHost(private val inner: ExtensionHost) : ExtensionHost {
     override fun listen(handlers: ExtensionHandlers) = inner.listen(
-        ExtensionHandlers(onProcess = { CycleResult.COMPLETED }, onTerminate = {}),
+        ExtensionHandlers(onProcess = { ProcessingAnswer.COMPLETED }, onTerminate = {}),
     )
 }

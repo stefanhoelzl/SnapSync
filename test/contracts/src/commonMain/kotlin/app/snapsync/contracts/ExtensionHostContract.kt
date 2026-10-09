@@ -1,8 +1,8 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.CycleResult
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
+import app.snapsync.ports.ProcessingAnswer
 import kotlin.test.assertEquals
 
 /** Whether the upload extension can be invoked. */
@@ -18,8 +18,8 @@ class ExtensionHostUnderTest(
     val invoke: () -> Int,
     /** The end of an invocation. */
     val end: () -> Unit,
-    /** The platform's result for [CycleResult], as the host answers it. */
-    val resultOf: (CycleResult) -> Int,
+    /** The platform's result for [ProcessingAnswer], as the host answers it. */
+    val resultOf: (ProcessingAnswer) -> Int,
 )
 
 /**
@@ -44,17 +44,24 @@ object ExtensionHostContract : Contract<ExtensionHostState, ExtensionHostUnderTe
         ) { subject ->
             var processed = 0
             var ended = 0
+            var answer = ProcessingAnswer.PROCESSING
             subject.host.listen(
                 ExtensionHandlers(
                     onProcess = {
                         processed++
-                        CycleResult.PROCESSING
+                        answer
                     },
                     onTerminate = { ended++ },
                 ),
             )
-            assertEquals(subject.resultOf(CycleResult.PROCESSING), subject.invoke(), "the cycle's report is the answer")
-            assertEquals(1, processed, "one invocation, one cycle")
+            // Every answer reaches the platform as its own result — the adapter passes it through, deciding nothing.
+            ProcessingAnswer.entries.forEachIndexed { i, each ->
+                answer = each
+                assertEquals(subject.resultOf(each), subject.invoke(), "the handler's answer $each is the platform's")
+                assertEquals(i + 1, processed, "one invocation, one handler call")
+            }
+            val results = ProcessingAnswer.entries.map(subject.resultOf).toSet()
+            assertEquals(ProcessingAnswer.entries.size, results.size, "each answer is a distinct result")
             subject.end()
             assertEquals(1, ended, "the end of the invocation reaches the handler")
         }

@@ -1,7 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.CycleResult
-
 /**
  * **The operating system's invocations of the upload extension**: on iOS ≥26.1 the
  * PhotoKit background-upload extension's `process()` and `notifyTermination()`. Android has none — a library change
@@ -13,10 +11,26 @@ import app.snapsync.model.CycleResult
  */
 interface ExtensionHost : Listenable<ExtensionHandlers>
 
+/**
+ * What the operating system is told an invocation came to — iOS 26.1's `PHBackgroundResourceUploadProcessingResult`,
+ * case for case. The platform's vocabulary: which outcome of the core's work each answer stands for is the
+ * composition's decision, not the adapter's.
+ */
+enum class ProcessingAnswer {
+    /** Nothing more to do now; the system may rest. */
+    COMPLETED,
+
+    /** Work remains; the system should invoke again. */
+    PROCESSING,
+
+    /** The invocation failed. */
+    FAILED,
+}
+
 /** What the operating system's invocations of the extension tell the core. Built only by a composition. */
 class ExtensionHandlers(
-    /** Run one upload cycle and report how it ended. Never throws: a failure is [CycleResult.FAILED]. */
-    val onProcess: suspend () -> CycleResult,
+    /** Run one invocation and say how it came out. Never throws: a failure is [ProcessingAnswer.FAILED]. */
+    val onProcess: suspend () -> ProcessingAnswer,
     /**
      * The end of an invocation, NOT a kill. Measured on an SE2 (iOS 26.6, 2026-09-23): it arrives about 55 ms after
      * every normal return of [onProcess], and never before the kill that ends a call running past its ~60 s budget —
