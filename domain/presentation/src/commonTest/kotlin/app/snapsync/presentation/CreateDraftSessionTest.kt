@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.presentation
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

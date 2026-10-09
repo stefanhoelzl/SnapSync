@@ -20,7 +20,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -31,11 +30,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import app.snapsync.model.PickerView
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.picker_cancel
 import app.snapsync.ui.components.resources.picker_save
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
 import org.jetbrains.compose.resources.stringResource
 
@@ -59,38 +57,29 @@ internal const val WHEEL_DISTANT_ALPHA = 0.25f
 
 /**
  * The range picker as a dialog: the same [RangeEditor] the
- * create screen shows inline — calendar, gestures, wheels, rules — inside a pane-centred card with a [title],
- * its [presets] as chips on top, and Cancel / OK. The join and settings surfaces open it on the range
- * already chosen ([initial], complete), so the first tap on a day starts a new range and narrowing an end is
- * a drag of that end. [bounds] hold it to the event's window.
+ * create screen shows inline — calendar, gestures, wheels — inside a pane-centred card with a [title], its
+ * [presets] as chips on top, and Cancel / OK. It draws [picker], which the app opens on the range already chosen and
+ * holds to the event's window, and reports each gesture to [gestures].
  *
- * Nothing leaves the dialog until OK, which is enabled only while the range is valid; a chip is a complete
- * choice the caller commits on tap, so it bypasses OK; Cancel changes nothing.
+ * OK is offered only while the picker is complete; a chip is a complete choice the caller commits on tap, so it
+ * bypasses OK; Cancel changes nothing.
  */
 @Composable
 internal fun RangePickerDialog(
-    initial: EventRange,
-    bounds: RangeBounds,
+    picker: PickerView,
     title: String,
-    today: LocalDate,
     presets: List<RangePresetChip>,
+    gestures: RangeGestures,
     onDismiss: () -> Unit,
-    onConfirm: (from: LocalDateTime, until: LocalDateTime) -> Unit,
+    onConfirm: () -> Unit,
 ) {
-    var range by remember { mutableStateOf(initial) }
-    val end = range.until?.takeIf { range.isValid(bounds) }
     PickerDialogShell(
         title = title,
         onDismiss = onDismiss,
-        onConfirm = end?.let { until ->
-            {
-                onConfirm(range.from, until)
-            }
-        },
+        onConfirm = onConfirm.takeIf { picker.complete },
     ) {
         PresetChips(presets)
-        // A join or settings range always has its end time, so the clock's hour is never needed to fill one.
-        RangeEditor(range, bounds, today, currentHour = { range.from.hour }) { range = it }
+        RangeEditor(picker, gestures)
     }
 }
 

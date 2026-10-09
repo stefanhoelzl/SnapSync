@@ -13,7 +13,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.v2.runComposeUiTest
-import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
 import kotlin.test.Test
@@ -29,10 +28,6 @@ import kotlin.test.assertTrue
 class AppEventRangeHighlightTest {
 
     private companion object {
-        val TEN_DAYS = RangeBounds.lastingAtMost { from ->
-            LocalDateTime(from.date.plus(10, DateTimeUnit.DAY), from.time)
-        }
-
         /** Past the 200 ms rise, inside the 700 ms hold: the outline is fully drawn. */
         const val AT_PEAK_MS = 400L
 
@@ -88,13 +83,10 @@ class AppEventRangeHighlightTest {
             ) {
                 primary = MaterialTheme.colorScheme.primary
                 AppEventRangePicker(
-                    range = EventRange(from = LocalDateTime(2026, 3, 10, 9, 0)),
-                    bounds = TEN_DAYS,
+                    picker = picker(LocalDateTime(2026, 3, 10, 9, 0)),
                     note = "note",
-                    today = NOT_IN_MARCH,
-                    currentHour = { 15 },
+                    gestures = GestureLog().gestures,
                     endTime = EndTimeGuide(showRequests = requests, onPickEndTime = null),
-                    onChange = {},
                 )
             }
         }

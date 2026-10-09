@@ -135,7 +135,7 @@ class FullStackIntegrationTest {
         scenario = "Nothing to share still settles",
     )
     fun create_event_lifts_the_setup_gate() = rigTest {
-        assertEquals(Layer.CreateEvent(), state().ui.layer)
+        assertIs<Layer.CreateEvent>(state().ui.layer)
 
         create(name = "Party")
         join()

@@ -1,10 +1,10 @@
 package app.snapsync.ui
 
 import androidx.compose.runtime.Composable
+import app.snapsync.model.CoarseDuration
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.TimeLeft
-import app.snapsync.presentation.CoarseDuration
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.duration_hours

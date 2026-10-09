@@ -14,7 +14,6 @@ import app.snapsync.model.UiState
 import app.snapsync.model.invocation
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.ScreenDates
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
@@ -34,11 +33,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * [show] keeps the latest state in a conflated flow every live screen collects; while no screen is live it only updates
  * the flow.
  *
- * [cutoff] is the process's one formatter — the same instance the status host reduces with — so the screen and the host
- * render one capture date one way. [dates] is the process's date formatting, the screen's every date read through it.
+ * [dates] is the process's date formatting, the screen's every date read through it.
  */
 class AndroidUi(
-    private val cutoff: CutoffFormatter,
     private val dates: ScreenDates,
     private val log: Logger,
 ) : Ui {
@@ -61,7 +58,7 @@ class AndroidUi(
             val state by shown.collectAsState()
             CompositionLocalProvider(LocalReduceMotion provides animationsOff()) {
                 state?.let {
-                    StatusScreen(state = it, cutoff = cutoff, dateFormats = dates::formats, actions = actions)
+                    StatusScreen(state = it, dateFormats = dates::formats, actions = actions)
                 }
             }
         }

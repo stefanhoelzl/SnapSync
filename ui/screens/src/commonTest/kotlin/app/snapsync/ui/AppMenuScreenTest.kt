@@ -28,7 +28,6 @@ import app.snapsync.model.MobileDataState
 import app.snapsync.model.Overlays
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.UiState
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.resources.Res
@@ -44,12 +43,10 @@ import app.snapsync.ui.resources.report_problem
 import app.snapsync.ui.resources.report_saved
 import app.snapsync.ui.resources.report_sent
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.time.Instant
 import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /**
@@ -58,8 +55,6 @@ import app.snapsync.ui.components.resources.Res as ComponentRes
  * says, each row asks for its own intent, the footer is not a control, and each report outcome reads as itself.
  */
 class AppMenuScreenTest {
-
-    private val cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC)
 
     private val range = Choices().over(
         LocalDateTime(2026, 7, 6, 0, 0),
@@ -72,8 +67,7 @@ class AppMenuScreenTest {
         var opened = 0
         setContent {
             TestStatusScreen(
-                UiState(Layer.CreateEvent()),
-                cutoff,
+                UiState(createLayer()),
                 testActions(menu = testMenuActions(onMenuOpen = { opened++ })),
             )
         }
@@ -85,7 +79,7 @@ class AppMenuScreenTest {
     @Test
     fun `no menu button while a create or a join is in progress`() = runComposeUiTest {
         var state by androidx.compose.runtime.mutableStateOf(UiState(Layer.CreatingEvent))
-        setContent { TestStatusScreen(state, cutoff) }
+        setContent { TestStatusScreen(state) }
         onNodeWithContentDescription(str(ComponentRes.string.menu)).assertDoesNotExist()
         state = UiState(
             Layer.JoiningEvent(eventId = "E", stage = JoinStage.Loaded(JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Committing), range)),
@@ -103,8 +97,7 @@ class AppMenuScreenTest {
             val asked = mutableListOf<String>()
             setContent {
                 TestStatusScreen(
-                    UiState(Layer.CreateEvent(), Overlays(menuOpen = true), build = BuildLabel("0.12", "2140")),
-                    cutoff,
+                    UiState(createLayer(), Overlays(menuOpen = true), build = BuildLabel("0.12", "2140")),
                     testActions(
                         menu = testMenuActions(
                             onReportBug = { asked += "report" },
@@ -131,8 +124,7 @@ class AppMenuScreenTest {
             setContent {
                 // No event: the switch is the device's, offered before any join.
                 TestStatusScreen(
-                    UiState(Layer.CreateEvent(), Overlays(menuOpen = true)),
-                    cutoff,
+                    UiState(createLayer(), Overlays(menuOpen = true)),
                     testActions(menu = testMenuActions(onMobileData = { flips += it })),
                 )
             }
@@ -149,8 +141,7 @@ class AppMenuScreenTest {
     fun `with mobile data off the menu says photos travel only on Wi-Fi`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                UiState(Layer.CreateEvent(), Overlays(menuOpen = true), mobileData = MobileDataState(on = false)),
-                cutoff,
+                UiState(createLayer(), Overlays(menuOpen = true), mobileData = MobileDataState(on = false)),
             )
         }
         waitForIdle()
@@ -162,11 +153,10 @@ class AppMenuScreenTest {
         setContent {
             TestStatusScreen(
                 UiState(
-                    Layer.CreateEvent(),
+                    createLayer(),
                     Overlays(menuOpen = true),
                     mobileData = MobileDataState(on = true, notSaved = true),
                 ),
-                cutoff,
             )
         }
         waitForIdle()
@@ -181,8 +171,7 @@ class AppMenuScreenTest {
             // An iPhone SE's width: M3's own 360dp sheet would cover the tap below; the menu must leave it uncovered.
             Box(Modifier.size(375.dp, 667.dp)) {
                 TestStatusScreen(
-                    UiState(Layer.CreateEvent(), Overlays(menuOpen = true)),
-                    cutoff,
+                    UiState(createLayer(), Overlays(menuOpen = true)),
                     testActions(menu = testMenuActions(onMenuDismiss = { dismissed++ })),
                 )
             }
@@ -198,8 +187,7 @@ class AppMenuScreenTest {
         var dismissed = 0
         setContent {
             TestStatusScreen(
-                UiState(Layer.CreateEvent(), Overlays(menuOpen = true)),
-                cutoff,
+                UiState(createLayer(), Overlays(menuOpen = true)),
                 testActions(menu = testMenuActions(onMenuDismiss = { dismissed++ })),
             )
         }
@@ -210,17 +198,16 @@ class AppMenuScreenTest {
 
     @Test
     fun `each report outcome reads as itself — and a tap puts it away`() = runComposeUiTest {
-        var state by androidx.compose.runtime.mutableStateOf(UiState(Layer.CreateEvent()))
+        var state by androidx.compose.runtime.mutableStateOf(UiState(createLayer()))
         var dismissed = 0
         setContent {
             TestStatusScreen(
                 state,
-                cutoff,
                 testActions(menu = testMenuActions(onReportNoticeDismiss = { dismissed++ })),
             )
         }
         for (outcome in ReportOutcome.entries) {
-            state = UiState(Layer.CreateEvent(), Overlays(reportNotice = outcome))
+            state = UiState(createLayer(), Overlays(reportNotice = outcome))
             waitForIdle()
             onNode(hasText(str(noticeOf(outcome)))).assertExists()
         }

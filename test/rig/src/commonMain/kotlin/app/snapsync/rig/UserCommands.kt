@@ -34,14 +34,23 @@ import kotlin.time.Instant
  */
 fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String, RigUserCommand> = mapOf(
     "leave" to RigUserCommand { dispatch(UiIntent.LeaveEvent) },
+    // The create form, filled as a person fills it (capability `create-event`): the name typed, the days swept, each
+    // wheel settled — then Create. The form's own rules apply, so a window the form cannot hold (inverted, or longer
+    // than an event may last) is created as the form makes it, never as stated.
     "create" to RigUserCommand { params ->
-        dispatch(
-            UiIntent.CreateEvent(
-                name = params["name"].orEmpty(),
-                startsAt = localDateTime(params["startsAt"]),
-                endsAt = localDateTime(params["endsAt"]),
-            ),
-        )
+        val from = localDateTime(params["startsAt"])
+        val until = localDateTime(params["endsAt"])
+        dispatch(UiIntent.CreateName(params["name"].orEmpty()))
+        dispatch(UiIntent.RangeSweep(from.date, until.date))
+        dispatch(UiIntent.RangeFromHour(from.hour))
+        dispatch(UiIntent.RangeFromMinute(from.minute))
+        dispatch(UiIntent.RangeUntilHour(until.hour))
+        dispatch(UiIntent.RangeUntilMinute(until.minute))
+        dispatch(UiIntent.ConfirmCreate)
+    },
+    // The create form's name alone, as typed (capability `create-event`).
+    "createName" to RigUserCommand { params ->
+        dispatch(UiIntent.CreateName(requireNotNull(params["name"]) { "name is required" }))
     },
     // The commit carries nothing now: what is committed is what the reduction resolved from the form.
     // So the channel does what a member does — set the choices, then
@@ -170,6 +179,12 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     // names — the join then confirms them, the settings apply each as it is set. The PRESET tap is the one it does not need: a preset is a shorthand for a
     // bound the caller can state outright, and `applyRangeChoices` states it — offering both would give
     // the channel two ways to say one thing, and they could disagree.
+    "onRangeEdit" to
+        "a range calendar's taps, drags and wheel settles: the channel states a range outright — `create` with its " +
+        "window, `setRange`/`confirmJoin` with a `cutoff`/`until` — rather than replaying the gestures that pick one.",
+    "onOpen" to
+        "opens the range calendar over a participation surface, a drawing the channel does not need; with " +
+        "`onConfirm` and `onDismiss`, it is the gesture path `onRangeEdit` explains.",
     "onRangePreset" to
         "reached through `setRange?range=wholeEvent|fromNow`, which names the preset rather than a second command for it.",
     // ---- what is drawn OVER the layer ------------------------------------------------------

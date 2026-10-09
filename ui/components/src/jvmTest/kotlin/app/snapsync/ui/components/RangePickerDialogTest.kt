@@ -13,22 +13,24 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
+import app.snapsync.model.PickerView
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.picker_save
 import app.snapsync.ui.components.resources.share_range_title
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_not_set
 import app.snapsync.ui.components.resources.wheel_start_hour
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import org.junit.Rule
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 /**
  * The range picker as the join and settings surfaces open it ([RangePickerDialog]): the create screen's
- * [RangeEditor] in a dialog, held to the event's window, opened on the chosen range complete, with preset
- * chips and Cancel / OK (capabilities `join-event`, `manage-membership`).
+ * [RangeEditor] in a dialog with preset chips and Cancel / OK (capabilities `join-event`, `manage-membership`). It draws
+ * the picker it is given — the app opens it on the chosen range, held to the event's window — offers OK only while
+ * that picker is complete, and reports every gesture.
  *
  * The window is 10–20 March 2026 (`2026-03-09` is a Monday), so day descriptions are stable whatever the
  * wall-clock "today" is. Reduce motion is required: animating wheels never let the scene idle.
@@ -37,15 +39,25 @@ class RangePickerDialogTest {
 
     private companion object {
         val START = LocalDateTime(2026, 3, 10, 18, 0)
-        val END = LocalDateTime(2026, 3, 20, 18, 0)
-        val WINDOW = RangeBounds.within(START, END)
-        val WHOLE = EventRange(START, END.date, END.time, endPending = false)
+
+        /** The whole event, complete, held to its window. */
+        val WHOLE = picker(
+            START,
+            endDay = LocalDate(2026, 3, 20),
+            untilHour = 18,
+            untilMinute = 0,
+            endPending = false,
+            firstDay = LocalDate(2026, 3, 10),
+            lastDay = LocalDate(2026, 3, 20),
+            complete = true,
+        )
     }
 
     @get:Rule
     val rule = createComposeRule()
 
-    private var confirmed: Pair<LocalDateTime, LocalDateTime>? = null
+    private val log = GestureLog()
+    private var confirmed = 0
     private var chosen: String? = null
 
     @Test
@@ -70,31 +82,34 @@ class RangePickerDialogTest {
     }
 
     @Test
-    fun `OK unchanged reports the range it opened on`() {
+    fun `OK on a complete range takes it`() {
         setDialog()
         rule.onNodeWithText(str(Res.string.picker_save)).performClick()
-        assertEquals(START to END, confirmed)
+        assertEquals(1, confirmed)
     }
 
     @Test
-    fun `a first tap starts a new range and OK waits for its last day`() {
+    fun `OK waits while the range is not complete`() {
+        setDialog(WHOLE.copy(endDay = LocalDate(2026, 3, 13), endPending = true, complete = false))
+        rule.onNodeWithText(str(Res.string.picker_save)).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `a tap on a day reports it`() {
         setDialog()
         rule.onNodeWithContentDescription("Friday, 13 March 2026").performClick()
-        rule.onNodeWithText(str(Res.string.picker_save)).assertIsNotEnabled()
-        rule.onNodeWithContentDescription("Sunday, 15 March 2026").performClick()
-        rule.onNodeWithText(str(Res.string.picker_save)).assertIsEnabled().performClick()
-        assertEquals(LocalDateTime(2026, 3, 13, 18, 0) to LocalDateTime(2026, 3, 15, 18, 0), confirmed)
+        rule.waitForIdle()
+        assertEquals(listOf("day 2026-03-13"), log.events)
     }
 
     @Test
-    fun `dragging the end narrows the range`() {
+    fun `dragging the end reports the day it reaches`() {
         setDialog()
         rule.onNodeWithContentDescription("Friday, 20 March 2026").performTouchInput {
             swipe(center, center - Offset(width * 3f, 0f), durationMillis = 300) // three columns back: Tuesday 17
         }
         rule.waitForIdle()
-        rule.onNodeWithText(str(Res.string.picker_save)).performClick()
-        assertEquals(START to LocalDateTime(2026, 3, 17, 18, 0), confirmed)
+        assertEquals("end 2026-03-17", log.last("end"))
     }
 
     @Test
@@ -102,33 +117,37 @@ class RangePickerDialogTest {
         setDialog()
         rule.onNodeWithText("Whole event").performClick()
         assertEquals("whole", chosen)
-        assertNull(confirmed)
-    }
-
-    private fun setDialog(initial: EventRange = WHOLE) {
-        rule.setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true, LocalDateFormats provides dateFormats(null)) {
-                RangePickerDialog(
-                    initial = initial,
-                    bounds = WINDOW,
-                    title = "Which photos to share",
-                    today = NOT_IN_MARCH,
-                    presets = listOf(RangePresetChip("Whole event", selected = true) { chosen = "whole" }),
-                    onDismiss = {},
-                    onConfirm = { f, u -> confirmed = f to u },
-                )
-            }
-        }
+        assertEquals(0, confirmed)
     }
 
     @Test
-    fun `a new range on the event's last day has no end time, and OK waits`() {
-        setDialog()
-        // Restarted at 18:00 on the 20th, the event's own end: no end on that day comes after the start.
-        rule.onNodeWithContentDescription("Friday, 20 March 2026").performClick()
-        rule.onNodeWithContentDescription("Friday, 20 March 2026").performClick()
+    fun `an end time the range has no room for is shown not set`() {
+        setDialog(
+            WHOLE.copy(
+                endDay = LocalDate(2026, 3, 20),
+                untilHour = null,
+                untilMinute = null,
+                untilTimes = null,
+                complete = false,
+            ),
+        )
         rule.onNodeWithContentDescription(str(Res.string.wheel_end_hour), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, str(Res.string.wheel_not_set)))
         rule.onNodeWithText(str(Res.string.picker_save)).assertIsNotEnabled()
+    }
+
+    private fun setDialog(picker: PickerView = WHOLE) {
+        rule.setContent {
+            CompositionLocalProvider(LocalReduceMotion provides true, LocalDateFormats provides dateFormats(null)) {
+                RangePickerDialog(
+                    picker = picker,
+                    title = "Which photos to share",
+                    presets = listOf(RangePresetChip("Whole event", selected = true) { chosen = "whole" }),
+                    gestures = log.gestures,
+                    onDismiss = {},
+                    onConfirm = { confirmed++ },
+                )
+            }
+        }
     }
 }

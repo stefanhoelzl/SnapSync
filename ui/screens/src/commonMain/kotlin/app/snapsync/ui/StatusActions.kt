@@ -2,7 +2,7 @@ package app.snapsync.ui
 
 import app.snapsync.model.AppLink
 import app.snapsync.model.ScreenMessage
-import kotlinx.datetime.LocalDateTime
+import app.snapsync.ui.components.RangeGestures
 
 /**
  * Everything the status screen can ASK FOR, grouped by the surface that asks.
@@ -44,13 +44,11 @@ class StatusActions(
      */
     val surfaces: SurfaceActions,
 
-    // Create an event: the trimmed name and the chosen `[startsAt, endsAt]`
-    // event window as LOCAL wall-clock values (the container converts each to a canonical `…Z` string).
-    // Top-level rather than in a group of one: the create layer asks for exactly this and nothing else.
-    val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
+    /** What the create form asks for. */
+    val create: CreateActions,
     /**
      * Open this build's store page — the update-required screen's one button.
-     * Top-level rather than in a group, like [onCreateEvent]: it belongs to no escalation and shares its question
+     * Top-level rather than in a group: it belongs to no escalation and shares its question
      * with nothing.
      */
     val onOpenStore: () -> Unit,
@@ -64,8 +62,18 @@ class StatusActions(
 )
 
 /**
- * What the APP MENU asks for: opening and closing it, its rows, sending the report it leads to, and tapping away
- * the word on a sent report. A group of its own because every
+ * What the CREATE FORM asks for: the name as it is typed, the range calendar's gestures,
+ * and Create — which creates the form as the app holds it.
+ */
+class CreateActions(
+    val onName: (String) -> Unit,
+    val range: RangeGestures,
+    val onCreate: () -> Unit,
+)
+
+/**
+ * What the APP MENU asks for: opening and closing it, its rows, sending the report it leads
+ * to, and tapping away the word on a sent report. A group of its own because every
  * layer that offers the menu asks the same things.
  */
 class MenuActions(

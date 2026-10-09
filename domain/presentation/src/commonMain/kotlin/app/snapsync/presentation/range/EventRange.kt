@@ -1,13 +1,13 @@
-package app.snapsync.ui.components
+package app.snapsync.presentation.range
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 
-// The rules of the create screen's range: what the range IS, and what a settle of
-// a time wheel does to it (what a day tap or drag does is `EventRangeDays.kt`). Pure, so every rule is
-// unit-tested without composing anything; [AppEventRangePicker] only renders a range and feeds these the
-// gestures.
+// The rules of a picked range: what the range IS, and what a settle of a
+// time wheel does to it (what a day tap or drag does is `EventRangeDays.kt`). Pure, so every rule is unit-tested
+// without composing anything; the screen's range calendar only draws a [PickerView][app.snapsync.model.PickerView]
+// and reports the gestures (`RangeEditing.kt`).
 
 /**
  * What the host has chosen for the event's window so far.
@@ -19,7 +19,7 @@ import kotlinx.datetime.LocalTime
  * moves: while it is set, a tap on or after the start places the last day; once the last day has been placed,
  * the next tap starts a new range.
  */
-data class EventRange(
+internal data class EventRange(
     val from: LocalDateTime,
     val endDay: LocalDate = from.date,
     val untilHour: Int? = null,
@@ -62,9 +62,12 @@ internal fun EventRange.fromAllowed(time: LocalTime, bounds: RangeBounds): Boole
 }
 
 /** Whether the range is complete and inside [bounds] — what a surface that confirms a range asks. */
-internal fun EventRange.isValid(bounds: RangeBounds): Boolean {
-    val end = until
-    return end != null && untilAllowed(end.time, bounds) && fromAllowed(from.time, bounds)
+internal fun EventRange.isValid(bounds: RangeBounds): Boolean = validUntil(bounds) != null
+
+/** The end of a range complete and inside [bounds] — what a confirm takes — or `null` while it is not. */
+internal fun EventRange.validUntil(bounds: RangeBounds): LocalDateTime? {
+    val end = until ?: return null
+    return end.takeIf { untilAllowed(end.time, bounds) && fromAllowed(from.time, bounds) }
 }
 
 /**

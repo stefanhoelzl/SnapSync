@@ -16,13 +16,15 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputEventHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
+import app.snapsync.model.PickerView
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.plus
 
 // Dragging on the range calendar: a range endpoint is dragged straight
-// away, and a sweep across days selects a new range after a LONG PRESS. The long press is deliberate — the
+// away, and a sweep across days selects a new range after a LONG PRESS. Each is reported as a gesture; what it makes
+// is the app's. The long press is deliberate — the
 // calendar fills most of a small phone's form, so a drag that started anywhere on it and selected days would
 // leave the host no place to scroll the form from.
 
@@ -30,18 +32,13 @@ import kotlinx.datetime.plus
 private enum class Handle { START, END }
 
 /**
- * The drag gestures over a [RangeCalendarGrid] showing [visibleMonth]. Each move hands [onChange] the next
- * range from the rules in `EventRangeDays.kt`; taps are left to the day cells.
+ * The drag gestures over a [RangeCalendarGrid] showing [visibleMonth], reported to [gestures] day by day: which end is
+ * held, or a sweep from where the long press landed. What each makes is the app's; taps are left to the day cells.
  */
 @Composable
-internal fun Modifier.rangeDrags(
-    visibleMonth: LocalDate,
-    range: EventRange,
-    bounds: RangeBounds,
-    onChange: (EventRange) -> Unit,
-): Modifier {
+internal fun Modifier.rangeDrags(visibleMonth: LocalDate, range: PickerView, gestures: RangeGestures): Modifier {
     val current by rememberUpdatedState(range)
-    val emit by rememberUpdatedState(onChange)
+    val report by rememberUpdatedState(gestures)
     val drags = PointerInputEventHandler {
         val month = MonthLayout(visibleMonth)
         awaitEachGesture {
@@ -49,12 +46,12 @@ internal fun Modifier.rangeDrags(
             val pressed = month.dayAt(down.position, size) ?: return@awaitEachGesture
             val onEndpoint = pressed == current.from.date || pressed == current.endDay
             if (onEndpoint) {
-                dragEndpoint(down.id, pressed, month, size, bounds, { current }) { emit(it) }
+                dragEndpoint(down.id, pressed, month, size, current) { report }
             } else {
                 awaitLongPressOrCancellation(down.id)?.let { press ->
-                    emit(current.sweep(pressed, pressed, bounds))
+                    report.onSweep(pressed, pressed)
                     drag(press.id) { change ->
-                        month.dayAt(change.position, size)?.let { emit(current.sweep(pressed, it, bounds)) }
+                        month.dayAt(change.position, size)?.let { report.onSweep(pressed, it) }
                         change.consume()
                     }
                 }
@@ -73,19 +70,18 @@ private suspend fun AwaitPointerEventScope.dragEndpoint(
     pressed: LocalDate,
     month: MonthLayout,
     size: IntSize,
-    bounds: RangeBounds,
-    current: () -> EventRange,
-    emit: (EventRange) -> Unit,
+    range: PickerView,
+    gestures: () -> RangeGestures,
 ) {
     var firstMove = Offset.Zero
     val moved = awaitTouchSlopOrCancellation(pointer) { change, overSlop ->
         firstMove = overSlop
         change.consume()
     } ?: return
-    val held = whichHandle(current(), pressed, firstMove)
+    val held = whichHandle(range, pressed, firstMove)
     val follow = { change: PointerInputChange ->
         month.dayAt(change.position, size)?.let { day ->
-            emit(if (held == Handle.START) current().dragStartTo(day, bounds) else current().dragEndTo(day, bounds))
+            if (held == Handle.START) gestures().onDragStart(day) else gestures().onDragEnd(day)
         }
         change.consume()
     }
@@ -95,7 +91,7 @@ private suspend fun AwaitPointerEventScope.dragEndpoint(
     drag(moved.id, follow)
 }
 
-private fun whichHandle(range: EventRange, pressed: LocalDate, overSlop: Offset): Handle = when {
+private fun whichHandle(range: PickerView, pressed: LocalDate, overSlop: Offset): Handle = when {
     range.from.date != range.endDay -> if (pressed == range.from.date) Handle.START else Handle.END
     overSlop.x + overSlop.y < 0 -> Handle.START
     else -> Handle.END

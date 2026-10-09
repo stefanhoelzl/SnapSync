@@ -13,7 +13,6 @@ import app.snapsync.ui.components.AppToggleDivider
 import app.snapsync.ui.components.AppToggleRow
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeChoices
-import app.snapsync.ui.components.RangeWindow
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_toggle
 import app.snapsync.ui.resources.range_custom
@@ -101,7 +100,8 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
     AppShareRangeRow(
         choices = state.choices,
         actions = actions.choices,
-        window = state.window,
+        fromNowOffered = state.range.nowAvailable,
+        picker = state.range.picker,
         rangeLabel = state.rangeLabel,
         detail = shareDetail(state.range.preset, state.range.shareCount).text(),
     )
@@ -150,7 +150,6 @@ class ParticipationState(
     val saveToAlbum: Boolean get() = range.saveToAlbum
     val albumStyle: AlbumStyle get() = range.albumStyle
     val choices: RangeChoices get() = RangeChoices(range.preset, range.from, range.until)
-    val window: RangeWindow get() = RangeWindow(range.windowStart, range.windowEnd, range.nowAvailable, range.today)
 }
 
 /** Everything the participation surface can ask for. */

@@ -15,20 +15,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.snapsync.model.PickerView
 import app.snapsync.model.RangeChoice
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.share_range_change
 import app.snapsync.ui.components.resources.share_range_from_now
 import app.snapsync.ui.components.resources.share_range_title
 import app.snapsync.ui.components.resources.share_range_whole_event
-import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import org.jetbrains.compose.resources.stringResource
 
@@ -43,38 +41,30 @@ class RangeChoices(
     val until: LocalDateTime,
 )
 
-/** The two edits a member can make to a [RangeChoices]: pick a preset, or pick a custom range. */
+/**
+ * What a member can do to a [RangeChoices]: pick a preset, or open the range calendar ([onOpen]), work it ([gestures])
+ * and take its span ([onConfirm]) or close it unchanged ([onDismiss]).
+ */
 class RangeChoiceActions(
     val onPreset: (RangeChoice) -> Unit,
-    val onCustom: (from: LocalDateTime, until: LocalDateTime) -> Unit,
-)
-
-/**
- * The event window a range is picked inside, and whether "now" falls within it.
- *
- * [nowAvailable] is `false` when the present is outside `[start, end]`; the **From now** chip is then not
- * offered at all — outside the window it would clamp to a bound the member did not choose.
- */
-class RangeWindow(
-    val start: LocalDateTime,
-    val end: LocalDateTime,
-    val nowAvailable: Boolean,
-    /** The device's date, which the calendar marks as today. */
-    val today: LocalDate,
+    val onOpen: () -> Unit,
+    val gestures: RangeGestures,
+    val onConfirm: () -> Unit,
+    val onDismiss: () -> Unit,
 )
 
 /**
  * The capture-date **range** as ONE row: the resolved
  * range in the row's heaviest type, a [detail] line beneath it (the caller's "<preset> · <count>"), and an
- * edit affordance that opens the design system's range calendar bounded to the event [window], with the
+ * edit affordance that opens the design system's range calendar bounded to the event's window, with the
  * **Whole event** / **From now** presets as chips above it. It replaced two captioned preset lists (three
  * start rows, two end rows) that alone filled the first view of the join screen (decision record
  * `simplify-join-screen`, D2).
  *
- * The calendar is the create screen's range picker in a dialog ([RangePickerDialog]), held to the event's
- * window. A chip commits its preset and closes; OK commits the calendar's span as a custom range; Cancel
- * changes nothing. The calendar opens on the range currently chosen, complete, so the first tap on a day
- * starts a new range and narrowing one end is a drag of that end.
+ * The calendar is the create screen's range picker in a dialog ([RangePickerDialog]), drawn from [picker] — the app's
+ * calendar while it is open, `null` while closed. A chip commits its preset; OK commits the calendar's span as a custom
+ * range; Cancel changes nothing. The app opens it on the range currently chosen, complete, and holds it to the event's
+ * window.
  *
  * It is **not** a card of its own: it sits inside the Share section, because "do I share" and "which
  * photos" are one decision. Appearance-free: the choices, the actions, the window, and two strings cross
@@ -84,12 +74,13 @@ class RangeWindow(
 fun AppShareRangeRow(
     choices: RangeChoices,
     actions: RangeChoiceActions,
-    window: RangeWindow,
+    /** "From now" is offered only while the present lies inside the event window. */
+    fromNowOffered: Boolean,
+    picker: PickerView?,
     rangeLabel: String,
     detail: String,
 ) {
     val scheme = MaterialTheme.colorScheme
-    var picking by remember { mutableStateOf(false) }
 
     Surface(
         color = scheme.surface,
@@ -113,42 +104,28 @@ fun AppShareRangeRow(
                     color = scheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = { picking = true }) {
+            IconButton(onClick = actions.onOpen) {
                 Icon(Icons.Filled.Edit, contentDescription = stringResource(Res.string.share_range_change))
             }
         }
     }
 
-    if (picking) {
+    if (picker != null) {
         val wholeEvent = stringResource(Res.string.share_range_whole_event)
         val fromNow = stringResource(Res.string.share_range_from_now)
         RangePickerDialog(
-            initial = EventRange(choices.from, choices.until.date, choices.until.time, endPending = false),
-            bounds = RangeBounds.within(window.start, window.end),
+            picker = picker,
             title = stringResource(Res.string.share_range_title),
-            today = window.today,
             presets = buildList {
-                add(presetChip(wholeEvent, RangeChoice.WHOLE_EVENT, choices, actions) { picking = false })
-                if (window.nowAvailable) {
-                    add(presetChip(fromNow, RangeChoice.FROM_NOW, choices, actions) { picking = false })
-                }
+                add(presetChip(wholeEvent, RangeChoice.WHOLE_EVENT, choices, actions))
+                if (fromNowOffered) add(presetChip(fromNow, RangeChoice.FROM_NOW, choices, actions))
             },
-            onDismiss = { picking = false },
-            onConfirm = { from, until ->
-                picking = false
-                actions.onCustom(from.coerceIn(window.start, window.end), until.coerceIn(window.start, window.end))
-            },
+            gestures = actions.gestures,
+            onDismiss = actions.onDismiss,
+            onConfirm = actions.onConfirm,
         )
     }
 }
 
-private fun presetChip(
-    label: String,
-    preset: RangeChoice,
-    choices: RangeChoices,
-    actions: RangeChoiceActions,
-    close: () -> Unit,
-) = RangePresetChip(label = label, selected = choices.preset == preset) {
-    close()
-    actions.onPreset(preset)
-}
+private fun presetChip(label: String, preset: RangeChoice, choices: RangeChoices, actions: RangeChoiceActions) =
+    RangePresetChip(label = label, selected = choices.preset == preset) { actions.onPreset(preset) }

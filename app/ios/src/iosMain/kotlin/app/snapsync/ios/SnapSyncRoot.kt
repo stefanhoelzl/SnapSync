@@ -168,7 +168,7 @@ object SnapSyncRoot {
     private val sceneRecord: SceneRecord by lazy { SceneRecord() }
 
     /** The Compose scene SwiftUI hosts (`:adapter:ios:ui`). */
-    internal val ui: IosUi by lazy { IosUi(sceneRecord, cutoffFormatter, screenDates, log) }
+    internal val ui: IosUi by lazy { IosUi(sceneRecord, screenDates, log) }
 
     /** The app's foreground life: `didBecomeActive` / `willResignActive`, observed once the graph registers. */
     internal val lifecycle: IosLifecycle by lazy { IosLifecycle(sceneRecord, log) }

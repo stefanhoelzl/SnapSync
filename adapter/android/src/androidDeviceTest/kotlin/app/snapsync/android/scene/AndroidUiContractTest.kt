@@ -21,6 +21,8 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -194,7 +196,7 @@ private fun str(res: StringResource): String = runBlocking { getString(res) }
  */
 class AndroidUiContractTest {
 
-    private val ui = AndroidUi(CUTOFF, ScreenDates(AndroidDateFormatting()::formats), Logger.withTag("contract"))
+    private val ui = AndroidUi(ScreenDates(AndroidDateFormatting()::formats), Logger.withTag("contract"))
 
     /**
      * [ui] as the clause's call log sees it: what the tour shows each state through, since showing is the clause's own
@@ -406,8 +408,8 @@ class AndroidUiContractTest {
         openMenu()
         onNodeWithText(str(Res.string.menu_website)).performClick()
         awaitShown { !it.overlays.menuOpen }
-        // Create, once the form is complete.
-        completeForm("My Party")
+        // The form: the name, every calendar gesture, every wheel — then Create.
+        createForm()
         onNodeWithText(str(Res.string.create_button)).performClick()
     }
 
@@ -416,21 +418,71 @@ class AndroidUiContractTest {
         awaitShown { it.overlays.menuOpen }
     }
 
-    /** A complete create form: a name, the last day Wednesday 8 July, and the end at 13:00. */
-    private fun ComposeUiTest.completeForm(name: String) {
-        onNode(hasSetTextAction()).performTextInput(name)
+    /**
+     * The create form through every control it has (the clock reads Monday 6 July 2026, 12:00): the name typed; the last
+     * day dragged forward, the start dragged back, a new range swept; the 8th tapped, which starts a new one-day range;
+     * the end's minutes dragged with its hour blank, then its hour tapped; the start's hour and minute tapped. What it
+     * leaves is complete: Wednesday 8 July, 11:01 to 13:xx.
+     */
+    private fun ComposeUiTest.createForm() {
+        onNode(hasSetTextAction()).performTextInput("My Party")
+        awaitShown { it.create?.form?.name == "My Party" }
+        onNode(dateDescribed("Monday", "6", "July", "2026")).performTouchInput { dragCells(1) }
+        awaitShown { it.create?.form?.picker?.endDay == JULY_7 }
+        onNode(dateDescribed("Monday", "6", "July", "2026")).performTouchInput { dragCells(-1) }
+        awaitShown { it.create?.form?.picker?.from?.date == JULY_5 }
+        onNode(dateDescribed("Friday", "10", "July", "2026")).performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + PAST_LONG_PRESS_MS)
+            moveBy(Offset(width.toFloat(), 0f))
+            up()
+        }
+        awaitShown { it.create?.form?.picker?.endDay == JULY_11 }
         onNode(dateDescribed("Wednesday", "8", "July", "2026")).performClick()
-        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).performScrollTo()
+        awaitShown { it.create?.form?.picker?.let { p -> p.from.date == JULY_8 && p.endDay == JULY_8 } == true }
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_minute), useUnmergedTree = true)
+            .performScrollTo()
+            .performTouchInput {
+                down(center)
+                moveBy(Offset(0f, -height / 2f))
+                up()
+            }
+        awaitShown { it.create?.form?.picker?.untilMinute != null }
+        wheelRow(ComponentRes.string.wheel_end_hour, "13")
+        awaitShown { it.create?.form?.picker?.untilHour == END_HOUR }
+        wheelRow(ComponentRes.string.wheel_start_hour, "11")
+        awaitShown { it.create?.form?.picker?.from?.hour == START_HOUR }
+        wheelRow(ComponentRes.string.wheel_start_minute, "01")
+        awaitShown { it.create?.form?.canCreate == true }
+    }
+
+    /** Tap the [row] of the wheel [wheel] names. */
+    private fun ComposeUiTest.wheelRow(wheel: org.jetbrains.compose.resources.StringResource, row: String) {
         onNode(
-            hasText("13") and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_hour))),
+            hasText(row) and hasAnyAncestor(hasContentDescription(str(wheel))),
             useUnmergedTree = true,
         ).performClick()
-        waitForIdle()
-        onNode(
-            hasText("--") and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_minute))),
-            useUnmergedTree = true,
-        ).performClick()
-        waitForIdle()
+    }
+
+    /** A drag from the day pressed on, past the touch slop, [cells] days across. */
+    private fun androidx.compose.ui.test.TouchInjectionScope.dragCells(cells: Int) {
+        down(center)
+        val direction = if (cells < 0) -1f else 1f
+        moveBy(Offset((viewConfiguration.touchSlop + 2) * direction, 0f))
+        moveBy(Offset(width * cells.toFloat(), 0f))
+        up()
+    }
+
+    private val UiState.create get() = layer as? Layer.CreateEvent
+
+    private companion object {
+        val JULY_5 = kotlinx.datetime.LocalDate(2026, 7, 5)
+        val JULY_7 = kotlinx.datetime.LocalDate(2026, 7, 7)
+        val JULY_8 = kotlinx.datetime.LocalDate(2026, 7, 8)
+        val JULY_11 = kotlinx.datetime.LocalDate(2026, 7, 11)
+        const val END_HOUR = 13
+        const val START_HOUR = 11
+        const val PAST_LONG_PRESS_MS = 100L
     }
 
     /** A calendar day, whatever order the device's locale writes its date in. */
@@ -461,13 +513,21 @@ class AndroidUiContractTest {
         // The gate again: every edit of its form, then a commit that fails and is retried.
         rig.host.onOpenUrl(linkTo(OTHER_ID))
         awaitShown(ready)
+        // The calendar opened and closed unchanged.
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        awaitShown { it.joining?.range?.picker != null }
+        onAllNodesWithText(str(Res.string.cancel)).onLast().performClick()
+        awaitShown { it.joining?.range?.picker == null }
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        awaitShown { it.joining?.range?.picker != null }
         onNodeWithText(str(Res.string.range_from_now)).performClick()
         awaitShown { it.joining?.range?.preset == RangeChoice.FROM_NOW }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        awaitShown { it.joining?.range?.picker != null }
         onNodeWithText(str(Res.string.save)).performClick()
         awaitShown { it.joining?.range?.preset == RangeChoice.CUSTOM }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        awaitShown { it.joining?.range?.picker != null }
         onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).performClick()
         awaitShown { it.joining?.range?.preset == RangeChoice.WHOLE_EVENT }
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()

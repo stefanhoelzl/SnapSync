@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 
 /**
@@ -11,7 +12,37 @@ import kotlinx.datetime.LocalDateTime
  * hands over values, so an Android screen emits the same cases and binds nothing.
  */
 sealed interface UiIntent {
-    data class CreateEvent(val name: String, val startsAt: LocalDateTime, val endsAt: LocalDateTime) : UiIntent
+    /** Create an event from the create form as it stands — the Create button. */
+    data object ConfirmCreate : UiIntent
+
+    /** The create form's name, as typed so far. */
+    data class CreateName(val name: String) : UiIntent
+
+    /** A tap on [day] in the range calendar. */
+    data class RangeDay(val day: LocalDate) : UiIntent
+
+    /** The range's start dragged to [day]. */
+    data class RangeDragStart(val day: LocalDate) : UiIntent
+
+    /** The range's last day dragged to [day]. */
+    data class RangeDragEnd(val day: LocalDate) : UiIntent
+
+    /** A long press on [anchor], swept to [day]: a new range over the days between them. */
+    data class RangeSweep(val anchor: LocalDate, val day: LocalDate) : UiIntent
+
+    /** A start or an end time wheel settled on [value]. */
+    data class RangeFromHour(val value: Int) : UiIntent
+    data class RangeFromMinute(val value: Int) : UiIntent
+    data class RangeUntilHour(val value: Int) : UiIntent
+    data class RangeUntilMinute(val value: Int) : UiIntent
+
+    /** The end's minute wheel started moving while its hour is blank. */
+    data object RangeUntilMinuteDrag : UiIntent
+
+    /** Open the range calendar over a participation surface; take what it shows; or close it unchanged. */
+    data object RangePickerOpen : UiIntent
+    data object RangePickerConfirm : UiIntent
+    data object RangePickerDismiss : UiIntent
     data object RequestPermission : UiIntent
     data object ChoosePhotos : UiIntent
     data object OpenSettings : UiIntent

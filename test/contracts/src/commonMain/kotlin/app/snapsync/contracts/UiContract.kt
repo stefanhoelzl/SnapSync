@@ -37,7 +37,20 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
 
     /** Every intent a person can make: what a tour of the whole screen must deliver. */
     val EVERY_INTENT: List<KClass<out UiIntent>> = listOf(
-        UiIntent.CreateEvent::class,
+        UiIntent.ConfirmCreate::class,
+        UiIntent.CreateName::class,
+        UiIntent.RangeDay::class,
+        UiIntent.RangeDragStart::class,
+        UiIntent.RangeDragEnd::class,
+        UiIntent.RangeSweep::class,
+        UiIntent.RangeFromHour::class,
+        UiIntent.RangeFromMinute::class,
+        UiIntent.RangeUntilHour::class,
+        UiIntent.RangeUntilMinute::class,
+        UiIntent.RangeUntilMinuteDrag::class,
+        UiIntent.RangePickerOpen::class,
+        UiIntent.RangePickerConfirm::class,
+        UiIntent.RangePickerDismiss::class,
         UiIntent.RequestPermission::class,
         UiIntent.ChoosePhotos::class,
         UiIntent.OpenSettings::class,
@@ -89,7 +102,20 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
                     answers(Ui::listen).returns()
                     answers(Ui::show).returns()
                     calls(UiHandlers::onLive)
-                    calls(UiHandlers::onIntent, UiIntent.CreateEvent::class)
+                    calls(UiHandlers::onIntent, UiIntent.ConfirmCreate::class)
+                    calls(UiHandlers::onIntent, UiIntent.CreateName::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeDay::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeDragStart::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeDragEnd::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeSweep::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeFromHour::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeFromMinute::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeUntilHour::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeUntilMinute::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangeUntilMinuteDrag::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangePickerOpen::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangePickerConfirm::class)
+                    calls(UiHandlers::onIntent, UiIntent.RangePickerDismiss::class)
                     calls(UiHandlers::onIntent, UiIntent.RequestPermission::class)
                     calls(UiHandlers::onIntent, UiIntent.ChoosePhotos::class)
                     calls(UiHandlers::onIntent, UiIntent.OpenSettings::class)

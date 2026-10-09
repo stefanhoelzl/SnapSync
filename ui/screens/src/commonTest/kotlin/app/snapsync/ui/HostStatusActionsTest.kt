@@ -2,11 +2,8 @@
 
 package app.snapsync.ui
 
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
@@ -23,36 +20,20 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
-import androidx.compose.ui.test.v2.runComposeUiTest
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
-import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.EventStart
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinChoice
-import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.ScreenMessage
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
 import app.snapsync.model.SyncHealth
-import app.snapsync.model.SyncStatus
 import app.snapsync.model.UiState
 import app.snapsync.model.UserCommands
-import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -60,12 +41,6 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusDiagnostics
-import app.snapsync.presentation.StatusSources
-import app.snapsync.presentation.onIntent
-import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.share_range_change
@@ -110,20 +85,10 @@ import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.stop_sharing_confirm
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.switch_confirm
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.time.Instant
 import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /** The event the joined tests are members of. */
@@ -132,7 +97,7 @@ private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
 /** A second event, for the join gate and the switch. */
 private const val OTHER_ID = "22222222-2222-4222-8222-222222222222"
 
-private const val STORE_URL = "https://apps.apple.com/de/app/snapsync/id0000000000"
+private const val STORE_URL = RIG_STORE_URL
 
 private val MEMBERSHIP = EventConfig(
     eventId = JOINED_ID,
@@ -171,153 +136,15 @@ private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(eventId))
  */
 class HostStatusActionsTest {
 
-    /** A real container over plain cells, recording every command it fires. */
-    private class Rig(
-        config: EventConfig? = null,
-        permission: GalleryAccess = GalleryAccess.GRANTED,
-        refusal: VersionRefusal? = null,
-        diagnostics: Boolean = false,
-        private val details: suspend (String) -> JoinLoad = { OTHER_EVENT },
-        network: NetworkAccess = NetworkAccess.Online(restricted = false),
-        deviceRefusal: app.snapsync.model.DeviceRefusal? = null,
-    ) {
-        val config = MutableStateFlow(config)
-        val permission = MutableStateFlow(permission)
-        private val firedCell = MutableStateFlow<List<String>>(emptyList())
-        val fired: List<String> get() = firedCell.value
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-        private fun record(what: String) = firedCell.update { it + what }
-
-        val host = StatusContainerHost(
-            StatusSources(
-                sync = object : SyncStatusSource {
-                    override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
-                },
-                permission = this.permission,
-                config = this.config,
-                versionRefusal = MutableStateFlow(refusal),
-                verification = app.snapsync.presentation.DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
-                store = StoreLink(STORE_URL, StoreKind.APP_STORE),
-                network = object : NetworkStatusSource {
-                    override val access: StateFlow<NetworkAccess> = MutableStateFlow(network)
-                    override val returned: Flow<Unit> = emptyFlow()
-                },
-            ),
-            scope = scope,
-            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
-            commands = object : UserCommands {
-                override suspend fun leave() {
-                    record("leave")
-                    this@Rig.config.value = null
-                }
-
-                override fun create(name: String, startsAt: EventStart, endsAt: EventEnd) = record("create:$name")
-
-                override suspend fun commitJoin(choice: JoinChoice): JoinCommit {
-                    record("commitJoin:${choice.eventId}:${choice.direction}:${choice.saveToAlbum}")
-                    return JoinCommit.Failed
-                }
-
-                override fun share(url: String, title: String) = record("share:$url")
-
-                override fun requestAccess() = record("requestAccess")
-
-                override fun openSettings() = record("openSettings")
-
-                override fun openLink(url: String) = record("openLink:$url")
-
-                override fun choosePhotos() = record("choosePhotos")
-
-                override suspend fun reconfigure(
-                    eventId: String,
-                    direction: Direction,
-                    minPhotoDate: CaptureCutoff,
-                    maxPhotoDate: CaptureCeiling,
-                    saveToAlbum: Boolean,
-                ): ReconfigureOutcome {
-                    record("reconfigure:$eventId:$direction")
-                    return ReconfigureOutcome.Saved
-                }
-
-                override fun rename(eventId: String, name: String) = record("rename:$eventId:$name")
-
-                override suspend fun resetRename() = record("resetRename")
-
-                override suspend fun sendDiagnostics(note: String, context: ReportContext): ReportOutcome {
-                    // A report opened from "Report this" is marked: only it carries the refused verification's facts.
-                    record("sendDiagnostics:$note" + if (context.verification) " [verification]" else "")
-                    return ReportOutcome.SENT
-                }
-
-                override suspend fun setMobileData(on: Boolean): Boolean {
-                    record("setMobileData:$on")
-                    return true
-                }
-
-                override suspend fun restoreEventKey(linkKey: String): Boolean {
-                    record("restoreEventKey")
-                    return false
-                }
-            },
-            queries = object : UserQueries {
-                override suspend fun loadJoinDetails(eventId: String, linkKey: String?) = details(eventId)
-
-                override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
-            },
-            diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
-        )
-
-        val state: UiState get() = host.screen.value
-    }
-
-    /** Compose [rig]'s real screen with the shared factory's bundle, as every host does. */
-    private fun ComposeUiTest.show(rig: Rig) {
-        setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) {
-                val state by rig.host.screen.collectAsState()
-                WithoutKeyboardInsets {
-                    StatusScreen(
-                        state = state,
-                        cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
-                        dateFormats = testDates,
-                        actions = statusActions(rig.host::onIntent),
-                    )
-                }
-            }
-        }
-    }
-
-    /** Run [block] on a fresh rig, cancelling its scope however the test ends. */
-    private fun rigTest(rig: Rig, block: ComposeUiTest.(Rig) -> Unit) = runComposeUiTest {
-        try {
-            show(rig)
-            block(rig)
-        } finally {
-            rig.scope.cancel()
-        }
-    }
-
-    /** Wait for the container to reduce to a state matching [predicate], then for the screen to catch up. */
-    private fun ComposeUiTest.awaitState(rig: Rig, predicate: (UiState) -> Boolean) {
-        waitUntil(timeoutMillis = 5_000) { predicate(rig.state) }
-        waitForIdle()
-    }
-
-    /** Wait for the container to fire [command] — commands run in the container's intents, off this thread. */
-    private fun ComposeUiTest.awaitFired(rig: Rig, command: String) {
-        waitUntil(timeoutMillis = 5_000) { command in rig.fired }
-    }
-
     private fun rig(
         config: EventConfig? = null,
         permission: GalleryAccess = GalleryAccess.GRANTED,
         refusal: VersionRefusal? = null,
-        diagnostics: Boolean = false,
+        @Suppress("UNUSED_PARAMETER") diagnostics: Boolean = false,
         details: suspend (String) -> JoinLoad = { OTHER_EVENT },
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
         deviceRefusal: app.snapsync.model.DeviceRefusal? = null,
-    ) = Rig(config, permission, refusal, diagnostics, details, network, deviceRefusal)
+    ) = ContainerRig(config, permission, refusal, details, network, deviceRefusal)
 
     private val ready: (UiState) -> Boolean =
         { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready }
@@ -467,7 +294,7 @@ class HostStatusActionsTest {
     fun `create submits the typed name`() = rigTest(rig()) { rig ->
         awaitState(rig) { it.layer is Layer.CreateEvent }
         // Create is enabled only once the range is complete too (capability `create-event`).
-        completeForm("My Party")
+        completeForm(rig, "My Party")
         onNodeWithText(str(Res.string.create_button)).performClick()
         awaitFired(rig, "create:My Party")
     }
@@ -481,14 +308,17 @@ class HostStatusActionsTest {
 
         // Each range edit, so a preset crossed with a custom pick lands in the wrong field.
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        awaitState(rig) { it.joining?.range?.picker != null }
         onNodeWithText(str(Res.string.range_from_now)).performClick()
         awaitState(rig) { it.joining?.range?.preset == RangeChoice.FROM_NOW }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        awaitState(rig) { it.joining?.range?.picker != null }
         onNodeWithText(str(Res.string.save)).performClick()
         awaitState(rig) {
             it.joining?.range?.preset == RangeChoice.CUSTOM
         }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        awaitState(rig) { it.joining?.range?.picker != null }
         onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).performClick()
         awaitState(rig) { it.joining?.range?.preset == RangeChoice.WHOLE_EVENT }
         // The participation switches, likewise one field each.

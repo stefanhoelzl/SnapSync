@@ -21,7 +21,6 @@ import app.snapsync.model.ReportOutcome
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.UiState
 import app.snapsync.model.offersMenu
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppFooterTextActions
 import app.snapsync.ui.components.AppMenuDivider
@@ -103,10 +102,6 @@ fun StatusScreen(
     // rename status all travel INSIDE it: a value the screen shows is a
     // value the state carries, so no call site can supply the state and silently omit a rendered value.
     state: UiState,
-    // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string. Required — with NO
-    // system-reading default (migration step 9): the host binds the `Clock` port
-    // (production) or a fixed instant/zone (tests); this screen holds no clock or timezone knowledge.
-    cutoff: CutoffFormatter,
     // How a date reads — the platform's (the `DateFormatting` port's `formats`), asked in the language the strings
     // resolved to. Required, with no default: the screen knows no platform's CLDR data.
     dateFormats: (languageTag: String?) -> DateFormats,
@@ -159,7 +154,7 @@ fun StatusScreen(
                     onTitleDoubleTap = actions.surfaces.onReportBugOpen,
                     onMenu = actions.menu.onMenuOpen.takeIf { state.layer.offersMenu },
                 ) {
-                    CurrentLayer(state = state, cutoff = cutoff, actions = actions)
+                    CurrentLayer(state = state, actions = actions)
                 }
                 state.overlays.reportNotice?.let { outcome ->
                     AppNotice(
@@ -478,27 +473,18 @@ private fun JoinedFooter(actions: StatusActions, closed: Boolean, invitable: Boo
  * the overlay flags. Reading "what is on screen right now" meant reading past all of that.
  */
 @Composable
-private fun ColumnScope.CurrentLayer(
-    state: UiState,
-    // Needed by the CREATE form (its own name/date draft, held by `CreateFlow`) and by the joined layer's
-    // explanation, which names the member's shared range. The RANGE form no longer needs it: its bounds arrive
-    // resolved.
-    cutoff: CutoffFormatter,
-    actions: StatusActions,
-) {
+private fun ColumnScope.CurrentLayer(state: UiState, actions: StatusActions) {
     when (val layer = state.layer) {
         is Layer.UpdateRequired ->
             UpdateRequiredScreen(layer, actions.onOpenStore)
-        // ONE branch for both create layers, so the form's draft survives a failed create's round trip
-        // through the in-flight screen — see [CreateFlow].
-        is Layer.CreateEvent, Layer.CreatingEvent ->
-            CreateFlow(
+        // The draft is the app's: a failed create's round trip through the in-flight screen brings it back
+        // (a failed create says so and changes nothing).
+        is Layer.CreateEvent ->
+            CreateEventScreen(
                 layer,
-                actions.onCreateEvent,
-                actions.access.onOpenSettings,
-                cutoff,
-                actions.surfaces.onReportRefusal,
+                CreateCallbacks(actions.create, actions.access.onOpenSettings, actions.surfaces.onReportRefusal),
             )
+        Layer.CreatingEvent -> CreatingEventScreen()
         is Layer.JoiningEvent ->
             JoiningEventScreen(
                 layer = layer,

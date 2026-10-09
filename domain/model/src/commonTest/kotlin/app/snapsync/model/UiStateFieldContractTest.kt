@@ -1,6 +1,8 @@
 package app.snapsync.model
 
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import kotlin.test.Test
 
 /**
@@ -97,18 +99,21 @@ class UiStateFieldContractTest {
         )
         assertFieldContract(
             Layer.CreateEvent.serializer(),
-            Layer.CreateEvent(
-                ScreenMessage.CREATE_FAILED,
-                CreateDraftSession(activation = 2, epoch = 1),
-                NetworkNotice.OFFLINE,
-            ),
-            optional = setOf("error", "draft", "network"),
+            Layer.CreateEvent(FRESH_CREATE_FORM, ScreenMessage.CREATE_FAILED, NetworkNotice.OFFLINE),
+            optional = setOf("error", "network"),
         )
+        assertFieldContract(CreateForm.serializer(), FRESH_CREATE_FORM)
         assertFieldContract(
-            CreateDraftSession.serializer(),
-            CreateDraftSession(activation = 2, epoch = 1),
-            optional = setOf("activation", "epoch"),
+            PickerView.serializer(),
+            FRESH_CREATE_FORM.picker.copy(
+                untilHour = 18,
+                untilMinute = 0,
+                fromTimes = null,
+                firstDay = LocalDate(2026, 7, 1),
+            ),
         )
+        assertFieldContract(TimeSpan.serializer(), TimeSpan(LocalTime(0, 0), LocalTime(23, 59)))
+        assertFieldContract(CreateStep.Complete.serializer(), CreateStep.Complete(CoarseDuration.Weeks(2)))
         assertFieldContract(
             Layer.JoiningEvent.serializer(),
             Layer.JoiningEvent(
@@ -169,7 +174,11 @@ class UiStateFieldContractTest {
         assertFieldContract(JoinPhase.Detailed.serializer(), detailed, optional = setOf("refusal"))
         assertFieldContract(JoinStage.Unloaded.serializer(), JoinStage.Unloaded(JoinPhase.LoadFailed))
         assertFieldContract(JoinStage.Loaded.serializer(), JoinStage.Loaded(detailed, range))
-        assertFieldContract(RangeView.serializer(), range)
+        assertFieldContract(
+            RangeView.serializer(),
+            range.copy(picker = FRESH_CREATE_FORM.picker),
+            optional = setOf("picker"),
+        )
         assertFieldContract(ShareCount.Ready.serializer(), ShareCount.Ready(3))
     }
 
@@ -186,6 +195,45 @@ class UiStateFieldContractTest {
             SyncHealth.Syncing.serializer(),
             SyncHealth.Syncing(Arrow.PULSING, Arrow.STATIC, waitingForWifi = true),
             optional = setOf("waitingForWifi"),
+        )
+    }
+
+    @Test
+    fun `every duration a form states requires its count`() {
+        assertFieldContract(CoarseDuration.Weeks.serializer(), CoarseDuration.Weeks(2))
+        assertFieldContract(CoarseDuration.Days.serializer(), CoarseDuration.Days(3))
+        assertFieldContract(CoarseDuration.Hours.serializer(), CoarseDuration.Hours(4))
+        assertFieldContract(CoarseDuration.Minutes.serializer(), CoarseDuration.Minutes(5))
+    }
+}
+
+/** What a calendar's own values say (capability `create-event`): its end, once set, and the times a span admits. */
+class PickerViewTest {
+
+    @Test
+    fun `the end is set only once both its hour and its minute are`() {
+        val blank = FRESH_CREATE_FORM.picker
+        kotlin.test.assertNull(blank.until)
+        kotlin.test.assertNull(blank.copy(untilHour = 13).until)
+        kotlin.test.assertNull(blank.copy(untilMinute = 30).until)
+        kotlin.test.assertEquals(
+            kotlinx.datetime.LocalDateTime(2026, 7, 6, 13, 30),
+            blank.copy(untilHour = 13, untilMinute = 30).until,
+        )
+    }
+
+    @Test
+    fun `a span admits the times from its first to its last both included`() {
+        val span = TimeSpan(LocalTime(9, 0), LocalTime(17, 30))
+        kotlin.test.assertEquals(
+            listOf(false, true, true, true, false),
+            listOf(
+                LocalTime(8, 59),
+                LocalTime(9, 0),
+                LocalTime(12, 0),
+                LocalTime(17, 30),
+                LocalTime(17, 31),
+            ).map { it in span },
         )
     }
 }

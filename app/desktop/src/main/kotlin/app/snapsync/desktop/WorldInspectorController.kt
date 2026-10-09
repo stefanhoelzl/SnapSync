@@ -169,9 +169,8 @@ class WorldInspectorController(
      * the event-start floor are drivable through the real stack.
      */
     fun createEvent(name: String, startsAt: String, endsAt: String) = launchMutation {
-        mocks.screen.operator.tap(
-            UiIntent.CreateEvent(name, LocalDateTime.parse(startsAt), LocalDateTime.parse(endsAt)),
-        )
+        val intents = createIntents(name, LocalDateTime.parse(startsAt), LocalDateTime.parse(endsAt))
+        intents.forEach(mocks.screen.operator::tap)
     }
 
     /** The inspector's Leave button — the phone's Leave, confirmed. */
@@ -377,9 +376,8 @@ class WorldInspectorController(
      * app never reached it.
      */
     private suspend fun joinNewEvent(): String? {
-        mocks.screen.operator.tap(
-            UiIntent.CreateEvent(PRESET_EVENT, LocalDateTime.parse(PAST_START), LocalDateTime.parse(PAST_END)),
-        )
+        createIntents(PRESET_EVENT, LocalDateTime.parse(PAST_START), LocalDateTime.parse(PAST_END))
+            .forEach(mocks.screen.operator::tap)
         withTimeoutOrNull(AWAIT) { shown.first { (it?.layer as? Layer.JoiningEvent)?.range != null } }
             ?: return null.also { appendConsole("preset: the join gate never opened") }
         mocks.screen.operator.tap(UiIntent.ConfirmJoin)
@@ -564,3 +562,14 @@ enum class PolicyAsset(val label: String, val prefix: String, val build: (String
     /** A 1080p recording: below the IMAGE floor, above the VIDEO floor — so it must still upload. */
     HD_VIDEO("+ 1080p video", "video", { LibraryAssets.hdVideo(it) }),
 }
+
+/** The create form filled as a person fills it — the name, the days swept, each wheel settled — then Create. */
+private fun createIntents(name: String, from: LocalDateTime, until: LocalDateTime): List<UiIntent> = listOf(
+    UiIntent.CreateName(name),
+    UiIntent.RangeSweep(from.date, until.date),
+    UiIntent.RangeFromHour(from.hour),
+    UiIntent.RangeFromMinute(from.minute),
+    UiIntent.RangeUntilHour(until.hour),
+    UiIntent.RangeUntilMinute(until.minute),
+    UiIntent.ConfirmCreate,
+)

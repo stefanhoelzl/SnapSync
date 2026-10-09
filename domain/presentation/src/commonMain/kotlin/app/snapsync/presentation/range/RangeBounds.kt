@@ -1,21 +1,20 @@
-package app.snapsync.ui.components
+package app.snapsync.presentation.range
 
 import kotlinx.datetime.LocalDateTime
 
 /**
- * The length limit a range is held to: the latest end the caller accepts for a given start. The caller owns
- * that arithmetic — it knows the zone and the limit; this module knows neither.
+ * The length limit a range is held to: the latest end accepted for a given start — zone-aware arithmetic the
+ * container's [app.snapsync.presentation.CutoffFormatter] answers.
  */
-fun interface LatestUntil {
+internal fun interface LatestUntil {
     fun of(from: LocalDateTime): LocalDateTime
 }
 
 /**
- * What a range may be — the ONE difference between the surfaces that pick one —
- * create, join and the event's settings: where it may lie, how long it may be, and whether its end time may be
- * blank. Everything else — the calendar, the gestures, the wheels, the rules — is the same component.
+ * What a range may be — the ONE difference between the surfaces that pick one: where it may lie, how long it may be, and whether its end time may be
+ * blank. Everything else — the calendar, the gestures, the wheels, the rules — is the same.
  */
-class RangeBounds private constructor(
+internal class RangeBounds private constructor(
     /** The earliest start, or `null` for none. */
     val earliest: LocalDateTime?,
     /** The latest end, or `null` for none. */
