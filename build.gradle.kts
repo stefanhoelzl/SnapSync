@@ -274,6 +274,7 @@ val detektTierOf: Map<String, String> = mapOf(
     // applies to it. The host, `:domain:host`, is a core zone too, but it is tiered as a shell above:
     // it is wiring, and detektAppShell's threshold-2 proof is what keeps it decision-free.
     ":domain:model" to "core",
+    ":domain:wire" to "core",
     ":domain:ports" to "core",
     ":domain:services" to "core",
     ":domain:feature" to "core",
@@ -415,7 +416,10 @@ registerDetektTier("detektTestsTier", "tests", subprojects.map { it.layout.proje
 registerDetektTier(
     "detektBuildScriptsTier",
     "buildscripts",
-    listOf(project.buildFile, file("settings.gradle.kts")) + subprojects.map { it.buildFile },
+    listOf(project.buildFile, file("settings.gradle.kts")) + subprojects.map { it.buildFile } +
+        // The wire's route generator (`build-logic`, `snapsync.wire`): build logic, and real logic. The other
+        // convention plugins predate the scan and are not in it yet — bringing them in is its own change.
+        listOf(file("build-logic/build.gradle.kts"), file("build-logic/src/main/kotlin/app/snapsync/buildlogic/wire")),
 )
 
 // ---- Derived architecture diagrams (`docs/architecture.md`) ------------------------

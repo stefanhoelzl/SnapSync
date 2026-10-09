@@ -25,6 +25,7 @@ flowchart LR
     domain_ports[":domain:ports"]
     domain_presentation[":domain:presentation"]
     domain_services[":domain:services"]
+    domain_wire[":domain:wire"]
   end
   subgraph test
     test_contracts[":test:contracts"]

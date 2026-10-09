@@ -127,11 +127,20 @@ export function zodOf(schema: Node | boolean, where: string): string {
   }
   if (schema === false) return "z.never()";
   checkKeywords(schema, where);
+  if (Array.isArray(schema.type)) return nullableType(schema, where);
   const instant = schema["x-snapsync-instant"] === true ? ".refine(isInstant)" : "";
   if (typeof schema.$ref === "string") {
     return refName(schema.$ref, "schemas") + instant;
   }
   return base(schema, where) + instant;
+}
+
+/** `type: [<one type>, "null"]` — the one type, nullable; any other list is refused. */
+function nullableType(schema: Node, where: string): string {
+  const types = schema.type as string[];
+  const one = types.filter((t) => t !== "null");
+  if (types.length !== 2 || one.length !== 1) fail(where, "a type list is only `[<type>, \"null\"]`");
+  return `${zodOf({ ...schema, type: one[0] }, where)}.nullable()`;
 }
 
 function base(schema: Node, where: string): string {

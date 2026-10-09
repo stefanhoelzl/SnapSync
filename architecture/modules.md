@@ -29,6 +29,7 @@ flowchart LR
   domain_ports[":domain:ports"]
   domain_presentation[":domain:presentation"]
   domain_services[":domain:services"]
+  domain_wire[":domain:wire"]
   test_architecture[":test:architecture"]
   test_contracts[":test:contracts"]
   test_control[":test:control"]

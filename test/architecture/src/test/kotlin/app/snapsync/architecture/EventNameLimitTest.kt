@@ -1,5 +1,7 @@
 package app.snapsync.architecture
 
+import app.snapsync.model.EVENT_NAME_MAX_LENGTH
+import app.snapsync.wire.api.Limits
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -8,8 +10,8 @@ import kotlin.test.fail
 /**
  * **The client's name cap equals the backend's** (capability `event-creation`).
  *
- * The backend owns the rule: `api/src/validators.ts` rejects a name longer than
- * `MAX_EVENT_NAME_LENGTH` with a `400`. The client mirrors it so the field caps typing and an over-long
+ * The backend owns the rule: `api/openapi.yaml` caps `EventName` (`maxLength`), and its generated validation
+ * rejects a longer name with a `400`. The client mirrors it so the field caps typing and an over-long
  * name is unreachable rather than rejected on a round trip — which means the mirror is only useful while
  * it agrees.
  *
@@ -29,20 +31,11 @@ class EventNameLimitTest {
 
     @Test
     fun `the Kotlin name cap equals the backend's`() {
-        val kotlinSource = File(repoRoot, "domain/model/src/commonMain/kotlin/app/snapsync/model/EventName.kt")
-        val tsSource = File(repoRoot, "api/src/validators.ts")
-
-        val kotlinLimit = Regex("""const val EVENT_NAME_MAX_LENGTH = (\d+)""")
-            .find(kotlinSource.readText())?.groupValues?.get(1)
-            ?: fail("EVENT_NAME_MAX_LENGTH not found in ${kotlinSource.name} — did it move or get renamed?")
-
-        val backendLimit = Regex("""export const MAX_EVENT_NAME_LENGTH = (\d+);""")
-            .find(tsSource.readText())?.groupValues?.get(1)
-            ?: fail("MAX_EVENT_NAME_LENGTH not found in ${tsSource.name} — did it move or get renamed?")
-
+        // The backend's cap is the description's (`api/openapi.yaml`, `EventName.maxLength`), which the generated wire
+        // exports and the backend's generated validation enforces.
         assertEquals(
-            backendLimit,
-            kotlinLimit,
+            Limits.EVENT_NAME_MAX_LENGTH,
+            EVENT_NAME_MAX_LENGTH,
             "\nThe client's event-name cap disagrees with the backend's.\n" +
                 "  The backend owns this rule; the client mirrors it so an over-long name is unreachable\n" +
                 "  rather than rejected on a round trip. Change the Kotlin constant to match, or change\n" +

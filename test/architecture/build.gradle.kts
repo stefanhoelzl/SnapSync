@@ -46,6 +46,8 @@ dependencies {
     // that executes domain code rather than reading source: the invariant is behavioral (no reachable sequence
     // orphans in-flight work), which no text scan can see.
     testImplementation(project(":domain:model"))
+    // The generated wire (`api/openapi.yaml`): the limits and routes the client's mirrors are pinned to.
+    testImplementation(project(":domain:wire"))
     testImplementation(project(":domain:feature"))
     // The transitions read the membership and the grant through their services, built over the ports' mocks.
     testImplementation(project(":domain:ports"))

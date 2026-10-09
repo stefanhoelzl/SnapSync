@@ -37,7 +37,7 @@ dependencies {
 // than a failure anyone could read. Resolved here, once, for every consumer.
 val apiDir = rootProject.layout.projectDirectory.dir("api")
 tasks.register<Exec>("resolveLocalDeployment") {
-    description = "Resolves the `local` deployment the live edge serves, and generates its wire (deno task config:local)."
+    description = "Resolves the `local` deployment the live edge serves, and its wire (deno task config:local)."
     workingDir = apiDir.asFile
     commandLine("deno", "task", "config:local")
     inputs.dir(rootProject.layout.projectDirectory.dir("deployments"))
