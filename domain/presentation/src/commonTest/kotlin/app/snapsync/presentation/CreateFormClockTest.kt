@@ -5,10 +5,10 @@ import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.Layer
-import app.snapsync.model.ScreenMessage
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UiIntent
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow

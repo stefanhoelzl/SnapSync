@@ -20,7 +20,6 @@ import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
-import app.snapsync.model.Layer
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.RawAsset
@@ -29,8 +28,6 @@ import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.TransferOutcome
-import app.snapsync.model.UiIntent
-import app.snapsync.model.UiState
 import app.snapsync.model.UploadError
 import app.snapsync.model.WakeId
 import app.snapsync.model.noContribution
@@ -41,6 +38,9 @@ import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

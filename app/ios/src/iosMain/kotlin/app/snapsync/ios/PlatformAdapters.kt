@@ -3,6 +3,8 @@ package app.snapsync.ios
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.Ui
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 
 /**
  * The adapters a production build and a rig build supply differently — the one place the two builds differ
@@ -18,7 +20,7 @@ internal class PlatformAdapters(
      * The platform's UI, as this build registers it: the Compose scene itself in production. Lazy, because the scene
      * reads the process's clock, which this set is built before.
      */
-    val ui: Lazy<Ui>,
+    val ui: Lazy<Ui<UiState, UiIntent>>,
     /** The ports this launch composes over: the root's real adapters in production. */
     val ports: AppDevicePorts,
     /** Compose the graph at launch — [compose] itself in production; nothing on a rig launch whose adapter choice was refused. */

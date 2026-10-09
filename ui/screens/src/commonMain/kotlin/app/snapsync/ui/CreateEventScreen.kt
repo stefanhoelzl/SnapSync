@@ -19,12 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.CreateStep
-import app.snapsync.model.EVENT_NAME_MAX_LENGTH
-import app.snapsync.model.Layer
-import app.snapsync.model.NetworkNotice
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.StoreName
 import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppEventRangePicker
 import app.snapsync.ui.components.AppIdentityHeader
@@ -58,6 +52,12 @@ import app.snapsync.ui.resources.update_eyebrow
 import app.snapsync.ui.resources.update_headline
 import app.snapsync.ui.resources.update_subtitle
 import app.snapsync.ui.resources.update_title
+import app.snapsync.ui.state.CreateStep
+import app.snapsync.ui.state.EVENT_NAME_MAX_LENGTH
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.StoreName
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -126,7 +126,8 @@ internal fun CreateEventScreen(state: Layer.CreateEvent, callbacks: CreateCallba
             CreateQuestion(stringResource(Res.string.create_when_question)) {
                 AppEventRangePicker(
                     picker = form.picker,
-                    // The truthfulness line: this window is the event's capture-date bound — stated once, where it is set — and the one limit on it.
+                    // The truthfulness line: this window is the event's capture-date bound — stated once, where it is
+                    // set — and the one limit on it.
                     note = stringResource(Res.string.create_window_note, form.maxDays),
                     gestures = callbacks.create.range,
                     endTime = EndTimeGuide(showRequests = endTimeRequests, onPickEndTime = guide.toEndTime),

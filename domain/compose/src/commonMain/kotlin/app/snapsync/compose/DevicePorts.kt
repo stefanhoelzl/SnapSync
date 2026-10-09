@@ -29,6 +29,8 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Upload
 import app.snapsync.ports.Wake
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 
 /**
  * **The app process's ports onto the device's systems** — what an iOS or Android app root composes over, each resolved
@@ -71,7 +73,7 @@ class AppDevicePorts(
     val lifecycle: Lazy<Lifecycle>,
     val links: Lazy<Links>,
     val pushNotifications: Lazy<PushNotifications>,
-    val ui: Lazy<Ui>,
+    val ui: Lazy<Ui<UiState, UiIntent>>,
     /** How a date reads on the screen — the platform's CLDR data. */
     val dateFormatting: Lazy<DateFormatting>,
 ) {
@@ -81,7 +83,7 @@ class AppDevicePorts(
      * process's own [process] ports, and the two its build's adapter set decorates ([devControls] — inert on every
      * production build, the control channel's on a rig build — and [ui], the rig's decorator where it wraps it).
      */
-    fun appPorts(process: ProcessPorts, devControls: DevControls, ui: Ui): AppPorts = AppPorts(
+    fun appPorts(process: ProcessPorts, devControls: DevControls, ui: Ui<UiState, UiIntent>): AppPorts = AppPorts(
         process = process,
         // This process's SQLite databases: the ledger (shared with an upload extension where one exists, every write
         // one guarded transaction) and the download store the app alone writes.

@@ -121,7 +121,9 @@ class PortBundleTest {
 
     private fun isPortShaped(type: Type): Boolean = when (type) {
         is Class<*> -> Port::class.java.isAssignableFrom(type) || type in bundles
-        is ParameterizedType -> type.rawType in setOf(List::class.java, Lazy::class.java) &&
+        // A generic port (`Ui<S, I>`) is a port whatever it is parameterized over.
+        is ParameterizedType -> isPortShaped(type.rawType) ||
+            type.rawType in setOf(List::class.java, Lazy::class.java) &&
             type.actualTypeArguments.single().let { isPortShaped(unwrap(it)) }
         else -> false
     }

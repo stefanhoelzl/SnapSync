@@ -3,11 +3,11 @@ package app.snapsync.rig
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.Layer
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.services.config.ConfigService
+import app.snapsync.ui.state.Layer
 
 // The JVM host's `/device` writes, its gallery read, and what it refuses of the shared vocabulary (`docs/testing.md`,
 // "One control protocol, served by two hosts"). The operator levers and reads are the shared table (`MockLevers.kt`)

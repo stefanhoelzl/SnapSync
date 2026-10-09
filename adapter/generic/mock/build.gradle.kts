@@ -48,6 +48,8 @@ kotlin {
             // The backend's mock answers the device API as `api/openapi.yaml` declares it: the generated routes
             // and DTOs.
             implementation(project(":domain:wire"))
+            // The screen's vocabulary the screen mock is a `Ui` port over.
+            api(project(":ui:state"))
             api(libs.coroutines.core)
             // The Clock double answers a zone (`TimeFactories.kt`).
             implementation(libs.kotlinx.datetime)

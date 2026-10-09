@@ -16,6 +16,8 @@ import app.snapsync.ports.Files
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.SystemUi
 import app.snapsync.ports.Ui
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -251,7 +253,7 @@ class LaunchAdaptersTest {
         clock: Lazy<Clock> = unbuilt("clock"),
         network: Lazy<NetworkMonitor> = unbuilt("network"),
         systemUi: Lazy<SystemUi> = unbuilt("systemUi"),
-        ui: Lazy<Ui> = unbuilt("ui"),
+        ui: Lazy<Ui<UiState, UiIntent>> = unbuilt("ui"),
     ) = AppDevicePorts(
         clock = clock, crypto = unbuilt("crypto"), crashReporter = unbuilt("crashReporter"), files = unbuilt("files"),
         databases = unbuilt("databases"), preferences = unbuilt("preferences"), secureStore = unbuilt("secureStore"),

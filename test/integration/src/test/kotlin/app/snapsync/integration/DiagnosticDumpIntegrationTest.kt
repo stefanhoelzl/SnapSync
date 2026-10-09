@@ -1,11 +1,11 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.BuildLabel
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.DirectionCount
-import app.snapsync.model.ReportOutcome
+import app.snapsync.ui.state.BuildLine
+import app.snapsync.ui.state.DirectionCount
+import app.snapsync.ui.state.ReportNotice
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -241,14 +241,14 @@ class DiagnosticDumpIntegrationTest {
         sendDiagnostics(NOTE)
 
         awaitDumps(1)
-        awaitState { it.ui.overlays.reportNotice == ReportOutcome.SENT }
+        awaitState { it.ui.overlays.reportNotice == ReportNotice.SENT }
         awaitState { it.ui.overlays.reportNotice == null }
     }
 
     @Test
     fun the_screen_names_the_running_build() = rigTest {
         // The app menu's footer reads the build the composition was handed, not a guess.
-        val build = awaitState { it.ui.build != BuildLabel.UNKNOWN }.ui.build
-        assertTrue(build.version.isNotBlank() && build.version != BuildLabel.UNKNOWN.version, "the version: $build")
+        val build = awaitState { it.ui.build != BuildLine.UNKNOWN }.ui.build
+        assertTrue(build.version.isNotBlank() && build.version != BuildLine.UNKNOWN.version, "the version: $build")
     }
 }

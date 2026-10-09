@@ -5,12 +5,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import app.snapsync.model.UiIntent
-import app.snapsync.model.UiState
 import app.snapsync.ports.DateFormatting
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.LocalDarkThemeOverride
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import app.snapsync.ui.statusActions
 import kotlinx.coroutines.flow.StateFlow
 

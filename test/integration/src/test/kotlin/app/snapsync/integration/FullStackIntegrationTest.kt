@@ -1,12 +1,12 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.Arrow
-import app.snapsync.model.DirectionCount
-import app.snapsync.model.EventTiming
-import app.snapsync.model.Layer
-import app.snapsync.model.SyncCounts
-import app.snapsync.model.SyncHealth
+import app.snapsync.ui.state.Arrow
+import app.snapsync.ui.state.DirectionCount
+import app.snapsync.ui.state.EventTiming
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncCounts
+import app.snapsync.ui.state.SyncHealth
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test

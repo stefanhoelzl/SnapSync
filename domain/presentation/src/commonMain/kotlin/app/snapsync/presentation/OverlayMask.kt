@@ -1,8 +1,8 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.Layer
-import app.snapsync.model.Overlays
-import app.snapsync.model.offersMenu
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.Overlays
+import app.snapsync.ui.state.offersMenu
 
 /**
  * The overlays that can actually be shown over [layer].

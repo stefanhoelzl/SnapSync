@@ -1,8 +1,9 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.UiIntent
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlin.reflect.KClass
 import kotlin.test.assertTrue
 
@@ -22,7 +23,7 @@ enum class UiStateForContract {
  * beyond recording it: the composition that reduces it into the next state, so a tour can open a dialog and confirm it.
  */
 class UiUnderTest(
-    val ui: Ui,
+    val ui: Ui<UiState, UiIntent>,
     val react: (UiIntent) -> Unit,
     val tour: suspend () -> Unit,
 )
@@ -82,7 +83,6 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
         UiIntent.ReceiveOn::class,
         UiIntent.SaveToAlbum::class,
         UiIntent.RangePreset::class,
-        UiIntent.RangeCustom::class,
         UiIntent.RetryLoad::class,
         UiIntent.ConfirmJoin::class,
         UiIntent.ConfirmSwitch::class,
@@ -98,63 +98,62 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
             "TOURABLE_EVERY_CONTROL_REACHES_THE_HANDLER",
             UiStateForContract.TOURABLE,
             covers = cells {
-                on<Ui> {
-                    answers(Ui::listen).returns()
-                    answers(Ui::show).returns()
-                    calls(UiHandlers::onLive)
-                    calls(UiHandlers::onIntent, UiIntent.ConfirmCreate::class)
-                    calls(UiHandlers::onIntent, UiIntent.CreateName::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeDay::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeDragStart::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeDragEnd::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeSweep::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeFromHour::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeFromMinute::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeUntilHour::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeUntilMinute::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeUntilMinuteDrag::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangePickerOpen::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangePickerConfirm::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangePickerDismiss::class)
-                    calls(UiHandlers::onIntent, UiIntent.RequestPermission::class)
-                    calls(UiHandlers::onIntent, UiIntent.ChoosePhotos::class)
-                    calls(UiHandlers::onIntent, UiIntent.OpenSettings::class)
-                    calls(UiHandlers::onIntent, UiIntent.LeaveEvent::class)
-                    calls(UiHandlers::onIntent, UiIntent.ShareInvite::class)
-                    calls(UiHandlers::onIntent, UiIntent.OpenAppStore::class)
-                    calls(UiHandlers::onIntent, UiIntent.ConfirmLeaveOpen::class)
-                    calls(UiHandlers::onIntent, UiIntent.ConfirmLeaveDismiss::class)
-                    calls(UiHandlers::onIntent, UiIntent.RenameOpen::class)
-                    calls(UiHandlers::onIntent, UiIntent.RenameDismiss::class)
-                    calls(UiHandlers::onIntent, UiIntent.QrOpen::class)
-                    calls(UiHandlers::onIntent, UiIntent.QrDismiss::class)
-                    calls(UiHandlers::onIntent, UiIntent.ReportBugOpen::class)
-                    calls(UiHandlers::onIntent, UiIntent.ReportRefusal::class)
-                    calls(UiHandlers::onIntent, UiIntent.ReportBugDismiss::class)
-                    calls(UiHandlers::onIntent, UiIntent.MenuOpen::class)
-                    calls(UiHandlers::onIntent, UiIntent.MenuDismiss::class)
-                    calls(UiHandlers::onIntent, UiIntent.MenuReportBug::class)
-                    calls(UiHandlers::onIntent, UiIntent.MobileData::class)
-                    calls(UiHandlers::onIntent, UiIntent.OpenLink::class)
-                    calls(UiHandlers::onIntent, UiIntent.ReportNoticeDismiss::class)
-                    calls(UiHandlers::onIntent, UiIntent.OpenReconfigure::class)
-                    calls(UiHandlers::onIntent, UiIntent.CancelReconfigure::class)
-                    calls(UiHandlers::onIntent, UiIntent.RenameEvent::class)
-                    calls(UiHandlers::onIntent, UiIntent.RenameStatusConsumed::class)
-                    calls(UiHandlers::onIntent, UiIntent.ConfirmStopSharing::class)
-                    calls(UiHandlers::onIntent, UiIntent.KeepSharing::class)
-                    calls(UiHandlers::onIntent, UiIntent.ShareOn::class)
-                    calls(UiHandlers::onIntent, UiIntent.ReceiveOn::class)
-                    calls(UiHandlers::onIntent, UiIntent.SaveToAlbum::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangePreset::class)
-                    calls(UiHandlers::onIntent, UiIntent.RangeCustom::class)
-                    calls(UiHandlers::onIntent, UiIntent.RetryLoad::class)
-                    calls(UiHandlers::onIntent, UiIntent.ConfirmJoin::class)
-                    calls(UiHandlers::onIntent, UiIntent.ConfirmSwitch::class)
-                    calls(UiHandlers::onIntent, UiIntent.RetryJoin::class)
-                    calls(UiHandlers::onIntent, UiIntent.CancelJoin::class)
-                    calls(UiHandlers::onIntent, UiIntent.CancelSwitch::class)
-                    calls(UiHandlers::onIntent, UiIntent.SendDiagnostics::class)
+                on<Ui<UiState, UiIntent>> {
+                    answers(Ui<UiState, UiIntent>::listen).returns()
+                    answers(Ui<UiState, UiIntent>::show).returns()
+                    calls(UiHandlers<UiIntent>::onLive)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ConfirmCreate::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.CreateName::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeDay::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeDragStart::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeDragEnd::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeSweep::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeFromHour::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeFromMinute::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeUntilHour::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeUntilMinute::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeUntilMinuteDrag::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangePickerOpen::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangePickerConfirm::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangePickerDismiss::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RequestPermission::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ChoosePhotos::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.OpenSettings::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.LeaveEvent::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ShareInvite::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.OpenAppStore::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ConfirmLeaveOpen::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ConfirmLeaveDismiss::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RenameOpen::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RenameDismiss::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.QrOpen::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.QrDismiss::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ReportBugOpen::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ReportRefusal::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ReportBugDismiss::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.MenuOpen::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.MenuDismiss::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.MenuReportBug::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.MobileData::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.OpenLink::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ReportNoticeDismiss::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.OpenReconfigure::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.CancelReconfigure::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RenameEvent::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RenameStatusConsumed::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ConfirmStopSharing::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.KeepSharing::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ShareOn::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ReceiveOn::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.SaveToAlbum::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangePreset::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RetryLoad::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ConfirmJoin::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.ConfirmSwitch::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.RetryJoin::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.CancelJoin::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.CancelSwitch::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.SendDiagnostics::class)
                 }
             },
         ) { subject ->

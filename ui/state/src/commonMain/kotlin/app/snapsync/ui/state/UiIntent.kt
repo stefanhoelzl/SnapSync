@@ -1,7 +1,6 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
 
 /**
  * What a person did on the status screen, as the one value that crosses from a platform's UI to the core
@@ -91,9 +90,6 @@ sealed interface UiIntent {
     data class ReceiveOn(val on: Boolean) : UiIntent
     data class SaveToAlbum(val on: Boolean) : UiIntent
     data class RangePreset(val preset: RangeChoice) : UiIntent
-
-    /** A custom range; a `null` bound keeps the one already picked (or the window's, if none was). */
-    data class RangeCustom(val from: LocalDateTime?, val until: LocalDateTime?) : UiIntent
     data object RetryLoad : UiIntent
     data object ConfirmJoin : UiIntent
     data object ConfirmSwitch : UiIntent

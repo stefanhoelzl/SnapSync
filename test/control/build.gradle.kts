@@ -28,6 +28,7 @@ dependencies {
     api(project(":test:rig"))
     // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
     api(project(":domain:model"))
+    api(project(":ui:state"))
     api(project(":domain:presentation"))
     api(project(":domain:feature"))
     api(libs.ktor.client.core)

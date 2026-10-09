@@ -4,7 +4,6 @@ import app.snapsync.contracts.CallLog
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
-import app.snapsync.model.UiState
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DevControls
@@ -21,6 +20,8 @@ import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 
 /** [CrashReporter] as its clause's [CallLog] sees it. */
 fun CrashReporter.recorded(log: CallLog): CrashReporter = CrashReporterProxy(this, log)
@@ -194,14 +195,14 @@ internal class PushNotificationsProxy(private val inner: PushNotifications, log:
 }
 
 /** [Ui] as its clause's [CallLog] sees it. */
-fun Ui.recorded(log: CallLog): Ui = UiProxy(this, log)
+fun Ui<UiState, UiIntent>.recorded(log: CallLog): Ui<UiState, UiIntent> = UiProxy(this, log)
 
-internal class UiProxy(private val inner: Ui, log: CallLog) : Ui {
+internal class UiProxy(private val inner: Ui<UiState, UiIntent>, log: CallLog) : Ui<UiState, UiIntent> {
     private val r = log.recorder("Ui")
 
     override fun show(state: UiState) = r.returns("show", inner.show(state))
 
-    override fun listen(handlers: UiHandlers) = r.returns(
+    override fun listen(handlers: UiHandlers<UiIntent>) = r.returns(
         "listen",
         inner.listen(
             UiHandlers(

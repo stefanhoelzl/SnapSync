@@ -26,6 +26,8 @@ kotlin {
             implementation(project(":domain:services"))
             implementation(project(":domain:feature"))
             implementation(project(":domain:flow"))
+            // The screen's vocabulary the app's port bundle binds its Ui port to (`Ui<UiState, UiIntent>`).
+            implementation(project(":ui:state"))
             // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the
             // config/manifest vocabulary and cutoff codecs), kermit (the engine's diagnostics).

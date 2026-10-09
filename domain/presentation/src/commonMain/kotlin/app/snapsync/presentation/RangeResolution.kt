@@ -5,8 +5,8 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.ShareCount
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.ShareCount
 import kotlinx.datetime.LocalDateTime
 
 /**

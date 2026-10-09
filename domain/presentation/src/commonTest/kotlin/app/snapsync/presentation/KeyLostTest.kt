@@ -8,8 +8,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.KeyPresence
-import app.snapsync.model.Layer
-import app.snapsync.model.SyncHealth
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
@@ -19,6 +17,8 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncHealth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope

@@ -37,6 +37,7 @@ module :tools:detekt-rules
 module :tools:diagrams
 module :ui:components
 module :ui:screens
+module :ui:state
 edge :adapter:android :adapter:generic:app
 edge :adapter:android :domain:feature
 edge :adapter:android :domain:model
@@ -46,6 +47,7 @@ edge :adapter:android :domain:services
 edge :adapter:android :test:contracts
 edge :adapter:android :ui:components
 edge :adapter:android :ui:screens
+edge :adapter:android :ui:state
 edge :adapter:generic:app :domain:model
 edge :adapter:generic:app :domain:ports
 edge :adapter:generic:app :domain:services
@@ -59,6 +61,7 @@ edge :adapter:generic:mock :domain:ports
 edge :adapter:generic:mock :domain:services
 edge :adapter:generic:mock :domain:wire
 edge :adapter:generic:mock :test:contracts
+edge :adapter:generic:mock :ui:state
 edge :adapter:generic:sentry :domain:model
 edge :adapter:generic:sentry :domain:ports
 edge :adapter:generic:sentry :test:contracts
@@ -78,9 +81,9 @@ edge :adapter:ios:ext-safe :test:contracts
 edge :adapter:ios:ui :adapter:ios:ext-safe
 edge :adapter:ios:ui :domain:model
 edge :adapter:ios:ui :domain:ports
-edge :adapter:ios:ui :domain:presentation
 edge :adapter:ios:ui :ui:components
 edge :adapter:ios:ui :ui:screens
+edge :adapter:ios:ui :ui:state
 edge :app:android :adapter:android
 edge :app:android :adapter:generic:app
 edge :app:android :adapter:generic:sentry
@@ -91,6 +94,8 @@ edge :app:android :domain:model
 edge :app:android :domain:ports
 edge :app:android :domain:presentation
 edge :app:android :domain:services
+edge :app:android :ui:components
+edge :app:android :ui:state
 edge :app:desktop :adapter:generic:app
 edge :app:desktop :app:jvm
 edge :app:desktop :domain:feature
@@ -101,6 +106,7 @@ edge :app:desktop :domain:services
 edge :app:desktop :test:control
 edge :app:desktop :ui:components
 edge :app:desktop :ui:screens
+edge :app:desktop :ui:state
 edge :app:ios :adapter:generic:app
 edge :app:ios :adapter:generic:sentry
 edge :app:ios :adapter:ios:app-only
@@ -113,7 +119,9 @@ edge :app:ios :domain:model
 edge :app:ios :domain:ports
 edge :app:ios :domain:presentation
 edge :app:ios :domain:services
+edge :app:ios :ui:components
 edge :app:ios :ui:screens
+edge :app:ios :ui:state
 edge :app:ios:extension :adapter:generic:app
 edge :app:ios:extension :adapter:generic:sentry
 edge :app:ios:extension :adapter:ios:ext-safe
@@ -131,11 +139,13 @@ edge :app:jvm :domain:model
 edge :app:jvm :domain:ports
 edge :app:jvm :domain:presentation
 edge :app:jvm :domain:services
+edge :app:jvm :ui:state
 edge :domain:compose :domain:feature
 edge :domain:compose :domain:flow
 edge :domain:compose :domain:model
 edge :domain:compose :domain:ports
 edge :domain:compose :domain:services
+edge :domain:compose :ui:state
 edge :domain:feature :domain:model
 edge :domain:feature :domain:services
 edge :domain:flow :domain:feature
@@ -145,9 +155,11 @@ edge :domain:host :domain:feature
 edge :domain:host :domain:model
 edge :domain:host :domain:ports
 edge :domain:host :domain:presentation
+edge :domain:host :ui:state
 edge :domain:ports :domain:model
 edge :domain:presentation :domain:feature
 edge :domain:presentation :domain:model
+edge :domain:presentation :ui:state
 edge :domain:services :domain:model
 edge :domain:services :domain:ports
 edge :domain:services :domain:wire
@@ -159,14 +171,17 @@ edge :test:architecture :domain:ports
 edge :test:architecture :domain:services
 edge :test:architecture :domain:wire
 edge :test:architecture :test:contracts
+edge :test:architecture :ui:state
 edge :test:contracts :domain:model
 edge :test:contracts :domain:ports
 edge :test:contracts :domain:services
 edge :test:contracts :domain:wire
+edge :test:contracts :ui:state
 edge :test:control :domain:feature
 edge :test:control :domain:model
 edge :test:control :domain:presentation
 edge :test:control :test:rig
+edge :test:control :ui:state
 edge :test:edge :adapter:generic:app
 edge :test:edge :test:contracts
 edge :test:feature :adapter:generic:mock
@@ -180,10 +195,12 @@ edge :test:integration :domain:model
 edge :test:integration :domain:presentation
 edge :test:integration :domain:wire
 edge :test:integration :test:control
+edge :test:integration :ui:state
 edge :test:launch-adapters :adapter:generic:mock
 edge :test:launch-adapters :domain:compose
 edge :test:launch-adapters :domain:model
 edge :test:launch-adapters :domain:ports
+edge :test:launch-adapters :ui:state
 edge :test:no-grant :adapter:android
 edge :test:no-grant :domain:model
 edge :test:no-grant :domain:ports
@@ -208,10 +225,12 @@ edge :test:rig :domain:wire
 edge :test:rig :test:contracts
 edge :test:rig :test:edge
 edge :test:rig :test:launch-adapters
+edge :test:rig :ui:state
 edge :ui:components :adapter:generic:app
-edge :ui:components :domain:model
+edge :ui:components :ui:state
 edge :ui:screens :adapter:generic:app
 edge :ui:screens :domain:feature
 edge :ui:screens :domain:model
 edge :ui:screens :domain:presentation
 edge :ui:screens :ui:components
+edge :ui:screens :ui:state

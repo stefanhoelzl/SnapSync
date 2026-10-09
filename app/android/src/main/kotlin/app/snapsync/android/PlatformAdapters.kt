@@ -3,6 +3,8 @@ package app.snapsync.android
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.Ui
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 
 /**
  * The adapters a production build and a rig build supply differently — the one place the two builds differ
@@ -14,7 +16,7 @@ internal class PlatformAdapters(
     /** The build's development controls. */
     val devControls: DevControls,
     /** The platform's UI, as this build registers it — decorated for the channel on a rig build. */
-    val ui: Lazy<Ui>,
+    val ui: Lazy<Ui<UiState, UiIntent>>,
     /** The ports this launch composes over. */
     val ports: AppDevicePorts,
     /** What this build adds to the process's boot banner. */

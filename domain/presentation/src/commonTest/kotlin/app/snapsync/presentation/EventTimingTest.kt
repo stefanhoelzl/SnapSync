@@ -1,5 +1,10 @@
-package app.snapsync.model
+package app.snapsync.presentation
 
+import app.snapsync.model.CaptureDate
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventStart
+import app.snapsync.ui.state.EventTiming
+import app.snapsync.ui.state.TimeLeft
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.days
@@ -20,14 +25,14 @@ class EventTimingTest {
 
     @Test
     fun `a span is floored to its largest whole unit`() {
-        assertEquals(TimeLeft.Days(2), TimeLeft.of(2.days + 5.hours))
-        assertEquals(TimeLeft.Days(1), TimeLeft.of(47.hours))
-        assertEquals(TimeLeft.Days(29), TimeLeft.of(29.days + 23.hours))
-        assertEquals(TimeLeft.Hours(23), TimeLeft.of(23.hours + 59.minutes))
-        assertEquals(TimeLeft.Hours(1), TimeLeft.of(1.hours))
-        assertEquals(TimeLeft.Minutes(40), TimeLeft.of(40.minutes + 30.seconds))
-        assertEquals(TimeLeft.Minutes(1), TimeLeft.of(1.minutes))
-        assertEquals(TimeLeft.UnderAMinute, TimeLeft.of(59.seconds))
+        assertEquals(TimeLeft.Days(2), timeLeftOf(2.days + 5.hours))
+        assertEquals(TimeLeft.Days(1), timeLeftOf(47.hours))
+        assertEquals(TimeLeft.Days(29), timeLeftOf(29.days + 23.hours))
+        assertEquals(TimeLeft.Hours(23), timeLeftOf(23.hours + 59.minutes))
+        assertEquals(TimeLeft.Hours(1), timeLeftOf(1.hours))
+        assertEquals(TimeLeft.Minutes(40), timeLeftOf(40.minutes + 30.seconds))
+        assertEquals(TimeLeft.Minutes(1), timeLeftOf(1.minutes))
+        assertEquals(TimeLeft.UnderAMinute, timeLeftOf(59.seconds))
     }
 
     @Test

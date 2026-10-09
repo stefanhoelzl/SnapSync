@@ -15,7 +15,8 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
-            implementation(project(":domain:presentation"))
+            // The screen's vocabulary the Ui port is bound to here (`Ui<UiState, UiIntent>`); never presentation.
+            implementation(project(":ui:state"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:components"))
             implementation(project(":adapter:ios:ext-safe"))

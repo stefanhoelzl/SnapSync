@@ -1,13 +1,13 @@
 package app.snapsync.rig
 
 import app.snapsync.model.InviteLinkHints
-import app.snapsync.model.UiIntent
-import app.snapsync.model.UiState
 import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 
 // The control channel's adapters (`docs/testing.md`, "The control channel"): what a rig build's `platformAdapters()`
 // supplies in place of the production ones. A production build contains none of this — the source is compiled only
@@ -21,10 +21,10 @@ import app.snapsync.ports.UiHandlers
  * [listen] to [inner] is the one registration the composition makes (a rig decorator's forwarding `listen` counts as
  * the composition's single `listen`).
  */
-class RigUi(private val inner: Lazy<Ui>) : Ui {
-    private var handlers: UiHandlers? = null
+class RigUi(private val inner: Lazy<Ui<UiState, UiIntent>>) : Ui<UiState, UiIntent> {
+    private var handlers: UiHandlers<UiIntent>? = null
 
-    override fun listen(handlers: UiHandlers) {
+    override fun listen(handlers: UiHandlers<UiIntent>) {
         this.handlers = handlers
         inner.value.listen(handlers)
     }

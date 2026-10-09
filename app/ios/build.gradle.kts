@@ -75,6 +75,7 @@ kotlin {
             // The shared host composition: the core and the status host over it (`snapSyncHost`).
             implementation(project(":domain:host"))
             implementation(project(":ui:screens"))
+            implementation(project(":ui:state"))
             // The screen's date formatting the root builds over the `DateFormatting` port, for the UI adapter.
             implementation(project(":ui:components"))
             implementation(project(":domain:presentation"))

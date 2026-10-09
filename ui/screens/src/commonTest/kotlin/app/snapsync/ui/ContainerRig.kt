@@ -22,7 +22,6 @@ import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CreateStep
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
@@ -32,7 +31,6 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.Layer
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
@@ -40,7 +38,6 @@ import app.snapsync.model.ReportOutcome
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UiState
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
@@ -53,6 +50,9 @@ import app.snapsync.presentation.onIntent
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
+import app.snapsync.ui.state.CreateStep
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

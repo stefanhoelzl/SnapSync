@@ -6,66 +6,65 @@ import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.AppLink
-import app.snapsync.model.Arrow
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.CreateForm
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Direction
-import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.EventStart
-import app.snapsync.model.EventTiming
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinStage
-import app.snapsync.model.JoinedSurface
 import app.snapsync.model.KeyPresence
-import app.snapsync.model.Layer
-import app.snapsync.model.MobileDataState
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.NetworkNotice
-import app.snapsync.model.Overlays
-import app.snapsync.model.PendingSwitch
-import app.snapsync.model.RangeChoice
 import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.RenameState
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.ShareCount
-import app.snapsync.model.SyncCounts
-import app.snapsync.model.SyncHealth
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UiState
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
-import app.snapsync.model.Waiting
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.eventTiming
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.model.step
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeEdit
 import app.snapsync.presentation.range.after
 import app.snapsync.presentation.range.validUntil
+import app.snapsync.ui.state.AppLink
+import app.snapsync.ui.state.Arrow
+import app.snapsync.ui.state.CreateForm
+import app.snapsync.ui.state.DirectionCount
+import app.snapsync.ui.state.EventTiming
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinStage
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.MobileDataState
+import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.Overlays
+import app.snapsync.ui.state.PendingSwitch
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.RenameState
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.SyncCounts
+import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiState
+import app.snapsync.ui.state.Waiting
+import app.snapsync.ui.state.step
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -348,7 +347,8 @@ class StatusContainerHost(
                         }
                     }
             }
-            // While the create form shows an untouched range, its start follows the clock minute by minute (the start follows the clock until the host chooses the range).
+            // While the create form shows an untouched range, its start follows the clock minute by minute, until the
+            // host chooses the range.
             intent {
                 container.stateFlow
                     .map { it.ui.layer is Layer.CreateEvent && !local.value.create.rangeTouched }
@@ -399,7 +399,7 @@ class StatusContainerHost(
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
     private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: GalleryAccess)
 
-    /** What the screen shows (capability `sync-status`): the display half of the container's [ScreenModel]. */
+    /** What the screen shows: the display half of the container's [ScreenModel]. */
     val screen: StateFlow<UiState> = Displayed { container.stateFlow }
 
     /**
@@ -420,8 +420,8 @@ class StatusContainerHost(
         val ui = UiState(
             reduced.layer,
             local.overlays.maskedFor(reduced.layer),
-            reportDestination,
-            build,
+            reportDestination.shown,
+            build.shown,
             MobileDataState(on = membership.mobileData, notSaved = local.mobileDataNotSaved),
         )
         // The count row renders only while sharing is on, so no photo-library read is made for a row nobody sees.
@@ -475,7 +475,7 @@ class StatusContainerHost(
             )
         }
 
-    /** The create form's own taps (capability `create-event`): its name as typed, and Create. */
+    /** The create form's own taps: its name as typed, and Create. */
     val create: CreateCommands = CreateCommands()
 
     inner class CreateCommands internal constructor() {
@@ -494,7 +494,7 @@ class StatusContainerHost(
     }
 
     /**
-     * The range calendars (capabilities `create-event`, `join-event`, `manage-membership`): the gestures on the create
+     * The range calendars: the gestures on the create
      * form's calendar or the open one's; and the calendar over a participation surface, which opens on the range the
      * surface resolves, complete — so the first tap on a day starts a new range — held to the event's window. OK takes
      * its span as a custom range; a preset chip takes the preset; closing changes nothing.
@@ -503,7 +503,7 @@ class StatusContainerHost(
 
     inner class PickerCommands internal constructor() {
         /**
-         * A gesture on a range calendar (capabilities `create-event`, `join-event`): the open calendar's, or else the
+         * A gesture on a range calendar: the open calendar's, or else the
          * create form's. Applied at once, in the order the gestures came, so a drag's moves land one after another.
          */
         internal fun onEdit(edit: RangeEdit) = local.update { l ->
@@ -762,7 +762,7 @@ class StatusContainerHost(
                 ReportOutcome.NOT_SENT
             }
             // Shown, then cleared after a moment; a later report's word replaces an earlier one's.
-            local.editOverlays { it.copy(reportNotice = outcome) }
+            local.editOverlays { it.copy(reportNotice = outcome.shown) }
             reportNoticeClear?.cancel()
             reportNoticeClear = scope.launch {
                 delay(REPORT_NOTICE_MILLIS)
@@ -1385,7 +1385,7 @@ private fun unjoinedLayer(
     // A phone the service refuses is told so in that same line as soon as the app learns of it — the front screen
     // tells a refused phone before it tries: below a failure, which for a refused phone IS the refusal, and above the
     // scan hint. Create stays available.
-    val refused = refusal?.let(ScreenMessage::of)
+    val refused = refusal?.message
     val layer = when (val creation = create.status) {
         CreationStatus.InFlight -> Layer.CreatingEvent
         is CreationStatus.Failed ->
@@ -1419,7 +1419,7 @@ private fun reduceFrom(
     display: Display,
 ): Reduced {
     val (config, permission, snapshot, download, attested, access) = membership
-    val network = NetworkNotice.of(access)
+    val network = access.notice
     val (pending, creation, renameStatus) = interaction
     val transient = local.transientError
     val form = local.form
@@ -1775,7 +1775,7 @@ private fun failedPhase(
     // Refused for this phone's credential: told why when the service said why — a refused phone
     // is told why it cannot join. Without a verdict — the attempt to verify got no answer — it is the ordinary failure.
     JoinCommit.Unverified if refusal != null ->
-        JoinProgress.Detailed(event, JoinPhase.Detailed.Step.DeviceRefused, ScreenMessage.of(refusal))
+        JoinProgress.Detailed(event, JoinPhase.Detailed.Step.DeviceRefused, refusal.message)
     else -> JoinProgress.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
 }
 

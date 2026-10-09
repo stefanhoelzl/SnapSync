@@ -1,8 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.CreateForm
-import app.snapsync.model.Layer
+import app.snapsync.ui.state.CreateForm
+import app.snapsync.ui.state.Layer
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime

@@ -1,10 +1,10 @@
 package app.snapsync.integration
 
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.Layer
-import app.snapsync.model.ShareCount
-import app.snapsync.model.SyncHealth
 import app.snapsync.rig.RigState
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.SyncHealth
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 

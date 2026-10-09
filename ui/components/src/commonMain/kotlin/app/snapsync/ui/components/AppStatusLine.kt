@@ -36,8 +36,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.Arrow
-import app.snapsync.model.RefusalCause
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.cannot_verify_detail
 import app.snapsync.ui.components.resources.cannot_verify_title
@@ -59,6 +57,8 @@ import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
 import app.snapsync.ui.components.resources.status_syncing
 import app.snapsync.ui.components.resources.status_waiting_wifi
+import app.snapsync.ui.state.Arrow
+import app.snapsync.ui.state.RefusalCause
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 

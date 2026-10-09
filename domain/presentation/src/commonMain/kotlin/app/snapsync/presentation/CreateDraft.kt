@@ -5,7 +5,7 @@ import kotlinx.datetime.LocalDateTime
 import kotlin.time.Duration
 
 /**
- * What the host has entered on the create form (capability `create-event`): the [name] and the [range], where the
+ * What the host has entered on the create form: the [name] and the [range], where the
  * draft stands against the app's foreground life ([session]), and whether the host has chosen anything in the range.
  *
  * Kept by the container, not by the form: the form gives way to the in-flight screen while a create runs, and a failed

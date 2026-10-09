@@ -96,7 +96,7 @@ enum class JoinCommit {
  *   titles the report, so two reports about different problems arrive as different issues. `context` is
  *   [ReportContext]: an opaque label for the surface it was sent from (the domain enumerates no screens — the
  *   only way a screen-local surface, which touches no port, reaches a report), and what that surface showed.
- *   Present on every build: where the report goes is [UiState.reportDestination], which the sheet states, so
+ *   Present on every build: where the report goes is `UiState.reportDestination`, which the sheet states, so
  *   the affordance never suggests a destination the build does not have.
  * - [restoreEventKey] — keep the key a reopened invite of the joined event carries, when this device lost it
  *   (reopening the current event's invite changes nothing else): answers whether it was kept —

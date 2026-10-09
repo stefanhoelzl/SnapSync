@@ -13,13 +13,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
-import app.snapsync.model.PickerView
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.picker_save
 import app.snapsync.ui.components.resources.share_range_title
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_not_set
 import app.snapsync.ui.components.resources.wheel_start_hour
+import app.snapsync.ui.state.PickerView
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import org.junit.Rule

@@ -19,6 +19,7 @@ dependencies {
     api(project(":domain:feature"))
     // The screen pane and the mirror take the screen's `CutoffFormatter`.
     implementation(project(":domain:presentation"))
+    implementation(project(":ui:state"))
     implementation(project(":ui:screens"))
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
     // pane, so the components module is a direct dependency rather than transitive through `:ui:screens`.

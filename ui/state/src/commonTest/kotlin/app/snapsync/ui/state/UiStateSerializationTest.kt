@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -258,7 +258,7 @@ class UiStateSerializationTest {
         // One field off its default at a time: a state differing in only that field must still arrive whole, so
         // no field is dropped by an encoder that omits defaults.
         val overlays = listOf(Overlays(confirmingLeave = true), Overlays(renaming = true), Overlays(reportingBug = true)) +
-            Overlays(menuOpen = true) + ReportOutcome.entries.map { Overlays(reportNotice = it) }
+            Overlays(menuOpen = true) + ReportNotice.entries.map { Overlays(reportNotice = it) }
         for (overlay in overlays) {
             roundTrip(UiState(Layer.CreateEvent(FRESH_CREATE_FORM), overlay))
         }
@@ -266,8 +266,8 @@ class UiStateSerializationTest {
         roundTrip(
             UiState(
                 Layer.CreateEvent(FRESH_CREATE_FORM),
-                reportDestination = ReportDestination.THIS_DEVICE,
-                build = BuildLabel("0.12", "2140"),
+                reportDestination = ReportTarget.THIS_DEVICE,
+                build = BuildLine("0.12", "2140"),
             ),
         )
     }
@@ -313,7 +313,7 @@ class UiStateSerializationTest {
         val encoded = json.encodeToString(JoinStage.serializer(), loaded)
         val withoutRange = encoded.replace(Regex(""","range":\{.*}}$"""), "}")
         assertFailsWith<SerializationException> { json.decodeFromString(JoinStage.serializer(), withoutRange) }
-        val withoutPhase = """{"type":"app.snapsync.model.JoinStage.Unloaded"}"""
+        val withoutPhase = """{"type":"app.snapsync.ui.state.JoinStage.Unloaded"}"""
         assertFailsWith<SerializationException> { json.decodeFromString(JoinStage.serializer(), withoutPhase) }
     }
 }

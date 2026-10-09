@@ -30,10 +30,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import app.snapsync.model.PickerView
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.picker_cancel
 import app.snapsync.ui.components.resources.picker_save
+import app.snapsync.ui.state.PickerView
 import kotlinx.datetime.plus
 import org.jetbrains.compose.resources.stringResource
 

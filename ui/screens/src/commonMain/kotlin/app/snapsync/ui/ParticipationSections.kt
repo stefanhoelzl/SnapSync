@@ -2,10 +2,6 @@ package app.snapsync.ui
 
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
-import app.snapsync.model.AlbumStyle
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeView
-import app.snapsync.model.ShareCount
 import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppShareRangeRow
 import app.snapsync.ui.components.AppToggleCard
@@ -27,6 +23,10 @@ import app.snapsync.ui.resources.share_exclusions_note
 import app.snapsync.ui.resources.share_off_note
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.share_zero_note
+import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.RangeView
+import app.snapsync.ui.state.ShareCount
 import org.jetbrains.compose.resources.stringResource
 
 // The participation decision surface — the three questions a member answers about an event, and the

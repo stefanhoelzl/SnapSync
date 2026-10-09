@@ -1,10 +1,10 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.Layer
-import app.snapsync.model.step
 import app.snapsync.rig.RigState
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.step
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonPrimitive

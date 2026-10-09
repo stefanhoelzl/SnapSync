@@ -5,9 +5,9 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.done
 import app.snapsync.model.AssetId
 import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.Layer
 import app.snapsync.model.decodeEventUrl
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.Layer
 import app.snapsync.wire.api.Limits
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO

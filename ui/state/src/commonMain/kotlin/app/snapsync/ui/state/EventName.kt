@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 /**
  * The longest event name the backend accepts.

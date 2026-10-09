@@ -24,9 +24,9 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies {
-            // Shared sync vocabulary in App* signatures (`model/`'s Arrow — the step-9 Arrow/ArrowLevel
-            // unification): the ONE enum both presentation's reduction and this skin render from.
-            api(project(":domain:model"))
+            // The screen's vocabulary in App* signatures (`Arrow`, `RangeChoice`, the range calendar's `PickerView`):
+            // the values presentation reduces into and this skin draws. Never the domain.
+            api(project(":ui:state"))
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.components.resources)

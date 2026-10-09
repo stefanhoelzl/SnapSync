@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
@@ -62,7 +62,6 @@ class UiIntentVocabularyTest {
         is UiIntent.ReceiveOn -> "ReceiveOn"
         is UiIntent.SaveToAlbum -> "SaveToAlbum"
         is UiIntent.RangePreset -> "RangePreset"
-        is UiIntent.RangeCustom -> "RangeCustom"
         UiIntent.RetryLoad -> "RetryLoad"
         UiIntent.ConfirmJoin -> "ConfirmJoin"
         UiIntent.ConfirmSwitch -> "ConfirmSwitch"
@@ -121,7 +120,6 @@ class UiIntentVocabularyTest {
                 UiIntent.ReceiveOn(on = true),
                 UiIntent.SaveToAlbum(on = true),
                 UiIntent.RangePreset(RangeChoice.WHOLE_EVENT),
-                UiIntent.RangeCustom(at, null),
                 UiIntent.RetryLoad,
                 UiIntent.ConfirmJoin,
                 UiIntent.ConfirmSwitch,
@@ -150,7 +148,6 @@ class UiIntentVocabularyTest {
             { UiIntent.RangePreset(RangeChoice.WHOLE_EVENT) },
             UiIntent.RangePreset(RangeChoice.FROM_NOW),
         )
-        assertValueEquality({ UiIntent.RangeCustom(at, null) }, UiIntent.RangeCustom(null, at))
         assertValueEquality({ UiIntent.CreateName("Picnic") }, UiIntent.CreateName("Party"))
         assertValueEquality({ UiIntent.RangeDay(day) }, UiIntent.RangeDay(day.plus(1, DateTimeUnit.DAY)))
         assertValueEquality({ UiIntent.RangeDragStart(day) }, UiIntent.RangeDragStart(day.plus(1, DateTimeUnit.DAY)))

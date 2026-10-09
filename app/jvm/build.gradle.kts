@@ -26,6 +26,7 @@ dependencies {
     api(project(":domain:presentation"))
     api(project(":adapter:generic:mock"))
     implementation(project(":domain:model"))
+    implementation(project(":ui:state"))
     implementation(project(":domain:ports"))
     implementation(project(":domain:services"))
     implementation(project(":domain:feature"))

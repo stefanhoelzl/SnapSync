@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 /**
  * A sync direction arrow's render state: absent, shown-idle, or shown-and-animating. Shown tracks completeness (work

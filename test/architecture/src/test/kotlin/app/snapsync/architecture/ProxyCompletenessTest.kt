@@ -193,7 +193,16 @@ class ProxyCompletenessTest {
         private fun handlerCall(p: Parsed) {
             val bundle = listenAndHear()
             val field = bundle::class.memberProperties.first { it.name == p.handler }
-            invokeFunction(field.getter.call(bundle)!!, field.returnType, p.args!!)
+            // The argument types as the composition binds the port: a generic port's handler takes its bound types.
+            val types = PortGrid.handlerArgTypes(through, field.name)
+            check(
+                types.size == p.args!!.size,
+            ) { "${field.name} takes ${types.size} arguments, the cell names ${p.args}" }
+            invoke(
+                field.getter.call(bundle)!!,
+                types.zip(p.args).map { (t, v) -> valueOf(t, v) },
+                isSuspend(field.returnType),
+            )
         }
 
         private fun handleCell(p: Parsed) {
@@ -427,7 +436,7 @@ class ProxyCompletenessTest {
         }
 
         fun dummy(type: KType): Any? {
-            val k = type.classifier as? KClass<*> ?: return null
+            val k = PortGrid.bindingFor(type).classifier as? KClass<*> ?: return null
             return when {
                 // Every date role wraps a CaptureDate and refuses one that is not an instant; a port is called with real ones.
                 k == CaptureDate::class -> CaptureDate("2026-01-01T00:00:00Z")

@@ -35,9 +35,7 @@ import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
-import app.snapsync.model.Layer
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.ScreenMessage
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
@@ -74,6 +72,8 @@ import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.share_invite
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.ScreenMessage
 import kotlinx.coroutines.cancel
 import kotlin.test.Test
 import kotlin.test.assertEquals

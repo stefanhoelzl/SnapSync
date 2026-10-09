@@ -8,12 +8,13 @@ import app.snapsync.logging.invocation
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
-import app.snapsync.model.UiState
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.ScreenDates
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import app.snapsync.ui.statusActions
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,11 +48,11 @@ class IosUi(
     private val record: SceneRecord,
     private val dates: ScreenDates,
     private val log: Logger,
-) : Ui {
+) : Ui<UiState, UiIntent> {
     private val shown = MutableStateFlow<UiState?>(null)
-    private val handlers = HandlerSlot<UiHandlers>("Ui", BeforeListen.Logged(log))
+    private val handlers = HandlerSlot<UiHandlers<UiIntent>>("Ui", BeforeListen.Logged(log))
 
-    override fun listen(handlers: UiHandlers) = this.handlers.set(handlers)
+    override fun listen(handlers: UiHandlers<UiIntent>) = this.handlers.set(handlers)
 
     override fun show(state: UiState) {
         shown.value = state
@@ -89,7 +90,7 @@ class IosUi(
         return placeholder
     }
 
-    private fun liveScreen(registered: UiHandlers): UIViewController {
+    private fun liveScreen(registered: UiHandlers<UiIntent>): UIViewController {
         registered.onLive()
         val actions = statusActions(registered.onIntent)
         return ComposeUIViewController {

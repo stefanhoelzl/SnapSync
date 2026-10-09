@@ -9,9 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.JoinedEvent
-import app.snapsync.model.Layer
-import app.snapsync.model.SyncHealth
 import app.snapsync.ui.components.AppExplainRow
 import app.snapsync.ui.components.AppEyebrow
 import app.snapsync.ui.components.CaptionLink
@@ -42,6 +39,9 @@ import app.snapsync.ui.resources.explain_share_limited_title
 import app.snapsync.ui.resources.explain_share_off_caption
 import app.snapsync.ui.resources.explain_share_off_title
 import app.snapsync.ui.resources.explain_share_title
+import app.snapsync.ui.state.JoinedEvent
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncHealth
 import org.jetbrains.compose.resources.stringResource
 
 // The joined screen's explanation of how the event works for this member.

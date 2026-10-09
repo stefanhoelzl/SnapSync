@@ -7,38 +7,25 @@ import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.Arrow
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Direction
-import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.EventStart
-import app.snapsync.model.EventTiming
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.Layer
-import app.snapsync.model.PendingSwitch
-import app.snapsync.model.RefusalCause
-import app.snapsync.model.RenameState
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.SyncCounts
-import app.snapsync.model.SyncHealth
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimeLeft
-import app.snapsync.model.UiState
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.decodeEventUrl
@@ -46,8 +33,20 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.model.eventTiming
-import app.snapsync.model.step
+import app.snapsync.ui.state.Arrow
+import app.snapsync.ui.state.DirectionCount
+import app.snapsync.ui.state.EventTiming
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.PendingSwitch
+import app.snapsync.ui.state.RefusalCause
+import app.snapsync.ui.state.RenameState
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.SyncCounts
+import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.TimeLeft
+import app.snapsync.ui.state.UiState
+import app.snapsync.ui.state.step
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -2790,7 +2789,7 @@ class StatusContainerHostRefusalTest {
     fun `a refused phone is told why on the front screen before it taps anything in place of the scan hint`() = runTest {
         for (reason in DeviceRefusal.entries) {
             val host = createHost(CreationStatus.Idle, scope = backgroundScope, refusal = MutableStateFlow(reason))
-            val told = createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.of(reason))
+            val told = createLayerAt(fixedCutoffFormatter(), error = reason.message)
             assertEquals(shownAs(told), host.screen.value)
         }
     }

@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -23,9 +23,9 @@ data class UiState(
     val layer: Layer,
     val overlays: Overlays = Overlays(),
     /** Where a bug report goes on this build — what the report sheet says, and what its button reads. */
-    val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
+    val reportDestination: ReportTarget = ReportTarget.DEVELOPER,
     /** Which build this is — the app menu's footer. A constant of the build. */
-    val build: BuildLabel = BuildLabel.UNKNOWN,
+    val build: BuildLine = BuildLine.UNKNOWN,
     /**
      * The device's mobile-data choice as the app menu shows it — a fact of the device, not of a layer, because the menu
      * offers it with and without an event.
@@ -42,23 +42,26 @@ data class UiState(
 data class MobileDataState(val on: Boolean = true, val notSaved: Boolean = false)
 
 /**
- * The build's version and build number as the app menu shows them. Off-device compositions know neither and say so
- * ([UNKNOWN]) rather than showing a number nobody built.
+ * The build's version and build number as the app menu's footer shows them. Off-device
+ * compositions know neither and say so ([UNKNOWN]) rather than showing a number nobody built.
  */
 @Serializable
-data class BuildLabel(val version: String, val buildNumber: String) {
+data class BuildLine(val version: String, val buildNumber: String) {
     companion object {
-        val UNKNOWN: BuildLabel = BuildLabel(version = "unknown", buildNumber = "unknown")
+        val UNKNOWN: BuildLine = BuildLine(version = "unknown", buildNumber = "unknown")
     }
 }
 
 /**
- * What became of a bug report the user confirmed, as the app briefly says it: handed to the reporting service, kept on
- * this device, or neither. [SENT] is a hand-off, never a delivery — the channel may queue and retry, and nothing
- * reports back.
+ * The brief word on a bug report the user confirmed: handed to the reporting service,
+ * kept on this device, or neither.
  */
 @Serializable
-enum class ReportOutcome { SENT, SAVED, NOT_SENT }
+enum class ReportNotice { SENT, SAVED, NOT_SENT }
+
+/** Where the report sheet says a report goes: the developer, or this device. */
+@Serializable
+enum class ReportTarget { DEVELOPER, THIS_DEVICE }
 
 /**
  * Whether [this] layer offers the app menu: everywhere except the event-settings surface and while a join or a create
@@ -73,13 +76,6 @@ val Layer.offersMenu: Boolean
         is Layer.JoiningEvent -> (phase as? JoinPhase.Detailed)?.step != JoinPhase.Detailed.Step.Committing
         else -> true
     }
-
-/**
- * Where a bug report goes — a constant of the build: a distributed build sends it to the developer's error-tracking
- * service; a build that reports nowhere keeps it on this device.
- */
-@Serializable
-enum class ReportDestination { DEVELOPER, THIS_DEVICE }
 
 /**
  * What is drawn OVER the current [Layer] — the confirmations and sheets.
@@ -113,7 +109,7 @@ data class Overlays(
     /** The app menu's drawer; never shown where the layer does not [offersMenu]. */
     val menuOpen: Boolean = false,
     /** The brief word on the last confirmed report, until it clears or is tapped. */
-    val reportNotice: ReportOutcome? = null,
+    val reportNotice: ReportNotice? = null,
 )
 
 /**
@@ -159,7 +155,7 @@ sealed interface Layer {
      */
     @Serializable
     data class CreateEvent(
-        /** What the host has entered so far, and what it makes (capability `create-event`). */
+        /** What the host has entered so far, and what it makes. */
         val form: CreateForm,
         val error: ScreenMessage? = null,
         /**
@@ -227,8 +223,9 @@ sealed interface Layer {
          */
         val membership: JoinedEvent,
         /**
-         * The invite link, derived **once** from the membership's event id, so the rendered QR and the shared link cannot disagree. Carried rather than
-         * re-derived at each render site: the derivation depends on a build-time link origin, so carrying
+         * The invite link, derived **once** from the membership's event id, so the rendered QR and the shared link
+         * cannot disagree. Carried rather than re-derived at each render site: the derivation depends on a build-time
+         * link origin, so carrying
          * it is what makes a transported state render the origin the device actually shows.
          *
          * `null` when there is no whole invite to offer: the event is encrypted and this device cannot read its key
@@ -244,8 +241,9 @@ sealed interface Layer {
          *  affordance, never an attention state. */
         val canChoosePhotos: Boolean = false,
         /**
-         * Where the event is in its life — the dates line's "starts in …" / "ends in …" / "ended". The range itself is [membership]'s [JoinedEvent.startsAt]/[JoinedEvent.endsAt]; this is only the part that
-         * needs a clock, reduced from the host's minute tick so the screen never reads one.
+         * Where the event is in its life — the dates line's "starts in …" / "ends in …" / "ended". The range itself
+         * is [membership]'s [JoinedEvent.startsAt]/[JoinedEvent.endsAt]; this is only the part that needs a clock,
+         * reduced from the host's minute tick so the screen never reads one.
          */
         val timing: EventTiming = EventTiming.Running(remaining = null),
         /**
@@ -582,16 +580,6 @@ enum class NetworkNotice {
 
     /** The operating system withholds the network from this app — a setting of the app's, in Settings. */
     BLOCKED,
-    ;
-
-    companion object {
-        /** The notice for [access], or `null` when there is nothing to tell. */
-        fun of(access: NetworkAccess): NetworkNotice? = when (access) {
-            is NetworkAccess.Online -> null
-            NetworkAccess.Offline -> OFFLINE
-            NetworkAccess.Blocked -> BLOCKED
-        }
-    }
 }
 
 /**
@@ -630,19 +618,10 @@ enum class ScreenMessage {
 
     /** Whether the screen offers to report this — only for a refusal the user can do nothing about but tell us. */
     val offersReport: Boolean get() = this == DEVICE_UNVERIFIABLE
-
-    companion object {
-        /** What the screen says for [refusal]. */
-        fun of(refusal: DeviceRefusal): ScreenMessage = when (refusal) {
-            DeviceRefusal.DEVICE_MODIFIED -> DEVICE_MODIFIED
-            DeviceRefusal.DEVICE_UNVERIFIABLE -> DEVICE_UNVERIFIABLE
-            DeviceRefusal.APP_NOT_GENUINE -> APP_NOT_GENUINE
-        }
-    }
 }
 
 /**
- * The joined membership as the joined screen states it (capability `sync-status`): its name and id, its dates and the
+ * The joined membership as the joined screen states it: its name and id, its dates and the
  * member's own range — each a moment already in the device's zone — and what the member chose to do.
  */
 @Serializable
@@ -664,16 +643,15 @@ data class JoinedEvent(
 )
 
 /**
- * The ended event's waiting line (capability `sync-status`): how many of the event's [active] members it still waits
+ * The ended event's waiting line: how many of the event's [active] members it still waits
  * for to finish sharing.
  */
 @Serializable
 data class Waiting(val waitingFor: Int, val active: Int)
 
 /**
- * A participation surface's choices and the range they make, as the join gate and the event settings show them
- * (capabilities `join-event`, `manage-membership`, `photo-sharing`, `event-album`). Every moment is already in the
- * device's zone.
+ * A participation surface's choices and the range they make, as the join gate and the event settings show them.
+ * Every moment is already in the device's zone.
  */
 @Serializable
 data class RangeView(
@@ -703,21 +681,21 @@ data class RangeView(
 )
 
 /**
- * How this phone holds an event album, as the album note says it (capability `event-album`): an album the received
+ * How this phone holds an event album, as the album note says it: an album the received
  * photos are added to, or a folder they are saved into.
  */
 @Serializable
 enum class AlbumStyle { COLLECTION, FOLDER }
 
-/** The store an update button opens (capability `app-update-required`). */
+/** The store an update button opens. */
 @Serializable
 enum class StoreName { APP_STORE, GOOGLE_PLAY }
 
-/** Why the service refused this phone, as the status line names it (capability `sync-status`). */
+/** Why the service refused this phone, as the status line names it. */
 @Serializable
 enum class RefusalCause { DEVICE_MODIFIED, DEVICE_UNVERIFIABLE, APP_NOT_GENUINE }
 
-/** The live shareable count (capability `join-event`), as the row renders it. */
+/** The live shareable count, as the row renders it. */
 @Serializable
 sealed interface ShareCount {
     /** Being (re)computed — the row shows `counting…`. */
@@ -734,7 +712,7 @@ sealed interface ShareCount {
 }
 
 /**
- * The create form (capability `create-event`): the name and the range the host has entered — kept by the app across a
+ * The create form: the name and the range the host has entered — kept by the app across a
  * failed create's round trip, and started over after a long absence — and what they make.
  */
 @Serializable
@@ -751,7 +729,7 @@ data class CreateForm(
     val maxDays: Int,
 )
 
-/** What the create form asks for next, in the order it asks (capability `create-event`). */
+/** What the create form asks for next, in the order it asks. */
 @Serializable
 sealed interface CreateStep {
     @Serializable
@@ -766,7 +744,7 @@ sealed interface CreateStep {
 }
 
 /**
- * A range calendar with its time wheels, as the screen draws it (capabilities `create-event`, `join-event`): the range
+ * A range calendar with its time wheels, as the screen draws it: the range
  * so far — its start, its last day, and the end time an hour and a minute at a time, each `null` while blank — and
  * what may be picked next. The rules that decide all of it are the app's; the calendar only draws it and reports
  * what was touched.

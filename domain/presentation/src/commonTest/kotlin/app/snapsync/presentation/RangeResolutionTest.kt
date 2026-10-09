@@ -3,14 +3,14 @@ package app.snapsync.presentation
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.ShareCount
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.localToCutoff
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.ShareCount
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test

@@ -3,7 +3,6 @@ package app.snapsync.rig
 import app.snapsync.compose.AppCore
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.Layer
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.RegistrationState
 import app.snapsync.model.processMetricEmissions
@@ -16,6 +15,7 @@ import app.snapsync.rig.gallery.WipeWindow
 import app.snapsync.rig.gallery.photoKitCensus
 import app.snapsync.rig.gallery.seedPhotos
 import app.snapsync.rig.gallery.wipeGallery
+import app.snapsync.ui.state.Layer
 import co.touchlab.kermit.Logger
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject

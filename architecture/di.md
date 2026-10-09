@@ -52,5 +52,4 @@ Roots found:
 | `ProcessPorts` | x | x | x |
 | `PublicNSLogSink` | x | x | x |
 | `SceneRecord` | x | x | |
-| `ScreenDates` | x | x | |
 | `SentryCrashReporter` | x | x | x |

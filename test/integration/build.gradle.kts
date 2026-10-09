@@ -37,6 +37,7 @@ dependencies {
     testImplementation(project(":test:control"))
     // Named explicitly, not received through the client: the core's zones export nothing transitively.
     testImplementation(project(":domain:model"))
+    testImplementation(project(":ui:state"))
     testImplementation(project(":domain:presentation"))
     testImplementation(project(":domain:feature"))
     testImplementation(libs.kotlinx.datetime)
@@ -61,6 +62,7 @@ dependencies {
     "journeysImplementation"(project(":domain:model"))
     // The version header's one name, generated from `api/openapi.yaml`.
     "journeysImplementation"(project(":domain:wire"))
+    "journeysImplementation"(project(":ui:state"))
     "journeysImplementation"(project(":domain:presentation"))
     "journeysImplementation"(project(":domain:feature"))
     "journeysImplementation"(libs.kotlinx.datetime)

@@ -1,10 +1,10 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.JoinPhase
 import app.snapsync.model.LINK_ORIGIN
-import app.snapsync.model.Layer
-import app.snapsync.model.ScreenMessage
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.ScreenMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

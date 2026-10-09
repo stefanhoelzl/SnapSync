@@ -1,7 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.Layer
+import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

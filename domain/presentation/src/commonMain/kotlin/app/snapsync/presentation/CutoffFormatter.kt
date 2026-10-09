@@ -3,13 +3,13 @@ package app.snapsync.presentation
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.CoarseDuration
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
 import app.snapsync.model.iso
 import app.snapsync.model.localToCutoff
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ui.state.CoarseDuration
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone

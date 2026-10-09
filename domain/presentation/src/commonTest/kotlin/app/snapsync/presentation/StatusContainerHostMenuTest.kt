@@ -2,23 +2,25 @@ package app.snapsync.presentation
 
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import app.snapsync.model.Overlays
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UiIntent
-import app.snapsync.model.UiState
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.ui.state.AppLink
+import app.snapsync.ui.state.BuildLine
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.Overlays
+import app.snapsync.ui.state.ReportNotice
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -116,7 +118,7 @@ class StatusContainerHostMenuTest {
 
     @Test
     fun `every state carries the build the menu names`() = onHost { host, _ ->
-        host.stateWhere("the build label") { it.build == BuildLabel("0.12", "2140") }
+        host.stateWhere("the build label") { it.build == BuildLine("0.12", "2140") }
     }
 
     @Test
@@ -211,7 +213,7 @@ class StatusContainerHostMenuTest {
             val world = World().apply { this.outcome = { outcome } }
             onHost(world) { host, _ ->
                 host.onSendDiagnostics("photos are missing", "joined")
-                host.stateWhere("told $outcome") { it.overlays.reportNotice == outcome }
+                host.stateWhere("told $outcome") { it.overlays.reportNotice == outcome.shown }
                 host.stateWhere("cleared") { it.overlays.reportNotice == null }
             }
         }
@@ -222,14 +224,14 @@ class StatusContainerHostMenuTest {
         val world = World().apply { outcome = { error("collecting the dump failed") } }
         onHost(world) { host, _ ->
             host.onSendDiagnostics("photos are missing", "joined")
-            host.stateWhere("not sent") { it.overlays.reportNotice == ReportOutcome.NOT_SENT }
+            host.stateWhere("not sent") { it.overlays.reportNotice == ReportNotice.NOT_SENT }
         }
     }
 
     @Test
     fun `tapping the word dismisses it`() = onHost { host, _ ->
         host.onSendDiagnostics("photos are missing", "joined")
-        host.stateWhere("told") { it.overlays.reportNotice == ReportOutcome.SENT }
+        host.stateWhere("told") { it.overlays.reportNotice == ReportNotice.SENT }
         host.onIntent(UiIntent.ReportNoticeDismiss)
         host.stateWhere("dismissed") { it.overlays.reportNotice == null }
     }

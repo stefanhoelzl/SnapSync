@@ -3,8 +3,8 @@ package app.snapsync.presentation
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.ScreenMessage
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.ScreenMessage
 
 /**
  * An in-progress interactive join/switch confirmation: the event being
@@ -29,7 +29,7 @@ data class PendingJoin(
 }
 
 /**
- * How far a join confirmation has got (capability `join-event`) — the confirmation's own record, which the screen
+ * How far a join confirmation has got — the confirmation's own record, which the screen
  * sees only as the [JoinPhase] it [shows].
  *
  * Four phases carry no event: the fetch has not resolved, or there is nothing to be invited to. Every other phase is
@@ -72,20 +72,19 @@ sealed interface JoinProgress {
 }
 
 /**
- * The event facts a join confirmation renders and commits (capability `join-event`).
+ * The event facts a join confirmation renders and commits.
  *
  * [startsAt] is the event's **start date** — already a canonical UTC `…Z` string (`BackendEventDirectory`
  * normalizes it and fails the load rather than invent one). It is both the range row's lower **default**
- * and its **floor** (capability `photo-sharing`): the row cannot be empty and the confirm cannot
+ * and its **floor**: the row cannot be empty and the confirm cannot
  * join below it, so joining at whole-library scope is unrepresentable. It also decides whether "From
  * now" is offered — when it is in the **future**, that preset would clamp to this same instant.
  *
- * [endsAt] is the event's **end date** — the range row's upper **default** and its **ceiling**
- * (capability `photo-sharing`).
+ * [endsAt] is the event's **end date** — the range row's upper **default** and its **ceiling**.
  *
- * [deletesAt] is the event's **retention deadline** (capability `event-lifetime`) — **server-derived** and
- * carried verbatim. The commit persists it as the offline witness of the self-leave (capability
- * `manage-membership`). It is never computed on the device: a client-side copy of the retention constant would
+ * [deletesAt] is the event's **retention deadline** — **server-derived** and carried verbatim. The commit persists
+ * it as the offline witness of the self-leave. It is never computed on the device: a client-side copy of the
+ * retention constant would
  * promise a date the backend will not honour, silently.
  */
 data class EventDetails(

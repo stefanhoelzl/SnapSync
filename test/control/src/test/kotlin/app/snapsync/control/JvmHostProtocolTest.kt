@@ -1,9 +1,9 @@
 package app.snapsync.control
 
-import app.snapsync.model.Layer
-import app.snapsync.model.NetworkNotice
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.NetworkNotice
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -324,7 +324,7 @@ sealed interface RigTrigger {
  * through `/device/state` exactly as the screen observes it. Waiting here would mean inventing a
  * completion signal the UI itself does not have.
  */
-class RigUserCommand(val run: (params: Map<String, String>) -> Unit)
+class RigUserCommand(val run: suspend (params: Map<String, String>) -> Unit)
 
 /**
  * Thrown by a user command that THIS build cannot honour — a command the composed core leaves absent, such as the

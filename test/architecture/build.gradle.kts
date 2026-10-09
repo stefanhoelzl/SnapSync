@@ -48,6 +48,8 @@ dependencies {
     testImplementation(project(":domain:model"))
     // The generated wire (`api/openapi.yaml`): the limits and routes the client's mirrors are pinned to.
     testImplementation(project(":domain:wire"))
+    // The screen's vocabulary: the name cap the event-name gate pins, and the types `AppPorts` binds `Ui` to.
+    testImplementation(project(":ui:state"))
     testImplementation(project(":domain:feature"))
     // The transitions read the membership and the grant through their services, built over the ports' mocks.
     testImplementation(project(":domain:ports"))

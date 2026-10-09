@@ -12,8 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.AlbumStyle
-import app.snapsync.model.RangeView
 import app.snapsync.ui.components.AppAccessNotice
 import app.snapsync.ui.components.AppAccessPoint
 import app.snapsync.ui.components.AppEventHeaderCompact
@@ -50,6 +48,8 @@ import app.snapsync.ui.resources.join_access_sheet_title
 import app.snapsync.ui.resources.join_both_off
 import app.snapsync.ui.resources.join_button
 import app.snapsync.ui.resources.join_button_allow
+import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.RangeView
 import org.jetbrains.compose.resources.stringResource
 
 // The **Ready** join surface: the decision the guest actually makes. Split out of
