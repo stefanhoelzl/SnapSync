@@ -17,38 +17,10 @@ import {
 } from "./android-attest.ts";
 import type { Config } from "./config.ts";
 import type { AttestPlatform, DeviceAttestation } from "./db.ts";
-import { validateUUID } from "./validators.ts";
+import type { Proof } from "./gen/wire.ts";
 
-/** A proof as the request carried it, still encoded: a malformed one is refused by its verifier. */
-export type MintProof =
-  | { format: "apple-appattest"; keyId: string; attestation: string }
-  | { format: "android-key"; chain: string[] };
-
-export type MintBody = { deviceId: string; challenge: string; proof: MintProof };
-
-const isString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
-
-function typedProof(proof: unknown): MintProof | null {
-  const p = proof as Record<string, unknown> | null;
-  if (p?.format === "apple-appattest" && isString(p.keyId) && isString(p.attestation)) {
-    return { format: "apple-appattest", keyId: p.keyId, attestation: p.attestation };
-  }
-  if (
-    p?.format === "android-key" && Array.isArray(p.chain) && p.chain.length > 0 &&
-    p.chain.every(isString)
-  ) {
-    return { format: "android-key", chain: p.chain };
-  }
-  return null;
-}
-
-/** The mint request, `{deviceId, challenge, proof}`, or `null` — a `400`. */
-export function parseMintBody(body: unknown): MintBody | null {
-  const b = body as Record<string, unknown> | null;
-  if (!isString(b?.deviceId) || !validateUUID(b.deviceId) || !isString(b.challenge)) return null;
-  const proof = typedProof(b.proof);
-  return proof ? { deviceId: b.deviceId, challenge: b.challenge, proof } : null;
-}
+/** A proof as the request carried it, still encoded (`openapi.yaml`, `Proof`): a malformed one is refused by its verifier. */
+export type MintProof = Proof;
 
 /** What an accepted attestation records: the key renewal will verify against, and what proved it. */
 export type VerifiedProof = {

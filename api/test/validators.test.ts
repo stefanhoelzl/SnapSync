@@ -1,201 +1,168 @@
+// What the device API accepts as input (`openapi.yaml`, validated by the generated routes through
+// `src/wire-runtime.ts`), case by case — the rules the description states, exercised through the very spec the
+// generated `createEvent` route runs — plus the helpers `src/validators.ts` keeps.
+
 import { assertEquals } from "@std/assert";
+import { Hono } from "hono";
+import { AssetId, SPECS, Timestamp, Uuid } from "../src/gen/wire.ts";
 import {
   canonicalFromMs,
   canonicalPlusSeconds,
-  MAX_EVENT_NAME_LENGTH,
-  validateEndsAt,
-  validateEventName,
-  validateFilename,
-  validateStartsAt,
+  knownZone,
   validateUUID,
-  validateZone,
 } from "../src/validators.ts";
+import { validate, type WireContext } from "../src/wire-runtime.ts";
 
 const UUID = "7a3f9c21-0000-4000-8000-000000000001";
-
-Deno.test("validateUUID: accepts a canonical UUID", () => {
-  assertEquals(validateUUID(UUID), true);
-});
-
-Deno.test("validateUUID: rejects non-UUID / empty / trailing junk", () => {
-  assertEquals(validateUUID("not-a-uuid"), false);
-  assertEquals(validateUUID(""), false);
-  assertEquals(validateUUID(`${UUID}x`), false);
-});
-
-Deno.test("validateFilename: accepts a normal filename", () => {
-  assertEquals(validateFilename("IMG_0001-photo.jpg"), true);
-});
-
-Deno.test("validateFilename: accepts chars that get percent-encoded later", () => {
-  assertEquals(validateFilename("IMG 001.jpg"), true);
-});
-
-Deno.test("validateFilename: rejects empty", () => {
-  assertEquals(validateFilename(""), false);
-});
-
-Deno.test("validateFilename: rejects traversal", () => {
-  assertEquals(validateFilename(".."), false);
-  assertEquals(validateFilename("a..b"), false);
-});
-
-Deno.test("validateFilename: rejects a path separator (keys stay flat)", () => {
-  assertEquals(validateFilename("a/b.jpg"), false);
-});
-
-Deno.test("validateEventName: returns the trimmed name when valid", () => {
-  assertEquals(validateEventName("Birthday"), "Birthday");
-  assertEquals(validateEventName("  Birthday  "), "Birthday");
-});
-
-Deno.test("validateEventName: rejects empty / whitespace-only", () => {
-  assertEquals(validateEventName(""), null);
-  assertEquals(validateEventName("   "), null);
-});
-
-Deno.test("validateEventName: rejects non-string input", () => {
-  assertEquals(validateEventName(undefined), null);
-  assertEquals(validateEventName(null), null);
-  assertEquals(validateEventName(42), null);
-});
-
-Deno.test("validateEventName: length boundary (≤ MAX accepted, > MAX rejected)", () => {
-  assertEquals(
-    validateEventName("a".repeat(MAX_EVENT_NAME_LENGTH)),
-    "a".repeat(MAX_EVENT_NAME_LENGTH),
-  );
-  assertEquals(validateEventName("a".repeat(MAX_EVENT_NAME_LENGTH + 1)), null);
-});
-
-Deno.test("validateEventName: trims before the length check", () => {
-  // 100 non-space chars padded with spaces → trims to exactly MAX → accepted
-  const padded = `  ${"a".repeat(MAX_EVENT_NAME_LENGTH)}  `;
-  assertEquals(validateEventName(padded), "a".repeat(MAX_EVENT_NAME_LENGTH));
-});
-
-Deno.test("validateStartsAt: accepts the canonical cutoff shape, verbatim", () => {
-  assertEquals(validateStartsAt("2026-07-14T18:00:00Z"), "2026-07-14T18:00:00Z");
-  assertEquals(validateStartsAt("2001-01-01T00:00:00Z"), "2001-01-01T00:00:00Z");
-  assertEquals(validateStartsAt("2099-12-31T23:59:59Z"), "2099-12-31T23:59:59Z");
-});
-
-Deno.test("validateStartsAt: rejects every off-canonical shape", () => {
-  // Fractional seconds: a bare NSISO8601DateFormatter (the iOS walk's parser) REJECTS these outright,
-  // so an off-shape cutoff silently costs the bounded PhotoKit fetch.
-  assertEquals(validateStartsAt("2026-07-14T18:00:00.000Z"), null);
-  // An offset breaks the LEXICOGRAPHIC compare against `creationDate`.
-  assertEquals(validateStartsAt("2026-07-14T18:00:00+02:00"), null);
-  assertEquals(validateStartsAt("2026-07-14T18:00:00"), null); // no Z
-  assertEquals(validateStartsAt("2026-07-14"), null); // date only
-  assertEquals(validateStartsAt(" 2026-07-14T18:00:00Z"), null); // leading space
-  assertEquals(validateStartsAt("2026-07-14T18:00:00Zx"), null); // trailing junk
-  assertEquals(validateStartsAt("yesterday"), null);
-});
-
-Deno.test("validateStartsAt: rejects a right-shaped string that is not a real instant", () => {
-  // `new Date()` silently ROLLS OVER out-of-range components (month 13 → next January), so the shape
-  // regex alone is not enough — the round-trip compare is what catches these.
-  assertEquals(validateStartsAt("2026-13-45T99:99:99Z"), null);
-  assertEquals(validateStartsAt("2026-02-30T00:00:00Z"), null);
-  assertEquals(validateStartsAt("2026-00-10T00:00:00Z"), null);
-});
-
-Deno.test("validateStartsAt: rejects empty and non-string input", () => {
-  // The empty string is the dangerous one: the cutoff compare is `creationDate >= cutoff` and EVERY
-  // string is `>= ""`, so an empty floor is no floor — it restores whole-library scope while presenting
-  // as a present, non-null value.
-  assertEquals(validateStartsAt(""), null);
-  assertEquals(validateStartsAt(undefined), null);
-  assertEquals(validateStartsAt(null), null);
-  assertEquals(validateStartsAt(42), null);
-});
-
 const WINDOW_MAX = 30 * 24 * 60 * 60;
+const MAX_EVENT_NAME_LENGTH = 100;
 
-Deno.test("validateEndsAt: accepts a canonical instant strictly after startsAt, within the window cap", () => {
-  const startsAt = "2026-07-14T18:00:00Z";
-  assertEquals(
-    validateEndsAt("2026-07-21T23:00:00Z", startsAt, WINDOW_MAX),
-    "2026-07-21T23:00:00Z",
-  );
-  // One second after start is enough.
-  assertEquals(
-    validateEndsAt("2026-07-14T18:00:01Z", startsAt, WINDOW_MAX),
-    "2026-07-14T18:00:01Z",
-  );
+const ctx: WireContext = { policy: { eventWindowMaxSeconds: WINDOW_MAX }, checks: { knownZone } };
+
+/** The create route's input validation, alone: the validated body, or the refusal's status and text. */
+async function create(body: unknown): Promise<Record<string, unknown> | string> {
+  const app = new Hono();
+  app.post("/", async (c) => c.json((await validate(c, SPECS.createEvent, ctx)).body ?? {}));
+  const res = await app.request("/", { method: "POST", body: JSON.stringify(body) });
+  return res.ok ? await res.json() : `${res.status} ${await res.text()}`;
+}
+
+const START = "2026-07-14T18:00:00Z";
+const named = (extra: Record<string, unknown>) => ({ name: "Birthday", startsAt: START, ...extra });
+
+Deno.test("Uuid / validateUUID: a canonical UUID, nothing else", () => {
+  assertEquals(validateUUID(UUID), true);
+  assertEquals(Uuid.safeParse(UUID).success, true);
+  for (const bad of ["not-a-uuid", "", `${UUID}x`]) {
+    assertEquals(validateUUID(bad), false, bad);
+    assertEquals(Uuid.safeParse(bad).success, false, bad);
+  }
 });
 
-Deno.test("validateEndsAt: the window cap is inclusive at the maximum and rejects one second past it", () => {
-  // The cap is a HARD bound, not a pricing lever: a window longer than the event's storage lifetime
-  // would declare captures eligible for upload into an event that no longer exists by then — a photo
-  // uploading into nothing, the silent loss the selection policy exists to prevent.
-  const startsAt = "2026-07-14T18:00:00Z";
-  assertEquals(
-    validateEndsAt("2026-08-13T18:00:00Z", startsAt, WINDOW_MAX), // exactly 30 days
-    "2026-08-13T18:00:00Z",
-  );
-  assertEquals(validateEndsAt("2026-08-13T18:00:01Z", startsAt, WINDOW_MAX), null); // 30d + 1s
-  assertEquals(validateEndsAt("2031-07-14T18:00:00Z", startsAt, WINDOW_MAX), null); // years ahead
+Deno.test("AssetId: one non-empty path segment, no traversal", () => {
+  for (const ok of ["IMG_0001-photo.jpg", "IMG 001.jpg"]) {
+    assertEquals(AssetId.safeParse(ok).success, true, ok);
+  }
+  for (const bad of ["", "..", "a..b", "a/b.jpg"]) {
+    assertEquals(AssetId.safeParse(bad).success, false, bad);
+  }
 });
 
-Deno.test("validateEndsAt: rejects an end at or before startsAt", () => {
-  const startsAt = "2026-07-14T18:00:00Z";
-  assertEquals(validateEndsAt("2026-07-14T18:00:00Z", startsAt, WINDOW_MAX), null); // equal
-  assertEquals(validateEndsAt("2026-07-14T17:59:59Z", startsAt, WINDOW_MAX), null); // before
-  assertEquals(validateEndsAt("2001-01-01T00:00:00Z", startsAt, WINDOW_MAX), null); // long before
-});
-
-Deno.test("validateEndsAt: rejects off-canonical shapes and non-instants", () => {
-  const startsAt = "2026-07-14T18:00:00Z";
-  assertEquals(validateEndsAt("2026-07-21T23:00:00.000Z", startsAt, WINDOW_MAX), null); // millis
-  assertEquals(validateEndsAt("2026-07-21T23:00:00", startsAt, WINDOW_MAX), null); // no Z
-  assertEquals(validateEndsAt("2026-13-45T99:99:99Z", startsAt, WINDOW_MAX), null); // not real
-  assertEquals(validateEndsAt("", startsAt, WINDOW_MAX), null);
-  assertEquals(validateEndsAt(undefined, startsAt, WINDOW_MAX), null);
-  assertEquals(validateEndsAt(null, startsAt, WINDOW_MAX), null);
-  assertEquals(validateEndsAt(42, startsAt, WINDOW_MAX), null);
-});
-
-Deno.test("canonicalPlusSeconds: adds whole seconds and stays in the canonical cutoff shape", () => {
-  // 30 days — the absent-endsAt fallback (capability `event-lifetime`): endsAt = startsAt + windowMax.
+Deno.test("event name: trimmed, and the trimmed name is what is kept", async () => {
   assertEquals(
-    canonicalPlusSeconds("2026-06-27T18:00:00Z", 30 * 24 * 60 * 60),
-    "2026-07-27T18:00:00Z",
-  );
-  // No milliseconds, `Z`, second precision — the result validates as a canonical instant itself.
-  assertEquals(
-    validateStartsAt(canonicalPlusSeconds("2026-06-27T18:00:00Z", 1)),
-    "2026-06-27T18:00:01Z",
+    (await create(named({ name: "  Birthday  " })) as { name: string }).name,
+    "Birthday",
   );
 });
 
-Deno.test("canonicalPlusSeconds: rolls over month and year boundaries correctly", () => {
+Deno.test("event name: empty, whitespace-only and non-string are refused", async () => {
+  for (const name of ["", "   ", 42, null]) {
+    assertEquals(await create(named({ name })), "400 invalid name", String(name));
+  }
+  assertEquals(await create({ startsAt: START }), "400 invalid name");
+});
+
+Deno.test("event name: the length boundary, measured after trimming", async () => {
+  const max = "a".repeat(MAX_EVENT_NAME_LENGTH);
+  assertEquals((await create(named({ name: max })) as { name: string }).name, max);
+  assertEquals(await create(named({ name: `${max}a` })), "400 invalid name");
+  assertEquals((await create(named({ name: `  ${max}  ` })) as { name: string }).name, max);
+});
+
+Deno.test("startsAt: the canonical shape, verbatim", async () => {
+  for (const startsAt of ["2026-07-14T18:00:00Z", "2001-01-01T00:00:00Z", "2099-12-31T23:59:59Z"]) {
+    assertEquals((await create(named({ startsAt })) as { startsAt: string }).startsAt, startsAt);
+  }
+});
+
+Deno.test("startsAt: every off-canonical shape, non-instant, empty and non-string is refused", async () => {
+  const bad = [
+    "2026-07-14T18:00:00.000Z",
+    "2026-07-14T18:00:00+02:00",
+    "2026-07-14T18:00:00",
+    "2026-07-14",
+    " 2026-07-14T18:00:00Z",
+    "2026-07-14T18:00:00Zx",
+    "yesterday",
+    "2026-13-45T99:99:99Z",
+    "2026-02-30T00:00:00Z",
+    "2026-00-10T00:00:00Z",
+    "",
+    42,
+    null,
+  ];
+  for (const startsAt of bad) {
+    assertEquals(await create(named({ startsAt })), "400 invalid startsAt", String(startsAt));
+  }
+});
+
+Deno.test("endsAt: strictly after startsAt, within the window maximum (inclusive)", async () => {
+  for (const endsAt of ["2026-07-21T23:00:00Z", "2026-07-14T18:00:01Z", "2026-08-13T18:00:00Z"]) {
+    assertEquals((await create(named({ endsAt })) as { endsAt: string }).endsAt, endsAt);
+  }
+  const bad = [
+    "2026-08-13T18:00:01Z", // 30 days + 1 s
+    "2031-07-14T18:00:00Z",
+    "2026-07-14T18:00:00Z", // equal
+    "2026-07-14T17:59:59Z",
+    "2026-07-21T23:00:00.000Z",
+    "2026-13-45T99:99:99Z",
+    "",
+    42,
+  ];
+  for (const endsAt of bad) {
+    assertEquals(await create(named({ endsAt })), "400 invalid endsAt", String(endsAt));
+  }
+});
+
+Deno.test("endsAt: null or absent is no endsAt — the route falls back", async () => {
+  assertEquals("endsAt" in (await create(named({ endsAt: null })) as object), false);
+  assertEquals("endsAt" in (await create(named({})) as object), false);
+});
+
+Deno.test("zone: an IANA name this runtime knows is kept; anything else is dropped, never refused", async () => {
+  for (
+    const zone of ["Europe/Berlin", "America/New_York", "UTC", "America/Argentina/Buenos_Aires"]
+  ) {
+    assertEquals((await create(named({ zone })) as { zone: string }).zone, zone, zone);
+  }
+  for (const zone of ["+02:00", "Mars/Base", "", "Europe/Berlin; DROP", "a".repeat(65), null, 3]) {
+    assertEquals("zone" in (await create(named({ zone })) as object), false, String(zone));
+  }
+});
+
+Deno.test("keyId: 16 lowercase hex characters, refused otherwise", async () => {
+  assertEquals(
+    (await create(named({ keyId: "0123456789abcdef" })) as { keyId: string }).keyId,
+    "0123456789abcdef",
+  );
+  assertEquals(await create(named({ keyId: "0123456789ABCDEF" })), "400 invalid keyId");
+});
+
+Deno.test("a body that is not JSON, or not an object, is refused", async () => {
+  const app = new Hono();
+  app.post("/", async (c) => c.json((await validate(c, SPECS.createEvent, ctx)).body ?? {}));
+  const notJson = await app.request("/", { method: "POST", body: "{" });
+  assertEquals(`${notJson.status} ${await notJson.text()}`, "400 invalid body");
+  assertEquals(await create([1]), "400 invalid body");
+});
+
+Deno.test("canonicalPlusSeconds: adds whole seconds and stays in the canonical shape", () => {
+  assertEquals(canonicalPlusSeconds("2026-06-27T18:00:00Z", WINDOW_MAX), "2026-07-27T18:00:00Z");
+  assertEquals(Timestamp.safeParse(canonicalPlusSeconds("2026-06-27T18:00:00Z", 1)).success, true);
   assertEquals(canonicalPlusSeconds("2026-12-31T23:59:59Z", 1), "2027-01-01T00:00:00Z");
-  // Across February in a non-leap year.
   assertEquals(
     canonicalPlusSeconds("2026-02-27T12:00:00Z", 2 * 24 * 60 * 60),
     "2026-03-01T12:00:00Z",
   );
 });
 
-Deno.test("canonicalFromMs: renders the canonical cutoff shape, rounding DOWN to the second", () => {
+Deno.test("canonicalFromMs: renders the canonical shape, rounding DOWN to the second", () => {
   const at = Date.parse("2026-07-27T18:00:00Z");
   assertEquals(canonicalFromMs(at), "2026-07-27T18:00:00Z");
-  // Sub-second precision is TRUNCATED, not rounded to nearest: the served deadline lands at or before
-  // the real one, so a client's self-leave can only ever fire slightly early (recoverable by
-  // re-scanning) and never slightly late (a phantom membership).
+  // Truncated, not rounded: a served deadline lands at or before the real one, so a self-leave can only fire
+  // slightly early (recoverable by re-scanning) and never slightly late (a phantom membership).
   assertEquals(canonicalFromMs(at + 999), "2026-07-27T18:00:00Z");
   assertEquals(canonicalFromMs(at + 1000), "2026-07-27T18:00:01Z");
-  // The result validates as a canonical instant itself.
-  assertEquals(validateStartsAt(canonicalFromMs(at + 1)), "2026-07-27T18:00:00Z");
-});
-
-Deno.test("validateZone: accepts IANA names and UTC, refuses offsets, unknown names and junk", () => {
-  for (const z of ["Europe/Berlin", "America/New_York", "UTC", "America/Argentina/Buenos_Aires"]) {
-    assertEquals(validateZone(z), z, z);
-  }
-  for (const z of ["+02:00", "Mars/Base", "", "Europe/Berlin; DROP", "a".repeat(65), null, 3]) {
-    assertEquals(validateZone(z), null, String(z));
-  }
+  assertEquals(Timestamp.safeParse(canonicalFromMs(at + 1)).success, true);
 });

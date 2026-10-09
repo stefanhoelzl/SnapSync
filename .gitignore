@@ -24,6 +24,8 @@ api/.localdev/
 # also why the resolver is chained into the deno tasks and every workflow that reads one.
 # (build/deployment.properties and build/metadata/ are already covered by `build/` above.)
 api/src/deployment.ts
+# GENERATED from api/openapi.yaml by api/src/scripts/generate-wire.ts (`deno task gen`) — the wire, never committed.
+api/src/gen/
 iosApp/Configuration/Deployment.xcconfig
 iosApp/Configuration/Deployment.plist
 site/src/deployment.json

@@ -36,6 +36,8 @@ abstract class LiveEdgeConsumers(private val project: Project) {
             dependsOn(":test:edge:resolveLocalDeployment")
             inputs.dir(apiDir.dir("src")).withPropertyName("liveEdgeSources")
             inputs.dir(apiDir.dir("migrations")).withPropertyName("liveEdgeMigrations")
+            // The wire's one source: the routes `serve.ts` mounts are generated from it.
+            inputs.file(apiDir.file("openapi.yaml")).withPropertyName("liveEdgeDescription")
             inputs.dir(root.dir("deployments")).withPropertyName("liveEdgeDeployments")
             systemProperty("snapsync.apiDir", apiDir.asFile.absolutePath)
             systemProperty("snapsync.liveEdgeStore", store.get().asFile.absolutePath)

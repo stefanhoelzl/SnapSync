@@ -8,7 +8,6 @@
 // value. A failure reply is THROWN as a `Refusal`, which `onError` answers and records on the request's line;
 // a best-effort failure is RETURNED, for the handler to record.
 
-import type { HonoRequest } from "hono";
 import type { AwsClient } from "aws4fetch";
 import type { Config } from "../config.ts";
 import {
@@ -25,7 +24,7 @@ import { type PushSender, unsentSummary } from "../push.ts";
 import { type Fault, refuse, rethrowRefusal } from "../refusal.ts";
 import type { RequestLog } from "../request-log.ts";
 import { type FetchLike, storageKey } from "../storage.ts";
-import { canonicalFromMs, validateUUID } from "../validators.ts";
+import { canonicalFromMs } from "../validators.ts";
 import { recordableVersion, splitVersion } from "../version.ts";
 
 /** What a route factory is built over: `createApp`'s dependencies, resolved once. */
@@ -81,48 +80,11 @@ export function notThisDevice(): never {
 }
 
 /**
- * The path's `deviceId` when it is a UUID the token acts for; otherwise refused — `400` with the route's own
- * `invalid` text, or `403` ({@link notThisDevice}). The id is validated BEFORE the binding, so a malformed id
- * is a `400` whoever asks.
+ * The path's `deviceId` — already validated against `openapi.yaml` — when the token acts for it; otherwise refused
+ * `403` ({@link notThisDevice}). Applied by every route naming a device in its path, before any store is touched.
  */
-export function ownDeviceParam(
-  param: string | undefined,
-  tokenDeviceId: string | undefined,
-  invalid: string,
-): string {
-  const deviceId = param ?? "";
-  if (!validateUUID(deviceId)) refuse(400, invalid);
+export function ownDevice(tokenDeviceId: string | undefined, deviceId: string): string {
   return actsFor(tokenDeviceId, deviceId) ? deviceId : notThisDevice();
-}
-
-/**
- * The path's `eventId` and `deviceId` when both are UUIDs and the token acts for the device; otherwise
- * refused, as {@link ownDeviceParam} — one `invalid` text for either malformed id.
- */
-export function eventAndOwnDeviceParams(
-  params: { eventId?: string; deviceId?: string },
-  tokenDeviceId: string | undefined,
-  invalid: string,
-): { eventId: string; deviceId: string } {
-  const eventId = params.eventId ?? "";
-  const deviceId = params.deviceId ?? "";
-  if (!validateUUID(eventId) || !validateUUID(deviceId)) refuse(400, invalid);
-  return actsFor(tokenDeviceId, deviceId) ? { eventId, deviceId } : notThisDevice();
-}
-
-/** The path's `eventId` when it is a UUID; otherwise refused `400 invalid event`. */
-export function eventParam(param: string | undefined): string {
-  const eventId = param ?? "";
-  return validateUUID(eventId) ? eventId : refuse(400, "invalid event");
-}
-
-/** The request body parsed as JSON; refused `400 invalid body` when it is not JSON. */
-export async function readJson(req: HonoRequest): Promise<unknown> {
-  try {
-    return await req.json();
-  } catch {
-    refuse(400, "invalid body");
-  }
 }
 
 /**

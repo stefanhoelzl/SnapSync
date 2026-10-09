@@ -28,7 +28,13 @@ info:
       - `x-snapsync-gate: version` — a parameter the version gate answers (`426`), never field validation;
       - `x-snapsync-export: <NAME>` — a constraint the app reads as a generated constant;
       - `x-snapsync-transport: os` — a byte route the app builds but the OS transfer services perform, so it
-        has no generated reply.
+        has no generated reply;
+      - `x-snapsync-refusals` (on an Operation) — how the operation answers each input that fails validation:
+        `{<parameter>|body|<body property>: <400 text> | {status, text}}`. Inputs are validated in declaration
+        order (path-item parameters, the operation's, then the body's properties) and the first failure answers.
+        A body that is not JSON is always `400 invalid body`; `body` answers JSON that is not the declared shape;
+      - `x-snapsync-on-invalid: drop` — an input that fails validation is treated as absent, never refused;
+      - `x-snapsync-trim: true` — the string is trimmed before it is validated, and the trimmed value is used.
 servers:
   - url: /api/v2
     description: The device API, version 2, on the deployment's origin.
@@ -73,6 +79,11 @@ paths:
   /attest/token:
     post:
       operationId: mintToken
+      x-snapsync-refusals:
+        body: invalid body
+        deviceId: invalid body
+        challenge: invalid body
+        proof: invalid body
       tags: [attest]
       summary: A device token for a fresh attestation.
       security: []
@@ -114,6 +125,11 @@ paths:
   /attest/renew:
     post:
       operationId: renewToken
+      x-snapsync-refusals:
+        body: invalid body
+        deviceId: invalid body
+        assertion: invalid body
+        challenge: invalid body
       tags: [attest]
       summary: A device token for an assertion by an attested key.
       security: []
@@ -159,6 +175,12 @@ paths:
   /events:
     post:
       operationId: createEvent
+      x-snapsync-refusals:
+        body: invalid body
+        name: invalid name
+        startsAt: invalid startsAt
+        endsAt: invalid endsAt
+        keyId: invalid keyId
       tags: [events]
       summary: Mint an event.
       parameters:
@@ -207,6 +229,8 @@ paths:
       - $ref: "#/components/parameters/AppVersion"
     get:
       operationId: getEvent
+      x-snapsync-refusals:
+        eventId: invalid event
       tags: [events]
       summary: An event's details.
       description: |
@@ -238,6 +262,10 @@ paths:
           $ref: "#/components/responses/Maintenance"
     patch:
       operationId: changeEvent
+      x-snapsync-refusals:
+        eventId: invalid event
+        body: invalid name
+        name: invalid name
       tags: [events]
       summary: Change an event — today, its name.
       requestBody:
@@ -276,6 +304,9 @@ paths:
       - $ref: "#/components/parameters/AppVersion"
     put:
       operationId: joinEvent
+      x-snapsync-refusals:
+        eventId: invalid id
+        deviceId: invalid id
       tags: [membership]
       summary: Create or reactivate this device's membership. No body.
       responses:
@@ -307,12 +338,16 @@ paths:
           $ref: "#/components/responses/Maintenance"
     delete:
       operationId: leaveEvent
+      x-snapsync-refusals:
+        eventId: invalid key
+        deviceId: invalid key
       tags: [membership]
       summary: End this device's membership. Idempotent and non-destructive.
       parameters:
         - name: received
           in: query
           description: The device's word that it holds every photo of the others; anything but `true` is "no".
+          x-snapsync-on-invalid: drop
           schema:
             type: boolean
       responses:
@@ -341,6 +376,13 @@ paths:
       - $ref: "#/components/parameters/AppVersion"
     put:
       operationId: publishManifest
+      x-snapsync-refusals:
+        eventId: invalid id
+        deviceId: invalid id
+        body: invalid manifest
+        assets: invalid manifest
+        version: invalid version
+        final: invalid final
       tags: [membership]
       summary: Replace what this device shares in the event.
       description: |
@@ -390,6 +432,9 @@ paths:
       - $ref: "#/components/parameters/AppVersion"
     get:
       operationId: eventFiles
+      x-snapsync-refusals:
+        eventId: invalid event
+        cursor: invalid cursor
       tags: [files]
       summary: The event-wide union of complete assets, or what was gained after a cursor.
       description: |
@@ -409,11 +454,13 @@ paths:
         - name: urls
           in: query
           description: "`false` omits every resource's `url`: the client builds the download address itself."
+          x-snapsync-on-invalid: drop
           schema:
             type: boolean
             default: true
         - name: SnapSync-Trigger
           in: header
+          x-snapsync-on-invalid: drop
           description: Why the client reads. A value outside the list is recorded as unknown, never refused.
           schema:
             $ref: "#/components/schemas/UnionTrigger"
@@ -450,6 +497,9 @@ paths:
       - $ref: "#/components/parameters/AppVersion"
     get:
       operationId: deviceFiles
+      x-snapsync-refusals:
+        eventId: invalid id
+        deviceId: invalid id
       tags: [files]
       summary: What the backend holds for this device in this event.
       responses:
@@ -484,6 +534,12 @@ paths:
       - $ref: "#/components/parameters/AppVersion"
     put:
       operationId: uploadResource
+      x-snapsync-refusals:
+        eventId: invalid id
+        deviceId: invalid id
+        assetId: invalid asset
+        role: invalid role
+        filename: missing filename
       tags: [files]
       summary: Store one resource's bytes in the event.
       description: |
@@ -500,11 +556,13 @@ paths:
             minLength: 1
         - name: x-snapsync-file-key
           in: header
+          x-snapsync-on-invalid: drop
           description: The one file's 32-byte key, base64url — only with `x-snapsync-file-head`. A secret.
           schema:
             type: string
         - name: x-snapsync-file-head
           in: header
+          x-snapsync-on-invalid: drop
           description: The file's 49 opening bytes, base64url — only with `x-snapsync-file-key`.
           schema:
             type: string
@@ -544,6 +602,11 @@ paths:
           $ref: "#/components/responses/Maintenance"
     get:
       operationId: downloadResource
+      x-snapsync-refusals:
+        eventId: invalid event
+        deviceId: { status: 404, text: not found }
+        assetId: { status: 404, text: not found }
+        role: { status: 404, text: not found }
       tags: [files]
       summary: Download one resource — a redirect to a freshly presigned URL.
       description: |
@@ -562,6 +625,8 @@ paths:
               schema:
                 type: string
                 format: uri
+        "400":
+          $ref: "#/components/responses/Invalid"
         "404":
           description: The event no longer serves this resource.
           x-snapsync-outcome: Gone
@@ -576,6 +641,24 @@ paths:
         "503":
           $ref: "#/components/responses/Maintenance"
 
+    options:
+      operationId: uploadResourcePreflight
+      tags: [files]
+      summary: The byte route's preflight — the methods it answers.
+      security: []
+      x-snapsync-transport: os
+      responses:
+        "204":
+          description: The methods the route answers.
+          x-snapsync-outcome: Allowed
+          headers:
+            Allow:
+              $ref: "#/components/headers/Allow"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
   /files/devices/{deviceId}/{assetId}/{role}:
     parameters:
       - $ref: "#/components/parameters/DeviceId"
@@ -584,6 +667,11 @@ paths:
       - $ref: "#/components/parameters/AppVersion"
     put:
       operationId: uploadResourceEventless
+      x-snapsync-refusals:
+        deviceId: invalid device
+        assetId: invalid asset
+        role: invalid role
+        filename: missing filename
       tags: [files]
       summary: The event-less upload, filed under the device's one present membership.
       deprecated: true
@@ -626,12 +714,33 @@ paths:
         "503":
           $ref: "#/components/responses/Maintenance"
 
+    options:
+      operationId: uploadResourceEventlessPreflight
+      tags: [files]
+      summary: The byte route's preflight — the methods it answers.
+      deprecated: true
+      security: []
+      x-snapsync-transport: os
+      responses:
+        "204":
+          description: The methods the route answers.
+          x-snapsync-outcome: Allowed
+          headers:
+            Allow:
+              $ref: "#/components/headers/Allow"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
   /files/devices/{deviceId}:
     parameters:
       - $ref: "#/components/parameters/DeviceId"
       - $ref: "#/components/parameters/AppVersion"
     get:
       operationId: deviceFilesEventless
+      x-snapsync-refusals:
+        deviceId: invalid device
       tags: [files]
       summary: The event-less listing, for the device's present membership.
       deprecated: true
@@ -666,6 +775,10 @@ paths:
       - $ref: "#/components/parameters/AppVersion"
     put:
       operationId: putDevice
+      x-snapsync-refusals:
+        deviceId: invalid device
+        body: invalid body
+        pushToken: invalid pushToken
       tags: [devices]
       summary: Record this device's push registration (last write wins).
       requestBody:
@@ -735,6 +848,11 @@ components:
         $ref: "#/components/schemas/Role"
 
   headers:
+    Allow:
+      required: true
+      description: The methods the path answers.
+      schema:
+        type: string
     SnapSyncCursor:
       required: true
       description: The union-log position the answer covers — the cursor of the next delta read.
@@ -830,6 +948,7 @@ components:
     EventName:
       description: What an event is called — trimmed, non-blank.
       type: string
+      x-snapsync-trim: true
       maxLength: 100
       pattern: "\\S"
       x-snapsync-export: EVENT_NAME_MAX_LENGTH
@@ -838,9 +957,13 @@ components:
       type: string
       pattern: "^[0-9a-f]{16}$"
     Zone:
-      description: An IANA time zone name. One this runtime cannot use is dropped, never refused.
+      description: |
+        An IANA time zone name — a NAME, never a bare offset, which is wrong across a daylight-saving change. One this
+        runtime cannot use is dropped, never refused.
       type: string
+      minLength: 1
       maxLength: 64
+      pattern: "^[A-Za-z][A-Za-z0-9_+\\-]*(/[A-Za-z0-9_+\\-]+)*$"
       x-snapsync-check: knownZone
     AssetId:
       description: A device-local asset id — one path segment.
@@ -949,6 +1072,7 @@ components:
             policy: eventWindowMaxSeconds
         zone:
           $ref: "#/components/schemas/Zone"
+          x-snapsync-on-invalid: drop
         keyId:
           $ref: "#/components/schemas/KeyId"
     EventChange:
@@ -1028,6 +1152,7 @@ components:
         deviceId:
           description: Ignored by the backend; the path names the device.
           $ref: "#/components/schemas/Uuid"
+          x-snapsync-on-invalid: drop
         assets:
           type: array
           items:
@@ -1114,10 +1239,9 @@ components:
 
     DeviceConfig:
       type: object
-      required: [pushToken]
       properties:
         pushToken:
-          description: The device's push registration; `null` says it has none.
+          description: The device's push registration; `null` — or no `pushToken` at all — says it has none.
           oneOf:
             - $ref: "#/components/schemas/PushRegistration"
             - type: "null"
