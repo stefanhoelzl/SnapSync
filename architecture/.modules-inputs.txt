@@ -21,6 +21,7 @@ module :domain:model
 module :domain:ports
 module :domain:presentation
 module :domain:services
+module :domain:wire
 module :test:architecture
 module :test:contracts
 module :test:control

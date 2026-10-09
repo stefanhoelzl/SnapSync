@@ -135,6 +135,8 @@ class ModuleSetTest {
         // downstream consumer, dissolving the boundary the split exists to create.
         val permitted = mapOf(
             "model" to emptySet<String>(),
+            // The backend API's HTTP shapes, generated from `api/openapi.yaml`: they reference nothing.
+            "wire" to emptySet<String>(),
             "ports" to setOf(":domain:model"),
             // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
             "services" to setOf(":domain:model", ":domain:ports"),
@@ -176,8 +178,8 @@ class ModuleSetTest {
     private companion object {
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
-            // The core's seven zones and the host (`docs/architecture.md`, "Zones inside the core").
-            ":domain:model", ":domain:ports", ":domain:services", ":domain:feature", ":domain:flow",
+            // The core's zones and the host (`docs/architecture.md`, "Zones inside the core").
+            ":domain:model", ":domain:wire", ":domain:ports", ":domain:services", ":domain:feature", ":domain:flow",
             ":domain:presentation", ":domain:compose", ":domain:host",
             ":ui:screens", ":ui:components",
             ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:ios:ui", ":adapter:generic:app",

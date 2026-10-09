@@ -2,7 +2,11 @@ package app.snapsync.architecture
 
 import app.snapsync.http.isGatedRequest
 import app.snapsync.http.verifiesToken
+import app.snapsync.wire.api.GatedRequest
+import app.snapsync.wire.api.OpenRequest
+import app.snapsync.wire.api.Routes
 import java.io.File
+import kotlin.reflect.full.declaredFunctions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,8 +19,8 @@ import kotlin.test.assertTrue
  * A token is passed, and a `401` read as a rejected token, only on a route the token gate guards ([isGatedRequest];
  * `HttpBackendTest` pins the `Backend` port's token-taking routes to it). That predicate is a copy of the gate's closed list in `api/src/app.ts`, and a copy drifts: a
  * route the backend opens but the client still thinks gated would have its own `401`s read as a revoked credential
- * again (B2). So this reads the backend's list out of `app.ts` and drives the REAL predicate against every entry —
- * and pins the list's size, so an entry added there fails here until the client learns it.
+ * again (B2). So this reads the backend's ROOT list out of `app.ts`, and the device API's from the generated wire
+ * (`api/openapi.yaml`'s `security`), and drives the REAL predicate against every entry.
  *
  * **Text, and it says so:** it reads the literals of the gate's `publicGet` / `publicRead` / `if (…)` block. A gate
  * rewritten into a different shape fails the shape assertions below rather than passing on nothing.
@@ -46,7 +50,7 @@ class GatedPathPinTest {
             "the backend's exact-path public GETs changed — update `isGatedRequest` (adapter/generic/app) and this pin",
         )
         assertEquals(
-            listOf("/_astro/", "/attest/"),
+            listOf("/_astro/"),
             prefixes,
             "the backend's ungated prefixes changed — update `isGatedRequest` and this pin",
         )
@@ -88,34 +92,41 @@ class GatedPathPinTest {
         assertFalse(isGatedRequest("OPTIONS", "/api/v2/events"))
     }
 
-    /** `isPublicEventRead`, the gate's event reads, from its declaration to its closing brace. */
-    private fun eventReads(): String {
-        val fn = app.readText().substringAfter("function isPublicEventRead(", "")
-        assertTrue(
-            fn.isNotEmpty() && "isPublicEventRead(method, path)" in gate(),
-            "the gate's event reads moved — re-point this pin",
-        )
-        return fn.substringBefore("\n}")
+    /**
+     * The DEVICE API's half: the backend reads it off `api/openapi.yaml` (`api/src/route-security.ts`), and the
+     * generated wire states the same `security` — a `GatedRequest` for a route that verifies a token, an
+     * `OpenRequest` for one that takes none. The client's copy must agree with every route the description declares.
+     */
+    @Test
+    fun `the client's predicate agrees with every route the description declares`() {
+        val routes = Routes::class.nestedClasses.filter { it.objectInstance != null }
+        assertTrue(routes.size >= 10, "the generated routes moved — re-point this pin")
+        routes.forEach { route ->
+            val method = route.java.getField("METHOD").get(null) as String
+            val path = "/api/v2" + (route.java.getField("TEMPLATE").get(null) as String).replace(Regex("""\{\w+}"""), "E1")
+            val request = route.declaredFunctions.firstOrNull { it.name == "request" } ?: return@forEach
+            when (request.returnType.classifier) {
+                GatedRequest::class -> assertTrue(
+                    verifiesToken(method, path),
+                    "$method $path verifies a token it is sent",
+                )
+                OpenRequest::class -> {
+                    assertFalse(isGatedRequest(method, path), "$method $path is open")
+                    assertFalse(verifiesToken(method, path), "$method $path is sent no token")
+                }
+                else -> error("${route.simpleName} builds a ${request.returnType} — not a request of either kind")
+            }
+        }
     }
 
     @Test
-    fun `the two public event reads are ungated only as reads`() {
-        val gate = eventReads()
-        val reads = Regex(
-            """/\^(\\/events\\/\[\^/]\+(?:\\/files)?)\$/""",
-        ).findAll(gate).map { it.groupValues[1] }.toList()
-        assertEquals(
-            2,
-            reads.size,
-            "the backend's public event reads changed shape — update `isGatedRequest` and this pin: $reads",
-        )
-        assertTrue(
-            Regex("""\(method === "GET" \|\| method === "HEAD"\) &&\s*\(/\^""").containsMatchIn(gate),
-            "the event reads are no longer GET/HEAD-only",
-        )
+    fun `the legacy anonymous event reads are public reads, every other event route gated`() {
+        // `PENDING_CLEANUPS.md`, "Anonymous event reads": the description marks them optional; the client sends a token.
         assertFalse(isGatedRequest("GET", "/api/v2/events/E1"))
         assertFalse(isGatedRequest("HEAD", "/api/v2/events/E1/files"))
-        // The same path shape, mutated, stays gated — the rename, the manifest, the leave.
+        assertTrue(verifiesToken("GET", "/api/v2/events/E1"))
+        assertTrue(verifiesToken("GET", "/api/v2/events/E1/files"))
+        // The same path shape, mutated, stays gated — the change, the manifest, the leave.
         assertTrue(isGatedRequest("PATCH", "/api/v2/events/E1"))
         assertTrue(isGatedRequest("PUT", "/api/v2/events/E1/devices/D1/manifest"))
         assertTrue(isGatedRequest("DELETE", "/api/v2/events/E1/devices/D1"))
@@ -125,44 +136,8 @@ class GatedPathPinTest {
 
     @Test
     fun `the download redirect is ungated, and only as a read`() {
-        // `app.ts` exempts it from both gates through ONE predicate (`isDownloadRedirect`), outside the block above.
-        val text = app.readText()
-        val fn = text.substringAfter("function isDownloadRedirect(", "")
-        assertTrue(fn.isNotEmpty(), "the backend's download-redirect predicate moved — re-point this pin")
-        assertTrue(
-            Regex("""/\^\\/events\\/\[\^/]\+\\/files\\/devices\\/\[\^/]\+\\/\[\^/]\+\\/\[\^/]\+\$/""")
-                .containsMatchIn(fn.substringBefore("\n}")),
-            "the backend's download-redirect shape changed — update `isGatedRequest` and this pin",
-        )
-        assertTrue(
-            Regex("""isDownloadRedirect\(method, path\)""").containsMatchIn(eventReads()),
-            "the token gate no longer exempts it",
-        )
-        assertFalse(isGatedRequest("GET", "/api/v2/events/E1/files/devices/D1/A/primary"))
-        assertTrue(isGatedRequest("PUT", "/api/v2/events/E1/files/devices/D1/A/primary"))
-    }
-
-    @Test
-    fun `the two event reads verify a token they are sent, so their 401 is a verdict`() {
-        // Both go through `optionalReader`, which verifies a sent token and answers `401` for a bad one (decision
-        // records `changes/incremental-union` D5, `changes/separate-event-page-from-device-api` D7).
-        val shared = File(SourceScan.repoRoot, "api/src/routes/shared.ts").readText()
-        val reader = shared.substringAfter("const optionalReader = ", "").substringBefore("};")
-        assertTrue(
-            reader.contains("verifyToken(") && reader.contains("refuse(401, \"unattested\")"),
-            "the optional reader no longer verifies a sent token",
-        )
-        for (route in listOf("\"/events/:eventId\"", "\"/events/:eventId/files\"")) {
-            val body = shared.substringAfter("deviceApi.get($route", "").substringBefore("deviceApi.")
-            assertTrue(
-                "await optionalReader(c.req.header(\"authorization\"))" in body,
-                "$route no longer verifies a sent token",
-            )
-        }
-        assertTrue(verifiesToken("GET", "/api/v2/events/E1/files?cursor=3"))
-        assertTrue(verifiesToken("GET", "/api/v2/events/E1"))
-        assertFalse(isGatedRequest("GET", "/api/v2/events/E1/files"), "the union stays public")
-        assertFalse(isGatedRequest("GET", "/api/v2/events/E1"), "the event's details stay public")
-        assertFalse(verifiesToken("GET", "/api/v2/events/E1/files/devices/D1/A/primary"))
+        assertFalse(isGatedRequest("GET", "/api/v2/events/E1/files/devices/D1/A1/primary"))
+        assertFalse(isGatedRequest("HEAD", "/api/v2/events/E1/files/devices/D1/A1/primary"))
+        assertTrue(isGatedRequest("PUT", "/api/v2/events/E1/files/devices/D1/A1/primary"))
     }
 }

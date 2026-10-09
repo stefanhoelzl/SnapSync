@@ -20,6 +20,13 @@ dependencies {
     // The zero coverage gate reads a module's compiled classes to recognise compiler glue by its bytecode shape
     // (`CoverageZero`). An ordinary dependency: nothing else on this classpath loads ASM under its own name.
     implementation(libs.asm.tree)
+    // The wire's route generator (`snapsync.wire`) is compiled against these but never loads them on this classpath:
+    // it runs in a Gradle worker under PROCESS ISOLATION, over the `wireGenerator` configuration of the module applying
+    // the plugin, so swagger-parser's Jackson and Guava never meet the ones AGP and KGP brought.
+    compileOnly(libs.swagger.parser.v3)
+    compileOnly(libs.kotlinpoet)
+    testImplementation(libs.swagger.parser.v3)
+    testImplementation(libs.kotlinpoet)
     // The zero coverage gate's judgement (`CoverageZero`) is pure and tested here; the root build's `check` runs these.
     testImplementation(kotlin("test"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -62,6 +69,10 @@ gradlePlugin {
         register("iosRigSources") {
             id = "snapsync.ios-rig-sources"
             implementationClass = "app.snapsync.buildlogic.IosRigSourcesPlugin"
+        }
+        register("wire") {
+            id = "snapsync.wire"
+            implementationClass = "app.snapsync.buildlogic.wire.WirePlugin"
         }
         register("liveEdge") {
             id = "snapsync.live-edge"

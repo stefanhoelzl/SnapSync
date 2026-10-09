@@ -945,6 +945,12 @@ components:
       pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
       x-snapsync-instant: true
       examples: ["2026-07-09T19:24:17Z"]
+    NullableTimestamp:
+      description: A `Timestamp`, or `null` for an instant that has not happened.
+      type: [string, "null"]
+      format: date-time
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+      x-snapsync-instant: true
     EventName:
       description: What an event is called — trimmed, non-blank.
       type: string
@@ -1113,14 +1119,10 @@ components:
           $ref: "#/components/schemas/Timestamp"
         closedAt:
           description: When the event closed; `null` while open.
-          oneOf:
-            - $ref: "#/components/schemas/Timestamp"
-            - type: "null"
+          $ref: "#/components/schemas/NullableTimestamp"
         completedAt:
           description: When the event completed; `null` until then.
-          oneOf:
-            - $ref: "#/components/schemas/Timestamp"
-            - type: "null"
+          $ref: "#/components/schemas/NullableTimestamp"
         keyId:
           description: Present exactly for an encrypted event.
           $ref: "#/components/schemas/KeyId"
@@ -1263,12 +1265,14 @@ components:
       required: [error]
       properties:
         error:
-          const: closed
+          type: string
+          enum: [closed]
     AppTooOldError:
       type: object
       required: [error]
       properties:
         error:
-          const: app too old
+          type: string
+          enum: [app too old]
         minAppVersion:
           type: string

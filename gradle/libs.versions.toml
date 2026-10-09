@@ -12,6 +12,12 @@ jdk = "25"
 orbit = "12.0.1"
 # The zero coverage gate reads compiled classes to recognise compiler glue by its shape (`CoverageZero`, build-logic).
 asm = "9.9.1"
+# The wire generation (`build-logic`, `snapsync.wire`): Fabrikt writes the DTOs; our route generator reads the
+# description with swagger-parser and writes Kotlin with KotlinPoet — 2.2.x, whose stdlib floor (2.1) the Gradle
+# daemon's embedded Kotlin can load. All three run isolated from the build's classpath.
+fabrikt = "27.14.0"
+swagger-parser = "2.1.48"
+kotlinpoet = "2.2.0"
 coroutines = "1.11.0"
 sqldelight = "2.4.1"
 kermit = "2.2.0"
@@ -69,6 +75,9 @@ androidx-compose = "1.12.1"
 
 [libraries]
 asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
+fabrikt = { module = "io.fabrikt:fabrikt", version.ref = "fabrikt" }
+swagger-parser-v3 = { module = "io.swagger.parser.v3:swagger-parser-v3", version.ref = "swagger-parser" }
+kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }
