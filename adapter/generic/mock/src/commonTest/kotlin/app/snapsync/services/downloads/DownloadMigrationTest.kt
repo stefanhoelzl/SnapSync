@@ -1,9 +1,10 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.contracts.DOWNLOADS_V6
+import app.snapsync.contracts.at
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.services.databases.databaseAt
+import app.snapsync.services.downloads.db.DownloadDatabase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,17 +27,19 @@ class DownloadMigrationTest {
     @Test
     fun `v6 to v7 moves the event tag into its own table and onto each planned resource`() = runTest {
         val (databases, _) = databaseAt(
-            DOWNLOADS_DB_NAME, 6,
-            *DOWNLOADS_V6.toTypedArray(),
-            "INSERT INTO downloadAsset VALUES ('DEV-A', 'IMP', 'IMPORTED', '2026-08-08T12:00:00Z', 'LOCAL-IMP', 'E1')",
-            "INSERT INTO downloadAsset VALUES ('DEV-A', 'PEND', 'PENDING', '2026-08-08T12:00:00Z', NULL, 'E1')",
-            "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'PENDING', '2026-08-08T12:00:00Z', NULL, NULL)",
-            "INSERT INTO downloadResource VALUES ('DEV-A', 'PEND', 'pend-primary.heic', 'https://x.invalid/p', 'primary', " +
-                "'image/heic', 'P.HEIC', 'download-staging/DEV-A/pend-primary.heic', 1)",
-            "INSERT INTO downloadResource VALUES ('DEV-A', 'PEND', 'pend-live.mov', 'https://x.invalid/l', 'live', " +
-                "'video/quicktime', 'P.MOV', NULL, 0)",
-            "INSERT INTO downloadResource VALUES ('DEV-A', 'OLD', 'old-primary.heic', 'https://x.invalid/o', 'primary', " +
-                "'image/heic', 'O.HEIC', NULL, 0)",
+            DOWNLOADS_DB_NAME,
+            DownloadDatabase.Schema.at(
+                6,
+                "INSERT INTO downloadAsset VALUES ('DEV-A', 'IMP', 'IMPORTED', '2026-08-08T12:00:00Z', 'LOCAL-IMP', 'E1')",
+                "INSERT INTO downloadAsset VALUES ('DEV-A', 'PEND', 'PENDING', '2026-08-08T12:00:00Z', NULL, 'E1')",
+                "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'PENDING', '2026-08-08T12:00:00Z', NULL, NULL)",
+                "INSERT INTO downloadResource VALUES ('DEV-A', 'PEND', 'pend-primary.heic', 'https://x.invalid/p', 'primary', " +
+                    "'image/heic', 'P.HEIC', 'download-staging/DEV-A/pend-primary.heic', 1)",
+                "INSERT INTO downloadResource VALUES ('DEV-A', 'PEND', 'pend-live.mov', 'https://x.invalid/l', 'live', " +
+                    "'video/quicktime', 'P.MOV', NULL, 0)",
+                "INSERT INTO downloadResource VALUES ('DEV-A', 'OLD', 'old-primary.heic', 'https://x.invalid/o', 'primary', " +
+                    "'image/heic', 'O.HEIC', NULL, 0)",
+            ),
         )
 
         val store = DownloadService(databases)

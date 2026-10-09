@@ -100,6 +100,9 @@ tasks.test {
             // ClauseCoversTest's shape check reads the contracts module's top level, so an exemption list added
             // there under any name re-runs this task; a stale guard would pass a file it never saw.
             include("test/contracts/*")
+            // MigrationPinTest's subject: the migration chains. Without them an edit to a shipped `.sqm` — the one
+            // change the pin exists to catch — leaves this task UP-TO-DATE and the pin silently stops pinning.
+            include("domain/services/src/commonMain/sqldelight/**/*.sqm")
             // The event-link domain guard's subjects. Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing

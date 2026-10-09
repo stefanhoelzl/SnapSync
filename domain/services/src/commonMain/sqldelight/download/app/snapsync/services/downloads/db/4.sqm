@@ -1,0 +1,34 @@
+import app.snapsync.model.AssetId;
+import app.snapsync.model.DownloadState;
+
+-- THE BASELINE: `downloads.db` at v5, from nothing. Migrations before 5.sqm were squashed into this file when the
+-- schema became derived from the migrations alone (`deriveSchemaFromMigrations`): a fresh install runs this and every
+-- later migration; a device at v5 or later never runs it. Extracted verbatim from the shipped v5 snapshot, plus the
+-- column types SQLDelight maps (it strips them from the SQL it runs). Never edit it — `MigrationPinTest`.
+
+CREATE TABLE downloadAsset (
+    sourceDeviceId TEXT NOT NULL,
+    sourceAssetId  TEXT AS AssetId NOT NULL,
+    state          TEXT AS DownloadState NOT NULL,
+    creationDate   TEXT NOT NULL,
+    createdLocalId TEXT AS AssetId, eventId TEXT,
+    PRIMARY KEY (sourceDeviceId, sourceAssetId)
+);
+
+CREATE TABLE downloadResource (
+    sourceDeviceId TEXT NOT NULL,
+    sourceAssetId  TEXT AS AssetId NOT NULL,
+    resourceKey    TEXT NOT NULL,
+    url            TEXT NOT NULL,
+    role           TEXT NOT NULL,
+    contentType    TEXT NOT NULL,
+    originalFilename TEXT NOT NULL,
+    stagedPath     TEXT,
+    -- 1 once this resource's download has been SENT to the OS (a background URLSession task exists).
+    -- Combined with `stagedPath IS NULL` it means "in flight" — the download analogue of the upload
+    -- ledger's REQUESTED. Superseded implicitly once `stagedPath` becomes non-null.
+    enqueued       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey)
+);
+
+CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId);

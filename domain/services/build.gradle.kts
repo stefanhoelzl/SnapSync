@@ -49,29 +49,26 @@ kotlin {
 // compile boundary covers generated code too; the pinned db FILENAMES are the runtime identity, never the
 // packages.
 //
-// ---- The schema snapshots -------------------------------------------------------------------------
+// ---- The schema is the migration chain ------------------------------------------------------------------------
 //
-// `schemaOutputDirectory` is what makes `verifyCommonMain<Db>Migration` MEAN anything. That task is
-// registered either way and runs inside `./gradlew build` either way — but it verifies by applying
-// every migration later than a committed `.db` snapshot's version and comparing the result with the
-// schema the CREATE statements produce. With no snapshot there is nothing to apply migrations to, so
-// the task executes, compares nothing, and reports success. Measured before this was set: a probe
-// migration adding a column absent from Ledger.sq left the task GREEN.
+// `deriveSchemaFromMigrations`: each database's schema is its `.sqm` files and nothing else — a fresh install runs the
+// whole chain from the baseline (`11.sqm` for the ledger, `4.sqm` for the download store, each the oldest version a
+// device holds, squashed), an upgrading device runs the files from its version on. With one source there is no second
+// route to drift from it, so SQLDelight registers no `verify…Migration` task and keeps no schema snapshot.
 //
-// Setting the directory also registers `generate<SourceSet><Db>Schema`, which emits the snapshot.
-//
-// A SNAPSHOT'S STALENESS IS NOT A DEFECT. An OLDER snapshot has MORE migrations applied to it before the
-// comparison, so it verifies more of the chain than a newer one. Regenerate a snapshot when you want a later
-// starting point checked, never out of hygiene.
-//
-// WHAT IT DOES NOT COVER: schema only. A data-only migration changes no schema, so this task
-// cannot tell a right rewrite from a wrong one — the store tests assert those.
+// What still has to hold, and where it is held:
+// - A SHIPPED MIGRATION IS NEVER EDITED: an edit splits upgraded phones from fresh installs, silently. Every `.sqm`
+//   is pinned by digest in `:test:architecture`'s `MigrationPinTest`; a new one adds its pin.
+// - A migration keeps its rows: the services' migration suites, each entering the database at its version through
+//   the `Databases` port (`:adapter:generic:mock` commonTest).
+// - Each platform's SQLite runs every statement and migrates from the oldest version: `DatabasesContract`'s schema
+//   clauses (`:test:contracts`).
 sqldelight {
     databases {
         create("LedgerDatabase") {
             packageName.set("app.snapsync.services.ledger.db")
             srcDirs.setFrom("src/commonMain/sqldelight/ledger")
-            schemaOutputDirectory.set(file("src/commonMain/sqldelight/ledger/databases"))
+            deriveSchemaFromMigrations.set(true)
             // The sqlite-3-35 dialect: the default rejects ALTER TABLE … DROP COLUMN (migrations use it), and the
             // record write's upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
             dialect(libs.sqldelight.dialect.sqlite)
@@ -79,7 +76,7 @@ sqldelight {
         create("DownloadDatabase") {
             packageName.set("app.snapsync.services.downloads.db")
             srcDirs.setFrom("src/commonMain/sqldelight/download")
-            schemaOutputDirectory.set(file("src/commonMain/sqldelight/download/databases"))
+            deriveSchemaFromMigrations.set(true)
             dialect(libs.sqldelight.dialect.sqlite)
         }
     }

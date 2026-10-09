@@ -1,0 +1,53 @@
+-- THE BASELINE: `ledger.db` as every device holds it at v12 (0.4's schema), from nothing. Migrations before 12.sqm
+-- were squashed into this file when the schema became derived from the migrations alone
+-- (`deriveSchemaFromMigrations`): a fresh install runs this and every later migration; a device at v12 or later
+-- never runs it. Extracted verbatim from the shipped v12 snapshot. Never edit it — `MigrationPinTest`.
+
+CREATE TABLE ledgerRow (
+    key TEXT NOT NULL PRIMARY KEY,
+    assetId TEXT NOT NULL,
+    state TEXT NOT NULL,
+    creationDate TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    contentType TEXT NOT NULL DEFAULT '',
+    originalFilename TEXT NOT NULL DEFAULT '',
+    destinationPath TEXT
+);
+
+CREATE TABLE manifestVersion (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    value INTEGER NOT NULL
+);
+
+CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
+
+CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
+
+CREATE TRIGGER ledgerRow_version_insert AFTER INSERT ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_delete AFTER DELETE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_update AFTER UPDATE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1
+    WHERE id = 0 AND (
+        old.key IS NOT new.key
+        OR old.assetId IS NOT new.assetId
+        OR old.creationDate IS NOT new.creationDate
+        OR old.role IS NOT new.role
+        OR old.contentType IS NOT new.contentType
+        OR old.originalFilename IS NOT new.originalFilename
+    );
+END;
