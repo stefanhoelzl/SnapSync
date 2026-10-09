@@ -268,5 +268,6 @@ private fun armMetricWait(): String {
 /** Every run that spans a launch, resumed as a rig build's adapter set is built. */
 fun resumeContractRuns() {
     claimContractSession()
+    claimDownloadContractSession()
     resumeMetricWait()
 }

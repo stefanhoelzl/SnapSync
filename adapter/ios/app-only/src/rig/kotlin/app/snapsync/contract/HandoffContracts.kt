@@ -6,6 +6,7 @@ import app.snapsync.background.SystemBackgroundTimeApi
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.BuildInfoContract
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Contract
@@ -26,6 +27,7 @@ import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.ios.registry.osCarriesUploadExtension
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
@@ -107,14 +109,23 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
     InAppContract(NetworkMonitorContract.name, Host.IOS_DEVICE_APP) { params -> recordNetwork(params) },
     InAppContract(ProcessInfoContract.name, Host.IOS_DEVICE_APP) { recordProcessInfoLocked() },
     InAppContract(BackgroundTimeContract.name, Host.IOS_DEVICE_APP) { recordBackgroundTimeExpiry() },
-) + relaunchContracts() + metricsContracts()
+    InAppContract(BuildInfoContract.name, Host.IOS_DEVICE_APP) { recordBuildInfo() },
+) + relaunchContracts() + downloadRelaunchContracts() + metricsContracts()
 
 /**
- * Runs the registration contract under the grant this process holds — the grant is a precondition of the run,
- * not something a binding can enter (`docs/architecture.md`, "An authorization the process cannot give
- * itself is a precondition of the run") — so a person switches it in Settings between the two recordings.
+ * Runs the registration contract on an OS without the mechanism, or else under the grant this process holds — the
+ * grant is a precondition of the run, not something a binding can enter (`docs/architecture.md`, "An authorization
+ * the process cannot give itself is a precondition of the run") — so a person switches it in Settings between the two
+ * recordings.
  */
-private fun recordRegistry(refusal: () -> String?): String = when (val grant = currentPhotoPermission()) {
+private fun recordRegistry(refusal: () -> String?): String = if (!osCarriesUploadExtension()) {
+    // Below 26.1 the registration selector does not exist: the grant decides nothing, and nothing may call it.
+    recordAppOnDevice(ExtensionRegistryContract, null, BELOW_IOS_26_1) { DeviceRegistryNoMechanismBinding(it) }
+} else {
+    recordRegistryUnderGrant(refusal)
+}
+
+private fun recordRegistryUnderGrant(refusal: () -> String?): String = when (val grant = currentPhotoPermission()) {
     GalleryAccess.GRANTED -> refusal()?.let { "$CONTRACT_REFUSED$it\n" }
         ?: recordAppOnDevice(ExtensionRegistryContract, grant) { DeviceRegistryGrantedBinding(it) }
     GalleryAccess.LIMITED ->

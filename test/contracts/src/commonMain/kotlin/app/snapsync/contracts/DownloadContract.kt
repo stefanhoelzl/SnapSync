@@ -36,6 +36,13 @@ enum class DownloadState {
 
     /** Any network, on a platform whose queue refuses, as it is asked, a URL it cannot fetch (Android's DownloadManager). */
     REFUSES_UNFETCHABLE,
+
+    /**
+     * A transfer that ended while the app was gone, whose end the operating system relaunched the app to deliver — the
+     * relaunch held by the binding ([DownloadUnderTest.relaunch]). A device's, recorded across the two processes: no CI
+     * host's session outlives its app.
+     */
+    RELAUNCHED_WITH_EVENTS,
 }
 
 /**
@@ -55,6 +62,11 @@ class DownloadUnderTest(
      * binding that reaches [DownloadState.WAKES_TO_DELIVER].
      */
     val wakeEnded: (suspend () -> Boolean)? = null,
+    /**
+     * Hands the port the operating system's relaunch, with its completion handler, as the app's delegate does; required
+     * of a binding that reaches [DownloadState.RELAUNCHED_WITH_EVENTS].
+     */
+    val relaunch: (() -> Unit)? = null,
 )
 
 /** One thing the port told its owner, in the order it was told. */
@@ -108,6 +120,9 @@ class ClauseDownloadHandlers(private val readTemp: (String) -> ByteArray?) {
  * over the body it received, completes every transfer it started, and cancels what it holds.
  */
 object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download") {
+
+    /** The tag the relaunched state's transfer was started under, which its end is reported with. */
+    const val RELAUNCHED_TAG = "d-relaunched"
 
     /** The route a clause fetches from. */
     fun path(clauseId: String, answer: FixtureAnswer, n: Int = 1): String =
@@ -434,6 +449,29 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
                     assertNotNull(owner.events.filterIsInstance<DownloadEvent.Completed>().single().error)
                 }
             }
+        }
+
+        clause(
+            "RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED",
+            DownloadState.RELAUNCHED_WITH_EVENTS,
+            covers = cells {
+                on<Download> {
+                    calls(DownloadHandlers::onBackgroundEvents, Completion::class)
+                    calls(DownloadHandlers::onEventsDrained)
+                    handle<Completion>().answers(Completion::complete).returns()
+                }
+            },
+        ) { subject ->
+            val relaunch = assertNotNull(subject.relaunch, "a binding that reaches this state holds the relaunch")
+            val owner = ClauseDownloadHandlers(subject.readTemp)
+            subject.open().listen(owner.handlers)
+            relaunch()
+            awaitWithin { owner.drainsReported > 0 }
+            assertEquals(1, owner.wakesHandedOver, "the relaunch's completion is handed over once")
+            assertTrue(
+                owner.events.any { it is DownloadEvent.Completed && it.tag == RELAUNCHED_TAG },
+                "the transfer that ended while the app was gone is reported, before the drain: ${owner.events}",
+            )
         }
     }
 }
