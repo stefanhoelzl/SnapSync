@@ -1,0 +1,19 @@
+# contract: BuildInfo
+# host: IOS_DEVICE_APP
+# precondition: BELOW_IOS_26_1
+# file: BuildInfo@IOS_DEVICE_APP.BELOW_IOS_26_1.rec
+# device: iPhone11,2
+# os: Version 18.7.10 (Build 22H374)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-09T13:20:53Z
+# live REPORTING_AND_LISTED_NAMES_ITS_CHANNEL_AND_STORE: NotRunHere(this run records an OS below 26.1; REPORTING_AND_LISTED runs live)
+# live BUNDLED_NAMES_ITS_PROCESS_VERSION_AND_BACKEND: NotRunHere(this run records an OS below 26.1; BUNDLED runs live)
+# live UNREPORTED_AND_UNLISTED_NAMES_NEITHER: NotRunHere(this run records an OS below 26.1; UNREPORTED_AND_UNLISTED runs live)
+# live UNBUNDLED_NAMES_NO_PROCESS: NotRunHere(this run records an OS below 26.1; UNBUNDLED runs live)
+# live ON_ANDROID_IS_ANDROID_WITH_NO_OS_DRIVEN_UPLOADER: NotRunHere(this run records an OS below 26.1; ON_ANDROID runs live)
+# live ON_IOS_IS_IOS: NotRunHere(this run records an OS below 26.1; ON_IOS runs live)
+# live OS_DRIVEN_UPLOAD_IS_CARRIED: NotRunHere(this run records an OS below 26.1; OS_DRIVEN_UPLOAD runs live)
+# live NO_OS_DRIVEN_UPLOAD_IS_NOT_CARRIED: Passed
+[NO_OS_DRIVEN_UPLOAD_IS_NOT_CARRIED]
+osCarriesOsDrivenUpload() -> false

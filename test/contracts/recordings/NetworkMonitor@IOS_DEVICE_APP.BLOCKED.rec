@@ -1,0 +1,16 @@
+# contract: NetworkMonitor
+# host: IOS_DEVICE_APP
+# precondition: BLOCKED
+# file: NetworkMonitor@IOS_DEVICE_APP.BLOCKED.rec
+# device: iPhone11,2
+# os: Version 18.7.10 (Build 22H374)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-09T13:35:07Z
+# live A_CONNECTED_DEVICE_READS_ONLINE: NotRunHere(this run records the phone BLOCKED; ONLINE is another run's, or no host's)
+# live A_RESTRICTED_NETWORK_READS_ONLINE_AND_RESTRICTED: NotRunHere(this run records the phone BLOCKED; RESTRICTED is another run's, or no host's)
+# live A_DEVICE_WITHOUT_A_NETWORK_READS_OFFLINE: NotRunHere(this run records the phone BLOCKED; OFFLINE is another run's, or no host's)
+# live A_NETWORK_WITHHELD_FROM_THE_APP_READS_BLOCKED: Passed
+[A_NETWORK_WITHHELD_FROM_THE_APP_READS_BLOCKED]
+start() -> status=unsatisfied reason=cellularDenied expensive
+cancel() -> done

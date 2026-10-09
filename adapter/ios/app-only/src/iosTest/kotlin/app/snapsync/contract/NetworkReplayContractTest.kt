@@ -18,7 +18,8 @@ import kotlin.test.Test
 /**
  * The device's `nw_path_monitor`, REPLAYED (`docs/architecture.md`): the CURRENT [IosNetworkMonitor] runs against what
  * iOS reported when `NetworkMonitor@IOS_DEVICE_APP.ONLINE.rec` (Wi-Fi joined) and `….OFFLINE.rec` (airplane mode) were
- * recorded on the SE2, and the current clauses judge.
+ * recorded on the SE2, and `….BLOCKED.rec` (mobile data only, withheld from the app) on the XS, and the current clauses
+ * judge.
  *
  * One binding per recording, because the network is a precondition a person sets between the two runs, never a state a
  * binding enters. A `Diverged` means the adapter now asks iOS something else: re-record (the `rig-channel` runbook).
@@ -66,6 +67,20 @@ class NetworkReplayContractTest {
 
         override fun create(state: NetworkState, clauseId: String, log: CallLog) = replay.create(clauseId, log)
     }
+
+    private val blocked = object : Binding<NetworkState, NetworkMonitor> {
+        override val host = Host.IOS_DEVICE_APP
+        override val kind = BindingKind.Replay
+        override val reaches = setOf(NetworkState.BLOCKED)
+        override val precondition = "BLOCKED"
+        private val replay = ReplayBinding(precondition)
+
+        override fun create(state: NetworkState, clauseId: String, log: CallLog) = replay.create(clauseId, log)
+    }
+
+    @Test
+    fun `the recorded device with its network withheld satisfies the NetworkMonitor contract`() =
+        verify(NetworkMonitorContract, blocked)
 
     @Test
     fun `the recorded restricted device satisfies the NetworkMonitor contract`() = verify(

@@ -4,6 +4,9 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Divergence
+import app.snapsync.contracts.DownloadContract
+import app.snapsync.contracts.DownloadState
+import app.snapsync.contracts.DownloadUnderTest
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.SharePresenterContract
@@ -24,7 +27,8 @@ import kotlin.test.Test
 /**
  * What a phone the operating system relaunched in the background delivered, REPLAYED (`docs/architecture.md`): the
  * CURRENT [IosUrlSessionUploadPlatform] against the session's calls and events when `Upload@IOS_DEVICE_APP.rec` was
- * recorded across the relaunch, and the CURRENT [IosSystemUi] against the share sheet's answer in that same windowless
+ * recorded across the relaunch, the CURRENT [app.snapsync.download.IosDownload] against `Download@IOS_DEVICE_APP.rec`'s
+ * relaunch, and the CURRENT [IosSystemUi] against the share sheet's answer in that same windowless
  * launch (`SharePresenter@IOS_DEVICE_APP.rec`). A `Diverged` means the adapter now asks iOS something else, or in
  * another order: re-record (the `rig-channel` runbook).
  */
@@ -79,6 +83,36 @@ class RelaunchReplayContractTest {
             }
         }
     }
+
+    private val download = object : Binding<DownloadState, DownloadUnderTest> {
+        override val host = Host.IOS_DEVICE_APP
+        override val kind = BindingKind.Replay
+        override val reaches = setOf(DownloadState.RELAUNCHED_WITH_EVENTS)
+
+        override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {
+            if (state !in reaches) return Entered.Unreachable("this recording holds a relaunch; $state runs live")
+            return replayerFor(RECORDINGS, recordingName(DownloadContract.name, host, null), clauseId) { replayer ->
+                relaunchedDownload(
+                    ReplayingDownloadSessionApi(replayer),
+                    handler = {},
+                    log = log,
+                    // The system's relaunch is the block's first event: the replay hands it over where the device did.
+                    beforeDeliver = {
+                        val due = replayer.takeEvents()
+                        if (due != listOf(downloadHandleEvents(DOWNLOAD_CONTRACT_SESSION))) {
+                            throw Divergence(
+                                "the recording does not open with the relaunch of $DOWNLOAD_CONTRACT_SESSION: $due",
+                            )
+                        }
+                    },
+                    afterDispose = replayer::assertExhausted,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the recorded relaunch satisfies the Download contract`() = verify(DownloadContract, download)
 
     @Test
     fun `the recorded relaunch satisfies the Upload contract`() = verify(UploadContract, upload)

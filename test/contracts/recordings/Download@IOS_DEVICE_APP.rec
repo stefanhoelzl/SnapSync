@@ -1,0 +1,16 @@
+# contract: Download
+# host: IOS_DEVICE_APP
+# file: Download@IOS_DEVICE_APP.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-09T13:31:47Z
+# live RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED: Passed
+[RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED]
+<- handleEvents(id=app.snapsync.contract.download.relaunch)
+release() -> done
+open(id=app.snapsync.contract.download.relaunch) -> attached
+<- didFinish(tag=d-relaunched status=401 expected=-1 received=10)
+<- didComplete(tag=d-relaunched error=none)
+<- didFinishEvents()
