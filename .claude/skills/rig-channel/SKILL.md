@@ -199,10 +199,15 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   `# file:` header names the file each run belongs in. The full-grant run disables and re-enables the extension
   (wiping in-flight upload jobs), so it answers `409` while the device is a member of an event — reset first
   (`POST /device/reset`), deliberately.
+  On the **XS** (below iOS 26.1) the same verb records `…UploadExtensionRegistry@IOS_DEVICE_APP.BELOW_IOS_26_1.rec`
+  whatever the grant: there is no mechanism, so it asks iOS nothing. **`BuildInfo`** records there too
+  (`…/contract/BuildInfo > …/BuildInfo@IOS_DEVICE_APP.BELOW_IOS_26_1.rec`); on a 26.1+ phone it answers `409`.
 - **`NetworkMonitor`** records once per network condition, which YOU state — the run never reads it from the adapter
   under test. Wi-Fi joined: `…/contract/NetworkMonitor?network=online > …/NetworkMonitor@IOS_DEVICE_APP.ONLINE.rec`;
   then airplane mode on **and Wi-Fi off** (iOS keeps Wi-Fi on in airplane mode once you have re-enabled it there):
-  `…?network=offline > …/NetworkMonitor@IOS_DEVICE_APP.OFFLINE.rec`; then back online. The control channel rides
+  `…?network=offline > …/NetworkMonitor@IOS_DEVICE_APP.OFFLINE.rec`; then back online. **Blocked** needs mobile
+  data, so the XS (the SE2 has no SIM): Wi-Fi off, mobile data on, Settings → Mobile Data → SnapSync off:
+  `…?network=blocked > …/NetworkMonitor@IOS_DEVICE_APP.BLOCKED.rec`; then switch both back. The control channel rides
   USB, so it keeps answering offline. A `# live …: Failed` line means the phone was not in the stated condition — do
   not commit that run.
 
@@ -218,6 +223,9 @@ git diff test/contracts/recordings/        # review it like code, then commit it
     retried and never relaunches anything, measured) and EXITS the app; iOS relaunches it in the background (35 s–2 min)
     and that process records both. Pull `Upload@IOS_DEVICE_APP.rec` and `SharePresenter@IOS_DEVICE_APP.rec` from
     `Documents/contracts/` (the relaunched app is suspended, so `?step=collect` answers only once it is opened).
+  - **`Download` (device app)** — the same two steps for the download session: `?step=arm` prepares a fetch of
+    `https://snapsync.stho.net/contract-relaunch-download` in a session of its own and EXITS the app; pull
+    `Download@IOS_DEVICE_APP.rec` from `Documents/contracts/` once iOS has relaunched it (~30 s).
   - **`ProcessMetrics`**: `?step=arm` subscribes and waits, across launches, for MetricKit's next delivery (a queued
     report arrives within seconds; otherwise about a day); `?step=collect` or pull the kept file.
 - ⚠️ **The upload extension does not run below ~20 % battery**, even plugged in: `dasd` answers its runner

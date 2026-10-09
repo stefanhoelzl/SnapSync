@@ -1,0 +1,17 @@
+# contract: UploadExtensionRegistry
+# host: IOS_DEVICE_APP
+# precondition: BELOW_IOS_26_1
+# file: UploadExtensionRegistry@IOS_DEVICE_APP.BELOW_IOS_26_1.rec
+# device: iPhone11,2
+# os: Version 18.7.10 (Build 22H374)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-09T13:20:53Z
+# live NO_MECHANISM_IS_UNSUPPORTED_EITHER_WAY: Passed
+# live ENABLE_CREATES_A_RECORD: NotRunHere(an OS below 26.1 carries no mechanism to hold a record)
+# live DISABLE_REMOVES_A_RECORD: NotRunHere(an OS below 26.1 carries no mechanism to hold a record)
+# live DISABLE_WITH_NO_RECORD_IS_EXPECTED: NotRunHere(an OS below 26.1 carries no mechanism to hold a record)
+# live ENABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT: NotRunHere(an OS below 26.1 carries no mechanism to hold a record)
+# live DISABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT: NotRunHere(an OS below 26.1 carries no mechanism to hold a record)
+[NO_MECHANISM_IS_UNSUPPORTED_EITHER_WAY]
+osCarriesUploadExtension() -> false

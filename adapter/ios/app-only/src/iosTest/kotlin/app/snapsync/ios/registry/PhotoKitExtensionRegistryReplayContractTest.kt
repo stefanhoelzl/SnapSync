@@ -3,6 +3,8 @@ package app.snapsync.ios.registry
 import app.snapsync.contract.RECORDINGS
 import app.snapsync.contract.ReplayingRegistrationApi
 import app.snapsync.contract.registryInState
+import app.snapsync.contract.registryWithoutMechanism
+import app.snapsync.contract.replayedOsFact
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -78,6 +80,31 @@ class PhotoKitExtensionRegistryReplayContractTest {
                 Entered.Unreachable("recorded under a full grant")
             }
     }
+
+    /** Recorded on the XS (iOS 18): the OS fact the registry is built on, and no call — the selector is not there. */
+    private val noMechanism = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
+        override val host = Host.IOS_DEVICE_APP
+        override val kind = BindingKind.Replay
+        override val precondition = "BELOW_IOS_26_1"
+        override val reaches = setOf(ExtensionRegistryState.NO_MECHANISM)
+
+        override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
+            if (state !in reaches) return Entered.Unreachable("recorded where there is no mechanism")
+            val name = recordingName(ExtensionRegistryContract.name, host, null, precondition)
+            return replayerFor(RECORDINGS, name, clauseId) { replayer ->
+                registryWithoutMechanism(
+                    ReplayingRegistrationApi(replayer),
+                    replayedOsFact(replayer),
+                    log,
+                    afterDispose = replayer::assertExhausted,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the recorded device registry on an OS without the mechanism satisfies the contract`() =
+        verify(ExtensionRegistryContract, noMechanism)
 
     @Test
     fun `the recorded device registry under a full grant satisfies the contract`() =

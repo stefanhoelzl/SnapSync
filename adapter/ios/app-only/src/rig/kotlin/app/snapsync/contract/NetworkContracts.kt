@@ -164,7 +164,7 @@ internal class DeviceNetworkOfflineBinding(private val recorder: Recorder) : Bin
 
 /**
  * The device with only mobile data, which Settings withholds from this app (Wi-Fi off; mobile data on; SnapSync's own
- * mobile data switch off), recording every `nw_path_monitor` call and iOS's answer.
+ * mobile data switch off) — a phone with a SIM, the XS — recording every `nw_path_monitor` call and iOS's answer.
  */
 internal class DeviceNetworkBlockedBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {
     override val host = Host.IOS_DEVICE_APP
