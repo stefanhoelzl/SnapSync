@@ -73,6 +73,7 @@ class AndroidDownloadContractTest {
             )
 
         override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {
+            if (state !in reaches) return Entered.Unreachable("DownloadManager never relaunches the app")
             removeAllDownloads()
             // The fixture is the host's, reached over the emulator's Wi-Fi: metering the Wi-Fi meters the transfer.
             if (state == DownloadState.RESTRICTED_NETWORK) MeteredWifi.enter()

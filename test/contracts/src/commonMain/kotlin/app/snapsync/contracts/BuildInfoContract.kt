@@ -30,6 +30,9 @@ enum class BuildInfoState {
 
     /** A build on an OS that carries the OS-driven upload mechanism (iOS 26.1 and later). */
     OS_DRIVEN_UPLOAD,
+
+    /** A build on an OS that does not carry it (iOS below 26.1, Android). */
+    NO_OS_DRIVEN_UPLOAD,
 }
 
 /**
@@ -131,6 +134,14 @@ object BuildInfoContract : Contract<BuildInfoState, BuildInfo>("BuildInfo") {
             covers = cells { on<BuildInfo>().answers(BuildInfo::osSupportsOsDrivenUpload).with(true) },
         ) { build ->
             assertTrue(build.osSupportsOsDrivenUpload, "an OS that carries the mechanism says so")
+        }
+
+        clause(
+            "NO_OS_DRIVEN_UPLOAD_IS_NOT_CARRIED",
+            BuildInfoState.NO_OS_DRIVEN_UPLOAD,
+            covers = cells { on<BuildInfo>().answers(BuildInfo::osSupportsOsDrivenUpload).with(false) },
+        ) { build ->
+            assertFalse(build.osSupportsOsDrivenUpload, "an OS without the mechanism says so")
         }
     }
 }

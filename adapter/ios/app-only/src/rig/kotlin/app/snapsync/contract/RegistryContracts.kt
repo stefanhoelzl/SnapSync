@@ -13,6 +13,7 @@ import app.snapsync.ios.registry.ExtensionRegistrationApi
 import app.snapsync.ios.registry.PhotoKitExtensionRegistry
 import app.snapsync.ios.registry.PlatformWriteAnswer
 import app.snapsync.ios.registry.SystemExtensionRegistrationApi
+import app.snapsync.ios.registry.osCarriesUploadExtension
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.ExtensionRegistry
 import co.touchlab.kermit.Logger
@@ -20,7 +21,7 @@ import co.touchlab.kermit.Logger
 /*
  * `ExtensionRegistryContract`'s iOS bindings (`docs/architecture.md`): the real
  * `PhotoKitExtensionRegistry` recorded in the app on a device — once under a full grant, once under a partial
- * one — and replayed on every CI build.
+ * one, and once on an OS below 26.1, which carries no mechanism — and replayed on every CI build.
  *
  * Compiled into this module's `iosMain` only under `-Psnapsync.rig=true`, and into `iosTest` otherwise — one
  * file, so the recorder and the replayer cannot spell a call differently.
@@ -118,5 +119,52 @@ internal class DeviceRegistryLimitedBinding(private val recorder: Recorder) :
         if (state !in reaches) return Entered.Unreachable(REGISTRY_NEEDS_FULL_GRANT)
         recorder.open(clauseId)
         return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state, log)
+    }
+}
+
+/** The one OS fact an OS below 26.1 decides the registry by, as its recording spells it. */
+private const val OS_CARRIES_CALL = "osCarriesUploadExtension()"
+
+/** The condition the no-mechanism recording is taken under, which names its file. */
+internal const val BELOW_IOS_26_1 = "BELOW_IOS_26_1"
+
+/**
+ * The registry on an OS with no mechanism, over [api]: built on the OS fact [carries] answers — the device's, recorded
+ * as the block's first call, or the recording's on a replay — and asking the OS nothing else.
+ */
+internal fun registryWithoutMechanism(
+    api: ExtensionRegistrationApi,
+    carries: () -> Boolean,
+    log: CallLog,
+    afterDispose: () -> Unit = {},
+): Entered<ExtensionRegistry> =
+    Entered.Ready(PhotoKitExtensionRegistry(logger, api, supported = carries()).recorded(log), dispose = afterDispose)
+
+/** The fact on the device, recorded in the block [recorder] has open. */
+internal fun recordedOsFact(recorder: Recorder): () -> Boolean =
+    { osCarriesUploadExtension().also { recorder.record(OS_CARRIES_CALL, "$it") } }
+
+/** The fact as the recording holds it. */
+internal fun replayedOsFact(replayer: Replayer): () -> Boolean = { replayer.answer(OS_CARRIES_CALL).toBooleanStrict() }
+
+/**
+ * The real registry in the app on a device below iOS 26.1 (the XS), recording the OS fact it is built on and every
+ * call it makes — none. Replayed on every CI build by `PhotoKitExtensionRegistryReplayContractTest`.
+ */
+internal class DeviceRegistryNoMechanismBinding(private val recorder: Recorder) :
+    Binding<ExtensionRegistryState, ExtensionRegistry> {
+    override val host = Host.IOS_DEVICE_APP
+    override val kind = BindingKind.Live
+    override val precondition = "BELOW_IOS_26_1"
+    override val reaches = setOf(ExtensionRegistryState.NO_MECHANISM)
+
+    override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
+        if (state !in reaches) return Entered.Unreachable("an OS below 26.1 carries no mechanism to hold a record")
+        recorder.open(clauseId)
+        return registryWithoutMechanism(
+            RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder),
+            recordedOsFact(recorder),
+            log,
+        )
     }
 }

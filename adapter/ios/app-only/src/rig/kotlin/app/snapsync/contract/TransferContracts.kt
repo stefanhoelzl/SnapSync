@@ -238,7 +238,7 @@ class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunPara
             Entered.Unreachable("a URLSession starts what NSURL parses, and fails it later")
         } else if (state == DownloadState.RESTRICTED_NETWORK) {
             Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
-        } else if (state == DownloadState.WAKES_TO_DELIVER) {
+        } else if (state == DownloadState.WAKES_TO_DELIVER || state == DownloadState.RELAUNCHED_WITH_EVENTS) {
             // The simulator target's session is the default one, which delivers in-process and never relaunches the app.
             Entered.Unreachable("the simulator's default session delivers without waking the app")
         } else {

@@ -39,6 +39,7 @@ class AndroidBuildInfoContractTest {
             BuildInfoState.BUNDLED,
             BuildInfoState.UNREPORTED_AND_UNLISTED,
             BuildInfoState.ON_ANDROID,
+            BuildInfoState.NO_OS_DRIVEN_UPLOAD,
         )
         override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
             if (state in reaches) {

@@ -381,7 +381,7 @@ internal fun relaunchContracts(): List<InAppContract> = listOf(
 internal fun keptRecording(contract: String): String? =
     keptPath(contract)?.let { NSString.stringWithContentsOfFile(it, NSUTF8StringEncoding, null) }
 
-private fun collect(contract: String): String {
+internal fun collect(contract: String): String {
     val text = keptRecording(contract)
     return text ?: (
         CONTRACT_REFUSED + "no relaunch has recorded $contract yet: POST /contract/Upload?step=arm, wait for iOS to " +
@@ -474,6 +474,6 @@ private fun runRelaunched(handler: () -> Unit) {
 }
 
 /** [contract] reduced to its clause [id]. */
-private fun <K : Enum<K>, T> single(contract: Contract<K, T>, id: String) = object : Contract<K, T>(contract.name) {
+internal fun <K : Enum<K>, T> single(contract: Contract<K, T>, id: String) = object : Contract<K, T>(contract.name) {
     override val clauses: List<Clause<K, T>> = contract.clauses.filter { it.id == id }
 }

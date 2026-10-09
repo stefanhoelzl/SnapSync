@@ -163,6 +163,20 @@ internal class DeviceNetworkOfflineBinding(private val recorder: Recorder) : Bin
 }
 
 /**
+ * The device with only mobile data, which Settings withholds from this app (Wi-Fi off; mobile data on; SnapSync's own
+ * mobile data switch off), recording every `nw_path_monitor` call and iOS's answer.
+ */
+internal class DeviceNetworkBlockedBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {
+    override val host = Host.IOS_DEVICE_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(NetworkState.BLOCKED)
+    override val precondition = "BLOCKED"
+
+    override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
+        recordingIn(state, NetworkState.BLOCKED, recorder, clauseId, log)
+}
+
+/**
  * The recording monitor for a clause in [state], when it is the [held] condition the phone was put in; any other state
  * is unreachable in this run, and opens no block.
  */
@@ -184,16 +198,19 @@ private fun recordingIn(
 
 /**
  * Runs the network contract under the condition the person recording states — `?network=online`,
- * `?network=restricted` or `?network=offline` — which they set on the phone first: a binding cannot take a phone offline, and reading the
- * condition through the adapter under test would file whatever it answers as the truth. A clause then fails when the
+ * `?network=restricted`, `?network=offline` or `?network=blocked` — which they set on the phone first: a binding cannot
+ * take a phone offline, and reading the condition through the adapter under test would file whatever it answers as the
+ * truth. A clause then fails when the
  * phone was not in the stated condition, and that recording is not committed.
  */
 internal fun recordNetwork(params: Map<String, String>): String = when (params["network"]) {
     "online" -> recordAppOnDevice(NetworkMonitorContract, null, "ONLINE") { DeviceNetworkOnlineBinding(it) }
     "offline" -> recordAppOnDevice(NetworkMonitorContract, null, "OFFLINE") { DeviceNetworkOfflineBinding(it) }
     "restricted" -> recordAppOnDevice(NetworkMonitorContract, null, "RESTRICTED") { DeviceNetworkRestrictedBinding(it) }
+    "blocked" -> recordAppOnDevice(NetworkMonitorContract, null, "BLOCKED") { DeviceNetworkBlockedBinding(it) }
     else ->
         CONTRACT_REFUSED +
             "state the phone's condition: ?network=online (Wi-Fi joined), ?network=restricted (a personal hotspot, or Low " +
-            "Data Mode on its Wi-Fi) or ?network=offline (airplane mode, Wi-Fi off).\n"
+            "Data Mode on its Wi-Fi), ?network=offline (airplane mode, Wi-Fi off) or ?network=blocked (Wi-Fi off, " +
+            "mobile data on, and SnapSync's mobile data turned off in Settings).\n"
 }
