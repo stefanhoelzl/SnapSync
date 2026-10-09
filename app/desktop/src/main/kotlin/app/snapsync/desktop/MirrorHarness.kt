@@ -37,6 +37,7 @@ import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.SurfaceActions
 import app.snapsync.ui.SwitchActions
 import app.snapsync.ui.WithdrawalActions
+import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeGestures
 import kotlinx.coroutines.CoroutineScope
@@ -93,8 +94,16 @@ fun MirrorHarnessRoot(url: String) {
         Surface {
             Row(modifier = Modifier.padding(16.dp)) {
                 PhoneFrame {
-                    state?.let { StatusScreen(state = it.ui, dateFormats = dates::formats, actions = actions) }
-                        ?: Text("waiting for $url …")
+                    val shown = state
+                    if (shown != null) {
+                        StatusScreen(
+                            state = shown.ui,
+                            dateFormats = { tag -> DateFormatter(dates.formats(tag)::format) },
+                            actions = actions,
+                        )
+                    } else {
+                        Text("waiting for $url …")
+                    }
                 }
                 Column(
                     modifier = Modifier.padding(start = 16.dp).fillMaxHeight().verticalScroll(rememberScrollState()),

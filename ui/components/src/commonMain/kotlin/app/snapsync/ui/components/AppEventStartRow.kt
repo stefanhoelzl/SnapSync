@@ -1,7 +1,6 @@
 package app.snapsync.ui.components
 
 import androidx.compose.runtime.Composable
-import app.snapsync.model.DateFormats
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.date_range_one_day
 import app.snapsync.ui.components.resources.date_range_open
@@ -61,5 +60,5 @@ fun appDateRangeLabel(start: LocalDateTime, end: LocalDateTime?, today: LocalDat
     }
 }
 
-private fun DateFormats.day(day: LocalDate, withYear: Boolean): String =
+private fun DateFormatter.day(day: LocalDate, withYear: Boolean): String =
     format(LocalDateTime(day, LocalTime(0, 0)), if (withYear) "yMMMEd" else "MMMEd")

@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import app.snapsync.model.DateFormats
 
 // SnapSync's green brand identity (the design-system skin — screens never see these). A confident
 // emerald on cool near-white in light, a brighter green on near-black in dark. Destructive actions
@@ -165,7 +164,7 @@ val LocalReduceMotion = staticCompositionLocalOf { false }
  * resolved to and provided as [LocalDateFormats].
  */
 @Composable
-fun AppTheme(dateFormats: (languageTag: String?) -> DateFormats, content: @Composable () -> Unit) {
+fun AppTheme(dateFormats: (languageTag: String?) -> DateFormatter, content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = if (appIsDark()) DarkColors else LightColors) {
         // Dates read in the language the strings resolved to (`docs/architecture.md`, "Localization").
         CompositionLocalProvider(LocalDateFormats provides rememberDateFormats(dateFormats), content = content)

@@ -1,6 +1,5 @@
 package app.snapsync.ui.components
 
-import app.snapsync.model.DateFormats
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,7 +11,7 @@ import kotlin.test.assertEquals
  */
 class AppRangeLabelTest {
 
-    private fun label(from: LocalDateTime, until: LocalDateTime, formats: DateFormats = dateFormats("en-GB")) =
+    private fun label(from: LocalDateTime, until: LocalDateTime, formats: DateFormatter = dateFormats("en-GB")) =
         rendered(formats) { appRangeLabel(from, until) }
 
     @Test
