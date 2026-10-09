@@ -300,10 +300,6 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
             CommandResult.ok(buildJsonObject { put("landed", asset) }.toString())
         },
     ),
-    "backend/legacy-event" to op { params ->
-        val event = device.backend.operator.registerLegacyEvent(params["name"] ?: "Legacy")
-        CommandResult.ok(buildJsonObject { put("event", event) }.toString())
-    },
     // The byte partition of a device is gone — an operator's storage wipe — while every record that names it stays.
     "backend/wipe-bytes" to op { params ->
         device.backend.operator.wipeBytes(params["device"] ?: ownDeviceId())

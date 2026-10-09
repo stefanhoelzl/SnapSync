@@ -578,7 +578,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   - backend levers: `backend/min-app-version[?minimum=]`, `backend/sweep`,
     `backend/hold?call=event|create|join|leave&on=` (the call waits unanswered until `on=false` — the only way to
     catch a screen the app shows while it waits), `backend/next-event-id?id=` (the next create mints this id, once),
-    `backend/fail-listing?on=`, `backend/deposit?asset=`, `backend/legacy-event?name=`,
+    `backend/fail-listing?on=`, `backend/deposit?asset=`,
     `backend/refuse-credential`, `backend/wipe-bytes[?device=]`;
   - OS and library: `clock/advance?to=<instant>`, `network?access=online|offline|blocked` (what the OS reports to
     the app; a notice follows after the watch's ~5 s grace, and only while the app is foregrounded — pair `offline`

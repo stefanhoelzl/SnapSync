@@ -73,10 +73,10 @@ class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDi
     /**
      * Normalize a fetched instant into the canonical cutoff shape, or `null` when it does not parse.
      *
-     * This is the boundary that makes [EventLookup.Found.startsAt] canonical **by construction**, and it is not
-     * ceremony. The backend guarantees the shape for events created *after* start dates existed — but for a
-     * **legacy** marker it synthesizes `startsAt` from `createdAt`, which `toISOString()` mints with MILLISECONDS.
-     * An off-shape floor is quietly poisonous downstream: the clamp is a *lexicographic* `maxOf`, so
+     * This is the boundary that makes [EventLookup.Found.startsAt] canonical **by construction**. The backend
+     * already serves the canonical shape (it refuses any other at creation), so today this changes nothing — it is
+     * here because an off-shape date, should one ever arrive (a fractional second, say), is quietly poisonous
+     * downstream: the clamp is a *lexicographic* `maxOf`, so
      * `…T00:00:00.182Z` sorts before `…T00:00:00Z`; and were such a value to win the clamp it would be persisted as
      * the cutoff, which the iOS walk parses with a bare `NSISO8601DateFormatter` that REJECTS a fractional second —
      * silently costing the bounded PhotoKit fetch.

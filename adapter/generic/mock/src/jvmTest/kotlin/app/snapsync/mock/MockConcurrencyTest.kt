@@ -4,7 +4,9 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.FileArea
+import app.snapsync.model.Reply
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadJobSet
@@ -46,7 +48,9 @@ class MockConcurrencyTest {
         val backend = device.backend
         val port = backend.port()
         backend.operator.capacity = Int.MAX_VALUE
-        val event = backend.operator.registerLegacyEvent("E")
+        val event = runBlocking {
+            (port.createEvent(null, CreateEventRequest("E", "2026-06-01T00:00:00Z", null)) as Reply.Ok).value.eventId
+        }
         assertWhole(
             tears(
                 write = { round ->

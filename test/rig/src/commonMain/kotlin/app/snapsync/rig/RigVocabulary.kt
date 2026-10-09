@@ -109,7 +109,6 @@ object RigVocabulary {
         "device/backend/complete",
         "device/backend/fail-listing",
         "device/backend/deposit",
-        "device/backend/legacy-event",
         "device/backend/refuse-credential",
         "device/backend/refuse-attestation",
         "device/backend/wipe-bytes",

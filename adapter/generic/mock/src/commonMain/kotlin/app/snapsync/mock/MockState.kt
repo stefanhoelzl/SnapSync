@@ -472,8 +472,8 @@ private class QueueDto(
 private class EventDto(
     val name: String,
     val createdAtMillis: Long,
-    val startsAtMillis: Long?,
-    val endsAtMillis: Long?,
+    val startsAtMillis: Long,
+    val endsAtMillis: Long,
     val closed: Boolean = false,
     val completed: Boolean = false,
     val keyId: String? = null,
@@ -504,7 +504,6 @@ private class BackendLeversDto(
     val refuseAttestation: DeviceRefusal? = null,
     val refuseAttestationDetail: String? = null,
     val minAppVersion: String?,
-    val legacyCounter: Long,
 ) {
     fun into(state: BackendState) {
         state.capacity = capacity
@@ -514,7 +513,6 @@ private class BackendLeversDto(
         state.refuseAttestation = refuseAttestation
         state.refuseAttestationDetail = refuseAttestationDetail
         state.minAppVersion = minAppVersion
-        state.legacyCounter = legacyCounter
     }
 }
 
@@ -552,8 +550,8 @@ private class BackendDto(
             state.events[id] = BackendState.Event(
                 e.name,
                 Instant.fromEpochMilliseconds(e.createdAtMillis),
-                e.startsAtMillis?.let(Instant::fromEpochMilliseconds),
-                e.endsAtMillis?.let(Instant::fromEpochMilliseconds),
+                Instant.fromEpochMilliseconds(e.startsAtMillis),
+                Instant.fromEpochMilliseconds(e.endsAtMillis),
                 e.closed,
                 e.completed,
                 e.keyId,
@@ -585,8 +583,8 @@ private class BackendDto(
                 EventDto(
                     e.name,
                     e.createdAt.toEpochMilliseconds(),
-                    e.startsAt?.toEpochMilliseconds(),
-                    e.endsAt?.toEpochMilliseconds(),
+                    e.startsAt.toEpochMilliseconds(),
+                    e.endsAt.toEpochMilliseconds(),
                     e.closed,
                     e.completed,
                     e.keyId,
@@ -623,7 +621,6 @@ private class BackendDto(
                 refuseAttestation = state.refuseAttestation,
                 refuseAttestationDetail = state.refuseAttestationDetail,
                 minAppVersion = state.minAppVersion,
-                legacyCounter = state.legacyCounter,
             ),
         )
     }
