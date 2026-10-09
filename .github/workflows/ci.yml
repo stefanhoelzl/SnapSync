@@ -195,6 +195,10 @@ jobs:
       - name: Lint
         working-directory: api
         run: deno lint
+      # The wire format's one source (`api/openapi.yaml`): Redocly's recommended rules plus ours (`api/redocly.yaml`).
+      - name: OpenAPI lint
+        working-directory: api
+        run: deno task lint:openapi
       # All source, explicitly: `deno test` checks only test-reachable code. The task (deno.json) is the one place the
       # type-checked directories are listed.
       - name: Type check

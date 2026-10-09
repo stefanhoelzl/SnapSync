@@ -1,0 +1,14 @@
+# The OpenAPI lint gate (`api/openapi.yaml`): Redocly's recommended rules, tightened where our generators lean on
+# the field. A single finding the design means is suppressed by location in `.redocly.lint-ignore.yaml`, never by
+# turning its rule off.
+extends:
+  - recommended
+rules:
+  # A private API: there is no licence to name.
+  info-license: off
+  # Both generators name everything by operationId and group by tag.
+  operation-operationId: error
+  operation-summary: error
+  operation-tag-defined: error
+  tag-description: error
+  no-unused-components: error
