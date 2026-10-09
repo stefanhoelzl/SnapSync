@@ -37,10 +37,11 @@ dependencies {
 // than a failure anyone could read. Resolved here, once, for every consumer.
 val apiDir = rootProject.layout.projectDirectory.dir("api")
 tasks.register<Exec>("resolveLocalDeployment") {
-    description = "Resolves the `local` deployment the live edge serves (deno task config:local)."
+    description = "Resolves the `local` deployment the live edge serves, and generates its wire (deno task config:local)."
     workingDir = apiDir.asFile
     commandLine("deno", "task", "config:local")
     inputs.dir(rootProject.layout.projectDirectory.dir("deployments"))
     inputs.file(rootProject.layout.projectDirectory.file("scripts/resolve-deployment.py"))
+    inputs.file(apiDir.file("openapi.yaml"))
     outputs.upToDateWhen { false }
 }

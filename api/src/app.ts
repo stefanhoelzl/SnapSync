@@ -144,8 +144,11 @@ import { createPushSender } from "./push.ts";
 import { verifyToken } from "./attest.ts";
 import type { FetchLike } from "./storage.ts";
 import type { Db } from "./db.ts";
-import { attestRoutes } from "./routes/attest.ts";
-import { sharedRoutes } from "./routes/shared.ts";
+import { attestHandlers } from "./routes/attest.ts";
+import { sharedHandlers } from "./routes/shared.ts";
+import { registerRoutes } from "./gen/wire.ts";
+import { isDownloadRedirect, isUngatedOperation } from "./route-security.ts";
+import { knownZone } from "./validators.ts";
 import { siteRoutes } from "./routes/site.ts";
 import { WEB_PHOTOS_PATH, webRoutes } from "./routes/web.ts";
 import { NO_CACHE, type RouteDeps } from "./routes/support.ts";
@@ -156,7 +159,7 @@ import {
   requestLogMiddleware,
   type RequestLogOptions,
 } from "./request-log.ts";
-import { v2Routes } from "./routes/v2.ts";
+import { v2Handlers } from "./routes/v2.ts";
 
 // Re-exported so existing importers (tests, callers) keep their `from "./app.ts"` imports working.
 export type { FetchLike } from "./storage.ts";
@@ -421,7 +424,10 @@ export function createApp(
       path === "/.well-known/apple-app-site-association" ||
       path === "/.well-known/assetlinks.json" ||
       path.startsWith("/_astro/");
-    // The two event READS the no-app download page fetches (capability `event-site`): the event
+    // The DEVICE API's ungated operations are not listed here: `openapi.yaml` declares each operation's `security`,
+    // and `isUngatedOperation` reads it — the `/attest/…` token issuers (open: they issue the token they cannot
+    // require), the download redirect (open), and the two event READS the no-app download page once fetched
+    // (optional, legacy — `PENDING_CLEANUPS.md`, "Anonymous event reads"): the event
     // metadata `/events/<id>` and the photo union `/events/<id>/files`. These are authorized by
     // eventId-possession alone — the eventId IS the read capability — so a browser that holds no attestation
     // can fetch them. This narrows the gate's READ posture (attestation never proved who may read whose
@@ -433,13 +439,10 @@ export function createApp(
     // ungated read; `attest.test.ts` pins both directions. Decision record:
     // `changes/web-event-download`. This is an accepted, eyes-open widening: a leaked eventId becomes a
     // perpetual read grant (no per-event opt-in, no rate limit).
-    // The reads themselves are `isPublicEventRead`, below the app, so this middleware's own branches stay
-    // within the complexity ceiling.
     if (
       method === "OPTIONS" ||
-      path.startsWith("/attest/") ||
       ((method === "GET" || method === "HEAD") && publicGet) ||
-      isPublicEventRead(method, path)
+      isUngatedOperation(method, path)
     ) {
       return await next();
     }
@@ -469,47 +472,25 @@ export function createApp(
 
   // ── THE DEVICE API (`docs/deployment.md`) ────────────────────────────────────────────
   //
-  // Every device-API route is registered on a sub-app (`routes/*.ts`) mounted under `/api/vN` below.
-  // Keeping the sub-apps is what makes the routing version-parametric by construction: a further version
-  // is one more `app.route(...)` of its own router, without touching the others. The root routes above
-  // stay at the ROOT, never under `/api/vN`.
+  // Every device-API operation is GENERATED from `openapi.yaml` (`registerRoutes`, `src/gen/wire.ts`): mounted at
+  // the description's own method and path, its input validated against the description before its handler runs,
+  // so no route can exist, or take a shape, the description does not declare. The handlers are `routes/*.ts`:
+  // `shared.ts` the operations any version would serve alike, `v2.ts` what only v2 does, `attest.ts` the token
+  // issuers — the generated `Handlers` type makes a missing one a type error. Mounted under `/api/vN`; the root
+  // routes above stay at the ROOT.
   //
   // The gate (`app.use("*")`) runs for the mount (verified: Hono runs parent middleware for mounted
-  // sub-apps) and normalizes the `/api/vN` prefix, so the ungated `/attest/*` set holds under it.
-  //
-  // The version's table is CLOSED: `shared.ts` carries the routes any version would serve alike, `v2.ts` what
-  // only v2 does, and the token issuers are `attest.ts` — so a path in none of them is `404`. v1 is retired
-  // (answered `426` above, never routed), so there is one mount today; a further version is one more.
+  // sub-apps) and normalizes the `/api/vN` prefix. v1 is retired (answered `426` above, never routed), so there is
+  // one mount today; a further version is one more.
   const v2 = new Hono();
-  v2.route("/", sharedRoutes(deps));
-  v2.route("/", attestRoutes(deps));
-  v2.route("/", v2Routes(deps));
+  registerRoutes(
+    v2,
+    { ...sharedHandlers(deps), ...attestHandlers(deps), ...v2Handlers(deps) },
+    {
+      policy: { eventWindowMaxSeconds: config.eventWindowMaxSeconds },
+      checks: { knownZone },
+    },
+  );
   app.route("/api/v2", v2);
   return app;
-}
-
-/**
- * The event reads the token gate serves without a token, by eventId-possession alone (see the gate's comment):
- * GET/HEAD on the event's details `/events/<id>` and its union `/events/<id>/files`, and the download redirect.
- * The union's own token is OPTIONAL rather than absent (decision record `changes/incremental-union`, D5): the
- * route verifies one when it is sent, to name the reader in its log, and answers `401` for a bad one itself —
- * the gate never sees it, because the read is public either way. The DOWNLOAD REDIRECT (D1) is the third
- * public read, by the same capability: it resolves one resource of the union an eventId already lists, and
- * answers with a presigned link like those the union carried inline before — so it opens nothing the union
- * read did not.
- */
-function isPublicEventRead(method: string, path: string): boolean {
-  return ((method === "GET" || method === "HEAD") &&
-    (/^\/events\/[^/]+$/.test(path) || /^\/events\/[^/]+\/files$/.test(path))) ||
-    isDownloadRedirect(method, path);
-}
-
-/**
- * The download redirect's shape (decision record `changes/incremental-union`, D1), GET/HEAD only — the
- * one route both gates exempt by path, so they must agree on it: one predicate, not two regexes.
- * `/events/<e>/files/devices/<d>/<asset>/<role>`, with each segment percent-encoded, so none holds a `/`.
- */
-function isDownloadRedirect(method: string, path: string): boolean {
-  return (method === "GET" || method === "HEAD") &&
-    /^\/events\/[^/]+\/files\/devices\/[^/]+\/[^/]+\/[^/]+$/.test(path);
 }

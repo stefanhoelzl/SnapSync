@@ -41,15 +41,15 @@ middle of an event.
 
 ### Anonymous event reads (api + app)
 - **What:** `GET`/`HEAD` `/api/v2/events/<id>` and `/api/v2/events/<id>/files` pass the token gate with no token.
-  - `api/src/app.ts`: `isPublicEventRead`. Keep `isDownloadRedirect`, which stays public for good.
+  - `api/openapi.yaml`: the `{}` alternative in `getEvent`'s and `eventFiles`' `security` — what the token gate
+    reads (`api/src/route-security.ts`, `isUngatedOperation`).
   - `api/src/routes/shared.ts`: `optionalReader` on the event read and on the union.
-  - The app's mirror: `adapter/generic/app/.../http/GatedPaths.kt` (`isGatedRequest`, `verifiesToken`), pinned
-    by `test/architecture/.../GatedPathPinTest.kt`.
+  - The app needs nothing removed: its generated routes type both reads as gated, so it always sends its token.
 - **Why:** 0.4 calls both reads with no token. The event page no longer needs them; it reads
   `/web/events/<id>/photos`.
 - **Remove:**
-  - Require the token on both reads.
-  - Drop `isPublicEventRead` and its mirror in `GatedPaths.kt`.
+  - Require the token on both reads: drop the `{}` from both operations' `security` in `api/openapi.yaml`, and
+    `optionalReader`.
   - Update `BackendMock`, the Backend contract, `api/test/attest.test.ts` and `api/test/v2.test.ts`
     (the anonymous-read cases), `docs/architecture.md`, and `privacy-security`'s closed list.
   - Decide how the join preview fails when attestation fails (design D7, last bullet).
@@ -139,6 +139,19 @@ is 0.5, no such membership is live.
   event. It stays untrue for the plain events 0.5 creates until those are retired (below); accepted.
 - **Ship:** merge just before dispatching the 0.6 promote, after the floor above.
 - **Record:** `openspec/changes/encrypt-events-by-default` (design D7).
+
+## Once `MIN_APP_VERSION` ≥ 0.6
+
+**Unlock condition:** as for 0.5 above — 0.6 live in both stores, and the sweep's version table shows no kept
+device below it.
+
+### Header-less download redirects (api)
+- **What:** the version gate lets the download redirect through with no `x-snapsync-app-version` header.
+  - `api/src/app.ts`, the version gate: `isDownloadRedirect` (`api/src/route-security.ts`).
+- **Why:** builds before 0.6 hand the redirect to the OS download services without the header. From 0.6 the app
+  sends it on every request, downloads included (`api/openapi.yaml`, `downloadResource`).
+- **Remove:** drop the `isDownloadRedirect` exemption from the version gate, and `isDownloadRedirect` with it.
+  `api/test/union-read.test.ts` (the download redirect) gains the header on its redirect requests.
 
 ## Once `MIN_APP_VERSION` ≥ 0.6 and no plain event is open
 

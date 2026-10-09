@@ -19,6 +19,3 @@ export function objectNameFor(assetId: string, role: string, originalFilename: s
     : "bin";
   return `${assetId}-${role}.${ext}`;
 }
-
-/** The closed role vocabulary an upload may name. Mirrors the client's `ResourceRole`. */
-export const RESOURCE_ROLES: readonly string[] = ["primary", "live"];

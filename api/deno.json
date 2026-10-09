@@ -7,12 +7,16 @@
     // name fails closed. The renderings are generated, never committed, so a task that skipped this would
     // hit a missing module rather than a stale value. The resolver is a SEPARATE process, so chaining it
     // cannot widen the permissions the suite below runs under.
-    "config": "python3 ../scripts/resolve-deployment.py prod --quiet",
-    "config:local": "python3 ../scripts/resolve-deployment.py local --quiet",
+    // Every generated rendering: the resolved deployment AND the wire (`openapi.yaml` → `src/gen/wire.ts`, by
+    // `src/scripts/generate-wire.ts`) — neither is committed, so each `config*` task writes both.
+    "config": "python3 ../scripts/resolve-deployment.py prod --quiet && deno task gen",
+    "config:local": "python3 ../scripts/resolve-deployment.py local --quiet && deno task gen",
     // The MAINTENANCE deployment (`docs/deployment.md`): identical to `prod` in every value
     // but the window flag, because both extend the same component. deploy.yml's `api` job publishes this
     // bundle, migrates, then republishes the `prod` one.
-    "config:maintenance": "python3 ../scripts/resolve-deployment.py maintenance --quiet",
+    "config:maintenance": "python3 ../scripts/resolve-deployment.py maintenance --quiet && deno task gen",
+    // The wire, generated from `openapi.yaml` (`src/gen/wire.ts`, never committed).
+    "gen": "deno run --allow-read --allow-write=src/gen src/scripts/generate-wire.ts",
     // --allow-read/--allow-write are for the dev filesystem shim's contract test, which writes into a
     // temp dir. --allow-net stays ABSENT on purpose: that is the flag whose absence guarantees no test
     // can reach the real bunny zone (a network call fails as a permission error, not a live request).
@@ -48,18 +52,21 @@
     "@bunny.net/edgescript-sdk": "npm:@bunny.net/edgescript-sdk@^0.13.0",
     "@libsql/client/web": "npm:@libsql/client@^0.18.0/web",
     "hono": "npm:hono@^4.13.13",
+    "zod": "npm:zod@^4.1.12",
     "@sentry/deno": "npm:@sentry/deno@^10.76.0",
     "aws4fetch": "npm:aws4fetch@^1.0.20",
     "jose": "npm:jose@^6.2.12",
     "@std/assert": "jsr:@std/assert@^1.0.19",
     "@std/encoding": "jsr:@std/encoding@^1.0.11",
     "@std/path": "jsr:@std/path@^1.1.6",
+    "@std/yaml": "jsr:@std/yaml@^1.0.10",
     "@levischuck/tiny-cbor": "jsr:@levischuck/tiny-cbor@^0.3.6",
     "@peculiar/x509": "npm:@peculiar/x509@^2.1.0",
     "reflect-metadata": "npm:reflect-metadata@^0.2.2"
   },
   "fmt": {
-    "lineWidth": 100
+    "lineWidth": 100,
+    "exclude": ["src/gen/"]
   },
   // The project's own lint rules, declared here rather than on a workflow command line so that CI
   // and a developer's local `deno lint` run the SAME rule set (`docs/deployment.md`).
@@ -70,6 +77,7 @@
   // `deno-lint-ignore`). The command-line tools under `src/scripts/` and `src/dev/` print by design and opt
   // out per file, each saying so at its top.
   "lint": {
+    "exclude": ["src/gen/"],
     "plugins": ["./src/lint/complexity.ts"],
     "rules": { "include": ["no-console"] }
   }
