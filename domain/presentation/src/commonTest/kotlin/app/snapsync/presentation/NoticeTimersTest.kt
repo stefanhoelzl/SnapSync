@@ -86,7 +86,7 @@ class NoticeTimersTest {
      */
     private suspend fun StatusContainerHost.settledState(): UiState {
         withContext(Dispatchers.Default) { delay(200) }
-        return container.stateFlow.value
+        return screen.value
     }
 
     private suspend fun Timers.openBadLink(host: StatusContainerHost) {
@@ -101,7 +101,7 @@ class NoticeTimersTest {
     fun `a rejected link's message stays four seconds after it last appeared`() = onTimers { timers ->
         val host = host(timers.scope)
         timers.openBadLink(host)
-        host.container.stateFlow.first { it.createError() == ScreenMessage.INVALID_LINK }
+        host.screen.first { it.createError() == ScreenMessage.INVALID_LINK }
 
         timers.advanceBy(3_000)
         timers.openBadLink(host)
@@ -109,19 +109,19 @@ class NoticeTimersTest {
 
         assertEquals(ScreenMessage.INVALID_LINK, host.settledState().createError(), "cleared on the first link's clock")
         timers.advanceBy(2_001)
-        host.container.stateFlow.first { it.createError() == null }
+        host.screen.first { it.createError() == null }
     }
 
     @Test
     fun `a rejected link's message is told over a failed create's — which returns once it clears`() = onTimers { timers ->
         val host = host(timers.scope, CreationStatus.Failed(CreationFailureReason.INVALID_NAME))
-        assertEquals(ScreenMessage.CREATE_NAME_REFUSED, host.container.stateFlow.value.createError())
+        assertEquals(ScreenMessage.CREATE_NAME_REFUSED, host.screen.value.createError())
 
         timers.openBadLink(host)
-        host.container.stateFlow.first { it.createError() == ScreenMessage.INVALID_LINK }
+        host.screen.first { it.createError() == ScreenMessage.INVALID_LINK }
 
         timers.advanceBy(4_001)
-        host.container.stateFlow.first { it.createError() == ScreenMessage.CREATE_NAME_REFUSED }
+        host.screen.first { it.createError() == ScreenMessage.CREATE_NAME_REFUSED }
     }
 
     @Test
@@ -129,19 +129,19 @@ class NoticeTimersTest {
         val outcomes = ArrayDeque(listOf(ReportOutcome.SENT, ReportOutcome.SAVED))
         val host = host(timers.scope, report = { outcomes.removeFirst() })
         host.onSendDiagnostics("photos are missing", "create")
-        host.container.stateFlow.first { it.overlays.reportNotice == ReportOutcome.SENT }
+        host.screen.first { it.overlays.reportNotice == ReportOutcome.SENT }
         afterTheWordIsArmed()
 
         timers.advanceBy(3_000)
         host.onSendDiagnostics("still missing", "create")
-        host.container.stateFlow.first { it.overlays.reportNotice == ReportOutcome.SAVED }
+        host.screen.first { it.overlays.reportNotice == ReportOutcome.SAVED }
         afterTheWordIsArmed()
         timers.advanceBy(2_000)
 
         val notice = host.settledState().overlays.reportNotice
         assertEquals(ReportOutcome.SAVED, notice, "cleared on the first word's clock")
         timers.advanceBy(2_001)
-        host.container.stateFlow.first { it.overlays.reportNotice == null }
+        host.screen.first { it.overlays.reportNotice == null }
     }
 
     @Test

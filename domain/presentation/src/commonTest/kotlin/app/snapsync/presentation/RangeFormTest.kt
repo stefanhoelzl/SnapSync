@@ -1,6 +1,6 @@
-package app.snapsync.model
+package app.snapsync.presentation
 
-import kotlinx.serialization.json.Json
+import app.snapsync.model.AlbumKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -20,14 +20,5 @@ class RangeFormTest {
     fun `a form on a phone with folder albums is a different form`() {
         assertNotEquals(RangeForm(), RangeForm(albumKind = AlbumKind.FOLDER))
         assertEquals(RangeForm(albumKind = AlbumKind.FOLDER), RangeForm().copy(albumKind = AlbumKind.FOLDER))
-    }
-
-    @Test
-    fun `the album kind survives the wire`() {
-        // The form rides the control channel's UiState to a mirrored screen: an Android phone must stay one.
-        for (form in listOf(RangeForm(), RangeForm(albumKind = AlbumKind.FOLDER, saveToAlbum = false))) {
-            assertEquals(form, Json.decodeFromString<RangeForm>(Json.encodeToString(form)))
-        }
-        assertEquals(RangeForm(), Json.decodeFromString<RangeForm>("{}"), "an absent kind reads as the iPhone's answer")
     }
 }

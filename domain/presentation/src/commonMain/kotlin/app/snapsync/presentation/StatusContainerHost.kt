@@ -19,7 +19,6 @@ import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Direction
 import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventDetails
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.EventStart
@@ -40,13 +39,11 @@ import app.snapsync.model.NetworkNotice
 import app.snapsync.model.Overlays
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeForm
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.RenameState
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.ResolvedRange
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.ShareCount
 import app.snapsync.model.SyncCounts
@@ -57,6 +54,7 @@ import app.snapsync.model.UiState
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
+import app.snapsync.model.Waiting
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.decodeEventUrl
@@ -83,6 +81,7 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
@@ -130,7 +129,7 @@ class StatusContainerHost(
     // How this phone holds an event album: the photo library's own answer, which the
     // composition reads once and the surfaces' album note follows. Defaulted to the iPhone's answer.
     private val albumKind: AlbumKind = AlbumKind.COLLECTION,
-) : OrbitContainerHost<UiState, UiState, Nothing> {
+) : OrbitContainerHost<ScreenModel, ScreenModel, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,
     // where a caller has to read it; inside, each source keeps the name that says what it is.
@@ -259,7 +258,7 @@ class StatusContainerHost(
                 }
             }
 
-    override val container: OrbitContainer<UiState, UiState, Nothing> =
+    override val container: OrbitContainer<ScreenModel, ScreenModel, Nothing> =
         scope.orbitContainer(
             // All seams hold their current truth synchronously, so the first state the screen can ever
             // render derives from real values — never a guess or a placeholder.
@@ -313,7 +312,7 @@ class StatusContainerHost(
                         local,
                         now,
                     )
-                }.collect { ui -> reduce { ui } }
+                }.collect { model -> reduce { model } }
             }
             // An encrypted event's invite carries its key, read from where it is kept once the membership names one.
             intent {
@@ -334,13 +333,13 @@ class StatusContainerHost(
             // there (an unreachable server) still waits for the member's Retry.
             intent {
                 network.returned.collect {
-                    if (pending.value?.phase == JoinPhase.LoadFailed) onRetryLoad()
+                    if (pending.value?.phase == JoinProgress.LoadFailed) onRetryLoad()
                 }
             }
             // The shareable count follows the range the showing surface resolves, and the grant (a late
             // first-join grant resolves the count). `collectLatest`: a newer range cancels an older count.
             intent {
-                combine(container.stateFlow.map { it.layer.countedRange() }, permission) { range, grant ->
+                combine(container.stateFlow.map { it.shown.countedRange }, permission) { range, grant ->
                     range?.let { CountKey(it.chosenFrom, it.chosenUntil, grant) }
                 }
                     .distinctUntilChanged()
@@ -364,6 +363,9 @@ class StatusContainerHost(
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
     private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: GalleryAccess)
 
+    /** What the screen shows (capability `sync-status`): the display half of the container's [ScreenModel]. */
+    val screen: StateFlow<UiState> = Displayed { container.stateFlow }
+
     /**
      * One UI state from the observed inputs, the presentation-owned cells and "now".
      *
@@ -372,17 +374,23 @@ class StatusContainerHost(
      * not syncing, a create that cannot succeed, a join that cannot commit. Its layer joins the refusal with this
      * build's store link, a constant, which is why it is assembled here rather than ranked inside [reduceFrom].
      */
-    private fun render(membership: Membership, interaction: Interaction, local: Local, now: CaptureDate): UiState {
-        val layer = interaction.versionRefusal
-            ?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, store = store) }
-            ?: reduceFrom(membership, interaction, local, now, ::resolveRange)
-        return UiState(
-            layer,
-            local.overlays.maskedFor(layer),
+    private fun render(membership: Membership, interaction: Interaction, local: Local, now: CaptureDate): ScreenModel {
+        val refused = interaction.versionRefusal
+        val reduced = if (refused != null) {
+            Reduced(Layer.UpdateRequired(minimumVersion = refused.minimumVersion, store = store?.let { it.kind.shown }))
+        } else {
+            reduceFrom(membership, interaction, local, now, Display(cutoffFormatter, ::resolveRange))
+        }
+        val ui = UiState(
+            reduced.layer,
+            local.overlays.maskedFor(reduced.layer),
             reportDestination,
             build,
             MobileDataState(on = membership.mobileData, notSaved = local.mobileDataNotSaved),
         )
+        // The count row renders only while sharing is on, so no photo-library read is made for a row nobody sees.
+        val counted = reduced.range?.takeIf { local.form.shareOn }
+        return ScreenModel(ui, Shown(store = store.takeIf { refused != null }, countedRange = counted))
     }
 
     /**
@@ -470,7 +478,7 @@ class StatusContainerHost(
     // The invite URL is read off the state the reduction already derived, so the shared link is
     // byte-identical to the QR being rendered rather than a second derivation that could drift.
     fun onShareInvite() = intent {
-        (state.layer as? Layer.Joined)?.let { joined ->
+        (state.ui.layer as? Layer.Joined)?.let { joined ->
             joined.inviteUrl?.let { commands.share(it, joined.membership.name) }
         }
     }
@@ -484,7 +492,7 @@ class StatusContainerHost(
      * does not hold.
      */
     fun onOpenAppStore() = intent {
-        (state.layer as? Layer.UpdateRequired)?.store?.let { commands.openLink(it.url) }
+        state.shown.store?.let { commands.openLink(it.url) }
     }
 
     /**
@@ -645,7 +653,7 @@ class StatusContainerHost(
             // Read and spent here: the sheet is dismissed before it sends, so the report remembers how it was opened.
             val verification = local.getAndUpdate { it.copy(verifiedReport = false) }.verifiedReport
             val outcome = try {
-                commands.sendDiagnostics(note, ReportContext(screen, shownCounts(state), verification))
+                commands.sendDiagnostics(note, ReportContext(screen, shownCounts(state.ui), verification))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -918,7 +926,7 @@ class StatusContainerHost(
     /** Retry the details fetch after a transient load failure. */
     fun onRetryLoad() = intent {
         val p = pending.value ?: return@intent
-        pending.value = p.copy(phase = JoinPhase.Loading)
+        pending.value = p.copy(phase = JoinProgress.Loading)
         loadInto(p.eventId, p.linkKey)
     }
 
@@ -955,7 +963,7 @@ class StatusContainerHost(
      */
     fun onConfirmSwitch() = guardedIntent(Guarded.SwitchLeave) {
         val p = pending.value ?: return@guardedIntent
-        if (p.phase.step != JoinPhase.Detailed.Step.Ready) return@guardedIntent
+        if ((p.phase as? JoinProgress.Detailed)?.step != JoinPhase.Detailed.Step.Ready) return@guardedIntent
         local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
         commands.leave()
     }
@@ -1010,7 +1018,7 @@ class StatusContainerHost(
         // than in the reduction is what keeps the member's edits from being overwritten by every
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
         local.editForm { freshForm }
-        pending.value = PendingJoin(eventId, JoinPhase.Loading, linkKey)
+        pending.value = PendingJoin(eventId, JoinProgress.Loading, linkKey)
         loadInto(eventId, linkKey)
     }
 
@@ -1039,7 +1047,7 @@ class StatusContainerHost(
             // is one adapter change away from being false, and the cost of it being false is a screen no
             // one can leave. It IS covered: the seam is a constructor parameter, so a test injects a
             // throwing loader directly.
-            pending.update { if (it?.eventId == eventId) it.copy(phase = JoinPhase.LoadFailed) else it }
+            pending.update { if (it?.eventId == eventId) it.copy(phase = JoinProgress.LoadFailed) else it }
             throw t
         }
         // The headless negative oracle (mirrors autoConfirm's abort line): a gate parked on a failed
@@ -1054,16 +1062,16 @@ class StatusContainerHost(
             // ([asksAccessOnJoin]), so a switch whose leave has just cleared the config needs no re-derivation.
             // A closed (or finished) event is refused before any choice is offered.
             is JoinLoad.Found -> if (load.completion.closed) {
-                JoinPhase.Closed
+                JoinProgress.Closed
             } else {
-                JoinPhase.Detailed(
+                JoinProgress.Detailed(
                     EventDetails(load.name, load.startsAt, load.endsAt, load.deletesAt),
                     JoinPhase.Detailed.Step.Ready,
                 )
             }
-            JoinLoad.NotFound -> JoinPhase.NotFound
-            JoinLoad.Failed -> JoinPhase.LoadFailed
-            JoinLoad.WrongLink -> JoinPhase.WrongLink
+            JoinLoad.NotFound -> JoinProgress.NotFound
+            JoinLoad.Failed -> JoinProgress.LoadFailed
+            JoinLoad.WrongLink -> JoinProgress.WrongLink
         }
         // Only apply if this fetch is still the active pending target (not cancelled/superseded).
         val keyId = (load as? JoinLoad.Found)?.keyId
@@ -1076,7 +1084,7 @@ class StatusContainerHost(
         // still-loading/blocked/committing phase ignores the action. Both carry a non-null name, startsAt,
         // endsAt AND deletesAt — so a commit can never reach `JoinEvent` without the floor, the ceiling,
         // and the retention deadline.
-        val detailed = p.phase as? JoinPhase.Detailed ?: return
+        val detailed = p.phase as? JoinProgress.Detailed ?: return
         if (detailed.step !in RETRYABLE_STEPS) return
         val event = detailed.event
         // What is committed is what the reduction RESOLVED — the same value the surface rendered.
@@ -1090,7 +1098,7 @@ class StatusContainerHost(
             range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum,
             linkKey = p.linkKey, eventKeyId = p.eventKeyId,
         )
-        pending.value = p.copy(phase = JoinPhase.Detailed(event, JoinPhase.Detailed.Step.Committing))
+        pending.value = p.copy(phase = JoinProgress.Detailed(event, JoinPhase.Detailed.Step.Committing))
         beginMembership()
         val commit = try {
             commands.commitJoin(choice)
@@ -1113,7 +1121,7 @@ class StatusContainerHost(
                 if (config.value?.eventId == p.eventId) {
                     pending.value = null
                 } else {
-                    pending.value = p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.CommitFailed))
+                    pending.value = p.copy(phase = JoinProgress.Detailed(detailed.event, JoinPhase.Detailed.Step.CommitFailed))
                 }
             }
             // Rethrown, never swallowed: the container's `exceptionHandler` reports it at `Error`, which is
@@ -1237,21 +1245,21 @@ private fun unjoinedLayer(
     permission: GalleryAccess,
     network: NetworkNotice?,
     refusal: DeviceRefusal?,
-    resolveAgainst: (RangeForm, EventStart, EventEnd) -> ResolvedRange,
-): Layer {
+    display: Display,
+): Reduced {
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
     // lands here — a transient no-event, shown full-screen with a Retry).
     if (pending != null) {
-        return Layer.JoiningEvent(
+        // Resolved only where there IS a window: the detail-less phases render no range row, so an absent
+        // resolution is the honest answer rather than one invented from `now`.
+        val phase = pending.phase
+        val range = (phase as? JoinProgress.Detailed)?.let { display.resolve(form, it.event.startsAt, it.event.endsAt) }
+        val layer = Layer.JoiningEvent(
             eventId = pending.eventId,
-            // Resolved only where there IS a window: the detail-less phases render no range row, so an absent
-            // resolution is the honest answer rather than one invented from `now`.
-            stage = when (val phase = pending.phase) {
-                is JoinPhase.Detailed ->
-                    JoinStage.Loaded(phase, resolveAgainst(form, phase.event.startsAt, phase.event.endsAt))
-                is JoinPhase.Eventless -> JoinStage.Unloaded(phase)
+            stage = when (val shown = phase.shows) {
+                is JoinPhase.Detailed -> JoinStage.Loaded(shown, form.view(checkNotNull(range)))
+                is JoinPhase.Eventless -> JoinStage.Unloaded(shown)
             },
-            form = form,
             // The same transient cell the create and joined layers read: a rejected link is rejected
             // wherever it arrives, including over an open join surface, and it touches the join not at all.
             notice = transient,
@@ -1260,6 +1268,7 @@ private fun unjoinedLayer(
             // Join waits for a network; the screen names why.
             network = network,
         )
+        return Reduced(layer, range)
     }
     // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
     // until the next attempt, so a link scanned in between would otherwise be silently outranked by
@@ -1271,7 +1280,7 @@ private fun unjoinedLayer(
     // tells a refused phone before it tries: below a failure, which for a refused phone IS the refusal, and above the
     // scan hint. Create stays available.
     val refused = refusal?.let(ScreenMessage::of)
-    return when (val creation = create.status) {
+    val layer = when (val creation = create.status) {
         CreationStatus.InFlight -> Layer.CreatingEvent
         is CreationStatus.Failed ->
             Layer.CreateEvent(
@@ -1281,6 +1290,7 @@ private fun unjoinedLayer(
             )
         CreationStatus.Idle -> Layer.CreateEvent(error = transient ?: refused, draft = create.draft, network = network)
     }
+    return Reduced(layer)
 }
 
 /** The create surface's two inputs: the create request's status, and where its draft stands. */
@@ -1297,8 +1307,8 @@ private fun reduceFrom(
     interaction: Interaction,
     local: Local,
     nowCutoff: CaptureDate,
-    resolveAgainst: (RangeForm, EventStart, EventEnd) -> ResolvedRange,
-): Layer {
+    display: Display,
+): Reduced {
     val (config, permission, snapshot, download, attested, access) = membership
     val network = NetworkNotice.of(access)
     val (pending, creation, renameStatus) = interaction
@@ -1312,11 +1322,11 @@ private fun reduceFrom(
     )
     if (config == null) {
         val create = Creation(creation, local.createDraft)
-        return unjoinedLayer(pending, create, transient, form, permission, network, membership.refusal, resolveAgainst)
+        return unjoinedLayer(pending, create, transient, form, permission, network, membership.refusal, display)
     }
     val health = joinedHealth(membership, config, network, nowCutoff, local.keyLost)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
-    val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
+    val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase.shows) }
     // Where the event is in its life, for the dates line. Informational only —
     // the health above is unchanged by it, and sync continues after the end in the backend grace window.
     val timing = eventTiming(config.startsAt, config.endsAt, nowCutoff)
@@ -1327,8 +1337,8 @@ private fun reduceFrom(
         ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
         ?.let { syncCounts(it.progress, download, config.direction) }
     return joinedLayer(
-        config, health, pendingSwitch, permission, JoinedFacts(timing, counts),
-        rename, reconfiguring, transient, form, resolveAgainst, local.inviteKey,
+        config, health, pendingSwitch, permission, JoinedFacts(timing, counts, display.today()),
+        rename, reconfiguring, transient, form, display, local.inviteKey,
     )
 }
 
@@ -1387,7 +1397,7 @@ private fun joinedHealth(
         // them with a permission prompt at the very moment the party starts. LIMITED is NOT here: a
         // partial grant is a working state — it falls through to
         // the snapshot-derived health exactly like GRANTED.
-        !permission.grantsPhotoAccess -> SyncHealth.NeedsAccess(permission)
+        !permission.grantsPhotoAccess -> SyncHealth.NeedsAccess(canAsk = permission == GalleryAccess.NOT_DETERMINED)
         // No usable network. Below access, which
         // decides what is shared and can be fixed offline; above everything else — before the start, received photos
         // cannot arrive either, and a missing network is the true cause of most failed verifications, so it outranks
@@ -1404,7 +1414,7 @@ private fun joinedHealth(
         // two attention lines would only compete. Ranked ABOVE the sync progress, because "Syncing" would
         // be a lie: nothing can upload at all.
         // A definite refusal names its cause on the same rung; no verdict names none.
-        !attested -> SyncHealth.Unattested(membership.refusal)
+        !attested -> SyncHealth.Unattested(membership.refusal?.cause)
         else -> settled
     }
 }
@@ -1426,15 +1436,20 @@ private fun joinedLayer(
     reconfiguring: SettingsShown,
     transient: ScreenMessage?,
     form: RangeForm,
-    resolveAgainst: (RangeForm, EventStart, EventEnd) -> ResolvedRange,
+    display: Display,
     inviteKey: String?,
-): Layer.Joined {
-    return Layer.Joined(
-        membership = config,
+): Reduced {
+    // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window. A closed event's settings are
+    // fixed: a surface left open when the close lands gives way to the status.
+    val settingsOpen = reconfiguring.surface != SettingsSurface.Closed && !config.closed
+    val range = if (settingsOpen) display.resolve(form, config.startsAt, config.endsAt) else null
+    val layer = Layer.Joined(
+        membership = display.event(config),
         // Derived HERE and nowhere else (decision record `event-invite-qr`, D3's surviving half):
         // one derivation feeds both the rendered QR and the share action, so they cannot drift.
         inviteUrl = config.inviteUrl(inviteKey),
         health = health,
+        today = facts.today,
         pendingSwitch = pendingSwitch,
         // The resting affordance, not an attention state: a
         // partial grant's joined layer always offers the picker, whatever the health.
@@ -1446,18 +1461,14 @@ private fun joinedLayer(
         // open is anyone still settling.
         waiting = config.members?.takeIf {
             facts.timing == EventTiming.Ended && !config.closed && health == SyncHealth.InSync && it.waitingFor > 0
-        },
+        }?.let { Waiting(waitingFor = it.waitingFor, active = it.active) },
         renameState = rename.toRenameState(),
         // The same transient cell the create layer's banner reads. A rejected link is rejected wherever
         // it arrives, so the message reaches whichever layer is showing rather than only one of them.
         notice = transient,
-        // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window.
-        // A closed event's settings are fixed: a surface left open when the close
-        // lands gives way to the status.
-        surface = if (reconfiguring.surface != SettingsSurface.Closed && !config.closed) {
+        surface = if (range != null) {
             JoinedSurface.Reconfigure(
-                form = form,
-                range = resolveAgainst(form, config.startsAt, config.endsAt),
+                range = form.view(range),
                 saveFailed = reconfiguring.surface == SettingsSurface.SaveFailed,
                 askingToStopSharing = reconfiguring.askingToStopSharing,
             )
@@ -1465,6 +1476,7 @@ private fun joinedLayer(
             JoinedSurface.Status
         },
     )
+    return Reduced(layer, range)
 }
 
 // Shown tracks completeness (never lies about "everything up/received"); pulse tracks live activity
@@ -1491,8 +1503,8 @@ private fun syncHealth(progress: SyncProgress, download: DownloadProgress, heldF
     }
 }
 
-/** What the joined layer says beside its health: the dates line's timing and the counts line. */
-private class JoinedFacts(val timing: EventTiming, val counts: SyncCounts?)
+/** What the joined layer says beside its health: the dates line's timing, the counts line, and the device's today. */
+private class JoinedFacts(val timing: EventTiming, val counts: SyncCounts?, val today: LocalDate)
 
 // The counts line, from the SAME pairs `syncHealth` derives the arrows from, so the numbers and the arrows
 // cannot disagree. A direction reads `Off` only when the member switched it off AND it has no work: the
@@ -1577,17 +1589,6 @@ private fun CreationFailureReason.message(refused: ScreenMessage?): ScreenMessag
     CreationFailureReason.SERVER -> ScreenMessage.CREATE_FAILED
 }
 
-/**
- * The range the showing surface resolves and would count, or `null` when no
- * surface shows the count row — which renders only while sharing is on, so no photo-library read is made for
- * a row nobody sees.
- */
-internal fun Layer.countedRange(): ResolvedRange? = when (this) {
-    is Layer.JoiningEvent -> range.takeIf { form.shareOn }
-    is Layer.Joined -> (surface as? JoinedSurface.Reconfigure)?.takeIf { it.form.shareOn }?.range
-    else -> null
-}
-
 /** Whether the joined layer shows its settings, and whether the last change to them failed to save. */
 internal enum class SettingsSurface { Closed, Open, SaveFailed }
 
@@ -1644,15 +1645,19 @@ internal data class Owned<T>(val eventId: String?, val value: T) {
  * The phase a commit that did not land shows: a full event and a closed one are walls no
  * retry moves, so neither offers one; anything else may heal and keeps the Retry.
  */
-private fun failedPhase(commit: JoinCommit, event: EventDetails, refusal: DeviceRefusal?): JoinPhase = when (commit) {
-    JoinCommit.Closed -> JoinPhase.Closed
-    JoinCommit.WrongLink -> JoinPhase.WrongLink
-    JoinCommit.Full -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.EventFull)
-    // Refused for this phone's credential: told why when the service said why — a refused phone is told why it cannot
-    // join. Without a verdict — the attempt to verify got no answer — it is the ordinary failure.
+private fun failedPhase(
+    commit: JoinCommit,
+    event: EventDetails,
+    refusal: DeviceRefusal?,
+): JoinProgress = when (commit) {
+    JoinCommit.Closed -> JoinProgress.Closed
+    JoinCommit.WrongLink -> JoinProgress.WrongLink
+    JoinCommit.Full -> JoinProgress.Detailed(event, JoinPhase.Detailed.Step.EventFull)
+    // Refused for this phone's credential: told why when the service said why — a refused phone
+    // is told why it cannot join. Without a verdict — the attempt to verify got no answer — it is the ordinary failure.
     JoinCommit.Unverified if refusal != null ->
-        JoinPhase.Detailed(event, JoinPhase.Detailed.Step.DeviceRefused, ScreenMessage.of(refusal))
-    else -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
+        JoinProgress.Detailed(event, JoinPhase.Detailed.Step.DeviceRefused, ScreenMessage.of(refusal))
+    else -> JoinProgress.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
 }
 
 /** The steps a confirm may be taken from: the first, and each failure a Retry may heal. */

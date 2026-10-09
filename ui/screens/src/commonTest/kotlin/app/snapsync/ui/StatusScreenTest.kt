@@ -50,43 +50,28 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumStyle
 import app.snapsync.model.Arrow
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CreateDraftSession
-import app.snapsync.model.DeletesAt
-import app.snapsync.model.Direction
 import app.snapsync.model.DirectionCount
-import app.snapsync.model.EventConfig
-import app.snapsync.model.EventDetails
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.EventTiming
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinedEvent
 import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
-import app.snapsync.model.MemberCounts
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.Overlays
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeForm
+import app.snapsync.model.RefusalCause
 import app.snapsync.model.RenameState
-import app.snapsync.model.ResolvedRange
 import app.snapsync.model.ScreenMessage
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.StoreName
 import app.snapsync.model.SyncCounts
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.TimeLeft
 import app.snapsync.model.UiState
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.Waiting
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.calendar_next_month
@@ -194,6 +179,7 @@ import app.snapsync.ui.resources.update_detail
 import app.snapsync.ui.resources.update_detail_version
 import app.snapsync.ui.resources.update_eyebrow
 import app.snapsync.ui.resources.waiting_members
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.StringResource
@@ -211,17 +197,15 @@ private const val SAMPLE_INVITE = "https://snapsync.stho.net/join#v=3&d=eyJldmVu
 // A representative joined membership for the reconfigure-surface tests: event started, the full window
 // `[startsAt, endsAt]` at both bounds (floor + ceiling), bidirectional, no album — so a no-edit Save
 // round-trips these exact values.
-private val MEMBERSHIP = EventConfig(
+private val MEMBERSHIP = joinedEvent(
     eventId = "E1",
     name = "Anna's Birthday",
-    minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
-    startsAt = eventStart("2026-07-06T12:00:00Z"),
-    endsAt = eventEnd("2026-07-10T12:00:00Z"),
-    maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
-    direction = Direction.Both,
-    saveToAlbum = false,
-    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    startsAt = LocalDateTime(2026, 7, 6, 12, 0),
+    endsAt = LocalDateTime(2026, 7, 10, 12, 0),
 )
+
+/** The fixed test clock's date (UTC). */
+private val TODAY = LocalDate(2026, 7, 6)
 
 /** The joined layer with the leave confirmation up — the state the leave action produces. */
 private fun confirmingLeave() = inSync.copy(overlays = Overlays(confirmingLeave = true))
@@ -238,8 +222,8 @@ private fun renaming(renameState: RenameState = RenameState.Idle) =
  * persisted membership is `reconfigureForm`'s answer, checked in `RangeResolutionTest`.
  */
 private fun reconfiguring(
-    membership: EventConfig = MEMBERSHIP,
-    form: RangeForm = RangeForm(),
+    membership: JoinedEvent = MEMBERSHIP,
+    form: Choices = Choices(saveToAlbum = membership.savesToAlbum),
     saveFailed: Boolean = false,
     askingToStopSharing: Boolean = false,
 ) = UiState(
@@ -247,35 +231,19 @@ private fun reconfiguring(
         membership = membership,
         inviteUrl = SAMPLE_INVITE,
         health = SyncHealth.InSync,
+        today = TODAY,
         surface = JoinedSurface.Reconfigure(
-            form,
-            reconfigureResolved(membership, form),
+            form.over(
+                membership.startsAt,
+                membership.endsAt,
+                now = LocalDateTime(2026, 7, 6, 12, 0),
+                today = membership.startsAt.date,
+            ),
             saveFailed,
             askingToStopSharing,
         ),
     ),
 )
-
-/** What the reduction would resolve [form] to against [membership]'s own window — stated, not re-derived. */
-private fun reconfigureResolved(membership: EventConfig, form: RangeForm): ResolvedRange {
-    val f = fixedCutoff()
-    val windowStart = f.toLocal(membership.startsAt)
-    val windowEnd = f.toLocal(membership.endsAt)
-    val from = if (form.preset == RangeChoice.CUSTOM) form.customFrom ?: windowStart else windowStart
-    val until = if (form.preset == RangeChoice.CUSTOM) form.customUntil ?: windowEnd else windowEnd
-    return ResolvedRange(
-        windowStart = windowStart,
-        windowEnd = windowEnd,
-        from = from,
-        until = until,
-        chosenFrom = CaptureCutoff(f.toCutoff(from)),
-        chosenUntil = CaptureCeiling(f.toCutoff(until)),
-        direction = if (form.shareOn && form.receiveOn) Direction.Both else Direction.DownloadOnly,
-        commitEnabled = form.shareOn || form.receiveOn,
-        nowAvailable = true,
-        today = windowStart.date,
-    )
-}
 
 private fun joined(
     health: SyncHealth,
@@ -283,16 +251,17 @@ private fun joined(
     canChoosePhotos: Boolean = false,
     timing: EventTiming = EventTiming.Running(TimeLeft.Days(4)),
     counts: SyncCounts? = null,
-    membership: EventConfig = MEMBERSHIP,
+    membership: JoinedEvent = MEMBERSHIP,
     inviteUrl: String? = SAMPLE_INVITE,
     renameState: RenameState = RenameState.Idle,
     closed: Boolean = false,
-    waiting: MemberCounts? = null,
+    waiting: Waiting? = null,
 ) = UiState(
     Layer.Joined(
         membership = membership,
         inviteUrl = inviteUrl,
         health = health,
+        today = TODAY,
         pendingSwitch = pendingSwitch,
         canChoosePhotos = canChoosePhotos,
         timing = timing,
@@ -381,20 +350,20 @@ class StatusScreenTest {
 
     @Test
     fun `the update screen names the minimum and offers the store`() = runComposeUiTest {
-        var opened: String? = null
+        var opened = 0
         setContent {
             TestStatusScreen(
                 UiState(
-                    Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink(STORE_URL, StoreKind.APP_STORE)),
+                    Layer.UpdateRequired(minimumVersion = "0.4", store = StoreName.APP_STORE),
                 ),
                 cutoff = fixedCutoff(),
-                actions = testActions(onOpenLink = { opened = it }),
+                actions = testActions(onOpenStore = { opened++ }),
             )
         }
         onNodeWithText(str(Res.string.update_eyebrow)).assertExists() // its own verb, not another surface's
         onNodeWithText(str(Res.string.update_detail_version, "0.4")).assertExists()
         onNodeWithText(str(Res.string.store_app_store)).performClick()
-        assertEquals(STORE_URL, opened)
+        assertEquals(1, opened)
     }
 
     @Test
@@ -415,19 +384,19 @@ class StatusScreenTest {
 
     @Test
     fun `on Android the update screen offers Google Play by name`() = runComposeUiTest {
-        var opened: String? = null
+        var opened = 0
         setContent {
             TestStatusScreen(
                 UiState(
-                    Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink(PLAY_URL, StoreKind.GOOGLE_PLAY)),
+                    Layer.UpdateRequired(minimumVersion = "0.4", store = StoreName.GOOGLE_PLAY),
                 ),
                 cutoff = fixedCutoff(),
-                actions = testActions(onOpenLink = { opened = it }),
+                actions = testActions(onOpenStore = { opened++ }),
             )
         }
         onNodeWithText(str(Res.string.store_app_store)).assertDoesNotExist()
         onNodeWithText(str(Res.string.store_google_play)).performClick()
-        assertEquals(PLAY_URL, opened)
+        assertEquals(1, opened)
     }
 
     @Test
@@ -437,9 +406,9 @@ class StatusScreenTest {
         setContent { TestStatusScreen(state.value, cutoff = fixedCutoff()) }
         val titles = mapOf(
             null to ComponentRes.string.cannot_verify_title,
-            app.snapsync.model.DeviceRefusal.DEVICE_MODIFIED to ComponentRes.string.cannot_verify_title_modified,
-            app.snapsync.model.DeviceRefusal.DEVICE_UNVERIFIABLE to ComponentRes.string.cannot_verify_title_unverifiable,
-            app.snapsync.model.DeviceRefusal.APP_NOT_GENUINE to ComponentRes.string.cannot_verify_title_not_genuine,
+            RefusalCause.DEVICE_MODIFIED to ComponentRes.string.cannot_verify_title_modified,
+            RefusalCause.DEVICE_UNVERIFIABLE to ComponentRes.string.cannot_verify_title_unverifiable,
+            RefusalCause.APP_NOT_GENUINE to ComponentRes.string.cannot_verify_title_not_genuine,
         )
         for ((cause, title) in titles) {
             state.value = joined(SyncHealth.Unattested(cause))
@@ -934,7 +903,7 @@ class StatusScreenTest {
         var requests = 0
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(GalleryAccess.NOT_DETERMINED)),
+                joined(SyncHealth.NeedsAccess(canAsk = true)),
                 actions = testActions(
                     access = testAccessActions(
                         onRequestPermission = { requests++ },
@@ -954,7 +923,7 @@ class StatusScreenTest {
         var settingsOpens = 0
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
+                joined(SyncHealth.NeedsAccess(canAsk = false)),
                 actions = testActions(
                     access = testAccessActions(
                         onOpenSettings = { settingsOpens++ },
@@ -1126,7 +1095,7 @@ class StatusScreenTest {
     fun `needs-access still shows leave and invite — sharing needs no access`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
+                joined(SyncHealth.NeedsAccess(canAsk = false)),
                 cutoff = fixedCutoff(),
             )
         }
@@ -1261,8 +1230,8 @@ class StatusScreenTest {
         for (value in listOf(
             SyncHealth.InSync,
             SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN),
-            SyncHealth.NeedsAccess(GalleryAccess.DENIED),
-            SyncHealth.NeedsAccess(GalleryAccess.NOT_DETERMINED),
+            SyncHealth.NeedsAccess(canAsk = false),
+            SyncHealth.NeedsAccess(canAsk = true),
         )) {
             health.value = value
             waitForIdle()
@@ -1281,13 +1250,7 @@ class StatusScreenTest {
                     SyncHealth.InSync,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        phaseAt(
-                            JoinPhase.Detailed.Step.Ready,
-                            "New Event",
-                            eventStart("2026-07-06T00:00:00Z"),
-                            eventEnd("2026-07-16T00:00:00Z"),
-                            deletesAt("2026-08-05T00:00:00Z"),
-                        ),
+                        JoinPhase.Detailed("New Event", JoinPhase.Detailed.Step.Ready),
                     ),
                 ),
                 cutoff = fixedCutoff(),
@@ -1454,7 +1417,7 @@ class StatusScreenTest {
     fun `the settings action is present under needs-access — no photo access required`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
+                joined(SyncHealth.NeedsAccess(canAsk = false)),
                 cutoff = fixedCutoff(),
             )
         }
@@ -1470,13 +1433,7 @@ class StatusScreenTest {
                     SyncHealth.InSync,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        phaseAt(
-                            JoinPhase.Detailed.Step.Ready,
-                            "New Event",
-                            eventStart("2026-07-06T00:00:00Z"),
-                            eventEnd("2026-07-16T00:00:00Z"),
-                            deletesAt("2026-08-05T00:00:00Z"),
-                        ),
+                        JoinPhase.Detailed("New Event", JoinPhase.Detailed.Step.Ready),
                     ),
                 ),
                 cutoff = fixedCutoff(),
@@ -1500,13 +1457,7 @@ class StatusScreenTest {
                     SyncHealth.InSync,
                     PendingSwitch(
                         MEMBERSHIP.eventId,
-                        phaseAt(
-                            JoinPhase.Detailed.Step.Committing,
-                            "Anna's Birthday",
-                            eventStart("2026-07-06T00:00:00Z"),
-                            eventEnd("2026-07-16T00:00:00Z"),
-                            deletesAt("2026-08-05T00:00:00Z"),
-                        ),
+                        JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Committing),
                     ),
                 ),
                 cutoff = fixedCutoff(),
@@ -1570,8 +1521,8 @@ class StatusScreenTest {
 
     @Test
     fun `the reconfigure surface shows a custom range when the cutoff is above the floor`() = runComposeUiTest {
-        val above = MEMBERSHIP.copy(minPhotoDate = captureCutoff("2026-07-06T18:00:00Z"))
-        val form = RangeForm(preset = RangeChoice.CUSTOM, customFrom = LocalDateTime(2026, 7, 6, 18, 0))
+        val above = MEMBERSHIP.copy(sharesFrom = LocalDateTime(2026, 7, 6, 18, 0))
+        val form = Choices(preset = RangeChoice.CUSTOM, customFrom = LocalDateTime(2026, 7, 6, 18, 0))
         setContent { TestStatusScreen(reconfiguring(above, form), cutoff = fixedCutoff()) }
         onNodeWithText("6 Jul, 18:00 – 10 Jul, 12:00").assertExists()
         onNodeWithText(str(Res.string.range_custom), substring = true).assertExists()
@@ -1579,8 +1530,8 @@ class StatusScreenTest {
 
     @Test
     fun `the reconfigure surface shows a custom range when the ceiling is below the event end`() = runComposeUiTest {
-        val below = MEMBERSHIP.copy(maxPhotoDate = captureCeiling("2026-07-09T12:00:00Z"))
-        val form = RangeForm(preset = RangeChoice.CUSTOM, customUntil = LocalDateTime(2026, 7, 9, 12, 0))
+        val below = MEMBERSHIP.copy(sharesUntil = LocalDateTime(2026, 7, 9, 12, 0))
+        val form = Choices(preset = RangeChoice.CUSTOM, customUntil = LocalDateTime(2026, 7, 9, 12, 0))
         setContent { TestStatusScreen(reconfiguring(below, form), cutoff = fixedCutoff()) }
         onNodeWithText("6 Jul, 12:00 – 9 Jul, 12:00").assertExists()
         onNodeWithText(str(Res.string.range_custom), substring = true).assertExists()
@@ -1588,9 +1539,9 @@ class StatusScreenTest {
 
     @Test
     fun `turning the album on says the already-synced photos are included`() = runComposeUiTest {
-        val withAlbum = MEMBERSHIP.copy(saveToAlbum = true)
+        val withAlbum = MEMBERSHIP.copy(savesToAlbum = true)
         setContent {
-            TestStatusScreen(reconfiguring(withAlbum, RangeForm(saveToAlbum = true)), cutoff = fixedCutoff())
+            TestStatusScreen(reconfiguring(withAlbum, Choices(saveToAlbum = true)), cutoff = fixedCutoff())
         }
         onNodeWithText("including the ones you already have", substring = true).assertExists()
         onNodeWithText("from now on", substring = true).assertDoesNotExist()
@@ -1599,10 +1550,10 @@ class StatusScreenTest {
     @Test
     fun `turning a folder album on says the already-received photos are included and own photos stay`() = runComposeUiTest {
         // Capability `manage-membership`: on Android the album gathers what was received, never the member's own photos.
-        val withAlbum = MEMBERSHIP.copy(saveToAlbum = true)
+        val withAlbum = MEMBERSHIP.copy(savesToAlbum = true)
         setContent {
             TestStatusScreen(
-                reconfiguring(withAlbum, RangeForm(saveToAlbum = true, albumKind = AlbumKind.FOLDER)),
+                reconfiguring(withAlbum, Choices(saveToAlbum = true, albumStyle = AlbumStyle.FOLDER)),
                 cutoff = fixedCutoff(),
             )
         }
@@ -1684,8 +1635,8 @@ class StatusScreenTest {
     @Test
     fun `a same-day event today shows its times`() = runComposeUiTest {
         val party = MEMBERSHIP.copy(
-            startsAt = eventStart("2026-07-06T18:00:00Z"),
-            endsAt = eventEnd("2026-07-06T23:00:00Z"),
+            startsAt = LocalDateTime(2026, 7, 6, 18, 0),
+            endsAt = LocalDateTime(2026, 7, 6, 23, 0),
         )
         setContent {
             TestStatusScreen(
@@ -1772,7 +1723,7 @@ class StatusScreenTest {
 
     @Test
     fun `no counts are drawn when the state carries none`() = runComposeUiTest {
-        setContent { TestStatusScreen(joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)), cutoff = fixedCutoff()) }
+        setContent { TestStatusScreen(joined(SyncHealth.NeedsAccess(canAsk = false)), cutoff = fixedCutoff()) }
         onNode(countsText()).assertDoesNotExist()
     }
 
@@ -1804,7 +1755,7 @@ class StatusScreenTest {
                 joined(
                     SyncHealth.InSync,
                     timing = EventTiming.Ended,
-                    waiting = MemberCounts(5, 3),
+                    waiting = Waiting(waitingFor = 2, active = 5),
                     counts = SyncCounts(progress(34, 34), progress(110, 110)),
                 ),
                 cutoff = fixedCutoff(),
@@ -1843,7 +1794,7 @@ class StatusScreenTest {
         runComposeUiTest {
             setContent {
                 TestStatusScreen(
-                    joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(saveToAlbum = true)),
+                    joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(savesToAlbum = true)),
                     cutoff = fixedCutoff(),
                 )
             }
@@ -1857,7 +1808,7 @@ class StatusScreenTest {
 
     @Test
     fun `the range named is the member's own and not the event's`() = runComposeUiTest {
-        val part = MEMBERSHIP.copy(minPhotoDate = captureCutoff("2026-07-08T12:00:00Z"))
+        val part = MEMBERSHIP.copy(sharesFrom = LocalDateTime(2026, 7, 8, 12, 0))
         setContent { TestStatusScreen(joined(SyncHealth.InSync, membership = part), cutoff = fixedCutoff()) }
         onNodeWithText(str(Res.string.explain_share_caption, "Wed 8 Jul – Fri 10 Jul")).assertExists()
     }
@@ -1873,7 +1824,7 @@ class StatusScreenTest {
         var opened = 0
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(direction = Direction.DownloadOnly)),
+                joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(shares = false)),
                 cutoff = fixedCutoff(),
                 actions = testActions(surfaces = testSurfaceActions(onOpenReconfigure = { opened++ })),
             )
@@ -1892,7 +1843,7 @@ class StatusScreenTest {
         var opened = 0
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(direction = Direction.UploadOnly)),
+                joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(receives = false)),
                 cutoff = fixedCutoff(),
                 actions = testActions(surfaces = testSurfaceActions(onOpenReconfigure = { opened++ })),
             )
@@ -1911,7 +1862,7 @@ class StatusScreenTest {
             var settings = 0
             setContent {
                 TestStatusScreen(
-                    joined(SyncHealth.NeedsAccess(GalleryAccess.NOT_DETERMINED)),
+                    joined(SyncHealth.NeedsAccess(canAsk = true)),
                     cutoff = fixedCutoff(),
                     actions = testActions(
                         access = testAccessActions(onRequestPermission = { asked++ }, onOpenSettings = { settings++ }),
@@ -1935,7 +1886,7 @@ class StatusScreenTest {
         var settings = 0
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
+                joined(SyncHealth.NeedsAccess(canAsk = false)),
                 cutoff = fixedCutoff(),
                 actions = testActions(access = testAccessActions(onOpenSettings = { settings++ })),
             )
@@ -1981,7 +1932,7 @@ class StatusScreenTest {
         setContent {
             Box(Modifier.requiredSize(SE2_WIDTH, SE2_HEIGHT)) {
                 TestStatusScreen(
-                    joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED), canChoosePhotos = false),
+                    joined(SyncHealth.NeedsAccess(canAsk = false), canChoosePhotos = false),
                     cutoff = fixedCutoff(),
                 )
             }
@@ -2100,22 +2051,6 @@ private fun samePixels(a: PixelMap, b: PixelMap): Boolean {
     for (y in 0 until a.height) for (x in 0 until a.width) if (a[x, y] != b[x, y]) return false
     return true
 }
-
-/**
- * A loaded join phase at [step]. The four event facts are stated ONCE on the phase now (capability
- * `join-event`), so a test builds the details and says which step is showing.
- */
-private fun phaseAt(
-    step: JoinPhase.Detailed.Step,
-    name: String,
-    startsAt: EventStart,
-    endsAt: EventEnd,
-    deletesAt: DeletesAt,
-) = JoinPhase.Detailed(EventDetails(name, startsAt, endsAt, deletesAt), step)
-
-/** The store link a build carries, offered on the update-required screen. */
-private const val STORE_URL = "https://apps.apple.com/de/app/id6781692480"
-private const val PLAY_URL = "https://play.google.com/store/apps/details?id=app.snapsync"
 
 /** A keyboard controller that counts what it was asked to do. */
 private class CountingKeyboard : SoftwareKeyboardController {

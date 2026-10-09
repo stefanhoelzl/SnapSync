@@ -4,6 +4,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
+import app.snapsync.model.RefusalCause
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.SyncHealth
 import kotlinx.serialization.json.jsonArray
@@ -109,7 +110,7 @@ class DeviceRefusalIntegrationTest {
         // A gated call is refused for its token; recovering, the app re-attests and is refused as not genuine.
         reconcile()
         awaitState {
-            ((it.ui.layer as? Layer.Joined)?.health as? SyncHealth.Unattested)?.refusal == DeviceRefusal.DEVICE_MODIFIED
+            ((it.ui.layer as? Layer.Joined)?.health as? SyncHealth.Unattested)?.refusal == RefusalCause.DEVICE_MODIFIED
         }
     }
 

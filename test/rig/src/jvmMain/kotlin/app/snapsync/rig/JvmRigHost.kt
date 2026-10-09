@@ -187,7 +187,7 @@ class JvmRigHost private constructor(
                 // The platform's own UI is a mock here, so the hand-off taps a device host excludes are driven too.
                 userCommands = userCommands(
                     dispatch = { mocks.screen.operator.tap(it) },
-                    state = { rig.app.composed.host.container.stateFlow.value },
+                    state = { rig.app.composed.host.screen.value },
                 ) + handOffUserCommands { mocks.screen.operator.tap(it) },
                 excludedUserCommands = excludedUserCommands() - HAND_OFF_EXCLUSIONS,
                 deviceCommands = jvmDeviceCommands(rig),

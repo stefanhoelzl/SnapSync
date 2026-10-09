@@ -4,7 +4,6 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeForm
 import app.snapsync.model.ShareCount
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff

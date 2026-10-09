@@ -13,7 +13,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
-import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinStage
 import app.snapsync.model.Layer
@@ -22,16 +21,13 @@ import app.snapsync.model.PendingSwitch
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.save
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -260,14 +256,11 @@ class DiagnosticDumpGestureTest {
 
 // The membership and invite URL live inside the joined state now (capability `sync-status`), so
 // these tests build the state that carries them instead of passing them beside it.
-private val SWITCH_MEMBERSHIP = EventConfig(
+private val SWITCH_MEMBERSHIP = joinedEvent(
     eventId = "E1",
     name = "Anna's Birthday",
-    minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
-    startsAt = eventStart("2026-07-06T12:00:00Z"),
-    endsAt = eventEnd("2026-07-10T12:00:00Z"),
-    maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
-    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    startsAt = LocalDateTime(2026, 7, 6, 12, 0),
+    endsAt = LocalDateTime(2026, 7, 10, 12, 0),
 )
 
 private fun joinedWith(health: SyncHealth, pendingSwitch: PendingSwitch? = null, name: String = "Anna's Birthday") =
@@ -276,6 +269,7 @@ private fun joinedWith(health: SyncHealth, pendingSwitch: PendingSwitch? = null,
             membership = SWITCH_MEMBERSHIP.copy(name = name),
             inviteUrl = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiRTEifQ",
             health = health,
+            today = LocalDate(2026, 7, 6),
             pendingSwitch = pendingSwitch,
         ),
     )

@@ -26,32 +26,17 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.v2.runComposeUiTest
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.DeletesAt
-import app.snapsync.model.Direction
-import app.snapsync.model.EventConfig
-import app.snapsync.model.EventDetails
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
+import app.snapsync.model.AlbumStyle
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinStage
 import app.snapsync.model.Layer
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeForm
-import app.snapsync.model.ResolvedRange
 import app.snapsync.model.ScreenMessage
 import app.snapsync.model.ShareCount
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.RangeChoiceActions
@@ -108,6 +93,7 @@ import app.snapsync.ui.resources.switch_body
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.switch_title
 import app.snapsync.ui.resources.waiting_network_title
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -122,22 +108,12 @@ import app.snapsync.ui.components.resources.Res as ComponentRes
  * window, a standalone album opt-in, and the event-naming photo-access explainer.
  */
 
-/** The switch dialog's new-event `startsAt` / `endsAt` (a different event scanned while joined). */
-private val CUTOFF = eventStart("2026-07-06T14:32:11Z")
-private val SWITCH_END = eventEnd("2026-07-16T00:00:00Z")
-
-/** "Now" for the fixed test clock. */
-private val NOW = captureCutoff("2026-07-06T12:00:00Z")
+/** "Now" for the fixed test clock (UTC, the zone these tests render in). */
+private val NOW = LocalDateTime(2026, 7, 6, 12, 0)
 
 /** An event that has ALREADY started (before [NOW]) — the ordinary case — and its end (after [NOW]). */
-private val EVENT_START = eventStart("2026-07-04T18:00:00Z")
-private val EVENT_END = eventEnd("2026-07-20T18:00:00Z")
-
-/** The event's retention deadline (capability `event-lifetime`): 30 days past its start. */
-private val EVENT_DELETES = deletesAt("2026-08-03T18:00:00Z")
-
-/** An event that has NOT started yet (after [NOW]) — where the "Now" preset falls outside the window. */
-private val FUTURE_START = eventStart("2026-07-09T18:00:00Z")
+private val EVENT_START = LocalDateTime(2026, 7, 4, 18, 0)
+private val EVENT_END = LocalDateTime(2026, 7, 20, 18, 0)
 
 class JoinScreenTest {
 
@@ -150,17 +126,19 @@ class JoinScreenTest {
      */
     private fun joining(
         phase: JoinPhase,
-        form: RangeForm = RangeForm(),
+        form: Choices = Choices(),
         // The count the container reduced into the range; unavailable unless a test is about the row.
         count: ShareCount = ShareCount.Unavailable,
+        // The loaded event's window.
+        start: LocalDateTime = EVENT_START,
+        end: LocalDateTime = EVENT_END,
     ) = UiState(
         Layer.JoiningEvent(
             eventId = "11111111-1111-4111-8111-111111111111",
             stage = when (phase) {
-                is JoinPhase.Detailed -> JoinStage.Loaded(phase, resolvedFor(phase, form).copy(shareCount = count))
+                is JoinPhase.Detailed -> JoinStage.Loaded(phase, form.over(start, end, NOW, count))
                 is JoinPhase.Eventless -> JoinStage.Unloaded(phase)
             },
-            form = form,
         ),
     )
 
@@ -177,49 +155,7 @@ class JoinScreenTest {
         onSaveToAlbum = onSaveToAlbum,
     )
 
-    /**
-     * The range the reduction WOULD resolve for [phase] under [form] — stated here, not re-derived.
-     *
-     * A screen test supplies the reduction's answer and asserts what is drawn from it. Re-running the
-     * resolution rules here would make this file agree with the implementation by construction;
-     * `RangeResolutionTest` is where those rules are actually checked.
-     */
-    private fun resolvedFor(phase: JoinPhase.Detailed, form: RangeForm): ResolvedRange {
-        val event = phase.event
-        val f = fixedCutoff()
-        val windowStart = f.toLocal(event.startsAt)
-        val windowEnd = f.toLocal(event.endsAt)
-        val from = when (form.preset) {
-            RangeChoice.WHOLE_EVENT -> windowStart
-            RangeChoice.FROM_NOW -> f.nowLocal()
-            RangeChoice.CUSTOM -> form.customFrom ?: windowStart
-        }
-        val until = when (form.preset) {
-            RangeChoice.CUSTOM -> form.customUntil ?: windowEnd
-            else -> windowEnd
-        }
-        return ResolvedRange(
-            windowStart = windowStart,
-            windowEnd = windowEnd,
-            from = from,
-            until = until,
-            chosenFrom = CaptureCutoff(f.toCutoff(from)),
-            chosenUntil = CaptureCeiling(f.toCutoff(until)),
-            direction = directionFor(form),
-            commitEnabled = form.shareOn || form.receiveOn,
-            nowAvailable = f.nowCutoff() >= event.startsAt.at && f.nowCutoff() <= event.endsAt.at,
-            today = f.nowLocal().date,
-        )
-    }
-
-    private fun directionFor(form: RangeForm) = when {
-        form.shareOn && form.receiveOn -> Direction.Both
-        form.shareOn -> Direction.UploadOnly
-        else -> Direction.DownloadOnly
-    }
-
-    private fun ready(start: EventStart = EVENT_START, end: EventEnd = EVENT_END) =
-        phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", start, end, EVENT_DELETES)
+    private fun ready() = JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready)
 
     /**
      * Mounts the screen under **reduced motion**. The Custom picker's time wheels animate on open (a
@@ -235,7 +171,7 @@ class JoinScreenTest {
      * whether the present is inside the window by comparing `startsAt`/`endsAt` against "now", so a formatter
      * that ignored its input could not express the pre-start case at all.
      */
-    private fun fixedCutoff(now: String = NOW.at.iso) = CutoffFormatter(
+    private fun fixedCutoff(now: String = "2026-07-06T12:00:00Z") = CutoffFormatter(
         now = { Instant.parse(now) },
         zone = TimeZone.UTC,
     )
@@ -331,7 +267,7 @@ class JoinScreenTest {
         var cancelled = 0
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES))
+                joining(JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready))
                     .withNetwork(NetworkNotice.OFFLINE),
                 cutoff = fixedCutoff(),
                 actions = testActions(join = testJoinGateActions(onCancelJoin = { cancelled++ })),
@@ -361,13 +297,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(
-                        JoinPhase.Detailed.Step.CommitFailed,
-                        "Anna's Wedding",
-                        EVENT_START,
-                        EVENT_END,
-                        EVENT_DELETES,
-                    ),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.CommitFailed),
                 )
                     .withNetwork(NetworkNotice.OFFLINE),
                 cutoff = fixedCutoff(),
@@ -383,7 +313,7 @@ class JoinScreenTest {
         var retried = 0
         var reported: ScreenMessage? = null
         val refused =
-            phaseAt(JoinPhase.Detailed.Step.DeviceRefused, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)
+            JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.DeviceRefused)
         val state = mutableStateOf(joining(refused.copy(refusal = ScreenMessage.DEVICE_UNVERIFIABLE)))
         setScreen {
             TestStatusScreen(
@@ -416,13 +346,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(
-                        JoinPhase.Detailed.Step.CommitFailed,
-                        "Anna's Wedding",
-                        EVENT_START,
-                        EVENT_END,
-                        EVENT_DELETES,
-                    ),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.CommitFailed),
                 ),
                 cutoff = fixedCutoff(),
                 actions = testActions(
@@ -446,7 +370,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.EventFull, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.EventFull),
                 ),
                 cutoff = fixedCutoff(),
                 actions = testActions(join = testJoinGateActions(onRetryJoin = { retried++ })),
@@ -479,7 +403,7 @@ class JoinScreenTest {
     @Test
     fun `share off swaps its consequence line and leaves receive alone`() = runComposeUiTest {
         setScreen {
-            TestStatusScreen(joining(ready(), form = RangeForm(shareOn = false)), cutoff = fixedCutoff())
+            TestStatusScreen(joining(ready(), form = Choices(shareOn = false)), cutoff = fixedCutoff())
         }
         onNodeWithText(str(Res.string.share_toggle)).assertToggle(ToggleableState.Off)
         onNodeWithText(str(Res.string.receive_toggle)).assertToggle(ToggleableState.On)
@@ -545,7 +469,7 @@ class JoinScreenTest {
         var confirmed = 0
         setScreen {
             TestStatusScreen(
-                joining(ready(), form = RangeForm(shareOn = false, receiveOn = false)),
+                joining(ready(), form = Choices(shareOn = false, receiveOn = false)),
                 cutoff = fixedCutoff(),
                 actions = testActions(join = testJoinGateActions(onConfirmJoin = { confirmed++ })),
             )
@@ -587,7 +511,7 @@ class JoinScreenTest {
         // Now (2026-07-06 12:00) is before this window opens, so "from now" would clamp to a bound the member
         // did not choose.
         setScreen {
-            TestStatusScreen(joining(ready(start = eventStart("2026-07-10T00:00:00Z"))), cutoff = fixedCutoff())
+            TestStatusScreen(joining(ready(), start = LocalDateTime(2026, 7, 10, 0, 0)), cutoff = fixedCutoff())
         }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).assertExists()
@@ -654,7 +578,7 @@ class JoinScreenTest {
 
     @Test
     fun `a custom range renders its bounds and names itself custom`() = runComposeUiTest {
-        val form = RangeForm(
+        val form = Choices(
             preset = RangeChoice.CUSTOM,
             customFrom = LocalDateTime(2026, 7, 6, 9, 0),
             customUntil = LocalDateTime(2026, 7, 8, 21, 0),
@@ -671,7 +595,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready),
                 ),
                 cutoff = fixedCutoff(),
             )
@@ -687,7 +611,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready),
                     count = ShareCount.Ready(34),
                 ),
                 cutoff = fixedCutoff(),
@@ -701,7 +625,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready),
                     count = ShareCount.Ready(0),
                 ),
                 cutoff = fixedCutoff(),
@@ -717,7 +641,7 @@ class JoinScreenTest {
             TestStatusScreen(
                 // Unavailable = DENIED / unresolved grant → the row is omitted (no spinner that can't resolve).
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready),
                     count = ShareCount.Unavailable,
                 ),
                 cutoff = fixedCutoff(),
@@ -733,7 +657,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready),
                     count = ShareCount.Counting,
                 ),
                 cutoff = fixedCutoff(),
@@ -749,8 +673,8 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
-                    form = RangeForm(shareOn = false),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready),
+                    form = Choices(shareOn = false),
                     count = ShareCount.Ready(34),
                 ),
                 cutoff = fixedCutoff(),
@@ -766,7 +690,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready),
                     count = ShareCount.Ready(5),
                 ),
                 cutoff = fixedCutoff(),
@@ -781,8 +705,8 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
-                    form = RangeForm(preset = RangeChoice.FROM_NOW),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready),
+                    form = Choices(preset = RangeChoice.FROM_NOW),
                     count = ShareCount.Ready(1),
                 ),
                 cutoff = fixedCutoff(),
@@ -809,7 +733,7 @@ class JoinScreenTest {
         // Reachable only after a deliberate uncheck now that the row starts on — which is exactly when
         // the line informs, and the only remaining assertion that it is rendered at all.
         setScreen {
-            TestStatusScreen(joining(ready(), form = RangeForm(saveToAlbum = false)), cutoff = fixedCutoff())
+            TestStatusScreen(joining(ready(), form = Choices(saveToAlbum = false)), cutoff = fixedCutoff())
         }
         onNodeWithText(str(Res.string.album_toggle)).assertToggle(ToggleableState.Off)
         onNodeWithText(str(Res.string.album_none)).assertExists()
@@ -820,7 +744,7 @@ class JoinScreenTest {
         // Capability `event-album`: on Android the album is the folder received photos are saved into, so the note
         // never names the member's own photos, which stay in the camera folder.
         setScreen {
-            TestStatusScreen(joining(ready(), form = RangeForm(albumKind = AlbumKind.FOLDER)), cutoff = fixedCutoff())
+            TestStatusScreen(joining(ready(), form = Choices(albumStyle = AlbumStyle.FOLDER)), cutoff = fixedCutoff())
         }
         onNodeWithText(str(Res.string.album_toggle)).performScrollTo().assertToggle(ToggleableState.On)
         onNodeWithText(
@@ -832,7 +756,7 @@ class JoinScreenTest {
     fun `a phone with folder albums says the album collects nothing without receiving`() = runComposeUiTest {
         setScreen {
             TestStatusScreen(
-                joining(ready(), form = RangeForm(receiveOn = false, albumKind = AlbumKind.FOLDER)),
+                joining(ready(), form = Choices(receiveOn = false, albumStyle = AlbumStyle.FOLDER)),
                 cutoff = fixedCutoff(),
             )
         }
@@ -844,7 +768,7 @@ class JoinScreenTest {
         // The note varies over BOTH switches at once, so it is stated per combination rather than
         // toggled into: the surface renders the combination the state names.
         fun note(shareOn: Boolean, receiveOn: Boolean) =
-            joining(ready(), form = RangeForm(shareOn = shareOn, receiveOn = receiveOn, saveToAlbum = true))
+            joining(ready(), form = Choices(shareOn = shareOn, receiveOn = receiveOn, saveToAlbum = true))
 
         setScreen { TestStatusScreen(note(shareOn = true, receiveOn = true), cutoff = fixedCutoff()) }
         onNodeWithText(str(Res.string.album_toggle)).performScrollTo().assertToggle(ToggleableState.On)
@@ -856,7 +780,7 @@ class JoinScreenTest {
     @Test
     fun `the album note names share-only receive-only and neither`() = runComposeUiTest {
         fun note(shareOn: Boolean, receiveOn: Boolean) =
-            joining(ready(), form = RangeForm(shareOn = shareOn, receiveOn = receiveOn, saveToAlbum = true))
+            joining(ready(), form = Choices(shareOn = shareOn, receiveOn = receiveOn, saveToAlbum = true))
 
         setScreen { TestStatusScreen(note(shareOn = true, receiveOn = false), cutoff = fixedCutoff()) }
         onNodeWithText(str(Res.string.album_share)).assertExists()
@@ -869,7 +793,7 @@ class JoinScreenTest {
         // this asserts, and reading it off the default would make the test restate the seed instead.
         setScreen {
             TestStatusScreen(
-                joining(ready(), form = RangeForm(saveToAlbum = false)),
+                joining(ready(), form = Choices(saveToAlbum = false)),
                 cutoff = fixedCutoff(),
                 actions = testActions(participation = participationActions(onSaveToAlbum = { saveToAlbum = it })),
             )
@@ -989,13 +913,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(
                 joining(
-                    phaseAt(
-                        JoinPhase.Detailed.Step.CommitFailed,
-                        "Anna's Wedding",
-                        EVENT_START,
-                        EVENT_END,
-                        EVENT_DELETES,
-                    ),
+                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.CommitFailed),
                 ),
                 cutoff = fixedCutoff(),
                 actions = testActions(join = testJoinGateActions(onRetryJoin = { retried++ })),
@@ -1021,7 +939,7 @@ class JoinScreenTest {
                     SyncHealth.Loading,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", CUTOFF, SWITCH_END, EVENT_DELETES),
+                        JoinPhase.Detailed("New Event", JoinPhase.Detailed.Step.Ready),
                     ),
                 ),
                 cutoff = fixedCutoff(),
@@ -1051,7 +969,7 @@ class JoinScreenTest {
                     SyncHealth.Loading,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", CUTOFF, SWITCH_END, EVENT_DELETES),
+                        JoinPhase.Detailed("New Event", JoinPhase.Detailed.Step.Ready),
                     ),
                 ),
                 cutoff = fixedCutoff(),
@@ -1169,14 +1087,11 @@ private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertToggle(state
 
 // The membership and invite URL live inside the joined state now (capability `sync-status`), so
 // these tests build the state that carries them instead of passing them beside it.
-private val SWITCH_MEMBERSHIP = EventConfig(
+private val SWITCH_MEMBERSHIP = joinedEvent(
     eventId = "E1",
     name = "Summer Trip",
-    minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
-    startsAt = eventStart("2026-07-06T12:00:00Z"),
-    endsAt = eventEnd("2026-07-10T12:00:00Z"),
-    maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
-    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    startsAt = LocalDateTime(2026, 7, 6, 12, 0),
+    endsAt = LocalDateTime(2026, 7, 10, 12, 0),
 )
 
 private fun joinedWith(health: SyncHealth, pendingSwitch: PendingSwitch? = null, name: String = "Summer Trip") =
@@ -1185,18 +1100,7 @@ private fun joinedWith(health: SyncHealth, pendingSwitch: PendingSwitch? = null,
             membership = SWITCH_MEMBERSHIP.copy(name = name),
             inviteUrl = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiRTEifQ",
             health = health,
+            today = LocalDate(2026, 7, 6),
             pendingSwitch = pendingSwitch,
         ),
     )
-
-/**
- * A loaded join phase at [step]. The four event facts are stated ONCE on the phase now (capability
- * `join-event`), so a test builds the details and says which step is showing.
- */
-private fun phaseAt(
-    step: JoinPhase.Detailed.Step,
-    name: String,
-    startsAt: EventStart,
-    endsAt: EventEnd,
-    deletesAt: DeletesAt,
-) = JoinPhase.Detailed(EventDetails(name, startsAt, endsAt, deletesAt), step)

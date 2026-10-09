@@ -32,7 +32,7 @@ class PathFormLinkIntegrationTest {
         val gate = awaitState { ((it.ui.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed) != null }
             .ui.layer as Layer.JoiningEvent
         assertEquals(event, gate.eventId)
-        assertEquals("Anna's 40th", (gate.phase as JoinPhase.Detailed).event.name)
+        assertEquals("Anna's 40th", (gate.phase as JoinPhase.Detailed).eventName)
     }
 
     @Test

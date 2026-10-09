@@ -93,7 +93,7 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
  */
 internal fun joinedEventId(rig: JvmRig): String? {
     val screenBuilt = rig.mocks.screen.operator.shown.value != null
-    val shown = if (screenBuilt) rig.app.composed.host.container.stateFlow.value.layer as? Layer.Joined else null
+    val shown = if (screenBuilt) rig.app.composed.host.screen.value.layer as? Layer.Joined else null
     return shown?.membership?.eventId
         ?: (ConfigService(rig.mocks.disk.port(), rig.mocks.clock.port()).read() as? ConfigRead.Joined)?.config?.eventId
 }

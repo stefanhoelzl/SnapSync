@@ -1,7 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumStyle
 import app.snapsync.model.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -53,8 +53,8 @@ class AlbumIntegrationTest {
         androidLibrary()
         create(name = "Party")
         val gate = state().ui.layer as Layer.JoiningEvent
-        assertEquals(AlbumKind.FOLDER, gate.form.albumKind)
-        assertEquals(true, gate.form.saveToAlbum, "the album is on by default, as on iPhone")
+        assertEquals(AlbumStyle.FOLDER, gate.range?.albumStyle)
+        assertEquals(true, gate.range?.saveToAlbum, "the album is on by default, as on iPhone")
 
         join()
         awaitAlbum() // a download imports into the album only once it exists
@@ -87,7 +87,7 @@ class AlbumIntegrationTest {
         assertTrue(albums().isEmpty(), "no album while it is off: the photo is in the camera folder")
 
         user("reconfigure", "saveToAlbum" to "true")
-        awaitState { it.joined?.membership?.saveToAlbum == true }
+        awaitState { it.joined?.membership?.savesToAlbum == true }
 
         eventually<List<String>?>(read = { albums().singleOrNull()?.assets }) { it == listOf(RECEIVED) }
     }
@@ -110,9 +110,9 @@ class AlbumIntegrationTest {
         assertTrue(albums().single().assets.isEmpty(), "the later photo arrived in the camera folder")
 
         user("reconfigure", "saveToAlbum" to "false")
-        awaitState { it.joined?.membership?.saveToAlbum == false }
+        awaitState { it.joined?.membership?.savesToAlbum == false }
         user("reconfigure", "saveToAlbum" to "true")
-        awaitState { it.joined?.membership?.saveToAlbum == true }
+        awaitState { it.joined?.membership?.savesToAlbum == true }
 
         eventually<List<String>?>(read = {
             albums().firstOrNull { it.id != first.id }?.assets
@@ -148,14 +148,14 @@ class AlbumIntegrationTest {
 
         // If the Save awaited the gather, it would never land: every add is held.
         user("reconfigure", "saveToAlbum" to "true")
-        awaitState { it.joined?.membership?.saveToAlbum == true }
+        awaitState { it.joined?.membership?.savesToAlbum == true }
         assertTrue(awaitAlbum().single().assets.isEmpty(), "the Save landed with its gather still held")
         device("album/hold-adds", "on" to "false")
         eventually(read = { albums().single().assets }) { it == listOf("A") }
 
         // A join's gather: a photo received in this event, whose import is permanent across a leave.
         user("reconfigure", "saveToAlbum" to "false")
-        awaitState { it.joined?.membership?.saveToAlbum == false }
+        awaitState { it.joined?.membership?.savesToAlbum == false }
         foreignDevice("DEV-F", "FQ")
         downloadAll()
         leave()

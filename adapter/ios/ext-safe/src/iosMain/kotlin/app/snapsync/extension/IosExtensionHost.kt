@@ -3,9 +3,9 @@ package app.snapsync.extension
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
-import app.snapsync.ports.ProcessingAnswer
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.runBlocking
 

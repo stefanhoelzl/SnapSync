@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumStyle
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
@@ -70,12 +70,11 @@ internal fun ReconfigureSheet(
             if (surface.saveFailed) StatusHint(stringResource(Res.string.settings_save_failed))
             ParticipationSections(
                 state = ParticipationState(
-                    form = surface.form,
                     range = range,
                     rangeLabel = appRangeLabel(range.from, range.until),
                 ),
                 actions = participation,
-                albumNote = reconfigureAlbumNote(surface.form.saveToAlbum, surface.form.albumKind),
+                albumNote = reconfigureAlbumNote(range.saveToAlbum, range.albumStyle),
             )
         }
     }
@@ -115,10 +114,10 @@ internal fun screenLabel(state: UiState): String {
     val layer = state.layer
     if (layer is Layer.Joined && layer.surface is JoinedSurface.Reconfigure) return "Reconfigure"
     return when (layer) {
-        is Layer.JoiningEvent -> "JoiningEvent:${layer.phase::class.simpleName}"
+        is Layer.JoiningEvent -> "JoiningEvent:${layer.phase.screenName}"
         is Layer.Joined -> when (val switch = layer.pendingSwitch) {
             null -> "Joined"
-            else -> "Switch:${switch.phase::class.simpleName}"
+            else -> "Switch:${switch.phase.screenName}"
         }
         is Layer.CreateEvent -> "CreateEvent"
         Layer.CreatingEvent -> "CreatingEvent"
@@ -192,7 +191,7 @@ internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
         Res.string.switch_body,
         Res.string.switch_confirm,
         SwitchAct.SWITCH,
-        switchingTo = phase.event.name,
+        switchingTo = phase.eventName,
     ).takeIf { phase.step == JoinPhase.Detailed.Step.Ready }
     // An invite to no event, a closed one, or an incomplete invite of an encrypted one: the member stays in their own
     // event — the same walls the join screen shows.
@@ -211,11 +210,11 @@ internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
  * switches, and must not name a feed the membership lacks.
  */
 @Composable
-private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumKind): String = stringResource(
+private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumStyle): String = stringResource(
     when {
         !saveToAlbum -> Res.string.album_none
         // A folder album (Android) holds only what is received, and gathering moves the received photos into it.
-        kind == AlbumKind.FOLDER -> Res.string.album_folder_receive_existing
+        kind == AlbumStyle.FOLDER -> Res.string.album_folder_receive_existing
         else -> Res.string.album_existing
     },
 )

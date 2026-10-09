@@ -14,13 +14,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventTiming
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Layer
-import app.snapsync.model.MemberCounts
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.SyncCounts
 import app.snapsync.model.SyncHealth
-import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.model.Waiting
 import app.snapsync.ui.components.AccessPrompt
 import app.snapsync.ui.components.AppDatesLine
 import app.snapsync.ui.components.AppErrorBanner
@@ -59,7 +57,6 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun JoinedLayer(
     state: Layer.Joined,
-    cutoff: CutoffFormatter,
     access: AccessActions,
     onOpenEventSettings: () -> Unit,
 ) {
@@ -78,7 +75,7 @@ internal fun JoinedLayer(
             modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Explanation(state, cutoff, access, onOpenEventSettings)
+            Explanation(state, access, onOpenEventSettings)
             Spacer(Modifier.height(SECTION_GAP))
         }
     }
@@ -117,12 +114,10 @@ private fun StatusBlock(state: Layer.Joined, access: AccessActions) {
  * function for the status line and the explanation's link, so the two can never do different things.
  */
 internal fun accessAction(health: SyncHealth.NeedsAccess, access: AccessActions): () -> Unit =
-    if (health.permission == GalleryAccess.NOT_DETERMINED) access.onRequestPermission else access.onOpenSettings
+    if (health.canAsk) access.onRequestPermission else access.onOpenSettings
 
 private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
-    is SyncHealth.NeedsAccess -> AppSyncStatus.NeedsAccess(
-        if (permission == GalleryAccess.NOT_DETERMINED) AccessPrompt.ALLOW else AccessPrompt.SETTINGS,
-    )
+    is SyncHealth.NeedsAccess -> AppSyncStatus.NeedsAccess(if (canAsk) AccessPrompt.ALLOW else AccessPrompt.SETTINGS)
     is SyncHealth.NoNetwork -> AppSyncStatus.NoNetwork(blocked = notice == NetworkNotice.BLOCKED)
     SyncHealth.NotStarted -> AppSyncStatus.NotStarted
     SyncHealth.Inactive -> AppSyncStatus.Inactive
@@ -140,7 +135,7 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
  * waiting note rides beneath it: it is only ever set under "Up to date", where the counts are present too.
  */
 @Composable
-private fun CountsLine(counts: SyncCounts?, waiting: MemberCounts?) {
+private fun CountsLine(counts: SyncCounts?, waiting: Waiting?) {
     if (counts == null) return
     val shared = counts.shared.label(
         Res.string.counts_shared,
@@ -170,14 +165,9 @@ internal fun DirectionCount.label(done: StringResource, progress: StringResource
  * the app does not record who created an event — and the event's dates with where it is in its life.
  */
 @Composable
-internal fun JoinedHeadingDetails(state: Layer.Joined, cutoff: CutoffFormatter) {
+internal fun JoinedHeadingDetails(state: Layer.Joined) {
     AppHeadingStatement(stringResource(Res.string.joined_statement))
-    val start = cutoff.toLocal(state.membership.startsAt)
-    val range = appDateRangeLabel(
-        start = start,
-        end = cutoff.toLocal(state.membership.endsAt),
-        today = cutoff.nowLocal().date,
-    )
+    val range = appDateRangeLabel(start = state.membership.startsAt, end = state.membership.endsAt, today = state.today)
     AppDatesLine(range, state.timing.phrase()?.text())
 }
 

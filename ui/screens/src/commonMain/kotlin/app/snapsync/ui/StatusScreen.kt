@@ -11,7 +11,7 @@ import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.DateFormats
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
-import app.snapsync.model.EventConfig
+import app.snapsync.model.JoinedEvent
 import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
 import app.snapsync.model.MobileDataState
@@ -150,7 +150,7 @@ fun StatusScreen(
                             text = joined.membership.name,
                             onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
                             editDescription = stringResource(Res.string.rename_event),
-                            details = { JoinedHeadingDetails(joined, cutoff) },
+                            details = { JoinedHeadingDetails(joined) },
                         )
                     },
                     bottomActions = bottomActions,
@@ -346,7 +346,7 @@ private fun LeaveConfirmDialog(actions: StatusActions) {
  */
 @Composable
 private fun RenameSheet(
-    membership: EventConfig,
+    membership: JoinedEvent,
     renameState: RenameState,
     actions: StatusActions,
 ) {
@@ -488,7 +488,7 @@ private fun ColumnScope.CurrentLayer(
 ) {
     when (val layer = state.layer) {
         is Layer.UpdateRequired ->
-            UpdateRequiredScreen(layer, actions.onOpenLink)
+            UpdateRequiredScreen(layer, actions.onOpenStore)
         // ONE branch for both create layers, so the form's draft survives a failed create's round trip
         // through the in-flight screen — see [CreateFlow].
         is Layer.CreateEvent, Layer.CreatingEvent ->
@@ -513,6 +513,6 @@ private fun ColumnScope.CurrentLayer(
                 ),
             )
         is Layer.Joined ->
-            JoinedLayer(layer, cutoff, actions.access, onOpenEventSettings = actions.surfaces.onOpenReconfigure)
+            JoinedLayer(layer, actions.access, onOpenEventSettings = actions.surfaces.onOpenReconfigure)
     }
 }

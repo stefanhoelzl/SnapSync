@@ -35,6 +35,11 @@ class PersistedFormatFieldContractTest {
     }
 
     @Test
+    fun `a stored membership's member counts require both counts`() {
+        assertFieldContract(MemberCounts.serializer(), MemberCounts(active = 2, settled = 1))
+    }
+
+    @Test
     fun `an invite link's payload requires only the event`() {
         assertFieldContract(
             EventLinkPayload.serializer(),

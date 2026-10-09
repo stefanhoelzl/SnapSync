@@ -92,15 +92,13 @@ data class DownloadView(val downloaded: Int, val total: Int, val inFlight: Int)
 internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: RigHooks): RigState {
     core.ledgerCounts.refresh()
     val progress = core.downloadStatusSource.progress.value
-    // The membership, the invite URL and the inline create error all live INSIDE the UI state now,
-    // so the rig reports exactly what the screen is rendering rather than a parallel
-    // set of read-models that could disagree with it.
-    val ui = host.container.stateFlow.value
-    // `ui.layer`, never `ui`: the state wraps its layer, and a cast of the WRAPPER to a layer type is always null —
-    // which the compiler only warns about. That is exactly how this read reported every joined device as
-    // unresolved, with no invite URL and no name, until the JVM host's tests read it back.
-    val joined = ui.layer as? Layer.Joined
-    val config = joined?.membership
+    // The invite URL and the inline create error live INSIDE the UI state, so the rig
+    // reports exactly what the screen is rendering. The membership's own facts — its direction and capture range —
+    // are not on the screen as such; they are read from the membership the screen is reduced from.
+    val ui = host.screen.value
+    // Resolved once the SCREEN shows the joined event, not merely once the membership is read: a caller polling on this
+    // then acts on what the member sees.
+    val config = core.membership.value?.takeIf { (ui.layer as? Layer.Joined)?.membership?.eventId == it.eventId }
     return RigState(
         ui = ui,
         ready = Readiness(

@@ -111,7 +111,7 @@ class StatusContainerHostMenuTest {
     }
 
     private suspend fun StatusContainerHost.stateWhere(what: String, predicate: (UiState) -> Boolean): UiState =
-        withTimeout(10.seconds) { container.stateFlow.first(predicate) }
+        withTimeout(10.seconds) { screen.first(predicate) }
             .also { assertTrue(predicate(it), what) }
 
     @Test
@@ -241,7 +241,7 @@ class StatusContainerHostMenuTest {
         host.onIntent(UiIntent.ReportBugDismiss)
         host.stateWhere("sheet closed") { !it.overlays.reportingBug }
         delay(200)
-        assertEquals(null, host.container.stateFlow.value.overlays.reportNotice)
+        assertEquals(null, host.screen.value.overlays.reportNotice)
         assertTrue(world.reports.isEmpty())
     }
 }

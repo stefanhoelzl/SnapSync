@@ -64,6 +64,10 @@ class EventDatesTest {
         assertEquals(instant, eventStart(instant).iso)
         assertEquals(instant, eventEnd(instant).iso)
         assertEquals(instant, deletesAt(instant).iso)
+        assertEquals(
+            listOf(instant, instant, instant),
+            listOf("${eventStart(instant)}", "${eventEnd(instant)}", "${deletesAt(instant)}"),
+        )
     }
 
     @Test

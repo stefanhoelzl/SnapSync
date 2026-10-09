@@ -22,7 +22,7 @@ import app.snapsync.control.RigClient
 import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.model.Layer
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeForm
+import app.snapsync.model.RangeView
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.rig.DeviceAdvertisement
@@ -130,7 +130,7 @@ private fun mirrorActions(
         }
     }
     fun inert(what: String): () -> Unit = { note("$what: no /user intent — the surface lives in the host's container") }
-    val form: () -> RangeForm? = { (latest()?.ui?.layer as? Layer.JoiningEvent)?.form }
+    val form: () -> RangeView? = { (latest()?.ui?.layer as? Layer.JoiningEvent)?.range }
     fun instant(local: LocalDateTime) = local.toInstant(TimeZone.currentSystemDefault()).toString()
     fun direction(share: Boolean, receive: Boolean): String? = when {
         share && receive -> "both"
@@ -182,7 +182,7 @@ private fun mirrorActions(
         onCreateEvent = { name, startsAt, endsAt ->
             post("create", "name" to name, "startsAt" to startsAt.toString(), "endsAt" to endsAt.toString())()
         },
-        onOpenLink = { url -> note("open link $url: the mirror opens no browser") },
+        onOpenStore = { note("open the store: the mirror opens no browser") },
         participation = ParticipationActions(
             choices = RangeChoiceActions(
                 onPreset = { preset ->

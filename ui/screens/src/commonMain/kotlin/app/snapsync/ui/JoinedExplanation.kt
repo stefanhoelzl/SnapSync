@@ -9,10 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.EventConfig
+import app.snapsync.model.JoinedEvent
 import app.snapsync.model.Layer
 import app.snapsync.model.SyncHealth
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.AppExplainRow
 import app.snapsync.ui.components.AppEyebrow
 import app.snapsync.ui.components.CaptionLink
@@ -56,7 +55,6 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun Explanation(
     state: Layer.Joined,
-    cutoff: CutoffFormatter,
     access: AccessActions,
     onOpenEventSettings: () -> Unit,
 ) {
@@ -75,7 +73,11 @@ internal fun Explanation(
         if (!state.closed) {
             SharingRow(
                 membership = membership,
-                range = sharedRange(membership, cutoff),
+                range = appDateRangeLabel(
+                    start = membership.sharesFrom,
+                    end = membership.sharesUntil,
+                    today = state.today,
+                ),
                 limited = state.canChoosePhotos,
                 accessLink = accessLink,
                 settingsLink = settingsLink,
@@ -92,20 +94,9 @@ internal fun Explanation(
     }
 }
 
-/** The member's own shared range, as the dates line words a range — the same sentence before, during and after. */
-@Composable
-private fun sharedRange(membership: EventConfig, cutoff: CutoffFormatter): String {
-    val from = cutoff.toLocal(membership.minPhotoDate)
-    return appDateRangeLabel(
-        start = from,
-        end = cutoff.toLocal(membership.maxPhotoDate),
-        today = cutoff.nowLocal().date,
-    )
-}
-
 @Composable
 private fun SharingRow(
-    membership: EventConfig,
+    membership: JoinedEvent,
     range: String,
     limited: Boolean,
     accessLink: CaptionLink?,
@@ -131,7 +122,7 @@ private fun SharingRow(
             caption = stringResource(Res.string.explain_share_blocked_caption, accessLink.text, range),
             link = accessLink,
         )
-        !membership.direction.includesUpload -> AppExplainRow(
+        !membership.shares -> AppExplainRow(
             subject = ExplainSubject.SHARING,
             state = ExplainState.OFF,
             title = stringResource(Res.string.explain_share_off_title),
@@ -156,7 +147,7 @@ private fun SharingRow(
 }
 
 @Composable
-private fun ReceivingRow(membership: EventConfig, accessLink: CaptionLink?, settingsLink: CaptionLink) {
+private fun ReceivingRow(membership: JoinedEvent, accessLink: CaptionLink?, settingsLink: CaptionLink) {
     when {
         accessLink != null -> AppExplainRow(
             subject = ExplainSubject.RECEIVING,
@@ -165,7 +156,7 @@ private fun ReceivingRow(membership: EventConfig, accessLink: CaptionLink?, sett
             caption = stringResource(Res.string.explain_receive_blocked_caption, accessLink.text),
             link = accessLink,
         )
-        !membership.direction.includesDownload -> AppExplainRow(
+        !membership.receives -> AppExplainRow(
             subject = ExplainSubject.RECEIVING,
             state = ExplainState.OFF,
             title = stringResource(Res.string.explain_receive_off_title),
@@ -176,7 +167,7 @@ private fun ReceivingRow(membership: EventConfig, accessLink: CaptionLink?, sett
             subject = ExplainSubject.RECEIVING,
             state = ExplainState.ON,
             title = stringResource(Res.string.explain_receive_title),
-            caption = if (membership.saveToAlbum) {
+            caption = if (membership.savesToAlbum) {
                 stringResource(Res.string.explain_receive_album, membership.name)
             } else {
                 stringResource(Res.string.explain_receive_no_album)

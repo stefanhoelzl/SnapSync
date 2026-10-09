@@ -37,7 +37,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.Arrow
-import app.snapsync.model.DeviceRefusal
+import app.snapsync.model.RefusalCause
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.cannot_verify_detail
 import app.snapsync.ui.components.resources.cannot_verify_title
@@ -124,7 +124,7 @@ sealed interface AppSyncStatus {
      * [cause] is why the service refused this phone, when it did: the headline then names it.
      * `null` — no verdict — keeps the cause-less headline. Still never tappable.
      */
-    data class CannotVerifyDevice(val cause: DeviceRefusal? = null) : AppSyncStatus
+    data class CannotVerifyDevice(val cause: RefusalCause? = null) : AppSyncStatus
 
     /**
      * The device gives the app no usable network — [AppNetworkNotice] in the status-line
@@ -380,11 +380,11 @@ private fun AttentionLine(title: StringResource, detail: StringResource) {
 }
 
 /** The cannot-verify line's headline per refusal: a definite one names its cause, no verdict names none. */
-private val CannotVerifyTitles: Map<DeviceRefusal?, StringResource> = mapOf(
+private val CannotVerifyTitles: Map<RefusalCause?, StringResource> = mapOf(
     null to Res.string.cannot_verify_title,
-    DeviceRefusal.DEVICE_MODIFIED to Res.string.cannot_verify_title_modified,
-    DeviceRefusal.DEVICE_UNVERIFIABLE to Res.string.cannot_verify_title_unverifiable,
-    DeviceRefusal.APP_NOT_GENUINE to Res.string.cannot_verify_title_not_genuine,
+    RefusalCause.DEVICE_MODIFIED to Res.string.cannot_verify_title_modified,
+    RefusalCause.DEVICE_UNVERIFIABLE to Res.string.cannot_verify_title_unverifiable,
+    RefusalCause.APP_NOT_GENUINE to Res.string.cannot_verify_title_not_genuine,
 )
 
 @Composable

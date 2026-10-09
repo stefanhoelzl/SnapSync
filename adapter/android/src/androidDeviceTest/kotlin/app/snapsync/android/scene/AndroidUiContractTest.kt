@@ -328,7 +328,7 @@ class AndroidUiContractTest {
         shown = null
         current = rig
         rig.scope.launch {
-            rig.host.container.stateFlow.collect {
+            rig.host.screen.collect {
                 port.show(it)
                 shown = it
             }
@@ -463,21 +463,21 @@ class AndroidUiContractTest {
         awaitShown(ready)
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         onNodeWithText(str(Res.string.range_from_now)).performClick()
-        awaitShown { it.joining?.form?.preset == RangeChoice.FROM_NOW }
+        awaitShown { it.joining?.range?.preset == RangeChoice.FROM_NOW }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         onNodeWithText(str(Res.string.save)).performClick()
-        awaitShown { it.joining?.form?.preset == RangeChoice.CUSTOM }
+        awaitShown { it.joining?.range?.preset == RangeChoice.CUSTOM }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).performClick()
-        awaitShown { it.joining?.form?.preset == RangeChoice.WHOLE_EVENT }
+        awaitShown { it.joining?.range?.preset == RangeChoice.WHOLE_EVENT }
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
-        awaitShown { it.joining?.form?.shareOn == false }
+        awaitShown { it.joining?.range?.shareOn == false }
         onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().performClick()
-        awaitShown { it.joining?.form?.receiveOn == false }
+        awaitShown { it.joining?.range?.receiveOn == false }
         onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().performClick()
-        awaitShown { it.joining?.form?.receiveOn == true }
+        awaitShown { it.joining?.range?.receiveOn == true }
         onNodeWithText(str(Res.string.album_toggle)).performScrollTo().performClick()
-        awaitShown { it.joining?.form?.saveToAlbum == false }
+        awaitShown { it.joining?.range?.saveToAlbum == false }
         onNodeWithText(str(Res.string.join_button)).performClick()
         awaitShown { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.CommitFailed }
         onNodeWithText(str(Res.string.retry)).performClick()
@@ -510,7 +510,7 @@ class AndroidUiContractTest {
         onNodeWithText(str(Res.string.save)).performClick()
         waitForIdle()
         // No rename status arrives over these cells, so the sheet stays up after Save: close it.
-        if (rig.host.container.stateFlow.value.overlays.renaming) onNodeWithText(str(Res.string.cancel)).performClick()
+        if (rig.host.screen.value.overlays.renaming) onNodeWithText(str(Res.string.cancel)).performClick()
         awaitShown { !it.overlays.renaming }
         // The event's settings: stopping sharing asked about, kept, asked again and confirmed; then closed.
         onNodeWithText(str(Res.string.footer_settings)).performClick()

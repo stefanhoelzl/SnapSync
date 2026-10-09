@@ -1,8 +1,8 @@
-package app.snapsync.compose
+package app.snapsync.feature.upload
 
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PauseReason
-import app.snapsync.ports.ProcessingAnswer
+import app.snapsync.model.ProcessingAnswer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
