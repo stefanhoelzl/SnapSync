@@ -1,13 +1,13 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /**
- * The **un-read status** pins (capability `sync-status`), over the real composed stack, driven through the
- * control protocol.
+ * The **un-read status** pins, over the real composed stack, driven through the control protocol.
  *
  * These exist because the defect they cover was invisible to every other test in the repository. The
  * status projection reads three `StateFlow`s, and a `StateFlow` always has a value — so `combine`
@@ -32,6 +32,7 @@ import kotlin.test.assertIs
  */
 class UnreadStatusIntegrationTest {
     @Test
+    @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
     fun a_joined_membership_with_photos_never_reads_in_sync_before_a_status_read() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -55,6 +56,11 @@ class UnreadStatusIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "\"Up to date\" is never claimed before the app has looked",
+        scenario = "Nothing to share still settles",
+    )
     fun a_counted_zero_still_settles_the_screen() = rigTest {
         // A download-only membership contributes nothing, so its upload total is a COUNTED zero — reached on the
         // selection policy's own no-upload branch without enumerating. The fix must not turn that legitimate
@@ -67,6 +73,7 @@ class UnreadStatusIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
     fun `a failed enumeration leaves the total unknown and does not take its siblings down`() = rigTest {
         createAndJoin()
         addPhoto("A")
@@ -89,6 +96,8 @@ class UnreadStatusIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
+    @Verifies(spec = "photo-access", requirement = "A selection the app has not yet looked at withdraws nothing")
     fun `a limited grant whose selection has not arrived never reads in sync`() = rigTest {
         // A partial grant, a joined membership, photos in the library — and NO selection snapshot yet. On device
         // that window is the cold launch: the snapshot source's baseline read is a PhotoKit fetch plus an eager
@@ -102,8 +111,8 @@ class UnreadStatusIntegrationTest {
         refresh()
 
         // "We hold no selection" is not "the selection is empty". Collapsing them counts a zero, and a counted
-        // zero SETTLES — on a member who has photos selected and simply has not been told which yet (capability
-        // `photo-access`; the `SNAPSYNC-14` / `SNAPSYNC-16` shape, one grant over from where it was fixed).
+        // zero SETTLES — on a member who has photos selected and simply has not been told which yet (the
+        // `SNAPSYNC-14` / `SNAPSYNC-16` shape, one grant over from where it was fixed).
         neverSettles()
     }
 
@@ -122,13 +131,18 @@ class UnreadStatusIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "\"Up to date\" is never claimed before the app has looked",
+        scenario = "Nothing to share still settles",
+    )
     fun `an empty selection under a limited grant is still a counted zero`() = rigTest {
         permission("LIMITED")
         createAndJoin()
         addPhoto("A") // in the library, but not selected — outside this membership's scope
 
-        // A snapshot DID arrive and it is empty. Receive-only under a partial grant is a valid resting state
-        // (capability `photo-access`), so this must still settle — the fix must not turn every limited
+        // A snapshot DID arrive and it is empty. Receive-only under a partial grant is a valid resting state, so
+        // this must still settle — the fix must not turn every limited
         // member's screen into a permanent "Syncing…".
         device("selection/change", "assets" to "")
         refresh()

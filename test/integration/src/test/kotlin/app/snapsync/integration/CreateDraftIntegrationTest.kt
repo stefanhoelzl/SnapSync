@@ -1,16 +1,17 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.CreateDraftSession
 import app.snapsync.model.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **The create screen's draft follows the app's foreground life** (capability `create-event`, "The start follows the
- * clock until the host chooses the range" and "A long absence starts a fresh draft"), driven at the OS boundary: the
- * real lifecycle entry points and the mocked clock. Every return to the foreground is a new activation — an untouched
- * start moves to now — and only a return after 15 minutes or more away starts a fresh draft.
+ * **The create screen's draft follows the app's foreground life**, driven at the OS boundary: the real lifecycle
+ * entry points and the mocked clock. Every return to the foreground is a new activation — an untouched start moves
+ * to now — and only a return after 15 minutes or more away starts a fresh draft.
  */
+@Verifies(spec = "create-event", requirement = "A long absence starts a fresh draft")
 class CreateDraftIntegrationTest {
 
     @Test

@@ -1,13 +1,13 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.assetIdFromUploadKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **A narrowing takes effect on the bytes, not only on the manifest** (capability `photo-sharing`), over
- * the real stack: the composed core, the real `UploadCycle`, the real `ReconfigureEvent` behind `/user/reconfigure`,
- * with only PhotoKit faked.
+ * **A narrowing takes effect on the bytes, not only on the manifest**, over the real stack: the composed core, the real
+ * `UploadCycle`, the real `ReconfigureEvent` behind `/user/reconfigure`, with only PhotoKit faked.
  *
  * Every other selection test reasons about a policy that was already in force when a resource was discovered. This
  * one changes the policy *after* the rows exist, which is the hole the defect shipped through: a ledger row records
@@ -36,6 +36,7 @@ class NarrowedScopeIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "Only photos taken inside the member's capture range are shared")
     fun raising_the_cutoff_stops_uploading_the_rows_the_wider_one_recorded() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -68,6 +69,7 @@ class NarrowedScopeIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "Only photos taken inside the member's capture range are shared")
     fun excluded_rows_do_not_starve_admitted_work() = rigTest {
         extensionUploadsOnly()
         // The one way to make this worse than the bug: admit AFTER a bounded read. Rows needing a job come back in
@@ -95,6 +97,12 @@ class NarrowedScopeIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "What the member is told is shared is exactly what is shared")
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Settings changes take effect immediately",
+        scenario = "Narrowing withdraws listings but not received copies",
+    )
     fun after_a_narrowing_the_manifest_and_the_uploaded_set_are_the_same_set() = rigTest {
         extensionUploadsOnly()
         // Not "each is individually correct" — the SAME set. One policy gates both, so a narrowing that reached one

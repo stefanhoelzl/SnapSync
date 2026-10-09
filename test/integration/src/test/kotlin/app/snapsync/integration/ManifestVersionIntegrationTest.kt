@@ -6,8 +6,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **Manifest publishes are ordered by the ledger's manifest version** (capabilities `photo-sharing`,
- * `docs/architecture.md`, `photo-sharing`), over the real stack: the composed `uploadCore`, the real
+ * **Manifest publishes are ordered by the ledger's manifest version** (`docs/architecture.md`), over the real
+ * stack: the composed `uploadCore`, the real
  * `DeviceManifestProducer` and the manifest service, and the backend mock modelling the real route's
  * ordering.
  *

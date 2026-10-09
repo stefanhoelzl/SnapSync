@@ -1,20 +1,22 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.AppLink
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
  * **The taps that hand the person to the platform's own UI** — the invite's share sheet, a link out of the app, the
- * app's Settings page, the limited-library picker (capabilities `join-event`, `photo-access`, `sync-status`): each
- * reaches the platform with what the screen shows, and the app keeps nothing of the hand-off. A device host cannot
- * drive these (only a finger brings the person back); here the platform's UI records what it was handed.
+ * app's Settings page, the limited-library picker: each reaches the platform with what the screen shows, and the app
+ * keeps nothing of the hand-off. A device host cannot drive these (only a finger brings the person back); here the
+ * platform's UI records what it was handed.
  *
  * And the upload extension's end of an invocation, which the operating system reports and the extension only records.
  */
 class HandOffIntegrationTest {
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "The joined screen offers the invite until the event closes")
     fun sharing_the_invite_hands_the_share_sheet_the_invite_the_screen_shows() = rigTest {
         createAndJoin()
         val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl
@@ -25,6 +27,11 @@ class HandOffIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "The app menu is one tap away on every screen",
+        scenario = "Reading the Privacy Policy",
+    )
     fun a_menu_link_opens_its_page_outside_the_app() = rigTest {
         user("openLink", "link" to AppLink.PRIVACY_POLICY.name)
 

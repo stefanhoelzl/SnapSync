@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -7,9 +8,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The cycle's **entry gate** over the real stack (capability `background-upload`, and `join-event`'s
- * *An unreadable config is not an absent config*): the real `UploadCycle` and ledger over the backend mock, driven through the
- * control protocol, with only the membership read forced (`membership/unreadable`).
+ * The cycle's **entry gate** over the real stack — an unreadable config is not an absent config: the real
+ * `UploadCycle` and ledger over the backend mock, driven through the control protocol, with only the membership read
+ * forced (`membership/unreadable`).
  *
  * These assertions could not be made before the gate moved into the shared core, in either of the two senses that
  * matter:
@@ -34,6 +35,16 @@ class CycleEntryGateIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "A locked phone delays uploads and never ends the membership",
+        scenario = "A wake before the first unlock after a restart",
+    )
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "A membership survives updates, restarts, and a locked phone",
+        scenario = "A locked phone never looks like a leave",
+    )
     fun an_unreadable_membership_leaves_the_ledger_untouched() = rigTest {
         extensionUploadsOnly()
         // Weakened from "the ledger rows are byte-identical" (the ledger is internal) to its observable twins: the
@@ -64,6 +75,7 @@ class CycleEntryGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "delivery", requirement = "A locked phone delays uploads and never ends the membership")
     fun an_unreadable_membership_uploads_nothing_and_touches_no_storage() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -115,6 +127,11 @@ class CycleEntryGateIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "A locked phone delays uploads and never ends the membership",
+        scenario = "A wake before the first unlock after a restart",
+    )
     fun the_membership_is_re_read_each_cycle_so_the_skip_is_not_sticky() = rigTest {
         extensionUploadsOnly()
         // The cycle is long-lived now. An unreadable read must not latch: the next cycle, once the device

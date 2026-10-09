@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,10 +11,10 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The app's entry points, as the operating system delivers them (`docs/architecture.md`, "Events arrive through
- * `listen`"; capability `sync-status`, "Each OS wake does its own work, then hands the rest to one opportunistic
- * tail"): each test delivers one entry over the control protocol and asserts what the person and the operating system
- * can see behind it — the screen, the transfers the app started, the heartbeat it asked for, the background time it
- * held, the screen it built or did not — so a crossed wire produces the wrong outcome whatever the code is named.
+ * `listen`"): each test delivers one entry over the control protocol and asserts what the person and the operating
+ * system can see behind it — the screen, the transfers the app started, the heartbeat it asked for, the background
+ * time it held, the screen it built or did not — so a crossed wire produces the wrong outcome whatever the code is
+ * named.
  *
  * A background launch (`relaunch?scene=false`) is the operating system starting the process for a wake with no scene:
  * the tests about what a wake must NOT build start there, and read only the operating system's record until a
@@ -24,6 +25,7 @@ class EntryIntegrationTest {
     // ---- Links ----------------------------------------------------------------------------------------------------
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "An invite opens the app on its join screen")
     fun a_link_opens_the_join_gate() = rigTest {
         val event = registerEvent()
         openLink(inviteLink(event))
@@ -31,6 +33,7 @@ class EntryIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "A damaged invite is reported and changes nothing")
     fun a_link_that_decodes_to_nothing_shows_the_error_and_opens_no_gate() = rigTest {
         openLink("https://example.invalid/not-an-invite")
         val shown = awaitState { (it.ui.layer as? Layer.CreateEvent)?.error != null }
@@ -129,6 +132,7 @@ class EntryIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "app-experience", requirement = "Background wakes do their work without showing anything")
     fun a_silent_push_releases_after_its_own_work_then_runs_the_tail_and_builds_no_screen() = rigTest {
         val event = createAndJoin()
         foreignDevice("DEV-F", "FQ")
@@ -202,12 +206,18 @@ class EntryIntegrationTest {
     // ---- The selection observer -----------------------------------------------------------------------------------
 
     /**
-     * **The partial grant's selection observer opens on every start** (capability `background-upload`, "Photos upload
-     * without the app being opened"; decision record `changes/timely-background-receiving`, D6): a background start
-     * that builds no screen still reads the selection, so the app's own wake uploads what waits — which a start that
-     * never learned its selection withheld, backlog included.
+     * **The partial grant's selection observer opens on every start** (decision record
+     * `changes/timely-background-receiving`, D6): a background start that builds no screen still reads the selection,
+     * so the app's own wake uploads what waits — which a start that never learned its selection withheld, backlog
+     * included.
      */
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Photos travel without the app being opened",
+        scenario = "Uploads work under limited access",
+    )
+    @Verifies(spec = "app-experience", requirement = "Background wakes do their work without showing anything")
     fun a_background_start_reads_the_selection_and_shares_what_waits() = rigTest {
         permission("LIMITED")
         createAndJoin()

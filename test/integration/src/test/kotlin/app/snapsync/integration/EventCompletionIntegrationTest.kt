@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Layer
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
@@ -10,16 +11,17 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Early event completion over the REAL composition (capabilities `event-lifetime` and `manage-membership`; decision
- * record `changes/early-event-completion`): the end-of-wake step settles this device's share, reads the event's state,
- * and ends the membership on its own once the event is finished for it — and a leave the backend never heard of is
- * delivered by a later wake. `EventCompletionTest` covers the verdicts in isolation; these prove the wiring.
+ * Early event completion over the REAL composition (decision record `changes/early-event-completion`): the end-of-wake
+ * step settles this device's share, reads the event's state, and ends the membership on its own once the event is
+ * finished for it — and a leave the backend never heard of is delivered by a later wake. `EventCompletionTest` covers
+ * the verdicts in isolation; these prove the wiring.
  *
  * The window is short (five days) so a moment exists after its end and before the event's deadline.
  */
 class EventCompletionIntegrationTest {
 
     @Test
+    @Verifies(spec = "event-lifetime", requirement = "The app leaves on its own once the event is finished for it")
     fun the_only_member_settles_closes_the_event_and_leaves_at_the_end_of_a_wake() = rigTest {
         extensionUploadsOnly()
         device("clock/advance", "to" to DURING)
@@ -38,6 +40,8 @@ class EventCompletionIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-lifetime", requirement = "A finished event closes")
+    @Verifies(spec = "event-lifetime", requirement = "The app leaves on its own once the event is finished for it")
     fun a_member_still_settling_keeps_the_event_open_and_this_member_in_it() = rigTest {
         device("clock/advance", "to" to DURING)
         createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
@@ -53,6 +57,11 @@ class EventCompletionIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "The app leaves on its own once the event is finished for it",
+        scenario = "A member whose event finished without them",
+    )
     fun a_completed_event_ends_the_membership_from_a_background_wake() = rigTest {
         device("clock/advance", "to" to DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
@@ -67,6 +76,11 @@ class EventCompletionIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest",
+        scenario = "A leave made offline still counts",
+    )
     fun a_leave_made_offline_reaches_the_backend_on_a_later_wake() = rigTest {
         val event = createAndJoin()
         device("backend/offline", "on" to "true")

@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.RenameState
 import app.snapsync.model.ScreenMessage
 import kotlinx.serialization.json.JsonNull
@@ -9,14 +10,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 /**
- * Seam ↔ UI-state integration for the event rename (capability `manage-membership`), driven through the control
- * protocol's `/user/rename` over the real core — asserting **`UiState` AND backend outcomes**: the backend's event
- * carries the new name, the joined membership carries the ECHOED name (which is the heading the status screen
- * renders), and a failure destroys nothing.
+ * Seam ↔ UI-state integration for the event rename, driven through the control protocol's `/user/rename` over the
+ * real core — asserting **`UiState` AND backend outcomes**: the backend's event carries the new name, the joined
+ * membership carries the ECHOED name (which is the heading the status screen renders), and a failure destroys
+ * nothing.
  */
 class RenameIntegrationTest {
 
     @Test
+    @Verifies(spec = "manage-membership", requirement = "Any member renames the event for everyone")
     fun a_rename_rewrites_the_backend_marker_and_the_heading_follows() = rigTest {
         val event = createAndJoin(name = "Weekend")
         assertEquals("Weekend", heading(), "the heading starts at the joined name")
@@ -33,6 +35,7 @@ class RenameIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "manage-membership", requirement = "Any member renames the event for everyone")
     fun the_backend_TRIMMED_name_is_what_lands_everywhere() = rigTest {
         val event = createAndJoin(name = "Weekend")
 
@@ -45,6 +48,11 @@ class RenameIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "A failed rename keeps the dialog and never ends the membership",
+        scenario = "A rejected name",
+    )
     fun a_rejected_name_fails_and_changes_nothing() = rigTest {
         val event = createAndJoin(name = "Weekend")
 
@@ -58,6 +66,11 @@ class RenameIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "A failed rename keeps the dialog and never ends the membership",
+        scenario = "A rename that meets a missing event keeps the member joined",
+    )
     fun a_rename_of_a_SWEPT_event_leaves_the_membership_joined_and_intact() = rigTest {
         val event = createAndJoin(name = "Weekend")
         val before = assertNotNull(state().joined).membership
@@ -73,9 +86,9 @@ class RenameIntegrationTest {
             RenameState.Failed(ScreenMessage.RENAME_FAILED),
             status,
         )
-        // THE INVARIANT: a 404 is ONE witness, and the self-leave needs two (capability `manage-membership`). The
-        // membership must survive a rename against a swept event byte for byte — the config is the only record of
-        // the join, and losing it is unrecoverable.
+        // THE INVARIANT: a 404 is ONE witness, and the self-leave needs two. The membership must survive a rename
+        // against a swept event byte for byte — the config is the only record of the join, and losing it is
+        // unrecoverable.
         assertEquals(before, state().joined?.membership, "the membership survives the 404 unchanged")
         assertEquals("Weekend", heading(), "…and so does the heading")
     }

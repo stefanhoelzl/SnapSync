@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -7,8 +8,7 @@ import kotlin.test.assertEquals
 
 /**
  * **A push reads only what is new, and a withdrawn photo stops coming** (decision record `changes/incremental-union`,
- * D6–D7; capability `photo-sharing`, "Deleting or no longer sharing a photo withdraws it"), counted where the outside
- * can see it: the backend's union reads, and the photo library.
+ * D6–D7), counted where the outside can see it: the backend's union reads, and the photo library.
  */
 class IncrementalUnionIntegrationTest {
 
@@ -31,6 +31,7 @@ class IncrementalUnionIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "Deleting or no longer sharing a photo withdraws it")
     fun a_photo_withdrawn_before_it_arrived_never_arrives_and_one_received_stays() = rigTest {
         val event = createAndJoin()
         foreignDevice("DEV-F", "KEPT", "RECEIVED", event = event)

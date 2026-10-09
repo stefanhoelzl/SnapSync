@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
@@ -14,9 +15,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * A phone the service refuses as not genuine is told why, end to end (capability `privacy-security`, "A refused phone
- * is told why"; `create-event`, `join-event`, `sync-status`), over the REAL composed core, driven through the control
- * protocol.
+ * A phone the service refuses as not genuine is told why, end to end, over the REAL composed core, driven through
+ * the control protocol.
  *
  * The backend mock answers what v2 answers — `401 attestation rejected: <reason>` — and every step between it and the
  * screen is the shipped one: the attestation service reads the reason, the authenticated backend asks it for a token
@@ -26,6 +26,12 @@ import kotlin.test.assertTrue
 class DeviceRefusalIntegrationTest {
 
     @Test
+    @Verifies(spec = "privacy-security", requirement = "A refused phone is told why")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The front screen tells a refused phone before it tries",
+        scenario = "A refused phone learns it on opening the app",
+    )
     fun a_refused_phone_is_told_why_on_the_front_screen_when_the_app_opens() = rigTest {
         for (reason in DeviceRefusal.entries) {
             refuse(reason)
@@ -39,6 +45,11 @@ class DeviceRefusalIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "A failed create says so and changes nothing",
+        scenario = "A refused phone's create says why",
+    )
     fun a_refused_create_says_why_and_leaves_the_phone_in_no_event() = rigTest {
         refuse(DeviceRefusal.DEVICE_MODIFIED)
         user("create", "name" to Rig.EVENT_NAME, "startsAt" to Rig.WINDOW_START, "endsAt" to Rig.WINDOW_END)
@@ -48,6 +59,11 @@ class DeviceRefusalIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The front screen tells a refused phone before it tries",
+        scenario = "A refusal the service stopped making heals on the next tap",
+    )
     fun a_refusal_the_service_stops_making_heals_on_the_next_tap() = rigTest {
         refuse(DeviceRefusal.DEVICE_UNVERIFIABLE)
         tokenless()
@@ -61,6 +77,7 @@ class DeviceRefusalIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "join-event", requirement = "A refused phone is told why it cannot join")
     fun a_refused_join_says_why_and_its_retry_joins_once_the_service_stops_refusing() = rigTest {
         val event = registerEvent()
         refuse(DeviceRefusal.APP_NOT_GENUINE)
@@ -81,6 +98,11 @@ class DeviceRefusalIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "A device that cannot be verified is shown, and never blamed on the member",
+        scenario = "A refused phone's line names the cause",
+    )
     fun a_joined_phone_the_service_comes_to_refuse_is_told_the_cause_on_its_status_line() = rigTest {
         createAndJoin()
         refuse(DeviceRefusal.DEVICE_MODIFIED)
@@ -92,8 +114,18 @@ class DeviceRefusalIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A refused phone's offered report shows which root its proof ends at",
+    )
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "Any other report carries no certificate facts",
+    )
     fun only_a_report_offered_for_the_refusal_carries_the_certificates_the_phone_presented() = rigTest {
-        // Capability `privacy-security`: which root a refused phone's proof ends at reaches the operator — from "Report
+        // Which root a refused phone's proof ends at reaches the operator — from "Report
         // this", never from any other report.
         device("backend/refuse-attestation", "reason" to "device-unverifiable", "detail" to "certificate")
         tokenless()

@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Direction
 import app.snapsync.model.SyncHealth
 import kotlin.test.Test
@@ -7,13 +8,23 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Seam ↔ UI-state integration for the in-place reconfigure (capability `manage-membership`), driven through the
+ * Seam ↔ UI-state integration for the in-place reconfigure, driven through the
  * control protocol's `/user/reconfigure` over the real core — asserting **`UiState` AND observable outcomes**:
  * enabling share uploads, album-on gathers what is already held, and turning receive off cancels in-flight downloads.
  */
 class ReconfigureIntegrationTest {
 
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Each direction runs only if the member chose it",
+        scenario = "Receive-only uploads nothing",
+    )
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Settings changes take effect immediately",
+        scenario = "Turning sharing on starts right away",
+    )
     fun enabling_share_on_a_download_only_membership_starts_uploading_in_place() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin("direction" to "download")
@@ -37,9 +48,15 @@ class ReconfigureIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "Turning the album on gathers what is already there",
+        scenario = "Turning the album on later",
+    )
+    @Verifies(spec = "event-album", requirement = "The album holds the event as this device holds it")
     fun turning_the_album_on_gathers_already_synced_photos_and_places_new_ones() = rigTest {
         extensionUploadsOnly()
-        // Every membership carries a name (capability `join-event`); it titles the album.
+        // Every membership carries a name; it titles the album.
         createAndJoin("saveToAlbum" to "false", name = "Anna's Birthday")
         addPhoto("A")
 
@@ -48,7 +65,7 @@ class ReconfigureIntegrationTest {
         assertTrue(primaryKey("A") in objects())
         assertTrue(albums().isEmpty(), "no album while opted out")
 
-        // Reconfigure the album ON: the album is ensured, and the gather (capability `event-album`) places the
+        // Reconfigure the album ON: the album is ensured, and the gather places the
         // already-synced A — detached, so the Save returned before it ran.
         user("reconfigure", "saveToAlbum" to "true")
         val album = eventually(read = { albums() }) { it.size == 1 && it.single().assets == listOf("A") }.single()
@@ -61,6 +78,11 @@ class ReconfigureIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Settings changes take effect immediately",
+        scenario = "Turning receiving off stops downloads",
+    )
     fun turning_receive_off_cancels_in_flight_downloads_and_imports_nothing() = rigTest {
         createAndJoin() // Both
         foreignDevice("DEV-F", "FQ")
@@ -83,6 +105,12 @@ class ReconfigureIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "Deleting or no longer sharing a photo withdraws it")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "One status line in a fixed priority",
+        scenario = "Neither sharing nor receiving is said plainly",
+    )
     fun switching_both_directions_off_withdraws_the_photos_and_says_so() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin() // Both
@@ -95,7 +123,7 @@ class ReconfigureIntegrationTest {
         val membership = awaitState { it.joined?.membership?.direction == Direction.Neither }.joined!!.membership
         assertEquals(event, membership.eventId, "same membership, never left")
 
-        // The next cycle lists nothing: the member's photos are withdrawn from the event (capability `manage-membership`).
+        // The next cycle lists nothing: the member's photos are withdrawn from the event.
         cycle()
         eventually(read = { manifest(event)?.keys.orEmpty() }) { it.isEmpty() }
 

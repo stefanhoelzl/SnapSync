@@ -304,6 +304,19 @@ These pin one feature's structural rule that no type can state:
 | `CrashScrubTest` (`:domain:model`, a unit test since the scrub is pure) | only the operator-confirmed diagnostic dump bypasses the UUID scrub: the dump declares the exemption, and the scrub reads it before redacting anything |
 | `JvmRootBootsColdTest` | constructing a launch of the JVM root forces no `AppCore` member |
 
+### Tests verify requirements
+
+The specs (`openspec/specs/`) say what a user observes; the code is laid out by its own laws, not by the specs'
+cut. They are linked in one direction only: a test that verifies a requirement says so with
+`@Verifies(spec = "…", requirement = "…"[, scenario = "…"])` (`:test:control`), keyed on the spec's directory
+and the requirement's title. `./gradlew :test:architecture:verifiesReport` lists which requirements a test
+claims and which none does (`build/reports/verifies.md`, non-gating, never committed).
+
+| law | enforced by |
+|---|---|
+| Every `@Verifies` names a spec, requirement and scenario that exist, so a renamed requirement fails the build and names the tests that claimed it | `VerifiesGateTest` (text: every test source set, the journeys included) |
+| Production code cites no spec: no capability named in backticks, in a comment or a string, in any `.kt`/`.kts` outside a test source set | `NoSpecCitationTest` (text, heuristic: a paraphrase is not caught) |
+
 ### Disciplines with no gate
 
 - **Necessity claims carry forcing proofs.** "The platform forces X" cites an API contract, a vendor

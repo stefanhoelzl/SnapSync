@@ -18,9 +18,9 @@ class PushRegistrationIntegrationTest {
     private val REGISTERED = "DEADBEEF" to "sandbox"
 
     /**
-     * A JOIN re-registers the push token (capability `receiving-photos`): committing a join runs the real
+     * A JOIN re-registers the push token: committing a join runs the real
      * `flow/Provision`, whose `registerPush` re-PUTs the delivered token — closing the warm-rejoin window the
-     * nightly sweep's device-record collection opens (capability `event-lifetime`).
+     * nightly sweep's device-record collection opens.
      *
      * The config is last-write-wins, so the document cannot tell one registration from two; the backend's count of
      * stored registrations can. The delivery registers once; the join registers again.
@@ -39,8 +39,7 @@ class PushRegistrationIntegrationTest {
     }
 
     /**
-     * **The credential arm of `AppCore.installCompositionSubscriptions` is wired** (capabilities
-     * `receiving-photos`, `privacy-security`).
+     * **The credential arm of `AppCore.installCompositionSubscriptions` is wired**.
      *
      * THE JOIN THIS PINS. The app publishes a delivered APNs token only when it differs from the last
      * registration the backend accepted. A registration refused because the backend rejected the credential

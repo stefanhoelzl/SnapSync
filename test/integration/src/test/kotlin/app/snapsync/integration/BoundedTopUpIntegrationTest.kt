@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -18,6 +19,11 @@ import kotlin.test.assertTrue
  * slot is busy — are PhotoKit call counts with nothing outside the app to observe them; they are `UploadCycleTest`'s
  * `a_refusal_stops_the_pass_with_no_further_resolve` and `a_full_platform_reports_work_remaining`.
  */
+@Verifies(
+    spec = "delivery",
+    requirement = "A photo is never lost on the way",
+    scenario = "A large backlog drains in steps",
+)
 class BoundedTopUpIntegrationTest {
 
     @Test

@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.SyncHealth
@@ -14,6 +15,7 @@ import kotlin.test.assertEquals
 class HeldScreenIntegrationTest {
 
     @Test
+    @Verifies(spec = "join-event", requirement = "The join screen verifies the event before offering to join")
     fun a_held_details_load_keeps_the_join_gate_loading_until_released() = rigTest {
         val event = registerEvent()
         hold("event")
@@ -29,6 +31,7 @@ class HeldScreenIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "join-event", requirement = "Joining happens only on confirmation and needs a connection")
     fun a_held_enrolment_keeps_the_join_gate_committing_until_released() = rigTest {
         val event = registerEvent()
         openLink(inviteLink(event))
@@ -44,6 +47,7 @@ class HeldScreenIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "create-event", requirement = "The creator joins through the same join screen as every guest")
     fun a_held_create_keeps_the_create_in_flight_until_released() = rigTest {
         hold("create")
 
@@ -56,6 +60,7 @@ class HeldScreenIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
     fun a_held_enumeration_keeps_the_joined_screen_loading_until_released() = rigTest {
         device("gallery/hold-enumeration", "on" to "true")
 

@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.step
@@ -8,10 +9,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **The ledger is the current membership's share set**, over the real stack driven through the control protocol
- * (capabilities `photo-sharing`, `photo-sharing`, `manage-membership`): a join loads it from the device's
- * stored-file listing, a leave clears it, and a switch does both — without re-uploading anything the backend already
- * holds, and without a failed listing ever blocking a join.
+ * **The ledger is the current membership's share set**, over the real stack driven through the control protocol:
+ * a join loads it from the device's stored-file listing, a leave clears it, and a switch does both — without
+ * re-uploading anything the backend already holds, and without a failed listing ever blocking a join.
  *
  * The ledger itself is the app's own bookkeeping, so each test reads its observable twin: the upload jobs the
  * operating system was asked for, the objects the backend holds, and the joined screen's health.
@@ -19,6 +19,11 @@ import kotlin.test.assertTrue
 class ShareSetIntegrationTest {
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "A photo already in an event is not uploaded again for it",
+        scenario = "Rejoining shares without re-uploading",
+    )
     fun leave_then_rejoin_the_same_event_re_uploads_nothing() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -52,6 +57,11 @@ class ShareSetIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "A photo already in an event is not uploaded again for it",
+        scenario = "A photo in two events is shared to each",
+    )
     fun a_switch_starts_the_new_events_share_set_afresh_and_uploads_for_it() = rigTest {
         extensionUploadsOnly()
         val next = registerEvent(name = "Next") // E2, to switch to
@@ -74,6 +84,7 @@ class ShareSetIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "A photo already in an event is not uploaded again for it")
     fun switching_away_and_back_re_uploads_nothing_the_event_already_holds() = rigTest {
         extensionUploadsOnly()
         val next = registerEvent(name = "Next")
@@ -97,6 +108,12 @@ class ShareSetIntegrationTest {
      * observable: the in-flight work would be requested again.
      */
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Leaving or switching stops every transfer for the old event",
+        scenario = "Rescanning the joined event changes nothing",
+    )
+    @Verifies(spec = "invite-link", requirement = "Reopening the current event's invite changes nothing")
     fun re_scanning_your_own_events_link_creates_no_new_upload_job_and_re_uploads_nothing() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -115,6 +132,11 @@ class ShareSetIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "A photo already in an event is not uploaded again for it",
+        scenario = "An offline join may upload again, never duplicate",
+    )
     fun a_join_whose_listing_fails_still_joins_and_uploads() = rigTest {
         extensionUploadsOnly()
         createAndJoin()

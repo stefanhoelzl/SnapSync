@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.Layer
 import app.snapsync.model.ReceivedPhotoName
 import kotlin.test.Test
@@ -7,8 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Deleting the app and installing it again (capability `receiving-photos`, "A deleted received photo never comes back"
- * and "Received photos are never shared back"): the download record goes with the app, and the SnapSync mark on each
+ * Deleting the app and installing it again: the download record goes with the app, and the SnapSync mark on each
  * received photo's name is what the rejoin recognises it by.
  *
  * `device/reinstall` deletes the app's files, databases, user defaults and photo grant and keeps what outlives it —
@@ -17,6 +17,16 @@ import kotlin.test.assertTrue
 class ReinstallIntegrationTest {
 
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "A deleted received photo never comes back",
+        scenario = "A reinstall recognises received photos",
+    )
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos are never shared back",
+        scenario = "A reinstall does not share received photos back",
+    )
     fun a_rejoin_after_a_reinstall_neither_receives_nor_shares_back_what_the_library_still_holds() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -37,6 +47,11 @@ class ReinstallIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos are never shared back",
+        scenario = "A share-only rejoin does not share received photos back",
+    )
     fun a_share_only_rejoin_after_a_reinstall_does_not_share_received_photos_back() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -52,9 +67,14 @@ class ReinstallIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "A deleted received photo never comes back",
+        scenario = "A reinstall recognises received photos",
+    )
     fun an_android_rejoin_recognises_the_received_photos_filed_into_the_event_album() = rigTest {
         // An Android phone's albums are folders, and its event album's folder is no sharing candidate — so the
-        // library read that recognises received photos must reach into it (capability `receiving-photos`).
+        // library read that recognises received photos must reach into it.
         device("album/kind", "kind" to "folder")
         device("relaunch")
         val event = createAndJoin("saveToAlbum" to "true")

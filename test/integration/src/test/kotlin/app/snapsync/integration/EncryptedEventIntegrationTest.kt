@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.LINK_ORIGIN
 import app.snapsync.model.Layer
@@ -19,6 +20,11 @@ class EncryptedEventIntegrationTest {
     private suspend fun Rig.creatingPlain() = device("encrypt-new-events", "on" to "false")
 
     @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The invite link format stays openable forever",
+        scenario = "A new event's invite carries its key",
+    )
     fun a_shipped_build_creates_an_encrypted_event_whose_invite_carries_its_key() = rigTest {
         val event = createAndJoin()
         val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl!!
@@ -27,6 +33,7 @@ class EncryptedEventIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "The invite link format stays openable forever")
     fun a_plain_event_keeps_the_fragment_form_invite() = rigTest {
         creatingPlain()
         createAndJoin()
@@ -35,6 +42,7 @@ class EncryptedEventIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "An incomplete invite never joins an encrypted event")
     fun an_invite_without_the_key_never_joins_an_encrypted_event() = rigTest {
         val event = createAndJoin()
         val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl!!
@@ -52,6 +60,7 @@ class EncryptedEventIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "An incomplete invite never joins an encrypted event")
     fun a_key_never_opens_a_plain_event() = rigTest {
         val plain = registerEvent()
         openLink("$LINK_ORIGIN/join/$plain#k=" + "A".repeat(42) + "E")
@@ -60,6 +69,23 @@ class EncryptedEventIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "sync-status", requirement = "A device that lost the event's key asks for its invite")
+    @Verifies(spec = "invite-link", requirement = "Reopening the current event's invite changes nothing")
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Only the whole invite opens an event's photos",
+        scenario = "A phone that cannot read the key uploads nothing",
+    )
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The joined screen offers the invite until the event closes",
+        scenario = "A phone that lost the event's key offers no invite",
+    )
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The joined screen offers the invite until the event closes",
+        scenario = "The invite returns with the key",
+    )
     fun a_lost_key_stops_both_directions_and_the_reopened_invite_resumes_them() = rigTest {
         val event = createAndJoin()
         val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl!!

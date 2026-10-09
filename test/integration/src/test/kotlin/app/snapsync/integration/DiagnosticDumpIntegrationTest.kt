@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Verifies
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DiagnosticKeys
@@ -16,7 +17,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The operator-initiated diagnostic dump over the **real** stack (capability `privacy-security`):
+ * The operator-initiated diagnostic dump over the **real** stack:
  * the same `snapSyncApp` core the device shells call, fired through `/user/sendDiagnostics` — the same
  * `UserCommands` bundle presentation fires — landing in the host's reporter (`diagnostics/sent`).
  *
@@ -65,6 +66,10 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
     fun a_confirmed_dump_carries_both_logs_and_the_live_counts() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -92,6 +97,10 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
     fun a_dump_carries_the_device_state_the_operating_system_reports() = rigTest {
         createAndJoin()
         device("network", "access" to "restricted")
@@ -116,6 +125,10 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
     fun a_dump_carries_the_counts_the_screen_showed() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -143,8 +156,12 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
     fun the_dump_travels_verbatim_with_its_identifiers_intact() = rigTest {
-        // The deliberate carve-out (capability `privacy-security`): a dump is confirmed by the operator
+        // The deliberate carve-out: a dump is confirmed by the operator
         // and worthless without the ids — a log where every id reads alike cannot answer WHICH event.
         // Automatic events stay redacted; only this path is exempt.
         val eventId = createAndJoin()
@@ -177,6 +194,10 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
     fun each_confirmation_sends_exactly_one_dump() = rigTest {
         createAndJoin()
 
@@ -193,6 +214,10 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
     fun a_described_identifier_reaches_the_reporter_unredacted() = rigTest {
         // The description rides in the event MESSAGE, which is the one field the scrub reaches. An
         // operator quoting the event id they are stuck on is exactly the case worth protecting, and
@@ -205,8 +230,12 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+    )
     fun a_sent_report_is_told_as_sent_and_the_word_clears_itself() = rigTest {
-        // What the user is told once the dump is handed off (capability `privacy-security`): "sent", never more.
+        // What the user is told once the dump is handed off: "sent", never more.
         createAndJoin()
 
         sendDiagnostics(NOTE)
@@ -218,7 +247,7 @@ class DiagnosticDumpIntegrationTest {
 
     @Test
     fun the_screen_names_the_running_build() = rigTest {
-        // The app menu's footer (capability `sync-status`) reads the build the composition was handed, not a guess.
+        // The app menu's footer reads the build the composition was handed, not a guess.
         val build = awaitState { it.ui.build != BuildLabel.UNKNOWN }.ui.build
         assertTrue(build.version.isNotBlank() && build.version != BuildLabel.UNKNOWN.version, "the version: $build")
     }
