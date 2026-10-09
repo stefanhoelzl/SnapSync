@@ -16,7 +16,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * **This install's device id** (capability `photo-sharing`): the `/files/devices/<deviceId>/` byte partition, the
+ * **This install's device id**: the `/files/devices/<deviceId>/` byte partition, the
  * manifest key, and the identity every backend call is made under — kept in the [SecureStore]'s shared device-id
  * slot, so the app and the upload extension read **one** item.
  *
@@ -65,7 +65,7 @@ class PersistedDeviceIdentity(
 
     /**
      * The id this install already has, **never minting or writing one** — for a reader that must not create an
-     * identity as a side effect: a bug report (capability `privacy-security`). This process's resolution when it has
+     * identity as a side effect: a bug report. This process's resolution when it has
      * one; otherwise the shared slot as it stands.
      * [DeviceIdResult.AbsentNotMintable] here means only "none stored yet", whatever this process's role.
      */

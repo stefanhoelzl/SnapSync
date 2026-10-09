@@ -4,8 +4,7 @@ import platform.Foundation.NSURLSessionConfiguration
 
 /**
  * **Which `URLSession` this app process moves bytes over, chosen by COMPILATION TARGET rather than at
- * runtime** (capability `background-upload`, "The transport binding is fixed by the compilation
- * target"; also `receiving-photos`).
+ * runtime**, for uploads and downloads alike.
  *
  * `iosArm64` — every shipped binary — yields a **background** configuration, unchanged in every respect
  * including its session identifier and its `discretionary` / `sessionSendsLaunchEvents` /

@@ -7,12 +7,12 @@ import app.snapsync.model.Handoff
  * operating system's shell (`UIActivityViewController`, `UIApplication.openURL` and the app's Settings page on iOS;
  * a second platform offers its own chooser, intent and settings screen).
  *
- * - [share] offers text — in practice the event's invite URL (capability `join-event`) — to a chooser the user
+ * - [share] offers text — in practice the event's invite URL — to a chooser the user
  *   picks a destination from. It answers only whether the surface appeared: which app the user picked, and whether
  *   they sent anything, is not this app's to know.
- * - [openUrl] leaves for whichever app claims [url] — the update-required screen's store button (capability
- *   `app-update-required`), whose remedy is by definition not in this app.
- * - [openSettings] opens this app's own Settings page — the `DENIED` affordance (capability `photo-access`).
+ * - [openUrl] leaves for whichever app claims [url] — the update-required screen's store button, whose remedy is by
+ *   definition not in this app.
+ * - [openSettings] opens this app's own Settings page — the `DENIED` affordance.
  *
  * **The two that answer, answer a [Handoff] that nothing acts on**: nothing in `UiState` depends on one. But a
  * hand-off that did NOT happen leaves the user who asked still here with nothing to show for the tap, so the answer
@@ -28,7 +28,7 @@ import app.snapsync.model.Handoff
 interface SystemUi : Port {
     /**
      * Present the platform's share surface carrying [text], titled [title] where the platform shows a title (the
-     * sheet's header; capability `manage-membership`: the event's name), and answer whether it appeared.
+     * sheet's header: the event's name), and answer whether it appeared.
      */
     suspend fun share(text: String, title: String): Handoff
 

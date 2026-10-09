@@ -4,11 +4,11 @@ package app.snapsync.model
  * Lifecycle of a foreign asset in the download store. Two states are terminal — [IMPORTED] and
  * [UNIMPORTABLE] — and "terminal" is what every non-terminal predicate in this store means.
  *
- * [UNIMPORTABLE] is **not** the `sync-status` no-FAILED posture being reversed. That posture governs
- * `SyncState`, which classifies the **upload** side, where `failed ≡ 0` because uploads really are retried
- * forever. It was over-read into this enum. Here a failure genuinely is tellable: the photo library takes a
- * resource's file at ingest, so a rejection of the file's CONTENT leaves no bytes to retry from, and every
- * later trigger would spend a library transaction rediscovering that (capability `receiving-photos`).
+ * [UNIMPORTABLE] is **not** the status screen's no-FAILED posture being reversed. That posture governs `SyncState`,
+ * which classifies the **upload** side, where `failed ≡ 0` because uploads really are retried forever. It was over-read
+ * into this enum. Here a failure genuinely is tellable: the photo library takes a resource's file at ingest, so a
+ * rejection of the file's CONTENT leaves no bytes to retry from, and every later trigger would spend a library
+ * transaction rediscovering that.
  *
  * A row in this state carries **no** `createdLocalId`: no asset was created, so it is not a suppression
  * handle, and it is prunable like any other handle-free row.
@@ -20,14 +20,14 @@ enum class DownloadState {
 }
 
 /**
- * The download projection's counts, read together (capability `receiving-photos`).
+ * The download projection's counts, read together.
  *
- * A value type rather than three reads, so the projection cannot publish a torn composite of its own counts —
- * the `sync-status` group requires each of its members to be internally consistent.
+ * A value type rather than three reads, so the projection cannot publish a torn composite of its own counts — the
+ * status screen requires each of its counts to be internally consistent.
  *
- * [stillArriving] excludes `UNIMPORTABLE` rows deliberately (capability `receiving-photos`, design D8): counting
- * work that can never finish pegs the download line below completion forever, in a state the member can neither
- * act on nor dismiss. That loss reaches the operator through the crash-reporting sink instead of the screen.
+ * [stillArriving] excludes `UNIMPORTABLE` rows deliberately (design D8): counting work that can never finish pegs the
+ * download line below completion forever, in a state the member can neither act on nor dismiss. That loss reaches the
+ * operator through the crash-reporting sink instead of the screen.
  */
 data class DownloadCounts(
     /** Imported foreign assets — the progress numerator. */
@@ -57,8 +57,8 @@ data class PlannedResource(
 data class PlannedAsset(val ref: AssetRef, val creationDate: String, val resources: List<PlannedResource>)
 
 /**
- * A photo already in the library that a join recognised, by its SnapSync mark, as [ref]'s earlier import (capability
- * `receiving-photos`): [localId] is that library asset, [creationDate] the union's capture timestamp for the ref.
+ * A photo already in the library that a join recognised, by its SnapSync mark, as [ref]'s earlier import: [localId] is
+ * that library asset, [creationDate] the union's capture timestamp for the ref.
  */
 data class AdoptedAsset(val ref: AssetRef, val localId: AssetId, val creationDate: String)
 
@@ -83,8 +83,8 @@ data class PendingDownload(
 data class ImportableAsset(val ref: AssetRef, val creationDate: String)
 
 /**
- * A row whose import was never confirmed: an asset **was** created for [ref] — [createdLocalId] is its
- * identifier — but the confirmation never arrived. The import path adjudicates these against the photo
- * library rather than importing them again (capability `receiving-photos`).
+ * A row whose import was never confirmed: an asset **was** created for [ref] — [createdLocalId] is its identifier — but
+ * the confirmation never arrived. The import path adjudicates these against the photo library rather than importing
+ * them again.
  */
 data class UnconfirmedImport(val ref: AssetRef, val createdLocalId: AssetId)

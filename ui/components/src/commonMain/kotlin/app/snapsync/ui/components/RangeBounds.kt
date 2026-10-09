@@ -11,8 +11,8 @@ fun interface LatestUntil {
 }
 
 /**
- * What a range may be — the ONE difference between the surfaces that pick one (capabilities `create-event`,
- * `join-event`, `manage-membership`): where it may lie, how long it may be, and whether its end time may be
+ * What a range may be — the ONE difference between the surfaces that pick one —
+ * create, join and the event's settings: where it may lie, how long it may be, and whether its end time may be
  * blank. Everything else — the calendar, the gestures, the wheels, the rules — is the same component.
  */
 class RangeBounds private constructor(

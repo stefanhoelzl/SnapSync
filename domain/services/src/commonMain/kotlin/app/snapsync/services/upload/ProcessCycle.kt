@@ -4,7 +4,7 @@ import app.snapsync.model.CycleResult
 import co.touchlab.kermit.Logger
 
 /**
- * The OS-driven tier's pending→re-invocation rule (capability `background-upload`; drained from
+ * The OS-driven tier's pending→re-invocation rule (drained from
  * the untested extension root at the migration finale): the OS invokes the extension lazily (on
  * library changes), not when an upload quietly finishes — so a drained cycle that returns
  * [CycleResult.COMPLETED] leaves already-succeeded jobs un-acknowledged until the next change.
@@ -30,7 +30,7 @@ suspend fun CycleResult.requeueWhilePending(
 
 /**
  * One OS-driven `process()` invocation — [run] the cycle, then [requeueWhilePending] — as a function
- * that **never throws** (capability `background-upload`). The extension root forwards its result
+ * that **never throws**. The extension root forwards its result
  * across the ObjC boundary, where a Kotlin throwable is not a failed cycle but a Kotlin/Native
  * `abort()` of the whole extension process: no result reaches the OS and nothing is reported.
  *

@@ -62,7 +62,7 @@ private val httpLog = Logger.withTag("Http")
  *
  * What it owns is wire: the `Authorization: Bearer` header on the calls that take a token, the calling build's
  * declared version ([appVersion]) on EVERY request — including the ungated `/attest/…` bootstrap, so an obsolete
- * build that can still mint a token learns it is obsolete on its first contact (capability `app-update-required`) —
+ * build that can still mint a token learns it is obsolete on its first contact —
  * the JSON shapes, and one log line per request. What a status MEANS is decided above it.
  *
  * **Decoding is strict where leniency is dangerous.** The per-device listing requires `assetId`, `role` (against the

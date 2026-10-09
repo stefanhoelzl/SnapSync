@@ -30,12 +30,12 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Assemble one operator-initiated diagnostic dump (capability `privacy-security`).
+ * Assemble one operator-initiated diagnostic dump.
  *
  * **Reads only.** Nothing here writes a ledger row, a download row, a config or an identity; the whole feature is
  * a projection of the app's state and the device's, taken at the moment the operator confirms.
  *
- * **What a report may hold** is bounded by kind, not by source (capability `privacy-security`): this app's own state
+ * **What a report may hold** is bounded by kind, not by source: this app's own state
  * and the device's settings and conditions — never a photo or what it shows, another app's data, a location beyond
  * the time zone, contacts, free storage or the device's name. A new field is tested against that bound. (It replaced
  * the older "a dump reads no data the app does not already read", which kept out exactly the device conditions that
@@ -67,8 +67,8 @@ class CollectDiagnosticDump(
     private val appFacts: () -> AppFacts,
     /**
      * The upload facts at the moment of the dump — whether the extension is registrable, and the app uploader's
-     * admission — as labelled strings the composition derives from answers it already computes (capability
-     * `privacy-security`). Both uploaders may be active at once, so there is no single tier to name
+     * admission — as labelled strings the composition derives from answers it already computes. Both uploaders may
+     * be active at once, so there is no single tier to name
      * (decision record `changes/both-uploaders-active`).
      */
     private val uploadFacts: () -> Map<String, String>,
@@ -157,7 +157,7 @@ class CollectDiagnosticDump(
         }
 
     /**
-     * What a report offered for a refused phone carries about its verification (capability `privacy-security`): the
+     * What a report offered for a refused phone carries about its verification: the
      * service's answer as it named it, and the certificates the phone presented above its own key — names, validity
      * and key type — with the root key's fingerprint. Nothing else: no certificate, no serial number. A phone whose
      * latest attestation was not refused says so rather than leaving the reader to guess.

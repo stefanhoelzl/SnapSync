@@ -3,7 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.Proof
 
 /**
- * The platform's device-integrity service (capability `privacy-security`) — on iOS, App Attest. The port only
+ * The platform's device-integrity service — on iOS, App Attest. The port only
  * PROVES: what a proof is for, when to renew, and where the resulting token and key handle are kept are the
  * attestation service's (`DeviceAttestation`, over `AttestState`).
  *

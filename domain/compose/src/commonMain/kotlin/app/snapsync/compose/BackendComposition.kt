@@ -7,7 +7,8 @@ import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.version.AppVersionGate
 
 /**
- * The app's attestation service (capability `privacy-security`): proves with the platform's integrity service,
+ * The app's attestation service: proves with the platform's integrity service,
+
  * reaches the backend's ungated `/attest/…` routes on the raw port, and reports a refused build from them to
  * [versionGate].
  *

@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The app's Android [Gallery] (capability `photo-access`): the [AndroidGalleryReader], plus the permission requests
+ * The app's Android [Gallery]: the [AndroidGalleryReader], plus the permission requests
  * ([AndroidPhotoPermission]), the partial grant's selection observer, and the library's change token.
  *
  * - **The selection observer** watches the image and video collections while [observeChanges] is on **and** the grant

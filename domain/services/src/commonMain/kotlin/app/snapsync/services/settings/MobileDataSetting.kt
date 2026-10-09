@@ -13,9 +13,9 @@ import kotlinx.coroutines.flow.asStateFlow
 internal const val MOBILE_DATA_KEY = "app.snapsync.settings.mobileData"
 
 /**
- * **Whether photos may use mobile data on this device** (capability `mobile-data`; decision record
- * `changes/archive/2026-10-07-mobile-data-per-device`, D1): one choice for the device, in the shared [Preferences], so the app and the
- * upload extension read the same value.
+ * **Whether photos may use mobile data on this device** (decision record
+ * `changes/archive/2026-10-07-mobile-data-per-device`, D1): one choice for the device, in the shared [Preferences],
+ * so the app and the upload extension read the same value.
  *
  * - [transferNetwork] — read on every call, because the extension is another process an app-side change does not
  *   reach otherwise. Nothing stored is "on" (the default); a value that cannot be read, or that is neither `on` nor

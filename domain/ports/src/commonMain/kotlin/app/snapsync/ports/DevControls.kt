@@ -23,7 +23,7 @@ interface DevControls : Listenable<DevHandlers> {
     /**
      * Whether the join gate acts on an invite link's dev/test hints (`autoJoin` + its overrides). **Always
      * [InviteLinkHints.Ignored] in a production build**, so no crafted link can join, switch or start sharing
-     * without the member confirming (capability `join-event`, "Joining happens only on confirmation").
+     * without the member confirming: joining happens only on confirmation.
      */
     fun inviteLinkHints(): InviteLinkHints
 

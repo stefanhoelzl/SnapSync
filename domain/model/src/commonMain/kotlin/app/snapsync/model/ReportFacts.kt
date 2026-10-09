@@ -1,8 +1,8 @@
 package app.snapsync.model
 
 /**
- * The bug report's reading of facts the app composition holds (capability `privacy-security`) — pure, so the
- * composition hands them over without deciding anything.
+ * The bug report's reading of facts the app composition holds — pure, so the composition hands them over without
+ * deciding anything.
  */
 
 /** The device id as a report writes it: the id, or why there is none. Never a mint — see `PersistedDeviceIdentity.current`. */

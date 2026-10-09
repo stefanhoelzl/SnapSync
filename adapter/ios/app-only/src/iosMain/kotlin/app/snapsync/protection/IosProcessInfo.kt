@@ -43,7 +43,7 @@ internal object SystemProtectedDataApi : ProtectedDataApi {
 /**
  * The iOS [ProcessInfo] of the app process: `UIApplication.isProtectedDataAvailable`. App-only, because
  * `UIApplication` is unavailable to app extensions — the extension records the status of each protected read it
- * makes instead (capability `sync-status`, "Background entry points record protected-data state").
+ * makes instead: background entry points record protected-data state.
  *
  * `UIApplication` is main-thread-only and the entry points that ask run on the composition lane (law "Dispatcher
  * lanes are fixed by the composition"), so the read names the main lane itself. It is a property read, not work:

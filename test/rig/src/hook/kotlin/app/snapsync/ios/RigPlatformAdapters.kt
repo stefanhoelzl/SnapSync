@@ -186,7 +186,7 @@ private fun writeTextFile(path: String?, text: String) {
 
 /**
  * WIRED entry points. No deadline is reported beside a receipted trigger: no clock of the app's own releases a
- * handler (capability `sync-status`), so the measured hold is the only number there is.
+ * handler, so the measured hold is the only number there is.
  */
 /**
  * The iOS operating system, driven: each `/os` verb delivers through the same adapter method the Swift shell's

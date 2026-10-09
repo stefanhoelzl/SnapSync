@@ -7,21 +7,19 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.model.UnionTrigger
 
 /**
- * The **foreground** OS-callback trigger flow (`docs/architecture.md`, "Rules in features, order
- * in flows"; capability `sync-status` liveness). The scene returned to the foreground: re-read the
- * persisted membership (below), renew a stale attestation token, start the foreground status poll,
- * then — each on its own launch, so a slow one never blocks the others — settle in-flight uploads whose
- * bytes the backend already stores, re-read the status sources, reconcile foreign downloads, reclaim the
+ * The **foreground** OS-callback trigger flow (`docs/architecture.md`, "Rules in features, order in flows"). The scene
+ * returned to the foreground: re-read the persisted membership (below), renew a stale attestation token, start the
+ * foreground status poll, then — each on its own launch, so a slow one never blocks the others — settle in-flight
+ * uploads whose bytes the backend already stores, re-read the status sources, reconcile foreign downloads, reclaim the
  * staged bytes of already-imported downloads and of uploads no job reads, and refresh the event title. That is
  * foreground entry's **own work**, and all of it (decision record `changes/own-work-per-wake`, D1).
  *
- * **The imports, the upload top-up and the walk are not this flow's** (capability `sync-status`,
- * "Foreground status refresh is not sequenced behind the upload tail"). They are the process's one
- * opportunistic tail, which the foreground handler requests **after** this flow returns (law
- * "A trigger flow never outlives its own run"): a foreground entry arriving while another wake's tail is
- * still walking — outstanding for as long as the app was suspended, 774 s measured (`SNAPSYNC-16`) —
- * joins that tail rather than running a second upload path beside it, and nothing here waits on it, so
- * the status refresh never inherits the walk's latency. `run()` awaits every child it has.
+ * **The imports, the upload top-up and the walk are not this flow's**: the foreground status refresh is not sequenced
+ * behind the upload tail. They are the process's one opportunistic tail, which the foreground handler requests
+ * **after** this flow returns (law "A trigger flow never outlives its own run"): a foreground entry arriving while
+ * another wake's tail is still walking — outstanding for as long as the app was suspended, 774 s measured
+ * (`SNAPSYNC-16`) — joins that tail rather than running a second upload path beside it, and nothing here waits on it,
+ * so the status refresh never inherits the walk's latency. `run()` awaits every child it has.
  *
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
  * stack-assembly touch and the entry-point log wrap stay with the foreground handler; every
@@ -49,12 +47,11 @@ import app.snapsync.model.UnionTrigger
  * UI requires an unlocked device), so the re-read here always sees readable state.
  *
  * [watches] bundles the counts poll below with the network watch, which follows the network only while the screen is
- * visible for the same reason (capability `sync-status`, "The app says when it cannot reach the network").
+ * visible for the same reason.
  *
- * The status poll keeps the counts live *between* entries (capability `sync-status`): the extension
- * records completions in its own process, and with the Darwin ding gone the foreground-gated poll
- * is what moves the joined screen while the user watches. Start/stop ordering is this flow's and
- * the Background flow's coordination; the cadence is the feature's rule.
+ * The status poll keeps the counts live *between* entries: the extension records completions in its own process, and
+ * with the Darwin ding gone the foreground-gated poll is what moves the joined screen while the user watches.
+ * Start/stop ordering is this flow's and the Background flow's coordination; the cadence is the feature's rule.
  *
  * The launches deliberately **escape** the entry-point log context (they run after the synchronous
  * dispatch returns), exactly as the shell's `onForeground` did — so `reconcile` and the other
@@ -62,17 +59,16 @@ import app.snapsync.model.UnionTrigger
  */
 class Foreground(
     private val downloadController: DownloadController,
-    /** The membership-refresh rule (capability `join-event`): folds a fetched result, backfills, and on
+    /** The membership-refresh rule: folds a fetched result, backfills, and on
      *  a CONFIRMED absence performs the teardown itself. */
     private val membershipRefresh: MembershipRefresh,
-    /** The foreground-gated counts poll and network watch (capability `sync-status`); Background stops them. */
+    /** The foreground-gated counts poll and network watch; Background stops them. */
     private val watches: ForegroundWatches,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
-    /** The upload side's own work, all of it: free the staged upload files no in-flight job reads (capability
-     *  `background-upload`; unconditional — an unjoined device starts no upload cycle to reach them), then settle the
-     *  `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability `photo-sharing`) —
-     *  the listing fetch and the guarded write, joined only. */
+    /** The upload side's own work, all of it: free the staged upload files no in-flight job reads (unconditional —
+     *  an unjoined device starts no upload cycle to reach them), then settle the `REQUESTED` rows whose bytes the
+     *  backend's per-device listing already stores — the listing fetch and the guarded write, joined only. */
     private val uploadOwnWork: suspend () -> Unit,
     /** Re-read the own-device total + ledger counts + the foreign-download line. */
     private val refreshStatus: suspend () -> Unit,
@@ -90,11 +86,10 @@ class Foreground(
         // Membership first: every reader below (reconcile, the title refresh) acts on the StateFlow this
         // repairs.
         reloadConfig()
-        // Wake point (capability `privacy-security`): renew the token if stale. Also covers launch.
-        // BEFORE the network-bearing work below, not after it: this used to be a fire-and-forget launch
-        // fired alongside them, so a refresh and the fetches it exists to authorize raced, and a fetch
-        // could go out carrying the very token being replaced. `refresh()` short-circuits on a
-        // fresh token, so the sequencing costs nothing in the common case.
+        // Wake point: renew the token if stale. Also covers launch. BEFORE the network-bearing work below, not after
+        // it: this used to be a fire-and-forget launch fired alongside them, so a refresh and the fetches it exists to
+        // authorize raced, and a fetch could go out carrying the very token being replaced. `refresh()` short-circuits
+        // on a fresh token, so the sequencing costs nothing in the common case.
         refreshAttestation()
         // Keep the ledger counts live while the screen is visible (the first tick waits one cadence;
         // the refreshStatus launch below covers "now"). Non-blocking: the poller owns its own scope.
@@ -105,18 +100,18 @@ class Foreground(
         // lines: `coroutineScope` children escape this trigger's synchronous span exactly as the
         // former `scope.launch` bodies did. A child that THROWS cancels none of its siblings.
         fanOut("Foreground") {
-            // Not behind anything (capability `photo-sharing`, "Foreground settles in-flight rows
-            // the backend already stores"): bytes can land long before the OS acknowledges their job, and this
-            // exists to correct the status the member is looking at now. Its one write is the guarded terminal
-            // write the platform's callbacks already make beside a running tail, so it needs no ordering with it.
+            // Not behind anything — foreground settles in-flight rows the backend already stores: bytes can land long
+            // before the OS acknowledges their job, and this exists to correct the status the member is looking at now.
+            // Its one write is the guarded terminal write the platform's callbacks already make beside a running tail,
+            // so it needs no ordering with it.
             child("uploadOwnWork") { uploadOwnWork() }
             child("refreshStatus") { refreshStatus() }
-            // Foreground discovery (capability `receiving-photos`): pick up foreign photos, plan and enqueue. It
-            // imports nothing — the staged imports are the tail's first unit, requested after this flow returns.
+            // Foreground discovery: pick up foreign photos, plan and enqueue. It imports nothing — the staged imports
+            // are the tail's first unit, requested after this flow returns.
             child("reconcile") { activeEventId()?.let { downloadController.reconcile(it, UnionTrigger.FOREGROUND) } }
-            // The staged-byte backlog reclaim (capability `receiving-photos`): free the files of assets
-            // whose import is confirmed but whose resource rows predate per-asset release, so a received
-            // photo is not stored twice — as a library asset and as a staged file — forever.
+            // The staged-byte backlog reclaim: free the files of assets whose import is confirmed but whose resource
+            // rows predate per-asset release, so a received photo is not stored twice — as a library asset and as a
+            // staged file — forever.
             //
             // HERE, on foreground entry: the reclaim is a ONE-SHOT backlog whose whole value is that it
             // eventually runs on every affected install, and foreground entry is the one trigger a user

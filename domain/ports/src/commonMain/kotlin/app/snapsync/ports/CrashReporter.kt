@@ -17,7 +17,7 @@ class CrashHandlers(
 )
 
 /**
- * The process's crash-reporting channel (capability `privacy-security`) — ONE external system: the reporting SDK
+ * The process's crash-reporting channel — ONE external system: the reporting SDK
  * and the ingest behind it. Named for the need: any platform that can report failures off-device seats it.
  *
  * **Thin.** It decides nothing. Whether this build reports at all, what is redacted and capped, which event is

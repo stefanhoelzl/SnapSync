@@ -1,7 +1,7 @@
 package app.snapsync.feature.membership
 
 /**
- * The provision-time transition **rule** (capabilities `join-event`, `join-event`): what provisioning
+ * The provision-time transition **rule**: what provisioning
  * [next][switchDecision] means for the membership this device already holds.
  *
  * - provisioning a *different* event while joined is a **switch**: the previous membership is left first
@@ -10,8 +10,8 @@ package app.snapsync.feature.membership
  * - re-provisioning the joined event is **not a transition**: nothing is stopped, left or loaded.
  *
  * The third answer is what keeps a re-provision from resetting a live membership's upload ledger — its
- * `DISCOVERED`/`REQUESTED` rows are this membership's work in flight, and nothing stopped it (capability
- * `photo-sharing`, "A join loads the ledger from the per-device listing").
+ * `DISCOVERED`/`REQUESTED` rows are this membership's work in flight, and nothing stopped it; only a join
+ * loads the ledger from the per-device listing.
  *
  * The rule moved here from the Provision flow's guard at the migration finale: the flow switches on this
  * sealed answer (the transcriber grammar's sealed-result form) and fires the compose-built effects —

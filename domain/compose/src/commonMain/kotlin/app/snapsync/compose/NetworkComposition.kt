@@ -9,9 +9,10 @@ import app.snapsync.services.network.NetworkReadings
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * The app's network watch (capability `sync-status`, "The app says when it cannot reach the network") over the
- * [NetworkMonitor] port: the foreground-gated watch, the bundle the lifecycle flows start and stop it in beside the
- * counts poll, and the read-model presentation and the network's return read.
+ * The app's network watch — the app says when it cannot reach the network — over the [NetworkMonitor] port: the
+ * foreground-gated watch, the bundle the lifecycle flows start and stop it in beside the counts poll, and the
+ * read-model presentation and the network's return read.
+
  *
  * Its own class rather than `AppCore` members for the reason [shareSetLoadFor] gives: `AppCore` is measured, and the
  * `compose` tier's `LargeClass` ceiling is what keeps it from absorbing every composition in the graph.

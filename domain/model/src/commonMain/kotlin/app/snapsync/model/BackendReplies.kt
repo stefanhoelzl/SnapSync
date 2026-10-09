@@ -57,7 +57,7 @@ data class CreateEventRequest(
     val endsAt: String?,
     /**
      * The host's IANA time zone (`Europe/Berlin`), which only the event page reads to name the dates as the host chose
-     * them (capability `event-site`). Optional: absent, the page shows them in UTC.
+     * them. Optional: absent, the page shows them in UTC.
      */
     val zone: String? = null,
     /** An ENCRYPTED event's key id (16 lowercase hex); `null` creates a plain event. The key never leaves the device. */
@@ -78,7 +78,7 @@ data class EventMeta(
     val startsAt: String?,
     val endsAt: String?,
     val deletesAt: String?,
-    /** When the event CLOSED (capability `event-lifetime`); `null` while open, and from a backend predating it. */
+    /** When the event CLOSED; `null` while open, and from a backend predating it. */
     val closedAt: String? = null,
     /** When the event COMPLETED — its photos deleted, its record kept until [deletesAt]. */
     val completedAt: String? = null,
@@ -89,8 +89,7 @@ data class EventMeta(
 )
 
 /**
- * An event's active members and how many of them have settled what they share (capability `sync-status`,
- * the ended event's waiting line).
+ * An event's active members and how many of them have settled what they share (the ended event's waiting line).
  */
 @Serializable
 data class MemberCounts(val active: Int, val settled: Int) {
@@ -131,9 +130,8 @@ class UnionPage(val assets: List<UnionAsset>, val cursor: Long)
 
 /**
  * Why the app reads the union (decision record `changes/incremental-union`, D5–D6) — what it tells the backend, which
- * records it (capability `privacy-security`, "The service records who reads an event's photo list"), and whether the
- * read is [full]. A push and a background wake read only what is new; every other reason reads everything, because
- * someone waits on the answer or a decision rests on it.
+ * records it, and whether the read is [full]. A push and a background wake read only what is new; every other reason
+ * reads everything, because someone waits on the answer or a decision rests on it.
  */
 enum class UnionTrigger(val wire: String, val full: Boolean) {
     /** A silent push announced a photo. */
@@ -190,10 +188,10 @@ class RenewRequest(val deviceId: String, val assertion: ByteArray, val challenge
 class Proof(val handle: String, val format: ProofFormat, val bytes: ByteArray, val chain: AttestationChain? = null)
 
 /**
- * The certificates a fresh proof presented, summarised for the operator (capability `privacy-security`: what a report the
- * app offered for a refused phone carries) — enough to see which root a chain ends at: names kept verbatim (a remotely
- * provisioned certificate is named after its serial, and that is not redacted), but no certificate itself, and not
- * the leaf, which is the app's own key.
+ * The certificates a fresh proof presented, summarised for the operator (what a report the app offered for a refused
+ * phone carries) — enough to see which root a chain ends at: names kept verbatim (a remotely provisioned certificate is
+ * named after its serial, and that is not redacted), but no certificate itself, and not the leaf, which is the app's
+ * own key.
  *
  * [certificates] are those ABOVE the leaf, in the chain's order (the root last); [rootKeySha256] is the lowercase hex
  * SHA-256 of the root's encoded public key — what the backend pins a root by.
@@ -222,8 +220,8 @@ enum class ProofFormat {
 }
 
 /**
- * A backend refusal of this build (capability `app-update-required`): the cell the version gate publishes and the
- * status host reduces into the update screen. [minimumVersion] is the version the backend named, or `null` when the
- * refusal carried none — which is still a refusal, never the same as no refusal at all.
+ * A backend refusal of this build: the cell the version gate publishes and the status host reduces into the update
+ * screen. [minimumVersion] is the version the backend named, or `null` when the refusal carried none — which is still a
+ * refusal, never the same as no refusal at all.
  */
 data class VersionRefusal(val minimumVersion: String?)

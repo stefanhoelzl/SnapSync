@@ -12,7 +12,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Early completion (capability `event-lifetime`; decision record `changes/early-event-completion`): a member's
+ * Early completion (decision record `changes/early-event-completion`): a member's
  * settled share, the close it makes, and what a closed event refuses. Part of [BackendContract]'s clause list, a split
  * for size only. The backend's sweep — completing an event — has no route, so no clause here reaches it.
  */

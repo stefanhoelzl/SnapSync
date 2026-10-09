@@ -16,7 +16,7 @@ import kotlin.time.Clock
 import java.nio.file.Files as Nio
 
 /**
- * The device-log FILE [LogSink] (capability `privacy-security`): appends every line to [file], the process's own
+ * The device-log FILE [LogSink]: appends every line to [file], the process's own
  * verbatim log — the one a bug report carries. Logcat ([LogcatSink]) is read only over a debugging connection and
  * cannot be read back by the app, so without this file a dump's `app_log` is empty.
  *

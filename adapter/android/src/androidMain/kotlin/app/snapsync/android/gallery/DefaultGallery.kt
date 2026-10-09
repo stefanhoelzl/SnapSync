@@ -1,7 +1,7 @@
 package app.snapsync.android.gallery
 
 /**
- * The member's **default gallery** on Android (capability `photo-sharing`): the `DCIM` folder and every folder under
+ * The member's **default gallery** on Android: the `DCIM` folder and every folder under
  * it, on every storage volume — where camera apps save. Every read of the gallery is scoped to it, and the selection
  * policy is the one decision over what it returns (`docs/architecture.md`).
  *
@@ -20,7 +20,7 @@ internal object DefaultGallery {
 
     private const val PREFIX = "DCIM/"
 
-    /** The folder the event albums are created in, one folder each (capability `event-album`). */
+    /** The folder the event albums are created in, one folder each. */
     const val ALBUM_ROOT: String = "DCIM/SnapSync/"
 
     /** The selection fragment a MediaStore query narrows to the whole default gallery with. */

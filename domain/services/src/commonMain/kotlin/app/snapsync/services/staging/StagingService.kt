@@ -9,7 +9,7 @@ import co.touchlab.kermit.Logger
 const val DOWNLOAD_STAGING_DIR: String = "download-staging"
 
 /**
- * The download staging area (capability `receiving-photos`): [StagingService] over the shared area of [Files], with
+ * The download staging area: [StagingService] over the shared area of [Files], with
  * every staged path **relative** to that area.
  *
  * Relative because an absolute container path is not the device's to keep: the App-Group container's platform
@@ -94,7 +94,7 @@ class StagingService(
      * decides where staging lives, what may be reclaimed from it, and what is still in it, so the three
      * can never disagree about a directory.
      *
-     * Why the adjudicator needs it (capability `receiving-photos`): the photo library answers about
+     * Why the adjudicator needs it: the photo library answers about
      * **committed** state, so it answers *absent* about an asset whose creating transaction is still
      * open — and a commit outlives the process that opened it. The staged bytes are the second,
      * independent oracle. The library takes a resource's file when it ingests it, which it does only as

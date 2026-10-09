@@ -59,7 +59,7 @@ private const val OS_DRIVEN_UPLOAD_MAJOR = 26L
 private const val OS_DRIVEN_UPLOAD_MINOR = 1L
 
 /**
- * An iOS process's boot banner (capability `privacy-security`, D5), the same shape in the app and the upload extension:
+ * An iOS process's boot banner, the same shape in the app and the upload extension:
  *
  * 1. the process and its build version, so a reader who concatenates the app's and the extension's files can tell
  *    runs apart;

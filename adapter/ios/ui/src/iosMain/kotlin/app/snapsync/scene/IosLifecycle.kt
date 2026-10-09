@@ -25,7 +25,7 @@ import platform.UIKit.UIApplicationWillResignActiveNotification
  * so the scene rule already knows the app has been active when the handler's work builds a screen.
  *
  * The scene delegate's other callbacks carry no decision and no handler: they reach [deliverSceneEvent], which logs
- * them (capability `privacy-security`) — the record of which of UIKit's paths ran is what a delivery investigation
+ * them — the record of which of UIKit's paths ran is what a delivery investigation
  * reads.
  */
 class IosLifecycle(private val record: SceneRecord, private val log: Logger) : Lifecycle {

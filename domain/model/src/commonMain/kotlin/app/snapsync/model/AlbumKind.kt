@@ -1,8 +1,8 @@
 package app.snapsync.model
 
 /**
- * How the member's photo library holds an album (capability `event-album`) — a fact of the platform, fixed for the
- * gallery adapter's life, which decides what the event album may hold.
+ * How the member's photo library holds an album — a fact of the platform, fixed for the gallery adapter's life, which
+ * decides what the event album may hold.
  */
 enum class AlbumKind {
     /**

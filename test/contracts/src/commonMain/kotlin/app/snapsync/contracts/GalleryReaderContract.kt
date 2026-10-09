@@ -73,7 +73,7 @@ enum class GalleryReaderState {
  * - **`NotReadable` is never `Read(empty)`.** A counted zero settles the status screen and an empty
  *   authoritative walk deletes every in-window row; the collapse of the two shipped as `SNAPSYNC-14`/`16`.
  * - **A read by policy never omits an admitted asset.** What it returns is also a walk's presence set, and an
- *   in-window asset it omits has its rows deleted as departed (capability `photo-sharing`).
+ *   in-window asset it omits has its rows deleted as departed.
  *
  * Album titles derive from the clause id, so no clause meets another's album in a shared library.
  */

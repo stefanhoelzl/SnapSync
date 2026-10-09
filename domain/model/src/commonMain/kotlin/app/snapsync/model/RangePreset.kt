@@ -3,8 +3,7 @@ package app.snapsync.model
 import kotlinx.serialization.Serializable
 
 /**
- * A member's capture-date **range**, as ONE preset rather than two instants (capability `photo-sharing`,
- * `join-event`).
+ * A member's capture-date **range**, as ONE preset rather than two instants.
  *
  * It lives in `model/` for the same reason [Arrow] does: it is the one vocabulary the presentation
  * reduction and the design-system skin BOTH name. The reduction resolves the preset against the event

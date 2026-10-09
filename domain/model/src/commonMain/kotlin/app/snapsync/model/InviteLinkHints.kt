@@ -1,9 +1,9 @@
 package app.snapsync.model
 
 /**
- * Whether the join gate acts on an invite link's **dev/test hints** — `autoJoin` and the overrides that ride
- * with it (`minPhotoDate`, `maxPhotoDate`, `direction`, `saveToAlbum`; see [EventLinkPayload]) — capability
- * `join-event`, "Joining happens only on confirmation".
+ * Whether the join gate acts on an invite link's **dev/test hints** — `autoJoin` and the overrides that ride with it
+ * (`minPhotoDate`, `maxPhotoDate`, `direction`, `saveToAlbum`; see [EventLinkPayload]): joining happens only on
+ * confirmation.
  *
  * The decoder accepts those keys from ANY link, so what a link *says* can never be what authorizes a headless
  * join: a crafted QR carrying `autoJoin=true` would otherwise join without a tap, leave the member's current

@@ -14,7 +14,7 @@ import org.jetbrains.compose.resources.StringResource
 internal class WallCopy(val title: StringResource, val body: StringResource)
 
 /**
- * The copy of the three walls (capability `join-event`): an invite to no event, a closed event, and an incomplete
+ * The copy of the three walls: an invite to no event, a closed event, and an incomplete
  * invite of an encrypted one — the last opened only by the whole invite, which no retry of this one can be.
  */
 internal fun wallCopy(phase: JoinPhase): WallCopy = when (phase) {

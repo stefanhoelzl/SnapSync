@@ -8,9 +8,8 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 /**
- * Where the joined event is in its life, as the joined screen's dates line says it (capability `sync-status`,
- * "The joined screen shows how long the event lasts"): how long until it starts, how long until it ends, or
- * that it has ended.
+ * Where the joined event is in its life, as the joined screen's dates line says it: how long until it starts, how long
+ * until it ends, or that it has ended.
  *
  * Reduced from the membership's bounds and the host's minute tick, so the screen formats words and never
  * reads a clock. The tick already runs until both bounds have passed, which is exactly the lifetime of a
@@ -29,7 +28,7 @@ sealed interface EventTiming {
     @Serializable
     data class Running(val remaining: TimeLeft?) : EventTiming
 
-    /** The event's range has ended. Informational: sync carries on (capability `event-lifetime`). */
+    /** The event's range has ended. Informational: sync carries on. */
     @Serializable
     data object Ended : EventTiming
 }

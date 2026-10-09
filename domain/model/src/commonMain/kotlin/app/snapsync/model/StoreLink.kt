@@ -2,7 +2,7 @@ package app.snapsync.model
 
 import kotlinx.serialization.Serializable
 
-/** The store a build is distributed through — what the update notice names on its one button (capability `app-update-required`). */
+/** The store a build is distributed through — what the update notice names on its one button. */
 @Serializable
 enum class StoreKind { APP_STORE, GOOGLE_PLAY }
 

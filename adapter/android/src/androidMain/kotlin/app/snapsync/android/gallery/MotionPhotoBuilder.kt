@@ -11,8 +11,8 @@ import co.touchlab.kermit.Logger
 import java.io.File
 
 /**
- * **A received Live Photo, rebuilt as a motion photo** (capability `receiving-photos`, "A Live Photo reaches Android as
- * a motion photo"; decision record `changes/archive/2026-10-01-live-motion-unification` D3): a JPEG still, Google's motion-photo XMP, and
+ * **A received Live Photo, rebuilt as a motion photo** (decision record
+ * `changes/archive/2026-10-01-live-motion-unification` D3): a JPEG still, Google's motion-photo XMP, and
  * the Live Photo's video appended exactly as it was delivered — the one layout Google Photos was measured to play.
  *
  * - A **HEIC** still (the iPhone default) is decoded at full size and re-encoded as JPEG at [JPEG_QUALITY], because
@@ -100,7 +100,7 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
         const val JPEG_QUALITY = 95
         const val SCRATCH_NAME = "motion-photo.jpg"
 
-        /** What a received photo keeps (capability `receiving-photos`): when, where, and with what it was taken. */
+        /** What a received photo keeps: when, where, and with what it was taken. */
         val COPIED_TAGS = listOf(
             ExifInterface.TAG_DATETIME,
             ExifInterface.TAG_DATETIME_ORIGINAL,

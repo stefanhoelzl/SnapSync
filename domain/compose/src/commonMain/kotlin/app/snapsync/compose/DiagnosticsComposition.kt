@@ -9,7 +9,8 @@ import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.network.NetworkReadings
 
 /**
- * The diagnostic dump assembly (capability `privacy-security`) — reads only: this graph's state and the device's,
+ * The diagnostic dump assembly — reads only: this graph's state and the device's,
+
  * never written to. Built on first use by [AppCore.collectDiagnosticDump], so an unconfigured build (which never fires
  * the command) never builds it.
  *

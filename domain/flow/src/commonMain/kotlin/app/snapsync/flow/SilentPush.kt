@@ -6,10 +6,9 @@ import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
 
 /**
- * The **silent-push** OS-callback trigger flow (capability `receiving-photos`, "Silent-push receive seam"). A
- * `content-available` push means "the event changed": foreign photos to pull. This flow runs the push's **own work**
- * and only that — the download arm's receiver, whose union read, plan and enqueue are what the push exists to cause
- * (decision record `changes/own-work-per-wake`, D1).
+ * The **silent-push** OS-callback trigger flow. A `content-available` push means "the event changed": foreign photos to
+ * pull. This flow runs the push's **own work** and only that — the download arm's receiver, whose union read, plan and
+ * enqueue are what the push exists to cause (decision record `changes/own-work-per-wake`, D1).
  *
  * **The upload arm is no longer a receiver.** A push is still news to it — another member's upload completing is when
  * this device most likely has photos of its own to contribute — but the upload top-up and the walk reach the wake only
@@ -47,8 +46,8 @@ class SilentPush(
             return
         }
         reloadConfig()
-        // Wake point (capability `privacy-security`): a scarce background wake is a renewal chance. Awaited before
-        // the receiver, so its requests carry the token this just renewed rather than racing it.
+        // Wake point: a scarce background wake is a renewal chance. Awaited before the receiver, so its requests carry
+        // the token this just renewed rather than racing it.
         refreshAttestation()
         // Awaited, not launched (law "A trigger flow never outlives its own run"): the caller releases the OS handler
         // when this returns, and a push whose own work is merely queued then is one the system may suspend mid-way.

@@ -5,7 +5,7 @@ import app.snapsync.services.backend.Credential
 import co.touchlab.kermit.Logger
 
 /**
- * The upload extension's [Credential] (capability `privacy-security`): it reads the token the app stored in the
+ * The upload extension's [Credential]: it reads the token the app stored in the
  * shared store, and when the backend rejects one it DROPS it — and nothing else.
  *
  * The extension cannot attest (App Attest is unavailable in an app extension — measured), so it cannot recover on

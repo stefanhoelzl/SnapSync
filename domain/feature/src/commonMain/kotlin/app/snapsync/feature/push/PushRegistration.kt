@@ -13,8 +13,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 
 /**
- * Registers the device's push token with the backend (capability `receiving-photos`, "Registration timing —
- * launch, join, and rotation"). It publishes through the [publisher] port, whose adapter owns the address and the
+ * Registers the device's push token with the backend at launch, join, and rotation. It publishes through the
+ * [publisher] port, whose adapter owns the address and the
  * body. **No event id** (the token is device-scoped, event-independent). A failed publish is absorbed (logged), so
  * registration never blocks join/upload/download.
  *
@@ -88,8 +88,8 @@ class PushRegistration(
     }
 
     /**
-     * Re-PUT the delivered push token on join, whatever the last-registered record holds (capability `receiving-photos`:
-     * a join publishes unconditionally); a no-op before the OS has delivered one.
+     * Re-PUT the delivered push token on join, whatever the last-registered record holds (a join publishes
+     * unconditionally); a no-op before the OS has delivered one.
      */
     suspend fun reRegister(source: PushTokenSource) {
         source.token.value?.let { register(PushEndpoint(source.kind, it, source.env)) }

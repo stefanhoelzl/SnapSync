@@ -138,7 +138,7 @@ internal class DeviceNetworkOnlineBinding(private val recorder: Recorder) : Bind
 }
 
 /**
- * The device on a restricted network (capability `mobile-data`) — another phone's personal hotspot, or Low Data Mode
+ * The device on a restricted network — another phone's personal hotspot, or Low Data Mode
  * on its Wi-Fi — recording every `nw_path_monitor` call and iOS's answer.
  */
 internal class DeviceNetworkRestrictedBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {

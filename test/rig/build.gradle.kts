@@ -23,7 +23,7 @@ plugins {
 //
 // CONTAINMENT IS COMPILE-TIME. `:app:ios` links this module, and adds `src/hook/` to its own iosMain
 // source set, ONLY under `-Psnapsync.rig=true`. A production build contains no source from here at all —
-// not a stub, not an inert branch. That is why no `sync-status` requirement changes: nothing shipped
+// not a stub, not an inert branch. That is why no user-observable outcome changes: nothing shipped
 // can observe this module or the env var its hook reads.
 //
 // TWO HOSTS, ONE PROTOCOL (`docs/testing.md`, "One control protocol, served by two hosts").

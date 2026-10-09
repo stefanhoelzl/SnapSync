@@ -4,7 +4,7 @@ import app.snapsync.model.AssetRef
 
 /**
  * How the in-memory photo library answers one import's change: the stand-in for `performChanges`, whose
- * change block, commit and completion are three separate platform events (capability `receiving-photos`).
+ * change block, commit and completion are three separate platform events.
  *
  * It is the library's behaviour, so it is a constructor collaborator of the honest importer rather than a
  * lever on it. The default is the ordinary answer: the change runs, it lands, and the completion reports

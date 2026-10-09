@@ -18,8 +18,8 @@ enum class EventCheck(internal val key: String) {
 }
 
 /**
- * **When a background wake last asked the event** (capability `receiving-photos`, "New photos are announced by a
- * silent wake, and never only by it"; decision record `changes/timely-background-receiving`, D4–D5): one time per
+ * **When a background wake last asked the event** (new photos are announced by a
+ * silent wake, and never only by it; decision record `changes/timely-background-receiving`, D4–D5): one time per
  * [EventCheck] and event, in the shared [Preferences] — a background wake is usually a fresh process, so a time kept in
  * memory would make every wake look due.
  *

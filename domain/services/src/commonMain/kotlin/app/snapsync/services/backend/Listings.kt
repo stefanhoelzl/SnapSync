@@ -10,7 +10,7 @@ import app.snapsync.model.uploadKey
 /**
  * What a **device** has already stored **in one event**. Each event holds its own bytes (change
  * `per-event-storage-layout`), so this is the dedup source the join-time load seeds the ledger's `COMPLETED` rows
- * from (capability `photo-sharing`): whatever the backend already holds for this device in this event is not
+ * from: whatever the backend already holds for this device in this event is not
  * uploaded again — and nothing it holds for another event is mistaken for this one's. Failures are a failed
  * [Result] (never thrown), so a failed load can fall back to an empty ledger rather than crash the join.
  */
@@ -39,7 +39,7 @@ class DeviceListingShapeException(message: String) : Exception(message)
  * controller can keep its last good state rather than crash. Own-vs-foreign selection is the caller's concern.
  *
  * Read from a [cursor] it answers only what was gained since, all of it for `null` (decision record
- * `changes/incremental-union`, D3); [trigger] says why, and the backend records it (capability `privacy-security`).
+ * `changes/incremental-union`, D3); [trigger] says why, and the backend records it.
  */
 fun interface EventUnionSource {
     suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage>

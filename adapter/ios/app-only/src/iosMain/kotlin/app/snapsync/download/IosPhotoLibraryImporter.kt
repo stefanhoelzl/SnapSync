@@ -29,7 +29,7 @@ import platform.Photos.PHPhotosErrorInvalidResource
 import platform.Photos.PHPhotosErrorMissingResource
 
 /**
- * The PhotoKit import behind [app.snapsync.gallery.IosGallery] (capability `receiving-photos`): rebuilds one foreign asset from its
+ * The PhotoKit import behind [app.snapsync.gallery.IosGallery]: rebuilds one foreign asset from its
  * staged resources via a single `PHAssetCreationRequest` (all resources added before the one
  * `performChanges` commit — there is no API to append to an existing asset), landing in the camera
  * roll. Role→`PHAssetResourceType`: `live`→`pairedVideo`; `primary`→`photo`/`video`/`audio` by
@@ -46,7 +46,7 @@ import platform.Photos.PHPhotosErrorMissingResource
  * **inside** the change block — before the new asset can be observed — so it is never re-uploaded. The outcome
  * reaches `onImportSettled` from the completion, before the caller is resumed.
  *
- * Event album (capability `event-album`): when the caller passes an album `localIdentifier` (the
+ * Event album: when the caller passes an album `localIdentifier` (the
  * membership opted in and the app already created the album), the created asset is added to that album
  * **in the same commit** as its creation, so a received photo is atomically already-in-the-album. The album
  * is resolved BEFORE `performChanges`, so the change block does no fetch of its own. Absent an album id
@@ -62,7 +62,7 @@ internal class IosPhotoLibraryImporter(
 
     suspend fun import(request: ImportRequest, handlers: GalleryHandlers): ImportResult {
         val ref = request.ref
-        // A received Android motion photo becomes a Live Photo (capability `receiving-photos`; decision record
+        // A received Android motion photo becomes a Live Photo (decision record
         // `changes/archive/2026-10-01-live-motion-unification` D4/D5): its still and video are built beside the staged original, never
         // from it, so when Photos refuses the pair — even consuming its files — the original is still here, and is
         // imported exactly as before. The refused attempt settles as any failed commit does (its marker cleared,
@@ -134,17 +134,15 @@ internal class IosPhotoLibraryImporter(
         val created = CreatedAsset()
         // The class `performChanges` is called at — read here, on the caller's thread, for the block's trace.
         val callerQos = qosLabel()
-        // NOTHING BOUNDS THIS WAIT, and that is the decision, not an omission (capability
-        // `receiving-photos`).
+        // NOTHING BOUNDS THIS WAIT, and that is the decision, not an omission.
         //
         // The bound that used to sit here existed to protect `DownloadController`'s mutex: the import ran
         // under it, and the SNAPSYNC-6 field hang held it from 09:03:37 until the process died. The import
         // no longer runs under that lock, so there is nothing left for a per-import clock to protect — and
         // the wake it would otherwise bound is bounded already by the operating system's own expiry signal,
-        // which ends the wake's background time at once and deliberately lets this work run on (capability
-        // `sync-status`).
+        // which ends the wake's background time at once and deliberately lets this work run on.
         //
-        // Keeping a clock here would restate the mistake this capability already names: the process is
+        // Keeping a clock here would restate a known mistake: the process is
         // suspended for arbitrary spans between a change block and its completion (measured 116 s and
         // 254 s), so a wall-clock bound expires against transactions that are ALIVE — and every expiry
         // manufactured an unconfirmed row for the adjudication guard to reason about, which is the supply
@@ -152,7 +150,7 @@ internal class IosPhotoLibraryImporter(
         //
         // An import that never reports therefore never returns. Its ref stays claimed for the life of the
         // process, so no *absent* answer about it is ever acted on and no second asset is created; the
-        // enter/exit trace around the caller is what makes it visible (capability `privacy-security`).
+        // enter/exit trace around the caller is what makes it visible.
         return objcCallback(log, "import.completion") { done ->
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 {
@@ -226,7 +224,7 @@ internal class IosPhotoLibraryImporter(
         callerQos: String,
         handlers: GalleryHandlers,
     ) {
-        // Traced INSIDE the block, not before the call (capability `privacy-security`).
+        // Traced INSIDE the block, not before the call.
         // The two say different things: the call returning proves only that we asked, while
         // this line proves `photolibraryd` actually began the transaction. That difference
         // decides whether an import we stop waiting for can still land — i.e. whether it
@@ -248,7 +246,7 @@ internal class IosPhotoLibraryImporter(
             // (`ReceivedPhotoName`), which is where the mark and its fallback are unit-tested.
             val options = PHAssetResourceCreationOptions().apply {
                 originalFilename = filename
-                // MOVE, not copy (capability `receiving-photos`). Two things follow, and both are
+                // MOVE, not copy. Two things follow, and both are
                 // load-bearing rather than incidental:
                 //
                 //  - an importing asset stops holding its bytes TWICE. Under copy it does so
@@ -289,7 +287,7 @@ internal class IosPhotoLibraryImporter(
             // from under this import is the handler's to report (it knows whether the write landed).
             handlers.onImportPlaceholder(ref, id)
         }
-        // Event album (capability `event-album`): add the just-created asset to the event
+        // Event album: add the just-created asset to the event
         // album in THIS commit (atomic — never briefly loose).
         if (collection != null && placeholder != null) {
             val members = NSMutableArray().apply { addObject(placeholder) }
@@ -307,9 +305,8 @@ internal class IosPhotoLibraryImporter(
         error: NSError?,
         created: CreatedAsset,
     ): ImportResult {
-        // The commit's own verdict, logged before it is interpreted (capability
-        // `privacy-security`): a failed commit and a missing placeholder both reduce to
-        // one `Failed`, and only this line tells them apart after the fact.
+        // The commit's own verdict, logged before it is interpreted: a failed commit and a missing placeholder both
+        // reduce to one `Failed`, and only this line tells them apart after the fact.
         val id = created.localId
         log.i { "import: commit for ${ref.sourceAssetId} success=$success created=$id error=${error?.localizedDescription}" }
         // The settle (the caller's `onImportSettled`, called with this verdict before anyone is resumed) writes the
@@ -324,7 +321,7 @@ internal class IosPhotoLibraryImporter(
             // created identifier, which is what that line carried besides the date.
             ImportResult.Imported(id)
         } else {
-            // THE MIRROR of the in-block write (capability `receiving-photos`): the library has stated that this
+            // THE MIRROR of the in-block write: the library has stated that this
             // change failed, so the marker points at an asset that does not exist. The failure carries it, and the
             // settle clears it — or the row is skipped as "already created" on every future pass.
             ImportResult.Failed(

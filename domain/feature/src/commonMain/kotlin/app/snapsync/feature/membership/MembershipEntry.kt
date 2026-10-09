@@ -3,7 +3,7 @@ package app.snapsync.feature.membership
 import app.snapsync.model.EventConfig
 
 /**
- * Entering a **new** membership (capabilities `join-event`, `photo-sharing`, `background-upload`):
+ * Entering a **new** membership:
  * what a first join or a switch does, in order. A re-provision of the joined event is not an entry and never
  * reaches here ([SwitchDecision.Stay]) — which is how a re-scan of the joined event does nothing to uploads.
  *
@@ -14,8 +14,7 @@ import app.snapsync.model.EventConfig
  *    ever sees the new membership over the previous one's ledger.
  * 3. The photos still in the library that an earlier install received for this event are recognised by their
  *    SnapSync mark and recorded as received ([ReceivedPhotoAdoption]), for every direction — BEFORE the save, so
- *    no uploader sees the membership while a received photo in its range is not yet held out of the upload universe
- *    (capability `receiving-photos`).
+ *    no uploader sees the membership while a received photo in its range is not yet held out of the upload universe.
  * 4. The whole config is saved.
  * 5. The uploads are started for the membership just saved — the join transition: the extension registration
  *    forced where the OS allows it, the app armed where access is usable. After the save, so a registered

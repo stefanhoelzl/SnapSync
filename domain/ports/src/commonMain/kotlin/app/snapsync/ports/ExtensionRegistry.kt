@@ -4,8 +4,8 @@ import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
 
 /**
- * **The OS's record of whether this app's background-upload extension is registered** (capability
- * `background-upload`). One external system, deciding nothing: on iOS ≥26.1 `PHPhotoLibrary`'s
+ * **The OS's record of whether this app's background-upload extension is registered**. One external system,
+ * deciding nothing: on iOS ≥26.1 `PHPhotoLibrary`'s
  * `setUploadJobExtensionEnabled` / `isUploadJobExtensionEnabled`.
  *
  * **Always present.** A platform without the mechanism — iOS below 26.1, whose selector would trap; the JVM; Android —

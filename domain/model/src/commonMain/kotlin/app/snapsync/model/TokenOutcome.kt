@@ -1,9 +1,8 @@
 package app.snapsync.model
 
 /**
- * What an `/attest/token` or `/attest/renew` call came to, classified by the adapter that owns the route (capability
- * `privacy-security`, "Only a rejected credential is invalidated, and only that one"; decision record
- * `harden-seam-bug-classes`, D10).
+ * What an `/attest/token` or `/attest/renew` call came to, classified by the adapter that owns the route (decision
+ * record `harden-seam-bug-classes`, D10): only a rejected credential is invalidated, and only that one.
  *
  * It used to be `String?`, and every `null` got one answer — attest afresh — whatever the cause. Each case below
  * needs a different one: a stale challenge wants one fresh challenge, not a new key; an unreachable backend wants
@@ -21,9 +20,8 @@ sealed interface TokenOutcome {
 
     /**
      * The backend verified and declined — the attestation or assertion itself was rejected, or the body was invalid —
-     * for [reason], which is what the user is told (capability `privacy-security`, "A refused phone is told why").
-     * [detail] is the backend's diagnostic code beside it — `certificate` when a certificate check failed — which the
-     * user is never told and an offered report carries.
+     * for [reason], which is what the user is told. [detail] is the backend's diagnostic code beside it — `certificate`
+     * when a certificate check failed — which the user is never told and an offered report carries.
      */
     data class Refused(val reason: DeviceRefusal, val detail: String? = null) : TokenOutcome
 

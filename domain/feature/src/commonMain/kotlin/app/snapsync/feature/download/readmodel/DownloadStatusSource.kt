@@ -3,8 +3,8 @@ package app.snapsync.feature.download.readmodel
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Download progress feeding the joined-layer status line's download direction (capability
- * `receiving-photos`): [downloaded] foreign assets imported of [total] foreign assets known for this
+ * Download progress feeding the joined-layer status line's download direction: [downloaded] foreign
+ * assets imported of [total] foreign assets known for this
  * event, plus [inFlight] — foreign assets with a resource download **sent to the OS but not yet
  * staged** (the download analogue of `SyncProgress.pending`). [inFlight] is display-only: it drives
  * only the download arrow's pulse (live activity), never the `downloaded`/`total` completeness notion.
@@ -22,7 +22,7 @@ data class DownloadProgress(
          * The value before any successful refresh: **un-read**, not an event with nothing to receive.
          *
          * This distinction is not symmetry for its own sake. The joined screen's direction arrows are
-         * **conjunctive** — "Up to date" is shown exactly when BOTH are hidden (`sync-status`) — and
+         * **conjunctive** — "Up to date" is shown exactly when BOTH are hidden — and
          * the download arrow hides when `downloaded >= total`. A placeholder `(0, 0)` satisfies that,
          * so an un-read download projection can carry the whole screen to a settled checkmark on its
          * own, even after the upload side learned to distinguish un-read from zero. Without this the

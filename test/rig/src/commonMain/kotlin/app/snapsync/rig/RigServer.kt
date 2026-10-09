@@ -85,7 +85,7 @@ private val json = Json {
  * [core] and [host] are thunks on purpose. `SnapSyncRoot.app` and `.host` are `by lazy` deliberately —
  * *"nothing resolves the device identity or opens a protected store earlier than before (the
  * locked-background-launch property)"* — and touching `host` calls `installPermissionSubscriptions()`,
- * which `sync-status` has a scenario forbidding on a cold background wake. So binding the socket must
+ * which must never happen on a cold background wake. So binding the socket must
  * force **nothing**: a rig build's launch behaves exactly like production, and the graph is forced by the
  * first request, which forces precisely what a real entry point would.
  *

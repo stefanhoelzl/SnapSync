@@ -9,7 +9,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * The **rename** use-case (capability `manage-membership`): change the event's name for **every** member,
+ * The **rename** use-case: change the event's name for **every** member,
  * without leaving and without touching any other setting.
  *
  * It is the **fifth writer** of the one-writer membership config — join/provision saves it, leave clears
@@ -30,8 +30,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
  *
  * ⚠️ **No outcome of this use-case is destructive.** In particular a `404` — which arrives as
  * [RenameOutcome.Transient], see that type — never clears the config, notifies a leave, or cancels
- * downloads. A `404` is a *single* witness that the event is gone; the self-leave (capability
- * `manage-membership`) requires two, one of them offline, and reaching that verdict stays [MembershipRefresh]'s
+ * downloads. A `404` is a *single* witness that the event is gone; the self-leave requires two, one of them
+ * offline, and reaching that verdict stays [MembershipRefresh]'s
  * job alone. There is exactly one door to the teardown, and this is not it.
  */
 class RenameEvent(

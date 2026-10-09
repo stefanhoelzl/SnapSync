@@ -1,8 +1,8 @@
 package app.snapsync.model
 
 /**
- * One fact a bug report carries about the device or the app (capability `privacy-security`), as it could be read at
- * the moment the user confirmed the report.
+ * One fact a bug report carries about the device or the app, as it could be read at the moment the user confirmed the
+ * report.
  *
  * Three cases because a report renders them three ways: a [Known] value is written, an [Unsupported] fact — one the
  * platform does not have at all, Android's standby bucket on an iPhone — is left out, and a [Failed] read is written
@@ -59,9 +59,9 @@ enum class Thermal(val label: String) {
 }
 
 /**
- * What the operating system says about the device's power and background allowance — the `DeviceConditions` port's
- * one reading, taken only for a bug report (capability `privacy-security`). Each field is a [Fact]: a platform
- * answers [Fact.Unsupported] for what it has no notion of, so neither adapter invents a value.
+ * What the operating system says about the device's power and background allowance — the `DeviceConditions` port's one
+ * reading, taken only for a bug report. Each field is a [Fact]: a platform answers [Fact.Unsupported] for what it has
+ * no notion of, so neither adapter invents a value.
  */
 data class DeviceConditionsReading(
     /** Low Power Mode on iOS, Battery Saver on Android. */
@@ -86,8 +86,8 @@ data class DeviceConditionsReading(
 }
 
 /**
- * The facts only the app composition holds, handed to a bug report as one value (capability `privacy-security`).
- * Each is a direct read the composition maps to a [Fact]; none is decided there.
+ * The facts only the app composition holds, handed to a bug report as one value. Each is a direct read the composition
+ * maps to a [Fact]; none is decided there.
  */
 data class AppFacts(
     /** The device id the app already resolved — never minted for a report. */
@@ -101,17 +101,17 @@ data class AppFacts(
 )
 
 /**
- * What the screen contributes to a bug report (capability `privacy-security`): the opaque label of the surface it was
- * sent from, and [shown] — what that surface displayed, keyed as the report keys it (`shown_shared`,
- * `shown_received`). Both recorded verbatim: a report exists to catch the screen disagreeing with the stores, so it
- * carries what was rendered rather than a re-derivation.
+ * What the screen contributes to a bug report: the opaque label of the surface it was sent from, and [shown] — what
+ * that surface displayed, keyed as the report keys it (`shown_shared`, `shown_received`). Both recorded verbatim: a
+ * report exists to catch the screen disagreeing with the stores, so it carries what was rendered rather than a
+ * re-derivation.
  */
 data class ReportContext(
     val screen: String,
     val shown: Map<String, String> = emptyMap(),
     /**
-     * The report was opened from "Report this" beside a refusal (capability `privacy-security`): only then does it carry
-     * the refused verification's facts.
+     * The report was opened from "Report this" beside a refusal: only then does it carry the refused verification's
+     * facts.
      */
     val verification: Boolean = false,
 )

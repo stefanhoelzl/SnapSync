@@ -10,7 +10,7 @@ import co.touchlab.kermit.Logger
 import platform.Foundation.NSUserActivity
 
 /**
- * The iOS [Links] (capability `join-event`): both halves of Universal-Link delivery — the scene delegate's cold
+ * The iOS [Links]: both halves of Universal-Link delivery — the scene delegate's cold
  * `willConnectTo` activities and its warm `continue` — and SwiftUI's `onOpenURL`. The Swift shell forwards each whole.
  *
  * It answers the one platform question — is this a browsing-web activity ([isWebLinkActivity]) — and hands every

@@ -5,8 +5,7 @@ import app.snapsync.model.processMetricEmissions
 import co.touchlab.kermit.Logger
 
 /**
- * What a delivered process-metric report does (capability `privacy-security`): the three channels, and nothing
- * else.
+ * What a delivered process-metric report does: the three channels, and nothing else.
  *
  * ```
  *   report ──┬─► device log        one line per report, always, on every build

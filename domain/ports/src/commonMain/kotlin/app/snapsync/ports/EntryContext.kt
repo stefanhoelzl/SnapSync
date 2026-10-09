@@ -3,7 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.EntryScope
 
 /**
- * The ambient "what triggered this" seam (capability `privacy-security`): the set/clear boundary
+ * The ambient "what triggered this" seam: the set/clear boundary
  * that lets the device-log writers prefix every line with `[<entryPoint>]` so downstream
  * engine/HTTP/download lines trace back to the entry point that drove them.
  *

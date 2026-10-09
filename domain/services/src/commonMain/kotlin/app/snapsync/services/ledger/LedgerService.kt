@@ -22,7 +22,7 @@ import app.snapsync.services.upload.TransferRecord
 const val LEDGER_DB_NAME: String = "ledger.db"
 
 /**
- * The upload ledger (capability `photo-sharing`): [LedgerService] over the SQLDelight [LedgerDatabase] (schema:
+ * The upload ledger: [LedgerService] over the SQLDelight [LedgerDatabase] (schema:
  * `Ledger.sq` — one table, `(eventId, key)` primary key, an index on `assetId`). [recordUnlessSettled] is one
  * guarded upsert statement, atomic on its own; [aggregates] is one SQL round-trip, so its counts are mutually
  * consistent.
@@ -150,7 +150,7 @@ class LedgerService(
     }
 
     /**
-     * The rows the **device manifest** projects from (capability `photo-sharing`): every row,
+     * The rows the **device manifest** projects from: every row,
      * whatever its upload state.
      *
      * Deliberately **not state-scoped**, and deliberately carrying no state adjective in its name. The
@@ -158,18 +158,18 @@ class LedgerService(
      * resource's bytes have got — so a `DISCOVERED` row and a `COMPLETED` one are equally listed. This
      * read used to return only settled rows, and the stale word "completed" in its name outlived the
      * decision behind it: `docs/architecture.md` came to describe a manifest that declares intent while
-     * `photo-sharing` still required the completed projection.
+     * the sharing contract still required the completed projection.
      *
      * It filters on nothing: a departed asset's rows — gone from the library, or de-selected under a partial
      * grant, in flight or not — are deleted by the walk that shows it gone, so every row is one this device
      * still holds. **Admission is the policy's**, applied by the projection: the
      * capture-date bounds, and with them the exclusion of a row whose `creationDate` is still bare, whose
      * empty value sorts before every real cutoff. Restating that here would be a second copy of an
-     * admission rule (capability `photo-sharing`).
+     * admission rule.
      */
     suspend fun manifestRows(): List<LedgerEntry> =
         // `state` is read from the row rather than asserted. Only the event is bound: the query is not
-        // state-scoped, because the manifest declares intent (capability `photo-sharing`).
+        // state-scoped, because the manifest declares intent.
         queries.selectManifestRows(
             event() ?: return emptyList(),
         ) { key, assetId, state, creationDate, role, contentType, filename ->
@@ -220,7 +220,7 @@ class LedgerService(
 
     /**
      * Per photo, whether **every** row of that asset is done: `assetId → done`, one entry per asset the ledger
-     * holds a row for (capability `photo-sharing`, "Per-asset progress read"). The same per-asset collapse
+     * holds a row for. The same per-asset collapse
      * [aggregates] performs, un-counted, in one snapshot-consistent read. Status intersects it with the
      * admitted set the gallery counted for `N`; the ledger interprets nothing about admission.
      */
@@ -258,8 +258,7 @@ class LedgerService(
     }
 
     /**
-     * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work
-     * (capability `photo-sharing`).
+     * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work.
      *
      * Returns exactly the rows whose state is in [app.snapsync.model.NEEDS_JOB_STATES], interpreting
      * nothing else: *which* states need a job is decided once, in `model/`, not per query. That set is
@@ -269,7 +268,7 @@ class LedgerService(
      * **Unbounded, deliberately.** A cycle does bound its work — a first walk on a large library records a
      * row per outstanding resource, and enqueuing all of them would stage every one to disk — but it
      * bounds what it **resolves**, never what it reads, because a row needing a job is not yet the
-     * admitted set (capability `photo-sharing`). A bound here would starve: rows come back in a
+     * admitted set. A bound here would starve: rows come back in a
      * stable key order, so rows the membership's current policy excludes, sorting ahead of admitted ones,
      * would fill the slice on every cycle and the admitted work further down would never be reached. The
      * scan is local and indexed; the platform round-trip the bound protects is the caller's to make.
@@ -300,8 +299,7 @@ class LedgerService(
      * observable). Entries are stored verbatim (the caller supplies `state`; no clock stamping here). It applies no
      * precedence — a settled row is replaced like any other. This is a reset-family op (alongside [clear] and
      * [purgeExcept]) — the join seed uses it, before the joined config is saved, which is why it names its event;
-     * it is **not** a per-key record, and it is owned by that membership use-case (capability `photo-sharing`,
-     * "Reader and writer capability split").
+     * it is **not** a per-key record, and it is owned by that membership use-case.
      */
     suspend fun resetTo(eventId: String, entries: List<LedgerEntry>) {
         // One transaction: purge, delete the event's rows, then insert each. If any statement throws, SQLDelight
@@ -323,8 +321,8 @@ class LedgerService(
 
     /**
      * Delete exactly the rows whose key is among [keys], whatever their state, and no other — the one row
-     * deletion a cycle performs (capability `photo-sharing`, "Deletion is a presence diff over an authoritative
-     * walk").
+     * deletion a cycle performs: deletion is a presence diff over an authoritative
+     * walk.
      *
      * **Key-scoped, never asset-scoped.** Several resources of one photo share an `assetId` and hold per-key
      * states, and every caller holds evidence about individual rows: a key that resolved to nothing, or a row
@@ -346,13 +344,13 @@ class LedgerService(
     }
 
     // The counter itself is maintained by `Ledger.sq`'s triggers, inside each write's own transaction; these
-    // are its one read and the one explicit advance (capability `photo-sharing`).
+    // are its one read and the one explicit advance.
     suspend fun manifestVersion(): Long = queries.selectManifestVersion().executeAsOne()
 
     /**
      * Advance the manifest version by one, for the one projection input that lives outside this store: the
      * membership's policy bounds, whose writer (the reconfigure save) calls this **after** its config save has
-     * landed (capability `manage-membership`). Dings nothing: no row changed.
+     * landed. Dings nothing: no row changed.
      */
     suspend fun bumpManifestVersion() {
         queries.bumpManifestVersion()

@@ -87,8 +87,8 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.membershipClauses() 
         )
     }
 
-    // Two processes' publishes can cross in the network (capability `photo-sharing`, "A publish carries the manifest
-    // version"): the one landing LAST may be the older snapshot. It is answered as a success — a snapshot at least as
+    // Two processes' publishes can cross in the network (a publish carries the manifest
+    // version): the one landing LAST may be the older snapshot. It is answered as a success — a snapshot at least as
     // new is already there — and changes nothing the union serves.
     clause(
         "MANIFEST_AN_OLDER_PUBLISH_LANDING_LAST_CHANGES_NOTHING",

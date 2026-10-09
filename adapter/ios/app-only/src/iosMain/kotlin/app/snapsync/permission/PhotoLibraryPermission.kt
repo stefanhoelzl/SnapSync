@@ -33,7 +33,7 @@ import platform.darwin.dispatch_get_main_queue
  * ding, re-reading the status. Status changes from [requestAccess] arrive via the same source.
  *
  * The mapping is faithful: `.authorized` → GRANTED (full library), `.limited` → LIMITED (the user's
- * hand-picked selection — a first-class working grant, capability `photo-access`),
+ * hand-picked selection — a first-class working grant),
  * `.notDetermined` → NOT_DETERMINED, `.denied`/`.restricted` → DENIED. Access level is `.readWrite`
  * (PhotoKit has no read-only level; it is what discovery, resource reads, and imports need).
  *
@@ -56,7 +56,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
             `object` = null,
             queue = NSOperationQueue.mainQueue,
         ) { _: NSNotification? ->
-            // PLATFORM ENTRY POINT (spec `privacy-security`): the OS calls this observer body, so
+            // PLATFORM ENTRY POINT: the OS calls this observer body, so
             // it records that it was called and what it read. Once per foreground: INFO.
             objcBoundary(log, "photoPermission.onDidBecomeActive") {
                 log.invocation("photoPermission.onDidBecomeActive", result = { status: GalleryAccess -> "$status" }) {
@@ -84,7 +84,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
 
     /**
      * PhotoKit's limited-library picker — the system sheet that lets a user with a **partial** grant
-     * widen (or narrow) the set of photos this app can see (capability `photo-access`).
+     * widen (or narrow) the set of photos this app can see.
      *
      * This is the other half of `PHPhotoLibraryPreventAutomaticLimitedAccessAlert` in the app's
      * Info.plist: that key stops iOS auto-presenting its own "Select More Photos" alert on every

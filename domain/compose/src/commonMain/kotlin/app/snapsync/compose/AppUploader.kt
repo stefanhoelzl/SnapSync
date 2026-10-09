@@ -8,7 +8,7 @@ import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.services.gallery.GalleryDiscovery
 
 /**
- * **The app's uploader** (capability `background-upload`): the app-driven tier on every iOS version — the core tail's
+ * **The app's uploader**: the app-driven tier on every iOS version — the core tail's
  * units ② and ③ over the shared upload cycle, which `uploadCore` assembles over the app's own [AppPorts.appUpload]
  * (a background `URLSession` on iOS). On iOS ≥26.1 under a full grant it runs **beside** the extension, both writing
  * the one App-Group ledger — every write a guarded single transaction, and an overlap a duplicate upload of the same
@@ -49,7 +49,7 @@ internal class AppUploader(private val core: AppCore) {
                 appVersion = build.appVersion,
                 eventKeys = app.eventKeys,
                 process = UploaderProcess.App(core.appUploadAdmission),
-                // The THREE-state membership read, never the core's StateFlow (capability `join-event`).
+                // The THREE-state membership read, never the core's StateFlow.
                 config = app.config,
                 mobileData = app.mobileData,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the cycle cleanly.
@@ -58,8 +58,8 @@ internal class AppUploader(private val core: AppCore) {
                 ledger = app.ledger,
                 upload = ports.appUpload,
                 gallery = ports.gallery,
-                // The walk memo is the app uploader's alone (capability `photo-sharing`, "An unchanged library is
-                // answered from the walk memo"); the extension walks bare.
+                // The walk memo, which answers an unchanged library, is the app uploader's alone; the extension
+                // walks bare.
                 discovery = appUploadDiscovery(
                     walk = GalleryDiscovery(ports.gallery),
                     changeToken = ports.gallery,
@@ -91,9 +91,9 @@ internal class AppUploader(private val core: AppCore) {
         }
 
     /**
-     * The tail's ③ — the walk and the manifest publish, abandoned on a stop (capability `sync-status`, "The discovery
-     * walk is atomic under a stop"). Also a selection change's own work under a partial grant, where the walk is the
-     * selection snapshot.
+     * The tail's ③ — the walk and the manifest publish, abandoned on a stop: the discovery walk is atomic under a
+     * stop. Also a selection change's own work under a partial grant, where the walk is the selection snapshot.
+
      */
     suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome =
         log.invocation(core.process.entryContext, "url-session.walkAndPublish", result = { "$it" }) {

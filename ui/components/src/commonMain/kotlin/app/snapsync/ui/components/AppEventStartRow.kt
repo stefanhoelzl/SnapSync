@@ -17,7 +17,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * Public because a screen sometimes needs to state a day in prose, and a screen must never re-derive the app's
  * date format. A day rather than an instant because some statements are about one: the join gate's retention
- * line ("Shared photos are deleted on …", capability `event-lifetime`) would read as false precision with a
+ * line ("Shared photos are deleted on …") would read as false precision with a
  * minute attached.
  */
 @Composable
@@ -28,7 +28,7 @@ fun appDateLabel(value: LocalDateTime): String = LocalDateFormats.current.format
 internal fun formatStart(value: LocalDateTime): String = LocalDateFormats.current.format(value, "yMMMdjm")
 
 /**
- * The design system's rendering of an event's RANGE (capability `sync-status`), in local wall-clock terms:
+ * The design system's rendering of an event's RANGE, in local wall-clock terms:
  * `Sun 12 Jul – Tue 14 Jul` across days and — for an event that starts and ends on one day — that day with its
  * times, `Today 18:00 – 23:00` or `Sat 18 Jul 18:00 – 23:00` (each in the user's locale). The year shows only
  * when the range crosses one. A [end] of `null` (a legacy membership with no stored end) renders as
@@ -36,7 +36,7 @@ internal fun formatStart(value: LocalDateTime): String = LocalDateFormats.curren
  *
  * Every day names its month: CLDR has no portable month-less day (`Ed` reads `12 Sun` in en-US).
  *
- * The range reads as it was chosen (capability `sync-status`): the last day is the day the end falls on, an end
+ * The range reads as it was chosen: the last day is the day the end falls on, an end
  * at midnight included — an event ending "Tue 00:00" shows Tuesday, as the create screen and the event page do.
  */
 @Composable

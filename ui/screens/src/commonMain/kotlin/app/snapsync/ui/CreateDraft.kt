@@ -16,11 +16,11 @@ import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 
-// The create flow's composition position and the draft it keeps across a failed create (capability
-// `create-event`, "A failed create says so and changes nothing").
+// The create flow's composition position and the draft it keeps across a failed create: a failed
+// create says so and changes nothing.
 
 /**
- * What the host has entered on the create form: the name and the date range (capability `create-event`).
+ * What the host has entered on the create form: the name and the date range.
  *
  * Hoisted out of [CreateEventScreen] because the form is REMOVED from composition while the create is in
  * flight ([CreatingEventScreen] replaces it), and state remembered inside it died with it — so a failed
@@ -55,7 +55,7 @@ internal class CreateDraft(name: String, range: EventRange) {
 
 /**
  * The next thing the host still has to do before Create is allowed, in the order the screen asks for it —
- * or [Complete] once there is nothing left (capability `create-event`), carrying the end a complete draft has.
+ * or [Complete] once there is nothing left, carrying the end a complete draft has.
  */
 internal sealed interface CreateStep {
     object Name : CreateStep
@@ -97,7 +97,7 @@ private const val FOLLOW_NOW_MILLIS = 1_000L
  * it remembers survives the form → creating → form round trip a failed create makes. [layer] is only
  * ever one of the two create layers.
  *
- * The draft follows the app's foreground life ([Layer.CreateEvent.draft], capability `create-event`): a new
+ * The draft follows the app's foreground life ([Layer.CreateEvent.draft]): a new
  * epoch — a return after a long absence — is a fresh draft; any other return moves an untouched start to now.
  * While the form shows and the range is untouched, the start also follows the clock minute by minute.
  */

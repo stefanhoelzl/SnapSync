@@ -15,7 +15,7 @@ import io.sentry.kotlin.multiplatform.SentryLevel
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 
 /**
- * The Sentry seat of the [CrashReporter] port on BOTH platforms (capability `privacy-security`): a translation between
+ * The Sentry seat of the [CrashReporter] port on BOTH platforms: a translation between
  * the core's crash vocabulary (`model/Crash.kt`) and the Sentry KMP SDK's, and nothing more. One copy, because this is
  * where "nothing unshaped leaves" is enforced.
  *
@@ -33,9 +33,9 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
  * - Off: the SDK's failed-HTTP-request capture (request URLs embed eventIds; the logging seam already reports those
  *   failures, scrubbed), default PII, and on Android screenshot and view-hierarchy attachments. The tap and gesture
  *   breadcrumbs and the SDK's own auto-start are off in this module's Android manifest, which sentry-android reads at
- *   init. ANR reporting stays on: an app frozen until the system closes it is reported (capability
- *   `privacy-security`). The SDK's random per-install `user.id` is the one deliberate identifier (spec: powers
- *   affected-device counts, linked to nothing) — do not scrub it. Release-health sessions are off (a per-launch
+ *   init. ANR reporting stays on: an app frozen until the system closes it is reported. The
+ *   SDK's random per-install `user.id` is the one deliberate identifier (it powers affected-device counts, linked to
+ *   nothing) — do not scrub it. Release-health sessions are off (a per-launch
  *   usage record). Bugsink ingests errors only, so tracing stays unset and replay stays at its off default.
  *
  * **Idempotent across the whole process**, not just this instance: the SDK hub is process-global, and a second
@@ -75,8 +75,8 @@ class SentryCrashReporter : CrashReporter {
             options.dist?.let { sdk.dist = it }
             sdk.sendDefaultPii = false
             // No release-health sessions: one per launch, sent whether or not anything failed — a record of how the
-            // app is used, which automatic reports must not carry (capability `privacy-security`). Bugsink drops them
-            // anyway; off, they are never created.
+            // app is used, which automatic reports must not carry. Bugsink drops them anyway; off,
+            // they are never created.
             sdk.enableAutoSessionTracking = false
             sdk.enableCaptureFailedRequests = false
             sdk.attachScreenshot = false

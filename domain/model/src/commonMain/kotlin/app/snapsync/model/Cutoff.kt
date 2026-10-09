@@ -8,7 +8,7 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * Capture-date cutoff string helpers (capability `photo-sharing`).
+ * Capture-date cutoff string helpers.
  *
  * A cutoff is compared against an asset's `creationDate` **lexicographically** (`creationDate >=
  * cutoff`), so it MUST be byte-identical in shape to what the iOS enumerator produces — a bare
@@ -37,7 +37,7 @@ fun localToCutoff(local: LocalDateTime, zone: TimeZone): CaptureDate =
 
 /**
  * Clamp a [chosen] cutoff up to the event's [startsAt] **floor** — the effective cutoff is
- * `max(chosen, startsAt)` (capability `photo-sharing`).
+ * `max(chosen, startsAt)`.
  *
  * This is applied ONCE, at join, and the result is what gets persisted as `EventConfig.minPhotoDate`.
  * Because `startsAt` is immutable, the clamped value is stable for the life of the membership — which is
@@ -61,15 +61,14 @@ fun clampToFloor(chosen: CaptureCutoff, startsAt: EventStart): CaptureCutoff =
 
 /**
  * Clamp a [chosen] upper bound down to the event's [endsAt] **ceiling** — the effective upper bound is
- * `min(chosen, endsAt)` (capability `photo-sharing`). The mirror of [clampToFloor].
+ * `min(chosen, endsAt)`. The mirror of [clampToFloor].
  *
- * Applied ONCE, at join, alongside the floor clamp in the single `JoinEvent` choke point; the result is
- * persisted as `EventConfig.maxPhotoDate`. Because [endsAt] is the host's declared, immutable event window
- * ceiling (creator-chosen at creation, capability `event-creation`), the clamp guarantees the invariant
- * `maxPhotoDate <= endsAt`: the event can only **narrow** a membership's window, never widen it beyond the
- * member's own pick. A photo taken after `endsAt` is not a late event photo but a **non-event** photo, and
- * the window the member is committing to is shown before confirm — so the ceiling is neither coarse nor
- * silent. Every photo `<= endsAt` is still admitted on doubt.
+ * Applied ONCE, at join, alongside the floor clamp in the single `JoinEvent` choke point; the result is persisted as
+ * `EventConfig.maxPhotoDate`. Because [endsAt] is the host's declared, immutable event window ceiling (creator-chosen
+ * at creation), the clamp guarantees the invariant `maxPhotoDate <= endsAt`: the event can only **narrow** a
+ * membership's window, never widen it beyond the member's own pick. A photo taken after `endsAt` is not a late event
+ * photo but a **non-event** photo, and the window the member is committing to is shown before confirm — so the ceiling
+ * is neither coarse nor silent. Every photo `<= endsAt` is still admitted on doubt.
  *
  * As with [clampToFloor], the plain string `minOf` is correct **only because** both operands are the
  * canonical fixed-width UTC shape, so lexicographic order IS chronological order.
@@ -78,9 +77,8 @@ fun clampToCeiling(chosen: CaptureCeiling, endsAt: EventEnd): CaptureCeiling =
     CaptureCeiling(minOf(chosen.at, endsAt.at))
 
 /**
- * Has this membership's own retention deadline passed (capability `manage-membership`)? [deletesAt] is the
- * server-derived instant persisted on the membership (`EventConfig.deletesAt`); [now] is the current
- * canonical instant.
+ * Has this membership's own retention deadline passed? [deletesAt] is the server-derived instant persisted on the
+ * membership (`EventConfig.deletesAt`); [now] is the current canonical instant.
  *
  * This is the **second witness** of the self-leave. A membership is torn down without user action only
  * when the backend reports the event definitively absent **and** this returns `true` — two independent

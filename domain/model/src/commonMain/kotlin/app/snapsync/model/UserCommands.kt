@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * What a join commit did (capability `join-event`).
+ * What a join commit did.
  *
  * A named outcome rather than a Boolean, because the two ways to fail need DIFFERENT screens and a
  * Boolean cannot carry the difference. [Failed] is transient — the network, the backend, the moment —
@@ -17,7 +17,7 @@ enum class JoinCommit {
     /** The event is at capacity; no retry can change that. */
     Full,
 
-    /** The event has closed (capability `event-lifetime`); no retry can change that either. */
+    /** The event has closed; no retry can change that either. */
     Closed,
 
     /** The commit did not land, for a reason that may not hold next time. */
@@ -54,34 +54,34 @@ enum class JoinCommit {
  * inert default is how a hand-built bundle ships a "Choose more photos" button that does nothing.
  *
  * - [leave] — leave the configured event: cancel in-flight downloads, stop the producer, clear the
- *   config, notify the backend (capability `manage-membership`).
+ *   config, notify the backend.
  * - [create] — mint a new event with a name and canonical UTC date **range** (`startsAt`, `endsAt`), then
- *   route it into the join gate (capability `create-event`). Fire-and-forget; outcomes arrive via
+ *   route it into the join gate. Fire-and-forget; outcomes arrive via
  *   the creation status read-model.
  * - [commitJoin] — join (a bodyless membership write, no manifest) then provision the membership's
  *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window
  *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), at
- *   capacity, or failed (capability `join-event`).
+ *   capacity, or failed.
  * - [share] — hand the invite URL to the platform share surface, titled with the event's name (fire-and-forget,
  *   `UiState` unaffected).
- * - [requestAccess] — raise the system photo-access dialog (capability `photo-access`): returns
+ * - [requestAccess] — raise the system photo-access dialog: returns
  *   nothing and cannot suspend — the grant arrives only via the permission read-model.
  * - [openLink] — hand a URL to the platform to open outside the app. Its ONE caller is the
- *   update-required screen's App Store button (capability `app-update-required`), whose remedy is by
+ *   update-required screen's App Store button, whose remedy is by
  *   definition not in this app. The URL is passed in rather than known here, because the screen's
  *   contract is that a build carrying no store URL renders no button — a command that knew the URL
  *   could not express that.
  * - [openSettings] — open the app's system Settings page (the `DENIED` affordance). Distinct from
  *   [reconfigure], which edits this *membership's* settings, not the iOS system settings page.
- * - [choosePhotos] — present the platform's limited-library picker (capability
- *   `photo-access`): the joined layer's "Choose more photos" affordance under a partial
+ * - [choosePhotos] — present the platform's limited-library picker: the joined layer's
+ *   "Choose more photos" affordance under a partial
  *   grant. Fire-and-forget; the resulting selection change arrives via the selection-change seam.
  * - [reconfigure] — change the joined membership's participation settings in place (direction, cutoff,
- *   album opt-in) without leaving (capability `manage-membership`). [eventId] is the event the
+ *   album opt-in) without leaving. [eventId] is the event the
  *   settings surface was opened for; the use-case no-ops if the current membership no longer matches.
  *   Awaited: it answers a [ReconfigureOutcome], so a save that did not land is told to the member rather than
  *   closing the surface as if it had; the change itself lands via the config read-model.
- * - [rename] — rename the joined event for **every** member (capability `manage-membership`). [eventId] is
+ * - [rename] — rename the joined event for **every** member. [eventId] is
  *   the event the heading affordance was opened for; the use-case no-ops if the current membership no
  *   longer matches. Fire-and-forget; the outcome arrives via the rename status read-model, and the new name
  *   lands via the config read-model. Unlike [reconfigure], which changes only this device's settings,
@@ -90,7 +90,7 @@ enum class JoinCommit {
  *   terminal value. Needed because `RenameStatus` carries a success value where `CreationStatus`
  *   deliberately does not: a rename changes no layer, so nothing else would clear it.
  * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel, or keep it on
- *   the device on a build that reports nowhere (capability `privacy-security`), fired from the report sheet
+ *   the device on a build that reports nowhere, fired from the report sheet
  *   once the user has written what went wrong, and answering what became of it ([ReportOutcome]) so the app
  *   can say so. `note` is that description, already trimmed and length-bounded by the sheet — it
  *   titles the report, so two reports about different problems arrive as different issues. `context` is
@@ -99,7 +99,7 @@ enum class JoinCommit {
  *   Present on every build: where the report goes is [UiState.reportDestination], which the sheet states, so
  *   the affordance never suggests a destination the build does not have.
  * - [restoreEventKey] — keep the key a reopened invite of the joined event carries, when this device lost it
- *   (capability `join-event`, "Reopening the current event's invite changes nothing"): answers whether it was kept —
+ *   (reopening the current event's invite changes nothing else): answers whether it was kept —
  *   only the event's own key, only while it is lost — and sharing and receiving resume at once.
  */
 interface UserCommands {
@@ -139,7 +139,7 @@ interface UserCommands {
 
     suspend fun sendDiagnostics(note: String, context: ReportContext): ReportOutcome
 
-    /** The device's mobile-data choice, from the app menu (capability `mobile-data`): answers whether it was saved. */
+    /** The device's mobile-data choice, from the app menu: answers whether it was saved. */
     suspend fun setMobileData(on: Boolean): Boolean
 
     suspend fun restoreEventKey(linkKey: String): Boolean

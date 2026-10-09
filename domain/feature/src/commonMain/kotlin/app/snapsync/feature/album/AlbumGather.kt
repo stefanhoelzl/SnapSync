@@ -26,8 +26,8 @@ import kotlinx.coroutines.sync.withLock
 const val GATHER_BATCH_SIZE: Int = 500
 
 /**
- * The event album's **gather** (capability `event-album`, "Ensuring the album gathers what the device already
- * holds"): place into the album the photos of the event this device already holds. Enqueue-time and
+ * The event album's **gather** — ensuring the album gathers what the device already holds: place into the
+ * album the photos of the event this device already holds. Enqueue-time and
  * import-time placement cover what is synced once an album exists; this covers the rest — photos shared or
  * received before the member opted in, and photos contributed during an earlier event that this event's
  * window also admits (listed in this event's manifest, never enqueued again, so never placed at enqueue).
@@ -101,7 +101,7 @@ class AlbumGather(
     }
 
     /**
-     * The app's grant subscription feeds every permission emission here (capability `event-album`): under [usable]
+     * The app's grant subscription feeds every permission emission here: under [usable]
      * access the joined membership's album is ensured first — the app is the sole album creator, and sync needs the same
      * grant, so the album exists before the first synced photo; not an opt-in, so a launch's replay never brings back a
      * folder album the member emptied — then [onAccessObserved] judges the emission. One collector for both, because a

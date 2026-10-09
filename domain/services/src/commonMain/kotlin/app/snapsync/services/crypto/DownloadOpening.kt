@@ -60,7 +60,7 @@ class DownloadOpening(
             failures.update { it - id }
             return true
         }
-        // A lost key is the membership's state, not this file's fault (capability `sync-status`): the joined screen
+        // A lost key is the membership's state, not this file's fault: the joined screen
         // says so and no new download starts, so it counts toward no report.
         if (outcome == NO_KEY) {
             log.w { "an encrypted download could not be opened: $outcome" }

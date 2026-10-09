@@ -36,11 +36,11 @@ import app.snapsync.ui.resources.switch_title
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-// In-place membership reconfigure (capability `manage-membership`) and the switch confirmation
+// In-place membership reconfigure and the switch confirmation
 // that guards a change of event.
 
 /**
- * The event's **settings** (capability `manage-membership`), in a sheet over the joined screen: a joined member
+ * The event's **settings**, in a sheet over the joined screen: a joined member
  * re-opens the choices they made at join — share and receive, the capture range, the album — and each
  * change applies as it is made. There is no Save, Cancel or header: the sheet's drag handle is its only chrome, and
  * swiping it down, going back, or tapping the joined screen above it all call [onClose].
@@ -65,7 +65,7 @@ internal fun ReconfigureSheet(
     val range = surface.range
     AppPageSheet(onDismiss = onClose) {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // The last change did not land (capability `manage-membership`): the control already shows the setting
+            // The last change did not land: the control already shows the setting
             // still in effect, and this says so plainly, so the member knows to try again.
             if (surface.saveFailed) StatusHint(stringResource(Res.string.settings_save_failed))
             ParticipationSections(
@@ -98,7 +98,7 @@ internal fun ReconfigureSheet(
 class WithdrawalActions(val onStopSharing: () -> Unit, val onKeepSharing: () -> Unit)
 
 /**
- * What the operator was looking at when they wrote a report (capability `privacy-security`).
+ * What the operator was looking at when they wrote a report.
  *
  * It is derived **here** rather than in the container because the two surfaces worth naming are
  * screen-local: the reconfigure surface and, over the joined layer, a pending switch. Both are Compose
@@ -128,7 +128,7 @@ internal fun screenLabel(state: UiState): String {
 
 /**
  * The switch confirmation (a different event scanned while joined) — the leave-style dialog. Its confirm
- * runs the **leave and nothing else** (capability `join-event`); the join that follows is the regular
+ * runs the **leave and nothing else**; the join that follows is the regular
  * full-screen surface, which the reduction presents once the leave has cleared the config. So this dialog
  * carries no pickers, decides nothing, and commits nothing.
  *
@@ -186,8 +186,7 @@ internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
     // leave, so no commit can fail while the previous event is still configured. Committing is transient — no dialog
     // while a commit runs. The names carry the whole weight of the decision, so they are the whole body; the title is
     // the crisp question. It promises NO participation — the member picks direction, cutoff and album on the join
-    // surface that follows — and shows no shareable count, there being no chosen range to count yet (capability
-    // `join-event`).
+    // surface that follows — and shows no shareable count, there being no chosen range to count yet.
     is JoinPhase.Detailed -> SwitchPrompt(
         Res.string.switch_title,
         Res.string.switch_body,
@@ -196,7 +195,7 @@ internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
         switchingTo = phase.event.name,
     ).takeIf { phase.step == JoinPhase.Detailed.Step.Ready }
     // An invite to no event, a closed one, or an incomplete invite of an encrypted one: the member stays in their own
-    // event (capability `join-event`) — the same walls the join screen shows.
+    // event — the same walls the join screen shows.
     JoinPhase.NotFound, JoinPhase.Closed, JoinPhase.WrongLink ->
         wallCopy(phase).let { SwitchPrompt(it.title, it.body, Res.string.ok, SwitchAct.DISMISS) }
     JoinPhase.LoadFailed ->
@@ -207,7 +206,7 @@ internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
 
 /**
  * The one sentence this surface says differently from the join gate. Turning the album on gathers what the
- * device already holds (capabilities `manage-membership`, `event-album`), so the on-note says the
+ * device already holds, so the on-note says the
  * already-synced photos are included. "Synced", not "shared and received": this note does not vary with the
  * switches, and must not name a feed the membership lacks.
  */

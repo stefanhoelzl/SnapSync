@@ -1,8 +1,7 @@
 package app.snapsync.model
 
 /**
- * The **selection policy** (capability `photo-sharing`): what a membership contributes, as ONE
- * value with ONE `admits` decision.
+ * The **selection policy**: what a membership contributes, as ONE value with ONE `admits` decision.
  *
  * The policy answers a single question — *may this asset enter the event?* — and it has three kinds of
  * input: the capture-date **range** bounds *when* it was taken, the **origin exclusions** bound *what it
@@ -25,10 +24,10 @@ package app.snapsync.model
  *
  * ## Every rule decides on facts alone
  *
- * No rule may need an asset's *resources* to decide (capability `photo-sharing`). That is what
- * makes the admitted set **one** set rather than a family of approximations: a rule requiring a ~110 ms
- * per-asset resource read forces each consumer to choose between paying for it — pointless for a count —
- * and admitting on doubt, so the same policy yields different answers at different consumers.
+ * No rule may need an asset's *resources* to decide. That is what makes the admitted set **one** set rather than a
+ * family of approximations: a rule requiring a ~110 ms per-asset resource read forces each consumer to choose between
+ * paying for it — pointless for a count — and admitting on doubt, so the same policy yields different answers at
+ * different consumers.
  *
  * The animated-image rule was the only such rule, and it is gone. It read a *resource's* MIME type, so the
  * facts-only join preview could not see it and admitted a GIF on doubt while the eager status walk excluded
@@ -55,10 +54,9 @@ package app.snapsync.model
  * ## Where it lives
  *
  * `model/` — the only zone every consumer can see (feature/upload and feature/status are mutually blind).
- * Platform-free, decided entirely on neutral [AssetFacts], and exercised in `commonTest` on JVM **and**
- * the simulator. The platform may narrow what a walk *returns* by pattern-matching [SelectionRule]s
- * (capability `photo-sharing`, *Selection filter*), but that is an optimization which can
- * neither widen nor narrow the admitted set — [admits] stays authoritative.
+ * Platform-free, decided entirely on neutral [AssetFacts], and exercised in `commonTest` on JVM **and** the simulator.
+ * The platform may narrow what a walk *returns* by pattern-matching [SelectionRule]s, but that is an optimization which
+ * can neither widen nor narrow the admitted set — [admits] stays authoritative.
  *
  * What the policy decides OVER is the member's **default gallery**, and that the platform defines: its gallery
  * adapter returns only assets there — the library (or the partial grant's selection) on iOS, `DCIM` and its
@@ -147,9 +145,8 @@ class SelectionPolicy(val rules: List<SelectionRule>) {
  * fail-closed default is *worse* because it is silent — a contributing member would share nothing, `N`
  * would read `0`, and the screen would read "Up to date" while nothing happened.
  *
- * [ceiling] is nullable only for a membership persisted before the capture-date range existed and not yet
- * reconciled (capability `photo-sharing`); `null` means unbounded above, the admit-on-doubt
- * direction. It becomes required once every device has reconciled.
+ * [ceiling] is nullable only for a membership persisted before the capture-date range existed and not yet reconciled;
+ * `null` means unbounded above, the admit-on-doubt direction. It becomes required once every device has reconciled.
  */
 suspend fun selectionRulesFor(
     includesUpload: Boolean,
@@ -231,9 +228,9 @@ suspend fun selectionPolicyFor(
 fun noContribution(): SelectionPolicy = SelectionPolicy(listOf(SelectionRule.DenyAll))
 
 /**
- * The library photos that may be one of an event's RECEIVED photos (capability `receiving-photos`): everything captured
- * inside the event's own range, `[startsAt, endsAt]`, with no origin exclusion — a received photo is recognised by the
- * SnapSync mark in its name, not by what it is. Never a contribution policy: nothing it admits is shared.
+ * The library photos that may be one of an event's RECEIVED photos: everything captured inside the event's own range,
+ * `[startsAt, endsAt]`, with no origin exclusion — a received photo is recognised by the SnapSync mark in its name, not
+ * by what it is. Never a contribution policy: nothing it admits is shared.
  */
 fun eventWindow(startsAt: EventStart, endsAt: EventEnd): SelectionPolicy = SelectionPolicy(
     listOf(
@@ -243,9 +240,9 @@ fun eventWindow(startsAt: EventStart, endsAt: EventEnd): SelectionPolicy = Selec
 )
 
 /**
- * One rule of the [SelectionPolicy]. Sealed so the platform can pattern-match the set and translate the
- * rules it can express into a native fetch predicate (capability `photo-sharing`, *Selection
- * filter*) — a domain rule, translated per platform, never a platform hint leaking into `model/`.
+ * One rule of the [SelectionPolicy]. Sealed so the platform can pattern-match the set and translate the rules it can
+ * express into a native fetch predicate — a domain rule, translated per platform, never a platform hint leaking into
+ * `model/`.
  *
  * Each rule is a pure predicate over neutral [AssetFacts]. There is deliberately **no** `ExcludeEdited`
  * rule: `hasAdjustments` is an *exemption* from the resolution floors (a cropped photo renders small and
@@ -274,10 +271,9 @@ sealed interface SelectionRule {
      * conjunction is false whatever else is in the list, and a consumer asks [SelectionPolicy.admits]
      * exactly as it would for any other rule.
      *
-     * The platform translator MUST express it as a query matching no asset (capability `sync-status`).
-     * That is a liveness property, not a correctness one — [admits] returns false regardless — but without
-     * it a non-contributing membership pays a whole-library walk on every cold start to reach the empty
-     * set its own configuration already stated.
+     * The platform translator MUST express it as a query matching no asset. That is a liveness property, not a
+     * correctness one — [admits] returns false regardless — but without it a non-contributing membership pays a
+     * whole-library walk on every cold start to reach the empty set its own configuration already stated.
      */
     data object DenyAll : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = false
@@ -335,9 +331,9 @@ sealed interface SelectionRule {
     }
 
     /**
-     * Echo suppression (capability `receiving-photos`): assets this device **downloaded and imported** from
-     * other contributors. They live in the library, so a walk finds them, but re-uploading one sends a
-     * foreign photo back into the event and pegs `N` above what will ever complete.
+     * Echo suppression: assets this device **downloaded and imported** from other contributors. They live in the
+     * library, so a walk finds them, but re-uploading one sends a foreign photo back into the event and pegs `N` above
+     * what will ever complete.
      */
     data class NotEcho(val suppressedAssetIds: Set<AssetId>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in suppressedAssetIds
@@ -345,10 +341,10 @@ sealed interface SelectionRule {
     }
 
     /**
-     * The album denylist (capability `photo-sharing`): assets sitting in an album a
-     * messaging/social app made. Album membership is the one origin fact that is **not** on the asset —
-     * it needs a platform lookup — so the resolved id set is supplied to the policy rather than looked up
-     * by it. The titles stay in `model/` ([SelectionCalibration.denylistTitles]); cost is O(albums), not O(assets).
+     * The album denylist: assets sitting in an album a messaging/social app made. Album membership is the one origin
+     * fact that is **not** on the asset — it needs a platform lookup — so the resolved id set is supplied to the policy
+     * rather than looked up by it. The titles stay in `model/` ([SelectionCalibration.denylistTitles]); cost is
+     * O(albums), not O(assets).
      */
     data class NotInDenylistedAlbum(val excludedAssetIds: Set<AssetId>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in excludedAssetIds

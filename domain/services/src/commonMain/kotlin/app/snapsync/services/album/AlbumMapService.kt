@@ -17,7 +17,7 @@ const val ALBUM_MAP_KEY: String = "app.snapsync.album.map"
 const val ALBUM_FILLED_KEY: String = "app.snapsync.album.filled"
 
 /**
- * The event-album map (capability `event-album`): [AlbumMapService] as JSON under one key of the shared
+ * The event-album map: [AlbumMapService] as JSON under one key of the shared
  * [Preferences], so the app (which writes on album creation) and the upload extension (which reads on placement)
  * both see it — readable while locked, which the Keychain item it replaced was not. Reads hit the store each call
  * (no cached state), so a cross-process reader is always current.
@@ -56,7 +56,7 @@ class AlbumMapService(
 
     /**
      * Whether [eventId]'s album has held a photo — what tells a folder album the member emptied from one not filled
-     * yet, since an empty folder is no album either way (capability `event-album`; `android-event-album` D4). An
+     * yet, since an empty folder is no album either way (decision record `android-event-album` D4). An
      * unreadable store reads as not filled: the album is then used, never wrongly read as deleted.
      */
     fun filled(eventId: String): Boolean = eventId in readFilled().orEmpty()

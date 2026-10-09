@@ -7,7 +7,7 @@ import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
 
 /**
- * The logging seam onto the process's [LogSink]s (capability `privacy-security`): every line, formatted ONCE
+ * The logging seam onto the process's [LogSink]s: every line, formatted ONCE
  * ([logLineBody]) with the entry point that triggered it, handed to each sink.
  */
 class SinkLogWriter(private val sinks: List<LogSink>, private val entry: EntryContext) : LogWriter() {

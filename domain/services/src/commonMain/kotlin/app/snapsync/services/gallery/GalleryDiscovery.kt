@@ -10,13 +10,13 @@ import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
 
 /**
- * The upload cycle's two library reads over the [GalleryReader] (capability `background-upload`): the
+ * The upload cycle's two library reads over the [GalleryReader]: the
  * full-enumeration walk and the id-scoped resolve of ledger keys. Both tiers bind it; the app's wraps it in the
  * walk memo.
  *
  * **A walk is authoritative for deletion only under a full grant** ([Discovery.fullEnumeration]) — the one
  * decision here. Under a partial grant the gallery answers the selection, and a de-selected photo is not a
- * deleted one (capability `photo-access`); with no grant there is no library to have read. The cycle deletes
+ * deleted one; with no grant there is no library to have read. The cycle deletes
  * the in-window rows of every asset an authoritative walk did not return, so the grant is read BEFORE the walk:
  * a grant that narrows while the walk runs leaves this walk not authoritative rather than the reverse.
  */

@@ -57,7 +57,7 @@ private const val DRAWER_WIDTH_FRACTION = 0.8f
 private val DrawerMaxWidth = 320.dp
 
 /**
- * The app menu's side drawer (capability `sync-status`), drawn over [content] from the leading edge.
+ * The app menu's side drawer, drawn over [content] from the leading edge.
  *
  * [open] is the state's answer, not the drawer's own: the drawer follows it, and every way the member closes it —
  * the scrim, a swipe, the system back, the header's close button — is reported as [onDismiss] so the state says so

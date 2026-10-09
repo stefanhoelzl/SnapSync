@@ -1,5 +1,5 @@
 // `:adapter:generic:sentry` (`docs/architecture.md`): the crash-reporting seat of BOTH platforms — the
-// `CrashReporter` port over the Sentry KMP SDK (capability `privacy-security`). One module rather than a copy per
+// `CrashReporter` port over the Sentry KMP SDK. One module rather than a copy per
 // platform, because the translation is where "nothing unshaped leaves" is enforced and two copies would drift. It
 // reads no platform API: every fact of the build arrives in `CrashOptions`.
 //
@@ -15,7 +15,7 @@ plugins {
     id("snapsync.android")
 }
 
-// Sentry test-link provisioning (capability `privacy-security`): the sentry-kmp klib references the
+// Sentry test-link provisioning: the sentry-kmp klib references the
 // sentry-cocoa framework, which is provided by SPM at Xcode link time for the shipped frameworks —
 // but this module's own SIMULATOR TEST EXECUTABLE is linked by Gradle, so a framework must exist
 // for that link. It must be the DYNAMIC variant: the static archive's Swift objects force-load

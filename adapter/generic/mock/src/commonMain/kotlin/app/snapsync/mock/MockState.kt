@@ -295,7 +295,7 @@ private class TriggerDto(
     val id: String,
     val kind: String,
     val earliestMillis: Long? = null,
-    /** The pre-`mobile-data` form: `true` read as [WakeNetwork.ANY], `false` as [WakeNetwork.NONE]. */
+    /** The form from before the mobile-data rule: `true` read as [WakeNetwork.ANY], `false` as [WakeNetwork.NONE]. */
     val requiresNetwork: Boolean? = null,
     val maxDelayMillis: Long? = null,
     val cadence: String? = null,

@@ -133,10 +133,10 @@ private fun decodeFragmentForm(fragment: String): ConfigDecodeResult {
 }
 
 /**
- * The invite a Google Play install carried, as the event link it came from — or `null` when the install carried none
- * (capability `join-event`). The event page's Play button hands the invite's fragment payload, exactly `v=3&d=…` and
- * for an encrypted event `&k=<key>`, to Play as the install referrer; Play answers it to the installed app URL-decoded
- * once, so [referrer] is that payload.
+ * The invite a Google Play install carried, as the event link it came from — or `null` when the install carried none.
+ * The event page's Play button hands the invite's fragment payload, exactly `v=3&d=…` and for an encrypted event
+ * `&k=<key>`, to Play as the install referrer; Play answers it to the installed app URL-decoded once, so [referrer] is
+ * that payload.
  *
  * `null` is every install that did not come through an invite's page — above all the ORGANIC one, whose referrer Play
  * fills in itself (`utm_source=google-play&utm_medium=organic`) — and anything that does not decode as an invite. It
@@ -146,7 +146,7 @@ private fun decodeFragmentForm(fragment: String): ConfigDecodeResult {
  */
 fun inviteLinkFromInstallReferrer(referrer: String): String? {
     // An encrypted event's page appends its key (`&k=`, checked against the event before it does): the invite it
-    // carries is then the event's whole one, key included (capabilities `join-event`, `privacy-security`).
+    // carries is then the event's whole one, key included.
     val fields = referrer.trim().split("&")
     val keyField = fields.singleOrNull { it.startsWith("$KEY_PARAM=") }
     val key = keyField?.removePrefix("$KEY_PARAM=")

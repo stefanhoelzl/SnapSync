@@ -1,8 +1,7 @@
 package app.snapsync.model
 
 /**
- * What a reconfigure did (capability `manage-membership`) — named, so the settings surface can tell a save
- * that landed from one that did not.
+ * What a reconfigure did — named, so the settings surface can tell a save that landed from one that did not.
  */
 enum class ReconfigureOutcome {
     /** The new settings were saved; the arms were re-driven best-effort. */

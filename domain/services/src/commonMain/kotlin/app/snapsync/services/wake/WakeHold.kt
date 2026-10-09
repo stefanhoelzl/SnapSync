@@ -11,8 +11,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * One wake's hold on the process's **background time** — `WakeHold`, not `Wake`, since `Wake` is the port the
- * operating system's scheduled wakes arrive through (capability `sync-status`, "OS completion handlers are
- * released only after their work completes"; `docs/architecture.md`, "Background time is an outbound port named
+ * operating system's scheduled wakes arrive through (OS completion handlers are
+ * released only after their work completes; `docs/architecture.md`, "Background time is an outbound port named
  * for the need"; decision record `changes/own-work-per-wake`, D3 and D5).
  *
  * Begun **no later than the OS handler is handed over** — before the wake's own work starts — and held across that

@@ -25,7 +25,7 @@ import platform.UIKit.UIViewController
 import platform.UIKit.systemBackgroundColor
 
 /**
- * The iOS [Ui]: the Compose scene SwiftUI hosts, and the rule that decides when one exists (capability `sync-status`).
+ * The iOS [Ui]: the Compose scene SwiftUI hosts, and the rule that decides when one exists.
  *
  * **SwiftUI pulls the scene** at `makeUIViewController` ([viewController]); this answers at ask-time, on the main
  * thread, from the shared [SceneRecord]: a process woken into the background is handed a blank placeholder and builds
@@ -77,7 +77,7 @@ class IosUi(
 
     /**
      * The app became active, as SwiftUI observes it — record it, and answer the scene generation SwiftUI binds to
-     * `.id(…)`. Logged with the value it answered (capability `privacy-security`): what separates a healthy process
+     * `.id(…)`. Logged with the value it answered: what separates a healthy process
      * from one carrying a stale rebuild signal is that value.
      */
     @PlatformEntry

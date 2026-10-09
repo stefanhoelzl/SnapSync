@@ -66,13 +66,13 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
         CommandResult.ok("""{"invite":"${encodeEventUrl(EventLinkPayload(event, key = key))}"}""")
     },
     // The joined event's key gone from the Keychain while the membership stays — what a restore onto a new phone or a
-    // reset of the phone's own key protection leaves (capability `sync-status`).
+    // reset of the phone's own key protection leaves.
     "event-key/lose" to RigCommand { _, _ ->
         rig.mocks.keychain.port().delete(SecureSlots.EVENT_KEY)
         CommandResult.ok("""{"lost":true}""")
     },
     // Deleting the app and installing it again: its files, databases and user defaults are gone, the Keychain, the
-    // photo library and the backend keep theirs (capability `receiving-photos`, what a reinstall forgets), then a cold
+    // photo library and the backend keep theirs (what a reinstall forgets), then a cold
     // foreground launch as `relaunch` makes one.
     "reinstall" to RigCommand { _, _ ->
         rig.mocks.uninstallApp()

@@ -9,8 +9,8 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * How one fixture route answers a transfer — chosen by the clause, not by the system under contract (capability
- * `docs/architecture.md`, "An adapter bound per compilation target is real for the clauses it runs there": a server a
+ * How one fixture route answers a transfer — chosen by the clause, not by the system under contract
+ * (`docs/architecture.md`, "An adapter bound per compilation target is real for the clauses it runs there": a server a
  * transport's clauses exchange bytes with is a clause input).
  */
 sealed interface FixtureAnswer {
@@ -133,9 +133,8 @@ internal suspend fun awaitWithin(within: Duration = TRANSFER_BOUND, condition: s
 internal suspend fun transferSettle() = withContext(Dispatchers.Default) { delay(TRANSFER_SETTLE) }
 
 /**
- * A longer real-time pause, for asserting that a transfer HELD to unrestricted networks did not run on a restricted one
- * (capability `mobile-data`): every unheld transfer over loopback ends well inside it, so a held one still open after it
- * is held, not slow.
+ * A longer real-time pause, for asserting that a transfer HELD to unrestricted networks did not run on a restricted
+ * one: every unheld transfer over loopback ends well inside it, so a held one still open after it is held, not slow.
  */
 internal suspend fun heldSettle() = withContext(Dispatchers.Default) { delay(HELD_SETTLE) }
 

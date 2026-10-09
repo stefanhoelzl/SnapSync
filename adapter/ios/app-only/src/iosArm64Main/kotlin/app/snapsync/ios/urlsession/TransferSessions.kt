@@ -24,10 +24,9 @@ import platform.Foundation.NSURLSessionConfiguration
  * what event photos need by default. (Both are only ever hints: a session created while the app is already in
  * the background is treated as discretionary regardless.)
  *
- * The session stays cellular-allowed even for a member who keeps photos off mobile data (capability
- * `mobile-data`): a session flag would bind every transfer in it, while the choice belongs to each transfer from
- * the moment it is created. That transfer's own request narrows it instead (`applyTransferNetwork`) — iOS honours
- * the stricter of the two, measured 2026-10-03.
+ * The session stays cellular-allowed even for a member who keeps photos off mobile data: a session flag would bind
+ * every transfer in it, while the choice belongs to each transfer from the moment it is created. That transfer's own
+ * request narrows it instead (`applyTransferNetwork`) — iOS honours the stricter of the two, measured 2026-10-03.
  */
 internal actual fun transferSessionConfiguration(identifier: String): NSURLSessionConfiguration =
     NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(identifier).apply {

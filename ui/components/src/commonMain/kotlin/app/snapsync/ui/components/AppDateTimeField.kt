@@ -58,7 +58,7 @@ internal const val WHEEL_NEIGHBOUR_ALPHA = 0.5f
 internal const val WHEEL_DISTANT_ALPHA = 0.25f
 
 /**
- * The range picker as a dialog (capabilities `join-event`, `manage-membership`): the same [RangeEditor] the
+ * The range picker as a dialog: the same [RangeEditor] the
  * create screen shows inline — calendar, gestures, wheels, rules — inside a pane-centred card with a [title],
  * its [presets] as chips on top, and Cancel / OK. The join and settings surfaces open it on the range
  * already chosen ([initial], complete), so the first tap on a day starts a new range and narrowing an end is
@@ -95,7 +95,7 @@ internal fun RangePickerDialog(
 }
 
 /**
- * A one-tap shortcut above the range calendar (capability `join-event`: the whole event, from now): a
+ * A one-tap shortcut above the range calendar (the whole event, from now): a
  * [label], whether it is the range currently chosen, and what choosing it does. Tapping one is a complete
  * choice — the caller commits it and closes the dialog — so a chip never half-edits the calendar beneath.
  */

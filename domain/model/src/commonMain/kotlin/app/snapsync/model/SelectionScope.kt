@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * What the upload discovery may read (capability `photo-access`).
+ * What the upload discovery may read.
  *
  * [Unrestricted] — a full grant: discovery walks the library as ever. [Scoped] — a partial grant whose
  * selection HAS BEEN READ: discovery reads exactly that snapshot and MUST NOT walk, and the snapshot is an
@@ -9,10 +9,9 @@ package app.snapsync.model
  * carries has left, and its rows go (de-selecting is deleting). [Unread] — a partial grant whose selection
  * has not been read yet: the app holds no selection at all, which is a different fact from an empty one.
  *
- * [Unread] is its own case because collapsing it into `Scoped(emptyList())` deletes: an authoritative empty
- * snapshot says every photo left, and an empty key resolution says every row's asset is gone. The app's
- * cycle is withheld while the scope is [Unread] (capability `background-upload`), so nothing reads it on
- * the upload path. Decision record: `changes/selection-is-the-walk` (D1).
+ * [Unread] is its own case because collapsing it into `Scoped(emptyList())` deletes: an authoritative empty snapshot
+ * says every photo left, and an empty key resolution says every row's asset is gone. The app's cycle is withheld while
+ * the scope is [Unread], so nothing reads it on the upload path. Decision record: `changes/selection-is-the-walk` (D1).
  *
  * The value is derived, never stored: [selectionScope] below computes it from the current permission
  * and the latest selection snapshot — the composition supplies those two inputs and decides nothing —
@@ -25,8 +24,8 @@ sealed interface SelectionScope {
 }
 
 /**
- * The derivation itself (capability `photo-access`): current photo-access grant + the latest
- * selection snapshot → what discovery may read right now.
+ * The derivation itself: current photo-access grant + the latest selection snapshot → what discovery may read right
+ * now.
  *
  * Pure, and seated here rather than in the composition that calls it. It decides what a partial-grant
  * member may upload **at all** — under [GalleryAccess.LIMITED] the hand-picked selection IS the

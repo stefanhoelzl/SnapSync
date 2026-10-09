@@ -19,7 +19,7 @@ import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
- * The iOS [PushNotifications] (capability `receiving-photos`): APNs, through `UIApplication` and the application
+ * The iOS [PushNotifications]: APNs, through `UIApplication` and the application
  * delegate's three callbacks, which the Swift shell forwards whole to the `deliver…` methods here.
  *
  * [register] asks for the token — Apple describes asking as cheap, and it is the only way the app learns a rotated

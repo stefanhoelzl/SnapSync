@@ -18,8 +18,8 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
- * Bridges the join screen's **local** date-time picker and the UTC `…Z` capture-date cutoff string
- * (capability `photo-sharing`). Injected into the screen so `:ui:screens` needs no clock or
+ * Bridges the join screen's **local** date-time picker and the UTC `…Z` capture-date cutoff string.
+ * Injected into the screen so `:ui:screens` needs no clock or
  * timezone knowledge: it holds only a `LocalDateTime` and calls these methods. **Pure given its
  * inputs** (migration step 9): [now] and [zone] arrive injected — production binds the `Clock` port
  * (`:adapter:generic:app`'s `SystemClock`: its now, and its zone read once, by the host composition)
@@ -58,7 +58,7 @@ class CutoffFormatter(
 
     /**
      * "Now" directly as a canonical `…Z` string — the form the event-start comparison needs
-     * (`startsAt > nowCutoff()`, capability `sync-status`).
+     * (`startsAt > nowCutoff()`).
      *
      * Comparing in the **cutoff string domain** rather than converting `startsAt` to a local time and
      * comparing `LocalDateTime`s is deliberate: the strings are fixed-width canonical UTC, so a plain
@@ -69,7 +69,7 @@ class CutoffFormatter(
     fun nowCutoff(): CaptureDate = toCutoff(nowLocal())
 
     /**
-     * The latest end an event starting at [from] may have (capability `create-event`): [from] plus the
+     * The latest end an event starting at [from] may have: [from] plus the
      * backend's event window ([EVENT_WINDOW_MAX_SECONDS], generated from the same deployment value
      * `POST /events` validates against).
      *

@@ -6,7 +6,7 @@ import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 
 /**
- * The iOS binding of the `:domain` `EntryContext` port (capability `privacy-security`): drives the
+ * The iOS binding of the `:domain` `EntryContext` port: drives the
  * process-global [LogContext] the device-log writers read. This is the ambient-context set/clear
  * seam every live iOS binary injects (world / tests inject `NoEntryContext`), so the global mutable
  * stays in the adapter layer while `:domain` code drives it through the port.
@@ -19,7 +19,7 @@ object IosEntryContext : EntryContext {
 
 /**
  * The thread-scoped binding of the `EntryContext` port: the prefix reaches only lines logged on the thread
- * the entry point was called on (capability `privacy-security`).
+ * the entry point was called on.
  *
  * ⚠️ **Only for a body that does not suspend and launches nothing whose lines should inherit the
  * prefix.** That is what makes it exact: a synchronous call occupies its thread, so nothing else logs

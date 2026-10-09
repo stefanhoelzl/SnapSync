@@ -20,7 +20,7 @@ sealed interface ConfigRead {
      * There is definitively no usable config: the config file is genuinely missing. This is the only
      * outcome that reads as not joined, and since the Stage-2 fallback deletion
      * it is reached from **one** fact — the file's not-found error class — with no second store
-     * consulted (capability `photo-sharing`).
+     * consulted.
      */
     data object None : ConfigRead
 

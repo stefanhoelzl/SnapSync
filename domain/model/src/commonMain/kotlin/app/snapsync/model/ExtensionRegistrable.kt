@@ -1,19 +1,17 @@
 package app.snapsync.model
 
 /**
- * A development switch per uploader (capability `background-upload`, "A mechanism override is a runtime input a
- * shipped build cannot carry"). On a production build it is **always** `null`: nothing in a production build can
- * supply one — its source exists only in a build made with the rig. A test build can turn either uploader off:
- * [app] `false` makes the app's uploader withhold (it records, never creates); [extension] `false` makes
- * [extensionRegistrable] answer `false`, so the transitions deregister the extension (the extension cannot read
- * app memory, so off must be a deregistration).
+ * A development switch per uploader: a mechanism override is a runtime input a shipped build cannot carry. On a
+ * production build it is **always** `null`: nothing in a production build can supply one — its source exists only in a
+ * build made with the rig. A test build can turn either uploader off: [app] `false` makes the app's uploader withhold
+ * (it records, never creates); [extension] `false` makes [extensionRegistrable] answer `false`, so the transitions
+ * deregister the extension (the extension cannot read app memory, so off must be a deregistration).
  */
 data class UploaderPin(val app: Boolean = true, val extension: Boolean = true)
 
 /**
- * Whether the upload extension **may be registered** right now — the one fact left of the former mechanism
- * resolver (capability `background-upload`, "Whether the extension may be registered is one pure fact"; decision
- * record `changes/both-uploaders-active`, D4).
+ * Whether the upload extension **may be registered** right now — the one fact left of the former mechanism resolver
+ * (decision record `changes/both-uploaders-active`, D4).
  *
  * Both uploaders run beside each other, so nothing here chooses which one runs: the app's uploader creates under
  * any usable grant, the extension under a full one, each deciding at its own entry gate. What the transitions
@@ -34,9 +32,8 @@ fun extensionRegistrable(
 ): Boolean = osSupportsOsDrivenUpload && permission == GalleryAccess.GRANTED && pin?.extension != false
 
 /**
- * Which uploaders this OS carries, as the diagnostic dump names it (capability `privacy-security`): the app's on
- * every version, and the extension beside it from iOS 26.1. A constant of the running build — not which one runs,
- * because both may.
+ * Which uploaders this OS carries, as the diagnostic dump names it: the app's on every version, and the extension
+ * beside it from iOS 26.1. A constant of the running build — not which one runs, because both may.
  */
 fun uploadersCarried(osSupportsOsDrivenUpload: Boolean): String =
     if (osSupportsOsDrivenUpload) "app+extension" else "app"

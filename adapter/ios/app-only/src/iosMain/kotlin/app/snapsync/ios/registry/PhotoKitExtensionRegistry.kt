@@ -19,7 +19,7 @@ import platform.Photos.PHPhotoLibrary
 
 /**
  * The PhotoKit binding of [ExtensionRegistry] — **the only place in the repo that calls
- * `setUploadJobExtensionEnabled` or `isUploadJobExtensionEnabled`** (capability `background-upload`).
+ * `setUploadJobExtensionEnabled` or `isUploadJobExtensionEnabled`**.
  *
  * It reports the platform's three raw facts — did the write return true, and if not, which error domain and code —
  * and nothing else: what they mean is `model/registrationOutcome`, and the line that reports them is the feature's
@@ -92,8 +92,8 @@ private const val UPLOAD_EXTENSION_MINOR = 1L
 internal class PlatformWriteAnswer(val ok: Boolean, val errorDomain: String?, val errorCode: Long?)
 
 /**
- * The two `PHPhotoLibrary` calls [PhotoKitExtensionRegistry] makes, as a seam in this module (capability
- * `docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every
+ * The two `PHPhotoLibrary` calls [PhotoKitExtensionRegistry] makes, as a seam in this module
+ * (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every
  * build"): the device run records every call and iOS's answer through it, and every CI build replays that
  * recording against the current adapter. Production binds [SystemExtensionRegistrationApi]; nothing else does.
  */

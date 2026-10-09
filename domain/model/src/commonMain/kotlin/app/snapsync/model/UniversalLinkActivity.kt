@@ -7,7 +7,7 @@ package app.snapsync.model
 // itself is unchanged and still the tested `model/` codec's, as `docs/architecture.md` requires.
 
 /**
- * What became of a delivered `NSUserActivity` (capability `join-event`; `docs/architecture.md`,
+ * What became of a delivered `NSUserActivity` (`docs/architecture.md`,
  * "Absence is never silent").
  *
  * This used to be `String?`, and that is the defect this type exists to remove: a **three**-state
@@ -51,7 +51,7 @@ sealed interface EventLinkDelivery {
 
 /**
  * The **enter-line parameters** for a delivered activity: what the platform handed us, recorded
- * before the filter tests any of it (spec `privacy-security`). It lives here rather than at the
+ * before the filter tests any of it. It lives here rather than at the
  * entry point because the shell may hold no decision at all — even an elvis is one under the
  * complexity gate — and because these strings are part of the diagnostic contract, so they are
  * tested.
@@ -67,7 +67,7 @@ fun userActivityParams(activityType: String?, url: String?): String {
 }
 
 /**
- * The event-link filter over a delivered activity (capability `join-event`; migration step 12). The
+ * The event-link filter over a delivered activity (migration step 12). The
  * shell forwards the platform's answer to "is this a web link?" together with the raw
  * `activityType` and `webpageURL?.absoluteString`, and this decides — the browsing-web test used to
  * be a Swift `guard`, untestable by project rule.

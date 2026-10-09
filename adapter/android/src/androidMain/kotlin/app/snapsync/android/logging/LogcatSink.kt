@@ -5,7 +5,7 @@ import app.snapsync.ports.LogSink
 import co.touchlab.kermit.Severity
 
 /**
- * The platform log (capability `privacy-security`): every line into logcat under one tag, at its own priority, so
+ * The platform log: every line into logcat under one tag, at its own priority, so
  * `adb logcat -s SnapSync` reads the process's whole log. Logcat does not redact, and is read only over a debugging
  * connection; the process's own log file, the one a bug report carries, is [FileLogSink]'s.
  */

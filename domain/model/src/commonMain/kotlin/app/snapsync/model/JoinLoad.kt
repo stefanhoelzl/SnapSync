@@ -10,12 +10,11 @@ package app.snapsync.model
  */
 sealed interface JoinLoad {
     /**
-     * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** and [endsAt]
-     * its **end date** — canonical UTC `…Z` strings, all required and non-null. [startsAt] is both the
-     * range row's lower default and its **floor**; [endsAt] is both its upper default and its **ceiling**
-     * (capability `photo-sharing`). [deletesAt] is when the event's shared photos are deleted
-     * (capability `event-lifetime`) — the retention deadline the join persists, and the witness the
-     * self-leave later depends on (capability `manage-membership`).
+     * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** and [endsAt] its
+     * **end date** — canonical UTC `…Z` strings, all required and non-null. [startsAt] is both the range row's lower
+     * default and its **floor**; [endsAt] is both its upper default and its **ceiling**. [deletesAt] is when the
+     * event's shared photos are deleted — the retention deadline the join persists, and the witness the self-leave
+     * later depends on.
      *
      * A details response lacking **any** of the four is a transient [Failed], never a [Found] with a null
      * name (the event-album title needs one) nor one with an invented `startsAt`/`endsAt` (a defaulted
@@ -30,8 +29,8 @@ sealed interface JoinLoad {
         val endsAt: EventEnd,
         val deletesAt: DeletesAt,
         /**
-         * The event's completion state (capability `event-lifetime`) — see [EventCompletionState]. Defaults to
-         * open: a backend predating it never closes an event.
+         * The event's completion state — see [EventCompletionState]. Defaults to open: a backend predating it never
+         * closes an event.
          */
         val completion: EventCompletionState = EventCompletionState.OPEN,
         /** An ENCRYPTED event's key id; `null` for a plain event (the encrypted file format, `docs/architecture.md`). */

@@ -36,7 +36,7 @@ interface SelectionPlatform<F : Any, C : Any, S> {
 }
 
 /**
- * The ordering core of a gallery's partial-grant selection observer (capability `photo-access`; law
+ * The ordering core of a gallery's partial-grant selection observer (law
  * "State reached from OS callbacks is confined", `docs/architecture.md`; decision record
  * `harden-seam-bug-classes`, D12).
  *

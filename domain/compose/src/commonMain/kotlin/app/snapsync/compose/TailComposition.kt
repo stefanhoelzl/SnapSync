@@ -25,8 +25,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * The app process's **opportunistic tail** as composed, and everything that reaches it without an OS handler of its
- * own (capability `sync-status`, "Each OS wake does its own work, then hands the rest to one opportunistic tail";
- * decision record `changes/own-work-per-wake`, D1, D2 and D11).
+ * own: each OS wake does its own work, then hands the rest to one opportunistic tail (decision record
+ * `changes/own-work-per-wake`, D1, D2 and D11).
  *
  * One [runner] per process, over the three units: ① the download arm's staged-import drain, ② and ③ the app
  * uploader's top-up and walk. Each entry port's handler (`lifecycleHandlers`, `pushHandlers`, the wake's and the
@@ -54,9 +54,8 @@ class AppTail internal constructor(
     /** The in-process ledger-counts re-read, run after a tail unit only while foregrounded. */
     private val refreshCounts: suspend () -> Unit,
     /**
-     * The end of every wake that handed its rest to the tail: the event-completion step (capability
-     * `manage-membership`), run once the tail has ended, outside it — it may leave the event, and a leave must never
-     * run inside the tail it would stop.
+     * The end of every wake that handed its rest to the tail: the event-completion step, run once the tail has ended,
+     * outside it — it may leave the event, and a leave must never run inside the tail it would stop.
      */
     private val finish: suspend (TailTrigger) -> Unit,
 ) {
@@ -87,7 +86,7 @@ class AppTail internal constructor(
             },
             topUp = { stop -> uploader.topUp(stop) },
             walkAndPublish = { stop -> uploader.walkAndPublish(stop) },
-            // Exactly a full grant: under a partial one the tail reads no library (capability `photo-access`).
+            // Exactly a full grant: under a partial one the tail reads no library.
             walkPermitted = { galleryAccess.full },
             mayCreate = mayCreate,
             foregrounded = { foreground.load() },
@@ -103,7 +102,7 @@ class AppTail internal constructor(
 
     /**
      * Record whether the app is foregrounded — written by the foreground and background entries, read by the runner
-     * after each unit: counts are refreshed in-process only while something renders them (capability `sync-status`).
+     * after each unit: counts are refreshed in-process only while something renders them.
      */
     internal fun foregrounded(value: Boolean) = foreground.store(value)
 
@@ -151,7 +150,7 @@ class AppTail internal constructor(
     )
 
     /**
-     * The seam the membership transitions drive (capability `background-upload`): an arm requests the tail — detached,
+     * The seam the membership transitions drive: an arm requests the tail — detached,
      * because a transition runs inside a flow or a tap, and a flow never awaits the tail (`docs/architecture.md`,
      * "A trigger flow never outlives its own run"); a disarm cancels the heartbeat; a leave cancels the transfers.
      */
@@ -163,15 +162,15 @@ class AppTail internal constructor(
 
     /**
      * The upload session's OS completion handlers (`handleEventsForBackgroundURLSession`), held from the handover to
-     * the session's drain report — the relaunch's own work, recording the terminals, is done by then (capability
-     * `sync-status`). The adapter's completion puts the release on the main thread UIKit requires.
+     * the session's drain report — the relaunch's own work, recording the terminals, is done by then. The adapter's
+     * completion puts the release on the main thread UIKit requires.
      */
     val uploadCompletions: OsCompletions = OsCompletions("url-session.onBackgroundSessionEvents", log = services.log)
 
     /**
      * A transfer reached its terminal outcome — **already recorded** by the transport's guarded write — and freed a
-     * slot: the tail's top-up is requested, which the runner runs only while the app may create (capability
-     * `background-upload`, "The delegate records the terminal fact before it returns").
+     * slot: the tail's top-up is requested, which the runner runs only while the app may create. The delegate records
+     * the terminal fact before it returns.
      */
     internal fun uploadCompleted() = requestDetached(TailTrigger.UPLOAD_COMPLETED)
 
@@ -184,7 +183,8 @@ class AppTail internal constructor(
     }
 
     /**
-     * A selection change under a partial grant (capability `photo-access`): its **own work** is the
+     * A selection change under a partial grant: its **own work** is the
+
      * snapshot-fed discovery → manifest publish — the uploader's walk unit, whose discovery binding is the selection
      * snapshot there — then the tail (① import, ② top-up from the snapshot; never ③ under a partial grant).
      */

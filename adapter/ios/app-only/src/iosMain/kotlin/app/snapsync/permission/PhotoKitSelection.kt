@@ -14,7 +14,7 @@ import platform.Photos.PHFetchOptions
 import platform.Photos.PHFetchResult
 
 /**
- * The PhotoKit binding of [IosGallery]'s selection observer (capability `photo-access`): observes the photo
+ * The PhotoKit binding of [IosGallery]'s selection observer: observes the photo
  * library **only while observation is on and permission is [GalleryAccess.LIMITED]** and delivers the full current
  * selection with its resources — once when observation begins (the start's baseline read; the composition opens
  * observation on every start, a background one included) and after each change ([PhotoSelectionObserver] fires
@@ -25,7 +25,7 @@ import platform.Photos.PHFetchResult
  * included — and raised no limited-library prompt, also after a camera photo outside the selection (decision record
  * `changes/timely-background-receiving`, D6). ⏰ Re-measure at the next iOS major.
  *
- * Every read here is **in-flow** (capability `photo-access`): the baseline is one scope query per
+ * Every read here is **in-flow**: the baseline is one scope query per
  * observation start, and each change reads the **pushed** `fetchResultAfterChanges` (never a fresh
  * scope query). Change details are consumed as whole snapshots, not itemized deltas — bulk changes
  * arrive non-incremental (measured), so the reliable path is reload-and-let-the-ledger-dedup, which

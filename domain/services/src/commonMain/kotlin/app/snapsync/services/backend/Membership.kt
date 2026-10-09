@@ -23,7 +23,7 @@ fun interface EventJoin {
  * Publish this device's per-event manifest.
  *
  * Returns `true` only when the backend confirmed the write, so the producer records the snapshot as last-uploaded
- * only on success (capability `photo-sharing`). It enrolls nobody — a publish from a device holding no membership is
+ * only on success. It enrolls nobody — a publish from a device holding no membership is
  * refused rather than creating one — and it records no upload. Synchronous and in-cycle.
  */
 fun interface ManifestPublisher {
@@ -31,7 +31,7 @@ fun interface ManifestPublisher {
 }
 
 /**
- * Tells the shared event that **this device is leaving it** (capability `manage-membership`), and whether it holds
+ * Tells the shared event that **this device is leaving it**, and whether it holds
  * every photo of the others ([received]). The backend records the membership as gone — `done` when it left having
  * everything, `left` otherwise — keeps what it shared in the union, and closes an ended event the leave leaves with
  * nobody still unsettled.
@@ -61,7 +61,7 @@ class BackendEventJoin(private val backend: AuthenticatedBackend) : EventJoin {
             is Reply.Ok -> JoinResult.JOINED
             is Reply.Refused -> when (reply.status) {
                 HttpStatus.CONFLICT -> JoinResult.EVENT_FULL
-                // A closed (or completed) event admits nobody (capability `event-lifetime`).
+                // A closed (or completed) event admits nobody.
                 HttpStatus.GONE -> JoinResult.EVENT_CLOSED
                 HttpStatus.NOT_FOUND -> JoinResult.EVENT_NOT_FOUND
                 // Still refused after the recovery: no credential the service accepts (the attestation says why).
@@ -82,7 +82,7 @@ class BackendManifestPublisher(private val backend: AuthenticatedBackend) : Mani
     override suspend fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): Boolean =
         when (val reply = backend.publishManifest(eventId, deviceId, manifest)) {
             is Reply.Ok -> true
-            // A CLOSED event's asset sets are fixed and a COMPLETED one holds none (capability `photo-sharing`): the
+            // A CLOSED event's asset sets are fixed and a COMPLETED one holds none: the
             // refusal is final, so it is recorded like a publish — re-sending the same snapshot every cycle could
             // never change the answer.
             is Reply.Refused ->

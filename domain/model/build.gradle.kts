@@ -16,7 +16,7 @@ plugins {
 // consumer transitively. A consumer that needs another zone declares it.
 // NO iosMain source directory, ever — the targets exist so iosMain elsewhere can compile against this.
 
-// The event link's origin, generated from the RESOLVED DEPLOYMENT (capability
+// The event link's origin, generated from the RESOLVED DEPLOYMENT (see
 // `docs/deployment.md`) so the app, the backend, the xcconfig and the site all derive it from one
 // declared value rather than each holding a copy. `snapsync.deployment` names WHICH deployment; the
 // resolver renders it to `build/deployment.properties`, which Gradle reads natively.
@@ -49,8 +49,8 @@ val linkDomain: String = requireNotNull(resolvedDeployment["domain"]) {
 //   * the UPLOAD BASE is an ordinary network request, governed by ATS — which exempts the loopback IP
 //     literal, which is the only reason a simulator can reach `deno task dev:local` over plain HTTP.
 //   * LINK_ORIGIN is a UNIVERSAL LINK origin. `applinks:` and the AASA are HTTPS-only by Apple's
-//     contract (capability `join-event`: "the HTTPS Universal Link"); iOS will not claim an `http://`
-//     link at all, so deriving a scheme here would generate a constant that cannot work.
+//     contract; iOS will not claim an `http://` link at all, so deriving a scheme here would generate a
+//     constant that cannot work.
 // A local deployment therefore gets an https LINK_ORIGIN it never exercises — correct and inert — rather
 // than an http one that would look consistent and mean nothing.
 val generateLinkOrigin = tasks.register("generateLinkOrigin") {
@@ -68,9 +68,8 @@ val generateLinkOrigin = tasks.register("generateLinkOrigin") {
             package app.snapsync.model
 
             /**
-             * The event link's canonical origin (capability `join-event`). Both halves of the codec are
-             * anchored here: [encodeEventUrl] emits it and [decodeEventUrl] matches it, so producer and
-             * consumer cannot drift.
+             * The event link's canonical origin. Both halves of the codec are anchored here: [encodeEventUrl]
+             * emits it and [decodeEventUrl] matches it, so producer and consumer cannot drift.
              */
             public const val LINK_ORIGIN: String = "https://$domain"
 
@@ -79,11 +78,10 @@ val generateLinkOrigin = tasks.register("generateLinkOrigin") {
     }
 }
 
-// The longest event window the backend accepts, generated from the SAME resolved deployment the backend
-// is bundled with (`eventWindowMaxSeconds`, `deployments/components/policy.json`). The create screen bounds
-// its range picker to it (capability `create-event`), so the limit the host meets and the limit
-// `POST /events` enforces are one declared value — not a client mirror that could drift into a refusal
-// the screen has no words for.
+// The longest event window the backend accepts, generated from the SAME resolved deployment the backend is bundled with
+// (`eventWindowMaxSeconds`, `deployments/components/policy.json`). The create screen bounds its range picker to it, so
+// the limit the host meets and the limit `POST /events` enforces are one declared value — not a client mirror that
+// could drift into a refusal the screen has no words for.
 val eventWindowMaxSeconds: Long = requireNotNull(resolvedDeployment["eventWindowMaxSeconds"]?.toLongOrNull()) {
     "deployment '$deploymentName' resolved no numeric `eventWindowMaxSeconds` — the create picker has no bound"
 }
@@ -104,8 +102,8 @@ val generateEventWindowMax = tasks.register("generateEventWindowMax") {
             package app.snapsync.model
 
             /**
-             * The longest event window, `endsAt - startsAt`, the backend accepts, in seconds (capability
-             * `create-event`). The create screen's picker cannot produce a longer range.
+             * The longest event window, `endsAt - startsAt`, the backend accepts, in seconds. The create
+             * screen's picker cannot produce a longer range.
              */
             public const val EVENT_WINDOW_MAX_SECONDS: Long = ${seconds}L
 

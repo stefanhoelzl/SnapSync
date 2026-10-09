@@ -5,9 +5,10 @@ import app.snapsync.model.contained
 import kotlinx.coroutines.launch
 
 /**
- * Keep [linkKey] as the joined event's key — only when the device has LOST it and [linkKey] is that event's own
- * (capability `join-event`, "Reopening the current event's invite changes nothing") — then read the key's presence
- * again and run the foreground's work, so sharing and receiving resume without waiting for the next wake. Answers
+ * Keep [linkKey] as the joined event's key — only when the device has LOST it and [linkKey] is that event's own,
+ * since otherwise reopening the current event's invite changes nothing — then read the key's presence again and run
+ * the foreground's work, so sharing and receiving resume without waiting for the next wake. Answers
+
  * whether it was kept ([EventKeys.restoreLost][app.snapsync.services.crypto.EventKeys.restoreLost]). Top-level builders
  * rather than [AppCore] bodies because `AppCore` is measured.
  */

@@ -24,11 +24,11 @@ import kotlin.concurrent.Volatile
 const val CONFIG_FILE_NAME: String = "eventconfig.json"
 
 /**
- * The membership's config (capability `join-event`): [ConfigSource]/[ConfigStore]/[ConfigReader] over one
+ * The membership's config: [ConfigSource]/[ConfigStore]/[ConfigReader] over one
  * **versioned-envelope file** in the shared area ([CONFIG_FILE_NAME]), and nothing else.
  *
  * That makes **reinstall = left the event** real: the shared container dies with the install, so a reinstalled
- * device reads definitively not joined and rejoins only by re-scanning the invite (capability `photo-sharing`).
+ * device reads definitively not joined and rejoins only by re-scanning the invite.
  *
  * ⚠️ **"Not found" is solely load-bearing for the leave decision.** Only [FileResult.NotFound] reads as
  * [ConfigRead.None] — definitively not joined; every other answer ([FileResult.Denied], a locked device's
@@ -66,7 +66,7 @@ class ConfigService(
     private var membershipState: MembershipRead = membershipAfterReload(initial, MembershipRead.Unreadable)
 
     /**
-     * The membership as three answers (capability `background-upload`; decision record `harden-seam-bug-classes`,
+     * The membership as three answers (decision record `harden-seam-bug-classes`,
      * D11): [config]'s `null` merges "not joined" with "could not read it yet", and a reader that ACTS on absence —
      * the upload transitions, the silent-push receivers — must tell them apart and defer on the second.
      *
@@ -96,7 +96,7 @@ class ConfigService(
         membershipState = MembershipRead.NotMember
     }
 
-    /** The three-state read (capability `join-event`): the pure `configReadViaFile` over this file, and nothing else. */
+    /** The three-state read: the pure `configReadViaFile` over this file, and nothing else. */
     fun read(): ConfigRead {
         val read = configReadViaFile(files.read(FileArea.SHARED, CONFIG_FILE_NAME))
         if (read is ConfigRead.Unavailable) {
@@ -127,13 +127,13 @@ class ConfigService(
     }
 
     /**
-     * Has this membership's own retention deadline [deletesAt] passed (capability `manage-membership`)? The self-leave's
+     * Has this membership's own retention deadline [deletesAt] passed? The self-leave's
      * OFFLINE witness — see [confirmedGone] for why it is exact.
      */
     fun isPastDeletion(deletesAt: DeletesAt): Boolean = confirmedGone(deletesAt, instantToCutoff(clock.now()))
 
     /**
-     * Has [config]'s event range ended (capability `event-lifetime`)? Read on the same clock as [isPastDeletion]; an
+     * Has [config]'s event range ended? Read on the same clock as [isPastDeletion]; an
      * end not yet learned has not passed — see [hasEnded].
      */
     fun hasEnded(config: EventConfig): Boolean = config.hasEnded(instantToCutoff(clock.now()))
@@ -143,14 +143,14 @@ class ConfigService(
     fun activeEventId(): String? = state.value?.eventId
 
     /**
-     * Whether the membership receives others' photos — three-valued, no fallback (capability `receiving-photos`): `null`
+     * Whether the membership receives others' photos — three-valued, no fallback: `null`
      * while not joined, so a caller arms nothing.
      */
     fun downloadsEnabled(): Boolean? = state.value?.let { it.direction.includesDownload }
 
     /**
-     * Whether a fresh read finds a joined membership whose range has ended — what a manifest published now is settled by
-     * (capability `photo-sharing`). An unreadable config or none is "not ended".
+     * Whether a fresh read finds a joined membership whose range has ended — what a manifest published now is settled
+     * by. An unreadable config or none is "not ended".
      */
     fun freshReadHasEnded(): Boolean = read().joinedOrNull()?.let(::hasEnded) == true
 

@@ -16,8 +16,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * A brief, calm word at the foot of the screen — the outcome of something the member just did (capability
- * `privacy-security`: what became of a report). It changes nothing and asks nothing; tapping it puts it away early,
+ * A brief, calm word at the foot of the screen — the outcome of something the member just did
+ * (what became of a report). It changes nothing and asks nothing; tapping it puts it away early,
  * and the state clears it on its own. Announced politely, so a screen reader says it without interrupting.
  */
 @Composable

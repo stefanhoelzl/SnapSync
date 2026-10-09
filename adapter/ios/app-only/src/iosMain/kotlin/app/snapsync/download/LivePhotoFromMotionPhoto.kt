@@ -94,8 +94,8 @@ import platform.posix.memcpy
 import platform.posix.usleep
 
 /**
- * **A received Android motion photo, taken apart into a Live Photo** (capability `receiving-photos`, "An Android
- * motion photo reaches iPhone as a Live Photo"; decision record `changes/archive/2026-10-01-live-motion-unification` D4).
+ * **A received Android motion photo, taken apart into a Live Photo** (decision record
+ * `changes/archive/2026-10-01-live-motion-unification` D4).
  *
  * A motion photo is one image file whose Google XMP describes a video appended at its end ([locateMotionVideo]). The
  * XMP is read through ImageIO, which parses it for JPEG and HEIC alike without reading the whole file.

@@ -6,7 +6,7 @@ import app.snapsync.ports.Files
 import co.touchlab.kermit.Logger
 
 /**
- * The last push registration the backend accepted (capability `receiving-photos`) — what a delivered token is compared
+ * The last push registration the backend accepted — what a delivered token is compared
  * against, so a registration is published only when it changed. One file in the shared area, beside the membership and
  * the manifest record: readable on a locked device once it has been unlocked since boot.
  *

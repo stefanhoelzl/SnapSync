@@ -1,8 +1,8 @@
 package app.snapsync.model
 
 /**
- * The device-log line stamp for [epochMillis]: `yyyy-MM-dd HH:mm:ss.SSS +0000`, in UTC (capability
- * `privacy-security`, "Log timestamps carry millisecond resolution").
+ * The device-log line stamp for [epochMillis]: `yyyy-MM-dd HH:mm:ss.SSS +0000`, in UTC: log timestamps carry
+ * millisecond resolution.
  *
  * This is the EXACT text the iOS file writer used to build from `NSDate.description` (a fixed
  * `yyyy-MM-dd HH:mm:ss +0000`, UTC, seconds only) with the milliseconds spliced in ahead of the zone —
@@ -64,10 +64,9 @@ private const val YEARS_PER_ERA = 400L
 private const val STAMP_LENGTH = 29
 
 /**
- * One device-log line, without its stamp (capability `privacy-security`): `[<entry>] [<Severity>/<tag>] <message>`,
- * with ` | <stack trace>` when a throwable rides it. The `[<entry>]` prefix — the entry point that triggered the
- * line — is what lets a reader trace an engine or HTTP line back to its trigger; it is absent when none is claimed.
- * Every sink writes this same text.
+ * One device-log line, without its stamp: `[<entry>] [<Severity>/<tag>] <message>`, with ` | <stack trace>` when a
+ * throwable rides it. The `[<entry>]` prefix — the entry point that triggered the line — is what lets a reader trace an
+ * engine or HTTP line back to its trigger; it is absent when none is claimed. Every sink writes this same text.
  */
 fun logLineBody(entry: String?, severity: String, tag: String, message: String, throwable: Throwable?): String =
     buildString {

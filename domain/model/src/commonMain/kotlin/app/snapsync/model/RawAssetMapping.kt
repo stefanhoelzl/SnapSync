@@ -1,14 +1,13 @@
 package app.snapsync.model
 
 /**
- * The **pure fan-out mapping** `RawAsset` → engine `Resource`s — the single site of the fan-out
- * orchestration, extracted from the iOS enumerator so it runs in `commonTest` (capability
- * `sync-status`, Move A). For each [RawAsset]
- * (whose [AssetId] the adapter already minted canonical), for each [RawResource], drop it when its raw [RawResource.type] maps to no role
- * ([resourceRole] — originals only), else wrap it as a `Resource` whose `filename` is the shared
- * [uploadKey] and whose `metadata` carries the per-asset manifest detail (creation date, original
- * filename, iOS-resolved MIME). The opaque [RawResource.handle] rides into `Resource.data` uninterpreted.
- * Platform-free, so the role-skip / key-derivation is exercised without PhotoKit.
+ * The **pure fan-out mapping** `RawAsset` → engine `Resource`s — the single site of the fan-out orchestration,
+ * extracted from the iOS enumerator so it runs in `commonTest` (Move A). For each [RawAsset] (whose [AssetId] the
+ * adapter already minted canonical), for each [RawResource], drop it when its raw [RawResource.type] maps to no role
+ * ([resourceRole] — originals only), else wrap it as a `Resource` whose `filename` is the shared [uploadKey] and whose
+ * `metadata` carries the per-asset manifest detail (creation date, original filename, iOS-resolved MIME). The opaque
+ * [RawResource.handle] rides into `Resource.data` uninterpreted. Platform-free, so the role-skip / key-derivation is
+ * exercised without PhotoKit.
  */
 fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
     rawAssets.flatMap { asset ->
@@ -18,16 +17,16 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
             Resource(
                 filename = uploadKey(assetId, role, raw.originalFilename),
                 assetId = assetId,
-                // The resolved MIME, not the platform's own type identifier: this is what the upload
-                // provider sends as `Content-Type`, and what the ledger row has always preferred
-                // (spec `sync-status`). The two used to disagree, with the UTI on the wire.
+                // The resolved MIME, not the platform's own type identifier: this is what the upload provider sends as
+                // `Content-Type`, and what the ledger row has always preferred. The two used to disagree, with the UTI
+                // on the wire.
                 contentType = raw.mimeContentType,
                 metadata = mapOf(
                     RESOURCE_META_CREATION_DATE to asset.creationDate,
                     RESOURCE_META_ORIGINAL_FILENAME to raw.originalFilename,
                     RESOURCE_META_MIME to raw.mimeContentType,
-                    // Neutral origin facts (capability `photo-sharing`) — carried, never acted
-                    // on here. Already interpreted by the platform; no PhotoKit value crosses.
+                    // Neutral origin facts — carried, never acted on here. Already interpreted by the platform; no
+                    // PhotoKit value crosses.
                     RESOURCE_META_IS_SCREENSHOT to asset.facts.isScreenshot.toString(),
                     RESOURCE_META_IS_SCREEN_RECORDING to asset.facts.isScreenRecording.toString(),
                     RESOURCE_META_IS_VIDEO to asset.facts.isVideo.toString(),

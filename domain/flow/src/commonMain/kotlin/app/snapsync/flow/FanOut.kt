@@ -10,11 +10,10 @@ import kotlinx.coroutines.supervisorScope
  * them has finished (law "A trigger flow never outlives its own run", `docs/architecture.md`).
  *
  * A child that throws is logged under its name and cancels nothing: its siblings run to completion. That is the
- * difference from the bare `coroutineScope { launch … }` it replaces, where one throwing child — the foreground
- * upload pump rethrows whatever its cycle threw — cancelled the status refresh, the download reconcile and the
- * settle beside it, and made the entry point throw (the `sync-status` spec: "A failure in any one refresh SHALL
- * NOT cancel its siblings"). Cancellation of the flow itself still reaches every child, and a child's own
- * cancellation is not reported as a failure.
+ * difference from the bare `coroutineScope { launch … }` it replaces, where one throwing child — the foreground upload
+ * pump rethrows whatever its cycle threw — cancelled the status refresh, the download reconcile and the settle beside
+ * it, and made the entry point throw (a failure in any one refresh shall not cancel its siblings). Cancellation of the
+ * flow itself still reaches every child, and a child's own cancellation is not reported as a failure.
  *
  * The ONE way a flow fans out: the flow-zone gate refuses `launch`/`async` anywhere else in `flow/`.
  */

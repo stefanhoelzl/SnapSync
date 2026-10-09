@@ -45,7 +45,7 @@ class AppEvents internal constructor(private val core: AppCore) {
 
 /**
  * What the download port tells [core] — registered by the host zone's `listen`, as the graph is composed, so a
- * background relaunch that delivers finished transfers finds them (capability `receiving-photos`). Each handler is one
+ * background relaunch that delivers finished transfers finds them. Each handler is one
  * call into the download jobs; the background-events one is a transfer wake ([onTransferEvents]).
  */
 internal fun downloadHandlersOf(core: AppCore): DownloadHandlers = DownloadHandlers(
@@ -79,7 +79,7 @@ internal fun uploadHandlersOf(core: AppCore): UploadHandlers = UploadHandlers(
 )
 
 /**
- * **A background-transfer wake** (capability `sync-status`; decision record `changes/own-work-per-wake`, D5): the
+ * **A background-transfer wake** (decision record `changes/own-work-per-wake`, D5): the
  * operating system relaunched (or woke) the app to hand back a session's finished transfers, with a completion handler.
  *
  * The background time comes first — no later than the handover — so the wait for the session's drain report is
@@ -94,7 +94,8 @@ internal fun AppCore.onTransferEvents(session: String, trigger: TailTrigger, ado
         val handover = adopt()
         wake.guard(handover)
         scope.launch {
-            // The protected-storage state for this wake (capability `sync-status`), recorded one dispatch later: the
+            // The protected-storage state for this wake, recorded one dispatch later: the
+
             // read may have to hop threads, and the adoption above must not wait for it.
             val protectedData = ports.processInfo.protectedDataAvailable()
             services.log.i { "onBackgroundTransfers(session=$session): protectedData=$protectedData" }

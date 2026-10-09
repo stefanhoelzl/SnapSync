@@ -67,11 +67,10 @@ class ComposedApp internal constructor(
  * finishing in a background wake, or the wake itself, must find them. Registering starts nothing; the selection
  * observer opens right after, on composition, so a background start under a partial grant learns its selection.
  *
- * The push registration is installed HERE, on composition, rather than at host assembly: a process composes its
- * graph on every cold start — the first operating-system entry that reaches the core does it, foreground or
- * background — while it assembles its host only on a foreground launch. A rotated APNs token or a renewed credential
- * learned in a background wake is therefore published from that wake (capability `sync-status`, "Push registration
- * is started by the shared composition"). The installer is idempotent, so nothing re-installs it.
+ * The push registration is installed HERE, on composition, rather than at host assembly: a process composes its graph
+ * on every cold start — the first operating-system entry that reaches the core does it, foreground or background —
+ * while it assembles its host only on a foreground launch. A rotated APNs token or a renewed credential learned in a
+ * background wake is therefore published from that wake. The installer is idempotent, so nothing re-installs it.
  *
  * A root supplies ports and nothing else. It builds no host, installs no subscription and passes no read-model:
  * a source added to the host is wired here once, and every root's host observes it. That is the drift this
@@ -106,7 +105,7 @@ fun snapSyncHost(
     val composed = ComposedApp(core, process, cutoffFormatter, ports.dateFormatting) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
-        // The network's return resumes the app's work while it is in front (capability `sync-status`).
+        // The network's return resumes the app's work while it is in front.
         installNetworkReturns(core)
         val host = StatusContainerHost(
             statusSourcesOf(core, ports),
@@ -114,20 +113,19 @@ fun snapSyncHost(
             cutoffFormatter = cutoffFormatter,
             commands = core.userCommands,
             queries = core.userQueries,
-            // Whose word authorizes a headless join: the build's controls, never the link's (capability
-            // `join-event`) — inert on every production build.
+            // Whose word authorizes a headless join: the build's controls, never the link's — inert on every
+            // production build.
             inviteLinkHints = ports.devControls.inviteLinkHints(),
-            // Where a bug report goes on this build — the sheet says it (capability `privacy-security`).
+            // Where a bug report goes on this build — the sheet says it.
             reportDestination = process.reportDestination,
-            // Which build this is — the app menu's footer (capability `sync-status`).
+            // Which build this is — the app menu's footer.
             build = process.buildLabel,
-            // How this phone holds an event album (capability `event-album`) — the photo library's own answer.
+            // How this phone holds an event album — the photo library's own answer.
             albumKind = ports.gallery.albumKind,
             diagnostics = StatusDiagnostics(
                 log = { message -> log.i { message } },
                 // `Error`: the threshold at which a Kermit line becomes a crash-reporting event rather than a
-                // breadcrumb (capability `privacy-security`) — a command that failed outright is exactly what
-                // should reach the operator.
+                // breadcrumb — a command that failed outright is exactly what should reach the operator.
                 onIntentError = { throwable -> log.e(throwable) { "user command failed" } },
             ),
         )
@@ -140,8 +138,8 @@ fun snapSyncHost(
     // composition on, so the host is assembled by the time the first one — a tap's — is minted.
     scope.launch { core.mintedEvents.collect { composed.host.onEventCreated(it.eventId, it.linkKey) } }
     listenToEntries(composed, process, ports, log)
-    // Asked at every launch, a background one included (capability `receiving-photos`, "Registration timing"): the
-    // answer arrives through the push handlers just registered, and asking is how a rotated token is learned.
+    // Asked at every launch, a background one included: the answer arrives through the push handlers just registered,
+    // and asking is how a rotated token is learned.
     ports.pushNotifications.register()
     return composed
 }
@@ -178,9 +176,9 @@ private fun listenToEntries(composed: ComposedApp, process: ProcessServices, por
 }
 
 /**
- * A delivered link, through the pure `model/` filter (capability `join-event`): a web link carrying a URL opens the
- * join gate on it, fragment intact; every other delivery is logged by its outcome, so "we were called" stays
- * distinguishable from "we were never called".
+ * A delivered link, through the pure `model/` filter: a web link carrying a URL opens the join gate on it, fragment
+ * intact; every other delivery is logged by its outcome, so "we were called" stays distinguishable from "we were never
+ * called".
  */
 private fun onLink(delivery: LinkDelivery, process: ProcessServices, log: Logger, open: (String) -> Unit) {
     log.invocation(

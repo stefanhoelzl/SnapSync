@@ -33,7 +33,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The Android [Download] (capability `receiving-photos`): Android's `DownloadManager`, which owns each transfer — it
+ * The Android [Download]: Android's `DownloadManager`, which owns each transfer — it
  * survives this process's death, resumes, retries network errors and 5xx answers on its own, and waits for a network —
  * the counterpart of iOS's background `URLSession`.
  *
@@ -96,7 +96,7 @@ class AndroidDownload(
      * [url] into a fresh destination, tagged [tag]; the title carries how often the transfer was [restart]ed and the
      * [network] it may use, so a restart keeps the rule the transfer started with.
      *
-     * Under [TransferNetwork.UNRESTRICTED_ONLY] (capability `mobile-data`) DownloadManager holds the transfer off every
+     * Under [TransferNetwork.UNRESTRICTED_ONLY] DownloadManager holds the transfer off every
      * metered network — cellular, a hotspot, a metered Wi-Fi — in its own persisted queue, and runs it once the phone is
      * on an unmetered one, process alive or not (measured on the API 36 emulator, 2026-10-03: held on metered Wi-Fi and
      * cellular, finished within ~6 s of unmetered Wi-Fi). Data Saver needs nothing here: it applies to metered networks
@@ -294,7 +294,7 @@ class AndroidDownload(
         /** The title prefix that counts a row's restarts; the title is the one other field DownloadManager keeps. */
         const val RESTARTS_TITLE = "restarts:"
 
-        /** The title suffix of a transfer held to unmetered networks, which a restart keeps (capability `mobile-data`). */
+        /** The title suffix of a transfer held to unmetered networks, which a restart keeps. */
         const val UNMETERED_TITLE = " unmetered"
 
         /** The adapter the process's composition listened on last; a completion broadcast waits for one. */

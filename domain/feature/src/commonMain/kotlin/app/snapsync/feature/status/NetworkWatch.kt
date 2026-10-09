@@ -19,9 +19,8 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The **foreground-gated network watch** (capability `sync-status`, "The app says when it cannot reach the network"):
- * while the app is in front — and only then — follow the operating system's network reading and decide what the member
- * is told.
+ * The **foreground-gated network watch** — the app says when it cannot reach the network: while the app is in front —
+ * and only then — follow the operating system's network reading and decide what the member is told.
  *
  * **Slow to warn, instant to clear** (decision record `changes/tell-when-offline`, D2). A missing network is published
  * only once it has held for [grace]: a lift, a Wi-Fi handover or a tunnel would otherwise flash a notice and take Create

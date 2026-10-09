@@ -58,7 +58,7 @@ kotlin {
             // platform-free technology impls (:adapter:generic:app — the Ktor clients).
             implementation(project(":adapter:generic:app"))
             implementation(project(":adapter:ios:ext-safe"))
-            // The crash-reporting seat both platforms share (capability `privacy-security`).
+            // The crash-reporting seat both platforms share.
             implementation(project(":adapter:generic:sentry"))
             // The rig's extension hook reads the launch-time adapters and composes its mocks (`docs/testing.md`, "The
             // launch-time adapters") — only under the same switch as its source directory, never in a shipped
@@ -66,7 +66,8 @@ kotlin {
             if (rigEnabled) implementation(project(":test:launch-adapters"))
             // The storage services the root builds over the thin storage adapters (`docs/architecture.md`).
             implementation(project(":domain:services"))
-            // The event-notify sender (capability `receiving-photos`): a bodyless POST to
+            // The event-notify sender: a bodyless POST to
+
             // Ktor core for the synchronous in-cycle device.json PUT (the Darwin client comes from
             // :adapter:ios:ext-safe); the byte uploads are the OS's job, not Ktor's.
             implementation(libs.ktor.client.core)

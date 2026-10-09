@@ -4,8 +4,8 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.TerminalOutcome
 
 /**
- * The narrow ledger surface a **transport** receives (capability `photo-sharing`, "Reader and writer capability
- * split"): the one guarded terminal write a platform callback records through, and the one row read that
+ * The narrow ledger surface a **transport** receives: the one guarded terminal write a platform callback records
+ * through, and the one row read that
  * resolves a returned job to its row — by destination. [LedgerStore] extends it; a transport is handed this and
  * nothing wider.
  *
@@ -24,7 +24,7 @@ interface TransferRecord {
      *
      * This is how a returned platform upload job is resolved back to its row: the destination is the only
      * field a succeeded job reliably carries, and under a byte route that names identity in its path the
-     * ledger key is no longer recoverable from it (capability `background-upload`).
+     * ledger key is no longer recoverable from it.
      *
      * A row recorded before the ledger kept a destination carries null and is never matched here, and no
      * other route reaches it: the v1 last-segment fallback is retired (decision record
@@ -47,8 +47,8 @@ interface TransferRecord {
      * ledger (decision record `changes/both-uploaders-active`) — so a read-then-write pair is not atomic against
      * the one that does not take the lock. A duplicate completion of the same key (two uploaders overlapping)
      * applies once and answers `false` the second time. Putting the condition in the write is what makes a fact recorded underneath
-     * a stale read impossible to clobber. (`receiving-photos` reached the same conclusion for the same
-     * reason: *"the guard SHALL live in the store's write rather than in a caller's preceding read"*.)
+     * a stale read impossible to clobber. (The download store reached the same conclusion for the same
+     * reason: the guard lives in the store's write rather than in a caller's preceding read.)
      *
      * Every other column is preserved by the backend rather than re-supplied here: the caller is a delegate
      * that holds only the key and cannot re-state `assetId`, the destination or the manifest detail.
@@ -64,8 +64,8 @@ interface TransferRecord {
      *
      * This is a **record** operation on a non-writer surface, which the reader/writer split otherwise
      * forbids. It is deliberate and narrow: the party the platform tells is inside the single
-     * record-writing process, and the invariant is that exactly one *process* records. See `photo-sharing`,
-     * "Reader and writer capability split". Do not add a second record operation here, or on [LedgerStore],
+     * record-writing process, and the invariant is that exactly one *process* records.
+     * Do not add a second record operation here, or on [LedgerStore],
      * on this argument.
      */
     fun markTerminal(key: String, outcome: TerminalOutcome): Boolean

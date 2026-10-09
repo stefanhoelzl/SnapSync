@@ -97,7 +97,7 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
 
     /**
      * Keep [linkKey] as the joined event's key — only when the device has LOST the key of [membership] and [linkKey] is
-     * that event's own (capability `join-event`, "Reopening the current event's invite changes nothing") — and answer
+     * that event's own (reopening the current event's invite changes nothing else) — and answer
      * whether it was kept, running [onRestored] first when it was. A keep the store refuses is logged by [log] and
      * answers `false`.
      */

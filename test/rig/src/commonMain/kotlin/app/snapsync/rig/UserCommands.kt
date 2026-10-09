@@ -43,8 +43,8 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
             ),
         )
     },
-    // The commit carries nothing now: what is committed is what the reduction resolved from the form
-    // (capability `sync-status`). So the channel does what a member does — set the choices, then
+    // The commit carries nothing now: what is committed is what the reduction resolved from the form.
+    // So the channel does what a member does — set the choices, then
     // confirm — rather than handing the container a pre-resolved answer it would have to trust.
     "confirmJoin" to RigUserCommand { params ->
         rangeChoices(params).forEach(dispatch)
@@ -52,8 +52,8 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
     },
     "cancelJoin" to RigUserCommand { dispatch(UiIntent.CancelJoin) },
     // The membership change this channel could not previously express. Narrowing a scope — raising the
-    // cutoff, or turning the share direction off — is what re-projects the device manifest (capability
-    // `manage-membership`), so without this the one behaviour that change turns on is undriveable
+    // cutoff, or turning the share direction off — is what re-projects the device manifest,
+    // so without this the one behaviour that change turns on is undriveable
     // on a device.
     "reconfigure" to RigUserCommand { params ->
         // Open first, as the settings action does: with the settings open every choice applies as it is made, so an
@@ -68,13 +68,13 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
         dispatch(UiIntent.CancelReconfigure)
     },
     // The form, set without committing: what a member does before they confirm, and what the join gate's
-    // shareable-count preview answers (capability `join-event`). `range=wholeEvent|fromNow` picks a preset;
+    // shareable-count preview answers. `range=wholeEvent|fromNow` picks a preset;
     // a `cutoff`/`until` instant picks a custom range, as `confirmJoin` does.
     "setRange" to RigUserCommand { params ->
         params["range"]?.let { dispatch(UiIntent.RangePreset(rangePreset(it))) }
         rangeChoices(params).forEach(dispatch)
     },
-    // Rename the joined event (capability `manage-membership`). `event` defaults to the joined one — naming another is
+    // Rename the joined event. `event` defaults to the joined one — naming another is
     // how a caller reproduces a rename the dialog opened for an event a switch has since replaced.
     "rename" to RigUserCommand { params ->
         val event = params["event"] ?: joinedEventId(state())
@@ -82,7 +82,7 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
         dispatch(UiIntent.RenameEvent(event, requireNotNull(params["name"]) { "name is required" }))
     },
     "renameStatusConsumed" to RigUserCommand { dispatch(UiIntent.RenameStatusConsumed) },
-    // The device's mobile-data choice, as the app menu's switch flips it (capability `mobile-data`): it applies as it
+    // The device's mobile-data choice, as the app menu's switch flips it: it applies as it
     // is flipped, with or without an event. `UiState.mobileData` reads it back.
     "mobileData" to RigUserCommand { params ->
         val on = requireNotNull(params["on"]) { "on=true|false is required" }.toBooleanStrict()
@@ -91,14 +91,14 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
     "confirmSwitch" to RigUserCommand { dispatch(UiIntent.ConfirmSwitch) },
     "retryLoad" to RigUserCommand { dispatch(UiIntent.RetryLoad) },
     "retryJoin" to RigUserCommand { dispatch(UiIntent.RetryJoin) },
-    // "Report this" beside a refusal (capability `privacy-security`): wired, unlike the other overlays, because how the
+    // "Report this" beside a refusal: wired, unlike the other overlays, because how the
     // sheet was opened decides what the report carries. `message` defaults to the one that offers the report.
     "reportRefusal" to RigUserCommand { params ->
         val message = params["message"]?.let(ScreenMessage::valueOf) ?: ScreenMessage.DEVICE_UNVERIFIABLE
         dispatch(UiIntent.ReportRefusal(message))
     },
     // The dump goes to the build's configured reporter; a build with none (every dev and rig build of the app,
-    // which carries no DSN) keeps it on the device, as the sheet does (capability `privacy-security`).
+    // which carries no DSN) keeps it on the device, as the sheet does.
     "sendDiagnostics" to RigUserCommand { params ->
         dispatch(UiIntent.SendDiagnostics(params["note"].orEmpty(), params["screen"] ?: "rig"))
     },
@@ -164,7 +164,7 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
         "The state that offers it IS reachable over the channel — /device/state reports the " +
         "update-required screen and the URL it carries — so what is untestable here is only the " +
         "hand-off itself.",
-    // ---- the range form (capability `photo-sharing`) ------------------------------------
+    // ---- the range form -----------------------------------------------------------------
     //
     // The channel drives the form through `confirmJoin`/`reconfigure`, which set the values a caller
     // names — the join then confirms them, the settings apply each as it is set. The PRESET tap is the one it does not need: a preset is a shorthand for a
@@ -172,7 +172,7 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     // the channel two ways to say one thing, and they could disagree.
     "onRangePreset" to
         "reached through `setRange?range=wholeEvent|fromNow`, which names the preset rather than a second command for it.",
-    // ---- what is drawn OVER the layer (capability `sync-status`) ---------------------------
+    // ---- what is drawn OVER the layer ------------------------------------------------------
     //
     // Every one of these opens or dismisses a confirmation. None reaches a port, so driving them would
     // change what a screenshot shows and nothing else — and what the app DOES is what this channel is

@@ -11,7 +11,7 @@ import androidx.activity.ComponentActivity
  * background has none, and then nothing is asked (`Gallery.requestAccess`).
  *
  * [onResumed] runs every time an activity comes to the front — how an access change the member made in Settings is
- * picked up on return (capability `photo-access`). Registered once, in `Application.onCreate`.
+ * picked up on return. Registered once, in `Application.onCreate`.
  */
 class ForegroundActivity(application: Application) {
 

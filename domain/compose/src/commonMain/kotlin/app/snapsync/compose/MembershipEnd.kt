@@ -5,10 +5,9 @@ import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.services.leave.PendingLeaves
 
 /**
- * How a membership ends without the member (capability `manage-membership`, "The app leaves on its own once the event
- * is finished for it"), and how every leave reaches the backend (capability `event-lifetime`, "A leave made offline
- * still counts") — composed over [core], and a piece of its graph of its own for the reason [AppTail] is: `AppCore` is
- * already the graph, and its size ceiling says so.
+ * How a membership ends without the member — the app leaves on its own once the event is finished for it — and how
+ * every leave reaches the backend, so a leave made offline still counts — composed over [core], and a piece of its
+ * graph of its own for the reason [AppTail] is: `AppCore` is already the graph, and its size ceiling says so.
  */
 class MembershipEnd internal constructor(private val core: AppCore) {
 
@@ -31,7 +30,8 @@ class MembershipEnd internal constructor(private val core: AppCore) {
             ledger = core.services.ledger,
             pendingLeaves = pendingLeaves,
             // The uploader's own discovery → publish, which marks the manifest settled once the range has ended. Under
-            // a partial grant it reads the selection snapshot, never the library (capability `photo-access`).
+            // a partial grant it reads the selection snapshot, never the library.
+
             publishFinal = { core.appUploader.walkAndPublish { false } },
             everythingReceived = { eventId -> core.downloadController.everythingReceived(eventId) },
             checks = core.services.eventChecks,

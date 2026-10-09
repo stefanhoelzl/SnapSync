@@ -81,7 +81,7 @@ class SnapSyncRoot(internal val application: Application) {
     private val screenDates: ScreenDates by lazy { ScreenDates(ports.dateFormatting.value::formats) }
 
     /**
-     * The process's ONE cutoff formatter (capability `sync-status`): the zone read once from the process's clock; the
+     * The process's ONE cutoff formatter: the zone read once from the process's clock; the
      * status host reduces with it and the screen renders with it.
      */
     private val cutoffFormatter: CutoffFormatter by lazy {
@@ -133,13 +133,12 @@ class SnapSyncRoot(internal val application: Application) {
         download = lazy { AndroidDownload(application) },
         pushNotifications = lazy { AndroidPushNotifications(application, firebase) },
         processInfo = lazy { AndroidProcessInfo(application) },
-        // The default network and whether Android blocks it for this app (capability `sync-status`).
+        // The default network and whether Android blocks it for this app.
         network = lazy { AndroidNetworkMonitor(application) },
-        // Battery Saver, the standby bucket, the battery and the thermal status — read only for a bug report (capability
-        // `privacy-security`).
+        // Battery Saver, the standby bucket, the battery and the thermal status — read only for a bug report.
         deviceConditions = lazy { AndroidDeviceConditions(application) },
-        // The crash-reporting seat both platforms share (capability `privacy-security`). It starts only when the build
-        // carries a destination — a distributed one — and is never touched otherwise.
+        // The crash-reporting seat both platforms share. It starts only when the build carries a destination — a
+        // distributed one — and is never touched otherwise.
         crashReporter = lazy { SentryCrashReporter() },
         // ICU's CLDR data: how a date reads on the screen (`docs/architecture.md`, "Localization").
         dateFormatting = lazy { AndroidDateFormatting() },

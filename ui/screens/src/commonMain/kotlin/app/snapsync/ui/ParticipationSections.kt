@@ -31,26 +31,25 @@ import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.share_zero_note
 import org.jetbrains.compose.resources.stringResource
 
-// The participation decision surface (capabilities `join-event`, `manage-membership`,
-// `photo-sharing`, `event-album`) — the three questions a member answers about an event, and the
+// The participation decision surface — the three questions a member answers about an event, and the
 // ONE place they are arranged.
 
 /**
  * What a member decides about an event: **do I share** (and which photos), **do I receive**, **is an
- * album created**, and **may photos use mobile data** (capability `mobile-data`).
+ * album created**, and **may photos use mobile data**.
  *
  * The join gate and the in-place reconfigure surface ask exactly this, and both render it through here, so
  * the arrangement is written once and the two surfaces cannot drift apart.
  *
  * Every choice sits in ONE card, each switch followed by what it means and set apart from the next by a line:
- * share, receive, the album (a preference fed by both directions, capability `event-album`), then mobile data —
+ * share, receive, the album (a preference fed by both directions), then mobile data —
  * one section reads as one decision about one membership. Which photos are shared is one row inside the
  * Share section — the range, "<preset> · <count>", and an edit affordance opening the calendar — because
  * "do I share" and "which photos" are one decision (decision record `simplify-join-screen`, D4).
  *
  * The only string the two callers genuinely say differently is the album note: at the join gate it states
  * what WILL be collected and varies over the switches; at reconfigure it states that turning the album on
- * also collects what the device already holds (capabilities `manage-membership`, `event-album`).
+ * also collects what the device already holds.
  */
 @Composable
 internal fun ColumnScope.ParticipationSections(
@@ -107,11 +106,11 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
         rangeLabel = state.rangeLabel,
         detail = shareDetail(state.form.preset, state.range.shareCount).text(),
     )
-    // A zero count carries a forward gloss so it does not read as broken (capability `join-event`).
+    // A zero count carries a forward gloss so it does not read as broken.
     if (state.range.shareCount == ShareCount.Ready(0)) {
         AppSectionNote(stringResource(Res.string.share_zero_note))
     }
-    // The origin exclusions (capability `photo-sharing`), stated as what is SUBTRACTED, never as a
+    // The origin exclusions, stated as what is SUBTRACTED, never as a
     // guarantee of what gets through: the policy cannot infer capture-origin, so it removes only what is
     // certainly not a capture and ADMITS ON DOUBT. "Screenshots … are never shared" is exactly true; "only
     // photos you took are shared" would not be.
@@ -120,7 +119,7 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
 
 /**
  * The range row's second line: which preset is chosen and, when a count is available, how many of the
- * member's own photos it would share (capability `join-event`). An unavailable count — no usable grant, or a
+ * member's own photos it would share. An unavailable count — no usable grant, or a
  * failed read — is omitted, not shown as zero: the two mean different things.
  */
 internal fun shareDetail(preset: RangeChoice, count: ShareCount): Phrase {

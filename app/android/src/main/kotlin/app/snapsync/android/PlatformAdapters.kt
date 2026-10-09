@@ -22,7 +22,7 @@ internal class PlatformAdapters(
     /** What this build starts once the root has composed — the control channel, on a rig build. */
     val afterLaunch: () -> Unit,
     /**
-     * Asks Play for the invite this installation carried (capability `join-event`) — the production build's
+     * Asks Play for the invite this installation carried — the production build's
      * `AndroidInstallReferrer`; nothing on a rig build, which Play never installed and whose links may be mocked. Run
      * once per process, as the first screen is created.
      */

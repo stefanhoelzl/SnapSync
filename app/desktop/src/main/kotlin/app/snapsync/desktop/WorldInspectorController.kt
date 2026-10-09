@@ -153,7 +153,7 @@ class WorldInspectorController(
     fun setPermission(status: GalleryAccess) = launchMutation { mocks.library.operator.access = status }
 
     /**
-     * The device's network as the operating system reports it to the app (capability `sync-status`). The app tells the
+     * The device's network as the operating system reports it to the app. The app tells the
      * member only after the network watch's grace, so a notice appears a few seconds after the lever, as on a phone.
      */
     fun setNetwork(access: NetworkAccess) = launchMutation { mocks.connectivity.operator.access = access }
@@ -183,7 +183,7 @@ class WorldInspectorController(
 
     fun removeAsset(assetId: String) = launchMutation { mocks.library.operator.remove(AssetId(assetId)) }
 
-    // Selection policy (capability `photo-sharing`): an asset the policy decides on — most it EXCLUDES, so the operator
+    // Selection policy: an asset the policy decides on — most it EXCLUDES, so the operator
     // can watch it land in the gallery and then *not* upload and *not* enter the union, and see that N does not inflate.
     fun addPolicyAsset(kind: PolicyAsset) = addOwn(kind.build("${kind.prefix}-${ownAssetSeq++}"))
 
@@ -227,7 +227,7 @@ class WorldInspectorController(
     /**
      * The OS finishes every in-flight transfer as [outcome]. The failure outcomes are the operator playing a bad
      * network: a `502` with an error body — which `URLSession` reports as a *successful* transfer, the shape of the
-     * shipped bug (capability `receiving-photos`) — or a body short of its `Content-Length`. Either is rejected, nothing
+     * shipped bug — or a body short of its `Content-Length`. Either is rejected, nothing
      * stages, and the downloads stay pending.
      */
     fun stageAllDownloads(outcome: TransferOutcome = DownloadSessionMock.HEALTHY) = launchMutation {
@@ -240,15 +240,15 @@ class WorldInspectorController(
     fun setBackendOffline(offline: Boolean) = launchMutation { mocks.backend.operator.offline = offline }
 
     /**
-     * The backend refuses this phone as not genuine for [reason], or stops (`null`) — capability `privacy-security`, "A
-     * refused phone is told why". The app learns of it at its next attestation: a wake, or a tap on Create or Join.
+     * The backend refuses this phone as not genuine for [reason], or stops (`null`) — a refused phone is told
+     * why. The app learns of it at its next attestation: a wake, or a tap on Create or Join.
      */
     fun setRefusedAttestation(
         reason: DeviceRefusal?,
     ) = launchMutation { mocks.backend.operator.refuseAttestation = reason }
 
     /**
-     * The membership made **unreadable** (capability `background-upload`) — the state a real device is in before its
+     * The membership made **unreadable** — the state a real device is in before its
      * first unlock after a boot. A lever here because it is otherwise unreachable by a reviewer.
      */
     fun setMembershipUnreadable(unreadable: Boolean) =
@@ -431,7 +431,7 @@ class WorldInspectorController(
     private suspend fun snapshotNow(): InspectorSnapshot {
         val library = mocks.library.operator
         val joined = (shown.value?.layer as? Layer.Joined)?.membership
-        // What the selection policy would exclude (capability `photo-sharing`) — the REAL policy over the REAL
+        // What the selection policy would exclude — the REAL policy over the REAL
         // enumeration of the library, so the row badge cannot drift from what the cycle does. Echo is reported
         // separately (an imported photo), so the echo set is empty here; the album lookup is real.
         val reads = mocks.library.port()

@@ -152,7 +152,7 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
                 ReceivedPhotoName.token(ref(clauseId)),
                 filename?.let(ReceivedPhotoName::tokenOf),
                 "the library keeps the mark on the name it reports ('$filename'): it is how a reinstalled app knows the " +
-                    "photo was received (capability `receiving-photos`)",
+                    "photo was received",
             )
         }
 

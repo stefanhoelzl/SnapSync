@@ -45,7 +45,7 @@ private const val RENEW_WHEN_REMAINING_SECONDS: Long = 7 * 24 * 60 * 60
 fun tokenExpirySeconds(token: String): Long? = token.split(".").getOrNull(1)?.toLongOrNull()
 
 /**
- * The device-attestation service (capability `privacy-security`): obtain and keep alive the bearer
+ * The device-attestation service: obtain and keep alive the bearer
  * token every backend call carries — and, as the app's [Credential], recover from the backend rejecting it.
  *
  * **Only the app process runs this.** App Attest is unavailable in the upload extension
@@ -100,7 +100,7 @@ class DeviceAttestation(
      *
      * Anything that had to be *sent* with the old credential and was refused must be re-sent — most
      * importantly the APNs registration, which the app publishes only when its (token, env, deviceId) differs
-     * from the last registration the backend accepted (capability `receiving-photos`). A `PUT` refused here
+     * from the last registration the backend accepted. A `PUT` refused here
      * (a fresh install races attestation, or the token is rejected) leaves that record unwritten, so the next
      * app entry would re-send it — but a device that receives no silent pushes gets few entries, and none of the
      * wake-driven renewals this capability depends on. So the registration re-publishes on every emission,
@@ -229,7 +229,7 @@ class DeviceAttestation(
 
     /**
      * Whether this device holds a usable attestation token — the one fact the status screen surfaces
-     * (`SyncHealth.Unattested`, capability `sync-status`).
+     * (`SyncHealth.Unattested`).
      *
      * A **derived cache of the last refresh**, never authority: authority is the token itself, in the
      * `AttestStore` behind the port (law "State and authority"). Kill the process and this is rebuilt
@@ -251,7 +251,7 @@ class DeviceAttestation(
 
     /**
      * Why the service refused this phone at the latest [refresh], or `null` when it did not — it minted, renewed, held a
-     * fresh token, or got no answer (capability `privacy-security`, "A refused phone is told why": no answer is not a
+     * fresh token, or got no answer (a refused phone is told why, and no answer is not a
      * refusal). Only a SERVICE verdict is told; a proof this device could not produce ([TokenOutcome.ProofFailed]) is not.
      *
      * The same bracket as [attested], for the same reason (`SNAPSYNC-20`): cleared on entry to [refresh] and set at its
@@ -261,7 +261,7 @@ class DeviceAttestation(
 
     /**
      * The latest refused attestation's facts — the service's answer and the chain the phone presented — for a report
-     * the user sends from "Report this" (capability `privacy-security`), or `null` once an attestation succeeded.
+     * the user sends from "Report this", or `null` once an attestation succeeded.
      *
      * NOT [refusal]'s bracket: a refresh does not clear these when it begins, because a report opened while one runs must
      * still find them. In memory only: a relaunch re-attests at launch, and that refusal captures them afresh.

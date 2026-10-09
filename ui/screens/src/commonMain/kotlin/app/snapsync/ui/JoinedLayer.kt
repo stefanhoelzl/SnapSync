@@ -46,7 +46,7 @@ import app.snapsync.ui.resources.waiting_members
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-// The joined membership's own screen (capability `sync-status`): the joined statement and the event's dates
+// The joined membership's own screen: the joined statement and the event's dates
 // under its name, the status line with its counts, and the explanation of how the event works for this member.
 // The invite and the membership actions are the docked footer [StatusScreen] hands the layout.
 
@@ -54,8 +54,7 @@ import org.jetbrains.compose.resources.stringResource
  * The joined-layer event home: the one-line sync health first, because the screen is opened far more often to
  * check on photos than for anything else, then what the event means for this member ("How it works"). Only the
  * explanation scrolls: the status stays beneath the heading and the footer the layout docks beneath it stays
- * put, so on the smallest phone neither the sync health nor the invite and Leave are ever scrolled away
- * (capability `sync-status`).
+ * put, so on the smallest phone neither the sync health nor the invite and Leave are ever scrolled away.
  */
 @Composable
 internal fun JoinedLayer(
@@ -105,7 +104,7 @@ private fun StatusBlock(state: Layer.Joined, access: AccessActions) {
             status = health.toAppSyncStatus(),
             onAttentionClick = {
                 if (health is SyncHealth.NeedsAccess) accessAction(health, access)()
-                // A blocked network is SnapSync's own setting (capability `sync-status`); an offline device is not.
+                // A blocked network is SnapSync's own setting; an offline device is not.
                 if (health == SyncHealth.NoNetwork(NetworkNotice.BLOCKED)) access.onOpenSettings()
             },
         )
@@ -115,8 +114,7 @@ private fun StatusBlock(state: Layer.Joined, access: AccessActions) {
 
 /**
  * What missing access asks for — the system's dialog the first time, the phone's Settings once refused. ONE
- * function for the status line and the explanation's link, so the two can never do different things
- * (capability `photo-access`).
+ * function for the status line and the explanation's link, so the two can never do different things.
  */
 internal fun accessAction(health: SyncHealth.NeedsAccess, access: AccessActions): () -> Unit =
     if (health.permission == GalleryAccess.NOT_DETERMINED) access.onRequestPermission else access.onOpenSettings
@@ -137,7 +135,7 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
 }
 
 /**
- * The counts line beneath the status line (capability `sync-status`): per direction, what went through.
+ * The counts line beneath the status line: per direction, what went through.
  * Absent whenever the reduction sent no counts — every status but "Up to date" and work in progress. The ended event's
  * waiting note rides beneath it: it is only ever set under "Up to date", where the counts are present too.
  */
@@ -167,7 +165,7 @@ internal fun DirectionCount.label(done: StringResource, progress: StringResource
     }
 
 /**
- * The lines beneath the joined event's name (capability `sync-status`): that this device has joined — the
+ * The lines beneath the joined event's name: that this device has joined — the
  * same words for the member who created the event and for everyone else, because the host is a member too and
  * the app does not record who created an event — and the event's dates with where it is in its life.
  */

@@ -21,7 +21,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.plus
 
-// Dragging on the range calendar (capabilities `create-event`, `join-event`): a range endpoint is dragged straight
+// Dragging on the range calendar: a range endpoint is dragged straight
 // away, and a sweep across days selects a new range after a LONG PRESS. The long press is deliberate — the
 // calendar fills most of a small phone's form, so a drag that started anywhere on it and selected days would
 // leave the host no place to scroll the form from.

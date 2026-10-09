@@ -86,7 +86,7 @@ class ComposedExtension internal constructor(
  * invocation.
  *
  * What this process builds differently from the app's uploader, each deliberately:
- * - the identity is **READ_ONLY** — this process neither mints nor adopts (capability `photo-sharing`): guessing is
+ * - the identity is **READ_ONLY** — this process neither mints nor adopts: guessing is
  *   what once gave one device two identities;
  * - echo suppression is the download store opened **read-only** ([SuppressionService]): the app creates and migrates
  *   it, and an older schema pauses the cycle instead;
@@ -97,7 +97,7 @@ class ComposedExtension internal constructor(
  */
 fun snapSyncExtension(ports: ExtensionPorts): ComposedExtension {
     val process = snapSyncProcess(ports.process)
-    // The device token (capability `privacy-security`), read from the shared protected store the app writes. Held in
+    // The device token, read from the shared protected store the app writes. Held in
     // memory between re-reads ([CachedAttestStore]): every request reads it, and a store read each time was measurable.
     // Re-read at every invocation — the app renews into the shared item, which this copy cannot see — so the copy's
     // staleness is bounded to one invocation.
@@ -133,7 +133,7 @@ private fun extensionServices(
     val config = ConfigService(process.files, process.clock)
     return UploadServices(
         config = config,
-        // The same shared choice the app's menu writes, read per job (capability `mobile-data`).
+        // The same shared choice the app's menu writes, read per job.
         mobileData = MobileDataSetting(ports.preferences),
         deviceIdentity = identity,
         host = build.uploadHost,
@@ -142,8 +142,8 @@ private fun extensionServices(
         upload = ports.upload,
         gallery = ports.gallery,
         discovery = GalleryDiscovery(ports.gallery),
-        // This process's own grant read (capability `background-upload`, "The extension withholds its cycle without a
-        // full grant"): the OS invokes a surviving registration under a partial grant too, and this is what stops it.
+        // This process's own grant read — the extension withholds its cycle without a full grant: the OS invokes a
+        // surviving registration under a partial grant too, and this is what stops it.
         process = UploaderProcess.Extension(ports.gallery),
         // Unrestricted, stated: the extension never reads the library under a partial grant — its admission withholds
         // before any read.
@@ -181,7 +181,7 @@ internal fun extensionHandlers(
     entryContext: EntryContext,
     /**
      * Drop this process's in-memory copy of the device token, so the invocation reads the one the app last
-     * stored (capability `privacy-security`). The app renews into the shared protected item, which the
+     * stored. The app renews into the shared protected item, which the
      * extension's copy cannot see; re-reading at every OS invocation bounds that copy's staleness to one.
      */
     rereadCredential: () -> Unit,
@@ -219,7 +219,8 @@ internal fun extensionHandlers(
 )
 
 /**
- * The upload extension's backend services (capability `privacy-security`): the same need-shaped services the app
+ * The upload extension's backend services: the same need-shaped services the app
+
  * composes, over an authenticated backend whose credential only DROPS a rejected token ([ExtensionCredential]) —
  * the extension cannot attest, so it never retries a rejected call — and with no version gate, because the
  * extension has no screen to show a refusal on.

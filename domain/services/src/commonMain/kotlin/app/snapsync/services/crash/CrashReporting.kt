@@ -27,7 +27,7 @@ import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
 
 /**
- * The process's crash reporting (capability `privacy-security`): every decision about the channel, over the thin
+ * The process's crash reporting: every decision about the channel, over the thin
  * [CrashReporter] port. ONE per process, built by `snapSyncProcess` — which is what makes the idempotence below a
  * plain flag rather than a process-wide promise four independently constructed adapters had to keep.
  *
@@ -55,7 +55,7 @@ class CrashReporting(
     /** Whether this build carries a reporting destination. Constant for the process. */
     val isConfigured: Boolean get() = dsn != null
 
-    /** Where a bug report goes on this build (capability `privacy-security`): sent where it reports, else kept here. */
+    /** Where a bug report goes on this build: sent where it reports, else kept here. */
     val reportDestination: ReportDestination
         get() = if (isConfigured) ReportDestination.DEVELOPER else ReportDestination.THIS_DEVICE
 
@@ -115,7 +115,7 @@ class CrashReporting(
      * declares it exempt from the scrub). Delivery is the channel's business: [DumpResult.Queued] does not mean the
      * dump has left the device.
      *
-     * A build that reports nowhere keeps it instead (capability `privacy-security`): the same sections, written to
+     * A build that reports nowhere keeps it instead: the same sections, written to
      * [SAVED_DIAGNOSTIC_REPORT_PATH] in the app's own files, replacing the report saved before it. It never leaves
      * the phone; a refused write answers [DumpResult.NotSent] with the reason.
      */

@@ -52,7 +52,7 @@ fun deviceCommands(
     handleReport: (ProcessMetricReport) -> Unit,
 ): Map<String, RigCommand> = uploadJobDeviceCommands() + photoKitCommands(launch, photoAccess) +
     launch.world.honouredLevers() + adapterCommands(launch) + mapOf(
-        // The development switch per uploader (capability `background-upload`). Reports the switch AND the
+        // The development switch per uploader. Reports the switch AND the
         // registration fact it produces, because the extension is never registrable below 26.1 or without a full
         // grant, whatever the switch says. The grant is the app's own — the mocked library's, where the adapter choice mocks it.
         "uploaders" to uploadersCommand(
@@ -65,8 +65,8 @@ fun deviceCommands(
         "reset" to resetCommand(reset = launch.controls::reset),
         // What the app's files take on the real disk, per container — the App Group is not pullable over USB.
         "disk" to diskCommand(),
-        // Drive a synthetic process-metric report through the app's OWN handler (capability
-        // `privacy-security`). Real reports arrive on the OS's cadence — roughly daily, and only after a
+        // Drive a synthetic process-metric report through the app's OWN handler.
+        // Real reports arrive on the OS's cadence — roughly daily, and only after a
         // period has closed — so without this the only way to exercise the three channels is to wait a
         // day. The report is an open key/value bag by design, so a synthetic one needs no MetricKit types
         // and this route stays honest: it feeds the same rule and the same channels the OS feeds.

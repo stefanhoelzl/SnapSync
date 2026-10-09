@@ -6,9 +6,8 @@ import app.snapsync.model.ProcessMetricReport
 class MetricHandlers(val onReport: (ProcessMetricReport) -> Unit)
 
 /**
- * Reports about **this process's own behaviour** (capability `privacy-security`): how its previous runs ended, how
- * responsive it was, what it peaked at. Named for the need — any platform that can account for its own processes
- * seats it.
+ * Reports about **this process's own behaviour**: how its previous runs ended, how responsive it was, what it peaked
+ * at. Named for the need — any platform that can account for its own processes seats it.
  *
  * **Generic over providers on purpose, and that is a forcing property rather than a preference.** The platform
  * surface this is bound to today is deprecated by its vendor in favour of a successor that is Swift-only, so

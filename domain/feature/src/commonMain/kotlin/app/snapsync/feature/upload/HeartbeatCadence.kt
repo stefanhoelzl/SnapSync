@@ -25,9 +25,9 @@ data class CadenceFacts(
 )
 
 /**
- * **The heartbeat's cadence after a tail** (capabilities `receiving-photos`, "New photos are announced by a silent wake,
- * and never only by it", and `background-upload`, "Photos upload without the app being opened"; decision record
- * `changes/timely-background-receiving`, D1) — `null` for no heartbeat at all:
+ * **The heartbeat's cadence after a tail** — new photos are announced by a silent wake, and never only by it, and
+ * photos upload without the app being opened (decision record `changes/timely-background-receiving`, D1) — `null`
+ * for no heartbeat at all:
  *
  * - **none** — not joined;
  * - **busy** — work remains: uploads the tail left ([leftWork]) or staged imports ([importsRemain]); or a device that

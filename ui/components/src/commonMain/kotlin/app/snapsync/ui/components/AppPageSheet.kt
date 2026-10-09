@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * A page that rises over the screen as a sheet (capability `manage-membership`: the event's settings): as tall as the
+ * A page that rises over the screen as a sheet (the event's settings): as tall as the
  * screen allows less a strip at the top, where the screen beneath shows dimmed. Its only chrome is the drag handle —
  * no title, no close button — and every way out is the same [onDismiss]: swiping it down, going back, or tapping that
  * strip. The [content] scrolls inside it, so a page taller than the phone is never cut off.

@@ -4,8 +4,8 @@ import app.snapsync.ports.Upload
 import co.touchlab.kermit.Logger
 
 /**
- * **Which implementation of the OS upload-job subsystem this target binds** (capability
- * `background-upload`, "The upload-job subsystem binding is fixed by the compilation target").
+ * **Which implementation of the OS upload-job subsystem this target binds**: the
+ * upload-job subsystem binding is fixed by the compilation target.
  *
  * The subsystem is the OS-owned job queue — fetch, create, retry, acknowledge — and, beside it, the
  * registration record the app toggles. `iosArm64`, every shipped binary, binds

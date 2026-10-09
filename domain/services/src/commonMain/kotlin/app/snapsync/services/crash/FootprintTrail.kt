@@ -13,7 +13,7 @@ import app.snapsync.ports.Files
 import co.touchlab.kermit.Logger
 
 /**
- * The app's last few readings of its own memory footprint (capability `privacy-security`), kept across processes so
+ * The app's last few readings of its own memory footprint, kept across processes so
  * that the process-metric report delivered on a LATER launch — the one saying a suspended app was ended for memory —
  * arrives with what the ended process last measured of itself ([ProcessAccount]).
  *

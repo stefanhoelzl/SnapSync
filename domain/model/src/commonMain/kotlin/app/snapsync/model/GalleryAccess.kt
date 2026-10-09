@@ -1,19 +1,17 @@
 package app.snapsync.model
 
 /**
- * Photo-library permission as the app understands it (capability `photo-access`).
+ * Photo-library permission as the app understands it.
  *
- * [GRANTED] is a FULL library grant and nothing less. [LIMITED] is a PARTIAL grant (iOS `.limited`):
- * the platform scopes reads to a user-picked selection, which the app treats as the membership's
- * own-photo scope — the selection defines "everything", so "Up to date" over the selected set is true
- * (capability `photo-access`). Unchangeable or refused grants (iOS `.denied`, `.restricted`)
- * map to [DENIED].
+ * [GRANTED] is a FULL library grant and nothing less. [LIMITED] is a PARTIAL grant (iOS `.limited`): the platform
+ * scopes reads to a user-picked selection, which the app treats as the membership's own-photo scope — the selection
+ * defines "everything", so "Up to date" over the selected set is true. Unchangeable or refused grants (iOS `.denied`,
+ * `.restricted`) map to [DENIED].
  *
- * Consumers gating on "may the app read photos at all" (is syncing operational?) treat [GRANTED] and
- * [LIMITED] alike; consumers gating on "may the app read the WHOLE library" (the autonomous walk
- * paths — capability `photo-access` forbids autonomous reads under a partial grant) require
- * [GRANTED] exactly. A bare `!= GRANTED` comparison is no longer self-evidently correct: every such
- * site states which reading it intends.
+ * Consumers gating on "may the app read photos at all" (is syncing operational?) treat [GRANTED] and [LIMITED] alike;
+ * consumers gating on "may the app read the WHOLE library" (the autonomous walk paths — no autonomous read is made
+ * under a partial grant) require [GRANTED] exactly. A bare `!= GRANTED` comparison is no longer self-evidently correct:
+ * every such site states which reading it intends.
  */
 enum class GalleryAccess {
     NOT_DETERMINED,
@@ -23,11 +21,10 @@ enum class GalleryAccess {
 }
 
 /**
- * The "may the app read photos at all" reading — [GalleryAccess.GRANTED] or
- * [GalleryAccess.LIMITED]. This is the gate for work that operates on whatever the platform lets
- * the app see (album creation, imports, the sync-active signal). It is deliberately NOT the gate for
- * the autonomous library walks, which require [GalleryAccess.GRANTED] exactly — under a partial
- * grant those reads are selection-driven instead (capability `photo-access`).
+ * The "may the app read photos at all" reading — [GalleryAccess.GRANTED] or [GalleryAccess.LIMITED]. This is the gate
+ * for work that operates on whatever the platform lets the app see (album creation, imports, the sync-active signal).
+ * It is deliberately NOT the gate for the autonomous library walks, which require [GalleryAccess.GRANTED] exactly —
+ * under a partial grant those reads are selection-driven instead.
  */
 val GalleryAccess.grantsPhotoAccess: Boolean
     get() = this == GalleryAccess.GRANTED || this == GalleryAccess.LIMITED

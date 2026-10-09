@@ -30,7 +30,7 @@ class AndroidBuildInfo(
     override val apnsEnvironment: String,
     /**
      * The build's Google Play page, EMPTY until the listing is public (production launch) — the update notice then
-     * offers no store at all, which beats an offer that lands on Play's "not found" (capability `app-update-required`).
+     * offers no store at all, which beats an offer that lands on Play's "not found".
      */
     playStoreUrl: String,
     /** The application's package name — the one process Android runs this app in. */

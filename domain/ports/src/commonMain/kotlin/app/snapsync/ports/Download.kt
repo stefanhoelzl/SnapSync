@@ -5,7 +5,7 @@ import app.snapsync.model.TransferNetwork
 import app.snapsync.model.TransferOutcome
 
 /**
- * **The platform's background downloads** (capability `receiving-photos`): on iOS a background `URLSession`, which
+ * **The platform's background downloads**: on iOS a background `URLSession`, which
  * keeps downloading while the app is suspended and relaunches it when a transfer ends. One external system, deciding
  * nothing: whether a finished body may be staged, where it goes and what it means are the download feature's.
  *
@@ -22,7 +22,7 @@ interface Download : Listenable<DownloadHandlers> {
 
     /**
      * Begin fetching [url], tagging the transfer with [tag] — the one field the platform keeps across a relaunch — over
-     * the networks [network] allows (capability `mobile-data`): under [TransferNetwork.UNRESTRICTED_ONLY] the platform
+     * the networks [network] allows: under [TransferNetwork.UNRESTRICTED_ONLY] the platform
      * holds the transfer until the phone is on a network that is neither costly nor data-restricted, keeping it across
      * a relaunch like any other. Never throws: an unusable [url] is the caller's to filter (it does), and anything else
      * is [StartResult.NotStarted], which converges with a started-then-failed transfer (the resource stays pending until

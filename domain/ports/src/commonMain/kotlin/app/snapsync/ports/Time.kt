@@ -17,7 +17,7 @@ interface Clock : Port {
 
     /**
      * The device's current local zone — consumed wherever a local wall-clock pick converts to the canonical UTC
-     * cutoff string (capability `photo-sharing`). Read once per process by the one place that renders local time.
+     * cutoff string. Read once per process by the one place that renders local time.
      */
     fun timeZone(): TimeZone
 }

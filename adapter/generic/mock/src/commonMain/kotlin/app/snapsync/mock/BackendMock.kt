@@ -89,8 +89,8 @@ enum class BackendCall(val key: String) {
 data class SentPush(val eventId: String, val deviceId: String, val token: String, val seq: Long? = null)
 
 /**
- * One read of an event's union as the backend logged it (capability `privacy-security`, "The service records who
- * reads an event's photo list"): the reading device when its token verified (null otherwise), why it said it read,
+ * One read of an event's union as the backend logged it — the service records who reads an event's photo list: the
+ * reading device when its token verified (null otherwise), why it said it read,
  * the position it read from (null for a full read) and to, and how many assets it was given.
  */
 data class UnionFetch(
@@ -170,7 +170,7 @@ class BackendOperator internal constructor(private val state: BackendState) {
     var offline: Boolean by state::offline
 
     /**
-     * Play the nightly sweep's COMPLETION of [eventId] (capability `event-lifetime`): its memberships and assets go,
+     * Play the nightly sweep's COMPLETION of [eventId]: its memberships and assets go,
      * its record stays and answers "completed".
      */
     fun complete(eventId: String) = state.locked { state.complete(eventId) }
@@ -191,8 +191,8 @@ class BackendOperator internal constructor(private val state: BackendState) {
     var capacity: Int by state::capacity
 
     /**
-     * While set, the backend refuses this phone as not genuine for that reason (capability `privacy-security`, "A refused
-     * phone is told why"): every attestation answers `401 attestation rejected: <reason>`, as v2 does, and every gated
+     * While set, the backend refuses this phone as not genuine for that reason — a refused phone is
+     * told why: every attestation answers `401 attestation rejected: <reason>`, as v2 does, and every gated
      * call answers `401`, whatever token it carries — a phone that held a token learns of the refusal by re-attesting.
      * `null` is the genuine phone.
      */
@@ -278,7 +278,7 @@ internal class BackendState(
         val createdAt: Instant,
         val startsAt: Instant,
         val endsAt: Instant,
-        /** Closed (capability `event-lifetime`): no join, no rename, no change to a member's asset set. */
+        /** Closed: no join, no rename, no change to a member's asset set. */
         var closed: Boolean = false,
         /** Completed — the sweep's verdict: memberships and assets gone, the record kept. */
         var completed: Boolean = false,
@@ -372,7 +372,7 @@ internal class BackendState(
         if (event.completed) return PublishOutcome.COMPLETED
         val membership = memberships[eventId to deviceId] ?: return PublishOutcome.NOT_A_MEMBER
         // A closed event's asset sets are fixed: the set already declared is answered and changes nothing, any other
-        // is refused (capability `photo-sharing`).
+        // is refused.
         if (event.closed) {
             val held = membership.manifest?.assets.orEmpty().associate { a -> a.assetId to a.resources.map { it.role }.toSet() }
             val incomingSet = manifest.assets.associate { a -> a.assetId to a.resources.map { it.role }.toSet() }
@@ -428,13 +428,13 @@ internal class BackendState(
         return MemberCounts(active.size, active.count { it.manifest?.final == true })
     }
 
-    /** The sweep's completion: memberships and their assets go, the record stays (capability `event-lifetime`). */
+    /** The sweep's completion: memberships and their assets go, the record stays. */
     fun complete(eventId: String) {
         val event = events[eventId] ?: return
         event.closed = true
         event.completed = true
         memberships.keys.filter { it.first == eventId }.forEach { memberships.remove(it) }
-        // The union log goes with the photos (capability `privacy-security`).
+        // The union log goes with the photos.
         changes.removeAll { it.eventId == eventId }
         fetches.remove(eventId)
     }
@@ -444,7 +444,7 @@ internal class BackendState(
 
     /**
      * The union from [after] — only the assets gained past it, still through the union's own filter — and the position
-     * it covers; `null` for an unknown event. Logs the read under [reader] (capability `privacy-security`).
+     * it covers; `null` for an unknown event. Logs the read under [reader].
      */
     fun unionPage(
         eventId: String,

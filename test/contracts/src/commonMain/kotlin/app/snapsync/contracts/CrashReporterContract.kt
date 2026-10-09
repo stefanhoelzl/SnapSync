@@ -113,7 +113,7 @@ class CrashReporterSubject(
 
 /**
  * What the crash-reporting channel promises (`docs/architecture.md` — this list IS the specification of the port's
- * obligations; capability `privacy-security` carries why each exists).
+ * obligations).
  *
  * - Nothing runs until `start`: before it, every member changes nothing, and a dump answers `NotSent`.
  * - `start` is idempotent: a second start that re-initialised the channel would lose its scope.

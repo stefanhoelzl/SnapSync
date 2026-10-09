@@ -37,7 +37,7 @@ fun javaString(value: String): String {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
-// The version this build declares to the backend (capability `app-update-required`) and to the store: a delivering
+// The version this build declares to the backend and to the store: a delivering
 // run's `-Psnapsync.versionName`, the marketing version `scripts/marketing-version.py` computes for BOTH stores;
 // without it, the SAME marketing-version floor every iOS dev build carries (`Config.xcconfig`), which the api's
 // `MIN_APP_VERSION` is pinned to stay at or below.
@@ -76,11 +76,11 @@ android {
             val value = requireNotNull(deployment[key]) { "the resolved deployment rendered no $key" }
             buildConfigField("String", field, "\"$value\"")
         }
-        // The app's Google Play page (capability `app-update-required`: the update notice's one remedy). Empty
+        // The app's Google Play page (the update notice's one remedy). Empty
         // until the listing is public (production launch): the notice then offers no store at all.
         val playStoreUrl = requireNotNull(deployment["playStoreUrl"]) { "the deployment rendered no playStoreUrl" }
         buildConfigField("String", "PLAY_STORE_URL", "\"$playStoreUrl\"")
-        // Where this build reports crashes (capability `privacy-security`): empty on every build but a distributed
+        // Where this build reports crashes: empty on every build but a distributed
         // one, and then nothing starts. The environment its reports are filed under, derived from the same channel.
         buildConfigField("String", "SENTRY_DSN", javaString(unreviewed["sentryDsn"].orEmpty()))
         buildConfigField("String", "SENTRY_ENVIRONMENT", javaString(requireNotNull(unreviewed["sentryEnvironment"])))
@@ -160,7 +160,7 @@ dependencies {
     implementation(project(":domain:host"))
     implementation(project(":adapter:generic:app"))
     implementation(project(":adapter:android"))
-    // The crash-reporting seat both platforms share (capability `privacy-security`).
+    // The crash-reporting seat both platforms share.
     implementation(project(":adapter:generic:sentry"))
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)

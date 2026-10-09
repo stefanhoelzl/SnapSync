@@ -40,7 +40,7 @@ import co.touchlab.kermit.Logger
  *
  */
 sealed interface UploaderProcess {
-    /** Whether THIS process may create now (capability `background-upload`), read once per gate. */
+    /** Whether THIS process may create now, read once per gate. */
     fun admission(): UploadAdmission
 
     class App(private val admit: () -> UploadAdmission) : UploaderProcess {
@@ -61,9 +61,9 @@ sealed interface UploaderProcess {
  * silently shipping without it (which is how the app-driven tier once shipped without the direction gate).
  */
 internal class UploadServices(
-    /** The three-state membership read (capability `join-event`). Read fresh once per cycle. */
+    /** The three-state membership read. Read fresh once per cycle. */
     val config: ConfigService,
-    /** The device's mobile-data choice (capability `mobile-data`), read as each upload job is created. */
+    /** The device's mobile-data choice, read as each upload job is created. */
     val mobileData: MobileDataSetting,
     /**
      * The device identity. Its resolve MUST throw [SecureStoreUnavailable] while protected data is
@@ -87,14 +87,13 @@ internal class UploadServices(
     /** The photo library — what exports a resource to a file for an uploader that sends files. */
     val gallery: GalleryReader,
     /**
-     * The cycle's photo-library reads (capability `background-upload`, "Ledger keys resolve to uploadable
-     * resources"): bound once per root — `GalleryDiscovery` over the gallery on both device tiers — and never by a
-     * transport.
+     * The cycle's photo-library reads, through which ledger keys resolve to uploadable resources: bound once per
+     * root — `GalleryDiscovery` over the gallery on both device tiers — and never by a transport.
      */
     val discovery: UploadDiscovery,
     /**
-     * Which uploader process this cycle runs in, which decides whether it may run a cycle now (capability
-     * `background-upload`, "The upload cycle owns its entry decision"), read once per gate. Required, with **no
+     * Which uploader process this cycle runs in, which decides whether it may run a cycle now — the upload cycle
+     * owns its entry decision — read once per gate. Required, with **no
      * default**: the app answers from its composed core (admit under any usable grant), the extension from its
      * own photo grant (admit only under `GRANTED`), and a default would state either answer silently — for the
      * extension, a wrong admit reads the whole library under a partial grant. It is decided before the
@@ -102,7 +101,7 @@ internal class UploadServices(
      */
     val process: UploaderProcess,
     /**
-     * What upload discovery may read (capability `photo-access`): [SelectionScope.Unrestricted]
+     * What upload discovery may read: [SelectionScope.Unrestricted]
      * walks as ever; [SelectionScope.Scoped] makes discovery consume the selection snapshot with no
      * platform read. The default keeps every full-grant composition byte-identical — the extension root
      * keeps it because it never reads the library under a partial grant: the OS does invoke a surviving
@@ -116,25 +115,24 @@ internal class UploadServices(
      * its core's (`AppCore.backend`), the extension the one [extensionBackend] composes.
      */
     val manifestPublisher: ManifestPublisher,
-    /** Echo-suppression (capability `receiving-photos`): required, no default (`background-upload`). */
+    /** Echo-suppression: required, no default. */
     val suppression: SuppressionSource,
     /**
-     * The policy's denylisted-album read (capability `photo-sharing`): this tier's `denylistedAlbumMembers` over its
+     * The policy's denylisted-album read: this tier's `denylistedAlbumMembers` over its
      * own grant read and its own `AlbumLookupFailure` answer.
      */
     val albumExclusions: suspend (CaptureCutoff) -> Set<AssetId>,
-    /** Event-album placement (capability `event-album`). */
+    /** Event-album placement. */
     val albumCoordinator: AlbumCoordinator,
     /** The attestation bearer token, read per request. Required: `{ null }` must be stated, not inherited. */
     val token: suspend () -> String?,
     /**
      * The attestation bearer token read from its store of record, bypassing any in-process copy — what a retry's
-     * request carries (capability `background-upload`, "A retry picks up a refreshed token"). Required, like
-     * [token]: `{ null }` must be stated.
+     * request carries, so a retry picks up a refreshed token. Required, like [token]: `{ null }` must be stated.
      */
     val freshToken: suspend () -> String?,
     /**
-     * The calling build's marketing version, declared on the byte upload (capability `app-update-required`).
+     * The calling build's marketing version, declared on the byte upload.
      *
      * A plain value, and required: each process builds its own bundle in its own root and reads its own
      * bundle there, so there is no other process's answer to bind. It used to be a thunk defaulting to `""`,
@@ -158,7 +156,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
     // [process] proves the process set up its crash reporting before this cycle was composed (`snapSyncProcess`, every
     // root's first act), and supplies the one `Files` a file uploader's staged bytes live in.
     val ledger = LedgerWriter(ports.ledger)
-    // The read-discipline gate (capability `photo-access`): the ONE shared assembly wraps the library reads, so every
+    // The read-discipline gate: the ONE shared assembly wraps the library reads, so every
     // tier and the world get the same walk-vs-snapshot decision — the cycle's, and the transfer's live-resource lookup.
     val library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope)
     val transfer = UploadTransferService(
@@ -208,9 +206,8 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         platform = transfer,
         library = library,
         log = ports.log,
-        // Device manifest (capability `photo-sharing`) from the cycle's OWN discovery — no second
-        // library enumeration. Catching a failed publish is the cycle's; nothing bounds it but the
-        // per-request HTTP timeout (no timeout of ours — capability `sync-status`).
+        // Device manifest from the cycle's OWN discovery — no second library enumeration. Catching a failed
+        // publish is the cycle's; nothing bounds it but the per-request HTTP timeout (no timeout of ours).
         // The manifest DECLARES what this device will provide: every non-absent ledger row, whatever its
         // upload state. This hook therefore needs no discovery of its own — the cycle has already
         // recorded every admitted resource and backfilled the bare ones by the time it fires, and the
@@ -218,13 +215,14 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         onDiscovery = { eventId, policy, manifestVersion ->
             manifestProducer.produce(
                 eventId = eventId,
-                policy = policy, // the ONE admission (capability `photo-sharing`)
+                policy = policy, // the ONE admission
                 rows = ledger.manifestRows(),
                 // Read by the gate BEFORE the membership, so every change the rows or the policy miss
-                // carries a higher version (capability `photo-sharing`).
+                // carries a higher version.
                 manifestVersion = manifestVersion,
                 // Settled once the event's range has ended: the discovery this hook follows ran just now, after the
-                // end, so every in-range photo is declared (capability `photo-sharing`). One fresh read, like the gate.
+                // end, so every in-range photo is declared. One fresh read, like the gate.
+
                 settled = ports.config.freshReadHasEnded(),
             )
         },

@@ -9,12 +9,12 @@ import app.snapsync.model.selectionPolicyFor
 import app.snapsync.services.gallery.CandidateSource
 
 /**
- * The join-time **shareable-count preview** (capability `join-event`): how many of the device's own
+ * The join-time **shareable-count preview**: how many of the device's own
  * photos a **candidate** (uncommitted) capture-date range + direction would share to the event. It
  * answers "how many photos from my gallery will be shared?" on the join / switch / reconfigure decision
  * surface, recomputed as the member tunes the range.
  *
- * **One policy, not a fork** (capability `photo-sharing`): the count is the size of exactly the
+ * **One policy, not a fork**: the count is the size of exactly the
  * admitted set the upload cycle would produce for that candidate, computed by the same
  * [SelectionPolicy.admits] every other consumer asks. Because it evaluates a **candidate** range (the one
  * the member is choosing, before commit), it constructs the policy over the candidate bounds — it
@@ -26,7 +26,7 @@ import app.snapsync.services.gallery.CandidateSource
  *
  * The GRANTED path reads **cheap asset facts** — no `assetResourcesForAsset` round-trip — so sweeping the
  * range does not re-pay the ~110 ms/asset resource read. The LIMITED path never issues a fresh library
- * read (capability `photo-access`): it re-filters the already-held selection snapshot in memory.
+ * read: it re-filters the already-held selection snapshot in memory.
  * Where no admitted set can be stated at all — no grant, an unresolved grant, or a partial grant whose
  * snapshot has not landed — the count is **unavailable** (`null`) and the surface renders no row. Which
  * of those three it is, this source does not ask and does not need to know.
@@ -34,7 +34,7 @@ import app.snapsync.services.gallery.CandidateSource
 class ShareableCountSource(
     /** The permission-aware read seam — the SAME one the status total holds, so the two cannot disagree. */
     private val source: CandidateSource,
-    /** Downloaded/imported foreign photos, suppressed from this device's contribution (capability `receiving-photos`). */
+    /** Downloaded/imported foreign photos, suppressed from this device's contribution. */
     private val suppressedLocalIds: suspend () -> Set<AssetId>,
     /**
      * Denylisted-album members for the candidate cutoff — the SAME lookup the cycle gets.
@@ -58,7 +58,7 @@ class ShareableCountSource(
      * the surface renders no row, which is still not the same as a count of zero. Keeping a
      * `grantsPhotoAccess` gate here restated the distinction the source already owns — and it covered
      * only the grant, so it never saw the case that actually reaches a member: a partial grant whose
-     * selection snapshot has not arrived (capability `photo-access`).
+     * selection snapshot has not arrived.
      *
      * [includesUpload] `false` counts zero without any read — the same short-circuit `N` and the cycle
      * apply, reached through the same [SelectionPolicy.None].
@@ -68,7 +68,7 @@ class ShareableCountSource(
         cutoff: CaptureCutoff,
         ceiling: CaptureCeiling?,
     ): Int? {
-        // ONE derivation (capability `photo-sharing`): the direction is resolved inside it, and a
+        // ONE derivation: the direction is resolved inside it, and a
         // non-contributing membership invokes neither reader — so the album fetch is still not paid to
         // learn that this preview counts nothing.
         val policy = selectionPolicyFor(
@@ -79,8 +79,8 @@ class ShareableCountSource(
             albumExcludedAssetIds = albumExcludedAssetIds,
         )
         // Cheap AND exact: every rule decides on facts, so the count that skips the per-asset resource
-        // read is the admitted-set size rather than an approximation of it (capability
-        // `photo-sharing`). It was not always — while the animated-image rule needed a resource's
+        // read is the admitted-set size rather than an approximation of it. It was not always — while
+        // the animated-image rule needed a resource's
         // MIME, this facts-only path admitted a GIF on doubt while the status total excluded it, and the
         // preview over-counted by exactly the GIFs in scope.
         return EventPhotoSet.readable(policy, source::candidates)?.count()

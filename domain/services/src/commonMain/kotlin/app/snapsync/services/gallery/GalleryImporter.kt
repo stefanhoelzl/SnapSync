@@ -6,7 +6,7 @@ import app.snapsync.ports.GalleryImport
 import app.snapsync.services.staging.StagingService
 
 /**
- * **A foreign asset's import from staging** (capability `receiving-photos`): its staged resources, whose paths the
+ * **A foreign asset's import from staging**: its staged resources, whose paths the
  * download store keeps relative to the shared area, are located on this device and handed to the photo library.
  *
  * Locating is this service's, not the caller's, because a staged path only means something on the device that staged

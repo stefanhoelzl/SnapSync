@@ -17,10 +17,10 @@ data class SecureSlot(val service: String, val account: String, val shared: Bool
  */
 object SecureSlots {
 
-    /** The device id, in the shared group both processes read (capability `photo-sharing`). */
+    /** The device id, in the shared group both processes read. */
     val DEVICE_ID = SecureSlot(service = "app.snapsync.deviceid", account = "deviceid", shared = true)
 
-    /** The attestation token and its App Attest key id (capability `privacy-security`). Unscoped (pinned). */
+    /** The attestation token and its App Attest key id. Unscoped (pinned). */
     val ATTEST_TOKEN = SecureSlot(service = "app.snapsync.attest", account = "token", shared = false)
     val ATTEST_KEY_ID = SecureSlot(service = "app.snapsync.attest", account = "keyid", shared = false)
 
@@ -32,7 +32,7 @@ object SecureSlots {
 }
 
 /**
- * Who may create the device identity (capability `photo-sharing`). Two roles, and only one may mint.
+ * Who may create the device identity. Two roles, and only one may mint.
  */
 enum class DeviceIdentityRole {
 

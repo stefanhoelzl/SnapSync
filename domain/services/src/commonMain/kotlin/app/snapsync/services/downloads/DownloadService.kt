@@ -26,7 +26,7 @@ import app.snapsync.services.downloads.db.DownloadStoreQueries
 const val DOWNLOADS_DB_NAME: String = "downloads.db"
 
 /**
- * The download store (capability `receiving-photos`): [DownloadService] over the SQLDelight [DownloadDatabase].
+ * The download store: [DownloadService] over the SQLDelight [DownloadDatabase].
  * **The app is its one writer and the one process that migrates it**; the upload extension reads only its
  * suppression projection, read-only, through [SuppressionService].
  *
@@ -140,7 +140,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
 
     /**
      * Record every [adopted] photo as its ref's confirmed import, and as [eventId]'s, in ONE transaction, and answer
-     * the refs actually recorded (capability `receiving-photos`). A ref with no row gets one; a ref planned or staged
+     * the refs actually recorded. A ref with no row gets one; a ref planned or staged
      * but not yet imported — no marker, not terminal — is settled onto the adopted photo instead of being imported
      * again. Every other row (an import's marker, imported, unimportable, deleted by the member) is this install's own
      * record and is left exactly as it is.
@@ -285,7 +285,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * count added could quietly be read outside it.
      */
     suspend fun counts(eventId: String? = null): DownloadCounts {
-        // Scoped to ONE event's rows for what the joined screen shows (capability `sync-status`): the table keeps
+        // Scoped to ONE event's rows for what the joined screen shows: the table keeps
         // every event's imported rows as suppression handles, so the unscoped read is a census of the device
         // (diagnostics, reset), never this membership's progress.
         val row = if (eventId == null) {
@@ -407,7 +407,7 @@ class UnionTracking internal constructor(private val queries: () -> DownloadStor
 
     /**
      * Drop [eventId]'s rows a FULL read of its union no longer lists — withdrawn before this device received them
-     * (capability `photo-sharing`) — sparing [protecting] (the refs whose imports are claimed), and return the staged
+     * — sparing [protecting] (the refs whose imports are claimed), and return the staged
      * paths those rows owned, in ONE transaction, as [DownloadService.pruneNonTerminal] does and for its reasons. Only
      * rows not yet received are candidates (`selectWithdrawable`); the row is DELETED, never settled, so a photo that
      * comes back is planned again.

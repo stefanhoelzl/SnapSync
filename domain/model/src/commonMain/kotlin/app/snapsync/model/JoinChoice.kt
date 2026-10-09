@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * What a join commits (capability `join-event`): the loaded event's facts and the member's choices on it.
+ * What a join commits: the loaded event's facts and the member's choices on it.
  *
  * [minPhotoDate] and [maxPhotoDate] are the member's CHOSEN range, carried raw: the clamp to the event window
  * (`startsAt`..`endsAt`) is applied on the far side, inside the join use-case, so no entry path can reach a

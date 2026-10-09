@@ -14,7 +14,7 @@ import app.snapsync.model.StoreLink
  * device, where an operator plays a member updating the app in place.
  */
 interface BuildInfo : Port {
-    /** The build's marketing version, declared on every backend request and on the byte upload (capability `app-update-required`). */
+    /** The build's marketing version, declared on every backend request and on the byte upload. */
     val appVersion: String
 
     /**
@@ -25,7 +25,7 @@ interface BuildInfo : Port {
 
     /**
      * This build's store page — the App Store on iOS, Google Play on Android — or `null` when it carries none: the one
-     * remedy the update-required screen offers (capability `app-update-required`).
+     * remedy the update-required screen offers.
      */
     val store: StoreLink?
 
@@ -34,11 +34,11 @@ interface BuildInfo : Port {
 
     /**
      * Whether this OS carries the OS-driven upload mechanism at all (iOS ≥26.1) — a constant of the running OS, and an
-     * input to the registration fact (capability `background-upload`), never an operating-system call.
+     * input to the registration fact, never an operating-system call.
      */
     val osSupportsOsDrivenUpload: Boolean
 
-    /** The build/OS/device facts a diagnostic dump's state section transcribes (capability `privacy-security`). */
+    /** The build/OS/device facts a diagnostic dump's state section transcribes. */
     val diagnostics: DiagnosticEnvironment
 
     /** Where this build reports crashes to, or `null` for a build that reports nowhere. */
@@ -55,8 +55,8 @@ interface BuildInfo : Port {
     val processId: String?
 
     /**
-     * The process's boot banner — what the process is and which build (capability `privacy-security`), logged first, so
-     * a reader who concatenates the app's and the extension's logs can tell runs apart.
+     * The process's boot banner — what the process is and which build, logged first, so a reader who concatenates the
+     * app's and the extension's logs can tell runs apart.
      */
     val bootLines: List<String>
 }

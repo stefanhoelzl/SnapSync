@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The leave use-case: tears down the configured event's **local** state, best-effort, leaving every
- * already-uploaded object in storage untouched (see `manage-membership`).
+ * already-uploaded object in storage untouched.
  *
  * It does four things, in order: (1) **stop** the upload producer, (2) **clear the upload ledger**,
  * (3) **clear the persisted config**, then (4) **notify the backend** this device is leaving (via the
@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
  * [ConfigService]) and passed into the notify, so the notify still targets the correct event even though the config
  * is already gone.
  *
- * **Every leave says whether this device has everything** (capability `manage-membership`): the member's own and the
+ * **Every leave says whether this device has everything**: the member's own and the
  * app's once the event is finished for it are the same leave, so the backend never tells them apart — it records
  * `done` for a member that left having everything and `left` otherwise. Only receiving is the device's to say (the
  * backend judges its share itself), and only after the event's range has ended can a member have everything; before
@@ -68,8 +68,8 @@ class LeaveEvent(
     private val everythingReceived: suspend (EventConfig) -> Boolean,
     private val scope: CoroutineScope,
     /**
-     * Where the leave is recorded as owed to the backend BEFORE anything is torn down (capability `event-lifetime`,
-     * "A leave made offline still counts"): a kill between the teardown and [notifyLeave] then loses nothing — the
+     * Where the leave is recorded as owed to the backend BEFORE anything is torn down, since a leave made offline
+     * still counts: a kill between the teardown and [notifyLeave] then loses nothing — the
      * next wake delivers it.
      */
     private val pendingLeaves: PendingLeaves,

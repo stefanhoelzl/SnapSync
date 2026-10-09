@@ -10,7 +10,7 @@ import app.snapsync.model.ResourceRole
 /**
  * The photos an operator puts in a [PhotoLibraryMock] — each forged as the platform would have interpreted it (NEUTRAL
  * facts, never a PhotoKit bitmask). The defaults are an ordinary 12 MP camera photo, which the selection policy
- * **admits**; the named kinds are the ones it excludes, and the one it must not (capability `photo-sharing`).
+ * **admits**; the named kinds are the ones it excludes, and the one it must not.
  */
 object LibraryAssets {
     /** The capture date a photo carries unless told otherwise. */

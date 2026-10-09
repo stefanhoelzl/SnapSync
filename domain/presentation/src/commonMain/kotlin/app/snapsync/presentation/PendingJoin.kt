@@ -3,7 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.model.JoinPhase
 
 /**
- * An in-progress interactive join/switch confirmation (capability `join-event`): the event being
+ * An in-progress interactive join/switch confirmation: the event being
  * joined and the [phase] of its confirmation surface. The reducer maps a non-null value to
  * `Layer.JoiningEvent` (config absent) or `Joined.pendingSwitch` (config present); `null` means no
  * confirmation is open.

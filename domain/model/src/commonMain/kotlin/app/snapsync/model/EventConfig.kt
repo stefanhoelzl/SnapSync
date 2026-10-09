@@ -10,26 +10,23 @@ import kotlinx.serialization.Transient
  * deliberately NOT here: the host is fixed at compile time by the extension's
  * the baked `uploadBase`, and the name is fetched by id after joining (see [EventConfig]).
  *
- * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms
- * instead of waiting for a tap (capability `join-event`) — **only in a rig build**. The decoder accepts it
- * (and every override below) from ANY link, so the link is never the authority: the composition root's
- * [InviteLinkHints] is, and a production root answers [InviteLinkHints.Ignored], under which such a link is an
- * ordinary invite and its overrides are discarded. [minPhotoDate] is likewise a **dev/test**
- * key (default absent): a capture-date cutoff (UTC `…Z` string, capability `photo-sharing`) that,
- * on an auto-confirmed join, forces a specific lower bound so a headless launch can observe date filtering.
- * [maxPhotoDate] is likewise a **dev/test** key (default absent): the capture-date **ceiling** (UTC `…Z`
- * string) that, on an auto-confirmed join, forces a specific upper bound — clamped to the event `endsAt` on
- * the far side in `JoinEvent`, exactly as [minPhotoDate] is clamped to the floor — so a headless launch can
- * exercise the upper end of the range. [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one
- * of the [Direction.wire] tokens `both`/`upload`/`download` — that, on an auto-confirmed join, forces the
- * membership's direction (capability `join-event`) so a headless launch can exercise upload-only /
- * download-only without a tap. [saveToAlbum] is likewise a **dev/test** key (default absent): an override
- * that, on an auto-confirmed join, forces whether the membership gathers its synced photos into an event
- * album (capability `event-album`) so a headless launch can exercise album placement without a tap.
- * Because `encodeDefaults` is off, a `false`/absent value is not serialized, so the canonical
- * [encodeEventUrl] QR stays `eventId`-only; the strict decoder accepts
- * `autoJoin`/`minPhotoDate`/`maxPhotoDate`/`direction`/`saveToAlbum` as known optional keys but still
- * rejects any *other* extra key (and a `direction` outside the known tokens).
+ * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms instead of waiting for
+ * a tap — **only in a rig build**. The decoder accepts it (and every override below) from ANY link, so the link is
+ * never the authority: the composition root's [InviteLinkHints] is, and a production root answers
+ * [InviteLinkHints.Ignored], under which such a link is an ordinary invite and its overrides are discarded.
+ * [minPhotoDate] is likewise a **dev/test** key (default absent): a capture-date cutoff (UTC `…Z` string) that, on an
+ * auto-confirmed join, forces a specific lower bound so a headless launch can observe date filtering. [maxPhotoDate] is
+ * likewise a **dev/test** key (default absent): the capture-date **ceiling** (UTC `…Z` string) that, on an
+ * auto-confirmed join, forces a specific upper bound — clamped to the event `endsAt` on the far side in `JoinEvent`,
+ * exactly as [minPhotoDate] is clamped to the floor — so a headless launch can exercise the upper end of the range.
+ * [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one of the
+ * [Direction.wire] tokens `both`/`upload`/`download` — that, on an auto-confirmed join, forces the membership's
+ * direction so a headless launch can exercise upload-only / download-only without a tap. [saveToAlbum] is likewise a
+ * **dev/test** key (default absent): an override that, on an auto-confirmed join, forces whether the membership gathers
+ * its synced photos into an event album so a headless launch can exercise album placement without a tap. Because
+ * `encodeDefaults` is off, a `false`/absent value is not serialized, so the canonical [encodeEventUrl] QR stays
+ * `eventId`-only; the strict decoder accepts `autoJoin`/`minPhotoDate`/`maxPhotoDate`/`direction`/`saveToAlbum` as
+ * known optional keys but still rejects any *other* extra key (and a `direction` outside the known tokens).
  *
  * This class is the wire DTO: its property name is the exact JSON key of the event-link payload.
  */
@@ -49,16 +46,14 @@ class EventLinkPayload(
     @Transient val key: String? = null,
 )
 
-/** Whether the event's range has ended at [now] (capability `event-lifetime`): strictly after its end. */
+/** Whether the event's range has ended at [now]: strictly after its end. */
 fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
 
 /**
- * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined
- * `eventId`, the human-readable event `name`, and this device's chosen capture-date [minPhotoDate]
- * cutoff for the event (capability `photo-sharing`). The name is **required, with no default**:
- * the join gate only provisions from a loaded phase that carries a name (capability `join-event`), and the
- * backend enforces name-required on create (capability `event-creation`), so a nameless event cannot
- * exist.
+ * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined `eventId`, the
+ * human-readable event `name`, and this device's chosen capture-date [minPhotoDate] cutoff for the event. The name is
+ * **required, with no default**: the join gate only provisions from a loaded phase that carries a name, and the backend
+ * enforces name-required on create, so a nameless event cannot exist.
  *
  * Carrying no default is what makes [name] a required *constructor* parameter, so every present and
  * future construction site must supply one under compiler enforcement. That — not decode strictness — is
@@ -70,10 +65,9 @@ fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
  * at `BackendEventDirectory`, and it is the ONLY one — nothing downstream re-checks.
  * Decision record: `changes/archive/…-remove-nameless-config-fallback`.
  *
- * [minPhotoDate] is **required and non-null**, with **no default** (capability `photo-sharing`): the
- * per-device, per-membership capture-date cutoff, a UTC `…Z` string. A membership with no cutoff is not a
- * representable state — an absent cutoff once meant whole-library scope, which under event photo sharing
- * uploads a guest's entire camera roll to another person's event.
+ * [minPhotoDate] is **required and non-null**, with **no default**: the per-device, per-membership capture-date cutoff,
+ * a UTC `…Z` string. A membership with no cutoff is not a representable state — an absent cutoff once meant
+ * whole-library scope, which under event photo sharing uploads a guest's entire camera roll to another person's event.
  *
  * It carries **no default on purpose**, unlike [direction]/[saveToAlbum]. A legacy item lacking the
  * key therefore fails to decode and reads as *no config* (the config store adapters), so the device returns to
@@ -83,12 +77,11 @@ fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
  * `""` looks tempting: an undated *asset* — `creationDate == ""` — is correctly excluded by any real
  * cutoff.)
  *
- * [startsAt] is the **event's** start date (capability `event-creation`) — set once by the host at
- * creation, immutable, and the same canonical `…Z` shape as [minPhotoDate]. It is both the **default**
- * and the **floor** for this membership's cutoff: the persisted [minPhotoDate] is always
- * `max(chosen, startsAt)` (the clamp lives in `JoinEvent`), so the invariant `minPhotoDate >= startsAt`
- * holds for every config. It is what the not-started status line compares against (`startsAt > now`,
- * capability `sync-status`).
+ * [startsAt] is the **event's** start date — set once by the host at creation, immutable, and the same canonical `…Z`
+ * shape as [minPhotoDate]. It is both the **default** and the **floor** for this membership's cutoff: the persisted
+ * [minPhotoDate] is always `max(chosen, startsAt)` (the clamp lives in `JoinEvent`), so the invariant
+ * `minPhotoDate >= startsAt` holds for every config. It is what the not-started status line compares against
+ * (`startsAt > now`).
  *
  * Unlike [minPhotoDate], [startsAt] **defaults** — to [minPhotoDate] — so a config persisted before this
  * field existed decodes instead of failing. That asymmetry is deliberate and the reasoning is *not*
@@ -105,11 +98,10 @@ fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
  * (The `@Serializable` plugin honours a default that references an **earlier** constructor parameter —
  * verified by `EventConfigTest`. [startsAt] must therefore stay declared *after* [minPhotoDate].)
  *
- * [endsAt] is the **event's** end date (capability `event-creation`) — the host's declared, immutable event
- * window ceiling, same canonical `…Z` shape as [startsAt]. It is the ceiling the membership's upper bound is
- * clamped to, the default upper bound a joiner sees, and what the "Event ended" status line compares against
- * (`now > endsAt`, capability `sync-status`). [maxPhotoDate] is this membership's chosen capture-date
- * **upper** bound, always clamped to `min(chosen, endsAt)` at join (the clamp lives in `JoinEvent`), so
+ * [endsAt] is the **event's** end date — the host's declared, immutable event window ceiling, same canonical `…Z` shape
+ * as [startsAt]. It is the ceiling the membership's upper bound is clamped to, the default upper bound a joiner sees,
+ * and what the "Event ended" status line compares against (`now > endsAt`). [maxPhotoDate] is this membership's chosen
+ * capture-date **upper** bound, always clamped to `min(chosen, endsAt)` at join (the clamp lives in `JoinEvent`), so
  * `maxPhotoDate <= endsAt` holds for every config that has one.
  *
  * [maxPhotoDate] is **required and non-null, with no default** — like [minPhotoDate], and this **reverses**
@@ -128,30 +120,27 @@ fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
  * feeds the "Event ended" line and gives the reconfigure surface something to clamp against, and neither
  * failure is worth a decode failure. Its backfill stays.
  *
- * [deletesAt] is when the backend deletes the event's shared data (capability `event-lifetime`) — a
- * canonical `…Z` instant **derived server-side** (`max(createdAt, startsAt) + lifetime`) and served on the
- * details response. The device stores it, never computes it: duplicating the retention constant and the
- * anchor rule in the client would let a join gate confidently promise a date the backend will not honour,
- * and the drift would be silent.
+ * [deletesAt] is when the backend deletes the event's shared data — a canonical `…Z` instant **derived server-side**
+ * (`max(createdAt, startsAt) + lifetime`) and served on the details response. The device stores it, never computes it:
+ * duplicating the retention constant and the anchor rule in the client would let a join gate confidently promise a date
+ * the backend will not honour, and the drift would be silent.
  *
- * It exists for exactly one job — the **second witness** of the self-leave (capability `manage-membership`). A
- * membership is torn down without user action only when the backend reports the event definitively absent
- * **and** this stored deadline has passed. One witness is offline, so no backend misconfiguration can
- * manufacture both: a zone-wide fault that 404s every event would otherwise destroy every membership in
- * the install base at once, unrecoverably, since this class is the only record of the join.
+ * It exists for exactly one job — the **second witness** of the self-leave. A membership is torn down without user
+ * action only when the backend reports the event definitively absent **and** this stored deadline has passed. One
+ * witness is offline, so no backend misconfiguration can manufacture both: a zone-wide fault that 404s every event
+ * would otherwise destroy every membership in the install base at once, unrecoverably, since this class is the only
+ * record of the join.
  *
- * It **defaults to `null`** like [endsAt], and a `null` means **never reached** — the self-leave cannot
- * fire on a membership that has not yet learned its deadline. Reconcile backfills it (capability
- * `photo-sharing`). Both defaults fail toward keeping the membership.
+ * It **defaults to `null`** like [endsAt], and a `null` means **never reached** — the self-leave cannot fire on a
+ * membership that has not yet learned its deadline. Reconcile backfills it. Both defaults fail toward keeping the
+ * membership.
  *
- * The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload cycle), **and**
- * [saveToAlbum] (whether to add completed uploads to the event album) from the shared Keychain item; the
- * name is cosmetic, for the status-screen title.
- * [direction] is this device's chosen participation direction (capability `join-event`), **defaulting to
- * [Direction.Both]** so a config persisted before this field existed decodes to today's bidirectional
- * behavior. [saveToAlbum] is whether this membership gathers its synced photos into an event album
- * (capability `event-album`), **defaulting to `false`** so a config persisted before this field existed
- * decodes to today's no-album behavior. All fields flow whole-object through serialization.
+ * The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload cycle), **and** [saveToAlbum]
+ * (whether to add completed uploads to the event album) from the shared Keychain item; the name is cosmetic, for the
+ * status-screen title. [direction] is this device's chosen participation direction, **defaulting to [Direction.Both]**
+ * so a config persisted before this field existed decodes to today's bidirectional behavior. [saveToAlbum] is whether
+ * this membership gathers its synced photos into an event album, **defaulting to `false`** so a config persisted before
+ * this field existed decodes to today's no-album behavior. All fields flow whole-object through serialization.
  */
 @Serializable
 data class EventConfig(
@@ -165,15 +154,15 @@ data class EventConfig(
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
     /**
-     * Whether the event has CLOSED (capability `event-lifetime`) — learned from its details, never computed here.
-     * Once closed the joined screen offers no invite, settings or rename, and the membership ends on its own once it
-     * has everything. Defaults to `false`, so a config persisted before it existed decodes as open — the safe
-     * direction: an open event is only one that keeps its member.
+     * Whether the event has CLOSED — learned from its details, never computed here. Once closed the joined screen
+     * offers no invite, settings or rename, and the membership ends on its own once it has everything. Defaults to
+     * `false`, so a config persisted before it existed decodes as open — the safe direction: an open event is only one
+     * that keeps its member.
      */
     val closed: Boolean = false,
     /**
-     * The event's active members and how many have settled what they share, as last served — the ended event's
-     * waiting line (capability `sync-status`). `null` until the details first carry them.
+     * The event's active members and how many have settled what they share, as last served — the ended event's waiting
+     * line. `null` until the details first carry them.
      */
     val members: MemberCounts? = null,
     /**

@@ -45,10 +45,10 @@ import app.snapsync.ui.resources.explain_share_off_title
 import app.snapsync.ui.resources.explain_share_title
 import org.jetbrains.compose.resources.stringResource
 
-// The joined screen's explanation of how the event works for this member (capability `sync-status`).
+// The joined screen's explanation of how the event works for this member.
 
 /**
- * "How it works" (capability `sync-status`): what happens to the member's photos, to the group's, and what to do
+ * "How it works": what happens to the member's photos, to the group's, and what to do
  * when photos are not arriving. Each row follows the membership's current choices and the grant; a row about
  * something that is not happening says how to change it, with the route there. A closed event shares nothing
  * any more, so it keeps only the receiving row and the hint.
@@ -112,7 +112,7 @@ private fun SharingRow(
     settingsLink: CaptionLink,
     access: AccessActions,
 ) {
-    // The partial-grant resting affordances (capability `photo-access`): beside the row that says what is
+    // The partial-grant resting affordances: beside the row that says what is
     // shared, because widening the selection widens exactly that. Widen the selection (the cheaper step) above,
     // switch the grant itself below; neither is an attention state.
     val choices: (@Composable ColumnScope.() -> Unit)? = if (limited) {

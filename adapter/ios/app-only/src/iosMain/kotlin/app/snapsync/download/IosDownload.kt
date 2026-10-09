@@ -43,8 +43,8 @@ import kotlin.coroutines.resume
 const val DOWNLOAD_SESSION_ID = "app.snapsync.download.bg"
 
 /**
- * The iOS [Download] (capability `receiving-photos`): a `URLSession` (non-discretionary; Wi-Fi and cellular unless a
- * transfer's own request holds it to an unrestricted network — capability `mobile-data`) which on
+ * The iOS [Download]: a `URLSession` (non-discretionary; Wi-Fi and cellular unless a transfer's own request holds it
+ * to an unrestricted network) which on
  * every shipped binary is a **background** session that keeps downloading while the app is suspended and relaunches it
  * on completion. The binding is fixed by the compilation target — see [transferSessionConfiguration] for what
  * `iosSimulatorArm64` gets instead, and for the properties a run on that target does **not** evidence.
@@ -94,8 +94,8 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
 
     override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
         val nsUrl = NSURL.URLWithString(url) ?: return StartResult.NotStarted
-        // The member's mobile-data choice rides on the request (capability `mobile-data`), so this transfer keeps the
-        // rule it started with while the one session carries others under another.
+        // The member's mobile-data choice rides on the request, so this transfer keeps the rule it started
+        // with while the one session carries others under another.
         val request = NSMutableURLRequest(uRL = nsUrl).apply { applyTransferNetwork(network) }
         val task = session().downloadTaskWithRequest(request)
         task.taskDescription = tag
@@ -194,7 +194,7 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
      * implementer) holding a back-reference to the [download] it forwards to.
      */
     private class Delegate(private val download: IosDownload) : NSObject(), NSURLSessionDownloadDelegateProtocol {
-        // PLATFORM ENTRY POINTS (spec `privacy-security`): each records that it was called before doing anything. The
+        // PLATFORM ENTRY POINTS: each records that it was called before doing anything. The
         // per-task callbacks log at DEBUG — once per photo, and at INFO a 200-photo event would flush the crash
         // reporter's bounded breadcrumb window and roll the size-capped device log before anyone read it.
         @PlatformEntry

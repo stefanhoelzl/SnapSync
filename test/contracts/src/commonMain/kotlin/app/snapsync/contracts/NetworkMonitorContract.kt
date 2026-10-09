@@ -11,7 +11,7 @@ enum class NetworkState {
     ONLINE,
 
     /**
-     * The device has a network this app may use, but a restricted one (capability `mobile-data`): mobile data, a
+     * The device has a network this app may use, but a restricted one: mobile data, a
      * personal hotspot or a metered Wi-Fi, or Low Data Mode / Data Saver in force.
      */
     RESTRICTED,

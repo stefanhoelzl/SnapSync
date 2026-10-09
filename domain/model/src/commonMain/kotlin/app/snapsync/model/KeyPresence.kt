@@ -2,8 +2,8 @@ package app.snapsync.model
 
 /**
  * Whether this device holds the joined event's key (the encrypted file format, `docs/architecture.md`). Only [Lost]
- * stops anything: while it holds, nothing is uploaded or downloaded and the joined screen asks for the event's invite
- * (capability `sync-status`), until the invite is opened again (capability `join-event`).
+ * stops anything: while it holds, nothing is uploaded or downloaded and the joined screen asks for the event's invite,
+ * until the invite is opened again.
  */
 enum class KeyPresence {
     /** No key is needed: no membership, or a plain event's. */

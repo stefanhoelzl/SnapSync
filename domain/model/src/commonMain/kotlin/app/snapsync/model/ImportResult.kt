@@ -8,11 +8,11 @@ sealed interface ImportResult {
     /**
      * The import did not complete.
      *
-     * This is an OBSERVED outcome — the library reported the change failed — and it is the only kind of
-     * failure this seam reports. There is deliberately no "we stopped waiting" case: nothing bounds an
-     * import in time any more (capability `receiving-photos`), because a wall-clock bound expires against
-     * transactions that are alive, and the wake it would otherwise protect is bounded by the operating system's
-     * expiry instead. An import that never reports never returns, and stays claimed for the life of the process.
+     * This is an OBSERVED outcome — the library reported the change failed — and it is the only kind of failure this
+     * seam reports. There is deliberately no "we stopped waiting" case: nothing bounds an import in time any more,
+     * because a wall-clock bound expires against transactions that are alive, and the wake it would otherwise protect
+     * is bounded by the operating system's expiry instead. An import that never reports never returns, and stays
+     * claimed for the life of the process.
      *
      * [consumedResources] is what separates a failure worth retrying from one that never can be, and it is
      * a **platform fact the adapter observes**, not an interpretation the caller may make. The photo library

@@ -20,7 +20,7 @@ kotlin {
         }
     }
 
-    // Sentry test-link (capability `privacy-security`): this module's simulator TEST binary links
+    // Sentry test-link: this module's simulator TEST binary links
     // :adapter:generic:sentry and therefore Sentry symbols; reuse the Sentry-Dynamic framework that
     // module provisions (see its build script for why the DYNAMIC variant) — same -F for the link,
     // same -rpath for the simulator-process load.
@@ -39,7 +39,7 @@ kotlin {
     // `-Psnapsync.rig=true` adds BOTH the module and the source directory it contributes; without the
     // property it adds NEITHER, so a production build contains no rig source at all — not a stub, not an
     // inert branch (`docs/architecture.md`, "A build-time-only module is contained by compilation").
-    // That is why this change alters no `sync-status` requirement: nothing shipped can observe the rig
+    // That is why this change alters no user-observable outcome: nothing shipped can observe the rig
     // or the env var its hook reads.
     //
     // The contributed directory compiles INTO this module, which is what lets it reach
@@ -87,7 +87,8 @@ kotlin {
             implementation(project(":adapter:ios:ext-safe"))
             implementation(project(":adapter:ios:app-only"))
             implementation(project(":adapter:ios:ui"))
-            // The crash-reporting seat both platforms share (capability `privacy-security`).
+            // The crash-reporting seat both platforms share.
+
             implementation(project(":adapter:generic:sentry"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)

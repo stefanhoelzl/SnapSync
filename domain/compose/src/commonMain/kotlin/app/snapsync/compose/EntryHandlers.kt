@@ -17,13 +17,13 @@ import kotlinx.coroutines.launch
 /**
  * The app's foreground and background work — the `Lifecycle` port's handlers (`docs/architecture.md`, "Events
  * arrive through `listen`"): **each wake does its own work, then hands the rest to the one opportunistic tail**
- * (capability `sync-status`; decision record `changes/own-work-per-wake`, D1, D3, D5).
+ * (decision record `changes/own-work-per-wake`, D1, D3, D5).
  *
  * `onForeground` is **host-first**: [assembleHost] — the host zone's, touching the lazily assembled status host — runs
  * on the composition lane before the `Foreground` flow, so the host's collectors are installed before the flow's work
  * lands. Its hold on the process's background time is taken at once, so a tail the member leaves behind by switching
  * away stops on the platform's signal rather than being frozen mid-unit. It then asks the push service for the token
- * again: asking is the only way to learn a rotated one (capability `receiving-photos`, "Registration timing").
+ * again: asking is the only way to learn a rotated one.
  *
  * `onBackground` assembles nothing. **The tail is requested here, after a flow returns — never from inside one**
  * (law "A trigger flow never outlives its own run").
@@ -64,8 +64,8 @@ fun lifecycleHandlers(core: AppCore, assembleHost: () -> Unit): LifecycleHandler
 }
 
 /**
- * The network's return while the app is in front (capability `sync-status`, "The app says when it cannot reach the
- * network"; decision record `changes/tell-when-offline`, D4): the work opening the app does — the `Foreground` flow,
+ * The network's return while the app is in front, where the app says when it cannot reach the network (decision
+ * record `changes/tell-when-offline`, D4): the work opening the app does — the `Foreground` flow,
  * then the tail — so photos waiting for the network move now, not at the next opening. Its own entry-point label and
  * [TailTrigger.NETWORK] keep it apart from a foreground entry in the device log; it re-registers no push token, since
  * nothing about the token changed.
@@ -92,7 +92,7 @@ fun installNetworkReturns(core: AppCore) {
 }
 
 /**
- * The push service's handlers (capability `receiving-photos`). **None assembles the host**: a token or a silent push
+ * The push service's handlers. **None assembles the host**: a token or a silent push
  * arriving in a background wake installs no permission-grant subscription — everything the push's own work needs is
  * built by the composed graph.
  *
@@ -141,7 +141,8 @@ private fun AppCore.silentPush(message: PushMessage, completion: Completion) {
             }
         }
         // Only for the active event, read from the membership the flow just re-read: a push for another event, a left
-        // one, none, or an unreadable membership wakes no tail (capability `receiving-photos`).
+        // one, none, or an unreadable membership wakes no tail.
+
         tail.handToWhen(pushTailGuard.joinsTail(message.payload), wake, TailTrigger.SILENT_PUSH)
     }
 }

@@ -20,8 +20,7 @@ sealed interface CreateOutcome {
 
     /**
      * `401` even after the recovery the authenticated backend makes: this phone holds no credential the service accepts.
-     * Why it was refused is the attestation's verdict, not this route's (capability `privacy-security`, "A refused
-     * phone is told why").
+     * Why it was refused — which a refused phone is told — is the attestation's verdict, not this route's.
      */
     data object Unverified : CreateOutcome
 

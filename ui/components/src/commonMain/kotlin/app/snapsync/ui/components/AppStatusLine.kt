@@ -79,26 +79,26 @@ sealed interface AppSyncStatus {
 
     /**
      * Work remaining; each arrow is [Arrow.HIDDEN]/[Arrow.STATIC]/[Arrow.PULSING]. [waitingForWifi]: the photos wait
-     * for Wi-Fi because the member keeps them off mobile data (capability `mobile-data`).
+     * for Wi-Fi because the member keeps them off mobile data.
      */
     data class Syncing(val upload: Arrow, val download: Arrow, val waitingForWifi: Boolean = false) : AppSyncStatus
 
     /**
-     * The event has not begun (capability `sync-status`). Informational, not actionable: flat (no
+     * The event has not begun. Informational, not actionable: flat (no
      * background) and NOT tappable. It says what the wait MEANS — sharing starts with the event — and not
      * when: the joined screen's dates line says that, and time is said in one place.
      */
     data object NotStarted : AppSyncStatus
 
     /**
-     * The member switched both sharing and receiving off (capability `sync-status`): they stay in the event and
+     * The member switched both sharing and receiving off: they stay in the event and
      * nothing moves. Informational and flat like [NotStarted], NOT tappable — the explanation's rows already lead to
      * the event's settings.
      */
     data object Inactive : AppSyncStatus
 
     /**
-     * This phone lost the event's key (capability `sync-status`): an attention line with a background, like
+     * This phone lost the event's key: an attention line with a background, like
      * [CannotVerifyDevice], and NOT tappable — its remedy is the event's invite, which someone in the group sends.
      */
     data object KeyLost : AppSyncStatus
@@ -121,13 +121,13 @@ sealed interface AppSyncStatus {
      * one case worth showing, because the alternative is a screen reporting "Syncing" while nothing can
      * upload at all.
      *
-     * [cause] is why the service refused this phone, when it did: the headline then names it (capability
-     * `sync-status`). `null` — no verdict — keeps the cause-less headline. Still never tappable.
+     * [cause] is why the service refused this phone, when it did: the headline then names it.
+     * `null` — no verdict — keeps the cause-less headline. Still never tappable.
      */
     data class CannotVerifyDevice(val cause: DeviceRefusal? = null) : AppSyncStatus
 
     /**
-     * The device gives the app no usable network (capability `sync-status`) — [AppNetworkNotice] in the status-line
+     * The device gives the app no usable network — [AppNetworkNotice] in the status-line
      * slot: tappable when [blocked], since the member can allow it in Settings; not when offline, since only
      * connecting helps.
      */
@@ -276,7 +276,7 @@ private fun SyncingLine(status: AppSyncStatus.Syncing) {
 }
 
 /**
- * Why the app has no network (capability `sync-status`) — the same pill on every screen that says it: the joined
+ * Why the app has no network — the same pill on every screen that says it: the joined
  * status line, the create screen's line below Create, the join screen. [blocked]: the member can allow the network
  * for SnapSync, so the pill is a button opening Settings ([onOpenSettings]); offline: only connecting helps, so it
  * offers nothing.

@@ -1,7 +1,7 @@
 package app.snapsync.scene
 
 /**
- * What this **process** knows about its scenes (capability `sync-status`) — shared by the iOS `Lifecycle` and `Ui`
+ * What this **process** knows about its scenes — shared by the iOS `Lifecycle` and `Ui`
  * adapters, and touched only on the main thread (UIKit's notifications and SwiftUI's calls both arrive there).
  *
  * [everActive] is the input `UIApplication` cannot supply: it reports the current state only, and "has been active

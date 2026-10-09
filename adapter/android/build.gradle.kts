@@ -39,7 +39,7 @@ kotlin {
             implementation(libs.androidx.work.runtime)
             // The push service (`AndroidPushNotifications`): FCM, started by hand from the deployment's values.
             implementation(libs.firebase.messaging)
-            // The Play Install Referrer: the invite a Play install from the event page carried (`join-event`).
+            // The Play Install Referrer: the invite a Play install from the event page carried.
             implementation(libs.installreferrer)
             // The `Databases` adapter: SQLDelight over the platform's SQLite, and the open helper it is handed.
             implementation(libs.sqldelight.driver.android)

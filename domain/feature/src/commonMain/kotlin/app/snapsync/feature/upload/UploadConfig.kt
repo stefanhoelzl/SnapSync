@@ -46,12 +46,11 @@ class JoinedMembership(
     /**
      * The membership's selection policy, as a **supplier** rather than a built value.
      *
-     * The one derivation reads two ports — the download store's imported ids and the platform album
-     * lookup (capability `photo-sharing`) — and the entry-gate translation that builds this
-     * membership must stay **port-pure** (capability `background-upload`: a fresh three-state config read,
-     * the identity probe, the host read, and nothing else). So the translation closes over the readers
-     * instead of calling them; the shared composition is where both the config and the readers are in
-     * scope, and invoking this is the cycle's business.
+     * The one derivation reads two ports — the download store's imported ids and the platform album lookup — and the
+     * entry-gate translation that builds this membership must stay **port-pure** (a fresh three-state config read, the
+     * identity probe, the host read, and nothing else). So the translation closes over the readers instead of calling
+     * them; the shared composition is where both the config and the readers are in scope, and invoking this is the
+     * cycle's business.
      *
      * Capturing a port is not reading one, so the gate's purity is intact. What this buys is that the
      * cycle receives an already-decided policy — never a half-built one it has to complete, which is what
@@ -61,8 +60,8 @@ class JoinedMembership(
     val policy: suspend () -> SelectionPolicy,
     val saveToAlbum: Boolean,
     /**
-     * The ledger's manifest version, read by the entry-gate translation **before** the membership (capability
-     * `background-upload`), and carried by the cycle to its manifest publish (capability `photo-sharing`).
+     * The ledger's manifest version, read by the entry-gate translation **before** the membership, and carried
+     * by the cycle to its manifest publish.
      *
      * Read first because every change that could alter the projection — a ledger row, or a reconfigure's
      * save — advances it: a change the projection misses therefore happened after this read and carries a
@@ -79,9 +78,8 @@ class JoinedMembership(
  * *locked* — and a locked device could not read the Keychain at all before the accessibility fix. That
  * read failure used to arrive as "not joined", so every invocation performed a **false leave**, clearing
  * the join state a later readable cycle then had to rebuild. [NotJoined] now clears nothing (the explicit
- * leave clears the ledger itself, capability `manage-membership`), but "could not look" and "not joined" still
- * mean different things to every reader of this answer.
- *
+ * leave clears the ledger itself), but "could not look" and "not joined" still mean different things to every reader of
+ * this answer.
  * This gate is consumed by [UploadCycle.run] — the choke point every trigger on every tier funnels
  * through — and **not** by a composition root. A root that reaches this decision itself reaches it for
  * whichever tiers its author enumerated: the OS-invoked tier had this gate and the app-driven tier did
@@ -119,7 +117,7 @@ sealed interface CycleGate {
     /**
      * Joined and admitted, but the echo-suppression store is at a schema this process may not migrate (the
      * extension opens it read-only): touch **nothing**, not even the presented results, and ask to be invoked
-     * again — the app migrates it on its next run (capability `receiving-photos`).
+     * again — the app migrates it on its next run.
      */
     data class Paused(val reason: PauseReason) : CycleGate
 
@@ -129,7 +127,7 @@ sealed interface CycleGate {
 
 /**
  * The gate's last step, taken only for an admitted [run]: whether this process's echo-suppression read can
- * answer (capability `receiving-photos`). Asked after the admission, so a process that may not create never
+ * answer. Asked after the admission, so a process that may not create never
  * opens the store (the extension under a partial grant withholds; it never pauses).
  *
  * An unreadable store is [CycleGate.Skip] — "I could not look", upload nothing this run — and an old one
@@ -142,8 +140,8 @@ fun suppressionGate(run: CycleGate.Run, readiness: SuppressionReadiness): CycleG
 }
 
 /**
- * Whether THIS process may run an upload cycle now (capability `background-upload`, "The upload cycle owns
- * its entry decision") — the per-process answer a root supplies and [cycleGate] consumes.
+ * Whether THIS process may run an upload cycle now (the upload cycle owns its entry decision) — the
+ * per-process answer a root supplies and [cycleGate] consumes.
  *
  * Asymmetric by process, and each root states its own: the app admits under any usable grant (`LIMITED`
  * scoped to the selection snapshot); the extension admits exactly under `GRANTED`, read in its own process.
@@ -170,11 +168,11 @@ enum class UploadAdmission {
  * Without usable access it withholds rather than touching nothing: the narrow settle creates no job and reads
  * no library, and a completion that arrives meanwhile still records through the transport's guarded write.
  *
- * It withholds too while the [scope] is [SelectionScope.Unread] — a partial grant whose selection has not been
- * read yet. A read selection snapshot is an authoritative walk, so a cycle run over an unread one would take the
- * absence of a selection for the absence of every photo and delete their rows (capability
- * `photo-access`; decision record `changes/selection-is-the-walk`, D1). The scope is derived from the
- * same snapshot cell discovery reads, so admission and discovery cannot disagree about whether it was read.
+ * It withholds too while the [scope] is [SelectionScope.Unread] — a partial grant whose selection has not been read
+ * yet. A read selection snapshot is an authoritative walk, so a cycle run over an unread one would take the absence of
+ * a selection for the absence of every photo and delete their rows (decision record `changes/selection-is-the-walk`,
+ * D1). The scope is derived from the same snapshot cell discovery reads, so admission and discovery cannot disagree
+ * about whether it was read.
  */
 fun appAdmission(permission: GalleryAccess, scope: SelectionScope, pin: UploaderPin? = null): UploadAdmission =
     if (permission.grantsPhotoAccess && scope != SelectionScope.Unread && pin?.app != false) {

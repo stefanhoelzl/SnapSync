@@ -29,8 +29,8 @@ import platform.Photos.PHPhotoLibrary
  * change token.
  *
  * **App process only**, and placed by linkage to say so: this module is one the upload extension never links, so
- * the extension cannot hold a change token, a walk memo or an observer even by accident (capability
- * `background-upload` — its 32 MB limit leaves no room for a held walk).
+ * the extension cannot hold a change token, a walk memo or an observer even by accident (its
+ * 32 MB limit leaves no room for a held walk).
  *
  * What it observes reaches the handlers registered by [listen]: the selection snapshots from the observer's one
  * serial lane ([SelectionSnapshotLane]), which opens only while [observeChanges] is on and the grant is partial; an

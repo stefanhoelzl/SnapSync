@@ -28,7 +28,7 @@ import kotlinx.datetime.LocalDateTime
  * compile.
  *
  * [MenuActions.onSendDiagnostics] is wired on every build: a build with no reporting channel keeps the report on the
- * device, and the sheet says so (`UiState.reportDestination`, capability `privacy-security`).
+ * device, and the sheet says so (`UiState.reportDestination`).
  */
 class StatusActions(
     val join: JoinGateActions,
@@ -38,19 +38,19 @@ class StatusActions(
     /**
      * Opening and dismissing what is drawn over — or instead of — the joined layer.
      *
-     * They are acts the screen ASKS for rather than state it holds: what is on screen is reduced
-     * (capability `sync-status`), so opening a dialog crosses the container like any other tap.
+     * They are acts the screen ASKS for rather than state it holds: what is on screen is reduced,
+     * so opening a dialog crosses the container like any other tap.
      * Grouped for the same reason the container groups them — they are one question.
      */
     val surfaces: SurfaceActions,
 
-    // Create an event (capability `create-event`): the trimmed name and the chosen `[startsAt, endsAt]`
+    // Create an event: the trimmed name and the chosen `[startsAt, endsAt]`
     // event window as LOCAL wall-clock values (the container converts each to a canonical `…Z` string).
     // Top-level rather than in a group of one: the create layer asks for exactly this and nothing else.
     val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
     /**
-     * Open a URL outside the app. Its ONE caller is the update-required screen's store button
-     * (capability `app-update-required`). Top-level rather than in a group, like [onCreateEvent]: it
+     * Open a URL outside the app. Its ONE caller is the update-required screen's store button.
+     * Top-level rather than in a group, like [onCreateEvent]: it
      * belongs to no escalation and shares its question with nothing.
      */
     val onOpenLink: (String) -> Unit,
@@ -59,17 +59,17 @@ class StatusActions(
      * surfaces ask for the same seven, so they are one bundle rather than two identical sets.
      */
     val participation: ParticipationActions,
-    /** The app menu (capability `sync-status`), the report it leads to, and the word on a sent report. */
+    /** The app menu, the report it leads to, and the word on a sent report. */
     val menu: MenuActions,
 )
 
 /**
- * What the APP MENU asks for (capability `sync-status`): opening and closing it, its rows, sending the report it leads
- * to, and tapping away the word on a sent report (capability `privacy-security`). A group of its own because every
+ * What the APP MENU asks for: opening and closing it, its rows, sending the report it leads to, and tapping away
+ * the word on a sent report. A group of its own because every
  * layer that offers the menu asks the same things.
  */
 class MenuActions(
-    // The diagnostic dump (capability `privacy-security`): fired by the report sheet — opened from the menu's
+    // The diagnostic dump: fired by the report sheet — opened from the menu's
     // "Report a problem" or the hidden double-tap on the app-name label — carrying what the user wrote and the
     // surface they wrote it from. Here because the menu is the report's way in; the gesture is the second one.
     val onSendDiagnostics: (note: String, screen: String) -> Unit,
@@ -79,17 +79,16 @@ class MenuActions(
     val onReportBug: () -> Unit,
     val onOpenLink: (AppLink) -> Unit,
     val onReportNoticeDismiss: () -> Unit,
-    /** The menu's mobile-data switch (capability `mobile-data`): the device's choice, applied as it is flipped. */
+    /** The menu's mobile-data switch: the device's choice, applied as it is flipped. */
     val onMobileData: (Boolean) -> Unit,
 )
 
 /**
- * What the JOIN GATE asks for (capability `join-event`), routed to the container intents.
+ * What the JOIN GATE asks for, routed to the container intents.
  *
  * The confirm and retry carry the chosen capture-date range (`cutoff` = lower bound, `until` = upper;
- * capability `photo-sharing`, both always present), the chosen direction, and the album opt-in
- * (capability `event-album`). [onRetryJoin] is distinct from [onConfirmJoin] because a retry commits
- * WITHOUT passing back through the loaded phase.
+ * both always present), the chosen direction, and the album opt-in. [onRetryJoin] is distinct from
+ * [onConfirmJoin] because a retry commits WITHOUT passing back through the loaded phase.
  */
 class JoinGateActions(
     val onConfirmJoin: () -> Unit,
@@ -102,14 +101,14 @@ class JoinGateActions(
 class JoinedActions(
     val onLeaveEvent: () -> Unit,
     val onShareInvite: () -> Unit,
-    /** The invite's QR code, shown on request and dismissed (capability `manage-membership`). */
+    /** The invite's QR code, shown on request and dismissed. */
     val onQrOpen: () -> Unit,
     val onQrDismiss: () -> Unit,
-    // The answers to the settings' "Stop sharing these photos?" (capability `manage-membership`): every other change
+    // The answers to the settings' "Stop sharing these photos?": every other change
     // applies as it is made, through [StatusActions.participation]; opening and closing the settings live in
     // [StatusActions.surfaces].
     val withdrawal: WithdrawalActions,
-    // Rename the joined event (capability `manage-membership`): the event the dialog was opened for and the
+    // Rename the joined event: the event the dialog was opened for and the
     // new name. Fired by the pen beside the heading; the outcome arrives back via `renameStatus`.
     val onRenameEvent: (String, String) -> Unit,
     // Clear the rename latch once the screen has acted on a terminal status, so a second rename starts
@@ -120,7 +119,7 @@ class JoinedActions(
 /**
  * The three ways a screen asks about PHOTO ACCESS — grouped because they are one escalation, not three
  * unrelated taps: request the grant, send the member to Settings when the grant can no longer be asked
- * for, and widen a partial one (capability `photo-access`).
+ * for, and widen a partial one.
  */
 class AccessActions(
     val onRequestPermission: () -> Unit,
@@ -143,7 +142,7 @@ class SwitchActions(
  * Opening and dismissing the overlays and the settings surface.
  *
  * None of these touches a port: each asks the container to change what is on screen, and the container
- * answers by reducing. That is the property `manage-membership` D4 asked for, preserved now that
+ * answers by reducing. That is the property `add-reconfigure-membership` D4 asked for, preserved now that
  * the answer is state rather than a screen-held flag.
  */
 class SurfaceActions(
@@ -154,12 +153,12 @@ class SurfaceActions(
     val onOpenReconfigure: () -> Unit,
     val onCancelReconfigure: () -> Unit,
     /**
-     * The diagnostic sheet (capability `privacy-security`), by its hidden gesture. Here with the other overlays
+     * The diagnostic sheet, by its hidden gesture. Here with the other overlays
      * rather than on the joined layer's group, because the gesture is on the app-name label, which EVERY layer
      * renders — the same reason its flag is not layer-scoped in the state. The menu's way in is [MenuActions].
      */
     val onReportBugOpen: () -> Unit,
     val onReportBugDismiss: () -> Unit,
-    /** "Report this" beside a refusal (capability `privacy-security`): the same sheet, its description written. */
+    /** "Report this" beside a refusal: the same sheet, its description written. */
     val onReportRefusal: (ScreenMessage) -> Unit,
 )

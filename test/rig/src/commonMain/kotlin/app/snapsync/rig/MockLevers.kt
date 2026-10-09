@@ -279,7 +279,7 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
         if (on) device.backend.operator.hold(call) else device.backend.operator.release(call)
         CommandResult.ok("""{"call":"${call.key}","held":$on}""")
     },
-    // The sweep's early completion (capability `event-lifetime`): memberships and photos gone, the record kept.
+    // The sweep's early completion: memberships and photos gone, the record kept.
     "backend/complete" to op { params ->
         withEvent(params) { event ->
             device.backend.operator.complete(event)
@@ -310,7 +310,7 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
         OK
     },
     // The backend refuses this phone as not genuine, for `reason` (device-modified|device-unverifiable|app-not-genuine),
-    // until `reason=off` (capability `privacy-security`, "A refused phone is told why"); `detail=certificate` names the
+    // until `reason=off` (a refused phone is told why); `detail=certificate` names the
     // diagnostic code beside the reason, as v2 does for a failed certificate check.
     "backend/refuse-attestation" to op { params ->
         val wire = params["reason"]
@@ -652,9 +652,9 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
             CommandResult.ok(buildJsonObject { put("now", to.toString()) }.toString())
         },
     ),
-    // The device's network as the operating system reports it to the app (capability `sync-status`): `access` is
-    // online|restricted|offline|blocked — restricted is mobile data, a hotspot or Low Data Mode (capability
-    // `mobile-data`), blocked the network withheld from this app, offline none at all.
+    // The device's network as the operating system reports it to the app: `access` is
+    // online|restricted|offline|blocked — restricted is mobile data, a hotspot or Low Data Mode,
+    // blocked the network withheld from this app, offline none at all.
     "network" to mocked(
         MockedSystem.NETWORK,
         RigCommand { params, _ ->
@@ -668,8 +668,8 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
             }
         },
     ),
-    // The device's power saving, battery, thermal state and background allowance, as a bug report reads them
-    // (capability `privacy-security`): each parameter is a report key (power_saving, background_refresh, standby_bucket,
+    // The device's power saving, battery, thermal state and background allowance, as a bug report reads them:
+    // each parameter is a report key (power_saving, background_refresh, standby_bucket,
     // battery_optimization_exempt, battery_percent, battery_charging, thermal) set to a value, `unsupported` or
     // `failed:<reason>`; a field not named keeps its value. `hold=true` leaves every read unanswered until `hold=false`.
     "conditions" to mocked(
@@ -911,7 +911,7 @@ private suspend fun MockWorld.landBytesWithoutAck(assetId: String) {
 }
 
 /**
- * **An install upgraded from a build that predates per-asset byte release** (capability `receiving-photos`): a
+ * **An install upgraded from a build that predates per-asset byte release**: a
  * confirmed import of [ref] whose resource rows, with their staged paths, survive, and whose files are still on the
  * staging "disk". The one lever that writes app-private state, deliberately: no path in the current app produces it,
  * so the honest way to reach it is to write, over the device's own database and disk, what the older build left.

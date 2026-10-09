@@ -18,7 +18,7 @@ enum class SeedKind {
 
     /**
      * `n` assets dated **an hour ahead**, alternating **above** and **below** the 3 MP image floor — the
-     * selection-policy probe (capability `photo-sharing`).
+     * selection-policy probe.
      *
      * It exists because neither an empty library nor a bulk seed can exercise the policy on a real device:
      *
@@ -30,7 +30,7 @@ enum class SeedKind {
      *   rules are ever consulted.
      *
      * Dating them ahead of *now* puts them past any cutoff an event created today can carry (the cutoff is
-     * clamped to `max(chosen, startsAt)`, capability `join-event`), so the **only** thing that can separate
+     * clamped to `max(chosen, startsAt)`), so the **only** thing that can separate
      * them is the resolution floor. One seed then answers every question at once: the walk returns assets
      * (the predicate is not silently empty), exactly the below-floor half is origin-excluded, `N` counts
      * only the rest, and only the rest uploads.

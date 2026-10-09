@@ -11,7 +11,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * The upload extension's echo-suppression read (capability `receiving-photos`): the download store's
+ * The upload extension's echo-suppression read: the download store's
  * suppression projection, opened **read-only**.
  *
  * The extension never creates, migrates or writes the download store — the app is its one writer — because

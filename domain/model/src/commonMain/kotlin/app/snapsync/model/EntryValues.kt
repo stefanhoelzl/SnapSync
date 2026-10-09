@@ -1,8 +1,8 @@
 package app.snapsync.model
 
 /**
- * A link the platform delivered (capability `join-event`), as the `Links` port hands it over — raw and undecided:
- * the pure [forwardEventLink] filter decides whether it is an event link to open.
+ * A link the platform delivered, as the `Links` port hands it over — raw and undecided: the pure [forwardEventLink]
+ * filter decides whether it is an event link to open.
  *
  * [hook] names the platform path that delivered it (a cold Universal Link, a warm continuation, an opened URL), for
  * the log line only. [isWebLink] is the platform's own answer to "was this delivery a web link?" — the one fact a

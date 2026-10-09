@@ -1,10 +1,9 @@
 package app.snapsync.model
 
 /**
- * A single platform resource as **raw facts**, before any sync/fan-out decision (capability
- * `sync-status`, the Move A walk seam). The decision-free walk emits these; the pure
- * [resourcesFrom] mapping turns them into engine `Resource`s. No key derivation and no normalization
- * is applied here.
+ * A single platform resource as **raw facts**, before any sync/fan-out decision (the Move A walk seam). The
+ * decision-free walk emits these; the pure [resourcesFrom] mapping turns them into engine `Resource`s. No key
+ * derivation and no normalization is applied here.
  *
  * Every field is a **platform-independent fact**: the adapter resolves the platform's own encodings
  * before reporting, rather than reporting both forms and leaving the core to pick (spec
@@ -33,11 +32,10 @@ class RawResource(
  * [rawResources] (including non-originals; the mapping drops those with no role). The single decision-free
  * unit the walk emits.
  *
- * [facts] are the inputs the selection policy's rules decide on (capability `photo-sharing`),
- * and they are **neutral**: the platform interprets its own media model — on iOS the `PHAssetMediaSubtype`
- * bitmask and the `PHAssetMediaType` integer — and emits booleans and an area. `model/` never sees a
- * PhotoKit value, so a second platform produces the same facts from its own model and the rules are
- * unchanged (capability `sync-status`).
+ * [facts] are the inputs the selection policy's rules decide on, and they are **neutral**: the platform interprets its
+ * own media model — on iOS the `PHAssetMediaSubtype` bitmask and the `PHAssetMediaType` integer — and emits booleans
+ * and an area. `model/` never sees a PhotoKit value, so a second platform produces the same facts from its own model
+ * and the rules are unchanged.
  *
  * They cross as **facts, not decisions** — the walk never drops an asset on any of them; the one
  * admission does. All of them derive from plain in-memory `PHAsset` properties, so carrying them costs
