@@ -27,10 +27,13 @@ enum class GalleryState {
     /** The member was never asked, and there is no screen to ask on. */
     NEVER_ASKED,
 
-    /** The member was asked and granted nothing; no screen to ask on again. */
+    /** The member was asked and granted nothing; asking again raises nothing. */
     REFUSED,
 
-    /** The member granted a partial selection holding [GalleryChange.selection]; no screen to widen it on. */
+    /**
+     * The member granted a partial selection holding [GalleryChange.selection]; asking again raises nothing, and a
+     * picker widening it, if a screen shows one, waits on a person.
+     */
     PARTIAL,
 
     /** A full grant: the grant the walk memo reads a token under, and one a request cannot change. */
@@ -62,10 +65,10 @@ class GalleryChange(
  * What no clause can reach: a change made **outside** the process — a Camera photo, an iCloud sync (measured on
  * the SE2 instead, `changes/own-work-per-wake` task 7.4).
  *
- * `requestAccess` and `widenSelection` are contracted where there is no screen to ask on: then they ask nothing and
- * answer the grant as it stands, whatever it is. With a screen, each raises a system surface only a person can
- * answer, whose outcome no run can reach (`docs/architecture.md`, "An authorization the process cannot give itself is
- * a precondition of the run").
+ * `requestAccess` and `widenSelection` are contracted where asking raises nothing a run must answer — no screen to ask
+ * on, or a grant already decided, which iOS does not ask about again: then they answer the grant as it stands, whatever
+ * it is. Otherwise each raises a system surface only a person can answer, whose outcome no run can reach
+ * (`docs/architecture.md`, "An authorization the process cannot give itself is a precondition of the run").
  */
 object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
 
@@ -126,7 +129,7 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
             assertEquals(
                 GalleryAccess.LIMITED,
                 subject.gallery.widenSelection(),
-                "with no screen, nothing is presented",
+                "the answer is the grant as it stands; a revised selection arrives through the observer",
             )
             val snapshots = mutableListOf<SelectionSnapshot>()
             subject.gallery.listen(

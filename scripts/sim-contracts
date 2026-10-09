@@ -7,7 +7,9 @@
 # It builds the rig app for the simulator, ad-hoc signs it (an unsigned build has no App Group), installs it on
 # ONE fresh simulator, grants photo access with applesimutils BEFORE the first launch (`simctl privacy grant
 # photos` writes a TCC row PhotoKit never consults), launches it, and runs every contract `GET /contract` lists
-# for this host. The contracts seed photos and never delete them, which is why the simulator is fresh.
+# for this host. Last, it relaunches the app under each grant short of full — a partial selection, a refusal, never
+# asked — and runs what `GET /contract?grant=<GRANT>` lists for it. The contracts seed photos and never delete them,
+# which is why the simulator is fresh.
 #
 # ONE simulator, never two: a second freshly created simulator's first-boot work swamped the hosted runner (3 vCPU,
 # 7 GB). Measured, it tripled the job and made the journeys flaky (decision record:
@@ -250,21 +252,27 @@ python3 scripts/await-photo-migration.py --device "$DEVICE" --log "$OUT/photo-mi
 stage "photo library: migrated"
 
 stage "contracts: starting"
-curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract" > "$OUT/registry" || fail "GET /contract"
-[ -s "$OUT/registry" ] || fail "the simulator app registers no contract"
-
-status=0
-for name in $(cat "$OUT/registry"); do
-    code="$(curl -sS -o "$OUT/$name.txt" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/contract/$name?fixture=$FIXTURE")"
-    echo "=== $name (HTTP $code)"
-    cat "$OUT/$name.txt"
-    if [ "$code" != 200 ]; then echo "  -> refused or missing"; status=1; fi
-    if grep -q ' Failed(' "$OUT/$name.txt"; then echo "  -> a clause failed"; status=1; fi
-    if grep -q ' Diverged(' "$OUT/$name.txt"; then echo "  -> a clause diverged"; status=1; fi
-    # A bounded wait on an OS callback that expired ran nothing: on a host CI runs live, that is not coverage.
-    if grep -q ' NotWithin(' "$OUT/$name.txt"; then echo "  -> a clause's callback never came"; status=1; fi
-done
-[ $status -eq 0 ] || { cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null; fail "see the outcome tables above"; }
+# Run every contract the app lists for photo grant $1 (empty: the default, full one), failing on any refusal or bad
+# outcome. A non-default grant's tables are kept under its name.
+run_contracts() {
+    q="${1:+?grant=$1}"; tag="${1:+.$1}"
+    curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract$q" > "$OUT/registry$tag" || fail "GET /contract$q"
+    [ -s "$OUT/registry$tag" ] || fail "the simulator app registers no contract$q"
+    status=0
+    for name in $(cat "$OUT/registry$tag"); do
+        sep="${q:+&}"; sep="${sep:-?}"
+        code="$(curl -sS -o "$OUT/$name$tag.txt" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/contract/$name$q${sep}fixture=$FIXTURE")"
+        echo "=== $name$tag (HTTP $code)"
+        cat "$OUT/$name$tag.txt"
+        if [ "$code" != 200 ]; then echo "  -> refused or missing"; status=1; fi
+        if grep -q ' Failed(' "$OUT/$name$tag.txt"; then echo "  -> a clause failed"; status=1; fi
+        if grep -q ' Diverged(' "$OUT/$name$tag.txt"; then echo "  -> a clause diverged"; status=1; fi
+        # A bounded wait on an OS callback that expired ran nothing: on a host CI runs live, that is not coverage.
+        if grep -q ' NotWithin(' "$OUT/$name$tag.txt"; then echo "  -> a clause's callback never came"; status=1; fi
+    done
+    [ $status -eq 0 ] || { cp "$DATA/Documents/debug.log" "$OUT/debug$tag.log" 2>/dev/null; fail "see the outcome tables above"; }
+}
+run_contracts ""
 echo "sim-contracts: every registered contract passed" | tee "$OUT/result"
 
 # The journeys, against the app and the backend, on a bare JVM (`scripts/lib/journeys.sh` says why not Gradle). A
@@ -276,4 +284,18 @@ if [ $journeys -ne 0 ]; then
     print_journey_failures
     fail "a journey failed (log in $OUT)"
 fi
-echo "sim-contracts: every registered contract passed, and the journeys passed" | tee "$OUT/result"
+
+# The grants short of full: one launch holds one grant, so the app is stopped, granted otherwise (applesimutils, as
+# above) and relaunched for each, and runs the contracts it lists for that grant. A refused or partial grant is already
+# decided, so nothing they run asks the member anything; a never-asked launch runs only reads.
+for pass in limited:LIMITED NO:DENIED unset:NOT_DETERMINED; do
+    xcrun simctl terminate "$DEVICE" app.snapsync >/dev/null 2>&1
+    applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=${pass%%:*}" >/dev/null \
+        || fail "could not set photo access to ${pass%%:*} on $DEVICE"
+    # The port file a previous launch published would answer for a server that is not up yet.
+    rm -f "$DATA/Documents/rig.port"
+    launch "$DEVICE" "$RIG_PORT"
+    stage "app: relaunched under ${pass#*:}"
+    run_contracts "${pass#*:}"
+done
+echo "sim-contracts: every registered contract passed under every grant, and the journeys passed" | tee "$OUT/result"
