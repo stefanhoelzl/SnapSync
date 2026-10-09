@@ -1,10 +1,8 @@
 package app.snapsync.integration
 
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
-import app.snapsync.model.eventStart
 import app.snapsync.model.step
 import app.snapsync.rig.RigState
 import kotlinx.coroutines.delay
@@ -28,44 +26,6 @@ import kotlin.time.TimeSource
  * `UiState` (the membership the joined layer carries) and backend outcomes (the device manifest, the departure).
  */
 class JoinGateIntegrationTest {
-
-    @Test
-    fun the_join_gate_normalizes_a_legacy_events_millisecond_startsAt_and_commits_what_it_showed() = rigTest {
-        // A LEGACY event — registered with no `startsAt`, as every marker written before start dates
-        // existed. The backend mock synthesizes one from `createdAt`, which (faithfully to the real backend's
-        // `toISOString()`) carries MILLISECONDS. The loaded phase must therefore show a SECOND-PRECISION
-        // value (the `photo-sharing` format invariant the iOS fetch predicate depends on), and
-        // confirming must persist precisely what the surface displayed.
-        val event = deviceJson(
-            "backend/legacy-event",
-            "name" to "Anna's Wedding",
-        ).getValue("event").jsonPrimitive.content
-
-        openLink(inviteLink(event))
-        val phase = awaitReady().event
-
-        assertEquals(
-            eventStart("2026-01-01T00:00:00Z"),
-            phase.startsAt,
-            "a synthesized millisecond startsAt is truncated",
-        )
-        assertTrue(!phase.startsAt.at.iso.contains('.'), "a cutoff never carries fractional seconds")
-
-        // Confirm with exactly what the surface showed — the round-trip through the real screen.
-        join()
-        val membership = state().joined!!.membership
-
-        assertEquals(
-            CaptureCutoff(phase.startsAt.at),
-            membership.minPhotoDate,
-            "the persisted cutoff is the one the join surface displayed",
-        )
-        assertEquals(
-            phase.startsAt,
-            membership.startsAt,
-            "and the event's start is persisted alongside it, as the floor",
-        )
-    }
 
     @Test
     fun first_join_loads_details_then_enrolls_and_joins() = rigTest {

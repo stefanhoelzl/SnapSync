@@ -35,8 +35,7 @@ import kotlin.uuid.Uuid
  * - **Events** get UUID ids it mints, as the real backend does, with its window rules: a blank name, or one longer than
  *   100 characters, is refused, an
  *   end before the start or more than 30 days after it is refused, an absent end is `start + 30 days`, and an event
- *   lives 30 days from `max(createdAt, startsAt)`. A legacy event — registered before start dates existed — has its
- *   start synthesized from its creation time on read, as the real backend does.
+ *   lives 30 days from `max(createdAt, startsAt)`.
  * - **Membership** is one record per device with an active/departed state. A join creates or reactivates it and
  *   clears its stored manifest version; capacity counts every device ever enrolled, active or departed — leaving
  *   frees no slot. A leave marks the record departed: the member's photos stay in the union, and the leave that takes
@@ -110,14 +109,14 @@ internal class InMemoryBackend(
         arrived = { state.eventReads[eventId] = (state.eventReads[eventId] ?: 0) + 1 },
     ) {
         val event = state.events[eventId] ?: return@held notFound()
-        val startsAt = event.startsAt ?: event.createdAt
+        val startsAt = event.startsAt
         Reply.Ok(
             EventMeta(
                 eventId = eventId,
                 name = event.name,
                 createdAt = event.createdAt.toString(),
                 startsAt = startsAt.toString(),
-                endsAt = (event.endsAt ?: (startsAt + WINDOW_DAYS.days)).toString(),
+                endsAt = event.endsAt.toString(),
                 deletesAt = (maxOf(event.createdAt, startsAt) + WINDOW_DAYS.days).toString(),
                 // The mock stamps no instants; the real route serves the moment. Presence is what a reader acts on.
                 closedAt = if (event.closed) state.createdAt.toString() else null,

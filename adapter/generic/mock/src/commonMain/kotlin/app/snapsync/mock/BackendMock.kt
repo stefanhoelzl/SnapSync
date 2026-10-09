@@ -235,12 +235,6 @@ class BackendOperator internal constructor(private val state: BackendState) {
         state.locked { state.storedFiles.keys.removeAll { it.second == deviceId } }
     }
 
-    /**
-     * An event registered before start dates existed — no start, which the backend synthesizes from its creation
-     * time on read. Returns the id, minted as the backend mints one.
-     */
-    fun registerLegacyEvent(name: String): String = state.locked { state.registerLegacy(name) }
-
     // ---- the operating system's transfer of bytes ------------------------------------------------
 
     /**
@@ -282,8 +276,8 @@ internal class BackendState(
     class Event(
         var name: String,
         val createdAt: Instant,
-        val startsAt: Instant?,
-        val endsAt: Instant?,
+        val startsAt: Instant,
+        val endsAt: Instant,
         /** Closed (capability `event-lifetime`): no join, no rename, no change to a member's asset set. */
         var closed: Boolean = false,
         /** Completed — the sweep's verdict: memberships and assets gone, the record kept. */
@@ -334,7 +328,6 @@ internal class BackendState(
     @Volatile var nextEventId: String? = null
 
     @Volatile var minAppVersion: String? = null
-    internal var legacyCounter = 0L
 
     /** Wait while an operator holds [call] — outside the lock, which the operator's release needs. */
     suspend fun awaitRelease(call: BackendCall) {
@@ -532,13 +525,6 @@ internal class BackendState(
     private fun isPresent(eventId: String, deviceId: String): Boolean =
         memberships[eventId to deviceId]?.departed == false && events[eventId]?.completed == false
 
-    fun registerLegacy(name: String): String {
-        legacyCounter += 1
-        val eventId = "00000000-0000-4000-9000-" + legacyCounter.toString().padStart(LEGACY_ID_DIGITS, '0')
-        events[eventId] = Event(name, createdAt, startsAt = null, endsAt = null)
-        return eventId
-    }
-
     private fun servable(eventId: String, deviceId: String): Set<AssetId> =
         union(eventId).orEmpty().filter { it.first == deviceId }.mapTo(mutableSetOf()) { it.second.assetId }
 
@@ -559,7 +545,6 @@ internal class BackendState(
         const val CREATED = 201
         const val UPGRADE_REQUIRED = 426
         const val BAD_GATEWAY = 502
-        const val LEGACY_ID_DIGITS = 12
 
         /** Epoch seconds a minted token expires at: 90 days, which outlives any test's pinned clock. */
         const val TOKEN_EXPIRES_AT_EPOCH_SECONDS: Long = 90L * 24 * 60 * 60
