@@ -34,6 +34,7 @@ flowchart LR
   subgraph ui
     ui_components[":ui:components"]
     ui_screens[":ui:screens"]
+    ui_state[":ui:state"]
   end
   adapter_android --> adapter_generic_app
   adapter_android --> domain_feature
@@ -44,6 +45,7 @@ flowchart LR
   adapter_android --> test_contracts
   adapter_android --> ui_components
   adapter_android --> ui_screens
+  adapter_android --> ui_state
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
   adapter_generic_app --> domain_services
@@ -57,6 +59,7 @@ flowchart LR
   adapter_generic_mock --> domain_services
   adapter_generic_mock --> domain_wire
   adapter_generic_mock --> test_contracts
+  adapter_generic_mock --> ui_state
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
   adapter_generic_sentry --> test_contracts
@@ -76,14 +79,15 @@ flowchart LR
   adapter_ios_ui --> adapter_ios_ext_safe
   adapter_ios_ui --> domain_model
   adapter_ios_ui --> domain_ports
-  adapter_ios_ui --> domain_presentation
   adapter_ios_ui --> ui_components
   adapter_ios_ui --> ui_screens
+  adapter_ios_ui --> ui_state
   domain_compose --> domain_feature
   domain_compose --> domain_flow
   domain_compose --> domain_model
   domain_compose --> domain_ports
   domain_compose --> domain_services
+  domain_compose --> ui_state
   domain_feature --> domain_model
   domain_feature --> domain_services
   domain_flow --> domain_feature
@@ -93,17 +97,20 @@ flowchart LR
   domain_host --> domain_model
   domain_host --> domain_ports
   domain_host --> domain_presentation
+  domain_host --> ui_state
   domain_ports --> domain_model
   domain_presentation --> domain_feature
   domain_presentation --> domain_model
+  domain_presentation --> ui_state
   domain_services --> domain_model
   domain_services --> domain_ports
   domain_services --> domain_wire
   ui_components --> adapter_generic_app
-  ui_components --> domain_model
+  ui_components --> ui_state
   ui_screens --> adapter_generic_app
   ui_screens --> domain_feature
   ui_screens --> domain_model
   ui_screens --> domain_presentation
   ui_screens --> ui_components
+  ui_screens --> ui_state
 ```

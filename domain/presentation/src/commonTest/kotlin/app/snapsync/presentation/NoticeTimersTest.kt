@@ -6,13 +6,14 @@ import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.Layer
-import app.snapsync.model.Overlays
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.ScreenMessage
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UiIntent
-import app.snapsync.model.UiState
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.Overlays
+import app.snapsync.ui.state.ReportNotice
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -129,17 +130,17 @@ class NoticeTimersTest {
         val outcomes = ArrayDeque(listOf(ReportOutcome.SENT, ReportOutcome.SAVED))
         val host = host(timers.scope, report = { outcomes.removeFirst() })
         host.onSendDiagnostics("photos are missing", "create")
-        host.screen.first { it.overlays.reportNotice == ReportOutcome.SENT }
+        host.screen.first { it.overlays.reportNotice == ReportNotice.SENT }
         afterTheWordIsArmed()
 
         timers.advanceBy(3_000)
         host.onSendDiagnostics("still missing", "create")
-        host.screen.first { it.overlays.reportNotice == ReportOutcome.SAVED }
+        host.screen.first { it.overlays.reportNotice == ReportNotice.SAVED }
         afterTheWordIsArmed()
         timers.advanceBy(2_000)
 
         val notice = host.settledState().overlays.reportNotice
-        assertEquals(ReportOutcome.SAVED, notice, "cleared on the first word's clock")
+        assertEquals(ReportNotice.SAVED, notice, "cleared on the first word's clock")
         timers.advanceBy(2_001)
         host.screen.first { it.overlays.reportNotice == null }
     }

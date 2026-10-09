@@ -12,13 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.DirectionCount
-import app.snapsync.model.EventTiming
-import app.snapsync.model.Layer
-import app.snapsync.model.NetworkNotice
-import app.snapsync.model.SyncCounts
-import app.snapsync.model.SyncHealth
-import app.snapsync.model.Waiting
 import app.snapsync.ui.components.AccessPrompt
 import app.snapsync.ui.components.AppDatesLine
 import app.snapsync.ui.components.AppErrorBanner
@@ -41,6 +34,13 @@ import app.snapsync.ui.resources.timing_ended
 import app.snapsync.ui.resources.timing_ends_in
 import app.snapsync.ui.resources.timing_starts_in
 import app.snapsync.ui.resources.waiting_members
+import app.snapsync.ui.state.DirectionCount
+import app.snapsync.ui.state.EventTiming
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.SyncCounts
+import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.Waiting
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 

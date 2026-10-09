@@ -1,8 +1,8 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.CoarseDuration
-import app.snapsync.model.CreateStep
 import app.snapsync.presentation.range.EventRange
+import app.snapsync.ui.state.CoarseDuration
+import app.snapsync.ui.state.CreateStep
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime

@@ -1,6 +1,5 @@
 package app.snapsync.ui
 
-import app.snapsync.model.JoinPhase
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.event_closed_body
 import app.snapsync.ui.resources.event_closed_title
@@ -8,6 +7,7 @@ import app.snapsync.ui.resources.event_not_found_body
 import app.snapsync.ui.resources.event_not_found_title
 import app.snapsync.ui.resources.link_incomplete_body
 import app.snapsync.ui.resources.link_incomplete_title
+import app.snapsync.ui.state.JoinPhase
 import org.jetbrains.compose.resources.StringResource
 
 /** What a wall says: a phase offering only Cancel, because no retry could move it. */

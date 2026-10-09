@@ -7,19 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import app.snapsync.model.AppLink
-import app.snapsync.model.BuildLabel
-import app.snapsync.model.EVENT_NAME_MAX_LENGTH
-import app.snapsync.model.JoinedEvent
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import app.snapsync.model.MobileDataState
-import app.snapsync.model.RenameState
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.ReportOutcome
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.UiState
-import app.snapsync.model.offersMenu
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppFooterTextActions
 import app.snapsync.ui.components.AppMenuDivider
@@ -71,6 +58,19 @@ import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.share_invite
 import app.snapsync.ui.resources.show_qr
+import app.snapsync.ui.state.AppLink
+import app.snapsync.ui.state.BuildLine
+import app.snapsync.ui.state.EVENT_NAME_MAX_LENGTH
+import app.snapsync.ui.state.JoinedEvent
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.MobileDataState
+import app.snapsync.ui.state.RenameState
+import app.snapsync.ui.state.ReportNotice
+import app.snapsync.ui.state.ReportTarget
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.UiState
+import app.snapsync.ui.state.offersMenu
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -175,7 +175,7 @@ fun StatusScreen(
  * pages, then which build this is — shown, never a control.
  */
 @Composable
-private fun ColumnScope.AppMenu(build: BuildLabel, mobileData: MobileDataState, actions: MenuActions) {
+private fun ColumnScope.AppMenu(build: BuildLine, mobileData: MobileDataState, actions: MenuActions) {
     AppMenuHeader(stringResource(Res.string.app_name), onClose = actions.onMenuDismiss)
     // Everything else the app does keeps working on any network, which is why the note speaks of photos only.
     AppMenuSwitch(
@@ -215,11 +215,11 @@ private fun ColumnScope.AppMenu(build: BuildLabel, mobileData: MobileDataState, 
  * hand-off, so it claims no delivery, and the failure is told calmly.
  */
 @Composable
-internal fun reportNoticeText(outcome: ReportOutcome): String = stringResource(
+internal fun reportNoticeText(outcome: ReportNotice): String = stringResource(
     when (outcome) {
-        ReportOutcome.SENT -> Res.string.report_sent
-        ReportOutcome.SAVED -> Res.string.report_saved
-        ReportOutcome.NOT_SENT -> Res.string.report_not_sent
+        ReportNotice.SENT -> Res.string.report_sent
+        ReportNotice.SAVED -> Res.string.report_saved
+        ReportNotice.NOT_SENT -> Res.string.report_not_sent
     },
 )
 
@@ -404,7 +404,7 @@ private fun BugReportSheet(
     actions: StatusActions,
     onSend: (note: String, screen: String) -> Unit,
     screen: String,
-    destination: ReportDestination,
+    destination: ReportTarget,
     seed: ScreenMessage?,
 ) {
     AppTextPromptSheet(

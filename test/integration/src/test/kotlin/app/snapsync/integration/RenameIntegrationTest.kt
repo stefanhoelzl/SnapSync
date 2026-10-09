@@ -1,8 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.RenameState
-import app.snapsync.model.ScreenMessage
+import app.snapsync.ui.state.RenameState
+import app.snapsync.ui.state.ScreenMessage
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test

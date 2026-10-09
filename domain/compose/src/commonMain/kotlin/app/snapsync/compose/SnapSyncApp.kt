@@ -108,6 +108,8 @@ import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.upload.OsDrivenRegistration
 import app.snapsync.services.version.AppVersionGate
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -195,7 +197,7 @@ class AppPorts(
     /** The links the platform opens the app with — an event port the host zone registers the link handler on. */
     val links: Links,
     /** The platform's user interface — shown every state the status host reduces, from host assembly on. */
-    val ui: Ui,
+    val ui: Ui<UiState, UiIntent>,
     /** What the OS says about this process — whether protected storage is readable right now, recorded by the
      *  background entry points and deciding nothing. */
     val processInfo: ProcessInfo,

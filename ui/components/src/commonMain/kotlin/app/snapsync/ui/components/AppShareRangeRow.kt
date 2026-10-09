@@ -20,13 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.PickerView
-import app.snapsync.model.RangeChoice
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.share_range_change
 import app.snapsync.ui.components.resources.share_range_from_now
 import app.snapsync.ui.components.resources.share_range_title
 import app.snapsync.ui.components.resources.share_range_whole_event
+import app.snapsync.ui.state.PickerView
+import app.snapsync.ui.state.RangeChoice
 import kotlinx.datetime.LocalDateTime
 import org.jetbrains.compose.resources.stringResource
 

@@ -9,8 +9,6 @@ import app.snapsync.model.PlatformError
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
-import app.snapsync.model.UiIntent
-import app.snapsync.model.UiState
 import app.snapsync.model.UploaderPin
 import app.snapsync.ports.Completion
 import app.snapsync.ports.DevControls
@@ -25,6 +23,8 @@ import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -161,15 +161,15 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
  * process's: a new process's face starts with nothing shown, as a dead process's scene goes with it.
  */
 class ScreenMock {
-    internal val handlers = HandlerSlot<UiHandlers>("Ui", BeforeListen.Thrown)
+    internal val handlers = HandlerSlot<UiHandlers<UiIntent>>("Ui", BeforeListen.Thrown)
     internal val shown = MutableStateFlow<UiState?>(null)
 
-    fun port(): Ui = object : Ui {
+    fun port(): Ui<UiState, UiIntent> = object : Ui<UiState, UiIntent> {
         init {
             shown.value = null
         }
 
-        override fun listen(handlers: UiHandlers) {
+        override fun listen(handlers: UiHandlers<UiIntent>) {
             this@ScreenMock.handlers.set(handlers)
         }
 

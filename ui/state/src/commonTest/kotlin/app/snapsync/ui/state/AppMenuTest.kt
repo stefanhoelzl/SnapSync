@@ -1,20 +1,13 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The app menu's model half (capability `sync-status`): where it is offered, and where its links point. */
+/** The app menu (capability `sync-status`): where it is offered. */
 class AppMenuTest {
-
-    @Test
-    fun the_links_are_pages_of_the_invite_links_own_site() {
-        assertEquals(LINK_ORIGIN, AppLink.WEBSITE.url)
-        assertEquals("$LINK_ORIGIN/#privacy", AppLink.PRIVACY_POLICY.url)
-    }
 
     @Test
     fun the_menu_is_offered_everywhere_but_the_settings_surface_and_a_join_or_create_in_progress() {
@@ -64,7 +57,7 @@ class AppMenuTest {
         )
         val joined = Layer.Joined(
             membership = membership,
-            inviteUrl = "$LINK_ORIGIN/join#v=3&d=x",
+            inviteUrl = "https://snapsync.app/join#v=3&d=x",
             health = SyncHealth.InSync,
             today = LocalDate(2026, 7, 6),
         )

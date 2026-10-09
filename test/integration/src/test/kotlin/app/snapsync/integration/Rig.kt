@@ -4,11 +4,11 @@ import app.snapsync.control.Reply
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.model.AssetId
-import app.snapsync.model.Layer
-import app.snapsync.model.SyncHealth
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigState
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncHealth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json

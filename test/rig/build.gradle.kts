@@ -87,6 +87,8 @@ kotlin {
             // The device-log writer the rig re-points at the extension's log for an invoked cycle.
             implementation(project(":domain:services"))
             implementation(project(":domain:presentation"))
+            // The screen state `/device/state` reports, and the intents `/user` dispatches.
+            api(project(":ui:state"))
             // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.
             implementation(libs.orbit.core)
             implementation(libs.kotlinx.datetime)

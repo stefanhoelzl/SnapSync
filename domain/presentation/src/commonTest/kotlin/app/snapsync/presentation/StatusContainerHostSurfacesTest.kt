@@ -2,7 +2,6 @@ package app.snapsync.presentation
 
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumStyle
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DiagnosticKeys
@@ -11,20 +10,12 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import app.snapsync.model.Overlays
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeView
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.ShareCount
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UiState
 import app.snapsync.model.UserQueries
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -32,7 +23,17 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.model.step
+import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.Overlays
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.RangeView
+import app.snapsync.ui.state.ReportTarget
+import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.UiState
+import app.snapsync.ui.state.step
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -744,11 +745,11 @@ class StatusContainerHostSurfacesTest {
     fun `every state says where this build’s bug report goes`() =
         onHost(reportDestination = ReportDestination.THIS_DEVICE) { host ->
             withTimeout(5.seconds) {
-                while (host.screen.value.reportDestination != ReportDestination.THIS_DEVICE) {
+                while (host.screen.value.reportDestination != ReportTarget.THIS_DEVICE) {
                     kotlinx.coroutines.yield()
                 }
             }
-            assertEquals(ReportDestination.THIS_DEVICE, host.screen.value.reportDestination)
+            assertEquals(ReportTarget.THIS_DEVICE, host.screen.value.reportDestination)
         }
 
     @Test

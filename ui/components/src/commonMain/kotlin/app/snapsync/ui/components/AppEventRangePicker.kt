@@ -30,7 +30,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.PickerView
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.range_end_pick_time
 import app.snapsync.ui.components.resources.range_ends
@@ -39,6 +38,7 @@ import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
 import app.snapsync.ui.components.resources.wheel_start_hour
 import app.snapsync.ui.components.resources.wheel_start_minute
+import app.snapsync.ui.state.PickerView
 import kotlinx.coroutines.delay
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate

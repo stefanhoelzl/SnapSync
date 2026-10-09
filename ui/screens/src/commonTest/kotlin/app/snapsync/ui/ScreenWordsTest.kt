@@ -1,21 +1,5 @@
 package app.snapsync.ui
 
-import app.snapsync.model.CoarseDuration
-import app.snapsync.model.CreateStep
-import app.snapsync.model.DirectionCount
-import app.snapsync.model.EventTiming
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinStage
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import app.snapsync.model.PendingSwitch
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.ShareCount
-import app.snapsync.model.StoreName
-import app.snapsync.model.SyncHealth
-import app.snapsync.model.TimeLeft
-import app.snapsync.model.UiState
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.counts_not_sharing
 import app.snapsync.ui.resources.counts_shared
@@ -53,6 +37,22 @@ import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.timing_ended
 import app.snapsync.ui.resources.timing_ends_in
 import app.snapsync.ui.resources.timing_starts_in
+import app.snapsync.ui.state.CoarseDuration
+import app.snapsync.ui.state.CreateStep
+import app.snapsync.ui.state.DirectionCount
+import app.snapsync.ui.state.EventTiming
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinStage
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.PendingSwitch
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.ReportTarget
+import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.StoreName
+import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.TimeLeft
+import app.snapsync.ui.state.UiState
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
@@ -151,11 +151,11 @@ class ScreenWordsTest {
 
     @Test
     fun `a report sent to the developer says Send — one kept on the phone says Save and where it stays`() {
-        reportCopy(ReportDestination.DEVELOPER).let {
+        reportCopy(ReportTarget.DEVELOPER).let {
             assertEquals(Res.string.report_body_developer, it.body)
             assertEquals(Res.string.report_send, it.confirm)
         }
-        reportCopy(ReportDestination.THIS_DEVICE).let {
+        reportCopy(ReportTarget.THIS_DEVICE).let {
             assertEquals(Res.string.report_body_device, it.body)
             assertEquals(Res.string.save, it.confirm)
         }

@@ -28,6 +28,8 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Upload
 import app.snapsync.ports.Wake
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 
 /**
  * **One launch's adapters** — every port the JVM root composes the app and its upload extension over, chosen by the
@@ -78,7 +80,7 @@ class JvmEntries(
     val lifecycle: Lifecycle,
     val links: Links,
     val pushNotifications: PushNotifications,
-    val ui: Ui,
+    val ui: Ui<UiState, UiIntent>,
     val devControls: DevControls,
     val extensionHost: ExtensionHost,
 )

@@ -13,18 +13,18 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinStage
-import app.snapsync.model.Layer
-import app.snapsync.model.Overlays
-import app.snapsync.model.PendingSwitch
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.SyncHealth
-import app.snapsync.model.UiState
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.save
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinStage
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.Overlays
+import app.snapsync.ui.state.PendingSwitch
+import app.snapsync.ui.state.ReportTarget
+import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiState
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
@@ -165,7 +165,7 @@ class DiagnosticDumpGestureTest {
         val saved = mutableListOf<String>()
         setContent {
             TestStatusScreen(
-                reporting(createLayer()).copy(reportDestination = ReportDestination.THIS_DEVICE),
+                reporting(createLayer()).copy(reportDestination = ReportTarget.THIS_DEVICE),
                 actions = testActions(onSendDiagnostics = { note, _ -> saved += note }),
             )
         }

@@ -1,5 +1,6 @@
 package app.snapsync.architecture
 
+import app.snapsync.compose.AppPorts
 import app.snapsync.ports.Listenable
 import app.snapsync.ports.Port
 import app.snapsync.wire.api.Reply
@@ -11,11 +12,13 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
 import kotlin.reflect.KParameter
 import kotlin.reflect.KType
+import kotlin.reflect.KTypeParameter
 import kotlin.reflect.full.allSupertypes
 import kotlin.reflect.full.declaredMemberProperties
 import kotlin.reflect.full.declaredMembers
 import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.full.isSuperclassOf
+import kotlin.reflect.full.primaryConstructor
 import kotlin.reflect.jvm.javaMethod
 import kotlin.test.assertTrue
 
@@ -29,11 +32,27 @@ internal object PortGrid {
 
     class Cell(val port: String, val text: String, val member: String, val variants: List<String>)
 
+    /**
+     * Every port: each non-generic interface of the ports zone, and each generic one the app's composition binds
+     * ([bound]). A generic port the composition does not bind is a base (`Listenable`), whose members its ports own.
+     */
     val ports: List<KClass<*>> by lazy {
         portInterfaces()
             .map { Class.forName("$PORTS_PACKAGE.$it").kotlin }
-            .filter { Port::class.isSuperclassOf(it) && it != Port::class && it.typeParameters.isEmpty() }
+            .filter { Port::class.isSuperclassOf(it) && it != Port::class && (it.typeParameters.isEmpty() || it in bound) }
             .sortedBy { it.simpleName }
+    }
+
+    /**
+     * Each generic port ([Ui]-shaped: a port over the types a screen speaks) with its type arguments as [AppPorts] binds
+     * them — a generic port's cells are the cells of what the composition hands it, never of its bare parameters.
+     */
+    private val bound: Map<KClass<*>, Map<KTypeParameter, KType>> by lazy {
+        AppPorts::class.primaryConstructor!!.parameters.map { it.type }.mapNotNull { type ->
+            val k = type.classifier as? KClass<*>
+            if (k == null || !Port::class.isSuperclassOf(k) || k.typeParameters.isEmpty()) return@mapNotNull null
+            k to k.typeParameters.zip(type.arguments.map { it.type!! }).toMap()
+        }.toMap()
     }
 
     val cells: List<Cell> by lazy { (ports.flatMap(::cellsOf) + wireCells()).sortedBy { it.text } }
@@ -63,9 +82,16 @@ internal object PortGrid {
         val name = port.simpleName!!
         val handles = mutableSetOf<KClass<*>>()
         val own = ownedMembers(port).flatMap { memberCells(name, name, it, handles) }
-        val handlers = handlerBundle(port)?.let { bundle ->
-            bundle.declaredMemberProperties.sortedBy { it.name }.flatMap { f ->
-                callbackCells(name, "$name.handlers.${f.name}", f.name, f.returnType, handles)
+        val handlers = handlerBundleType(port)?.let { bundleType ->
+            (bundleType.classifier as KClass<*>).declaredMemberProperties.sortedBy { it.name }.flatMap { f ->
+                callbackCells(
+                    name,
+                    "$name.handlers.${f.name}",
+                    f.name,
+                    f.returnType,
+                    handles,
+                    bindingOf(port, bundleType),
+                )
             }
         }.orEmpty()
         val handed = handles.sortedBy { it.simpleName }.flatMap { h ->
@@ -97,8 +123,9 @@ internal object PortGrid {
         member: String,
         type: KType,
         handles: MutableSet<KClass<*>>,
+        binding: Map<KTypeParameter, KType> = emptyMap(),
     ): List<Cell> {
-        val args = type.arguments.dropLast(1).mapNotNull { it.type }
+        val args = type.arguments.dropLast(1).mapNotNull { it.type?.let { arg -> arg.boundBy(binding) } }
             .filterNot { (it.classifier as? KClass<*>) == Continuation::class }
         args.forEach { noteHandle(it, handles) }
         val crossed = args.fold(listOf(emptyList<String>())) { acc, arg ->
@@ -144,10 +171,32 @@ internal object PortGrid {
     }
 
     /** The handler bundle an event port ([Listenable]) is listened to with, or `null` for a port that is not one. */
-    fun handlerBundle(port: KClass<*>): KClass<*>? =
+    fun handlerBundle(port: KClass<*>): KClass<*>? = handlerBundleType(port)?.classifier as? KClass<*>
+
+    /** [handlerBundle] as a type, its arguments bound as the composition binds [port] ([bound]). */
+    private fun handlerBundleType(port: KClass<*>): KType? =
         port.allSupertypes.firstOrNull {
             it.classifier == Listenable::class
-        }?.arguments?.single()?.type?.classifier as? KClass<*>
+        }?.arguments?.single()?.type?.boundBy(bound[port].orEmpty())
+
+    /** [type] as the composition binds it: a generic port's type parameter is what [AppPorts] binds it to. */
+    fun bindingFor(type: KType): KType =
+        (type.classifier as? KTypeParameter)?.let { p -> bound.values.firstNotNullOfOrNull { it[p] } } ?: type
+
+    /** The argument types an adapter passes [port]'s handler [field], bound as the composition binds [port]. */
+    fun handlerArgTypes(port: KClass<*>, field: String): List<KType> {
+        val bundleType = handlerBundleType(port)!!
+        val f = (bundleType.classifier as KClass<*>).declaredMemberProperties.first { it.name == field }
+        return f.returnType.arguments.dropLast(1).mapNotNull { it.type?.boundBy(bindingOf(port, bundleType)) }
+    }
+
+    /** The handler bundle's own type parameters, bound through [port]'s binding. */
+    private fun bindingOf(port: KClass<*>, bundleType: KType): Map<KTypeParameter, KType> =
+        (bundleType.classifier as KClass<*>).typeParameters
+            .zip(bundleType.arguments.map { it.type!!.boundBy(bound[port].orEmpty()) }).toMap()
+
+    /** [this] with a type parameter of [binding] replaced by what it is bound to, at the top level only. */
+    private fun KType.boundBy(binding: Map<KTypeParameter, KType>): KType = binding[classifier] ?: this
 
     /** The top-level interfaces declared in `:domain:ports`, by simple name — the same read [PortBundleTest] makes. */
     private fun portInterfaces(): Set<String> {

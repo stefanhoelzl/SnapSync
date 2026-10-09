@@ -1,6 +1,6 @@
 package app.snapsync.architecture
 
-import app.snapsync.model.EVENT_NAME_MAX_LENGTH
+import app.snapsync.ui.state.EVENT_NAME_MAX_LENGTH
 import app.snapsync.wire.api.Limits
 import java.io.File
 import kotlin.test.Test

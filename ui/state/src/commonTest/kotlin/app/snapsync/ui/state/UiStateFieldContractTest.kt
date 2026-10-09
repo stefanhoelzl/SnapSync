@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -55,13 +55,13 @@ class UiStateFieldContractTest {
             UiState(
                 layer = Layer.CreatingEvent,
                 overlays = Overlays(menuOpen = true),
-                reportDestination = ReportDestination.THIS_DEVICE,
-                build = BuildLabel("1.2", "2140"),
+                reportDestination = ReportTarget.THIS_DEVICE,
+                build = BuildLine("1.2", "2140"),
                 mobileData = MobileDataState(on = false, notSaved = true),
             ),
             optional = setOf("overlays", "reportDestination", "build", "mobileData"),
         )
-        assertFieldContract(BuildLabel.serializer(), BuildLabel("1.2", "2140"))
+        assertFieldContract(BuildLine.serializer(), BuildLine("1.2", "2140"))
         assertFieldContract(
             MobileDataState.serializer(),
             MobileDataState(on = false, notSaved = true),
@@ -76,7 +76,7 @@ class UiStateFieldContractTest {
                 reportingBug = true,
                 reportSeed = ScreenMessage.DEVICE_UNVERIFIABLE,
                 menuOpen = true,
-                reportNotice = ReportOutcome.SAVED,
+                reportNotice = ReportNotice.SAVED,
             ),
             optional = setOf(
                 "confirmingLeave",

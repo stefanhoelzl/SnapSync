@@ -4,8 +4,8 @@ import app.snapsync.model.AlbumKind
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.ShareCount
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.ShareCount
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 
@@ -48,8 +48,8 @@ data class RangeForm(
  * What a [RangeForm] resolves to once the event window is known: what would be committed, and — through
  * [RangeView] — what the surface renders.
  *
- * Wall-clock values rather than formatted strings — the design system owns how a date reads (capability
- * `docs/architecture.md`), and the reduction owns what the date IS. The reduction applies the device's zone when
+ * Wall-clock values rather than formatted strings — the design system owns how a date reads, and the reduction owns
+ * what the date IS. The reduction applies the device's zone when
  * producing these, so a consumer rendering a transported state shows the device's own wall clock.
  */
 data class ResolvedRange(

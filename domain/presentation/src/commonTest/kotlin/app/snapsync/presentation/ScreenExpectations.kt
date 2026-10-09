@@ -1,12 +1,12 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.CreateForm
 import app.snapsync.model.EventConfig
-import app.snapsync.model.JoinedEvent
-import app.snapsync.model.Layer
-import app.snapsync.model.NetworkNotice
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.UiState
+import app.snapsync.ui.state.CreateForm
+import app.snapsync.ui.state.JoinedEvent
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.UiState
 import kotlinx.datetime.TimeZone
 import org.orbitmvi.orbit.test.OrbitScopedTestContextInternal
 import kotlin.test.assertEquals

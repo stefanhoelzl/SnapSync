@@ -1,10 +1,6 @@
 package app.snapsync.ui
 
 import androidx.compose.runtime.Composable
-import app.snapsync.model.CoarseDuration
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.TimeLeft
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.duration_hours
@@ -26,6 +22,10 @@ import app.snapsync.ui.resources.report_body_device
 import app.snapsync.ui.resources.report_seed_device_unverifiable
 import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.save
+import app.snapsync.ui.state.CoarseDuration
+import app.snapsync.ui.state.ReportTarget
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.TimeLeft
 import org.jetbrains.compose.resources.PluralStringResource
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
@@ -106,7 +106,7 @@ internal class ReportCopy(val body: StringResource, val confirm: StringResource)
  * The bug-report sheet's words for [destination]. A build that reports nowhere keeps the report on the phone, and says
  * so — it never suggests a destination it does not have.
  */
-internal fun reportCopy(destination: ReportDestination): ReportCopy = when (destination) {
-    ReportDestination.DEVELOPER -> ReportCopy(Res.string.report_body_developer, Res.string.report_send)
-    ReportDestination.THIS_DEVICE -> ReportCopy(Res.string.report_body_device, Res.string.save)
+internal fun reportCopy(destination: ReportTarget): ReportCopy = when (destination) {
+    ReportTarget.DEVELOPER -> ReportCopy(Res.string.report_body_developer, Res.string.report_send)
+    ReportTarget.THIS_DEVICE -> ReportCopy(Res.string.report_body_device, Res.string.save)
 }

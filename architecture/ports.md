@@ -21,14 +21,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CandidateSource` | `:domain:services` | `:adapter:generic:mock` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:feature` FactsSource, UnreadableSource; `:domain:services` GalleryCandidateSource, PermissionAwareCandidateSource, RecordingWalk; `:test:feature` OneAsset | yes |
 | `ChangeOutcome` | `:domain:model` | `:domain:model` Applied, Refused | no |
 | `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:test:contracts` ClockProxy, FixedClock | yes |
-| `CoarseDuration` | `:domain:model` | `:domain:model` Days, Hours, Minutes, UnderAMinute, Weeks | no |
 | `Completion` | `:domain:ports` | `:adapter:android` OnceCompletion; `:adapter:ios:app-only` PushCompletion, SessionCompletion; `:test:contracts` CompletionProxy | no |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigRead` | `:domain:model` | `:domain:model` Joined, None, Unavailable | no |
 | `CrashReporter` | `:domain:ports` | `:adapter:generic:mock` InMemoryCrashReporter, Recording; `:adapter:generic:sentry` SentryCrashReporter, SettledStart; `:test:contracts` CrashReporterProxy | yes |
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient, Unverified | no |
-| `CreateStep` | `:domain:model` | `:domain:model` Complete, EndTime, Name | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `Credential` | `:domain:services` | `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential; `:test:contracts` HeldToken | yes |
 | `Crypto` | `:domain:ports` | `:adapter:android` AndroidCrypto; `:adapter:generic:app` JcaCrypto; `:adapter:generic:mock` FakeCrypto; `:adapter:ios:ext-safe` IosCrypto; `:test:contracts` CryptoProxy | yes |
@@ -46,7 +44,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceFilesSource` | `:domain:services` | `:domain:services` BackendDeviceFilesSource; `:test:feature` FakeFiles | yes |
 | `DeviceIdResult` | `:domain:model` | `:domain:model` AbsentNotMintable, Id, Unavailable | no |
 | `DeviceIntegrity` | `:domain:ports` | `:adapter:android` AndroidDeviceIntegrity; `:adapter:generic:mock` FakeKey, InMemoryDeviceIntegrity; `:adapter:ios:ext-safe` IosDeviceIntegrity; `:test:contracts` DeviceIntegrityProxy | yes |
-| `DirectionCount` | `:domain:model` | `:domain:model` Off, Progress | no |
 | `Download` | `:domain:ports` | `:adapter:android` AndroidDownload; `:adapter:generic:mock` Face, InertDownload, NetworkedDownload; `:adapter:ios:app-only` IosDownload; `:domain:services` FakeDownload; `:test:contracts` DownloadProxy; `:test:feature` RecordingDownload | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` StoreDownloadStatusSource | no |
 | `DumpHandOff` | `:domain:model` | `:domain:model` NotSent, Queued | no |
@@ -61,9 +58,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventLinkDelivery` | `:domain:model` | `:domain:model` Forwarded, NoWebpageUrl, NotBrowsingWeb | no |
 | `EventLookup` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `EventRename` | `:domain:services` | `:domain:services` BackendEventRename; `:test:feature` FakeRename | yes |
-| `EventTiming` | `:domain:model` | `:domain:model` Ended, Running, Upcoming | no |
 | `EventUnionSource` | `:domain:services` | `:adapter:generic:mock` EmptyUnion; `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, RecordingUnion | yes |
-| `Eventless` | `:domain:model` | `:domain:model` Closed, LoadFailed, Loading, NotFound, WrongLink | no |
 | `ExpiringCompletion` | `:domain:ports` | `:adapter:android` WorkerCompletion; `:adapter:ios:app-only` Released, TaskCompletion; `:app:desktop` NoCompletion; `:test:contracts` ExpiringCompletionProxy; `:test:rig` Handler | yes |
 | `ExtensionHost` | `:domain:ports` | `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:contracts` ExtensionHostProxy; `:test:launch-adapters` UncomposedExtensionHost | yes |
 | `ExtensionRegistration` | `:domain:services` | `:domain:services` OsDrivenRegistration; `:test:architecture` PlatformRegistration; `:test:feature` FakeRegistration, Registration | yes |
@@ -88,11 +83,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportedAssetPresence` | `:domain:services` | `:adapter:generic:mock` UnknownPresence; `:domain:services` GalleryAssetPresence, PermissionAwareAssetPresence, RecordingLibrary; `:test:feature` CountingPresence, InMemoryAssetPresence | yes |
 | `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound, WrongLink | no |
-| `JoinPhase` | `:domain:model` | `:domain:model` Detailed | no |
 | `JoinProgress` | `:domain:presentation` | `:domain:presentation` Closed, Detailed, LoadFailed, Loading, NotFound, WrongLink | no |
-| `JoinStage` | `:domain:model` | `:domain:model` Loaded, Unloaded | no |
-| `JoinedSurface` | `:domain:model` | `:domain:model` Reconfigure, Status | no |
-| `Layer` | `:domain:model` | `:domain:model` CreateEvent, CreatingEvent, Joined, JoiningEvent, UpdateRequired | no |
 | `LeaveNotifier` | `:domain:services` | `:domain:services` BackendLeaveNotifier | no |
 | `LedgerCountsSource` | `:domain:feature` | `:adapter:generic:mock` CountingCounts; `:domain:feature` MutableLedgerCountsSource, ReadingLedgerCountsSource; `:test:feature` CountingSource | yes |
 | `LibraryChangeToken` | `:domain:ports` | `:adapter:android` VolumeGenerations; `:adapter:generic:mock` Token; `:adapter:ios:app-only` PhotoKitLibraryChangeToken; `:domain:services` Token; `:test:contracts` TokenProxy | no |
@@ -121,7 +112,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RegistrationAnswer` | `:domain:model` | `:domain:model` Answered, Unsupported | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable, Unsupported | no |
 | `RenameOutcome` | `:domain:model` | `:domain:model` InvalidName, Renamed, Transient | no |
-| `RenameState` | `:domain:model` | `:domain:model` Failed, Idle, InFlight, Succeeded | no |
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
 | `ResourceBatch` | `:domain:model` | `:domain:model` RecordingBatch | no |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
@@ -131,22 +121,18 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |
 | `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unread, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Ready | no |
-| `ShareCount` | `:domain:model` | `:domain:model` Counting, Ready, Unavailable | no |
 | `Slot` | `:domain:services` | `:domain:services` Held, Unread | no |
 | `SuppressionReadiness` | `:domain:model` | `:domain:model` OldSchema, Ready, Unavailable | no |
 | `SuppressionSource` | `:domain:services` | `:domain:services` DownloadService, SuppressionService; `:test:feature` Suppression | yes |
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` Stay | no |
 | `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
 | `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadFailed, UploadStarted | no |
-| `SyncHealth` | `:domain:model` | `:domain:model` InSync, Inactive, KeyLost, Loading, NeedsAccess, NoNetwork, NotStarted, Syncing, Unattested | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, FixedSync, IdleSync, MenuTestSync, Sync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:ios:app-only` IosSystemUi; `:test:contracts` SystemUiProxy | no |
-| `TimeLeft` | `:domain:model` | `:domain:model` Days, Hours, Minutes, UnderAMinute | no |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, ProofFailed, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |
 | `Ui` | `:domain:ports` | `:adapter:android` AndroidUi; `:adapter:ios:ui` IosUi; `:test:contracts` UiProxy; `:test:rig` RigUi | yes |
-| `UiIntent` | `:domain:model` | `:domain:model` CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmCreate, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmStopSharing, ConfirmSwitch, CreateName, KeepSharing, LeaveEvent, MenuDismiss, MenuOpen, MenuReportBug, MobileData, OpenAppStore, OpenLink, OpenReconfigure, OpenSettings, QrDismiss, QrOpen, RangeCustom, RangeDay, RangeDragEnd, RangeDragStart, RangeFromHour, RangeFromMinute, RangePickerConfirm, RangePickerDismiss, RangePickerOpen, RangePreset, RangeSweep, RangeUntilHour, RangeUntilMinute, RangeUntilMinuteDrag, ReceiveOn, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, ReportNoticeDismiss, ReportRefusal, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn | no |
 | `Upload` | `:domain:ports` | `:adapter:android` AndroidUpload; `:adapter:generic:mock` NetworkedUpload; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` ScriptedUpload; `:test:contracts` UploadProxy; `:test:feature` Platform | yes |
 | `UploadDiscovery` | `:domain:services` | `:domain:feature` RecordingDelegate, SelectionScopedDiscovery; `:domain:services` GalleryDiscovery, Library, Resources, WalkMemo; `:test:feature` FakePlatform, Library | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |

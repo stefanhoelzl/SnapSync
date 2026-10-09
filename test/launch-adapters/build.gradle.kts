@@ -28,6 +28,7 @@ kotlin {
             api(project(":adapter:generic:mock"))
             api(project(":domain:compose"))
             implementation(project(":domain:model"))
+            implementation(project(":ui:state"))
             implementation(project(":domain:ports"))
         }
         commonTest.dependencies {

@@ -1,8 +1,8 @@
 package app.snapsync.ui
 
-import app.snapsync.model.AppLink
-import app.snapsync.model.ScreenMessage
 import app.snapsync.ui.components.RangeGestures
+import app.snapsync.ui.state.AppLink
+import app.snapsync.ui.state.ScreenMessage
 
 /**
  * Everything the status screen can ASK FOR, grouped by the surface that asks.

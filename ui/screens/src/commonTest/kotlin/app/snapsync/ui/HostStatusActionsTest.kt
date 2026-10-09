@@ -24,15 +24,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.ReportOutcome
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.SyncHealth
-import app.snapsync.model.UiState
 import app.snapsync.model.UserCommands
 import app.snapsync.model.VersionRefusal
 import app.snapsync.model.captureCeiling
@@ -41,6 +33,7 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.presentation.url
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.share_range_change
@@ -85,6 +78,14 @@ import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.stop_sharing_confirm
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.switch_confirm
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.ReportNotice
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.cancel
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -419,7 +420,7 @@ class HostStatusActionsTest {
             onNodeWithText(str(Res.string.report_placeholder)).performTextInput("No photos arrive")
             onNodeWithText(str(Res.string.report_send)).performClick()
             awaitFired(rig, "sendDiagnostics:No photos arrive")
-            awaitState(rig) { it.overlays.reportNotice == app.snapsync.model.ReportOutcome.SENT }
+            awaitState(rig) { it.overlays.reportNotice == ReportNotice.SENT }
             onNodeWithText(str(Res.string.report_sent)).performClick()
             awaitState(rig) { it.overlays.reportNotice == null }
         }
@@ -430,12 +431,12 @@ class HostStatusActionsTest {
         onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
         awaitState(rig) { it.overlays.menuOpen }
         onNodeWithText(str(Res.string.menu_privacy)).performClick()
-        awaitFired(rig, "openLink:${app.snapsync.model.AppLink.PRIVACY_POLICY.url}")
+        awaitFired(rig, "openLink:${app.snapsync.ui.state.AppLink.PRIVACY_POLICY.url}")
         awaitState(rig) { !it.overlays.menuOpen }
         onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
         awaitState(rig) { it.overlays.menuOpen }
         onNodeWithText(str(Res.string.menu_website)).performClick()
-        awaitFired(rig, "openLink:${app.snapsync.model.AppLink.WEBSITE.url}")
+        awaitFired(rig, "openLink:${app.snapsync.ui.state.AppLink.WEBSITE.url}")
     }
 
     @Test

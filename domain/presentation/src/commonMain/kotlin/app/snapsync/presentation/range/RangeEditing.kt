@@ -1,11 +1,11 @@
 package app.snapsync.presentation.range
 
-import app.snapsync.model.PickerView
-import app.snapsync.model.TimeSpan
+import app.snapsync.ui.state.PickerView
+import app.snapsync.ui.state.TimeSpan
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 
-// What a gesture on a range calendar does, and what the calendar is shown (capabilities `create-event`, `join-event`):
+// What a gesture on a range calendar does, and what the calendar is shown:
 // the screen reports where it was touched; these rules decide what that makes, and what may be picked next.
 
 /** A gesture on a range calendar, as the screen reported it. */

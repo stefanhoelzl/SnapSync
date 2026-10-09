@@ -20,10 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.control.RigClient
 import app.snapsync.dates.JvmDateFormatting
-import app.snapsync.model.Layer
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeView
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.presentation.url
 import app.snapsync.rig.DeviceAdvertisement
 import app.snapsync.rig.RigState
 import app.snapsync.ui.AccessActions
@@ -40,6 +38,9 @@ import app.snapsync.ui.WithdrawalActions
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeGestures
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.RangeView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

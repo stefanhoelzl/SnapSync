@@ -11,11 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinStage
-import app.snapsync.model.Layer
-import app.snapsync.model.NetworkNotice
-import app.snapsync.model.ScreenMessage
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.AppInvitationHeaderLoading
@@ -42,6 +37,11 @@ import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.waiting_network_body
 import app.snapsync.ui.resources.waiting_network_title
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinStage
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.ScreenMessage
 import org.jetbrains.compose.resources.stringResource
 
 // The join gate: the full-screen surface a scanned link opens, and the

@@ -3,10 +3,10 @@ package app.snapsync.ui.components
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import app.snapsync.model.Arrow
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
+import app.snapsync.ui.state.Arrow
 import org.junit.Rule
 import kotlin.test.Test
 

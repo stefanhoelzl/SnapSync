@@ -1,8 +1,8 @@
 package app.snapsync.ui
 
-import app.snapsync.model.UiIntent
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeGestures
+import app.snapsync.ui.state.UiIntent
 
 /**
  * The status screen's callback bundle — **the one tap → [UiIntent] table**.

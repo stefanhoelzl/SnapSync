@@ -6,16 +6,16 @@ import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.EventStart
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.Layer
-import app.snapsync.model.RangeChoice
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UiIntent
-import app.snapsync.model.UiState
 import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -156,20 +156,6 @@ class RangeIntentsTest {
             testScheduler.runCurrent()
             awaitShown { it.joining?.range?.preset == RangeChoice.WHOLE_EVENT }
             assertNull(shownRange().picker)
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `a stated custom range applies as the calendar's would`() = runTest {
-        host(backgroundScope).testWithInternalState(this) {
-            runOnCreate()
-            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            awaitShown { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready }
-            containerHost.onIntent(UiIntent.RangeCustom(LocalDateTime(2026, 7, 6, 9, 0), null))
-            testScheduler.runCurrent()
-            awaitShown { it.joining?.range?.preset == RangeChoice.CUSTOM }
-            assertEquals(LocalDateTime(2026, 7, 6, 9, 0), shownRange().from)
             cancelAndIgnoreRemainingItems()
         }
     }

@@ -1,9 +1,9 @@
 package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
-import app.snapsync.model.Layer
-import app.snapsync.model.UiState
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiState
 import kotlinx.serialization.Serializable
 
 /**

@@ -6,7 +6,7 @@ import kotlinx.datetime.LocalTime
 
 // The rules of a picked range: what the range IS, and what a settle of a
 // time wheel does to it (what a day tap or drag does is `EventRangeDays.kt`). Pure, so every rule is unit-tested
-// without composing anything; the screen's range calendar only draws a [PickerView][app.snapsync.model.PickerView]
+// without composing anything; the screen's range calendar only draws a [PickerView][app.snapsync.ui.state.PickerView]
 // and reports the gestures (`RangeEditing.kt`).
 
 /**

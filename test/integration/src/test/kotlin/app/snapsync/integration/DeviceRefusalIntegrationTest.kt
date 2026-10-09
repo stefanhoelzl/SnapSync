@@ -2,11 +2,12 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.Layer
-import app.snapsync.model.RefusalCause
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.SyncHealth
+import app.snapsync.presentation.message
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.RefusalCause
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.SyncHealth
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -41,7 +42,7 @@ class DeviceRefusalIntegrationTest {
             device("relaunch")
             foreground()
             foreground() // the launch comes to the foreground: the wake that tries to verify the phone
-            awaitState { (it.ui.layer as? Layer.CreateEvent)?.error == ScreenMessage.of(reason) }
+            awaitState { (it.ui.layer as? Layer.CreateEvent)?.error == reason.message }
         }
     }
 

@@ -4,12 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.AlbumStyle
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import app.snapsync.model.PendingSwitch
-import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppPageSheet
@@ -33,6 +27,12 @@ import app.snapsync.ui.resources.stop_sharing_title
 import app.snapsync.ui.resources.switch_body
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.switch_title
+import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.PendingSwitch
+import app.snapsync.ui.state.UiState
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 

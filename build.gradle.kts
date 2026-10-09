@@ -288,6 +288,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":adapter:ios:ui" to "core",
     ":adapter:android" to "core",
     ":domain:presentation" to "core",
+    ":ui:state" to "core",
 
     // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
     // STRUCTURALLY — a screen that renders six states has six branches by construction — so holding

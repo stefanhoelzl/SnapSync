@@ -6,10 +6,10 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import app.snapsync.model.UiState
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeGestures
+import app.snapsync.ui.state.UiState
 
 /*
  * Test-only builders for the status screen's action bundles, carrying the inert defaults the production
@@ -53,7 +53,7 @@ internal fun testMenuActions(
     onMenuOpen: () -> Unit = {},
     onMenuDismiss: () -> Unit = {},
     onReportBug: () -> Unit = {},
-    onOpenLink: (app.snapsync.model.AppLink) -> Unit = {},
+    onOpenLink: (app.snapsync.ui.state.AppLink) -> Unit = {},
     onReportNoticeDismiss: () -> Unit = {},
     onMobileData: (Boolean) -> Unit = {},
 ) = MenuActions(
@@ -112,7 +112,7 @@ internal fun testSurfaceActions(
     onCancelReconfigure: () -> Unit = {},
     onReportBugOpen: () -> Unit = {},
     onReportBugDismiss: () -> Unit = {},
-    onReportRefusal: (app.snapsync.model.ScreenMessage) -> Unit = {},
+    onReportRefusal: (app.snapsync.ui.state.ScreenMessage) -> Unit = {},
 ) = SurfaceActions(
     onConfirmLeaveOpen, onConfirmLeaveDismiss, onRenameOpen, onRenameDismiss,
     onOpenReconfigure, onCancelReconfigure, onReportBugOpen, onReportBugDismiss, onReportRefusal,
@@ -126,7 +126,7 @@ internal fun testParticipationActions(
 ) = ParticipationActions(choices, onShareOn, onReceiveOn, onSaveToAlbum)
 
 internal fun testRangeChoiceActions(
-    onPreset: (app.snapsync.model.RangeChoice) -> Unit = {},
+    onPreset: (app.snapsync.ui.state.RangeChoice) -> Unit = {},
     onOpen: () -> Unit = {},
     gestures: RangeGestures = testRangeGestures(),
     onConfirm: () -> Unit = {},

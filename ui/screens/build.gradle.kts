@@ -27,14 +27,9 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:model"))
-            api(project(":domain:feature"))
-            api(project(":domain:presentation"))
-            // Declared here rather than received: presentation's edges are `implementation()` only, so it
-            // exports neither. `LocalDateTime` appears in the join/create screens' signatures; the container
-            // host is an Orbit `ContainerHost`.
-            api(libs.kotlinx.datetime)
-            implementation(libs.orbit.core)
+            // The screen's vocabulary — what it draws (`UiState`) and what a tap means (`UiIntent`). Never the domain:
+            // presentation maps the domain into these, and a screen draws only what it is given.
+            api(project(":ui:state"))
             implementation(project(":ui:components"))
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -48,6 +43,13 @@ kotlin {
             implementation(kotlin("test"))
             // The multiplatform `runComposeUiTest` API (no JUnit4 rule — that artifact is JVM-only).
             implementation(libs.compose.ui.test)
+            // The real container the screen is clicked over where a test asserts the container's answer to a tap — the
+            // tap → intent table (`HostStatusActionsTest`) and the create form (`CreateFlowTest`). A test edge only:
+            // the screens' own code sees no presentation.
+            implementation(project(":domain:presentation"))
+            implementation(project(":domain:feature"))
+            implementation(project(":domain:model"))
+            implementation(libs.orbit.core)
         }
         jvmTest.dependencies {
             // The JVM's real date formatting (`JvmDateFormatting`), the one the screen tests render through: a date

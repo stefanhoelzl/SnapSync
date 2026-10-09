@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -57,19 +58,13 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.RangeChoice
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.ScreenMessage
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UiState
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
@@ -86,17 +81,17 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
+import app.snapsync.ui.components.DateFormatter
+import app.snapsync.ui.components.ScreenDates
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.components.resources.share_range_change
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.wheel_end_hour
-import app.snapsync.ui.components.resources.wheel_start_minute
-import app.snapsync.ui.components.resources.wheel_start_hour
-import app.snapsync.ui.components.ScreenDates
-import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.resources.wheel_end_minute
+import app.snapsync.ui.components.resources.wheel_start_hour
+import app.snapsync.ui.components.resources.wheel_start_minute
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_toggle
 import app.snapsync.ui.resources.allow_full_access
@@ -130,6 +125,13 @@ import app.snapsync.ui.resources.stop_sharing_confirm
 import app.snapsync.ui.resources.stop_sharing_keep
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.switch_confirm
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -158,6 +160,7 @@ private const val OTHER_ID = "22222222-2222-4222-8222-222222222222"
 private const val STORE_URL = "https://apps.apple.com/de/app/snapsync/id0000000000"
 
 private const val WAIT_MS = 10_000L
+private const val SOURCE = "AndroidUiContractTest.kt"
 
 /** A tap just inside the top of the sheet's scrim: above the sheet, where a tap closes it. */
 private const val ABOVE_THE_SHEET_PX = 5f
@@ -209,7 +212,7 @@ class AndroidUiContractTest {
      * act. The activity's pull of the screen ([AndroidUi.content]) is no port call, so it stays on [ui].
      */
     @Volatile
-    private var port: Ui = ui
+    private var port: Ui<UiState, UiIntent> = ui
 
     /** The container the screen currently shows; [react] reduces into it. */
     @Volatile
@@ -346,7 +349,14 @@ class AndroidUiContractTest {
 
     /** Wait for the screen to be shown a state matching [predicate], then for it to render it. */
     private fun ComposeUiTest.awaitShown(predicate: (UiState) -> Boolean) {
-        waitUntil(timeoutMillis = WAIT_MS) { shown?.let(predicate) == true }
+        try {
+            waitUntil(timeoutMillis = WAIT_MS) { shown?.let(predicate) == true }
+        } catch (timeout: ComposeTimeoutException) {
+            // The contract runner reports a clause's failure by its message alone, so the step and what the screen
+            // showed instead travel in it.
+            val step = Thread.currentThread().stackTrace.firstOrNull { it.methodName != "awaitShown" && it.fileName == SOURCE }
+            throw AssertionError("waited at ${step?.fileName}:${step?.lineNumber}; the screen showed $shown", timeout)
+        }
         waitForIdle()
     }
 
@@ -398,7 +408,7 @@ class AndroidUiContractTest {
         awaitShown { it.overlays.reportingBug }
         onNodeWithText(str(Res.string.report_placeholder)).performTextInput("It froze")
         onNodeWithText(str(Res.string.report_send)).performClick()
-        awaitShown { it.overlays.reportNotice == ReportOutcome.SENT }
+        awaitShown { it.overlays.reportNotice == app.snapsync.ui.state.ReportNotice.SENT }
         onNodeWithText(str(Res.string.report_sent)).performClick()
         awaitShown { it.overlays.reportNotice == null }
         // The menu: its switch, its close, its report, its links.
@@ -426,7 +436,7 @@ class AndroidUiContractTest {
 
     /**
      * The create form through every control it has (the clock reads Monday 6 July 2026, 12:00): the name typed; the last
-     * day dragged forward, the start dragged back, a new range swept; the 8th tapped, which starts a new one-day range;
+     * day dragged forward, the start dragged onto it, a new range swept; the 8th tapped, which starts a new one-day range;
      * the end's minutes dragged with its hour blank, then its hour tapped; the start's hour and minute tapped. What it
      * leaves is complete: Wednesday 8 July, 11:01 to 13:xx.
      */
@@ -435,8 +445,10 @@ class AndroidUiContractTest {
         awaitShown { it.create?.form?.name == "My Party" }
         onNode(dateDescribed("Monday", "6", "July", "2026")).performTouchInput { dragCells(1) }
         awaitShown { it.create?.form?.picker?.endDay == JULY_7 }
-        onNode(dateDescribed("Monday", "6", "July", "2026")).performTouchInput { dragCells(-1) }
-        awaitShown { it.create?.form?.picker?.from?.date == JULY_5 }
+        // The start, forward onto the end: the 6th heads its row in a Monday-first calendar and July begins on a
+        // Wednesday, so there is no earlier day beside or above it to drag back to.
+        onNode(dateDescribed("Monday", "6", "July", "2026")).performTouchInput { dragCells(1) }
+        awaitShown { it.create?.form?.picker?.let { p -> p.from.date == JULY_7 && p.endDay == JULY_7 } == true }
         onNode(dateDescribed("Friday", "10", "July", "2026")).performTouchInput {
             down(center)
             advanceEventTime(viewConfiguration.longPressTimeoutMillis + PAST_LONG_PRESS_MS)
@@ -482,7 +494,6 @@ class AndroidUiContractTest {
     private val UiState.create get() = layer as? Layer.CreateEvent
 
     private companion object {
-        val JULY_5 = kotlinx.datetime.LocalDate(2026, 7, 5)
         val JULY_7 = kotlinx.datetime.LocalDate(2026, 7, 7)
         val JULY_8 = kotlinx.datetime.LocalDate(2026, 7, 8)
         val JULY_11 = kotlinx.datetime.LocalDate(2026, 7, 11)

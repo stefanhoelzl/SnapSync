@@ -19,15 +19,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.AppLink
-import app.snapsync.model.BuildLabel
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinStage
-import app.snapsync.model.Layer
-import app.snapsync.model.MobileDataState
-import app.snapsync.model.Overlays
-import app.snapsync.model.ReportOutcome
-import app.snapsync.model.UiState
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.resources.Res
@@ -42,6 +33,15 @@ import app.snapsync.ui.resources.report_not_sent
 import app.snapsync.ui.resources.report_problem
 import app.snapsync.ui.resources.report_saved
 import app.snapsync.ui.resources.report_sent
+import app.snapsync.ui.state.AppLink
+import app.snapsync.ui.state.BuildLine
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinStage
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.MobileDataState
+import app.snapsync.ui.state.Overlays
+import app.snapsync.ui.state.ReportNotice
+import app.snapsync.ui.state.UiState
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -97,7 +97,7 @@ class AppMenuScreenTest {
             val asked = mutableListOf<String>()
             setContent {
                 TestStatusScreen(
-                    UiState(createLayer(), Overlays(menuOpen = true), build = BuildLabel("0.12", "2140")),
+                    UiState(createLayer(), Overlays(menuOpen = true), build = BuildLine("0.12", "2140")),
                     testActions(
                         menu = testMenuActions(
                             onReportBug = { asked += "report" },
@@ -206,7 +206,7 @@ class AppMenuScreenTest {
                 testActions(menu = testMenuActions(onReportNoticeDismiss = { dismissed++ })),
             )
         }
-        for (outcome in ReportOutcome.entries) {
+        for (outcome in ReportNotice.entries) {
             state = UiState(createLayer(), Overlays(reportNotice = outcome))
             waitForIdle()
             onNode(hasText(str(noticeOf(outcome)))).assertExists()
@@ -216,8 +216,8 @@ class AppMenuScreenTest {
     }
 }
 
-private fun noticeOf(outcome: ReportOutcome) = when (outcome) {
-    ReportOutcome.SENT -> Res.string.report_sent
-    ReportOutcome.SAVED -> Res.string.report_saved
-    ReportOutcome.NOT_SENT -> Res.string.report_not_sent
+private fun noticeOf(outcome: ReportNotice) = when (outcome) {
+    ReportNotice.SENT -> Res.string.report_sent
+    ReportNotice.SAVED -> Res.string.report_saved
+    ReportNotice.NOT_SENT -> Res.string.report_not_sent
 }

@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime

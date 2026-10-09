@@ -45,6 +45,7 @@ flowchart LR
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
   ui_screens[":ui:screens"]
+  ui_state[":ui:state"]
   adapter_android --> adapter_generic_app
   adapter_android --> domain_feature
   adapter_android --> domain_model
@@ -54,6 +55,7 @@ flowchart LR
   adapter_android --> test_contracts
   adapter_android --> ui_components
   adapter_android --> ui_screens
+  adapter_android --> ui_state
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
   adapter_generic_app --> domain_services
@@ -67,6 +69,7 @@ flowchart LR
   adapter_generic_mock --> domain_services
   adapter_generic_mock --> domain_wire
   adapter_generic_mock --> test_contracts
+  adapter_generic_mock --> ui_state
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
   adapter_generic_sentry --> test_contracts
@@ -86,9 +89,9 @@ flowchart LR
   adapter_ios_ui --> adapter_ios_ext_safe
   adapter_ios_ui --> domain_model
   adapter_ios_ui --> domain_ports
-  adapter_ios_ui --> domain_presentation
   adapter_ios_ui --> ui_components
   adapter_ios_ui --> ui_screens
+  adapter_ios_ui --> ui_state
   app_android --> adapter_android
   app_android --> adapter_generic_app
   app_android --> adapter_generic_sentry
@@ -99,6 +102,8 @@ flowchart LR
   app_android --> domain_ports
   app_android --> domain_presentation
   app_android --> domain_services
+  app_android --> ui_components
+  app_android --> ui_state
   app_desktop --> adapter_generic_app
   app_desktop --> app_jvm
   app_desktop --> domain_feature
@@ -109,6 +114,7 @@ flowchart LR
   app_desktop --> test_control
   app_desktop --> ui_components
   app_desktop --> ui_screens
+  app_desktop --> ui_state
   app_ios --> adapter_generic_app
   app_ios --> adapter_generic_sentry
   app_ios --> adapter_ios_app_only
@@ -121,7 +127,9 @@ flowchart LR
   app_ios --> domain_ports
   app_ios --> domain_presentation
   app_ios --> domain_services
+  app_ios --> ui_components
   app_ios --> ui_screens
+  app_ios --> ui_state
   app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_generic_sentry
   app_ios_extension --> adapter_ios_ext_safe
@@ -139,11 +147,13 @@ flowchart LR
   app_jvm --> domain_ports
   app_jvm --> domain_presentation
   app_jvm --> domain_services
+  app_jvm --> ui_state
   domain_compose --> domain_feature
   domain_compose --> domain_flow
   domain_compose --> domain_model
   domain_compose --> domain_ports
   domain_compose --> domain_services
+  domain_compose --> ui_state
   domain_feature --> domain_model
   domain_feature --> domain_services
   domain_flow --> domain_feature
@@ -153,9 +163,11 @@ flowchart LR
   domain_host --> domain_model
   domain_host --> domain_ports
   domain_host --> domain_presentation
+  domain_host --> ui_state
   domain_ports --> domain_model
   domain_presentation --> domain_feature
   domain_presentation --> domain_model
+  domain_presentation --> ui_state
   domain_services --> domain_model
   domain_services --> domain_ports
   domain_services --> domain_wire
@@ -167,14 +179,17 @@ flowchart LR
   test_architecture --> domain_services
   test_architecture --> domain_wire
   test_architecture --> test_contracts
+  test_architecture --> ui_state
   test_contracts --> domain_model
   test_contracts --> domain_ports
   test_contracts --> domain_services
   test_contracts --> domain_wire
+  test_contracts --> ui_state
   test_control --> domain_feature
   test_control --> domain_model
   test_control --> domain_presentation
   test_control --> test_rig
+  test_control --> ui_state
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
   test_feature --> adapter_generic_mock
@@ -188,10 +203,12 @@ flowchart LR
   test_integration --> domain_presentation
   test_integration --> domain_wire
   test_integration --> test_control
+  test_integration --> ui_state
   test_launch_adapters --> adapter_generic_mock
   test_launch_adapters --> domain_compose
   test_launch_adapters --> domain_model
   test_launch_adapters --> domain_ports
+  test_launch_adapters --> ui_state
   test_no_grant --> adapter_android
   test_no_grant --> domain_model
   test_no_grant --> domain_ports
@@ -216,11 +233,13 @@ flowchart LR
   test_rig --> test_contracts
   test_rig --> test_edge
   test_rig --> test_launch_adapters
+  test_rig --> ui_state
   ui_components --> adapter_generic_app
-  ui_components --> domain_model
+  ui_components --> ui_state
   ui_screens --> adapter_generic_app
   ui_screens --> domain_feature
   ui_screens --> domain_model
   ui_screens --> domain_presentation
   ui_screens --> ui_components
+  ui_screens --> ui_state
 ```

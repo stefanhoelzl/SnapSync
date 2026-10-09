@@ -1,11 +1,6 @@
-package app.snapsync.model
+package app.snapsync.ui.state
 
 import kotlinx.serialization.Serializable
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.days
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Instant
 
 /**
  * Where the joined event is in its life, as the joined screen's dates line says it: how long until it starts, how long
@@ -50,28 +45,4 @@ sealed interface TimeLeft {
 
     @Serializable
     data object UnderAMinute : TimeLeft
-
-    companion object {
-        /** The span floored to its largest whole unit. */
-        fun of(span: Duration): TimeLeft = when {
-            span >= 1.days -> Days(span.inWholeDays.toInt())
-            span >= 1.hours -> Hours(span.inWholeHours.toInt())
-            span >= 1.minutes -> Minutes(span.inWholeMinutes.toInt())
-            else -> UnderAMinute
-        }
-    }
-}
-
-/**
- * The timing of an event bounded by [startsAt] and [endsAt] at [now]. The start is inclusive (the event has
- * begun AT its start) and so is the end: an event is [EventTiming.Ended] only once `now` is past [endsAt],
- * the same comparison the ended marker always made.
- */
-fun eventTiming(startsAt: EventStart, endsAt: EventEnd, now: CaptureDate): EventTiming {
-    val at = Instant.parse(now.iso)
-    return when {
-        startsAt.at > now -> EventTiming.Upcoming(TimeLeft.of(Instant.parse(startsAt.at.iso) - at))
-        endsAt.at < now -> EventTiming.Ended
-        else -> EventTiming.Running(TimeLeft.of(Instant.parse(endsAt.at.iso) - at))
-    }
 }

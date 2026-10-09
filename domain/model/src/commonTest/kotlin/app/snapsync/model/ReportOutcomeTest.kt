@@ -12,4 +12,9 @@ class ReportOutcomeTest {
         assertEquals(ReportOutcome.SAVED, DumpResult.Saved("diagnostic-report.json").outcome)
         assertEquals(ReportOutcome.NOT_SENT, DumpResult.NotSent("the channel is not running").outcome)
     }
+
+    @Test
+    fun an_unknown_build_says_so_rather_than_naming_a_number_nobody_built() {
+        assertEquals(BuildLabel("unknown", "unknown"), BuildLabel.UNKNOWN)
+    }
 }

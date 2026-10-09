@@ -11,8 +11,9 @@ internal fun interface LatestUntil {
 }
 
 /**
- * What a range may be — the ONE difference between the surfaces that pick one: where it may lie, how long it may be, and whether its end time may be
- * blank. Everything else — the calendar, the gestures, the wheels, the rules — is the same.
+ * What a range may be — the ONE difference between the surfaces that pick one: where it may lie, how long it may be,
+ * and whether its end time may be blank. Everything else — the calendar, the gestures, the wheels, the rules — is
+ * the same.
  */
 internal class RangeBounds private constructor(
     /** The earliest start, or `null` for none. */

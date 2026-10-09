@@ -1,7 +1,7 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.UiIntent
 import app.snapsync.presentation.range.RangeEdit
+import app.snapsync.ui.state.UiIntent
 
 /**
  * What a person did on the screen, handed over by the platform's UI (the `Ui` port's `onIntent` handler) — **the one
@@ -58,7 +58,6 @@ fun StatusContainerHost.onIntent(intent: UiIntent) {
         is UiIntent.SaveToAlbum -> form.onSaveToAlbum(intent.on)
         is UiIntent.MobileData -> surfaces.onMobileData(intent.on)
         is UiIntent.RangePreset -> form.onRangePreset(intent.preset)
-        is UiIntent.RangeCustom -> form.onRangeCustom(intent.from, intent.until)
         UiIntent.RetryLoad -> onRetryLoad()
         UiIntent.ConfirmJoin -> onConfirmJoin()
         UiIntent.ConfirmSwitch -> onConfirmSwitch()

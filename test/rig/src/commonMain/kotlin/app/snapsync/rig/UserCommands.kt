@@ -1,12 +1,14 @@
 package app.snapsync.rig
 
-import app.snapsync.model.AppLink
 import app.snapsync.model.Direction
-import app.snapsync.model.Layer
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.UiIntent
-import app.snapsync.model.UiState
+import app.snapsync.ui.state.AppLink
+import app.snapsync.ui.state.JoinedSurface
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
+import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -34,7 +36,7 @@ import kotlin.time.Instant
  */
 fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String, RigUserCommand> = mapOf(
     "leave" to RigUserCommand { dispatch(UiIntent.LeaveEvent) },
-    // The create form, filled as a person fills it (capability `create-event`): the name typed, the days swept, each
+    // The create form, filled as a person fills it: the name typed, the days swept, each
     // wheel settled — then Create. The form's own rules apply, so a window the form cannot hold (inverted, or longer
     // than an event may last) is created as the form makes it, never as stated.
     "create" to RigUserCommand { params ->
@@ -48,7 +50,7 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
         dispatch(UiIntent.RangeUntilMinute(until.minute))
         dispatch(UiIntent.ConfirmCreate)
     },
-    // The create form's name alone, as typed (capability `create-event`).
+    // The create form's name alone, as typed.
     "createName" to RigUserCommand { params ->
         dispatch(UiIntent.CreateName(requireNotNull(params["name"]) { "name is required" }))
     },
@@ -70,6 +72,8 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
         // narrower range) waits on "Stop sharing these photos?" — the caller asked for it, so the channel confirms it,
         // right after the choice, before the next one is made (the question is modal on screen). Then it closes.
         dispatch(UiIntent.OpenReconfigure)
+        // The calendar opens on what the settings show, so a range is chosen only once they are on screen.
+        awaitShown(state, "the event's settings") { (it.layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure }
         rangeChoices(params).forEach { choice ->
             dispatch(choice)
             dispatch(UiIntent.ConfirmStopSharing)
@@ -113,6 +117,18 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
     },
 )
 
+/** Wait, as a person would, until the screen shows what the next tap needs; refused if it never does. */
+private suspend fun awaitShown(state: () -> UiState, what: String, shown: (UiState) -> Boolean) {
+    repeat(SHOWN_POLLS) {
+        if (shown(state())) return
+        delay(SHOWN_POLL_MS)
+    }
+    throw UserCommandRefused("the screen never showed $what")
+}
+
+private const val SHOWN_POLLS = 100
+private const val SHOWN_POLL_MS = 50L
+
 private fun joinedEventId(state: UiState): String? = (state.layer as? Layer.Joined)?.membership?.eventId
 
 private fun rangePreset(raw: String): RangeChoice = when {
@@ -131,11 +147,32 @@ private fun rangeChoices(params: Map<String, String>): List<UiIntent> = buildLis
         add(UiIntent.ReceiveOn(d.includesDownload))
     }
     params["saveToAlbum"]?.let { add(UiIntent.SaveToAlbum(it.toBoolean())) }
-    // A custom range: either bound may be named alone, and the one left out keeps what was already picked
-    // (or the event's own bound, if nothing was).
+    // A custom range, set as a person sets one: the calendar opened on what is picked, the named bound's day dragged
+    // to and its wheels settled, and OK. Either bound may be named alone; the one left out keeps what was picked.
     val from = params["cutoff"]?.let(::toLocalWallClock)
     val until = params["until"]?.let(::toLocalWallClock)
-    if (from != null || until != null) add(UiIntent.RangeCustom(from, until))
+    if (from != null || until != null) {
+        add(UiIntent.RangePickerOpen)
+        from?.let {
+            addAll(
+                listOf(
+                    UiIntent.RangeDragStart(it.date),
+                    UiIntent.RangeFromHour(it.hour),
+                    UiIntent.RangeFromMinute(it.minute),
+                ),
+            )
+        }
+        until?.let {
+            addAll(
+                listOf(
+                    UiIntent.RangeDragEnd(it.date),
+                    UiIntent.RangeUntilHour(it.hour),
+                    UiIntent.RangeUntilMinute(it.minute),
+                ),
+            )
+        }
+        add(UiIntent.RangePickerConfirm)
+    }
 }
 
 private fun toLocalWallClock(iso: String): LocalDateTime =

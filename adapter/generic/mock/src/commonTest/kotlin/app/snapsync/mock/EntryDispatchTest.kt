@@ -3,7 +3,6 @@ package app.snapsync.mock
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UiIntent
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadSource
@@ -16,6 +15,7 @@ import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ports.UploadHandlers
+import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

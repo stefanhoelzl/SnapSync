@@ -2,8 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.model.AssetId
-import app.snapsync.model.SyncHealth
 import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

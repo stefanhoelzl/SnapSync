@@ -1,14 +1,14 @@
 package app.snapsync.presentation
 
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumStyle
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.Layer
-import app.snapsync.model.RefusalCause
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
-import app.snapsync.model.StoreName
-import app.snapsync.model.UiState
+import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.RefusalCause
+import app.snapsync.ui.state.StoreName
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList

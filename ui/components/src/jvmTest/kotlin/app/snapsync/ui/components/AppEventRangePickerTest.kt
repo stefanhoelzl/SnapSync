@@ -21,14 +21,14 @@ import androidx.compose.ui.test.onParent
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
-import app.snapsync.model.PickerView
-import app.snapsync.model.TimeSpan
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.range_end_pick_time
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
 import app.snapsync.ui.components.resources.wheel_start_hour
 import app.snapsync.ui.components.resources.wheel_start_minute
+import app.snapsync.ui.state.PickerView
+import app.snapsync.ui.state.TimeSpan
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime

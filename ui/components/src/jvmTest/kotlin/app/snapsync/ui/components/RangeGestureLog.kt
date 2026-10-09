@@ -1,7 +1,7 @@
 package app.snapsync.ui.components
 
-import app.snapsync.model.PickerView
-import app.snapsync.model.TimeSpan
+import app.snapsync.ui.state.PickerView
+import app.snapsync.ui.state.TimeSpan
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime

@@ -10,13 +10,14 @@ import app.snapsync.model.BeforeListen
 import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
-import app.snapsync.model.UiState
 import app.snapsync.model.invocation
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.ScreenDates
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import app.snapsync.ui.statusActions
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,11 +39,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class AndroidUi(
     private val dates: ScreenDates,
     private val log: Logger,
-) : Ui {
+) : Ui<UiState, UiIntent> {
     private val shown = MutableStateFlow<UiState?>(null)
-    private val handlers = HandlerSlot<UiHandlers>("Ui", BeforeListen.Thrown)
+    private val handlers = HandlerSlot<UiHandlers<UiIntent>>("Ui", BeforeListen.Thrown)
 
-    override fun listen(handlers: UiHandlers) = this.handlers.set(handlers)
+    override fun listen(handlers: UiHandlers<UiIntent>) = this.handlers.set(handlers)
 
     override fun show(state: UiState) {
         shown.value = state

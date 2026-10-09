@@ -11,7 +11,6 @@ import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.JoinPhase
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -20,7 +19,8 @@ import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.model.step
+import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.step
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

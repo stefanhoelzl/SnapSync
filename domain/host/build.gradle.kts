@@ -32,6 +32,8 @@ kotlin {
             implementation(project(":domain:feature"))
             implementation(project(":domain:compose"))
             implementation(project(":domain:presentation"))
+            // The screen's vocabulary the host binds the Ui port to.
+            implementation(project(":ui:state"))
             // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.
             implementation(libs.orbit.core)
             implementation(libs.kermit)
