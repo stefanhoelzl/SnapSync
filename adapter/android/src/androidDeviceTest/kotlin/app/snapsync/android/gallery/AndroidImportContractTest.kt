@@ -80,19 +80,18 @@ class AndroidImportContractTest {
     private val staging = File(context.filesDir, "contract-staging")
     private val albums = mutableListOf<String>()
 
+    /** What the import tells its owner: kept, and every created row remembered for the cleanup. */
+    private val handlers = GalleryHandlers(
+        onChanged = {},
+        onImportPlaceholder = deliveries.handlers.onImportPlaceholder,
+        onImportSettled = { ref, result ->
+            deliveries.handlers.onImportSettled(ref, result)
+            if (result is ImportResult.Imported) created += uriOf(result.createdLocalId)
+        },
+    )
+
     private val gallery by lazy {
-        AndroidGallery(context, AndroidPhotoPermission(context, foreground), scope).apply {
-            listen(
-                GalleryHandlers(
-                    onChanged = {},
-                    onImportPlaceholder = deliveries.handlers.onImportPlaceholder,
-                    onImportSettled = { ref, result ->
-                        deliveries.handlers.onImportSettled(ref, result)
-                        if (result is ImportResult.Imported) created += uriOf(result.createdLocalId)
-                    },
-                ),
-            )
-        }
+        AndroidGallery(context, AndroidPhotoPermission(context, foreground), scope).apply { listen(handlers) }
     }
 
     @BeforeTest
@@ -145,7 +144,9 @@ class AndroidImportContractTest {
                     MediaStore.MediaColumns.DISPLAY_NAME,
                 )
             }
-            return Entered.Ready(StagedImport((gallery as GalleryImport).recorded(log), stage, library))
+            // Listened again through this clause's proxy, so what the import tells its owner is this clause's to claim.
+            val port = gallery.recorded(log).apply { listen(handlers) }
+            return Entered.Ready(StagedImport(port, stage, library))
         }
     }
 
