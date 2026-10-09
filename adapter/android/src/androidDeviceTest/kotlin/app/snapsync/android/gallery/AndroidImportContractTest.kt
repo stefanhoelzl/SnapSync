@@ -39,7 +39,6 @@ import app.snapsync.model.jpegXmp
 import app.snapsync.model.locateMotionVideo
 import app.snapsync.model.motionPhotoStill
 import app.snapsync.ports.GalleryHandlers
-import app.snapsync.ports.GalleryImport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
