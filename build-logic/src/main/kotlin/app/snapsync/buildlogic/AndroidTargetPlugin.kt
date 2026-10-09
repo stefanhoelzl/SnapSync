@@ -85,14 +85,7 @@ class AndroidTargetPlugin : Plugin<Project> {
 
     /** The device-test runs — on the managed device, or a connected one — start the host's transfer fixture first. */
     private fun serveTransferFixture(project: Project) {
-        val fixture = project.gradle.sharedServices.registerIfAbsent(
-            TransferFixtureService.NAME,
-            TransferFixtureService::class.java,
-        ) {
-            parameters.script.set(project.rootProject.layout.projectDirectory.file("scripts/transfer-fixture.py"))
-            parameters.log.set(project.rootProject.layout.buildDirectory.file("transfer-fixture.log"))
-            parameters.port.set(TransferFixtureService.PORT)
-        }
+        val fixture = TransferFixtureService.registered(project)
         project.tasks.matching { it.name in DEVICE_TEST_TASKS }.configureEach {
             usesService(fixture)
             doFirst { fixture.get().ensureStarted() }

@@ -70,6 +70,10 @@ gradlePlugin {
             id = "snapsync.ios-rig-sources"
             implementationClass = "app.snapsync.buildlogic.IosRigSourcesPlugin"
         }
+        register("transferFixture") {
+            id = "snapsync.transfer-fixture"
+            implementationClass = "app.snapsync.buildlogic.TransferFixturePlugin"
+        }
         register("wire") {
             id = "snapsync.wire"
             implementationClass = "app.snapsync.buildlogic.wire.WirePlugin"

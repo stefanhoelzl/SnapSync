@@ -50,6 +50,8 @@ kotlin {
         }
         getByName("androidDeviceTest").dependencies {
             implementation(project(":test:contracts"))
+            // The `HttpTransport` contract binds `KtorHttpTransport` over this module's client (`androidHttpClient`).
+            implementation(project(":adapter:generic:app"))
             // The storage services' contracts run through the services over these adapters.
             implementation(project(":domain:services"))
             implementation(libs.kotlinx.datetime)

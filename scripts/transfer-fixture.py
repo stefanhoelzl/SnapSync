@@ -13,7 +13,7 @@ The grammar is `TransferFixture` in :test:contracts — change both or neither:
     GET     /<Contract>/<CLAUSE_ID>/<name>/s200-n64-short    answer 200 declaring 64 bytes, send 32, close
     GET|PUT /<Contract>/<CLAUSE_ID>/<name>/hold              never answer (closed after HOLD_SECONDS)
     GET     /<Contract>/<CLAUSE_ID>/<name>/r302-s200-n64-len answer 302, Location: the same route ending in s200-n64-len
-    GET /_landed/<route>                                     200 {"contentType": …} if a 2xx PUT landed there, else 404
+    GET /_landed/<route>                                     200 {"contentType": …, "length": …} if a 2xx PUT landed, else 404
     GET /_health                                             200, once the server is up
 
 A GET body is the byte pattern `i % 251`, so a clause can compare staged bytes. Every response says
@@ -125,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
         status = answer[0]
         if 200 <= status < 300:
             with lock:
-                landed[self.path] = {"contentType": self.headers.get("Content-Type")}
+                landed[self.path] = {"contentType": self.headers.get("Content-Type"), "length": size}
         self._send(status)
 
 

@@ -9,8 +9,8 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 
 /**
- * The loopback peer the upload contract exchanges bytes with (`scripts/transfer-fixture.py`), served on the HOST for
- * the Android device tests while they run — started by the first device-test task that asks for it, stopped when the
+ * The loopback peer the transfer and HTTP contracts exchange bytes with (`scripts/transfer-fixture.py`), served on the
+ * HOST for the test tasks that ask for it (the Android device tests; `snapsync.transfer-fixture`) while they run — started by the first device-test task that asks for it, stopped when the
  * build ends. An emulator reaches the host's loopback as `10.0.2.2`, so no `adb reverse` is needed, on a managed
  * device or a connected one alike ([FIXTURE_ADDRESS]).
  *
@@ -66,6 +66,9 @@ abstract class TransferFixtureService : BuildService<TransferFixtureService.Para
 
         /** Where a device-test APK on an emulator reaches the fixture: the host's loopback, as the emulator names it. */
         const val FIXTURE_ADDRESS = "http://10.0.2.2:$PORT"
+
+        /** Where a JVM test, or a simulator test executable sharing the host's network, reaches it. */
+        const val LOOPBACK_ADDRESS = "http://127.0.0.1:$PORT"
 
         private const val HEALTH_ATTEMPTS = 50
         private const val HEALTH_POLL_MS = 200L
