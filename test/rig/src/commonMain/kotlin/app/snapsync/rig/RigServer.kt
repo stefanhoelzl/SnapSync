@@ -419,8 +419,13 @@ class RigServer(
         // `?host=<HOST>` selects one entry by the host it records for — how a run inside the upload extension
         // (`IOS_DEVICE_PHOTOKIT_EXT`), which the app requests on the extension's behalf, is chosen over an entry
         // of the same name this process runs itself.
+        //
+        // `?grant=<GRANT>` selects the entries taken under that photo grant; without it, the default one's.
         val wanted = request.queryParameters["host"]
-        val named = hooks.contracts.filter { it.name == name && (wanted == null || it.host.name == wanted) }
+        val grant = request.queryParameters["grant"]
+        val named = hooks.contracts.filter {
+            it.name == name && (wanted == null || it.host.name == wanted) && it.grant?.name == grant
+        }
         val contract = (named.firstOrNull { it.host == currentHost } ?: named.firstOrNull())?.run
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "contract"),
@@ -442,15 +447,18 @@ class RigServer(
     }
 
     /**
-     * `GET /contract` — the names of the contracts registered for the host this process is, one per line. The
-     * `journeys (ios)` job runs exactly this list, so a contract registered for the simulator app is run on every
-     * push, and one registered for nothing is run by nobody (`docs/architecture.md`).
+     * `GET /contract[?grant=<GRANT>]` — the names of the contracts registered for the host this process is, under the
+     * default photo grant or the one named, one per line. The `journeys (ios)` job runs exactly these lists, so a
+     * contract registered for the simulator app is run on every push, and one registered for nothing is run by nobody
+     * (`docs/architecture.md`).
      */
     private suspend fun ApplicationCall.respondContractList() {
         // Refused rather than empty on a host with no in-app registry, so "run every contract this host lists"
         // can never pass vacuously against it (`docs/architecture.md`).
         if (respondIfRefused(RigVocabulary.CONTRACT, marker = CONTRACT_REFUSED)) return
-        respondText(hooks.contracts.filter { it.host == currentHost }.joinToString("") { it.name + "\n" })
+        val grant = request.queryParameters["grant"]
+        val listed = hooks.contracts.filter { it.host == currentHost && it.grant?.name == grant }
+        respondText(listed.joinToString("") { it.name + "\n" })
     }
 
     /**

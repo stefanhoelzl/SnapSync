@@ -99,9 +99,10 @@ import platform.Photos.PHPhotoLibrary
  * live in `HandoffContracts.kt` and need no photo grant.
  *
  * This is where PhotoKit runs under a real full grant: the app bundle is the only simulator process
- * `applesimutils` can grant photo access to. Every binding declares the `GRANTED` states only, and every entry
+ * `applesimutils` can grant photo access to. Every binding here declares the `GRANTED` states only, and every entry
  * refuses its whole run in any other process or grant (`docs/architecture.md`, "An authorization the process
- * cannot give itself is a precondition of the run"). The no-grant states run on the simulator's test executable
+ * cannot give itself is a precondition of the run"); the job's later launches under the other grants run
+ * [otherGrantContracts]. The no-grant states run on the simulator's test executable
  * instead.
  *
  * **Seeding never deletes.** Each clause seeds into its own capture-date window ([PhotoLibrary.window]) through
@@ -123,10 +124,10 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(DownloadContract, SimAppDownloadBinding(), ::hostRefusal),
     simulatorAppContract(BackgroundTimeContract, SimAppBackgroundTimeBinding(), ::hostRefusal),
     simulatorAppContract(BuildInfoContract, SimAppBuildInfoBinding(), ::hostRefusal),
-)
+) + otherGrantContracts()
 
 /** Why this process is not the simulator app, or `null` when it is — for bindings that need no photo grant. */
-private fun hostRefusal(): String? = if (currentHost != Host.IOS_SIM_APP) {
+internal fun hostRefusal(): String? = if (currentHost != Host.IOS_SIM_APP) {
     "this process is $currentHost, not ${Host.IOS_SIM_APP}; the simulator app's bindings run only there"
 } else {
     null
@@ -143,7 +144,7 @@ private fun refusal(): String? = hostRefusal() ?: when {
 private const val UNREACHABLE_NO_GRANT = "the simulator app runs under the full grant; the no-grant state runs on the test executable"
 
 /** Creates [SEED_COUNT] ordinary photos captured at [seedDate]; answers their raw `localIdentifier`s. */
-private fun seedPhotos(seedDate: String): List<String> = memScoped {
+internal fun seedPhotos(seedDate: String): List<String> = memScoped {
     val created = mutableListOf<String>()
     val date = NSISO8601DateFormatter().dateFromString(seedDate) ?: error("unparseable seed date $seedDate")
     val error = alloc<ObjCObjectVar<NSError?>>()
@@ -168,7 +169,7 @@ private fun seedPhotos(seedDate: String): List<String> = memScoped {
 }
 
 /** The app's real gallery, as a contract run builds it: its own scope, never the app's. */
-private fun contractGallery(): IosGallery =
+internal fun contractGallery(): IosGallery =
     IosGallery(
         IosGalleryReader(Logger.withTag("contract")),
         PhotoLibraryPermission(),

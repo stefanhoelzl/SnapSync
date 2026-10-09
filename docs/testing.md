@@ -474,7 +474,7 @@ holding a different one.
 |---|---|---|
 | `JVM` | JVM test | no Keychain, no App Group, no photos |
 | `IOS_SIM_KEXE` | K/N `test.kexe` under `simctl`, unentitled | Keychain answers `-25291`, App-Group lookup `nil`, photos `DENIED` with no route to a grant |
-| `IOS_SIM_APP` | rig build of the app on a simulator, ad-hoc signed (`scripts/sim-sign`) | App Group available; photo grant via `applesimutils` (`simctl privacy grant` does not work for PhotoKit); no Keychain group; no partial grant exists |
+| `IOS_SIM_APP` | rig build of the app on a simulator, ad-hoc signed (`scripts/sim-sign`) | App Group available; photo grant via `applesimutils` (`simctl privacy grant` does not work for PhotoKit), set before each launch — the job relaunches the app under a partial grant, a refusal and never asked, after the full grant's run; no Keychain group |
 | `IOS_DEVICE_APP` | entitled app on a device | Keychain, App Group, any grant a person sets. The **only** place a partial grant exists |
 | `IOS_DEVICE_PHOTOKIT_EXT` | the upload extension on a device, launched by the OS | about 60 s per `process()` call, then killed; 6–11 min back-off after a kill |
 | `ANDROID_EMU` | a device-test APK (or the rig app) on the Android emulator | app-private storage and the Keystore; its KeyMint attests in SOFTWARE under a per-AVD "Google Test LLC" root (measured 2026-09-29), so no hardware attestation |
@@ -1046,8 +1046,9 @@ Behaviour that only hardware shows is **not** asserted by unit tests. Such a tes
 fixture. Instead:
 - **What a host can reach is stated by the contracts' bindings** (their literal reachable-state sets), not
   by smoke tests that call the platform without asserting anything.
-- **Reachable on the simulator app, so asserted live there:** PhotoKit under a full grant, asset and album
-  creation, imports (including Photos accepting a received motion photo, taken apart, as ONE Live Photo:
+- **Reachable on the simulator app, so asserted live there:** PhotoKit under a full grant (and, relaunched,
+  a partial selection, a refusal and an undecided grant: the reads, and the requests iOS answers without
+  asking), asset and album creation, imports (including Photos accepting a received motion photo, taken apart, as ONE Live Photo:
   `LivePhotoImportContract`), and both app-process `URLSession` transports over the default session
   (everything except the background session's lifecycle).
 - **Device-only, reached through recordings replayed on every build:** the upload-job subsystem (recorded
