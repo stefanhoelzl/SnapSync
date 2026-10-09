@@ -6,6 +6,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Layer
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
+import app.snapsync.model.StoreName
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.VersionRefusal
 import app.snapsync.model.captureCeiling
@@ -48,12 +49,19 @@ class VersionGateHostTest {
 
             refusal.value = VersionRefusal("0.4")
 
-            val layer = awaitInternalState().layer
+            val layer = awaitShown().layer
             assertIs<Layer.UpdateRequired>(layer)
             assertEquals("0.4", layer.minimumVersion)
-            assertEquals(STORE_URL, layer.store?.url, "a screen whose only remedy is a link must carry it")
+            assertEquals(StoreName.APP_STORE, layer.store, "a screen whose only remedy is a link names where it leads")
             cancelAndIgnoreRemainingItems()
         }
+    }
+
+    @Test
+    fun `a build that carries no store page offers no store`() = runTest {
+        val refusal = MutableStateFlow<VersionRefusal?>(VersionRefusal("0.4"))
+        val host = gateHost(backgroundScope, refusal, store = null)
+        assertEquals(Layer.UpdateRequired(minimumVersion = "0.4", store = null), host.screen.value.layer)
     }
 
     @Test
@@ -78,10 +86,10 @@ class VersionGateHostTest {
             runOnCreate() // the initial state is the joined layer
 
             refusal.value = VersionRefusal("0.4")
-            assertIs<Layer.UpdateRequired>(awaitInternalState().layer)
+            assertIs<Layer.UpdateRequired>(awaitShown().layer)
 
             refusal.value = null
-            assertIs<Layer.Joined>(awaitInternalState().layer)
+            assertIs<Layer.Joined>(awaitShown().layer)
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -92,7 +100,7 @@ class VersionGateHostTest {
         gateHost(backgroundScope, refusal).testWithInternalState(this) {
             runOnCreate()
             refusal.value = VersionRefusal(null)
-            val layer = awaitInternalState().layer
+            val layer = awaitShown().layer
             assertIs<Layer.UpdateRequired>(layer)
             assertNull(layer.minimumVersion, "no version was sent, so none is claimed")
             cancelAndIgnoreRemainingItems()
@@ -107,7 +115,7 @@ class VersionGateHostTest {
             MutableStateFlow(VersionRefusal("0.4")),
             openLink = { opened += it },
         )
-        assertIs<Layer.UpdateRequired>(host.container.stateFlow.value.layer)
+        assertIs<Layer.UpdateRequired>(host.screen.value.layer)
 
         host.onOpenAppStore().join()
 
@@ -126,7 +134,7 @@ class VersionGateHostTest {
             store = null,
             openLink = { opened += it },
         )
-        assertIs<Layer.UpdateRequired>(host.container.stateFlow.value.layer)
+        assertIs<Layer.UpdateRequired>(host.screen.value.layer)
 
         host.onOpenAppStore().join()
 
@@ -138,7 +146,7 @@ class VersionGateHostTest {
         // A tap that arrives after the refusal cleared — the screen it came from is gone — hands nothing off.
         val opened = mutableListOf<String>()
         val host = gateHost(backgroundScope, openLink = { opened += it })
-        assertIs<Layer.CreateEvent>(host.container.stateFlow.value.layer)
+        assertIs<Layer.CreateEvent>(host.screen.value.layer)
 
         host.onOpenAppStore().join()
 

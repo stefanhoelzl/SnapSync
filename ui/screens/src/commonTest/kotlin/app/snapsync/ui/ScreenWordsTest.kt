@@ -1,8 +1,6 @@
 package app.snapsync.ui
 
 import app.snapsync.model.DirectionCount
-import app.snapsync.model.EventConfig
-import app.snapsync.model.EventDetails
 import app.snapsync.model.EventTiming
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinStage
@@ -10,20 +8,12 @@ import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeForm
 import app.snapsync.model.ReportDestination
-import app.snapsync.model.ResolvedRange
 import app.snapsync.model.ShareCount
-import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreName
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.TimeLeft
 import app.snapsync.model.UiState
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
-import app.snapsync.model.joinPhase
 import app.snapsync.presentation.CoarseDuration
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.EventRange
@@ -175,8 +165,8 @@ class ScreenWordsTest {
 
     @Test
     fun `the update notice's button names the store the build came through`() {
-        assertEquals(Res.string.store_app_store, storeButtonLabel(StoreKind.APP_STORE))
-        assertEquals(Res.string.store_google_play, storeButtonLabel(StoreKind.GOOGLE_PLAY))
+        assertEquals(Res.string.store_app_store, storeButtonLabel(StoreName.APP_STORE))
+        assertEquals(Res.string.store_google_play, storeButtonLabel(StoreName.GOOGLE_PLAY))
     }
 
     // ---- the bug-report sheet -------------------------------------------------------------------------------------
@@ -197,12 +187,12 @@ class ScreenWordsTest {
 
     @Test
     fun `only a loaded switch asks to switch — naming the event it would join`() {
-        val prompt = switchPrompt(joinPhase(JoinPhase.Detailed.Step.Ready, details))!!
+        val prompt = switchPrompt(JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Ready))!!
         assertEquals(listOf(Res.string.switch_body, Res.string.switch_confirm), listOf(prompt.body, prompt.confirm))
         assertEquals(SwitchAct.SWITCH, prompt.act)
         assertEquals("Anna's Birthday", prompt.switchingTo)
         // A commit cannot fail while the previous event is still configured; a commit in flight shows nothing.
-        assertNull(switchPrompt(joinPhase(JoinPhase.Detailed.Step.Committing, details)))
+        assertNull(switchPrompt(JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Committing)))
     }
 
     @Test
@@ -233,12 +223,17 @@ class ScreenWordsTest {
 
     @Test
     fun `the report names the surface with the join phase where there is one and the screen-local surfaces`() {
-        val joined = Layer.Joined(membership = membership, inviteUrl = "https://x/join#k", health = SyncHealth.InSync)
+        val joined = Layer.Joined(
+            membership = membership,
+            inviteUrl = "https://x/join#k",
+            health = SyncHealth.InSync,
+            today = LocalDate(2026, 7, 6),
+        )
         val labels = listOf(
             Layer.JoiningEvent("E", JoinStage.Unloaded(JoinPhase.Loading)),
             joined,
             joined.copy(pendingSwitch = PendingSwitch("F", JoinPhase.LoadFailed)),
-            joined.copy(surface = JoinedSurface.Reconfigure(RangeForm(), range)),
+            joined.copy(surface = JoinedSurface.Reconfigure(range)),
             Layer.CreateEvent(),
             Layer.CreatingEvent,
             Layer.UpdateRequired(),
@@ -270,32 +265,15 @@ class ScreenWordsTest {
 
     private val cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T10:00:00Z") }, zone = TimeZone.UTC)
 
-    private val details = EventDetails(
-        "Anna's Birthday",
-        eventStart("2026-07-06T00:00:00Z"),
-        eventEnd("2026-07-13T00:00:00Z"),
-        deletesAt("2026-08-05T00:00:00Z"),
-    )
-
-    private val membership = EventConfig(
-        eventId = "11111111-1111-4111-8111-111111111111",
+    private val membership = joinedEvent(
         name = "Anna's Birthday",
-        minPhotoDate = captureCutoff("2026-07-06T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
-        endsAt = eventEnd("2026-07-13T00:00:00Z"),
-        deletesAt = deletesAt("2026-08-05T00:00:00Z"),
+        startsAt = LocalDateTime(2026, 7, 6, 0, 0),
+        endsAt = LocalDateTime(2026, 7, 13, 0, 0),
     )
 
-    private val range = ResolvedRange(
-        windowStart = LocalDateTime(2026, 7, 6, 0, 0),
-        windowEnd = LocalDateTime(2026, 7, 13, 0, 0),
-        from = LocalDateTime(2026, 7, 6, 0, 0),
-        until = LocalDateTime(2026, 7, 13, 0, 0),
-        chosenFrom = captureCutoff("2026-07-06T00:00:00Z"),
-        chosenUntil = captureCeiling("2026-07-13T00:00:00Z"),
-        direction = app.snapsync.model.Direction.Both,
-        commitEnabled = true,
-        nowAvailable = true,
-        today = LocalDate(2026, 7, 6),
+    private val range = Choices().over(
+        LocalDateTime(2026, 7, 6, 0, 0),
+        LocalDateTime(2026, 7, 13, 0, 0),
+        now = LocalDateTime(2026, 7, 6, 0, 0),
     )
 }

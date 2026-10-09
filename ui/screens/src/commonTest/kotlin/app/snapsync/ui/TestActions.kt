@@ -25,11 +25,11 @@ internal fun testActions(
     switch: SwitchActions = testSwitchActions(),
     surfaces: SurfaceActions = testSurfaceActions(),
     onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit = { _, _, _ -> },
-    onOpenLink: (String) -> Unit = {},
+    onOpenStore: () -> Unit = {},
     participation: ParticipationActions = testParticipationActions(),
     onSendDiagnostics: (note: String, screen: String) -> Unit = { _, _ -> },
     menu: MenuActions = testMenuActions(onSendDiagnostics = onSendDiagnostics),
-) = StatusActions(join, joined, access, switch, surfaces, onCreateEvent, onOpenLink, participation, menu)
+) = StatusActions(join, joined, access, switch, surfaces, onCreateEvent, onOpenStore, participation, menu)
 
 internal fun testMenuActions(
     onSendDiagnostics: (note: String, screen: String) -> Unit = { _, _ -> },

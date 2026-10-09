@@ -1,7 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.Direction
 import app.snapsync.model.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,7 +35,7 @@ class ReconfigureIntegrationTest {
 
         // Reconfigure IN PLACE to Both — no leave, same eventId.
         user("reconfigure", "direction" to "both")
-        val membership = awaitState { it.joined?.membership?.direction == Direction.Both }.joined!!.membership
+        val membership = awaitState { it.joined?.membership?.let { m -> m.shares && m.receives } == true }.joined!!.membership
         assertEquals(event, membership.eventId, "same membership, never left")
 
         // Now the very same stack uploads the own photo.
@@ -91,7 +90,7 @@ class ReconfigureIntegrationTest {
         // Enqueue an in-flight download, then turn RECEIVE off before it is staged.
         reconcile()
         user("reconfigure", "direction" to "upload")
-        awaitState { it.joined?.membership?.direction == Direction.UploadOnly }
+        awaitState { it.joined?.membership?.let { m -> m.shares && !m.receives } == true }
 
         // The in-flight download was cancelled, so staging imports nothing, and the now-gated reconcile enqueues
         // nothing further.
@@ -120,7 +119,7 @@ class ReconfigureIntegrationTest {
 
         // Neither direction, from the settings, no Save: the member stays in the event and nothing moves.
         user("reconfigure", "direction" to "none")
-        val membership = awaitState { it.joined?.membership?.direction == Direction.Neither }.joined!!.membership
+        val membership = awaitState { it.joined?.membership?.let { m -> !m.shares && !m.receives } == true }.joined!!.membership
         assertEquals(event, membership.eventId, "same membership, never left")
 
         // The next cycle lists nothing: the member's photos are withdrawn from the event.

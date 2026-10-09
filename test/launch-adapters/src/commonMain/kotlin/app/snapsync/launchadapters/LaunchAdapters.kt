@@ -8,9 +8,9 @@ import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockState
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.TemporaryFiles
-import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
+import app.snapsync.model.ProcessingAnswer
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost

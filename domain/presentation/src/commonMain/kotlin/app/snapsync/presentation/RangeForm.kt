@@ -1,8 +1,13 @@
-package app.snapsync.model
+package app.snapsync.presentation
 
+import app.snapsync.model.AlbumKind
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.Direction
+import app.snapsync.model.RangeChoice
+import app.snapsync.model.ShareCount
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import kotlinx.serialization.Serializable
 
 /**
  * A member's **uncommitted choices** on a decision surface — the join gate and the in-place reconfigure ask for the
@@ -27,7 +32,6 @@ import kotlinx.serialization.Serializable
  * [albumKind] is not a choice but the platform's answer: how this phone holds an event album. It decides what the album
  * note says the album collects — on an Android phone, whose album is a folder, only the photos the member receives.
  */
-@Serializable
 data class RangeForm(
     val shareOn: Boolean = true,
     val receiveOn: Boolean = true,
@@ -41,14 +45,13 @@ data class RangeForm(
 )
 
 /**
- * What a [RangeForm] resolves to once the event window is known: what would be committed, and what the
- * surface renders.
+ * What a [RangeForm] resolves to once the event window is known: what would be committed, and — through
+ * [RangeView] — what the surface renders.
  *
  * Wall-clock values rather than formatted strings — the design system owns how a date reads (capability
  * `docs/architecture.md`), and the reduction owns what the date IS. The reduction applies the device's zone when
  * producing these, so a consumer rendering a transported state shows the device's own wall clock.
  */
-@Serializable
 data class ResolvedRange(
     val windowStart: LocalDateTime,
     val windowEnd: LocalDateTime,
@@ -71,19 +74,3 @@ data class ResolvedRange(
      */
     val shareCount: ShareCount = ShareCount.Counting,
 )
-
-/** The live shareable count, as the row renders it. */
-@Serializable
-sealed interface ShareCount {
-    /** Being (re)computed — the row shows `counting…`. */
-    @Serializable
-    data object Counting : ShareCount
-
-    /** No count is available (no usable grant, or the read failed) — the row is omitted entirely. */
-    @Serializable
-    data object Unavailable : ShareCount
-
-    /** The chosen range would share [count] of the member's photos. */
-    @Serializable
-    data class Ready(val count: Int) : ShareCount
-}

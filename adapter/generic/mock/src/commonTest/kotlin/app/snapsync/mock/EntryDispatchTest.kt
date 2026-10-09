@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
-import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.model.LinkDelivery
+import app.snapsync.model.ProcessingAnswer
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UiIntent
 import app.snapsync.model.UploadCreateOutcome

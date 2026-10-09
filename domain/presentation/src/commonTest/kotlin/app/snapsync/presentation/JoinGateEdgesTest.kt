@@ -181,7 +181,11 @@ class JoinGateEdgesTest {
         settle(host(world, backgroundScope).onOpenUrl(autoJoinLink()))
 
         assertTrue("join gate: ignoring the invite-link hints of $EVENT_ID" in world.logged, "logged: ${world.logged}")
-        assertEquals(JoinPhase.Detailed.Step.Ready, world.pending.value?.phase?.step, "the member is asked")
+        assertEquals(
+            JoinPhase.Detailed.Step.Ready,
+            (world.pending.value?.phase as? JoinProgress.Detailed)?.step,
+            "the member is asked",
+        )
         assertTrue(world.commits.isEmpty(), "nothing joined without a tap")
     }
 
@@ -220,7 +224,7 @@ class JoinGateEdgesTest {
         )
 
         settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, key = LINK_KEY))))
-        assertEquals(JoinPhase.LoadFailed, world.pending.value?.phase)
+        assertEquals(JoinProgress.LoadFailed, world.pending.value?.phase)
         settle(host.onRetryLoad())
 
         assertEquals(listOf<String?>(LINK_KEY, LINK_KEY), keys)
@@ -240,7 +244,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a switch confirm before the event's details loaded leaves nothing`() = runTest {
         val world = World(OTHER_MEMBERSHIP)
-        world.pending.value = PendingJoin(EVENT_ID, JoinPhase.Loading)
+        world.pending.value = PendingJoin(EVENT_ID, JoinProgress.Loading)
         val host = host(world, backgroundScope)
         host.onConfirmSwitch()
         graceForAnIntentThatShouldDoNothing()
@@ -289,12 +293,12 @@ class JoinGateEdgesTest {
         val scope = CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job]))
         val opening = host(world, scope).onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
         loading.await()
-        assertEquals(JoinPhase.Loading, world.pending.value?.phase)
+        assertEquals(JoinProgress.Loading, world.pending.value?.phase)
 
         scope.cancel()
         opening.join()
 
-        assertEquals(JoinPhase.Loading, world.pending.value?.phase, "teardown rewrote the gate to a failure")
+        assertEquals(JoinProgress.Loading, world.pending.value?.phase, "teardown rewrote the gate to a failure")
         assertTrue(world.errors.isEmpty(), "teardown was reported as an error: ${world.errors}")
     }
 
@@ -368,7 +372,11 @@ class JoinGateEdgesTest {
         settle(first)
 
         assertEquals(OTHER_EVENT_ID, world.pending.value?.eventId)
-        assertEquals(JoinPhase.Detailed.Step.Ready, world.pending.value?.phase?.step, "the newer link's details stand")
+        assertEquals(
+            JoinPhase.Detailed.Step.Ready,
+            (world.pending.value?.phase as? JoinProgress.Detailed)?.step,
+            "the newer link's details stand",
+        )
     }
 
     @Test
@@ -376,7 +384,7 @@ class JoinGateEdgesTest {
         val world = World().apply { load = { JoinLoad.WrongLink } }
         settle(host(world, backgroundScope).onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
 
-        assertEquals(JoinPhase.WrongLink, world.pending.value?.phase)
+        assertEquals(JoinProgress.WrongLink, world.pending.value?.phase)
     }
 
     // ---- a commit refused for the link, or overtaken ------------------------------------------
@@ -389,7 +397,7 @@ class JoinGateEdgesTest {
 
         settle(host.onConfirmJoin())
 
-        assertEquals(JoinPhase.WrongLink, world.pending.value?.phase)
+        assertEquals(JoinProgress.WrongLink, world.pending.value?.phase)
     }
 
     @Test
@@ -407,7 +415,7 @@ class JoinGateEdgesTest {
         val host = host(world, backgroundScope)
         settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
         settle(host.onConfirmJoin())
-        assertEquals(JoinPhase.Detailed.Step.EventFull, world.pending.value?.phase?.step)
+        assertEquals(JoinPhase.Detailed.Step.EventFull, (world.pending.value?.phase as? JoinProgress.Detailed)?.step)
 
         settle(host.onConfirmJoin())
 
@@ -449,7 +457,11 @@ class JoinGateEdgesTest {
 
                 if (what == "overtaken") {
                     assertEquals(OTHER_EVENT_ID, world.pending.value?.eventId, what)
-                    assertEquals(JoinPhase.Detailed.Step.Ready, world.pending.value?.phase?.step, what)
+                    assertEquals(
+                        JoinPhase.Detailed.Step.Ready,
+                        (world.pending.value?.phase as? JoinProgress.Detailed)?.step,
+                        what,
+                    )
                 } else {
                     assertNull(world.pending.value, what)
                 }

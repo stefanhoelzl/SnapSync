@@ -1,7 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.Direction
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.step
@@ -44,7 +43,7 @@ class JoinGateIntegrationTest {
         // `RangeResolutionTest` owns those.
         val gate = awaitState { it.readyGate() != null }.ui.layer as Layer.JoiningEvent
         assertEquals(event, gate.eventId)
-        assertEquals("Anna's Wedding", (gate.phase as JoinPhase.Detailed).event.name)
+        assertEquals("Anna's Wedding", (gate.phase as JoinPhase.Detailed).eventName)
 
         join() // config flipped present → joined layer
 
@@ -139,8 +138,8 @@ class JoinGateIntegrationTest {
         val membership = awaitState { it.ready.eventId == next }.joined!!.membership
 
         assertEquals(next, membership.eventId) // switched
-        assertEquals(Direction.DownloadOnly, membership.direction) // the member's direction, not Both
-        assertEquals(true, membership.saveToAlbum) // the member's album opt-in
+        assertEquals(false to true, membership.shares to membership.receives) // the member's direction, not Both
+        assertEquals(true, membership.savesToAlbum) // the member's album opt-in
         assertNotNull(manifest(next), "enrolled in the new event")
         eventually<Boolean>(read = { departed(current) }) { it } // and departed the old
     }
@@ -227,7 +226,7 @@ class JoinGateIntegrationTest {
         // Touch nothing — confirm the surface exactly as it loaded.
         join()
 
-        assertEquals(true, state().joined!!.membership.saveToAlbum)
+        assertEquals(true, state().joined!!.membership.savesToAlbum)
     }
 
     @Test
@@ -242,7 +241,7 @@ class JoinGateIntegrationTest {
         // The headless path does NOT inherit the surface's seeds wholesale: the cutoff and direction mirror them,
         // but the album stays off unless the link says otherwise. A default-on here
         // would have every dev/test launch write an album.
-        assertEquals(false, membership.saveToAlbum)
+        assertEquals(false, membership.savesToAlbum)
     }
 
     @Test
@@ -282,12 +281,13 @@ class JoinGateIntegrationTest {
         val event = registerEvent(name = "Anna's Wedding")
 
         openLink(inviteLink(event, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"))
-        val membership = awaitState { it.ready.eventId == event }.joined!!.membership
+        val joined = awaitState { it.ready.eventId == event }
+        val membership = joined.joined!!.membership
 
-        assertEquals(membership.startsAt.at, membership.minPhotoDate.at, "the 2001 cutoff must not survive the clamp")
-        assertTrue(!membership.minPhotoDate.at.iso.startsWith("2001"))
+        assertEquals(membership.startsAt, membership.sharesFrom, "the 2001 cutoff must not survive the clamp")
+        assertTrue(joined.ready.minPhotoDate?.startsWith("2001") == false)
         assertTrue(
-            membership.minPhotoDate.at >= membership.startsAt.at,
+            membership.sharesFrom >= membership.startsAt,
             "the floor invariant holds for every reachable membership",
         )
     }

@@ -1,12 +1,12 @@
 package app.snapsync.mock
 
 import app.snapsync.model.BeforeListen
-import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.model.PlatformError
+import app.snapsync.model.ProcessingAnswer
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
 import app.snapsync.model.UiIntent

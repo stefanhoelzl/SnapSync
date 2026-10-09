@@ -131,7 +131,7 @@ fun snapSyncHost(
         )
         // The platform's UI is shown every state the host reduces, from assembly on. `show` only hands the state over:
         // the adapter renders it on its own main thread.
-        scope.launch { host.container.stateFlow.collect(ports.ui::show) }
+        scope.launch { host.screen.collect(ports.ui::show) }
         host
     }
     // A minted event routes into the host's join gate, so create and a scanned QR take one gate: collected from
@@ -170,7 +170,7 @@ private fun listenToEntries(composed: ComposedApp, process: ProcessServices, por
             onIntent = { intent -> composed.host.onIntent(intent) },
             // Idempotent: the host is assembled once; each live screen is shown its current state before its first
             // frame, so no screen ever renders an empty one.
-            onLive = { ports.ui.show(composed.host.container.stateFlow.value) },
+            onLive = { ports.ui.show(composed.host.screen.value) },
         ),
     )
 }

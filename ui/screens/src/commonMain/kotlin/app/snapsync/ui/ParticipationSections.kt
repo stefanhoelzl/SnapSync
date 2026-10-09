@@ -2,10 +2,9 @@ package app.snapsync.ui
 
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumStyle
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeForm
-import app.snapsync.model.ResolvedRange
+import app.snapsync.model.RangeView
 import app.snapsync.model.ShareCount
 import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppShareRangeRow
@@ -104,7 +103,7 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
         actions = actions.choices,
         window = state.window,
         rangeLabel = state.rangeLabel,
-        detail = shareDetail(state.form.preset, state.range.shareCount).text(),
+        detail = shareDetail(state.range.preset, state.range.shareCount).text(),
     )
     // A zero count carries a forward gloss so it does not read as broken.
     if (state.range.shareCount == ShareCount.Ready(0)) {
@@ -139,19 +138,18 @@ internal fun shareDetail(preset: RangeChoice, count: ShareCount): Phrase {
 
 /**
  * What the participation surface displays — built from the reduced state, never from state the screen
- * holds. [form] is what the member has chosen; [range] is what that resolves to against the event window.
+ * holds: [range] is what the member has chosen and the range it makes against the event window.
  */
 class ParticipationState(
-    val form: RangeForm,
-    val range: ResolvedRange,
+    val range: RangeView,
     /** The resolved range as one readable label — the surface's single statement of what will be shared. */
     val rangeLabel: String,
 ) {
-    val shareOn: Boolean get() = form.shareOn
-    val receiveOn: Boolean get() = form.receiveOn
-    val saveToAlbum: Boolean get() = form.saveToAlbum
-    val albumKind: AlbumKind get() = form.albumKind
-    val choices: RangeChoices get() = RangeChoices(form.preset, range.from, range.until)
+    val shareOn: Boolean get() = range.shareOn
+    val receiveOn: Boolean get() = range.receiveOn
+    val saveToAlbum: Boolean get() = range.saveToAlbum
+    val albumStyle: AlbumStyle get() = range.albumStyle
+    val choices: RangeChoices get() = RangeChoices(range.preset, range.from, range.until)
     val window: RangeWindow get() = RangeWindow(range.windowStart, range.windowEnd, range.nowAvailable, range.today)
 }
 

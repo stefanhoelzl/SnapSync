@@ -81,7 +81,7 @@ class KeyLostTest {
             cancelAndIgnoreRemainingItems()
         }
 
-    private fun StatusContainerHost.health(): SyncHealth = (container.stateFlow.value.layer as Layer.Joined).health
+    private fun StatusContainerHost.health(): SyncHealth = (screen.value.layer as Layer.Joined).health
 
     @Test
     fun `a lost key is the status line`() = runTest {
@@ -115,7 +115,7 @@ class KeyLostTest {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)))
             runCurrent()
             assertEquals(listOf(LINK_KEY), restored)
-            assertEquals(null, (host.container.stateFlow.value.layer as Layer.Joined).pendingSwitch, "no join screen")
+            assertEquals(null, (host.screen.value.layer as Layer.Joined).pendingSwitch, "no join screen")
         }
     }
 
@@ -172,7 +172,7 @@ class KeyLostTest {
             diagnostics = testDiagnostics(),
         )
         driving(host) {
-            val joined = { host.container.stateFlow.value.layer as Layer.Joined }
+            val joined = { host.screen.value.layer as Layer.Joined }
             assertEquals(
                 encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)),
                 joined().inviteUrl,
@@ -183,7 +183,7 @@ class KeyLostTest {
             inviteKey.value = null
             runCurrent()
             assertNull(joined().inviteUrl, "an encrypted event's invite is never offered without its key")
-            assertFalse(host.container.stateFlow.value.overlays.showingQr, "a shown QR closes")
+            assertFalse(host.screen.value.overlays.showingQr, "a shown QR closes")
             host.onShareInvite()
             runCurrent()
             assertEquals(emptyList(), shared, "nothing is shared")

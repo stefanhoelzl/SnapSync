@@ -9,9 +9,9 @@ import app.snapsync.ios.upload.callsFor
 import app.snapsync.ios.upload.extensionTransferClauses
 import app.snapsync.ios.upload.transferRunStep
 import app.snapsync.logging.appGroupDirectory
+import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
-import app.snapsync.ports.ProcessingAnswer
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

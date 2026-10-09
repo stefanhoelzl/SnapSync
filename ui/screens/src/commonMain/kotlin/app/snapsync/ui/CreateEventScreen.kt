@@ -23,7 +23,7 @@ import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.Layer
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.ScreenMessage
-import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreName
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppEventRangePicker
@@ -277,7 +277,7 @@ internal fun CreatingEventScreen() {
  * is worse than no button on the screen a member reaches because something is already wrong.
  */
 @Composable
-internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenLink: (String) -> Unit) {
+internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenStore: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
         // Its OWN eyebrow. Reaching for `AppEventHeaderHost` here put "HOST AN EVENT" above this screen
         // on a real device — a surface borrowing another's verb, which no state assertion could see.
@@ -304,14 +304,14 @@ internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenLink: (Stri
         }
         layer.store?.let { store ->
             Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-                PrimaryButton(label = stringResource(storeButtonLabel(store.kind)), onClick = { onOpenLink(store.url) })
+                PrimaryButton(label = stringResource(storeButtonLabel(store)), onClick = onOpenStore)
             }
         }
     }
 }
 
 /** The update notice's one button names the store it opens — the one the build is distributed through. */
-internal fun storeButtonLabel(kind: StoreKind): StringResource = when (kind) {
-    StoreKind.APP_STORE -> Res.string.store_app_store
-    StoreKind.GOOGLE_PLAY -> Res.string.store_google_play
+internal fun storeButtonLabel(store: StoreName): StringResource = when (store) {
+    StoreName.APP_STORE -> Res.string.store_app_store
+    StoreName.GOOGLE_PLAY -> Res.string.store_google_play
 }

@@ -44,9 +44,9 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
         onCancelSwitch = { dispatch(UiIntent.CancelSwitch) },
     ),
     onCreateEvent = { name, startsAt, endsAt -> dispatch(UiIntent.CreateEvent(name, startsAt, endsAt)) },
-    // The store button's URL is read from state by the container, so the argument the screen
-    // passes is not needed; a state holding no store URL makes the intent inert.
-    onOpenLink = { dispatch(UiIntent.OpenAppStore) },
+    // The store page is the build's, opened by the container; a state that names
+    // no store makes the intent inert.
+    onOpenStore = { dispatch(UiIntent.OpenAppStore) },
     participation = ParticipationActions(
         choices = RangeChoiceActions(
             onPreset = { dispatch(UiIntent.RangePreset(it)) },

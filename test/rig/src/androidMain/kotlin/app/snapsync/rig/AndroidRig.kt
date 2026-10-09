@@ -176,7 +176,7 @@ private fun AndroidRigLaunch.hooks(
             excluded = emptyMap(),
         ),
     ),
-    userCommands = userCommands(dispatch = ui::dispatch, state = { host().container.stateFlow.value }),
+    userCommands = userCommands(dispatch = ui::dispatch, state = { host().screen.value }),
     excludedUserCommands = excludedUserCommands(),
     deviceCommands = world.honouredLevers() + adapterCommands(this) + mapOf(
         "reset" to resetCommand(reset = controls::reset),

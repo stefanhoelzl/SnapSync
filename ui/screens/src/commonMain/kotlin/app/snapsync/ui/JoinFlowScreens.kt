@@ -107,7 +107,7 @@ internal fun JoiningEventScreen(
                             onCancel = actions.onCancel,
                         ),
                     )
-                    JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = stage.phase.event.name)
+                    JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = stage.phase.eventName)
                     // Every way a commit can end badly, on ONE surface — see [BlockedStep].
                     JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.EventFull,
                     JoinPhase.Detailed.Step.DeviceRefused,
@@ -148,7 +148,7 @@ private fun BlockedStep(phase: JoinPhase.Detailed, actions: JoinActions, online:
     }
     PhaseScaffold(
         body = {
-            AppEventHeaderCompact(title = phase.event.name)
+            AppEventHeaderCompact(title = phase.eventName)
             CenteredBody {
                 AppNoticeCard(icon = JoinNoticeFailed, title = title, body = body)
             }
@@ -298,12 +298,8 @@ private fun readyState(
 ): ReadyState {
     val range = stage.range
     return ReadyState(
-        eventName = stage.phase.event.name,
-        // The switches come off the FORM, never back off `range.direction`: `directionOf` collapses both-off
-        // to `DownloadOnly` as an inert placeholder, so deriving them there would render the receive switch
-        // ON for a member who had turned both off.
+        eventName = stage.phase.eventName,
         participation = ParticipationState(
-            form = layer.form,
             range = range,
             rangeLabel = appRangeLabel(range.from, range.until),
         ),

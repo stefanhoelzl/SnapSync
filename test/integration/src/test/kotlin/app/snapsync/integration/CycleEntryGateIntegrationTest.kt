@@ -106,8 +106,8 @@ class CycleEntryGateIntegrationTest {
         // A real leave: the config is definitively gone, and readable.
         leave()
         addPhoto("B")
-        // SKIPPED: with no membership the app engine's pump must not re-arm a heartbeat for no event.
-        assertEquals("skipped", cycle())
+        // Declined, so the system is told to rest: with no membership nothing re-arms a wake for no event.
+        assertEquals("completed", cycle())
 
         assertEquals(created, jobs().created, "a device that left uploads nothing")
     }

@@ -12,8 +12,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.ResolvedRange
+import app.snapsync.model.AlbumStyle
+import app.snapsync.model.RangeView
 import app.snapsync.ui.components.AppAccessNotice
 import app.snapsync.ui.components.AppAccessPoint
 import app.snapsync.ui.components.AppEventHeaderCompact
@@ -181,8 +181,8 @@ private fun joinAlbumNote(participation: ParticipationState): String = with(part
     stringResource(
         when {
             !saveToAlbum -> Res.string.album_none
-            albumKind == AlbumKind.FOLDER && receiveOn -> Res.string.album_folder_receive
-            albumKind == AlbumKind.FOLDER -> Res.string.album_folder_nothing
+            albumStyle == AlbumStyle.FOLDER && receiveOn -> Res.string.album_folder_receive
+            albumStyle == AlbumStyle.FOLDER -> Res.string.album_folder_nothing
             shareOn && receiveOn -> Res.string.album_share_and_receive
             shareOn -> Res.string.album_share
             receiveOn -> Res.string.album_receive
@@ -203,7 +203,7 @@ internal class ReadyState(
     val online: Boolean = true,
 ) {
     /** The join button is enabled on the same rule the reduction commits on. */
-    val range: ResolvedRange get() = participation.range
+    val range: RangeView get() = participation.range
 }
 
 /**

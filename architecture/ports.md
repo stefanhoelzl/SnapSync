@@ -88,6 +88,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound, WrongLink | no |
 | `JoinPhase` | `:domain:model` | `:domain:model` Detailed | no |
+| `JoinProgress` | `:domain:presentation` | `:domain:presentation` Closed, Detailed, LoadFailed, Loading, NotFound, WrongLink | no |
 | `JoinStage` | `:domain:model` | `:domain:model` Loaded, Unloaded | no |
 | `JoinedSurface` | `:domain:model` | `:domain:model` Reconfigure, Status | no |
 | `Layer` | `:domain:model` | `:domain:model` CreateEvent, CreatingEvent, Joined, JoiningEvent, UpdateRequired | no |

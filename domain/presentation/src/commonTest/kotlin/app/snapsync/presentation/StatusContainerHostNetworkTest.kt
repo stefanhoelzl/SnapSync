@@ -102,7 +102,7 @@ class StatusContainerHostNetworkTest {
             cancelAndIgnoreRemainingItems()
         }
 
-    private fun StatusContainerHost.health(): SyncHealth = (container.stateFlow.value.layer as Layer.Joined).health
+    private fun StatusContainerHost.health(): SyncHealth = (screen.value.layer as Layer.Joined).health
 
     // ── the joined status line ───────────────────────────────────────────────────────────────
 
@@ -119,7 +119,7 @@ class StatusContainerHostNetworkTest {
     @Test
     fun `missing access outranks a missing network`() = runTest {
         val host = host(FakeNetwork(NetworkAccess.Offline), permission = GalleryAccess.DENIED)
-        assertEquals(SyncHealth.NeedsAccess(GalleryAccess.DENIED), host.health())
+        assertEquals(SyncHealth.NeedsAccess(canAsk = false), host.health())
     }
 
     @Test
@@ -187,7 +187,7 @@ class StatusContainerHostNetworkTest {
         assertTrue(health is SyncHealth.Syncing, "an upload still under way is progress, not \"not sharing\": $health")
         // …and with nothing left, the line says the member moves nothing — with no counts beneath it.
         val settled = host(FakeNetwork(), config = STARTED.copy(direction = Direction.Neither))
-        assertEquals(null, (settled.container.stateFlow.value.layer as Layer.Joined).counts)
+        assertEquals(null, (settled.screen.value.layer as Layer.Joined).counts)
     }
 
     // ── photos kept off mobile data (capability `mobile-data`) ────────────────────────────────
@@ -218,7 +218,7 @@ class StatusContainerHostNetworkTest {
     fun `offline the create layer carries the notice`() = runTest {
         assertEquals(
             Layer.CreateEvent(network = NetworkNotice.OFFLINE),
-            host(FakeNetwork(NetworkAccess.Offline), config = null).container.stateFlow.value.layer,
+            host(FakeNetwork(NetworkAccess.Offline), config = null).screen.value.layer,
         )
     }
 
@@ -229,11 +229,11 @@ class StatusContainerHostNetworkTest {
         driving(host) {
             assertEquals(
                 Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED, network = NetworkNotice.OFFLINE),
-                host.container.stateFlow.value.layer,
+                host.screen.value.layer,
             )
             network.comeBack()
             runCurrent()
-            assertEquals(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED), host.container.stateFlow.value.layer)
+            assertEquals(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED), host.screen.value.layer)
         }
     }
 
@@ -245,7 +245,7 @@ class StatusContainerHostNetworkTest {
                 FakeNetwork(NetworkAccess.Offline),
                 config = null,
                 creation = CreationStatus.InFlight,
-            ).container.stateFlow.value.layer,
+            ).screen.value.layer,
         )
     }
 
@@ -259,13 +259,13 @@ class StatusContainerHostNetworkTest {
         driving(host) {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
             runCurrent()
-            val offline = assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer)
+            val offline = assertIs<Layer.JoiningEvent>(host.screen.value.layer)
             assertEquals(JoinPhase.LoadFailed, offline.phase)
             assertEquals(NetworkNotice.OFFLINE, offline.network)
 
             network.comeBack()
             runCurrent()
-            val loaded = assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer)
+            val loaded = assertIs<Layer.JoiningEvent>(host.screen.value.layer)
             assertIs<JoinPhase.Detailed>(loaded.phase, "the details loaded without a tap")
             assertEquals(null, loaded.network)
             assertEquals(2, loads)
@@ -283,7 +283,7 @@ class StatusContainerHostNetworkTest {
         driving(host) {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
             runCurrent()
-            assertEquals(JoinPhase.LoadFailed, assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer).phase)
+            assertEquals(JoinPhase.LoadFailed, assertIs<Layer.JoiningEvent>(host.screen.value.layer).phase)
             network.access.value = NetworkAccess.Online(restricted = false) // no return: nothing was missing
             runCurrent()
             assertEquals(1, loads, "an unreachable server is retried by the member, not by the network watch")
@@ -299,7 +299,7 @@ class StatusContainerHostNetworkTest {
             runCurrent()
             network.access.value = NetworkAccess.Blocked
             runCurrent()
-            val layer = assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer)
+            val layer = assertIs<Layer.JoiningEvent>(host.screen.value.layer)
             assertIs<JoinPhase.Detailed>(layer.phase)
             assertEquals(NetworkNotice.BLOCKED, layer.network)
         }

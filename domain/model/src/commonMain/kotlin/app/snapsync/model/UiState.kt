@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.Serializable
 
 /**
@@ -141,15 +143,11 @@ sealed interface Layer {
          */
         val minimumVersion: String? = null,
         /**
-         * The build's store page — the App Store on iPhone, Google Play on Android — or `null` when this build
-         * carries none (an Android build before the Play listing is public).
-         *
-         * Carried rather than composed, and null rather than derived from the bundle id, because the
-         * country-less form of that URL is measurably a **404** while availability is limited to one
-         * storefront — an offer that looks right and lands nowhere, on the one screen the user reaches
-         * because something is already wrong. `null` renders no button.
+         * The store whose page the button opens — the App Store on iPhone, Google Play on Android — or `null` when
+         * this build carries no store page (an Android build before the Play listing is public), which renders no
+         * button. The page itself is the build's, opened by the tap's intent; the screen only names the store.
          */
-        val store: StoreLink? = null,
+        val store: StoreName? = null,
     ) : Layer
 
     /**
@@ -188,10 +186,8 @@ sealed interface Layer {
     @Serializable
     data class JoiningEvent(
         val eventId: String,
-        /** Where the confirmation stands, and — once the details are loaded — the range a confirm would commit. */
+        /** Where the confirmation stands, and — once the details are loaded — the choices and the range they make. */
         val stage: JoinStage,
-        /** The member's uncommitted choices on this surface. Seeded when the details load. */
-        val form: RangeForm = RangeForm(),
         /**
          * A transient, self-clearing notice over the join surface — the rejected-event-link message, the same cell
          * [Joined.notice] and [CreateEvent.error] read: a bad link is rejected wherever it arrives, so the message
@@ -212,8 +208,8 @@ sealed interface Layer {
     ) : Layer {
         val phase: JoinPhase get() = stage.phase
 
-        /** [form] resolved against the loaded event's window, or `null` before there is one. */
-        val range: ResolvedRange? get() = (stage as? JoinStage.Loaded)?.range
+        /** The member's choices and the range they make, or `null` before the details are loaded. */
+        val range: RangeView? get() = (stage as? JoinStage.Loaded)?.range
     }
 
     /**
@@ -224,16 +220,15 @@ sealed interface Layer {
     @Serializable
     data class Joined(
         /**
-         * The persisted membership — **non-null**, because the reduction reaches this state only when config is
-         * present. A nullable one would state a combination the reduction makes unreachable and force the screen to
-         * re-check it. Every joined surface reads the event's name, id and settings from here; there is no second
-         * event-name value beside it.
+         * The membership as the joined screen states it — **non-null**, because the reduction reaches this state only
+         * when config is present. Every joined surface reads the event's name, id, dates
+         * and settings from here; there is no second event-name value beside it.
          */
-        val membership: EventConfig,
+        val membership: JoinedEvent,
         /**
-         * The invite link, derived **once** here from [membership]'s `eventId`, so the rendered QR and the shared link
-         * cannot disagree. Carried rather than re-derived at each render site: the derivation depends on a build-time
-         * link origin, so carrying it is what makes a transported state render the origin the device actually shows.
+         * The invite link, derived **once** from the membership's event id, so the rendered QR and the shared link cannot disagree. Carried rather than
+         * re-derived at each render site: the derivation depends on a build-time link origin, so carrying
+         * it is what makes a transported state render the origin the device actually shows.
          *
          * `null` when there is no whole invite to offer: the event is encrypted and this device cannot read its key
          * (lost, or locked since the phone started) — an invite is never offered without its key, so neither the share
@@ -241,14 +236,15 @@ sealed interface Layer {
          */
         val inviteUrl: String?,
         val health: SyncHealth,
+        /** The device's today — how the dates line words a range ("today, …") — reduced from the host's clock. */
+        val today: LocalDate,
         val pendingSwitch: PendingSwitch? = null,
         /** The joined layer offers "Choose more photos" — true exactly under a partial grant: a resting
          *  affordance, never an attention state. */
         val canChoosePhotos: Boolean = false,
         /**
-         * Where the event is in its life — the dates line's "starts in …" / "ends in …" / "ended". The range itself is
-         * [membership]'s `startsAt`/`endsAt`; this is only the part that needs a clock, reduced from the host's minute
-         * tick so the screen never reads one.
+         * Where the event is in its life — the dates line's "starts in …" / "ends in …" / "ended". The range itself is [membership]'s [JoinedEvent.startsAt]/[JoinedEvent.endsAt]; this is only the part that
+         * needs a clock, reduced from the host's minute tick so the screen never reads one.
          */
         val timing: EventTiming = EventTiming.Running(remaining = null),
         /**
@@ -292,7 +288,7 @@ sealed interface Layer {
          * member's own part is in sync — how many of the event's current members it is still waiting for to finish
          * sharing. `null` hides it.
          */
-        val waiting: MemberCounts? = null,
+        val waiting: Waiting? = null,
     ) : Layer {
         /** The event's declared end has passed (`now > endsAt`). Informational only: sync continues. */
         val ended: Boolean get() = timing == EventTiming.Ended
@@ -338,8 +334,8 @@ sealed interface JoinedSurface {
      */
     @Serializable
     data class Reconfigure(
-        val form: RangeForm,
-        val range: ResolvedRange,
+        /** The membership in effect, as the controls show it. */
+        val range: RangeView,
         /** The last change did not land: the controls show the setting still in effect, and the settings say so. */
         val saveFailed: Boolean = false,
         /** A change that would withdraw photos (sharing off, a narrower range) waits on "Stop sharing these photos?". */
@@ -359,61 +355,42 @@ sealed interface JoinedSurface {
 data class PendingSwitch(val eventId: String, val phase: JoinPhase)
 
 /**
- * The event facts a join confirmation renders and commits.
+ * The phase of a join/switch confirmation surface, as the screen shows it. The details
+ * fetch gates the confirm; the commit (enroll → provision) follows on confirm.
  *
- * Stated ONCE per confirmation rather than repeated on each phase that needs them. They used to be four
- * fields declared on four separate phases — sixteen declarations of four facts — because a Retry commits
- * WITHOUT passing back through the loaded phase, so every phase that could precede a commit had to carry
- * them. Giving them a home ends that: the phases that have details hold this, the phases that have none
- * hold nothing, and no phase restates another's fields.
- *
- * [startsAt] is the event's **start date** — already a canonical UTC `…Z` string (`BackendEventDirectory` normalizes it
- * and fails the load rather than invent one). It is both the range row's lower **default** and its **floor**: the row
- * cannot be empty and the confirm cannot join below it, so joining at whole-library scope is unrepresentable. It also
- * decides whether "From now" is offered — when it is in the **future**, that preset would clamp to this same instant.
- *
- * [endsAt] is the event's **end date** — the range row's upper **default** and its **ceiling**.
- *
- * [deletesAt] is the event's **retention deadline** — **server-derived** and carried verbatim. The commit persists it
- * as the offline witness of the self-leave. It is never computed on the device: a client-side copy of the retention
- * constant would promise a date the backend will not honour, silently.
- */
-@Serializable
-data class EventDetails(
-    val name: String,
-    val startsAt: EventStart,
-    val endsAt: EventEnd,
-    val deletesAt: DeletesAt,
-)
-
-/**
- * The phase of a join/switch confirmation surface. The details fetch gates the confirm; the commit (enroll → provision)
- * follows on confirm.
- *
- * Four phases carry no event: the fetch has not resolved ([Loading]), or there is nothing to be invited
- * to ([NotFound] / [LoadFailed] / [Closed]). Every other phase is a [Detailed] — details plus which step of the
- * confirmation is showing — so **a step that renders or commits the event's facts cannot be constructed
- * without them.** A flat nullable field would have removed the same duplication while making
- * `Ready`-without-details representable; that trades a type guarantee for tidiness, which is the wrong
- * direction.
+ * Five phases carry no event: the fetch has not resolved ([Loading]), or there is nothing to be invited
+ * to ([NotFound] / [LoadFailed] / [Closed] / [WrongLink]). Every other phase is a [Detailed] — the event's name plus
+ * which step of the confirmation is showing — so a step that renders the event cannot be constructed without it.
  */
 @Serializable
 sealed interface JoinPhase {
+    /**
+     * The phase's name in a bug report's screen label (`JoiningEvent:<name>`, `Switch:<name>`) — stated, so renaming a
+     * case cannot quietly change what reports say.
+     */
+    val screenName: String
+
     /** A phase that carries no event: the details are not loaded, or there is nothing to load. */
     @Serializable
     sealed interface Eventless : JoinPhase
 
     /** Fetching `GET /event/:id` details ("Loading event details…"). */
     @Serializable
-    data object Loading : Eventless
+    data object Loading : Eventless {
+        override val screenName: String get() = "Loading"
+    }
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
     @Serializable
-    data object NotFound : Eventless
+    data object NotFound : Eventless {
+        override val screenName: String get() = "NotFound"
+    }
 
     /** The details fetch failed transiently (network/5xx); a Retry re-runs it. */
     @Serializable
-    data object LoadFailed : Eventless
+    data object LoadFailed : Eventless {
+        override val screenName: String get() = "LoadFailed"
+    }
 
     /**
      * The event has closed, or finished and its photos were deleted (a closed or finished event cannot be joined) — at
@@ -421,7 +398,9 @@ sealed interface JoinPhase {
      * succeed.
      */
     @Serializable
-    data object Closed : Eventless
+    data object Closed : Eventless {
+        override val screenName: String get() = "Closed"
+    }
 
     /**
      * The invite link does not open this event: the event is encrypted and the link carried no key, or another one
@@ -429,17 +408,16 @@ sealed interface JoinPhase {
      * opening the whole invite again, which no Retry of this one can do.
      */
     @Serializable
-    data object WrongLink : Eventless
+    data object WrongLink : Eventless {
+        override val screenName: String get() = "WrongLink"
+    }
 
     /**
-     * Details loaded: [event] is what was fetched, [step] is where in the confirmation the member is.
-     *
-     * The step advances by user action only — the details never change under it, which is exactly why
-     * they sit beside it rather than inside it.
+     * Details loaded: [eventName] is the fetched event's name, [step] is where in the confirmation the member is.
      */
     @Serializable
     data class Detailed(
-        val event: EventDetails,
+        val eventName: String,
         val step: Step,
         /**
          * Why the service refused this phone, on [Step.DeviceRefused] only — captured when the join was refused, so a
@@ -448,6 +426,8 @@ sealed interface JoinPhase {
          */
         val refusal: ScreenMessage? = null,
     ) : JoinPhase {
+        override val screenName: String get() = "Detailed"
+
         /**
          * Where a loaded confirmation stands.
          *
@@ -455,13 +435,12 @@ sealed interface JoinPhase {
          * - [Committing] — the confirm was taken; enroll + provision are in flight.
          * - [CommitFailed] — the commit failed for a reason that may not hold next time (the network,
          *   the backend, the moment), or a switch's join failed after leaving; a Retry re-runs the join.
-         *   The retry commits **without** passing back through [Ready], which is why the details live on
-         *   [Detailed] rather than on the loaded step alone.
-         * - [EventFull] — the event is at capacity. A SEPARATE step from [CommitFailed], and the difference is the
-         *   whole reason it exists: capacity does not heal, so this step offers **no Retry**. It used to be collapsed
-         *   into [CommitFailed], which pinned a Retry button on a wall — the member could press it forever, and nothing
-         *   on the screen said what the wall was. Cancel is the only action, and it is a real one: it discards the
-         *   pending join and returns to the front door.
+         * - [EventFull] — the event is at capacity. A SEPARATE step from
+         *   [CommitFailed], and the difference is the whole reason it exists: capacity does not heal, so
+         *   this step offers **no Retry**. It used to be collapsed into [CommitFailed], which pinned a
+         *   Retry button on a wall — the member could press it forever, and nothing on the screen said
+         *   what the wall was. Cancel is the only action, and it is a real one: it discards the pending
+         *   join and returns to the front door.
          * - [DeviceRefused] — the service refused this phone as not genuine, and [refusal] says why. Unlike
          *   [EventFull] it keeps the Retry: a Retry tries to verify the phone again first, and a refusal the service
          *   stops making heals there. It is never shown as the generic [CommitFailed].
@@ -472,10 +451,10 @@ sealed interface JoinPhase {
 }
 
 /**
- * The join surface's stage: a phase with no event, or a [JoinPhase.Detailed] TOGETHER WITH the range its form resolves
- * to against the loaded window — so a surface that renders or commits the range cannot be constructed without one. The
- * range is not part of the phase because the phase is also the pending join's own record, where a range resolved from
- * the form and the share count would be stale.
+ * The join surface's stage: a phase with no event, or a [JoinPhase.Detailed] TOGETHER WITH
+ * the member's choices and the range they make against the loaded window — so a surface that renders the range cannot
+ * be constructed without one. The range is not part of the phase because a pending switch shows the same phase with
+ * no range.
  */
 @Serializable
 sealed interface JoinStage {
@@ -485,18 +464,11 @@ sealed interface JoinStage {
     data class Unloaded(override val phase: JoinPhase.Eventless) : JoinStage
 
     @Serializable
-    data class Loaded(override val phase: JoinPhase.Detailed, val range: ResolvedRange) : JoinStage
+    data class Loaded(override val phase: JoinPhase.Detailed, val range: RangeView) : JoinStage
 }
-
-/** The loaded event facts, or `null` on the three phases that carry none. */
-val JoinPhase.details: EventDetails? get() = (this as? JoinPhase.Detailed)?.event
 
 /** Where a loaded confirmation stands, or `null` on the three phases that are not loaded. */
 val JoinPhase.step: JoinPhase.Detailed.Step? get() = (this as? JoinPhase.Detailed)?.step
-
-/** A loaded phase at [step], built from [details] — the shape every construction site takes. */
-fun joinPhase(step: JoinPhase.Detailed.Step, details: EventDetails): JoinPhase.Detailed =
-    JoinPhase.Detailed(details, step)
 
 /**
  * The joined-layer one-line health, the sole thing the status line renders. There is no standalone
@@ -506,12 +478,12 @@ fun joinPhase(step: JoinPhase.Detailed.Step, details: EventDetails): JoinPhase.D
 @Serializable
 sealed interface SyncHealth {
     /**
-     * Permission is not `GRANTED` while an event is connected. [permission] is `NOT_DETERMINED`
-     * (never asked → tapping the status line requests it) or `DENIED` (tapping opens Settings). The
-     * only health that carries a background. Sharing the invite still works with no access.
+     * The app has no usable photo access while an event is connected. [canAsk]: access was never asked, so tapping
+     * the status line raises the system's dialog; otherwise it was refused, and tapping opens Settings. The only
+     * health that carries a background. Sharing the invite still works with no access.
      */
     @Serializable
-    data class NeedsAccess(val permission: GalleryAccess) : SyncHealth
+    data class NeedsAccess(val canAsk: Boolean) : SyncHealth
 
     /**
      * The device gives the app no usable network. Second in the ladder: below [NeedsAccess] — access decides what is
@@ -559,7 +531,7 @@ sealed interface SyncHealth {
      * the cause. `null` — no answer, an expired proof that could not be renewed — names none.
      */
     @Serializable
-    data class Unattested(val refusal: DeviceRefusal? = null) : SyncHealth
+    data class Unattested(val refusal: RefusalCause? = null) : SyncHealth
 
     /** Joined, permission granted, but persisted state has not been read yet — a neutral first frame. */
     @Serializable
@@ -666,4 +638,94 @@ enum class ScreenMessage {
             DeviceRefusal.APP_NOT_GENUINE -> APP_NOT_GENUINE
         }
     }
+}
+
+/**
+ * The joined membership as the joined screen states it (capability `sync-status`): its name and id, its dates and the
+ * member's own range — each a moment already in the device's zone — and what the member chose to do.
+ */
+@Serializable
+data class JoinedEvent(
+    val eventId: String,
+    val name: String,
+    /** The event's declared start and end. */
+    val startsAt: LocalDateTime,
+    val endsAt: LocalDateTime,
+    /** The member's own capture-date range: which of their photos the event takes. */
+    val sharesFrom: LocalDateTime,
+    val sharesUntil: LocalDateTime,
+    /** The member shares their photos into the event. */
+    val shares: Boolean,
+    /** The member receives everyone else's photos. */
+    val receives: Boolean,
+    /** Received photos are collected into the event album. */
+    val savesToAlbum: Boolean,
+)
+
+/**
+ * The ended event's waiting line (capability `sync-status`): how many of the event's [active] members it still waits
+ * for to finish sharing.
+ */
+@Serializable
+data class Waiting(val waitingFor: Int, val active: Int)
+
+/**
+ * A participation surface's choices and the range they make, as the join gate and the event settings show them
+ * (capabilities `join-event`, `manage-membership`, `photo-sharing`, `event-album`). Every moment is already in the
+ * device's zone.
+ */
+@Serializable
+data class RangeView(
+    val shareOn: Boolean,
+    val receiveOn: Boolean,
+    val saveToAlbum: Boolean,
+    /** How this phone holds the event album — the album note follows it. */
+    val albumStyle: AlbumStyle,
+    /** Which range choice is selected. */
+    val preset: RangeChoice,
+    /** The range the choice makes: which of the member's photos are shared. */
+    val from: LocalDateTime,
+    val until: LocalDateTime,
+    /** The event's window, which the range lies within. */
+    val windowStart: LocalDateTime,
+    val windowEnd: LocalDateTime,
+    /** Whether "From now" is offered: now lies within the window. */
+    val nowAvailable: Boolean,
+    /** The device's today, for the calendar. */
+    val today: LocalDate,
+    /** Whether the confirm is offered: at least one direction is on. */
+    val commitEnabled: Boolean,
+    /** How many of the member's own photos the range would share. */
+    val shareCount: ShareCount,
+)
+
+/**
+ * How this phone holds an event album, as the album note says it (capability `event-album`): an album the received
+ * photos are added to, or a folder they are saved into.
+ */
+@Serializable
+enum class AlbumStyle { COLLECTION, FOLDER }
+
+/** The store an update button opens (capability `app-update-required`). */
+@Serializable
+enum class StoreName { APP_STORE, GOOGLE_PLAY }
+
+/** Why the service refused this phone, as the status line names it (capability `sync-status`). */
+@Serializable
+enum class RefusalCause { DEVICE_MODIFIED, DEVICE_UNVERIFIABLE, APP_NOT_GENUINE }
+
+/** The live shareable count (capability `join-event`), as the row renders it. */
+@Serializable
+sealed interface ShareCount {
+    /** Being (re)computed — the row shows `counting…`. */
+    @Serializable
+    data object Counting : ShareCount
+
+    /** No count is available (no usable grant, or the read failed) — the row is omitted entirely. */
+    @Serializable
+    data object Unavailable : ShareCount
+
+    /** The chosen range would share [count] of the member's photos. */
+    @Serializable
+    data class Ready(val count: Int) : ShareCount
 }

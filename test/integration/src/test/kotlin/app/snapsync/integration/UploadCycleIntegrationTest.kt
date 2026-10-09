@@ -39,7 +39,7 @@ class UploadCycleIntegrationTest {
     fun process_without_a_membership_declines() = rigTest {
         extensionUploadsOnly()
         addPhoto("A")
-        assertEquals("skipped", cycle())
+        assertEquals("completed", cycle())
         assertEquals(0, jobs().created, "nothing is uploaded")
     }
 
@@ -62,7 +62,7 @@ class UploadCycleIntegrationTest {
         permission("NOT_DETERMINED")
         addPhoto("B")
 
-        assertEquals("skipped", cycle(), "no usable access: the cycle is withheld")
+        assertEquals("completed", cycle(), "no usable access: the cycle is withheld, and the system rests")
         assertTrue(primaryKey("B") !in jobs().live, "nothing created without a grant")
         assertTrue(
             "A" in union(),
@@ -81,7 +81,7 @@ class UploadCycleIntegrationTest {
         createAndJoin()
         permission("DENIED")
         addPhoto("A")
-        assertEquals("skipped", cycle())
+        assertEquals("completed", cycle())
 
         permission("GRANTED")
 
@@ -102,7 +102,7 @@ class UploadCycleIntegrationTest {
         device("relaunch", "scene" to "false")
         val opened = osRecord().databasesOpened.size
 
-        assertEquals("skipped", cycle())
+        assertEquals("completed", cycle())
 
         assertTrue(
             "downloads.db" !in osRecord().databasesOpened.drop(opened),

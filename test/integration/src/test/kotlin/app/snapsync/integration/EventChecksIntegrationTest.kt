@@ -78,7 +78,7 @@ class EventChecksIntegrationTest {
         val before = unionReads(event)
 
         user("reconfigure", "saveToAlbum" to "true")
-        awaitState { it.joined?.membership?.saveToAlbum == true }
+        awaitState { it.joined?.membership?.savesToAlbum == true }
         settleDownloads()
 
         assertEquals(before + 1, unionReads(event), "the reconcile reads it; the arm and the gather do not")

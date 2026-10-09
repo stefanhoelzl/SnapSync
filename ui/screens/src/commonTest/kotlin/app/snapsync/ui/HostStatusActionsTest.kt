@@ -268,14 +268,14 @@ class HostStatusActionsTest {
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
         )
 
-        val state: UiState get() = host.container.stateFlow.value
+        val state: UiState get() = host.screen.value
     }
 
     /** Compose [rig]'s real screen with the shared factory's bundle, as every host does. */
     private fun ComposeUiTest.show(rig: Rig) {
         setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) {
-                val state by rig.host.container.stateFlow.collectAsState()
+                val state by rig.host.screen.collectAsState()
                 WithoutKeyboardInsets {
                     StatusScreen(
                         state = state,
@@ -482,30 +482,30 @@ class HostStatusActionsTest {
         // Each range edit, so a preset crossed with a custom pick lands in the wrong field.
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         onNodeWithText(str(Res.string.range_from_now)).performClick()
-        awaitState(rig) { it.joining?.form?.preset == RangeChoice.FROM_NOW }
+        awaitState(rig) { it.joining?.range?.preset == RangeChoice.FROM_NOW }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         onNodeWithText(str(Res.string.save)).performClick()
         awaitState(rig) {
-            it.joining?.form?.let { f -> f.preset == RangeChoice.CUSTOM && f.customFrom != null && f.customUntil != null } == true
+            it.joining?.range?.preset == RangeChoice.CUSTOM
         }
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).performClick()
-        awaitState(rig) { it.joining?.form?.preset == RangeChoice.WHOLE_EVENT }
+        awaitState(rig) { it.joining?.range?.preset == RangeChoice.WHOLE_EVENT }
         // The participation switches, likewise one field each.
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
-        awaitState(rig) { it.joining?.form?.shareOn == false }
+        awaitState(rig) { it.joining?.range?.shareOn == false }
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
-        awaitState(rig) { it.joining?.form?.shareOn == true }
+        awaitState(rig) { it.joining?.range?.shareOn == true }
         onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().performClick()
-        awaitState(rig) { it.joining?.form?.receiveOn == false }
+        awaitState(rig) { it.joining?.range?.receiveOn == false }
         onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().performClick()
-        awaitState(rig) { it.joining?.form?.receiveOn == true }
+        awaitState(rig) { it.joining?.range?.receiveOn == true }
         // The album opt-in defaults ON, so the tap turns it off.
         onNodeWithText(str(Res.string.album_toggle)).performScrollTo().performClick()
-        awaitState(rig) { it.joining?.form?.saveToAlbum == false }
+        awaitState(rig) { it.joining?.range?.saveToAlbum == false }
         // Share off with receive on: a direction only the two switches together can produce.
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
-        awaitState(rig) { it.joining?.form?.shareOn == false }
+        awaitState(rig) { it.joining?.range?.shareOn == false }
 
         onNodeWithText(str(Res.string.join_button)).performClick()
         waitUntil(timeoutMillis = 5_000) { rig.fired.any { it.startsWith("commitJoin:") } }

@@ -42,6 +42,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `TailWakes.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`
+- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `TailWakes.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`
 - top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `PushTailGuard (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailSignal (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkOutcome (interface)`
 

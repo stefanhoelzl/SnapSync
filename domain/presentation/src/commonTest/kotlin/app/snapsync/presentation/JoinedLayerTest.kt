@@ -14,6 +14,7 @@ import app.snapsync.model.ScreenMessage
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.Waiting
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.decodeEventUrl
@@ -87,14 +88,17 @@ class JoinedLayerTest {
         diagnostics = testDiagnostics(),
     )
 
-    private fun StatusContainerHost.layer(): Layer.Joined = assertIs<Layer.Joined>(container.stateFlow.value.layer)
+    private fun StatusContainerHost.layer(): Layer.Joined = assertIs<Layer.Joined>(screen.value.layer)
 
     // ---- who the event is waiting for ------------------------------------------------------------
 
     @Test
     fun `who the event waits for is told only to an in-sync member of an ended open event that still waits`() = runTest {
         val waiting = MemberCounts(active = 3, settled = 1)
-        assertEquals(waiting, joined(backgroundScope, ENDED.copy(members = waiting)).layer().waiting)
+        assertEquals(
+            Waiting(waitingFor = 2, active = 3),
+            joined(backgroundScope, ENDED.copy(members = waiting)).layer().waiting,
+        )
 
         val notWhen = mapOf(
             "the event is still under way" to joined(backgroundScope, MEMBERSHIP.copy(members = waiting)),
@@ -116,7 +120,7 @@ class JoinedLayerTest {
     fun `an encrypted event's invite carries its key`() = runTest {
         val host = joined(backgroundScope, MEMBERSHIP.copy(keyId = "k1"), inviteKey = INVITE_KEY)
 
-        val layer = host.container.stateFlow.first { (it.layer as? Layer.Joined)?.inviteUrl?.contains("#k=") == true }
+        val layer = host.screen.first { (it.layer as? Layer.Joined)?.inviteUrl?.contains("#k=") == true }
             .layer as Layer.Joined
 
         assertEquals(INVITE_KEY, decodedKey(layer.inviteUrl!!))
@@ -127,10 +131,10 @@ class JoinedLayerTest {
         // The key cell still holds a key once the membership names no encrypted event — the invite must drop it.
         val config = MutableStateFlow<EventConfig?>(MEMBERSHIP.copy(keyId = "k1"))
         val host = joined(backgroundScope, inviteKey = INVITE_KEY, configFlow = config)
-        host.container.stateFlow.first { (it.layer as? Layer.Joined)?.inviteUrl?.contains("#k=") == true }
+        host.screen.first { (it.layer as? Layer.Joined)?.inviteUrl?.contains("#k=") == true }
 
         config.value = MEMBERSHIP.copy(name = "Plain Weekend")
-        val layer = host.container.stateFlow.first {
+        val layer = host.screen.first {
             (it.layer as? Layer.Joined)?.membership?.name == "Plain Weekend"
         }.layer as Layer.Joined
 

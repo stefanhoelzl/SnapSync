@@ -1,7 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.NetworkNotice
@@ -62,7 +61,7 @@ class NetworkIntegrationTest {
         permission("denied")
         network("offline")
         delay(GRACE_PASSED)
-        assertEquals(SyncHealth.NeedsAccess(GalleryAccess.DENIED), state().joined?.health)
+        assertEquals(SyncHealth.NeedsAccess(canAsk = false), state().joined?.health)
     }
 
     @Test

@@ -18,25 +18,24 @@ class AppMenuTest {
 
     @Test
     fun the_menu_is_offered_everywhere_but_the_settings_surface_and_a_join_or_create_in_progress() {
-        val details = EventDetails(
-            "Anna's Birthday",
-            eventStart("2026-07-06T00:00:00Z"),
-            eventEnd("2026-07-13T00:00:00Z"),
-            deletesAt("2026-08-05T00:00:00Z"),
-        )
-        val range = ResolvedRange(
-            windowStart = LocalDateTime(2026, 7, 6, 0, 0),
-            windowEnd = LocalDateTime(2026, 7, 13, 0, 0),
-            from = LocalDateTime(2026, 7, 6, 0, 0),
-            until = LocalDateTime(2026, 7, 13, 0, 0),
-            chosenFrom = captureCutoff("2026-07-06T00:00:00Z"),
-            chosenUntil = captureCeiling("2026-07-13T00:00:00Z"),
-            direction = Direction.Both,
-            commitEnabled = true,
+        val start = LocalDateTime(2026, 7, 6, 0, 0)
+        val end = LocalDateTime(2026, 7, 13, 0, 0)
+        val range = RangeView(
+            shareOn = true,
+            receiveOn = true,
+            saveToAlbum = true,
+            albumStyle = AlbumStyle.COLLECTION,
+            preset = RangeChoice.WHOLE_EVENT,
+            from = start,
+            until = end,
+            windowStart = start,
+            windowEnd = end,
             nowAvailable = true,
             today = LocalDate(2026, 7, 6),
+            commitEnabled = true,
             shareCount = ShareCount.Unavailable,
         )
+        fun phase(step: JoinPhase.Detailed.Step) = JoinPhase.Detailed("Anna's Birthday", step)
         val offered = listOf(
             Layer.UpdateRequired(),
             Layer.CreateEvent(),
@@ -45,33 +44,37 @@ class AppMenuTest {
             Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(JoinPhase.NotFound)),
             Layer.JoiningEvent(
                 eventId = "E",
-                stage = JoinStage.Loaded(joinPhase(JoinPhase.Detailed.Step.Ready, details), range),
+                stage = JoinStage.Loaded(phase(JoinPhase.Detailed.Step.Ready), range),
             ),
             Layer.JoiningEvent(
                 eventId = "E",
-                stage = JoinStage.Loaded(joinPhase(JoinPhase.Detailed.Step.CommitFailed, details), range),
+                stage = JoinStage.Loaded(phase(JoinPhase.Detailed.Step.CommitFailed), range),
             ),
         )
-        val membership = EventConfig(
+        val membership = JoinedEvent(
             eventId = "11111111-1111-4111-8111-111111111111",
             name = "Anna's Birthday",
-            minPhotoDate = captureCutoff("2026-07-06T00:00:00Z"),
-            maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            startsAt = start,
+            endsAt = end,
+            sharesFrom = start,
+            sharesUntil = end,
+            shares = true,
+            receives = true,
+            savesToAlbum = true,
         )
         val joined = Layer.Joined(
             membership = membership,
             inviteUrl = "$LINK_ORIGIN/join#v=3&d=x",
             health = SyncHealth.InSync,
+            today = LocalDate(2026, 7, 6),
         )
         for (layer in offered + joined + joined.copy(closed = true)) assertTrue(layer.offersMenu, "$layer")
-        assertFalse(joined.copy(surface = JoinedSurface.Reconfigure(RangeForm(), range)).offersMenu)
+        assertFalse(joined.copy(surface = JoinedSurface.Reconfigure(range)).offersMenu)
         assertFalse(Layer.CreatingEvent.offersMenu)
         assertFalse(
             Layer.JoiningEvent(
                 eventId = "E",
-                stage = JoinStage.Loaded(joinPhase(JoinPhase.Detailed.Step.Committing, details), range),
+                stage = JoinStage.Loaded(phase(JoinPhase.Detailed.Step.Committing), range),
             ).offersMenu,
         )
     }

@@ -427,7 +427,8 @@ class WorldInspectorController(
 
     private suspend fun snapshotNow(): InspectorSnapshot {
         val library = mocks.library.operator
-        val joined = (shown.value?.layer as? Layer.Joined)?.membership
+        // The membership the cycle reads — not the screen's statement of it, which carries no policy.
+        val joined = app.composed.core.membership.value
         // What the selection policy would exclude — the REAL policy over the REAL
         // enumeration of the library, so the row badge cannot drift from what the cycle does. Echo is reported
         // separately (an imported photo), so the echo set is empty here; the album lookup is real.

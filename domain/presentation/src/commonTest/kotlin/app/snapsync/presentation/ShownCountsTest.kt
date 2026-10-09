@@ -12,6 +12,7 @@ import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
+import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -44,9 +45,10 @@ class ShownCountsTest {
                 maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-13T14:32:11Z")),
                 endsAt = eventEnd("2099-12-31T00:00:00Z"),
                 deletesAt = deletesAt("2099-12-31T00:00:00Z"),
-            ),
+            ).shown(),
             inviteUrl = "https://snapsync.stho.net/e/x",
             health = SyncHealth.InSync,
+            today = LocalDate(2026, 7, 9),
             counts = counts,
         ),
     )

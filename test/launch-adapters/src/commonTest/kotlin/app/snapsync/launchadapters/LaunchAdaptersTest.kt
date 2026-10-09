@@ -6,10 +6,10 @@ import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.NetworkAccess
+import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.Clock
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.Files

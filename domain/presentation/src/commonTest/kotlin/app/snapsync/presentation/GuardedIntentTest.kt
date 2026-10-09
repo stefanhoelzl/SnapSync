@@ -117,9 +117,9 @@ class GuardedIntentTest {
     private suspend fun StatusContainerHost.stateWhere(what: String, predicate: (UiState) -> Boolean): UiState =
         withTimeout(5.seconds) {
             try {
-                container.stateFlow.first(predicate)
+                screen.first(predicate)
             } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
-                throw AssertionError("never reached: $what (last was ${container.stateFlow.value})", timeout)
+                throw AssertionError("never reached: $what (last was ${screen.value})", timeout)
             }
         }
 

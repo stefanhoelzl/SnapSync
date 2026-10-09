@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -54,11 +56,37 @@ class ScreenFactsTest {
             maxPhotoDate = captureCeiling("2026-07-07T00:00:00Z"),
             deletesAt = deletesAt("2026-08-05T00:00:00Z"),
         )
-        val joined = Layer.Joined(membership, "https://snapsync.app/e", SyncHealth.InSync)
+        val joined = Layer.Joined(
+            JoinedEvent(
+                eventId = "e",
+                name = "Picnic",
+                startsAt = LocalDateTime(2026, 7, 6, 0, 0),
+                endsAt = LocalDateTime(2026, 7, 7, 0, 0),
+                sharesFrom = LocalDateTime(2026, 7, 6, 0, 0),
+                sharesUntil = LocalDateTime(2026, 7, 7, 0, 0),
+                shares = true,
+                receives = true,
+                savesToAlbum = false,
+            ),
+            "https://snapsync.app/e",
+            SyncHealth.InSync,
+            today = LocalDate(2026, 7, 6),
+        )
 
         assertFalse(joined.ended)
         assertTrue(joined.copy(timing = EventTiming.Ended).ended)
         assertFalse(membership.encrypted)
         assertTrue(membership.copy(keyId = "k1").encrypted)
+    }
+}
+
+/** A build's store page (capability `app-update-required`): the address and the store, one value. */
+class StoreLinkTest {
+
+    @Test
+    fun `a store page names its store`() {
+        val play = StoreLink("https://play.google.com/store/apps/details?id=app.snapsync", StoreKind.GOOGLE_PLAY)
+        assertEquals(StoreKind.GOOGLE_PLAY, play.kind)
+        assertEquals(listOf(StoreKind.APP_STORE, StoreKind.GOOGLE_PLAY), StoreKind.entries)
     }
 }

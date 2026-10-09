@@ -101,7 +101,7 @@ class EncryptedEventIntegrationTest {
         addPhoto("OWN-1")
         foreignDevice("DEV-F", "FQ")
         foreground()
-        assertEquals("skipped", cycle(), "the extension's cycle is withheld")
+        assertEquals("completed", cycle(), "the extension's cycle is withheld, and the system rests")
         assertEquals(0, jobs().created, "the extension creates no upload")
         assertEquals(0, appUploads().created, "the app's uploader creates no upload")
         assertEquals(emptySet(), objects(), "nothing of this device reached the event")

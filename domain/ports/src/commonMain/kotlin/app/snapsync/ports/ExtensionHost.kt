@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.model.ProcessingAnswer
+
 /**
  * **The operating system's invocations of the upload extension**: on iOS ≥26.1 the
  * PhotoKit background-upload extension's `process()` and `notifyTermination()`. Android has none — a library change
@@ -10,22 +12,6 @@ package app.snapsync.ports
  * composition — the extension has no host zone — before the operating system first invokes it.
  */
 interface ExtensionHost : Listenable<ExtensionHandlers>
-
-/**
- * What the operating system is told an invocation came to — iOS 26.1's `PHBackgroundResourceUploadProcessingResult`,
- * case for case. The platform's vocabulary: which outcome of the core's work each answer stands for is the
- * composition's decision, not the adapter's.
- */
-enum class ProcessingAnswer {
-    /** Nothing more to do now; the system may rest. */
-    COMPLETED,
-
-    /** Work remains; the system should invoke again. */
-    PROCESSING,
-
-    /** The invocation failed. */
-    FAILED,
-}
 
 /** What the operating system's invocations of the extension tell the core. Built only by a composition. */
 class ExtensionHandlers(

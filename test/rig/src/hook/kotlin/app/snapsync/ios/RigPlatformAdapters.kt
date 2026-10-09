@@ -140,7 +140,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     // shell gate, which permits no decisions — and a command map's bodies are full of them.
     userCommands = userCommands(
         dispatch = launch.ui::dispatch,
-        state = { SnapSyncRoot.host.container.stateFlow.value },
+        state = { SnapSyncRoot.host.screen.value },
     ),
     excludedUserCommands = excludedUserCommands(),
     deviceCommands = deviceCommands(

@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumStyle
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DiagnosticKeys
@@ -15,7 +16,7 @@ import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
 import app.snapsync.model.Overlays
 import app.snapsync.model.RangeChoice
-import app.snapsync.model.RangeForm
+import app.snapsync.model.RangeView
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
@@ -49,7 +50,6 @@ import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -102,7 +102,7 @@ private class Spy {
  * pre-fill that tracked a background refresh instead of freezing, changes no assertion anywhere else.
  *
  * ⚠️ Driven on a REAL container over a real scope rather than through `orbit-test`'s `test()` harness,
- * which the neighbouring file uses. The harness substitutes its own container, so `container.stateFlow`
+ * which the neighbouring file uses. The harness substitutes its own container, so `screen`
  * keeps answering the seed state while the intents really do run — assertions on a spy pass and
  * assertions on state silently do not. These tests read the same `stateFlow` the screen collects, and
  * await a predicate on it rather than a fixed emission count, so an extra reduction upstream does not
@@ -157,18 +157,18 @@ class StatusContainerHostSurfacesTest {
         predicate: (UiState) -> Boolean,
     ): UiState = withTimeout(5.seconds) {
         try {
-            container.stateFlow.first(predicate)
+            screen.first(predicate)
         } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
-            throw AssertionError("never reached: $what (last was ${container.stateFlow.value})", timeout)
+            throw AssertionError("never reached: $what (last was ${screen.value})", timeout)
         }
     }
 
-    private suspend fun StatusContainerHost.reconfigureForm(): RangeForm {
+    private suspend fun StatusContainerHost.reconfigureForm(): RangeView {
         val state = stateWhere("the reconfigure surface") {
             (it.layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure
         }
         val joined = assertIs<Layer.Joined>(state.layer)
-        return assertIs<JoinedSurface.Reconfigure>(joined.surface).form
+        return assertIs<JoinedSurface.Reconfigure>(joined.surface).range
     }
 
     private fun onHost(
@@ -280,12 +280,12 @@ class StatusContainerHostSurfacesTest {
             host.stateWhere("the reconfigure surface") { it.reconfigureCount() != null }
             withTimeout(5.seconds) { asked.await() }
             withTimeout(5.seconds) {
-                while (host.container.stateFlow.value.reconfigureCount() != ShareCount.Unavailable) delay(10)
+                while (host.screen.value.reconfigureCount() != ShareCount.Unavailable) delay(10)
             }
             // Still alive: a later intent lands.
             host.form.onSaveToAlbum(true)
             host.stateWhere("the album edit") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.saveToAlbum == true
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.range?.saveToAlbum == true
             }
         }
     }
@@ -306,11 +306,11 @@ class StatusContainerHostSurfacesTest {
             host.form.onShareOn(false)
             host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
             host.settings.onConfirmStopSharing()
-            host.stateWhere("sharing off") { it.settings()?.form?.shareOn == false }
+            host.stateWhere("sharing off") { it.settings()?.range?.shareOn == false }
             // With nothing shared a range withdraws nothing, so it applies without asking — and costs no read.
             host.form.onRangePreset(RangeChoice.FROM_NOW)
             awaitReconfigures(spy, 2)
-            host.stateWhere("the new range shown") { it.settings()?.form?.preset == RangeChoice.CUSTOM }
+            host.stateWhere("the new range shown") { it.settings()?.range?.preset == RangeChoice.CUSTOM }
             assertEquals(1, asked, "a hidden row must not cost a photo-library read")
         }
     }
@@ -427,10 +427,9 @@ class StatusContainerHostSurfacesTest {
         host.surfaces.onOpenReconfigure()
 
         val form = host.reconfigureForm()
-        // Cutoff on the floor and ceiling on the event end → the whole event, no custom values.
+        // Cutoff on the floor and ceiling on the event end → the whole event, the window's own bounds.
         assertEquals(RangeChoice.WHOLE_EVENT, form.preset)
-        assertNull(form.customFrom)
-        assertNull(form.customUntil)
+        assertEquals(form.windowStart to form.windowEnd, form.from to form.until)
         assertTrue(form.shareOn)
         assertTrue(form.receiveOn)
     }
@@ -459,7 +458,7 @@ class StatusContainerHostSurfacesTest {
             assertEquals(Reconfigure(EVENT_ID, Direction.Both, CONFIG.minPhotoDate, CONFIG.maxPhotoDate, true), sent)
             val open = host.stateWhere(
                 "the album shown on, settings still open",
-            ) { it.settings()?.form?.saveToAlbum == true }
+            ) { it.settings()?.range?.saveToAlbum == true }
             assertEquals(false, open.settings()?.saveFailed)
         }
     }
@@ -506,7 +505,7 @@ class StatusContainerHostSurfacesTest {
             host.reconfigureForm()
             host.form.onSaveToAlbum(true)
             val failed = host.stateWhere("the failed change") { it.settings()?.saveFailed == true }
-            assertEquals(false, failed.settings()?.form?.saveToAlbum, "the control shows the setting still in effect")
+            assertEquals(false, failed.settings()?.range?.saveToAlbum, "the control shows the setting still in effect")
             assertEquals(1, spy.reconfigures.size)
         }
     }
@@ -531,14 +530,14 @@ class StatusContainerHostSurfacesTest {
             host.reconfigureForm()
             host.form.onShareOn(false)
             val asking = host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
-            assertEquals(true, asking.settings()?.form?.shareOn, "sharing stays on until the member confirms")
+            assertEquals(true, asking.settings()?.range?.shareOn, "sharing stays on until the member confirms")
             assertTrue(spy.reconfigures.isEmpty(), "a withdrawal applied before it was confirmed")
 
             host.settings.onConfirmStopSharing()
             awaitReconfigures(spy, 1)
             assertEquals(Direction.DownloadOnly, spy.reconfigures.single().direction)
             host.stateWhere("the question answered, sharing off") {
-                it.settings()?.askingToStopSharing == false && it.settings()?.form?.shareOn == false
+                it.settings()?.askingToStopSharing == false && it.settings()?.range?.shareOn == false
             }
         }
     }
@@ -553,7 +552,7 @@ class StatusContainerHostSurfacesTest {
             host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
             host.settings.onKeepSharing()
             val kept = host.stateWhere("the question gone") { it.settings()?.askingToStopSharing == false }
-            assertEquals(true, kept.settings()?.form?.shareOn)
+            assertEquals(true, kept.settings()?.range?.shareOn)
             // A later change proves the dropped one never ran: it is the only reconfigure.
             host.form.onSaveToAlbum(!CONFIG.saveToAlbum)
             awaitReconfigures(spy, 1)
@@ -632,15 +631,15 @@ class StatusContainerHostSurfacesTest {
         ) { host ->
             host.surfaces.onOpenReconfigure()
             val form = host.reconfigureForm()
-            assertEquals(AlbumKind.FOLDER, form.albumKind, "the settings know the album is a folder")
+            assertEquals(AlbumStyle.FOLDER, form.albumStyle, "the settings know the album is a folder")
             assertEquals(false, form.saveToAlbum, "the stored choice is shown as it was saved")
             host.form.onSaveToAlbum(true)
             awaitReconfigures(spy, 1)
             assertEquals(true, spy.reconfigures.single().saveToAlbum)
-            val after = host.stateWhere("the album on") { it.settings()?.form?.saveToAlbum == true }
+            val after = host.stateWhere("the album on") { it.settings()?.range?.saveToAlbum == true }
             assertEquals(
-                AlbumKind.FOLDER,
-                after.settings()?.form?.albumKind,
+                AlbumStyle.FOLDER,
+                after.settings()?.range?.albumStyle,
                 "the reseeded controls keep the album kind",
             )
         }
@@ -673,8 +672,8 @@ class StatusContainerHostSurfacesTest {
         host.settings.onConfirmStopSharing()
         val shown = host.stateWhere(
             "the custom range",
-        ) { it.settings()?.form?.let { f -> f.customFrom == from && f.customUntil == until } == true }
-        assertEquals(RangeChoice.CUSTOM, shown.settings()?.form?.preset)
+        ) { it.settings()?.range?.let { f -> f.from == from && f.until == until } == true }
+        assertEquals(RangeChoice.CUSTOM, shown.settings()?.range?.preset)
     }
 
     @Test
@@ -708,7 +707,7 @@ class StatusContainerHostSurfacesTest {
                 CONFIG.minPhotoDate to CONFIG.maxPhotoDate,
                 spy.reconfigures.single().let { it.from to it.until },
             )
-            host.stateWhere("the whole event shown") { it.settings()?.form?.preset == RangeChoice.WHOLE_EVENT }
+            host.stateWhere("the whole event shown") { it.settings()?.range?.preset == RangeChoice.WHOLE_EVENT }
         }
     }
 
@@ -745,11 +744,11 @@ class StatusContainerHostSurfacesTest {
     fun `every state says where this build’s bug report goes`() =
         onHost(reportDestination = ReportDestination.THIS_DEVICE) { host ->
             withTimeout(5.seconds) {
-                while (host.container.stateFlow.value.reportDestination != ReportDestination.THIS_DEVICE) {
+                while (host.screen.value.reportDestination != ReportDestination.THIS_DEVICE) {
                     kotlinx.coroutines.yield()
                 }
             }
-            assertEquals(ReportDestination.THIS_DEVICE, host.container.stateFlow.value.reportDestination)
+            assertEquals(ReportDestination.THIS_DEVICE, host.screen.value.reportDestination)
         }
 
     @Test

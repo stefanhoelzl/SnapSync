@@ -106,7 +106,7 @@ class SettingsQueueTest {
         runCurrent()
         world.config.value = MEMBERSHIP
 
-        val state = host.container.stateFlow.first { it.layer is Layer.Joined }
+        val state = host.screen.first { it.layer is Layer.Joined }
         val surface = (state.layer as Layer.Joined).surface
         assertEquals(JoinedSurface.Status, surface, "a later membership opened on its settings")
         assertTrue(world.errors.isEmpty(), "${world.errors}")
@@ -166,11 +166,11 @@ class SettingsQueueTest {
         val host = host(world, backgroundScope)
         host.surfaces.onOpenReconfigure()
         runCurrent()
-        host.container.stateFlow.first { (it.layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure }
+        host.screen.first { (it.layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure }
 
         world.config.value = MEMBERSHIP.copy(closed = true)
 
-        host.container.stateFlow.first {
+        host.screen.first {
             (it.layer as? Layer.Joined)?.let { joined -> joined.closed && joined.surface == JoinedSurface.Status } == true
         }
     }

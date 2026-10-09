@@ -2,7 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.model.CycleResult
+import app.snapsync.feature.upload.answer
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.invocation
@@ -14,7 +14,6 @@ import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.PlatformDeviceId
-import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
@@ -222,18 +221,6 @@ internal fun extensionHandlers(
         }
     },
 )
-
-/**
- * What the operating system is told a cycle came to — a decision about the cycle, so
- * the core's, not the adapter's. [CycleResult.SKIPPED] answers like [CycleResult.COMPLETED]: this device contributes
- * nothing, so the system may rest. [CycleResult.Paused] answers like [CycleResult.PROCESSING]: the cycle touched nothing
- * and asks to be invoked again, until the process it waits for (the app, migrating the download store) has run.
- */
-internal fun CycleResult.answer(): ProcessingAnswer = when (this) {
-    CycleResult.COMPLETED, CycleResult.SKIPPED -> ProcessingAnswer.COMPLETED
-    CycleResult.PROCESSING, is CycleResult.Paused -> ProcessingAnswer.PROCESSING
-    CycleResult.FAILED -> ProcessingAnswer.FAILED
-}
 
 /**
  * The upload extension's backend services: the same need-shaped services the app

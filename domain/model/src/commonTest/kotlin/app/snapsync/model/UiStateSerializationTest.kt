@@ -26,14 +26,19 @@ class UiStateSerializationTest {
 
     private val json = Json
 
-    private val membership = EventConfig(
+    private val membership = JoinedEvent(
         eventId = "11111111-1111-4111-8111-111111111111",
         name = "Anna's Birthday",
-        minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
-        maxPhotoDate = captureCeiling("2026-07-13T14:32:11Z"),
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        startsAt = LocalDateTime(2026, 7, 6, 14, 32),
+        endsAt = LocalDateTime(2099, 12, 31, 0, 0),
+        sharesFrom = LocalDateTime(2026, 7, 6, 14, 32),
+        sharesUntil = LocalDateTime(2026, 7, 13, 14, 32),
+        shares = true,
+        receives = true,
+        savesToAlbum = false,
     )
+
+    private val today = LocalDate(2026, 7, 9)
 
     private fun roundTrip(state: UiState) {
         val encoded = json.encodeToString(UiState.serializer(), encodedInput(state))
@@ -49,7 +54,7 @@ class UiStateSerializationTest {
             UiState(
                 Layer.UpdateRequired(
                     minimumVersion = "0.4",
-                    store = StoreLink("https://apps.apple.com/de/app/id1", StoreKind.APP_STORE),
+                    store = StoreName.APP_STORE,
                 ),
             ),
         )
@@ -74,15 +79,7 @@ class UiStateSerializationTest {
                 Layer.JoiningEvent(
                     eventId = "11111111-1111-4111-8111-111111111111",
                     stage = JoinStage.Loaded(
-                        joinPhase(
-                            JoinPhase.Detailed.Step.Ready,
-                            EventDetails(
-                                "Anna's Birthday",
-                                eventStart("2026-07-06T00:00:00Z"),
-                                eventEnd("2026-07-13T00:00:00Z"),
-                                deletesAt("2026-08-05T00:00:00Z"),
-                            ),
-                        ),
+                        JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Ready),
                         range(ShareCount.Unavailable),
                     ),
                 ),
@@ -137,6 +134,7 @@ class UiStateSerializationTest {
                     membership = membership,
                     inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
                     health = SyncHealth.InSync,
+                    today = today,
                     timing = EventTiming.Upcoming(TimeLeft.Hours(5)),
                     counts = SyncCounts(DirectionCount.Off, DirectionCount.Progress(40, 52)),
                 ),
@@ -148,7 +146,8 @@ class UiStateSerializationTest {
                 Layer.Joined(
                     membership = membership,
                     inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
-                    health = SyncHealth.NeedsAccess(GalleryAccess.DENIED),
+                    health = SyncHealth.NeedsAccess(canAsk = false),
+                    today = today,
                     timing = EventTiming.Ended,
                     canChoosePhotos = true,
                     notice = ScreenMessage.INVALID_LINK,
@@ -157,47 +156,33 @@ class UiStateSerializationTest {
         )
     }
 
-    private val details = EventDetails(
-        "Anna's Birthday",
-        eventStart("2026-07-06T00:00:00Z"),
-        eventEnd("2026-07-13T00:00:00Z"),
-        deletesAt("2026-08-05T00:00:00Z"),
-    )
+    private fun phase(step: JoinPhase.Detailed.Step) = JoinPhase.Detailed("Anna's Birthday", step)
 
-    /** A resolved range with every optional field set, so its serializer's nullable paths are crossed too. */
-    private fun range(count: ShareCount) = ResolvedRange(
-        windowStart = LocalDateTime(2026, 7, 6, 0, 0),
-        windowEnd = LocalDateTime(2026, 7, 13, 0, 0),
-        from = LocalDateTime(2026, 7, 7, 9, 30),
-        until = LocalDateTime(2026, 7, 12, 18, 0),
-        chosenFrom = captureCutoff("2026-07-07T07:30:00Z"),
-        chosenUntil = captureCeiling("2026-07-12T16:00:00Z"),
-        direction = Direction.UploadOnly,
-        commitEnabled = true,
-        nowAvailable = false,
-        today = LocalDate(2026, 7, 7),
-        shareCount = count,
-    )
-
-    /** A form that is NOT the untouched default: custom picks on both ends, receiving and the album off. */
-    private val customForm = RangeForm(
+    /** A range that is NOT an untouched one: a custom pick, receiving and the album off, on a folder-album phone. */
+    private fun range(count: ShareCount) = RangeView(
         shareOn = true,
         receiveOn = false,
         saveToAlbum = false,
+        albumStyle = AlbumStyle.FOLDER,
         preset = RangeChoice.CUSTOM,
-        customFrom = LocalDateTime(2026, 7, 7, 9, 30),
-        customUntil = LocalDateTime(2026, 7, 12, 18, 0),
+        from = LocalDateTime(2026, 7, 7, 9, 30),
+        until = LocalDateTime(2026, 7, 12, 18, 0),
+        windowStart = LocalDateTime(2026, 7, 6, 0, 0),
+        windowEnd = LocalDateTime(2026, 7, 13, 0, 0),
+        nowAvailable = false,
+        today = LocalDate(2026, 7, 7),
+        commitEnabled = true,
+        shareCount = count,
     )
 
     @Test
-    fun the_join_gate_round_trips_with_its_form_and_every_share_count() {
+    fun the_join_gate_round_trips_with_its_choices_and_every_share_count() {
         for (count in listOf(ShareCount.Counting, ShareCount.Unavailable, ShareCount.Ready(42))) {
             roundTrip(
                 UiState(
                     Layer.JoiningEvent(
                         eventId = "E",
-                        stage = JoinStage.Loaded(joinPhase(JoinPhase.Detailed.Step.Ready, details), range(count)),
-                        form = customForm,
+                        stage = JoinStage.Loaded(phase(JoinPhase.Detailed.Step.Ready), range(count)),
                     ),
                 ),
             )
@@ -212,9 +197,10 @@ class UiStateSerializationTest {
                     membership = membership,
                     inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
                     health = SyncHealth.Syncing(upload = Arrow.PULSING, download = Arrow.STATIC),
-                    pendingSwitch = PendingSwitch("F", joinPhase(JoinPhase.Detailed.Step.CommitFailed, details)),
+                    today = today,
+                    pendingSwitch = PendingSwitch("F", phase(JoinPhase.Detailed.Step.CommitFailed)),
                     renameState = RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED),
-                    surface = JoinedSurface.Reconfigure(customForm, range(ShareCount.Ready(7)), saveFailed = true),
+                    surface = JoinedSurface.Reconfigure(range(ShareCount.Ready(7)), saveFailed = true),
                 ),
             ),
         )
@@ -227,7 +213,7 @@ class UiStateSerializationTest {
             SyncHealth.NoNetwork(NetworkNotice.BLOCKED),
             SyncHealth.NotStarted,
             SyncHealth.Unattested(),
-            SyncHealth.Unattested(DeviceRefusal.DEVICE_MODIFIED),
+            SyncHealth.Unattested(RefusalCause.DEVICE_MODIFIED),
             SyncHealth.Loading,
             SyncHealth.Syncing(upload = Arrow.HIDDEN, download = Arrow.PULSING),
         )
@@ -240,6 +226,7 @@ class UiStateSerializationTest {
                             membership = membership,
                             inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
                             health = health,
+                            today = today,
                             renameState = rename,
                         ),
                     ),
@@ -250,22 +237,8 @@ class UiStateSerializationTest {
 
     @Test
     fun a_single_user_choice_survives_the_round_trip() {
-        // One field off its default at a time: a form differing in only that field must still arrive whole, so
+        // One field off its default at a time: a state differing in only that field must still arrive whole, so
         // no field is dropped by an encoder that omits defaults.
-        val one = listOf(
-            RangeForm(shareOn = false),
-            RangeForm(receiveOn = false),
-            RangeForm(saveToAlbum = false),
-            RangeForm(preset = RangeChoice.FROM_NOW),
-            RangeForm(preset = RangeChoice.CUSTOM),
-            RangeForm(customFrom = LocalDateTime(2026, 7, 7, 9, 30)),
-            RangeForm(customUntil = LocalDateTime(2026, 7, 12, 18, 0)),
-        )
-        for (form in one) {
-            roundTrip(
-                UiState(Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(JoinPhase.Loading), form = form)),
-            )
-        }
         val overlays = listOf(Overlays(confirmingLeave = true), Overlays(renaming = true), Overlays(reportingBug = true)) +
             Overlays(menuOpen = true) + ReportOutcome.entries.map { Overlays(reportNotice = it) }
         for (overlay in overlays) {
@@ -279,31 +252,29 @@ class UiStateSerializationTest {
                 build = BuildLabel("0.12", "2140"),
             ),
         )
-        // The range's defaulted count, at its default.
-        roundTrip(
-            UiState(
-                Layer.JoiningEvent(
-                    eventId = "E",
-                    stage = JoinStage.Loaded(
-                        joinPhase(JoinPhase.Detailed.Step.Ready, details),
-                        range(ShareCount.Counting),
-                    ),
-                ),
-            ),
-        )
     }
 
     @Test
     fun the_join_phase_helpers_read_only_a_loaded_phase() {
         for (phase in listOf(JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed)) {
-            assertNull(phase.details)
             assertNull(phase.step)
         }
-        // Read through the phase, as the helpers' callers hold it — on a `Detailed` they would be its own members.
-        val loaded: JoinPhase = joinPhase(JoinPhase.Detailed.Step.Committing, details)
-        assertEquals(JoinPhase.Detailed(details, JoinPhase.Detailed.Step.Committing), loaded)
-        assertEquals(details, loaded.details)
+        // Read through the phase, as the helpers' callers hold it — on a `Detailed` it would be its own member.
+        val loaded: JoinPhase = phase(JoinPhase.Detailed.Step.Committing)
         assertEquals(JoinPhase.Detailed.Step.Committing, loaded.step)
+    }
+
+    @Test
+    fun a_phase_names_itself_in_a_report_as_its_case_does() {
+        val names = listOf(
+            JoinPhase.Loading,
+            JoinPhase.NotFound,
+            JoinPhase.LoadFailed,
+            JoinPhase.Closed,
+            JoinPhase.WrongLink,
+            phase(JoinPhase.Detailed.Step.Ready),
+        ).map { it.screenName }
+        assertEquals(listOf("Loading", "NotFound", "LoadFailed", "Closed", "WrongLink", "Detailed"), names)
     }
 
     @Test
@@ -311,7 +282,7 @@ class UiStateSerializationTest {
         val unloaded = Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(JoinPhase.LoadFailed))
         assertEquals(JoinPhase.LoadFailed, unloaded.phase)
         assertNull(unloaded.range)
-        val ready = joinPhase(JoinPhase.Detailed.Step.Ready, details)
+        val ready = phase(JoinPhase.Detailed.Step.Ready)
         val loaded = Layer.JoiningEvent(eventId = "E", stage = JoinStage.Loaded(ready, range(ShareCount.Counting)))
         assertEquals(ready, loaded.phase)
         assertEquals(range(ShareCount.Counting), loaded.range)
@@ -320,7 +291,7 @@ class UiStateSerializationTest {
     @Test
     fun a_stage_decoded_without_what_it_must_carry_is_refused_never_defaulted() {
         // A loaded stage holds its range by construction; on the wire a client cannot hand the screen one without it.
-        val loaded = JoinStage.Loaded(joinPhase(JoinPhase.Detailed.Step.Ready, details), range(ShareCount.Counting))
+        val loaded = JoinStage.Loaded(phase(JoinPhase.Detailed.Step.Ready), range(ShareCount.Counting))
         val encoded = json.encodeToString(JoinStage.serializer(), loaded)
         val withoutRange = encoded.replace(Regex(""","range":\{.*}}$"""), "}")
         assertFailsWith<SerializationException> { json.decodeFromString(JoinStage.serializer(), withoutRange) }
