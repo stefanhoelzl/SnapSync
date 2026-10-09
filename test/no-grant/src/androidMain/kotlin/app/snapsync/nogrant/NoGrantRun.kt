@@ -57,7 +57,7 @@ internal class NoGrantRun {
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED)
+        override val reaches = setOf(GalleryReaderState.NO_GRANT, GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED)
 
         override fun create(
             state: GalleryReaderState,

@@ -170,7 +170,8 @@ class PhotoContractBindingsTest {
                     ),
                 )
             }
-            return Entered.Ready(FolderAlbums(gallery, seeded, staged))
+            // A photo in no album folder is in the camera folder ([PhotoLibraryMock.folderOf]).
+            return Entered.Ready(FolderAlbums(gallery, seeded, ownFolder = "DCIM/Camera/", stage = staged))
         }
     }
 

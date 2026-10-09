@@ -161,7 +161,7 @@ class AndroidGalleryContractTest {
                     ),
                 )
             }
-            return Entered.Ready(FolderAlbums(gallery, seeded, stage)) {
+            return Entered.Ready(FolderAlbums(gallery, seeded, MediaStoreSeeder.CAMERA, stage)) {
                 MediaStoreSeeder.delete(seeded)
                 imported.forEach { id ->
                     context.contentResolver.delete(
