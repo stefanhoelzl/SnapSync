@@ -158,7 +158,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
           log(`[dry-run] would complete event ${event.eventId} (${active}/${total} active)`);
         } else {
           // No notification, for the same reason as a delete below: a device still joined learns the
-          // event completed from its own next read, and leaves on it (capability `manage-membership`).
+          // event completed from its own next read, and leaves on it (capability `event-lifetime`).
           await completeEvent(tx, event.eventId, new Date(now()).toISOString());
           log(`completed event ${event.eventId} (${active}/${total} active)`);
         }
@@ -174,7 +174,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
       // payload, which is the OPPOSITE of what a deletion means, and it would have to be dispatched
       // milliseconds before the deletes it announces — so the device wakes to an already-deleted event
       // and burns a scarce wake syncing against a corpse. Members discover the deletion on their own next
-      // foreground details fetch (capability `manage-membership`), the only context where acting on it is safe.
+      // foreground details fetch (capability `event-lifetime`), the only context where acting on it is safe.
       await deleteEvent(tx, event.eventId);
       summary.events.deleted++;
       log(`deleted stale event ${event.eventId}`);

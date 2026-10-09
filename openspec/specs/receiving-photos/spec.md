@@ -3,15 +3,14 @@
 ## Purpose
 
 A member who receives expects the other members' event photos to simply appear in their own Photos
-library — no gallery to open, nothing to tap. This capability promises that every complete photo another
-member shares arrives automatically, at full fidelity, sorted by when it was taken, including while the
-app is not open; that a silent wake speeds this up without being relied on; and that the library is
-respected — a received photo the member deletes never comes back, nothing arrives twice, their own photos
-are never sent back to them, and received photos are never shared back into the event as theirs. What the
-other members share is capability `photo-sharing`; grouping received photos into an album is capability
-`event-album`.
-
+library — no gallery to open, nothing to tap. This capability promises that every complete photo another member shares
+arrives, at full fidelity, sorted by when it was taken, and that the library is respected — a received photo the member
+deletes never comes back, nothing arrives twice, their own photos are never sent back to them, received photos are
+never shared back into the event as theirs, and no received photo takes up space twice. How photos travel in the
+background is capability `delivery`; what the other members share is capability `photo-sharing`; grouping received
+photos into an album is capability `event-album`.
 Decision record: changes/archive/2026-06-30-add-photo-download
+
 ## Requirements
 
 ### Requirement: Other members' photos arrive in the photo library automatically
@@ -110,81 +109,6 @@ received before a phone could keep them moving SHALL stay as they were saved.
 - **WHEN** a photo whose sender filename is unknown is received
 - **THEN** it carries a SnapSync-marked filename in the receiver's library
 
-### Requirement: Photos arrive without the app being opened
-
-Downloads and saving into the library SHALL continue while the app is in the background or not running,
-and SHALL finish without a visit to the app. A photo whose download finished but whose save the system cut
-short SHALL be saved on the device's next background wake of any kind — another member's new photo, a
-finished transfer, or the app's own scheduled background work — or, at the latest, the next time the
-member opens the app; it SHALL never be lost or saved twice. Downloads SHALL use cellular data as well as
-Wi-Fi, unless the member chose not to use mobile data for photos, in which case they wait for an
-unrestricted Wi-Fi (capability `mobile-data`).
-
-#### Scenario: Downloads finish in the background
-- **WHEN** the member joins, downloads start, and the member leaves the app
-- **THEN** the downloads complete and the photos are saved without the app being reopened
-
-#### Scenario: A save that ran out of time completes later
-- **WHEN** photos finished downloading but could not be saved before the system suspended the app
-- **THEN** they are saved on the next background wake, without the member opening the app — or, if no
-  wake comes, the next time the member opens it
-
-#### Scenario: Downloads wait for Wi-Fi when the member chose so
-- **WHEN** a receiving member with mobile data off is on mobile data while another member shares a photo
-- **THEN** the photo arrives in their library in the background once the phone is on an unrestricted Wi-Fi
-
-### Requirement: New photos are announced by a silent wake, and never only by it
-
-When photos become available that this member can receive, the member's device SHALL be woken silently —
-no alert, sound or badge — so it can fetch them in the background. A wake SHALL be sent only when a photo
-has actually become available, or once when the event closes (capability `event-lifetime`) so each member
-can finish and leave on its own (capability `manage-membership`); wakes for one event MAY be combined into
-one. Wakes are best effort: without one, new photos SHALL still arrive in the background, in a timely manner
-as the phone's system allows, and at the latest the next time the member opens the app. A force-quit — on
-Android, a force-stop from the phone's Settings — SHALL stop receiving until the member next opens the app;
-every photo shared meanwhile SHALL then arrive. A wake for an event this device has left SHALL fetch nothing.
-Failing to set up wakes SHALL never prevent joining, sharing or receiving.
-
-#### Scenario: A wake brings new photos in the background
-- **WHEN** another member's photo becomes available while this member's phone is in their pocket
-- **THEN** the phone is woken silently and the photo is downloaded and saved without the app being opened
-
-#### Scenario: No wake arrives
-- **WHEN** the phone's system drops or delays the wake for a new photo, or the phone cannot receive wakes at
-  all, and the member does not open the app
-- **THEN** the photo still arrives in their library in the background, without the app being opened
-
-#### Scenario: Opening the app catches up
-- **WHEN** a new photo has not arrived yet and the member opens the app
-- **THEN** the photo arrives
-
-#### Scenario: A force-quit stops receiving until the next opening
-- **WHEN** the member force-quits the app (on Android, force-stops it from Settings) and other members share
-  photos meanwhile
-- **THEN** nothing is received until the member opens the app again, and then every one of those photos
-  arrives
-
-#### Scenario: A left event's wakes are ignored
-- **WHEN** the device receives a wake for an event it has left
-- **THEN** nothing is downloaded
-
-#### Scenario: A declared but unfinished photo wakes nobody
-- **WHEN** another member's device starts uploading a photo that is not complete yet
-- **THEN** no member is woken for it
-
-#### Scenario: The close wakes every member once
-- **WHEN** an event closes after all of its photos have already arrived everywhere
-- **THEN** each member still in it is woken silently once and, having everything, leaves it
-
-### Requirement: A member who only shares receives nothing
-
-A membership that does not receive (capability `join-event`) SHALL download and save nothing, from any
-trigger, including wakes for its event.
-
-#### Scenario: Share-only receives nothing
-- **WHEN** a share-only member's event gains photos from others and a wake arrives
-- **THEN** nothing is downloaded or saved on their device
-
 ### Requirement: A deleted received photo never comes back
 
 Once a received photo has been saved, the app SHALL NOT download or save it again, even after the member
@@ -264,30 +188,6 @@ is narrower still: a received photo in an event album's folder is never shared, 
   the app that did not mark it
 - **THEN** that photo may be shared as theirs, and the other members may receive it a second time
 
-### Requirement: Download problems delay photos, never corrupt or lose them
-
-A failed or incomplete download SHALL be retried; a download link that expired before it could be used
-SHALL be renewed at the latest the next time the member opens the app; a download that returned an error
-page or was cut short SHALL NOT be saved as a photo. When the event cannot be reached, photos already
-downloaded SHALL still be saved. A photo the library refuses to accept SHALL stop being retried and SHALL
-NOT hold back the other photos.
-
-#### Scenario: A broken download is retried
-- **WHEN** a download is cut off or the server answers with an error
-- **THEN** nothing broken is saved, and the photo is downloaded again later
-
-#### Scenario: A download delayed past a week
-- **WHEN** a phone stays offline long enough for a pending download's link to expire
-- **THEN** the next opening of the app renews it and the photo still arrives
-
-#### Scenario: Offline, but already downloaded
-- **WHEN** the event cannot be reached while some photos have finished downloading
-- **THEN** those photos are still saved into the library
-
-#### Scenario: A photo the library rejects
-- **WHEN** the Photos library refuses a received photo's content
-- **THEN** it is not retried over and over, and the other photos keep arriving
-
 ### Requirement: Received photos do not take up space twice
 
 A received photo SHALL occupy space once: the temporary copy the app downloads SHALL be handed over to or
@@ -296,17 +196,3 @@ removed from the device once the photo is saved, and when the member leaves or s
 #### Scenario: Space is released after saving
 - **WHEN** a received photo has been saved into the library
 - **THEN** no second copy of it remains in the app's storage
-
-### Requirement: Leaving or switching stops receiving for the old event
-
-Downloads for an event SHALL stop when the member leaves it or switches to another event (capability
-`manage-membership`), and no further photo from it SHALL be saved; photos already received stay in the
-library. Receiving SHALL work again normally after a later join.
-
-#### Scenario: Leaving stops downloads
-- **WHEN** the member leaves while photos are downloading
-- **THEN** no further photo of that event is saved, and those already saved remain
-
-#### Scenario: Rejoining receives again
-- **WHEN** the member leaves and later joins an event with photos from others
-- **THEN** those photos download and are saved normally

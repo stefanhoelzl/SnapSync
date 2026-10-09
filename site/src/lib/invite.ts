@@ -2,7 +2,7 @@
 // (capabilities event-site, join-event).
 // Pure — no DOM — so the island imports it and `scripts/invite.test.ts` runs it under Deno.
 
-/** The invite link's version, as capability `join-event` fixes it: `#v=3&d=<base64url(json)>`. */
+/** The invite link's version, as capability `invite-link` fixes it: `#v=3&d=<base64url(json)>`. */
 export const CONFIG_VERSION = "3";
 
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;

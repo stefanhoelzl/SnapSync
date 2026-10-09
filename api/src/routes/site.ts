@@ -1,4 +1,4 @@
-// The ROOT routes (capabilities `web-site`, `event-site`, `join-event`): the site proxied from the storage
+// The ROOT routes (capabilities `web-site`, `event-site`, `invite-link`): the site proxied from the storage
 // `site/` prefix, the two link-association documents, and the deploy's boot probe. Never under `/api/vN`,
 // and never gated by the maintenance window.
 
@@ -191,7 +191,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     return serveSiteObject(fetchImpl, config, tail, c.req.method, SITE_ASSET_CACHE);
   });
 
-  // The Apple App Site Association document (capability `join-event`): what makes the event link a
+  // The Apple App Site Association document (capability `invite-link`): what makes the event link a
   // Universal Link instead of a web page. Apple's CDN and the device fetch it unauthenticated, so the
   // token gate (`app.ts`) admits it; it MUST be served as application/json with NO redirect.
   //
@@ -222,7 +222,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     return c.req.method === "HEAD" ? c.body(null) : c.body(aasa);
   });
 
-  // The Android counterpart (capability `join-event`): Digital Asset Links, which Android's verifier fetches to
+  // The Android counterpart (capability `invite-link`): Digital Asset Links, which Android's verifier fetches to
   // let the app claim `https://<domain>/join` (the intent filter narrows the path; this file names the app). It
   // names the package and the signing certificates the attestation policy accepts — ONE list
   // (`androidSigningCertDigests`), so the app a link opens is the app that may attest. Empty under trust `any`
@@ -246,7 +246,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     return c.req.method === "HEAD" ? c.body(null) : c.body(assetlinks);
   });
 
-  // The page a FRAGMENT invite reaches (capabilities `join-event`, `event-site`, built by `web-site`): the path a
+  // The page a FRAGMENT invite reaches (capabilities `invite-link`, `event-site`, built by `web-site`): the path a
   // browser requests when an invite of the fragment form is opened on a device with no app to claim it. The
   // fragment never reaches the server, so this handler sees `/join` and nothing more: it fills the built page
   // generically (`pendingFilling`) and the page's island reads the fragment and moves the browser to the event's

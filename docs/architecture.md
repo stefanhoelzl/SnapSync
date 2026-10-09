@@ -1247,7 +1247,7 @@ and `SnapSyncUploadKit`. The pinned inventory, including retired names kept for 
 ## 10. Background execution: each wake's own work, then one tail
 
 How the app process spends an OS wake. The user-visible promises this serves are in
-`openspec/specs/background-upload` and `receiving-photos`. The code of record is `compose/EntryHandlers.kt` (the
+`openspec/specs/delivery` and `receiving-photos`. The code of record is `compose/EntryHandlers.kt` (the
 `Lifecycle` and `PushNotifications` handlers), `compose/WakeEntry.kt` and `compose/TransferEntries.kt` (the `Wake`,
 `Upload` and `Download` handlers), `compose/Wakes.kt` (`WakeHold`) and `feature/upload/TailRunner.kt`. Decision
 record: `changes/archive/2026-09-25-own-work-per-wake`; phases 11f and 11g1 moved every wake from the old inbound port

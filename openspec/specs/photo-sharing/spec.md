@@ -11,12 +11,14 @@ it shares, because a stray meme is visible and harmless while an event photo tha
 is a failure nobody can notice or fix; on Android only the phone's camera folder (DCIM) is shared, for
 cleaner events. It also promises what the other members see of that contribution over
 time — a photo appears only once it is complete, disappears when the member deletes or stops sharing it
-until the event closes, after which what each member shares is fixed, and a photo already in the event is
-not uploaded again because the member rejoins, switches events and back, or reinstalls. How the photos
-travel is capability `background-upload`; what arrives on the other side is capability `receiving-photos`.
+until the event closes (after which what each member shares is fixed, capability `event-lifetime`), and a
+photo already in the event is not uploaded again because the member rejoins, switches events and back, or reinstalls.
+How the photos travel is capability `delivery`; what arrives on the other side is capability `receiving-photos`.
 
 Decision record: changes/archive/2026-07-15-add-photo-selection-policy
+
 ## Requirements
+
 ### Requirement: Only photos taken inside the member's capture range are shared
 
 A member SHALL share only photos whose capture date lies inside their membership's capture range, both
@@ -320,41 +322,3 @@ copy. No promise is made that an app update avoids repeated uploads.
 #### Scenario: An offline join may upload again, never duplicate
 - **WHEN** a member joins while the service cannot be reached to learn what it already holds
 - **THEN** the join still completes, photos may be uploaded again, and no member receives any photo twice
-
-### Requirement: A member's share is settled only after the event has ended
-
-A member's device SHALL settle which of its photos it shares to an event only after the event's range has
-ended and only once it has looked at the photo library since then, so that every photo the member took
-within their range before the end is part of what they share — including photos only in iCloud or taken
-while the phone was offline. Settling SHALL NOT wait for the photos to finish uploading. Until the event
-closes (capability `event-lifetime`), a member's device that finds more photos to share SHALL still share
-them.
-
-#### Scenario: A photo from the last evening
-- **WHEN** a member takes a photo an hour before the range ends and their phone stays off until the next
-  day, before the event has closed
-- **THEN** that photo is shared to the event
-
-#### Scenario: Selecting more photos after the end
-- **WHEN** a limited-access member adds in-range photos to their selection after the range ended, before
-  the event closed
-- **THEN** those photos are shared to the event
-
-### Requirement: What a member shares is fixed once the event has closed
-
-Once the event has closed, what each member shares to it SHALL NOT change: a photo already shared SHALL
-stay available to every member still receiving, even if its owner deletes it, deselects it or loses photo
-access, and no further photo SHALL be shared to it. Photos already on their way SHALL still arrive,
-unless the event's photos are deleted first (capability `event-lifetime`).
-
-#### Scenario: A deletion after the close
-- **WHEN** a member deletes a shared photo after the event has closed
-- **THEN** members who have not yet received it still do
-
-#### Scenario: A photo added after the close
-- **WHEN** a limited-access member adds an in-range photo to their selection after the event has closed
-- **THEN** it is not shared
-
-#### Scenario: A last upload finishes after the close
-- **WHEN** a member's photo is still uploading when the event closes because every member has settled
-- **THEN** it completes and reaches the other members

@@ -1,6 +1,6 @@
 // Hono app for the backend: the whole device API, composed here (capabilities `docs/architecture.md` for the route
 // shapes, `database` for what each one reads and writes, `privacy-security` for the gate, plus
-// `event-lifetime`, `manage-membership`, `manage-membership`, `receiving-photos`, `web-site` and `join-event`, over the
+// `event-lifetime`, `manage-membership`, `delivery`, `receiving-photos`, `web-site`, `join-event` and `invite-link`, over the
 // shared `docs/deployment.md`).
 //
 // THIS FILE holds the three gates (maintenance, version, token) and the composition; the routes live in
@@ -83,7 +83,7 @@
 //       rather than composed. No ownership check (there is no owner); the token gate is the whole
 //       authorization.
 //   PUT /api/v2/devices/:deviceId
-//     → the push registration (capability `receiving-photos`): UPDATEs the device's push columns and
+//     → the push registration (capability `delivery`): UPDATEs the device's push columns and
 //       NEVER inserts. 401 when it affects no row — the token verified, but we hold no attestation for
 //       this device. The shipped client recovers unaided: the 401 drops its token, it attests (which
 //       creates the row), and re-sends the registration when the new credential arrives. A 201 here would
@@ -257,7 +257,7 @@ export function createApp(
     service: "s3",
   });
 
-  // The silent-wake sender (capability `receiving-photos`): each token through the push service its kind names —
+  // The silent-wake sender (capability `delivery`): each token through the push service its kind names —
   // APNs for an iPhone, FCM for an Android phone — each memoizing its own credential across sends. Every wake goes
   // through it: the notify fan-out and the close.
   const pushSender = createPushSender(config, fetchImpl);
@@ -391,7 +391,7 @@ export function createApp(
     const { path } = splitVersion(new URL(c.req.url).pathname);
     // Ungated (closed list): OPTIONS, the `/attest/*` token issuers, the public marketing page at
     // EXACTLY `/` (capability `web-site`), and the event link's two public routes (capability
-    // `join-event`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
+    // `invite-link`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
     // cannot be made to send one, and `/join`, whose entire audience is people who have no app and so no
     // attestation. These three (`/`, `/join`, the AASA) are exact-path and GET/HEAD-only — never a prefix,
     // never a mutating method — and read no storage, so serving them unauthenticated grows neither the bill

@@ -144,7 +144,7 @@ export async function insertEvent(db: Db, e: EventRow): Promise<void> {
 
 /**
  * Read one event, or `null` when it does not exist. An event EXISTS exactly when this row does — the
- * whole existence gate, and the reason a `404` is a SEALED absence that `manage-membership`'s two-witness
+ * whole existence gate, and the reason a `404` is a SEALED absence that `event-lifetime`'s two-witness
  * teardown can act on. A transport failure THROWS, so a transient fault is never mistaken for absence.
  */
 export async function readEvent(db: Db, eventId: string): Promise<EventRow | null> {
@@ -525,7 +525,7 @@ export function recordResourceStatement(r: ResourceRecord): Statement {
 
 /**
  * Whether the event's union would GAIN this asset if `role`'s bytes were recorded right now — the byte
- * route's wake list (capability `receiving-photos`), as the event's id or nothing. A byte belongs to ONE
+ * route's wake list (capability `delivery`), as the event's id or nothing. A byte belongs to ONE
  * event (change `per-event-storage-layout`), so it can complete at most that one.
  *
  * ASK BEFORE WRITING, not after. "Is this asset complete?" answered after the insert cannot tell a
@@ -966,7 +966,7 @@ export async function deviceVersions(db: Db): Promise<DeviceVersion[]> {
 
 // ── Devices: the push-registration group ──────────────────────────────────────────────────────────
 
-/** A device's registered push token, as the notify fan-out needs it (capability `receiving-photos`). */
+/** A device's registered push token, as the notify fan-out needs it (capability `delivery`). */
 export type DevicePushToken = { kind: string; token: string; env: string };
 
 /**

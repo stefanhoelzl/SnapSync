@@ -18,7 +18,7 @@
 // The one exception is a value WE do not read. `assetsd` validates the background-upload registration
 // insert against `BackgroundUploadURLBase` in a bundle's OWN `Info.plist`, and can see no resource we
 // bundle; without it `setUploadJobExtensionEnabled(true)` fails with a bare `PHPhotosErrorDomain -1` and
-// nothing uploads on that tier (measured on device 2026-08-28; capability `background-upload`). An
+// nothing uploads on that tier (measured on device 2026-08-28; capability `delivery`). An
 // `Info.plist` substitution can only read a build setting, and a build setting cannot hold a URL — hence
 // `UPLOAD_SCHEME` and `UPLOAD_HOST` below: a scheme enum and a bare host, neither able to contain `//`,
 // which the two `Info.plist`s compose into `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2` where `//` is data.

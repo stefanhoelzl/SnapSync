@@ -1,4 +1,4 @@
-// What the push senders share (capability `receiving-photos`): the token and outcome shapes, the one POST
+// What the push senders share (capability `delivery`): the token and outcome shapes, the one POST
 // whose answer becomes a per-token outcome, and the batch that attempts every token. `apns.ts` and `fcm.ts`
 // differ only in which tokens they send and how they authenticate; everything after the credential is here.
 

@@ -105,7 +105,7 @@ activity) — don't retry that.
 
 ## Verifying the event link
 
-An invite is an HTTPS **Universal Link** — `https://snapsync.stho.net/join#v=3&d=<base64url>` (capability `join-event`). The payload rides in the **fragment** on purpose: a browser never sends it, so the
+An invite is an HTTPS **Universal Link** — `https://snapsync.stho.net/join#v=3&d=<base64url>` (capability `invite-link`). The payload rides in the **fragment** on purpose: a browser never sends it, so the
 `eventId` (which *is* the upload capability) never reaches the backend or its CDN even when someone
 without the app opens the link and gets redirected to the App Store.
 

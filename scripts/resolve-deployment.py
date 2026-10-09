@@ -185,7 +185,7 @@ INVENTORY = [
         other visitor with Play's "not found".
 
         When set it MUST be exactly `https://play.google.com/store/apps/details?id=<androidPackageName>`: the
-        event page appends `&referrer=<invite>` to it (capability `join-event` — the install referrer that opens
+        event page appends `&referrer=<invite>` to it (capability `invite-link` — the install referrer that opens
         the invite on first launch), so a second query or a foreign URL would break that, and the package it
         names must be the one the build installs. Not rendered to the api bundle, which links no store.
     """),
@@ -216,7 +216,7 @@ INVENTORY = [
         the two platforms' identifiers are independent facts that merely coincide today.
     """),
     Key("firebaseProjectId", [JSON, PROPS], doc="""
-        The Firebase project an Android build's pushes come from (capability `receiving-photos`). ONE value with
+        The Firebase project an Android build's pushes come from (capability `delivery`). ONE value with
         two readers: the Android app starts Firebase with it, and the backend's FCM sender addresses
         `projects/<id>/messages:send` with it and sends only to tokens registered under it (an FCM token is
         bound to the project that issued it; the app registers the project id as its token's `env`). A public
@@ -378,7 +378,7 @@ INVENTORY = [
         disagreement unrepresentable. It also gates the DSN: absence is the off-switch.
 
         `apnsEnv` is reported by the app in `devices/<id>/config.json`, so the backend picks the right
-        APNs host per token (capability `receiving-photos`); it is kept in lockstep with the
+        APNs host per token (capability `delivery`); it is kept in lockstep with the
         `aps-environment` entitlement by being derived from this same value rather than stated twice.
 
         This key is environment-sourced and names a RAW rendering, which the rule above forbids for a
@@ -697,7 +697,7 @@ def render_xcconfig(flat: dict) -> str:
 
     `UPLOAD_SCHEME`/`UPLOAD_HOST` are how that survives a value which DOES contain `//`. Both bundles'
     `Info.plist` must carry `BackgroundUploadURLBase` — `assetsd` reads it there to validate the
-    background-upload registration, and can see no resource we bundle (capability `background-upload`)
+    background-upload registration, and can see no resource we bundle (capability `delivery`)
     — but an `Info.plist` substitution reads a build setting, and a build setting cannot hold a URL. So
     the URL is COMPOSED AT ITS DESTINATION, `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2`, out of two parts
     neither of which can contain `//`: a scheme this function chooses, and a bare host from authored

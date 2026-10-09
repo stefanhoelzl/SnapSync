@@ -285,12 +285,13 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           TestFlight or Google Play, when the app crashes, hits an error, or freezes until the
           system closes it, a technical report (what went wrong, the app's recent activity leading
           up to it, device model, operating system version, app version, and how its previous runs
-          ended) is sent to our error-monitoring service so we can find and fix the problem. Before
-          a report is sent, the app removes every event, device and membership identifier from it.
-          Each report carries one random per-install identifier so we can tell how many devices an
-          error affects; it is created by the reporting itself, not linked to your identity, and not
-          linked to the device identifier above. Legal basis: our legitimate interest in keeping the
-          app working (GDPR Art. 6(1)(f)).
+          ended) is sent to our error-monitoring service so we can find and fix the problem. A
+          report may contain the random identifiers of your device, the event and the photos
+          involved, so we can find what a problem affected; it never contains the event's key (the
+          part of the invite that opens its photos) or anything that identifies you. Each report
+          also carries one random per-install identifier, created by the reporting itself, so we can
+          tell how many devices an error affects. Legal basis: our legitimate interest in keeping
+          the app working (GDPR Art. 6(1)(f)).
         </li>
         <li>
           <strong>Bug reports you send.</strong> "Report a problem" in the app's menu opens a sheet
@@ -359,7 +360,7 @@ const playOffered = playOfferFor(deployment).kind !== "none";
         </li>
         <li>
           <strong>Bugsink</strong> — error monitoring: receives the automatic crash and error
-          reports (with identifiers already removed) and the bug reports you choose to send.
+          reports (never with an event's key) and the bug reports you choose to send.
         </li>
       </ul>
 

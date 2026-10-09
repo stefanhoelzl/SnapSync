@@ -314,7 +314,7 @@ export function downloadPath(
  * Returns the row; refused `404 event not found` when absent, and on a store failure `502` (recorded as
  * `<route>: event read failed for <id>`), so the route never mistakes a transient fault for absence. That
  * distinction is load-bearing beyond this file: a `404` here is a SEALED deletion, and
- * `manage-membership`'s two-witness teardown acts on it.
+ * `event-lifetime`'s two-witness teardown acts on it.
  */
 export async function gateEvent(db: Db, eventId: string, route: string): Promise<EventRow> {
   const event = await tryUpstream(

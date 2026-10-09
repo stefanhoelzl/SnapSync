@@ -165,7 +165,7 @@ WHERE sourceDeviceId = :sourceDeviceId
   AND sourceAssetId = :sourceAssetId
   AND createdLocalId = :createdLocalId;
 
--- Settle a row as permanently unimportable (capability `receiving-photos`). The library rejected its
+-- Settle a row as permanently unimportable (capability `delivery`). The library rejected its
 -- resource content and consumed the staged file, so there is nothing left to retry with and every later
 -- trigger would spend a photo-library transaction rediscovering that.
 --

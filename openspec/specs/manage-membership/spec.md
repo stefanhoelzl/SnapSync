@@ -2,25 +2,15 @@
 
 ## Purpose
 Serves a joined member — host or guest, who have the same powers — for everything they do with their
-membership after joining: invite others with the event's QR code or link, rename the event for
-everyone, change what they share and receive without leaving, and leave — each until the event closes,
-after which only leaving remains. It promises that leaving is instant, works offline, and never deletes a
-photo anyone already has; that a membership survives app updates, restarts, and a locked phone, and is
-never ended by a mere server error; and that the app ends a membership on its own only once the event is
-finished for it — closed with everything received, confirmed finished by the server, or confirmed deleted
-after its announced deletion date. What
-a capture range admits is capability `photo-sharing`; the album is capability `event-album`.
+membership after joining: rename the event for everyone, change what they share and receive without leaving, and
+leave — each until the event closes, after which only leaving remains. It promises that leaving is instant, works
+offline, and never deletes a photo anyone already has, and that a membership survives app updates, restarts, and a
+locked phone. Inviting others is capability `invite-link`; the app leaving on its own once the event is finished for it
+is capability `event-lifetime`; what a capture range admits is capability `photo-sharing`; the album is capability
+`event-album`.
 Decision record: changes/archive/2026-07-21-add-reconfigure-membership
-## Requirements
-### Requirement: Whoever holds the invite can join and see everything
-The app SHALL NOT restrict who may use an invite: anyone who scans the QR code or receives the link SHALL
-be able to join the event, contribute photos to it, and receive all of its photos, within the event's
-device limit and until the event closes (capability `event-lifetime`).
 
-#### Scenario: A forwarded invite admits a stranger
-- **WHEN** a member's invite link is forwarded to someone outside the group, who opens it before the
-  event closes
-- **THEN** that person can join the event and receives its photos like any other member
+## Requirements
 
 ### Requirement: Any member renames the event for everyone
 Until the event closes (capability `event-lifetime`), every member SHALL be able to rename the event from
@@ -270,113 +260,3 @@ event's invite again (capability `join-event`).
 #### Scenario: A reinstall starts unjoined
 - **WHEN** a member deletes SnapSync and installs it again
 - **THEN** the app opens on the create screen, and opening the event's invite offers to join it
-
-### Requirement: The joined screen offers the invite until the event closes
-The joined screen SHALL offer, while the device is in an event that has not closed (capability
-`event-lifetime`), two equal ways to invite: a share action that hands the event's invite link (capability
-`join-event`) to the system share sheet, and an action that shows a scannable QR code of the same link. The
-share sheet SHALL name the event as what is being shared. Both
-SHALL be offered even when photo access is missing. The QR code SHALL be shown only on request, over the
-joined screen, and SHALL close again without changing anything. The QR code SHALL be dark on a light background
-in both light and dark appearance. Shown, the QR code SHALL be presented as an invitation to join this event,
-and its caption SHALL be addressed to the member showing it, telling them to let family and friends scan it
-with their camera. Sharing or showing the QR code SHALL have no effect on the app's state, whether completed
-or cancelled. Invite affordances SHALL NOT appear while the device is in no event, nor once the event has
-closed, nor while the device cannot read an encrypted event's key — after it lost the key (capability `sync-status`)
-or while the phone is locked since it was started — so an invite is only ever offered whole, never without its key
-(capability `join-event`); a QR code already shown then closes. They SHALL return as soon as the key can be read
-again.
-
-#### Scenario: A host shares the invite before granting photo access
-- **WHEN** a host who has not granted photo access has just joined their new event
-- **THEN** the joined screen offers to share the invite link and to show its QR code, and sharing sends the
-  invite link through the system share sheet
-
-#### Scenario: The QR code is shown on request
-- **WHEN** a member taps the action to show the QR code
-- **THEN** the event's QR code appears over the joined screen, and closing it returns to the joined screen
-  unchanged
-
-#### Scenario: The QR code is not shown until asked for
-- **WHEN** a member opens the joined screen
-- **THEN** no QR code is shown until they ask for it
-
-#### Scenario: The share sheet names the event
-- **WHEN** a member of the event "Anna's 40th" taps the share action, on iPhone or on Android
-- **THEN** the system share sheet shows "Anna's 40th" as the title of what is being shared
-
-#### Scenario: The QR stays scannable in dark mode
-- **WHEN** the phone is in dark appearance and the member shows the QR code
-- **THEN** the QR code is still drawn dark on a light background
-
-#### Scenario: The QR code and the shared link are the same invite
-- **WHEN** one guest scans the member's QR code and another taps the link the member shared
-- **THEN** both reach the join screen of the same event
-
-#### Scenario: The QR code reads as an invitation
-- **WHEN** a member shows the QR code
-- **THEN** it is labelled as an invitation to join this event, not as sharing their photos
-
-#### Scenario: The caption addresses the member
-- **WHEN** a member reads the caption beneath the shown QR code
-- **THEN** it tells them to let family and friends scan it with their camera, and does not tell them to scan
-  anything
-
-#### Scenario: A closed event offers no invite
-- **WHEN** the event closes while a member is looking at the joined screen, with or without the QR code shown
-- **THEN** the share action, the QR action and any shown QR code disappear
-
-#### Scenario: A phone that lost the event's key offers no invite
-- **WHEN** a member of an encrypted event whose phone lost the event's key opens the joined screen
-- **THEN** it offers neither to share the invite nor to show its QR code
-
-#### Scenario: The invite returns with the key
-- **WHEN** that member opens the event's whole invite and the key is restored
-- **THEN** the joined screen offers to share the invite and to show its QR code again, both carrying the key
-
-### Requirement: The app leaves on its own once the event is finished for it
-The app SHALL end the membership on its own, exactly as an explicit leave but without asking and without
-showing anything, in the foreground or during a background wake, when either:
-- the event has closed (capability `event-lifetime`), every photo this member shares has reached the
-  event, and every photo of the others that this member receives is in their library or was deleted by
-  them there — a photo that repeatedly fails to arrive keeps the member in the event; or
-- the server confirms the event has finished and its photos were deleted; or
-- the member opens the app, the event is confirmed not to exist, and its announced deletion date has
-  already passed.
-
-It SHALL NOT end a membership on any other evidence: not while offline, not on a server error, not when
-the server merely fails to find the event before its deletion date, and not for a membership that does
-not yet know its deletion date. Every doubt SHALL resolve toward staying joined. The next time the member
-opens the app after such a leave, it SHALL show the create screen.
-
-#### Scenario: Everything received after the close
-- **WHEN** the event closes and the member's phone, in their pocket, has every photo of the event
-- **THEN** SnapSync leaves the event in the background, and the next time the member opens it they see
-  the create screen
-
-#### Scenario: A share-only member waits for their own uploads
-- **WHEN** the event closes while a share-only member's last photos are still uploading
-- **THEN** the member stays in the event until those photos have reached it, then leaves on their own
-
-#### Scenario: A photo that will not arrive keeps the member
-- **WHEN** the event has closed and one of the others' photos repeatedly fails to arrive in this member's
-  library
-- **THEN** the member stays in the event
-
-#### Scenario: A member whose event finished without them
-- **WHEN** a member's phone was off for a week and the event's photos were deleted meanwhile, and the
-  phone is woken in the background
-- **THEN** SnapSync learns the event has finished and leaves it, with the photos it had received still in
-  the library
-
-#### Scenario: A deleted event past its date is left automatically
-- **WHEN** a member opens SnapSync after the event's deletion date, and the event has been deleted
-- **THEN** the app shows the create screen with the device in no event
-
-#### Scenario: A server error never ends a membership
-- **WHEN** the member opens the app after the deletion date while the server is failing or the phone is offline
-- **THEN** the member stays joined
-
-#### Scenario: A premature "gone" is disbelieved
-- **WHEN** the server fails to find the event before its deletion date without confirming it has finished
-- **THEN** the member stays joined and sharing continues
