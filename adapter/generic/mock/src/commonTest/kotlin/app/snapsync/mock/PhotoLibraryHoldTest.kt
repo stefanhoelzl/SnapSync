@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.SelectionPolicy
+import app.snapsync.ports.AssetFilter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -15,7 +15,7 @@ import kotlin.time.Duration.Companion.seconds
 @OptIn(ExperimentalCoroutinesApi::class)
 class PhotoLibraryHoldTest {
 
-    private val everything = SelectionPolicy(emptyList())
+    private val everything = AssetFilter(createdFrom = null, createdUntil = null)
 
     @Test
     fun a_single_hold_releases_its_walk() = runTest {

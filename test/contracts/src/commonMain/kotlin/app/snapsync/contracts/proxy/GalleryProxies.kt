@@ -3,11 +3,10 @@ package app.snapsync.contracts.proxy
 import app.snapsync.contracts.CallLog
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImport
@@ -19,6 +18,7 @@ import app.snapsync.ports.PhotoGrantRead
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.time.Instant
 
 /** [GalleryReader] as its clause's [CallLog] sees it. */
 fun GalleryReader.recorded(log: CallLog): GalleryReader = GalleryReaderProxy(this, log)
@@ -28,14 +28,13 @@ internal class GalleryReaderProxy(private val inner: GalleryReader, log: CallLog
 
     // Inherited from [PhotoGrantRead], so counted under it, as the grid counts it.
     override fun access() = r.port("PhotoGrantRead").answer("access", inner.access())
-    override suspend fun assets(policy: SelectionPolicy) = r.answer("assets", inner.assets(policy))
-    override suspend fun libraryAssets(policy: SelectionPolicy) = r.answer("libraryAssets", inner.libraryAssets(policy))
+    override suspend fun assets(filter: AssetFilter) = r.answer("assets", inner.assets(filter))
     override suspend fun assetsById(ids: Set<AssetId>) = r.answer("assetsById", inner.assetsById(ids))
     override suspend fun resources(ids: Set<AssetId>) = r.answer("resources", inner.resources(ids))
     override suspend fun albums() = r.answer("albums", inner.albums())
     override suspend fun albumsById(ids: Set<AlbumId>) = r.answer("albumsById", inner.albumsById(ids))
-    override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?) =
-        r.answer("albumMembers", inner.albumMembers(album, since))
+    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) =
+        r.answer("albumMembers", inner.albumMembers(album, createdFrom))
     override val albumKind get() = r.answer("albumKind", inner.albumKind)
     override suspend fun createAlbum(title: String) = r.returns("createAlbum", inner.createAlbum(title))
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>) =

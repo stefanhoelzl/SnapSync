@@ -7,7 +7,6 @@ import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.CandidateRead
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
@@ -20,6 +19,7 @@ import app.snapsync.model.SelectionRule
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesOf
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -27,6 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The gallery services — the decisions made over the thin [GalleryReader]: which answer is authoritative, which grant
@@ -53,15 +54,14 @@ class GalleryServicesTest {
         }
 
         override fun access(): GalleryAccess = access
-        override suspend fun assets(policy: SelectionPolicy) = read("assets") { assets.map { it.facts } }
-        override suspend fun libraryAssets(policy: SelectionPolicy) = read("libraryAssets") { assets.map { it.facts } }
+        override suspend fun assets(filter: AssetFilter) = read("assets") { assets.map { it.facts } }
         override suspend fun assetsById(ids: Set<AssetId>) =
             read("assetsById") { assets.map { it.facts }.filter { it.assetId in ids } }
         override suspend fun resources(ids: Set<AssetId>) =
             read("resources($ids)") { assets.filter { it.facts.assetId in ids } }
         override suspend fun albums() = read("albums") { albums }
         override suspend fun albumsById(ids: Set<AlbumId>) = read("albumsById") { albums.filter { it.id in ids } }
-        override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?) =
+        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) =
             read("albumMembers($album)") { members[album].orEmpty() }
         override val albumKind: AlbumKind = AlbumKind.COLLECTION
         override suspend fun createAlbum(title: String): AlbumId? = created.also { calls += "createAlbum($title)" }
@@ -134,6 +134,34 @@ class GalleryServicesTest {
             assertEquals(access == GalleryAccess.GRANTED, walk.fullEnumeration, "$access")
         }
     }
+
+    @Test
+    fun `a policy that admits nothing reads nothing - its empty walk as authoritative as the grant makes it`() =
+        runTest {
+            for (access in GalleryAccess.entries) {
+                val gallery = ScriptedGallery(access = access, assets = listOf(photo("A")))
+                val walk = GalleryDiscovery(gallery).discover(SelectionPolicy(listOf(SelectionRule.DenyAll)))
+                assertTrue(walk.candidates.isEmpty(), "$access")
+                assertEquals(access == GalleryAccess.GRANTED, walk.fullEnumeration, "$access")
+                assertTrue(gallery.calls.isEmpty(), "nothing is read: $access")
+            }
+        }
+
+    @Test
+    fun `a policy that admits nothing is a counted zero where the library is readable and no answer where not`() =
+        runTest {
+            val denyAll = SelectionPolicy(listOf(SelectionRule.DenyAll))
+            for (access in GalleryAccess.entries) {
+                val gallery = ScriptedGallery(access = access, assets = listOf(photo("A")))
+                val read = GalleryCandidateSource(gallery).candidates(denyAll)
+                if (access == GalleryAccess.GRANTED || access == GalleryAccess.LIMITED) {
+                    assertEquals(CandidateRead.Readable(emptyList()), read, "$access")
+                } else {
+                    assertEquals(CandidateRead.NotReadable, read, "$access")
+                }
+                assertTrue(gallery.calls.isEmpty(), "nothing is read: $access")
+            }
+        }
 
     @Test
     fun `an unreadable walk is empty and not authoritative`() = runTest {
@@ -253,7 +281,7 @@ class GalleryServicesTest {
         val membersUnreadable = object : GalleryReader by ScriptedGallery(
             albums = listOf(AlbumRecord("wa", "WhatsApp")),
         ) {
-            override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> =
+            override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> =
                 GalleryRead.NotReadable
         }
         assertEquals(emptySet(), GalleryAlbums(membersUnreadable).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff))

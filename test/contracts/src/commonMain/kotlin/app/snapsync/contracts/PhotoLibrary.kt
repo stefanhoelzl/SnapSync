@@ -1,10 +1,8 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.selectionPolicyFor
 import app.snapsync.motionphoto.motionPhotoStill
+import app.snapsync.ports.AssetFilter
+import kotlin.time.Instant
 
 /**
  * What the photo-library contracts share: the fixture a binding seeds, and where each clause seeds it
@@ -117,19 +115,10 @@ object PhotoLibrary {
         return CaptureWindow(FIRST_DAY + (c * CLAUSES_PER_CONTRACT + k) * SPACING_DAYS)
     }
 
-    /**
-     * The policy a clause reads its window with: floor and ceiling at the window's edges, built through the
-     * one derivation production uses. [contributes] false is a membership that shares nothing.
-     */
-    suspend fun policy(contract: String, clauseId: String, contributes: Boolean = true): SelectionPolicy {
+    /** The read a clause asks of its window: the window's two edges, as a hint the library narrows by. */
+    fun filter(contract: String, clauseId: String): AssetFilter {
         val window = window(contract, clauseId)
-        return selectionPolicyFor(
-            includesUpload = contributes,
-            cutoff = captureCutoff(window.start),
-            ceiling = captureCeiling(window.end),
-            suppressedAssetIds = { emptySet() },
-            albumExcludedAssetIds = { emptySet() },
-        )
+        return AssetFilter(createdFrom = Instant.parse(window.start), createdUntil = Instant.parse(window.end))
     }
 
     /** Every contract whose clauses seed the shared library, in a fixed order: the order IS the allocation. */

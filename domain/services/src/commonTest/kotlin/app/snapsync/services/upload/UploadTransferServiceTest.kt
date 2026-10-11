@@ -5,7 +5,6 @@ import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
@@ -31,6 +30,7 @@ import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.Upload
@@ -42,6 +42,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The upload service over the thin `Upload` port (capability `background-upload`): the settling, recording and
@@ -123,12 +124,7 @@ class UploadTransferServiceTest {
     private class Library(val exportable: Set<String> = emptySet()) : GalleryReader {
         val exports = mutableListOf<Pair<String, String>>()
         override fun access() = GalleryAccess.GRANTED
-        override suspend fun assets(
-            policy: SelectionPolicy,
-        ): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
-        override suspend fun libraryAssets(
-            policy: SelectionPolicy,
-        ): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
+        override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
         override suspend fun assetsById(
             ids: Set<AssetId>,
         ): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
@@ -137,7 +133,7 @@ class UploadTransferServiceTest {
         override suspend fun albumsById(
             ids: Set<AlbumId>,
         ): GalleryRead<List<AlbumRecord>> = GalleryRead.Read(emptyList())
-        override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> =
+        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> =
             GalleryRead.Read(emptySet())
         override val albumKind: AlbumKind = AlbumKind.COLLECTION
         override suspend fun createAlbum(title: String): AlbumId? = null

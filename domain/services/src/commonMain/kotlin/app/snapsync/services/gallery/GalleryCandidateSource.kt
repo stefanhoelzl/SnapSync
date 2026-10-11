@@ -5,6 +5,7 @@ import app.snapsync.model.GalleryRead
 import app.snapsync.model.ResourceBatch
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromFacts
+import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
 
@@ -18,11 +19,15 @@ import app.snapsync.ports.GalleryReader
  */
 class GalleryCandidateSource(private val gallery: GalleryReader) : CandidateSource {
 
-    override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
-        when (val read = gallery.assets(policy)) {
+    override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
+        // A policy that admits nothing reads nothing — a counted zero, as long as the library could be read at all.
+        val filter = policy.assetFilter()
+            ?: return if (gallery.access().grantsPhotoAccess) CandidateRead.Readable(emptyList()) else CandidateRead.NotReadable
+        return when (val read = gallery.assets(filter)) {
             GalleryRead.NotReadable -> CandidateRead.NotReadable
             is GalleryRead.Read -> CandidateRead.Readable(candidatesFromFacts(read.value, resourceBatch(gallery)))
         }
+    }
 }
 
 /**
