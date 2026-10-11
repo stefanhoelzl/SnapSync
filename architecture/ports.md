@@ -109,6 +109,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PushNotifications` | `:domain:ports` | `:adapter:android` AndroidPushNotifications; `:adapter:ios:app-only` IosPushNotifications; `:test:contracts` PushNotificationsProxy | no |
 | `PushTokenPublisher` | `:domain:services` | `:domain:services` BackendPushTokenPublisher; `:test:feature` FakePushTokenPublisher | yes |
 | `RangeEdit` | `:domain:presentation` | `:domain:presentation` Day, DragEnd, DragStart, FromHour, FromMinute, Sweep, UntilHour, UntilMinute, UntilMinuteDrag | no |
+| `RecognitionSource` | `:domain:services` | `:domain:services` Recognition, SuppressionService; `:test:feature` Recognised, Suppression | yes |
 | `RegistrationAnswer` | `:domain:model` | `:domain:model` Answered, Unsupported | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable, Unsupported | no |
 | `RenameOutcome` | `:domain:model` | `:domain:model` InvalidName, Renamed, Transient | no |

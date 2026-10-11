@@ -22,6 +22,7 @@ import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.UploadSealing
+import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -118,6 +119,8 @@ internal class UploadServices(
     val manifestPublisher: ManifestPublisher,
     /** Echo-suppression: required, no default. */
     val suppression: SuppressionSource,
+    /** Whether the membership's received photos have been recognised: required. */
+    val recognition: RecognitionSource,
     /**
      * The policy's denylisted-album read: this tier's `denylistedAlbumMembers` over its
      * own grant read and its own `AlbumLookupFailure` answer.
@@ -235,6 +238,7 @@ private fun cycleGateRead(ports: UploadServices) = CycleGateRead(
     config = ports.config,
     identity = ports.deviceIdentity,
     suppression = ports.suppression,
+    recognition = ports.recognition,
     host = ports.host,
     // Each root states its own answer — the app from resolution, the extension from its own grant read.
     admission = ports.process::admission,

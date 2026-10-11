@@ -135,6 +135,8 @@ private fun extensionServices(
     // No version gate: the extension has no screen to show a refusal on.
     val exchange = BackendExchange(ports.http, build, versionGate = null)
     val config = ConfigService(process.files, process.clock)
+    // The app's download store, read-only: both the echo suppression and the recognition record.
+    val downloads = SuppressionService(ports.databases)
     return UploadServices(
         config = config,
         // The same shared choice the app's menu writes, read per job.
@@ -154,7 +156,8 @@ private fun extensionServices(
         selectionScope = { SelectionScope.Unrestricted },
         manifestStore = DeviceManifestService(process.files),
         manifestPublisher = extensionBackend(exchange, attestStore, identity).manifest,
-        suppression = SuppressionService(ports.databases),
+        suppression = downloads,
+        recognition = downloads,
         // A failed denylisted-album lookup fails the cycle here; the next invocation retries.
         albumExclusions = { cutoff ->
             denylistedAlbumMembers(albums, cutoff, ports.gallery.access(), AlbumLookupFailure.FailCycle, log)

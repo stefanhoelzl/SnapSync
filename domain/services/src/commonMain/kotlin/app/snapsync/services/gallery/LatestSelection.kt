@@ -47,10 +47,19 @@ class LatestSelection {
      * Follow the gallery's selection [changes]: each one becomes the latest snapshot, then [onChanged] runs — one
      * emission, ONE read serving every consumer: one discovery serves both the status total
      * and the enqueue. Returns only when [changes] is closed.
+     *
+     * [beforePublish] sees each snapshot BEFORE any reader can: what it withholds (a membership whose newly visible
+     * received photos are not recognised yet) is withheld before a cycle could admit from the snapshot.
      */
-    suspend fun follow(changes: ReceiveChannel<SelectionSnapshot>, onChanged: suspend () -> Unit) {
+    suspend fun follow(
+        changes: ReceiveChannel<SelectionSnapshot>,
+        beforePublish: suspend (List<Resource>) -> Unit,
+        onChanged: suspend () -> Unit,
+    ) {
         for (change in changes) {
-            latest.value = resourcesFrom(change.assets)
+            val resources = resourcesFrom(change.assets)
+            beforePublish(resources)
+            latest.value = resources
             onChanged()
         }
     }

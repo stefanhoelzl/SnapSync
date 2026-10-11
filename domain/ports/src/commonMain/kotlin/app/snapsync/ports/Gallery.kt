@@ -50,10 +50,9 @@ interface GalleryReader : PhotoGrantRead {
     suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>>
 
     /**
-     * Every asset of the library [policy] narrows to — facts only — including the ones [assets] leaves out because they
-     * are never this member's to share: on Android the event albums' own folders, where received photos are filed.
-     * What a reinstalled app reads to recognise the photos it received before. Narrowed and over-returning exactly as
-     * [assets] is; where the platform keeps no such folders it answers what [assets] does.
+     * Every asset of the library [policy] narrows to — facts only. What a reinstalled app reads to recognise the photos
+     * it received before. Narrowed and over-returning exactly as [assets] is, and today the same read on every platform
+     * (`changes/archive/2026-10-11-close-share-back-gaps` retired Android's separate candidate scope).
      */
     suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>>
 

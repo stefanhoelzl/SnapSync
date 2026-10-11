@@ -234,6 +234,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
     private fun union(call: Call): HttpResult {
         val eventId = call.param("eventId")
         val cursor = call.query["cursor"]?.let { it.toLongOrNull() ?: return text(BAD_REQUEST, "invalid cursor") }
+        if (state.failUnion) return offline()
         state.unionReads[eventId] = (state.unionReads[eventId] ?: 0) + 1
         val trigger = call.header(Routes.EventFiles.HEADER_SNAPSYNC_TRIGGER)
         val (union, position) = state.unionPage(eventId, cursor, call.tokenDevice, trigger) ?: return eventNotFound()

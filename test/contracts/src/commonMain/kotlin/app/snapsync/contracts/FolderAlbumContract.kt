@@ -19,7 +19,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 /** The states a folder-album library can be found in, as far as a clause cares. */
 enum class FolderAlbumState {
@@ -47,7 +46,9 @@ class FolderAlbums(
  * `changes/archive/2026-09-30-android-event-album` D2, D3, D6, D8) — this list IS the specification of those
  * obligations. The core
  * builds on each: an empty album that resolved would never read as deleted; a move that minted a new id would let echo
- * suppression miss a received photo; an album photo that stayed a candidate would be shared back as the member's own.
+ * suppression miss a received photo. An album's photos are read like any other photo of the default gallery — a
+ * received one is kept out of the member's share by echo suppression, never by its folder (change
+ * `close-share-back-gaps`).
  */
 object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlbum") {
 
@@ -111,7 +112,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
         }
 
         clause(
-            "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_IS_NO_CANDIDATE",
+            "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_STAYS_IN_THE_GALLERY",
             FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
             covers = cells {
                 on<GalleryReader> {
@@ -122,7 +123,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
                 }
             },
         ) { subject ->
-            val clauseId = "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_IS_NO_CANDIDATE"
+            val clauseId = "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_STAYS_IN_THE_GALLERY"
             val policy = PhotoLibrary.policy(name, clauseId)
             val before = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(policy))
             assertEquals(subject.seeded, before.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded)
@@ -138,8 +139,11 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             assertEquals(subject.seeded, byId.value.mapTo(mutableSetOf()) { it.assetId }, "each photo keeps its id")
             assertEquals(SEED_COUNT, byId.value.size, "each photo is in the library once")
             val after = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(policy))
-            val leaked = after.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded
-            assertTrue(leaked.isEmpty(), "a photo in an event album is never a candidate to share: $leaked")
+            assertEquals(
+                subject.seeded,
+                after.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
+                "an event album is a folder of the default gallery like any other: its photos are read where they are",
+            )
         }
 
         clause(

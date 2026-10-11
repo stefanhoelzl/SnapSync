@@ -1,6 +1,7 @@
 package app.snapsync.feature.status
 
 import app.snapsync.feature.support.CapturingLogWriter
+import app.snapsync.feature.support.Recognised
 import app.snapsync.feature.support.configService
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
@@ -96,6 +97,7 @@ class StatusRefreshTest {
             },
             gallery = walked,
             refreshDownloadLine = { steps += "downloads" },
+            recognition = Recognised(*listOfNotNull(activeConfig?.eventId).toTypedArray()),
             configSource = membership(activeConfig),
             policyFor = { cfg ->
                 steps += "policy"
@@ -117,6 +119,22 @@ class StatusRefreshTest {
     }
 
     @Test
+    fun `an unrecognised membership is not counted - N stays not counted`() = runTest {
+        // Before the received photos were recognised, any of them would count as the member's own: the upload gate
+        // withholds until then, so `N` must not count them either (capability `receiving-photos`).
+        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
+        StatusRefresh(
+            ledgerCounts = ReadingLedgerCountsSource { LedgerCounts(done = emptySet(), pending = emptySet()) },
+            gallery = gallery,
+            refreshDownloadLine = {},
+            recognition = Recognised(),
+            configSource = membership(config),
+            policyFor = { policy() },
+        ).run()
+        assertNull(gallery.admitted.value, "not counted, so the screen stays on its neutral line")
+    }
+
+    @Test
     fun `a completed refresh publishes the counted total`() = runTest {
         // The ordering assertions above would all pass against a method that walked and threw the
         // answer away, so pin that the sequence actually produces `N`.
@@ -129,6 +147,7 @@ class StatusRefreshTest {
             ledgerCounts = counts,
             gallery = gallery,
             refreshDownloadLine = {},
+            recognition = Recognised(config.eventId),
             configSource = membership(config),
             policyFor = { policy() },
         ).run()
@@ -186,6 +205,7 @@ class StatusRefreshTest {
             },
             gallery = gallery,
             refreshDownloadLine = { steps += "downloads" },
+            recognition = Recognised(config.eventId),
             configSource = membership(config),
             policyFor = {
                 steps += "policy"

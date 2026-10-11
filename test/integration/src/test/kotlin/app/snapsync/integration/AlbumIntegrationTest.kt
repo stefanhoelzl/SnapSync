@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.AlbumStyle
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
@@ -68,8 +69,9 @@ class AlbumIntegrationTest {
             albums().single().assets,
             "the received photo is in the album; the own one is not",
         )
-        val candidates = gallery().policy!!.assets.map { it.assetId }
-        assertTrue(RECEIVED !in candidates, "a photo in the album is never a candidate to share: $candidates")
+        uploadAll()
+        val shared = objects().mapTo(mutableSetOf()) { assetIdFromUploadKey(it).value }
+        assertEquals(setOf("A"), shared, "the received photo in the album is not shared back, as on iPhone")
     }
 
     @Test

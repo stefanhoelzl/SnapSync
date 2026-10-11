@@ -744,6 +744,7 @@ class AppCore internal constructor(
             refreshDownloadLine = { downloadStatusSource.refresh() },
             configSource = services.config,
             policyFor = ::selectionPolicyForMembership,
+            recognition = services.downloadStore.recognition,
             log = services.log,
         )
     }
@@ -954,7 +955,13 @@ class AppCore internal constructor(
             // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
             // `refresh` recounts N over the very same snapshot — no second library read on this path, and
             // no snapshot-specific entry point for the total to drift through.
-            selection.follow(selectionChanges) {
+            // A selection bringing marked photos no pass recognised withholds the membership BEFORE any reader sees
+            // it, and recognises them first (`changes/archive/2026-10-11-close-share-back-gaps`).
+            selection.follow(
+                selectionChanges,
+                beforePublish = { receivedPhotoAdoption.beforeSelectionPublished(services.config.config.value, it) },
+            ) {
+                receivedPhotoAdoption.afterSelectionPublished(services.config.config.value)
                 statusRefresh.refreshTotal()
                 // Its own work — the snapshot-fed discovery → manifest — then the tail (① and ② from the snapshot).
                 tail.onSelectionChanged()

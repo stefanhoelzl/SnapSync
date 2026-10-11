@@ -149,9 +149,10 @@ excluded. Inside DCIM the capture range and the resolution floors SHALL apply to
 because Android does not tell the app that a photo was edited. A photo or video outside DCIM SHALL NOT be
 shared, however it got there and whatever its resolution — media saved from a messaging app or the web,
 downloads, and photos from in-app cameras that save elsewhere — and the member SHALL have no way to add
-another folder. The folder inside DCIM where SnapSync keeps the event albums (capability `event-album`)
-SHALL NOT be shared either, with everything in it — the photos the member received there, and anything the
-member put there themselves. Under limited access (capability `photo-access`) the member's selection SHALL be filtered the
+another folder. The folder inside DCIM where SnapSync keeps the event albums (capability `event-album`) is a
+subfolder like any other: the photos the member received there are kept out as every received photo is
+(capability `receiving-photos`), and a photo the member put there themselves is shared under the same rules as
+any photo in DCIM. Under limited access (capability `photo-access`) the member's selection SHALL be filtered the
 same way. On iPhone this requirement does not apply.
 
 #### Scenario: A camera photo is shared
@@ -186,7 +187,11 @@ same way. On iPhone this requirement does not apply.
 #### Scenario: The event album's photos are not shared
 - **WHEN** an Android member has received photos into an event's album, and they lie inside the capture range
   of the event they are sharing to
-- **THEN** none of them is shared, even when the device no longer knows it received them
+- **THEN** none of them is shared, as for any received photo (capability `receiving-photos`)
+
+#### Scenario: An own photo moved into the event album is shared
+- **WHEN** an Android member moves an in-range photo they took themselves into an event's album folder
+- **THEN** it is shared like any of their photos in DCIM
 
 ### Requirement: Under limited access the messaging-app album rule cannot apply
 
