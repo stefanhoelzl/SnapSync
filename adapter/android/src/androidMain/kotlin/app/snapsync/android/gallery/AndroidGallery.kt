@@ -56,7 +56,7 @@ class AndroidGallery(
         scope.launch {
             reads.receiveAsFlow().collect {
                 if (observer == null) return@collect
-                val snapshot = readable { items(Query(), candidates = true).map { it.rawAsset() } }
+                val snapshot = readable { items(Query()).map { it.rawAsset() } }
                 if (snapshot is GalleryRead.Read) {
                     handlers.orNull(
                         "a selection snapshot",

@@ -7,6 +7,7 @@ import app.snapsync.services.databases.databaseAt
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 /**
  * The download store's migrations (capability `receiving-photos`), from the shape the oldest device holds (v6),
@@ -54,5 +55,7 @@ class DownloadMigrationTest {
             store.stagedResources(AssetRef("DEV-A", AssetId("PEND"))).map { it.stagedPath },
             "a staged path is kept verbatim",
         )
+        // v7 → v8 (`changes/archive/2026-10-11-close-share-back-gaps`): recognition starts empty, with no backfill — the next pass decides.
+        assertFalse(store.recognition.isRecognised("E1"), "no membership is recognised by the migration")
     }
 }

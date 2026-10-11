@@ -41,6 +41,22 @@ class DownloadServiceTest {
         assertEquals(emptySet(), store.suppressedLocalIds())
     }
 
+    // ---- recognition: nothing is shared before the received photos were recognised -----------------------------
+
+    @Test
+    fun `a membership is recognised only once marked - and a join forgets every other membership's`() = runTest {
+        assertFalse(store.recognition.isRecognised("E1"), "nothing is recognised before a pass marks it")
+
+        store.recognition.mark("E1")
+        store.recognition.mark("E1")
+        store.recognition.mark("E2")
+        assertTrue(store.recognition.isRecognised("E1"), "marking twice is marking once")
+
+        store.union.purgeEventRefsExcept("E2")
+        assertFalse(store.recognition.isRecognised("E1"), "a rejoin of E1 recognises again")
+        assertTrue(store.recognition.isRecognised("E2"))
+    }
+
     // ---- planning: what the union offers, recorded once ----------------------------------------------------------
 
     @Test

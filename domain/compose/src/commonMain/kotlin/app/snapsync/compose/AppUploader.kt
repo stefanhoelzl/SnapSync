@@ -71,6 +71,7 @@ internal class AppUploader(private val core: AppCore) {
                 manifestPublisher = core.backend.manifest,
                 // Echo-suppression: the download store IS the narrowed suppression read.
                 suppression = app.downloadStore,
+                recognition = app.downloadStore.recognition,
                 // Denylisted-album membership, scoped by the cutoff — the SAME admit-on-doubt answer the own-device
                 // status total gets, so the two consumers of the policy cannot diverge.
                 albumExclusions = core::albumExclusionsWhenReadable,

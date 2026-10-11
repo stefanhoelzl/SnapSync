@@ -290,6 +290,12 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
         device.backend.operator.failDeviceListing = flag(params, "on")
         OK
     },
+    // Only the event's union read fails — what a rejoin meets when the event cannot be read: the join itself still
+    // goes through.
+    "backend/fail-union" to op { params ->
+        device.backend.operator.failUnion = flag(params, "on")
+        OK
+    },
     // An own photo's bytes land on the backend with NO acknowledgement reaching the app — the upload the OS completed
     // while the process was gone. Through the backend's public byte route, so on either backend.
     "backend/deposit" to needs(

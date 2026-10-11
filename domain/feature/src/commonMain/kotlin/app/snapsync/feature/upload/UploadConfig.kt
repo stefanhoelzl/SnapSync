@@ -140,6 +140,16 @@ fun suppressionGate(run: CycleGate.Run, readiness: SuppressionReadiness): CycleG
 }
 
 /**
+ * The recognition gate: an admitted cycle of a membership whose received photos have not been recognised yet is
+ * [CycleGate.Withheld] — it settles what the platform presented and creates and publishes nothing, so no received photo
+ * is shared as the member's own before the recognition pass has read the event's photos (decision record
+ * `changes/archive/2026-10-11-close-share-back-gaps`). In both processes: the extension reads the same record,
+ * read-only.
+ */
+fun recognitionGate(run: CycleGate.Run, recognised: Boolean): CycleGate =
+    if (recognised) run else CycleGate.Withheld(run.config)
+
+/**
  * Whether THIS process may run an upload cycle now (the upload cycle owns its entry decision) — the
  * per-process answer a root supplies and [cycleGate] consumes.
  *

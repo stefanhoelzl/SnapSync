@@ -291,4 +291,11 @@ class CycleGateTest {
         assertIs<CycleGate.Skip>(gate, "\"I could not look\" uploads nothing this run")
         assertTrue("locked" in gate.detail)
     }
+
+    @Test
+    fun `a recognised membership runs and an unrecognised one is withheld`() {
+        assertEquals(run, recognitionGate(run, recognised = true))
+        // Before the received photos were recognised, any of them could count as the member's own.
+        assertEquals(CycleGate.Withheld(run.config), recognitionGate(run, recognised = false))
+    }
 }

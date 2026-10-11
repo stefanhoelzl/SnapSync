@@ -108,6 +108,7 @@ object RigVocabulary {
         "device/backend/next-event-id",
         "device/backend/complete",
         "device/backend/fail-listing",
+        "device/backend/fail-union",
         "device/backend/deposit",
         "device/backend/refuse-credential",
         "device/backend/refuse-attestation",

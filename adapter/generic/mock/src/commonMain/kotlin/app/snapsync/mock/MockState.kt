@@ -500,6 +500,7 @@ private class BackendLeversDto(
     val capacity: Int,
     val offline: Boolean,
     val failDeviceListing: Boolean,
+    val failUnion: Boolean = false,
     val refuseNextCredential: Boolean,
     val refuseAttestation: DeviceRefusal? = null,
     val refuseAttestationDetail: String? = null,
@@ -511,6 +512,7 @@ private class BackendLeversDto(
         state.capacity = capacity
         state.offline = offline
         state.failDeviceListing = failDeviceListing
+        state.failUnion = failUnion
         state.refuseNextCredential = refuseNextCredential
         state.refuseAttestation = refuseAttestation
         state.refuseAttestationDetail = refuseAttestationDetail
@@ -620,6 +622,7 @@ private class BackendDto(
                 capacity = state.capacity,
                 offline = state.offline,
                 failDeviceListing = state.failDeviceListing,
+                failUnion = state.failUnion,
                 refuseNextCredential = state.refuseNextCredential,
                 refuseAttestation = state.refuseAttestation,
                 refuseAttestationDetail = state.refuseAttestationDetail,

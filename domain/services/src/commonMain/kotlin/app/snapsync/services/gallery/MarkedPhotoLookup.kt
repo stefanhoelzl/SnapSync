@@ -25,7 +25,7 @@ import app.snapsync.ports.GalleryReader
  *
  * What is read follows the grant, as upload discovery's does ([selectionScope], decision record
  * `changes/selection-is-the-walk`):
- * - **full grant** — one facts read of the whole library (event albums' folders included) narrowed to the window,
+ * - **full grant** — one facts read of the whole library narrowed to the window,
  *   then ONE batched resource read for the names (on iOS a name is a resource: ~3.45 ms a photo, measured SE2);
  * - **partial grant** — the selection snapshot the app already holds, which carries every name: no platform read;
  * - **unread partial grant** — nothing found (an empty map). An unread selection is not an empty one, but adoption
@@ -52,6 +52,18 @@ class MarkedPhotoLookup(
         }
     }
 
+    /**
+     * The marked photos among a selection snapshot's [resources] inside `[startsAt, endsAt]` and outside [known] — a read
+     * of memory only, which a selection change asks before it publishes the snapshot.
+     */
+    fun markedAmong(
+        resources: List<Resource>,
+        startsAt: EventStart,
+        endsAt: EventEnd,
+        known: Set<AssetId>,
+    ): Map<String, AssetId> =
+        fromSnapshot(resources, eventWindow(startsAt, endsAt), known)
+
     private fun fromSnapshot(resources: List<Resource>, window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId> {
         val inWindow = factsFromResources(
             resources,
@@ -67,8 +79,7 @@ class MarkedPhotoLookup(
     }
 
     private suspend fun fromLibrary(window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId>? {
-        // The whole library, not the sharing candidates: on Android a received photo filed into an event album lives in
-        // a folder the candidates leave out, and it must be recognised all the same.
+        // The whole library (event albums' folders included, as every read now reads them).
         val facts = when (val read = gallery.libraryAssets(window)) {
             is GalleryRead.Read -> read.value
             GalleryRead.NotReadable -> return null

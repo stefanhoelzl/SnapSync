@@ -6,10 +6,15 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.SuppressionReadiness
+import app.snapsync.ports.DbOpen
+import app.snapsync.services.databases.DatabaseUnavailable
 import app.snapsync.services.databases.databaseAt
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * The extension's read-only suppression view over the app's download store (capability `receiving-photos`): what
@@ -38,6 +43,19 @@ class SuppressionOverDownloadStoreTest {
     }
 
     @Test
+    fun `the extension sees the recognition the app recorded - and none without a store`() = runTest {
+        val databases = inMemoryDatabases()
+        val extension = SuppressionService(databases)
+        assertFalse(extension.isRecognised("E1"), "no store: the app recognised nothing on this device")
+
+        val app = DownloadService(databases)
+        app.recognition.mark("E1")
+
+        assertTrue(extension.isRecognised("E1"))
+        assertFalse(extension.isRecognised("E2"))
+    }
+
+    @Test
     fun `an unmigrated store pauses the extension until the app migrates it - keeping every handle`() = runTest {
         val (databases, _) = databaseAt(
             DOWNLOADS_DB_NAME,
@@ -54,5 +72,18 @@ class SuppressionOverDownloadStoreTest {
 
         assertEquals(SuppressionReadiness.Ready, extension.readiness())
         assertEquals(setOf(AssetId("LOCAL-OLD")), extension.suppressedLocalIds(), "the old suppression row survived")
+    }
+
+    @Test
+    fun `a store the extension cannot read never answers recognised`() = runTest {
+        val (old, _) = databaseAt(DOWNLOADS_DB_NAME, 6, *DOWNLOADS_V6.toTypedArray())
+        assertFailsWith<DatabaseUnavailable>(
+            "an older schema is no answer",
+        ) { SuppressionService(old).isRecognised("E1") }
+
+        val locked = inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("locked")))
+        assertFailsWith<DatabaseUnavailable>("nor is a store that will not open") {
+            SuppressionService(locked).isRecognised("E1")
+        }
     }
 }

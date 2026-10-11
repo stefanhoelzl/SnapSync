@@ -23,6 +23,7 @@ import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.deletesAt
+import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
@@ -218,12 +219,13 @@ class ReceivedPhotoAdoptionTest {
     }
 
     @Test
-    fun an_unreachable_union_settles_rather_than_holding_every_import() = runTest {
+    fun an_unreachable_union_holds_every_import_until_a_pass_reads_it() = runTest {
         val world = World(Result.failure(IllegalStateException("offline")), emptyList())
         val adoption = world.adoption(me)
         adoption.ensureAdopted(cfg)
         adoption.ensureAdopted(cfg)
-        assertEquals(1, world.unionReads)
+        assertEquals(2, world.unionReads, "every drain asks again: nothing is received before recognition")
+        assertFalse(world.store.recognition.isRecognised(cfg.eventId))
     }
 
     @Test
@@ -269,7 +271,7 @@ class ReceivedPhotoAdoptionTest {
     }
 
     @Test
-    fun a_union_that_never_answers_settles_once_its_wait_runs_out() = runTest {
+    fun a_union_that_never_answers_recognises_nothing_and_the_next_pass_asks_again() = runTest {
         var reads = 0
         val world = World(Result.success(emptyList()), listOf(received("L-A", ref("A"))))
         val adoption = ReceivedPhotoAdoption(
@@ -284,8 +286,114 @@ class ReceivedPhotoAdoptionTest {
         )
         adoption.adopt(cfg)
         adoption.ensureAdopted(cfg)
-        assertEquals(1, reads, "an unreachable union settles the pass rather than holding every import")
+        assertEquals(2, reads, "an unreachable union settles nothing: the next pass reads it again")
+        assertFalse(world.store.recognition.isRecognised(cfg.eventId), "nothing of the membership may be shared yet")
         assertTrue(world.store.suppressedLocalIds().isEmpty())
+    }
+
+    @Test
+    fun a_failed_union_read_holds_recognition_until_a_later_pass_reads_it() = runTest {
+        val a = ref("A")
+        var answer: Result<List<UnionAsset>> = Result.failure(IllegalStateException("unreachable"))
+        val world = World(Result.success(emptyList()), listOf(received("L-A", a)))
+        val adoption = ReceivedPhotoAdoption(
+            EventUnionSource { _, _, _ -> answer.map { UnionPage(it, 0) } },
+            world.store,
+            world.lookup,
+            world.store::adoptAll,
+            testIdentity(me),
+        )
+
+        adoption.adopt(cfg)
+        assertFalse(world.store.recognition.isRecognised(cfg.eventId))
+
+        answer = Result.success(unionOf(a))
+        adoption.ensureAdopted(cfg)
+
+        assertTrue(
+            world.store.recognition.isRecognised(cfg.eventId),
+            "a pass that read the union recognises the membership",
+        )
+        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds(), "and the received photo is kept out")
+    }
+
+    @Test
+    fun a_selection_without_unrecognised_marks_keeps_the_membership_recognised_and_reads_no_union() = runTest {
+        val world = World(Result.success(emptyList()), emptyList())
+        val adoption = world.adoption(me)
+        adoption.adopt(cfg)
+        val reads = world.unionReads
+
+        val own = LibraryAssets.photo("L-OWN", creationDate = date)
+        adoption.beforeSelectionPublished(cfg, resourcesFrom(listOf(own)))
+        adoption.afterSelectionPublished(cfg)
+
+        assertTrue(world.store.recognition.isRecognised(cfg.eventId))
+        assertEquals(reads, world.unionReads, "a read of memory only")
+    }
+
+    @Test
+    fun a_selection_change_while_unjoined_withholds_and_reads_nothing() = runTest {
+        val world = World(Result.success(unionOf(ref("A"))), emptyList())
+        val adoption = world.adoption(me)
+
+        adoption.beforeSelectionPublished(null, resourcesFrom(listOf(received("L-A", ref("A")))))
+        adoption.afterSelectionPublished(null)
+
+        assertEquals(0, world.unionReads)
+    }
+
+    @Test
+    fun a_recognised_membership_is_not_read_again_by_a_selection_change_in_a_new_process() = runTest {
+        val world = World(Result.success(emptyList()), emptyList())
+        world.adoption(me).adopt(cfg)
+        val reads = world.unionReads
+
+        // A later process: nothing settled in memory, the record kept in the store.
+        world.adoption(me).afterSelectionPublished(cfg)
+
+        assertEquals(reads, world.unionReads, "the stored recognition answers")
+    }
+
+    @Test
+    fun a_selection_bringing_unrecognised_marks_withholds_until_they_are_recognised() = runTest {
+        val a = ref("A")
+        var answer: Result<List<UnionAsset>> = Result.success(emptyList())
+        val world = World(Result.success(emptyList()), emptyList())
+        val adoption = ReceivedPhotoAdoption(
+            EventUnionSource { _, _, _ -> answer.map { UnionPage(it, 0) } },
+            world.store,
+            world.lookup,
+            world.store::adoptAll,
+            testIdentity(me),
+        )
+        adoption.adopt(cfg)
+        assertTrue(world.store.recognition.isRecognised(cfg.eventId))
+
+        adoption.beforeSelectionPublished(cfg, resourcesFrom(listOf(received("L-A", a))))
+        assertFalse(world.store.recognition.isRecognised(cfg.eventId), "withheld before the snapshot is published")
+
+        answer = Result.failure(IllegalStateException("unreachable"))
+        adoption.afterSelectionPublished(cfg)
+        assertFalse(world.store.recognition.isRecognised(cfg.eventId), "an unreadable union keeps it withheld")
+    }
+
+    @Test
+    fun a_union_with_nothing_open_recognises_the_membership() = runTest {
+        val world = World(Result.success(emptyList()), emptyList())
+        world.adoption(me).adopt(cfg)
+        assertTrue(world.store.recognition.isRecognised(cfg.eventId))
+    }
+
+    @Test
+    fun an_unreadable_library_recognises_nothing() = runTest {
+        val world = World(
+            Result.success(unionOf(ref("A"))),
+            listOf(received("L-A", ref("A"))),
+            MutableStateFlow(GalleryAccess.NOT_DETERMINED),
+        )
+        world.adoption(me).adopt(cfg)
+        assertFalse(world.store.recognition.isRecognised(cfg.eventId), "a pass that could not look recognised nothing")
     }
 
     @Test

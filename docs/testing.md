@@ -264,7 +264,7 @@ Where bindings live: beside their implementations.
 - The event album on Android: the `FolderAlbum` contract runs live on `ANDROID_EMU` (`AndroidGalleryContractTest`) and
   over the library mock playing an Android library: two albums of one title are two folders; an empty album folder
   does not resolve until a photo lands; a moved photo keeps its `_ID` (measured at API 30 and 36 before it was pinned)
-  and is no candidate to share; an import into an album lands there. The one clause it cannot reach on the emulator
+  and stays in the default gallery's reads, like any folder's photo; an import into an album lands there. The one clause it cannot reach on the emulator
   is a camera photo **another** app owns being left in place (every photo the test seeds is its own): the core never
   hands one over (`FolderAlbumCoordinatorTest`, `AlbumGatherTest`), and the closed test observes the platform's refusal.
 - The lesser photo grants on Android: a device-test APK is installed with every runtime permission it declares granted,

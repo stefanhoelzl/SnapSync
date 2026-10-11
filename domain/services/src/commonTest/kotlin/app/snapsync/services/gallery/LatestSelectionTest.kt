@@ -53,7 +53,7 @@ class LatestSelectionTest {
         changes.send(SelectionSnapshot(listOf(photo("C"))))
         changes.close()
 
-        selection.follow(changes) { seen += selection.snapshot.value?.map { it.assetId } }
+        selection.follow(changes, beforePublish = {}) { seen += selection.snapshot.value?.map { it.assetId } }
 
         assertEquals<List<List<AssetId>?>>(listOf(listOf(AssetId("A"), AssetId("B")), listOf(AssetId("C"))), seen)
         val scoped = assertIs<SelectionScope.Scoped>(selection.scopeUnder(GalleryAccess.LIMITED))
@@ -80,7 +80,7 @@ class LatestSelectionTest {
 
         changes.send(SelectionSnapshot(emptyList()))
         changes.close()
-        selection.follow(changes) { }
+        selection.follow(changes, beforePublish = {}) { }
         runCurrent()
         assertTrue(answerable, "an empty selection is a read one")
     }

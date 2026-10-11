@@ -3,7 +3,6 @@ package app.snapsync.android.gallery
 import android.database.sqlite.SQLiteDatabase
 import kotlin.test.AfterTest
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -33,7 +32,7 @@ class DefaultGalleryTest {
             assertTrue(it in library, "$it is in the default gallery")
         }
         assertTrue("dcim/camera/" in library, "case does not matter, as it does not to LIKE")
-        assertTrue("DCIM/SnapSync/Party/" in library, "an event album is in the library")
+        assertTrue("DCIM/SnapSync/Party/" in library, "an event album is in the default gallery, like any folder")
     }
 
     @Test
@@ -42,22 +41,6 @@ class DefaultGalleryTest {
         listOf("Pictures/Screenshots/", "Pictures/WhatsApp/", "Download/", "DCIMX/", "", null).forEach {
             assertFalse(it in library, "$it is outside the default gallery")
         }
-    }
-
-    @Test
-    fun `the candidates are every DCIM folder but the event albums`() {
-        assertEquals(
-            setOf(
-                "DCIM/Camera/",
-                "DCIM/100ANDRO/",
-                "DCIM/OpenCamera/2026/",
-                "DCIM/",
-                "dcim/camera/",
-                "DCIM/SnapSyncX/",
-            ),
-            matching(DefaultGallery.CANDIDATE_SQL),
-            "an event album is never a candidate, matched ignoring case; a lookalike of the album root still is",
-        )
     }
 
     @Test

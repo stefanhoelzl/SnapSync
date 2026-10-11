@@ -47,8 +47,8 @@ import kotlinx.coroutines.flow.update
  *   apps' albums `user-album:<title>`.
  * - **A [AlbumKind.FOLDER] library plays Android's**: an album the app created is the folder its photos live in, so it
  *   resolves and lists only while it holds one; an import with an album lands in that folder; an add MOVES a photo this
- *   library imported and skips any other (the platform will not let the app move a camera photo); and a photo in one of
- *   the app's album folders is no candidate to share, as the SnapSync folder is outside Android's default gallery.
+ *   library imported and skips any other (the platform will not let the app move a camera photo). Every read reaches
+ *   into the album folders as into any folder of the default gallery.
  * - [requestAccess] applies the state's answer **only while the grant is undetermined**, because a platform asks
  *   once. The selection picker has no surface off device and changes nothing.
  * - **An import is two-phase, exactly like the real adapter**: the placeholder reaches `onImportPlaceholder` inside
@@ -131,16 +131,14 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
                 emptyList()
             } else {
                 val floor = policy.rules.filterIsInstance<SelectionRule.CaptureAfter>().maxOfOrNull { it.cutoff.at.iso }
-                val inFolders = state.locked { state.folderOf.keys.toSet() }
                 state.library.value
                     .filter { floor == null || it.creationDate >= floor }
-                    .filter { it.assetId !in inFolders }
                     .map { it.toFacts() }
             }
         }
     }
 
-    // The whole library, a folder album's photos included (Android's event albums are folders `assets` leaves out).
+    // The whole library — the same read as [assets], which no longer leaves any folder out.
     override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
         state.enumeration.await()
         return readable {

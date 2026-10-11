@@ -10,6 +10,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
@@ -28,6 +29,8 @@ class CycleGateRead(
     private val config: ConfigService,
     private val identity: PersistedDeviceIdentity,
     private val suppression: SuppressionSource,
+    /** Whether the joined membership's received photos have been recognised — read after the suppression store is ready. */
+    private val recognition: RecognitionSource,
     /** The build-time upload host; blank when the build carries none, which the gate treats as "cannot upload". */
     private val host: String,
     /** Whether THIS process may create now — each uploader states its own, read once per gate. */
@@ -38,12 +41,16 @@ class CycleGateRead(
     private val albumExclusions: suspend (CaptureCutoff) -> Set<AssetId>,
 ) {
     /**
-     * The gate. The suppression read is last, and only for an admitted cycle: the extension opens the download store
-     * read-only there, so a process that may not create never opens it.
+     * The gate. The suppression reads are last, and only for an admitted cycle: the extension opens the download store
+     * read-only there, so a process that may not create never opens it. A store that is ready then answers whether the
+     * membership's received photos have been recognised ([recognitionGate]).
      */
     suspend fun read(): CycleGate {
         val gate = entryGate()
-        return if (gate is CycleGate.Run) suppressionGate(gate, suppression.readiness()) else gate
+        if (gate !is CycleGate.Run) return gate
+        val ready = suppressionGate(gate, suppression.readiness())
+        if (ready !is CycleGate.Run) return ready
+        return recognitionGate(ready, recognition.isRecognised(ready.membership.eventId))
     }
 
     /** The gate from the membership, the identity and the admission — everything but the suppression read. */

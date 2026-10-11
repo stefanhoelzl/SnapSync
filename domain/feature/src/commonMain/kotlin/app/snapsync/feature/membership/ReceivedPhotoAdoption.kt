@@ -4,6 +4,7 @@ import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReceivedPhotoName
+import app.snapsync.model.Resource
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventUnionSource
@@ -42,9 +43,10 @@ private const val UNION_TIMEOUT_MS = 15_000L
  * It writes through [record] — the download controller's locked write, so a ref an import has claimed is never
  * adopted underneath it — and records a ref with no row, or one planned but not yet imported
  * ([DownloadService.adoptAll]). What it leaves alone, each an accepted gap of the spec: every other row (this install's
- * own record); a photo outside what the grant lets the app read; a union it could not fetch. Two library photos
- * carrying one token (a duplicate import) adopt one of them. It never throws: the join completes whatever the union or
- * the library answer.
+ * own record); a photo outside what the grant lets the app read (one added to a partial selection later is recognised by
+ * [beforeSelectionPublished]). Two library photos carrying one token (a duplicate import) adopt one of them. A union it
+ * could not fetch settles nothing: the membership stays unrecognised, so no uploader shares any of it, and the next
+ * pass asks again. It never throws: the join completes whatever the union or the library answer.
  */
 class ReceivedPhotoAdoption(
     private val union: EventUnionSource,
@@ -94,6 +96,33 @@ class ReceivedPhotoAdoption(
         return usable
     }
 
+    /**
+     * A selection change's first step, BEFORE its snapshot is published: when the new
+     * selection's [resources] hold marked photos in the joined event's window that the download store does not record,
+     * any of them may be a received photo no pass has recognised — so the membership's recognition is withdrawn before
+     * any reader sees the snapshot, and [afterSelectionPublished] recognises them. A read of memory and the store only.
+     * Unjoined ([joined] `null`), there is nothing to withhold.
+     */
+    suspend fun beforeSelectionPublished(joined: EventConfig?, resources: List<Resource>) = gate.withLock {
+        val cfg = joined ?: return@withLock
+        val unknown = library.markedAmong(resources, cfg.startsAt, cfg.endsAt, known = store.suppressedLocalIds())
+        if (unknown.isEmpty()) return@withLock
+        store.recognition.unmark(cfg.eventId)
+        settledFor = null
+        log.i { "selection brought ${unknown.size} unrecognised marked photo(s) — sharing waits for recognition" }
+    }
+
+    /**
+     * A selection change's second step, once its snapshot is published and before its own work may share anything:
+     * recognise what [beforeSelectionPublished] withheld, against a fresh read of the whole union. A union it cannot
+     * read leaves the membership unrecognised, and the next pass asks again. Nothing withheld, nothing read. Asked as
+     * the grant's pass is: the photos are newly readable to the app.
+     */
+    suspend fun afterSelectionPublished(joined: EventConfig?) = gate.withLock {
+        val cfg = joined ?: return@withLock
+        if (settledFor != cfg.eventId && !store.recognition.isRecognised(cfg.eventId)) settle(cfg, UnionTrigger.GRANT)
+    }
+
     private suspend fun settle(cfg: EventConfig, trigger: UnionTrigger) {
         try {
             if (adoptOrFail(cfg, trigger)) settledFor = cfg.eventId
@@ -105,9 +134,10 @@ class ReceivedPhotoAdoption(
     }
 
     /**
-     * One pass; answers whether it is settled for [cfg] — `false` only while the library cannot be read, so a later
-     * pass asks again. An unreachable union settles it (the accepted gap of a join while the event cannot be reached):
-     * retrying it would hold every import behind the network.
+     * One pass; answers whether it is settled for [cfg] — `false` while the union or the library cannot be read, so a
+     * later pass asks again. A settled pass records the membership as recognised ([app.snapsync.services.downloads.Recognition.mark]),
+     * which every uploader waits for: nothing is shared — and, since imports wait for this pass, nothing received —
+     * before the event's photos have been read and the received ones recognised (`changes/archive/2026-10-11-close-share-back-gaps`).
      */
     private suspend fun adoptOrFail(cfg: EventConfig, trigger: UnionTrigger): Boolean {
         // Always the WHOLE union (decision record `changes/incremental-union`, D6): a mark is recognised only against
@@ -116,14 +146,18 @@ class ReceivedPhotoAdoption(
             UNION_TIMEOUT_MS,
         ) { union.union(cfg.eventId, null, trigger) }?.getOrNull()?.assets
         if (assets == null) {
-            log.w { "union unavailable — no photos adopted; photos received before a reinstall may arrive again" }
-            return true
+            log.w { "union unavailable — nothing recognised; sharing and receiving wait for the next pass" }
+            return false
         }
         val me = identity.deviceId()
         val foreign = assets.filter { it.deviceId != me }.associateBy { AssetRef(it.deviceId, it.assetId) }
         val settled = store.settledAmong(foreign.keys)
         val open = foreign.filterKeys { it !in settled }
-        if (open.isEmpty()) return true
+        if (open.isEmpty()) {
+            store.recognition.mark(cfg.eventId)
+            log.i { "recognised: nothing open among ${foreign.size} foreign ref(s)" }
+            return true
+        }
         // A token two refs share is ambiguous; neither is adopted, and each downloads as it would have.
         val byToken = open.keys.groupBy(
             ReceivedPhotoName::token,
@@ -137,6 +171,7 @@ class ReceivedPhotoAdoption(
             byToken[token]?.let { ref -> AdoptedAsset(ref, localId, foreign.getValue(ref).creationDate) }
         }
         val recorded = record(adopted, cfg.eventId)
+        store.recognition.mark(cfg.eventId)
         log.i {
             "adopted ${recorded.size} received photo(s) of ${open.size} open foreign ref(s); ${marked.size} marked in window"
         }

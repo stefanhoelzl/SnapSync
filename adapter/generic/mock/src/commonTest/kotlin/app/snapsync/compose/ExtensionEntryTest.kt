@@ -103,8 +103,9 @@ class ExtensionEntryTest {
                 deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             ),
         )
-        // The app creates and migrates the download store; the extension only ever opens it read-only.
-        DownloadService(databases).suppressedLocalIds()
+        // The app creates and migrates the download store — the extension only ever opens it read-only — and has
+        // recognised this membership's received photos, without which the extension shares nothing of it.
+        DownloadService(databases).recognition.mark("11111111-1111-4111-8111-111111111111")
     }
 
     /** The extension's ports over the device's mocks, as its root assembles them. */

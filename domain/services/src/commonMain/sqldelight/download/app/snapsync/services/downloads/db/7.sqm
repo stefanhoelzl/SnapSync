@@ -1,0 +1,9 @@
+-- v7 -> v8: which memberships' received photos have been recognised (change `close-share-back-gaps`): the upload
+-- gate of both processes shares nothing of a membership until its recognition pass has read the event's union.
+--
+-- Created EMPTY, deliberately no backfill: the joined event lives in the config file, not here, and a row for a
+-- membership whose old pass settled on an unreachable union would carry over the very gap this closes. The next pass
+-- under the new rules — on the app's next start or wake — writes the row.
+CREATE TABLE recognised (
+    eventId TEXT NOT NULL PRIMARY KEY
+);

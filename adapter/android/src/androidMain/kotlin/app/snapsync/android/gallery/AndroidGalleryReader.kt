@@ -83,11 +83,11 @@ open class AndroidGalleryReader(
         ) {
             readable {
                 val narrowing = narrowingFor(policy) ?: return@readable emptyList()
-                items(narrowing, candidates = true).map { it.facts() }
+                items(narrowing).map { it.facts() }
             }
         }
 
-    // The whole default gallery, the event albums' folders included: received photos filed into an album are there.
+    // The same read as [assets]: the default gallery is one scope, the event albums' folders included.
     override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> =
         log.invocation(
             EntryScope.None,
@@ -96,7 +96,7 @@ open class AndroidGalleryReader(
         ) {
             readable {
                 val narrowing = narrowingFor(policy) ?: return@readable emptyList()
-                items(narrowing, candidates = false).map { it.facts() }
+                items(narrowing).map { it.facts() }
             }
         }
 
@@ -106,8 +106,8 @@ open class AndroidGalleryReader(
     override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> =
         readable { itemsById(ids).map { it.rawAsset() } }
 
-    /** The folders the denylist matches — candidates only: an event album is the app's own, never a messenger's. */
-    override suspend fun albums(): GalleryRead<List<AlbumRecord>> = readable { buckets(Query(), candidates = true) }
+    /** The folders the denylist matches — every folder of the default gallery, the event albums' included. */
+    override suspend fun albums(): GalleryRead<List<AlbumRecord>> = readable { buckets(Query()) }
 
     override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = readable {
         val (folders, others) = ids.partition { DefaultGallery.isAlbumFolder(it) }
@@ -213,12 +213,9 @@ open class AndroidGalleryReader(
             )
         }
 
-    /**
-     * Every default-gallery item matching [narrowing], images and videos alike — only the [candidates] to share when
-     * asked, which leaves out the event albums ([DefaultGallery]).
-     */
-    internal fun items(narrowing: Query, candidates: Boolean = false): List<MediaItem> =
-        COLLECTIONS.flatMap { collection -> query(collection, narrowing, candidates) }
+    /** Every default-gallery item matching [narrowing], images and videos alike ([DefaultGallery]). */
+    internal fun items(narrowing: Query): List<MediaItem> =
+        COLLECTIONS.flatMap { collection -> query(collection, narrowing) }
 
     /** The items in the folder [path] exactly — not its subfolders. */
     private fun inFolder(path: String) = Query("relative_path = ?", listOf(path))
@@ -246,15 +243,14 @@ open class AndroidGalleryReader(
             items(Query("_id IN (${chunk.joinToString(",")})"))
         }
 
-    private fun buckets(narrowing: Query, candidates: Boolean = false): List<AlbumRecord> =
+    private fun buckets(narrowing: Query): List<AlbumRecord> =
         items(
             narrowing,
-            candidates,
         ).mapNotNull { item -> item.bucketId?.let { AlbumRecord(it.toString(), item.bucketName.orEmpty()) } }
             .distinctBy { it.id }
 
-    private fun query(collection: Uri, narrowing: Query, candidates: Boolean): List<MediaItem> {
-        val scoped = Query(if (candidates) DefaultGallery.CANDIDATE_SQL else DefaultGallery.SQL).and(narrowing)
+    private fun query(collection: Uri, narrowing: Query): List<MediaItem> {
+        val scoped = Query(DefaultGallery.SQL).and(narrowing)
         return resolver.query(collection, PROJECTION, scoped.selection, scoped.args.toTypedArray(), null)
             ?.use { cursor -> buildList { while (cursor.moveToNext()) add(MediaItem.of(cursor, collection)) } }
             ?: emptyList<MediaItem>().also { log.w { "the media provider answered no cursor for $collection" } }

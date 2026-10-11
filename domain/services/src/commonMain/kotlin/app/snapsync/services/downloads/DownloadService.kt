@@ -47,6 +47,9 @@ class DownloadService(databases: Databases) : SuppressionSource {
     /** Which staged files the rows still claim — what a sweep of the staging directory keeps. */
     val claims: StagingClaims = StagingClaims { q }
 
+    /** Which memberships' received photos have been recognised — what every uploader waits for. */
+    val recognition: Recognition = Recognition { q }
+
     /**
      * Always ready: a read-write open creates and migrates, so this process can never find the store at an old
      * schema, and an open that fails surfaces from the read itself, as it always has.
@@ -385,6 +388,32 @@ class StagingClaims internal constructor(private val queries: () -> DownloadStor
 }
 
 /**
+ * The recognition record of the download store (`changes/archive/2026-10-11-close-share-back-gaps`), over the
+ * same database as [DownloadService]; the extension reads it through its read-only [SuppressionService]. Purged with the
+ * other memberships' event refs at a join.
+ */
+class Recognition internal constructor(private val queries: () -> DownloadStoreQueries) : RecognitionSource {
+
+    override suspend fun isRecognised(eventId: String): Boolean = queries().isRecognised(eventId).executeAsOne()
+
+    /**
+     * Record that [eventId]'s received photos have been recognised: what a recognition pass writes once it has READ the
+     * event's union — never after a read that failed. The upload gate of both processes shares nothing before it.
+     */
+    suspend fun mark(eventId: String) {
+        queries().markRecognised(eventId)
+    }
+
+    /**
+     * Withdraw [eventId]'s recognition: the photos the app can see now include marked ones no pass has recognised, so
+     * nothing of the membership may be shared until the next pass has.
+     */
+    suspend fun unmark(eventId: String) {
+        queries().unmarkRecognised(eventId)
+    }
+}
+
+/**
  * The download store's bookkeeping of the event union's reads (decision record `changes/incremental-union`, D6–D7),
  * over the same database as [DownloadService] — whose [DownloadService.planAll] writes the position in the transaction
  * of the plan it covers, and whose [DownloadService.pruneNonTerminal] forgets every position with the plans it drops.
@@ -402,7 +431,12 @@ class UnionTracking internal constructor(private val queries: () -> DownloadStor
      * untouched.
      */
     suspend fun purgeEventRefsExcept(eventId: String) {
-        queries().purgeEventRefsExcept(eventId)
+        val q = queries()
+        q.transaction {
+            q.purgeEventRefsExcept(eventId)
+            // Every other membership's recognition goes with it: joining one of them again recognises it again.
+            q.purgeRecognisedExcept(eventId)
+        }
     }
 
     /**

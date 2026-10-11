@@ -4,6 +4,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.downloads.RecognitionSource
 import co.touchlab.kermit.Logger
 
 /**
@@ -52,6 +53,12 @@ class StatusRefresh(
      * reads (echo suppression, the denylisted-album lookup) and this zone may not make them.
      */
     private val policyFor: suspend (EventConfig) -> SelectionPolicy,
+    /**
+     * Whether the membership's received photos have been recognised: until they have,
+     * any of them could count as the member's own, so `N` is not counted — it keeps what it last honestly held, and an
+     * uncounted `N` keeps the screen on its neutral line. The same record the upload gate reads.
+     */
+    private val recognition: RecognitionSource,
     private val log: Logger = Logger.withTag("status"),
 ) {
 
@@ -89,6 +96,11 @@ class StatusRefresh(
      */
     suspend fun refreshTotal() {
         val config = configSource.config.value ?: return
+        // Before recognition the admitted set would include received photos nothing has recognised yet — a count the
+        // upload gate (which withholds until then) would never match.
+        if (!recognition.isRecognised(config.eventId)) {
+            return log.i { "status: received photos not recognised yet — N not counted" }
+        }
         // NO GRANT CHECK. The read seam answers both halves — where candidates come from AND whether an
         // admitted set can be stated at all — and a gate here would restate the second half. It used to,
         // and restated it wrongly: `grantsPhotoAccess` is true under LIMITED, so it admitted the one case

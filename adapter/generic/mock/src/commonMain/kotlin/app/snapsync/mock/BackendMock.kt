@@ -192,6 +192,9 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** Only the per-device listing answers `502`. */
     var failDeviceListing: Boolean by state::failDeviceListing
 
+    /** Only the event's union answers `502` — every other route, the join included, answers as ever. */
+    var failUnion: Boolean by state::failUnion
+
     /** The minimum app version every route demands, or null for a gate that is off. */
     var minAppVersion: String? by state::minAppVersion
 
@@ -348,6 +351,8 @@ internal class BackendState(
     @Volatile var offline = false
 
     @Volatile var failDeviceListing = false
+
+    @Volatile var failUnion = false
 
     @Volatile var refuseNextCredential = false
 

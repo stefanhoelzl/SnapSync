@@ -26,7 +26,7 @@ import kotlinx.coroutines.sync.withLock
  * Opened on first use and kept only once open; every other answer is asked again next time, so a store the app
  * creates or migrates meanwhile is seen at once.
  */
-class SuppressionService(private val databases: Databases) : SuppressionSource {
+class SuppressionService(private val databases: Databases) : SuppressionSource, RecognitionSource {
 
     private val lock = Mutex()
     private var queries: DownloadStoreQueries? = null
@@ -41,6 +41,14 @@ class SuppressionService(private val databases: Databases) : SuppressionSource {
         is Found.Open -> found.queries.suppressedLocalIds().executeAsList().filterNotNull().toSet()
         Found.Missing -> emptySet()
         // Never "nothing suppressed": either would upload downloaded photos back into the event.
+        Found.OldSchema -> throw DatabaseUnavailable(DOWNLOADS_DB_NAME, "older schema than this build's")
+        is Found.Failed -> throw DatabaseUnavailable(DOWNLOADS_DB_NAME, found.detail)
+    }
+
+    override suspend fun isRecognised(eventId: String): Boolean = when (val found = open()) {
+        is Found.Open -> found.queries.isRecognised(eventId).executeAsOne()
+        // No store: the app has run no recognition on this device, so nothing is recognised.
+        Found.Missing -> false
         Found.OldSchema -> throw DatabaseUnavailable(DOWNLOADS_DB_NAME, "older schema than this build's")
         is Found.Failed -> throw DatabaseUnavailable(DOWNLOADS_DB_NAME, found.detail)
     }

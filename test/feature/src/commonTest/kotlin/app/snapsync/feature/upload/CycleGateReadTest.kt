@@ -23,6 +23,7 @@ import app.snapsync.model.eventEnd
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LEDGER_DB_NAME
@@ -50,11 +51,13 @@ class CycleGateReadTest {
     private class Suppression(
         var readiness: SuppressionReadiness = SuppressionReadiness.Ready,
         val suppressed: Set<AssetId> = emptySet(),
-    ) : SuppressionSource {
+        var recognised: Boolean = true,
+    ) : SuppressionSource, RecognitionSource {
         var readinessAsked = 0
         var idsAsked = 0
         override suspend fun readiness(): SuppressionReadiness = readiness.also { readinessAsked++ }
         override suspend fun suppressedLocalIds(): Set<AssetId> = suppressed.also { idsAsked++ }
+        override suspend fun isRecognised(eventId: String): Boolean = recognised
     }
 
     private fun event(eventId: String = "E", saveToAlbum: Boolean = false, keyId: String? = null) = EventConfig(
@@ -73,7 +76,7 @@ class CycleGateReadTest {
         files: RecordingFiles = RecordingFiles(),
         ledger: LedgerService = TestLedger().service,
         identity: PersistedDeviceIdentity = testIdentity("11111111-1111-4111-8111-111111111111"),
-        suppression: SuppressionSource = Suppression(),
+        suppression: Suppression = Suppression(),
         admission: UploadAdmission = UploadAdmission.Admit,
         albumExclusions: suspend (CaptureCutoff) -> Set<AssetId> = { emptySet() },
         eventKeys: EventKeys = EventKeys(fakeCrypto(), inMemorySecureStore()),
@@ -82,6 +85,7 @@ class CycleGateReadTest {
         config = configService(joined, files),
         identity = identity,
         suppression = suppression,
+        recognition = suppression,
         host = host,
         admission = { admission },
         eventKeys = eventKeys,
@@ -140,6 +144,14 @@ class CycleGateReadTest {
         assertEquals(listOf(cutoff), askedFrom)
         assertEquals(1, suppression.idsAsked)
     }
+
+    @Test
+    fun `a membership whose received photos are not recognised yet is withheld - creating and publishing nothing`() =
+        runTest {
+            val read = gate(suppression = Suppression(recognised = false)).read()
+
+            assertEquals("E", assertIs<CycleGate.Withheld>(read).config.eventId)
+        }
 
     @Test
     fun `an old suppression store pauses an admitted cycle`() = runTest {

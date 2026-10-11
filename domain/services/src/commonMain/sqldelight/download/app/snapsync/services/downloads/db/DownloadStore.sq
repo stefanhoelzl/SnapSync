@@ -62,6 +62,29 @@ CREATE TABLE unionCursor (
     cursor  INTEGER NOT NULL
 );
 
+-- The memberships whose received photos have been recognised (capability `receiving-photos`, change
+-- `close-share-back-gaps`): written by a recognition pass that READ the event's union, so nothing of the member's is
+-- shared before it — the upload gate of both processes reads it. Event-scoped: rows of any other event are purged at
+-- the next join, so a rejoin recognises again.
+CREATE TABLE recognised (
+    eventId TEXT NOT NULL PRIMARY KEY
+);
+
+-- --- recognition ---
+
+markRecognised:
+INSERT OR IGNORE INTO recognised (eventId) VALUES (:eventId);
+
+-- A selection that brought marked photos nobody recognised yet: the membership waits for the next pass again.
+unmarkRecognised:
+DELETE FROM recognised WHERE eventId = :eventId;
+
+isRecognised:
+SELECT COUNT(*) > 0 FROM recognised WHERE eventId = :eventId;
+
+purgeRecognisedExcept:
+DELETE FROM recognised WHERE eventId != :eventId;
+
 -- --- the union position ---
 
 selectUnionCursor:
