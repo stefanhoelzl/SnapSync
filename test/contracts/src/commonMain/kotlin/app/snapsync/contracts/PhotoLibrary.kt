@@ -3,8 +3,8 @@ package app.snapsync.contracts
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
-import app.snapsync.model.motionPhotoStill
 import app.snapsync.model.selectionPolicyFor
+import app.snapsync.motionphoto.motionPhotoStill
 
 /**
  * What the photo-library contracts share: the fixture a binding seeds, and where each clause seeds it

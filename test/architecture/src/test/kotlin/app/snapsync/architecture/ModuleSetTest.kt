@@ -193,6 +193,9 @@ class ModuleSetTest {
             ":ui:state", ":ui:screens", ":ui:components",
             ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:ios:ui", ":adapter:generic:app",
             ":adapter:generic:mock", ":adapter:generic:sentry", ":adapter:android",
+            // The Motion Photo codec both import adapters share: it withholds the core from them — the format they must
+            // agree on lives here, not in `:domain:model`, so an adapter reaches it without linking the core.
+            ":adapter:generic:motionphoto",
             ":app:ios", ":app:ios:extension", ":app:android", ":app:desktop",
         )
 

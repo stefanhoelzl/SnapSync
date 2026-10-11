@@ -3,10 +3,10 @@ package app.snapsync.download
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.StagedResource
-import app.snapsync.model.locateMotionVideo
-import app.snapsync.model.motionPresentationTimestampUs
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.withExtension
+import app.snapsync.motionphoto.locateMotionVideo
+import app.snapsync.motionphoto.motionPresentationTimestampUs
+import app.snapsync.motionphoto.withExtension
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary

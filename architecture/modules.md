@@ -12,6 +12,7 @@ flowchart LR
   adapter_android[":adapter:android"]
   adapter_generic_app[":adapter:generic:app"]
   adapter_generic_mock[":adapter:generic:mock"]
+  adapter_generic_motionphoto[":adapter:generic:motionphoto"]
   adapter_generic_sentry[":adapter:generic:sentry"]
   adapter_ios_app_only[":adapter:ios:app-only"]
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
@@ -47,6 +48,7 @@ flowchart LR
   ui_screens[":ui:screens"]
   ui_state[":ui:state"]
   adapter_android --> adapter_generic_app
+  adapter_android --> adapter_generic_motionphoto
   adapter_android --> domain_feature
   adapter_android --> domain_model
   adapter_android --> domain_ports
@@ -73,6 +75,7 @@ flowchart LR
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
   adapter_generic_sentry --> test_contracts
+  adapter_ios_app_only --> adapter_generic_motionphoto
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain_compose
   adapter_ios_app_only --> domain_model
@@ -180,6 +183,7 @@ flowchart LR
   test_architecture --> domain_wire
   test_architecture --> test_contracts
   test_architecture --> ui_state
+  test_contracts --> adapter_generic_motionphoto
   test_contracts --> domain_model
   test_contracts --> domain_ports
   test_contracts --> domain_services

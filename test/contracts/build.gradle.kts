@@ -50,6 +50,8 @@ kotlin {
         }
         commonMain.dependencies {
             api(project(":domain:model"))
+            // The Motion Photo fixtures the import contracts hand a library.
+            implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))
             // The Backend contract speaks the device API as `api/openapi.yaml` declares it: the generated routes,
             // replies and DTOs are its clauses' vocabulary, so a binding names them too.

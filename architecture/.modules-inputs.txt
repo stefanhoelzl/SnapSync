@@ -4,6 +4,7 @@
 module :adapter:android
 module :adapter:generic:app
 module :adapter:generic:mock
+module :adapter:generic:motionphoto
 module :adapter:generic:sentry
 module :adapter:ios:app-only
 module :adapter:ios:ext-safe
@@ -39,6 +40,7 @@ module :ui:components
 module :ui:screens
 module :ui:state
 edge :adapter:android :adapter:generic:app
+edge :adapter:android :adapter:generic:motionphoto
 edge :adapter:android :domain:feature
 edge :adapter:android :domain:model
 edge :adapter:android :domain:ports
@@ -65,6 +67,7 @@ edge :adapter:generic:mock :ui:state
 edge :adapter:generic:sentry :domain:model
 edge :adapter:generic:sentry :domain:ports
 edge :adapter:generic:sentry :test:contracts
+edge :adapter:ios:app-only :adapter:generic:motionphoto
 edge :adapter:ios:app-only :adapter:ios:ext-safe
 edge :adapter:ios:app-only :domain:compose
 edge :adapter:ios:app-only :domain:model
@@ -172,6 +175,7 @@ edge :test:architecture :domain:services
 edge :test:architecture :domain:wire
 edge :test:architecture :test:contracts
 edge :test:architecture :ui:state
+edge :test:contracts :adapter:generic:motionphoto
 edge :test:contracts :domain:model
 edge :test:contracts :domain:ports
 edge :test:contracts :domain:services
