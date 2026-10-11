@@ -64,7 +64,7 @@ class CryptoServicesEdgesTest {
         val sealing = UploadSealing(
             locked,
             FileCipher(crypto, files),
-            configService(config(minted.keyId), files),
+            configService(config(minted.keyId)),
             testIdentity(DEVICE),
         )
         assertIs<UploadSeal.Withheld>(sealing.sealFor(resource))
@@ -76,7 +76,7 @@ class CryptoServicesEdgesTest {
         val sealed = UploadSealing(
             kept,
             FileCipher(crypto, files),
-            configService(config(minted.keyId), files),
+            configService(config(minted.keyId)),
             testIdentity(DEVICE),
         )
             .sealFor(resource)
@@ -93,7 +93,7 @@ class CryptoServicesEdgesTest {
         )) {
             val files = RecordingFiles()
             files.write(FileArea.SHARED, "in", ByteArray(100))
-            val opening = DownloadOpening(keys, FileCipher(crypto, files), configService(joined, files), files)
+            val opening = DownloadOpening(keys, FileCipher(crypto, files), configService(joined), files)
             assertEquals(joined != null, opening.sealed())
             assertFalse(opening.open(ref, "ASSET1-primary.heic", EVENT, "in", "out"))
             assertEquals(FileResult.Ok(false), files.exists(FileArea.SHARED, "in"), "the unopened file is discarded")
@@ -109,7 +109,7 @@ class CryptoServicesEdgesTest {
         val opening = DownloadOpening(
             keys,
             FileCipher(crypto, files),
-            configService(config(minted.keyId), files),
+            configService(config(minted.keyId)),
             files,
         )
         repeat(6) {
@@ -175,7 +175,7 @@ class CryptoServicesEdgesTest {
         val opening = DownloadOpening(
             keys,
             FileCipher(crypto, files),
-            configService(config(minted.keyId), files),
+            configService(config(minted.keyId)),
             files,
         )
         assertTrue(opening.open(ref, "ASSET1-primary.heic", eventId = "", from = "in", to = "out"))

@@ -208,7 +208,7 @@ fun WorldInspector(
                     )
                     Text(
                         if (snap.membershipUnreadable) {
-                            "membership UNREADABLE (locked keychain → cycle skips, ledger untouched)"
+                            "membership UNREADABLE (databases locked → cycle skips, ledger untouched)"
                         } else {
                             "membership readable"
                         },

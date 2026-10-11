@@ -6,8 +6,8 @@ import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.ThrowingDeletes
 import app.snapsync.feature.support.downloadJobs
+import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetId
@@ -199,7 +199,7 @@ class DownloadControllerTest {
         // passes the disk it means and says so at the call site.
         disk: Files = RecordingFiles(),
         downloadEnabled: () -> Boolean? = { true },
-        checks: EventChecks = EventChecks(inMemoryPreferences(), now = { NOW }),
+        checks: EventChecks = EventChecks(testShared(), now = { NOW }),
         readyToImport: suspend () -> Boolean = { true },
         keyHeld: () -> Boolean = { true },
         album: EventAlbumHooks = EventAlbumHooks(),
@@ -1567,7 +1567,7 @@ class DownloadControllerTest {
     fun a_wake_within_the_hour_of_any_read_reads_none() = runTest {
         val union = FakeUnion(emptyList())
         var now = NOW
-        val checks = EventChecks(inMemoryPreferences(), now = { now })
+        val checks = EventChecks(testShared(), now = { now })
         val controller = controller(union, checks = checks)
         controller.reconcile("event", UnionTrigger.FOREGROUND) // a push, an opening or a join: unbounded, and it stamps
         now = NOW + 59.minutes
@@ -1648,7 +1648,7 @@ class DownloadControllerTest {
     @Test
     fun a_push_announcing_what_was_already_read_reads_nothing_and_stamps_nothing() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val checks = EventChecks(inMemoryPreferences(), now = { NOW })
+        val checks = EventChecks(testShared(), now = { NOW })
         val union = FakeUnion(emptyList(), position = 8)
         val c = controller(union, store = store, checks = checks)
         c.reconcile("event", UnionTrigger.FOREGROUND)

@@ -23,9 +23,9 @@ class ReconfigureEventTest {
     /** The membership persisted before the reconfigure runs. */
     private class Membership(val config: EventConfig?)
 
-    /** The membership file's writes; [fails] makes every save fail at the port, as a full disk does. */
+    /** The membership row's writes; [fails] makes every save fail at the store, as a full disk does. */
     private fun ConfigWrites(fails: Boolean = false) = app.snapsync.feature.support.ConfigWrites().also {
-        it.files.failWrites = fails
+        if (fails) it.store.failSaves()
     }
 
     // A joined membership on event E1, started 2026-07-06T12:00:00Z, cutoff already at the floor.

@@ -83,7 +83,7 @@ class EventCompletion(
      * the event's state only when none was read within the hour. Never throws but for cancellation.
      */
     suspend fun finish(bounded: Boolean = false): CompletionOutcome {
-        runCatchingCancellable { pendingLeaves.deliverAll() }.onFailure { log.w(it) { "pending leaves not delivered" } }
+        pendingLeaves.deliverAll() // never raises: what it cannot read or confirm waits for the next wake
         val current = config.config.value ?: return CompletionOutcome.NOT_JOINED
         if (!config.hasEnded(current)) return CompletionOutcome.NOT_ENDED
         val eventId = current.eventId
@@ -129,8 +129,8 @@ class EventCompletion(
 
     /** The last published manifest for [eventId], or `null` when none is recorded for it or it cannot be read. */
     private fun published(eventId: String) = manifestRecord.loadLastUploaded()
-        ?.takeIf { it.startsWith("$eventId ") }
-        ?.let { runCatchingCancellable { deviceManifestFromJson(it.substringAfter(' ')) }.getOrNull() }
+        ?.takeIf { it.eventId == eventId }
+        ?.let { runCatchingCancellable { deviceManifestFromJson(it.manifest) }.getOrNull() }
 }
 
 /** What [EventCompletion.finish] found. Only [LEFT] changed anything the member sees. */

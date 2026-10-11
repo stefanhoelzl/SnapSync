@@ -7,9 +7,9 @@ import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
+import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
@@ -103,10 +103,10 @@ class AlbumGatherTest {
     ) {
         val config: ConfigService = configService(cfg)
         private val databases = inMemoryDatabases()
-        val ledger = LedgerService(databases) { LEDGER_EVENT }
+        val ledger = LedgerService(testShared(databases)) { LEDGER_EVENT }
         val downloads = DownloadService(databases)
         val grant = MutableStateFlow(if (granted) GalleryAccess.GRANTED else GalleryAccess.DENIED)
-        val albums = AlbumMapService(inMemoryPreferences()).apply { put("E2", "ALBUM-2") }
+        val albums = AlbumMapService(testShared()).apply { put("E2", "ALBUM-2") }
         val gather = AlbumGather(
             configSource = config,
             ledger = ledger,

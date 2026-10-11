@@ -4,6 +4,8 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import kotlin.test.assertIs
@@ -24,3 +26,7 @@ fun SqlDriver.strings(sql: String): List<String> =
     executeQuery(null, sql, { cursor ->
         QueryResult.Value(buildList { while (cursor.next().value) add(cursor.getString(0)!!) })
     }, 0).value
+
+/** The shared database over [databases], its legacy homes empty — every record lives in the database from the start. */
+fun sharedOver(databases: Databases = inMemoryDatabases()): SharedDatabase =
+    SharedDatabase(databases, LegacyRecords(inMemoryFiles(), inMemoryPreferences()))

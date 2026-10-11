@@ -31,6 +31,8 @@ val generateSchemaStatements = tasks.register<SchemaStatementsTask>("generateSch
             "AssetId" to "AssetId(\"f\")",
             "LedgerState" to "LedgerState.entries.first()",
             "DownloadState" to "DownloadState.entries.first()",
+            "Direction" to "Direction.entries.first()",
+            "Boolean" to "true",
         ),
     )
 }

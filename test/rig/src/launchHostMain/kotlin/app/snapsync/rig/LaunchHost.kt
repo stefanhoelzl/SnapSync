@@ -15,6 +15,7 @@ import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.Files
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.databases.SharedDatabase
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,7 +66,8 @@ internal fun launchWorld(
     os = PlayedOs(device) { it in mocked },
     ownDeviceId = { (ports.secureStore.value.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
     joinedEventId = {
-        (ConfigService(ports.files.value, ports.clock.value).read() as? ConfigRead.Joined)?.config?.eventId
+        val config = ConfigService(SharedDatabase(ports.databases.value, legacy = null), ports.clock.value)
+        (config.read() as? ConfigRead.Joined)?.config?.eventId
     },
     setInviteLinkHints = { controls.hints = it },
     setEncryptsNewEvents = { controls.encrypts = it },

@@ -1,8 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.feature.support.RecordingFiles
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
-import app.snapsync.feature.support.membershipUnreadable
 import app.snapsync.model.EventConfig
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -39,8 +38,8 @@ class PushTailGuardTest {
 
     @Test
     fun a_push_while_the_membership_is_unreadable_joins_nothing() {
-        // The membership file cannot be read — a device locked since boot — so the membership reads Unreadable.
-        val unreadable = configService(files = RecordingFiles().apply { membershipUnreadable() })
+        // The membership cannot be read — a device locked since boot — so the membership reads Unreadable.
+        val unreadable = configService(store = SharedStore().apply { membershipUnreadable() })
         assertFalse(PushTailGuard(unreadable).joinsTail("E"), "an event we cannot read is not one we may work on")
     }
 

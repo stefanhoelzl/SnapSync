@@ -4,6 +4,7 @@ import app.snapsync.databases.IosDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
@@ -33,6 +34,9 @@ import kotlin.test.assertTrue
  */
 class IosLedgerStoreTest {
 
+    /** The ledger over the shared database in [dir], joined to one event. */
+    private fun ledgerIn(dir: String) = LedgerService(SharedDatabase(IosDatabases(dir), legacy = null)) { "E-joined" }
+
     private fun entry(key: String, state: LedgerState = LedgerState.COMPLETED) = LedgerEntry(
         key = key,
         assetId = AssetId("asset-$key"),
@@ -44,7 +48,7 @@ class IosLedgerStoreTest {
     fun `the database file lands where the container says`() {
         withTempDirectory { dir ->
             // The driver opens lazily, so the file appears on first use rather than at construction.
-            runBlocking { LedgerService(IosDatabases(dir)) { "E-joined" }.recordUnlessSettled(entry("photo-1.heic")) }
+            runBlocking { ledgerIn(dir).recordUnlessSettled(entry("photo-1.heic")) }
 
             assertTrue(
                 fileExists("$dir/ledger.db"),
@@ -56,7 +60,7 @@ class IosLedgerStoreTest {
     @Test
     fun `a row written through the store is read back`() {
         withTempDirectory { dir ->
-            val store = LedgerService(IosDatabases(dir)) { "E-joined" }
+            val store = ledgerIn(dir)
 
             runBlocking {
                 store.recordUnlessSettled(entry("photo-1.heic"))
@@ -71,7 +75,7 @@ class IosLedgerStoreTest {
     @Test
     fun `an unrecorded key reads as no row`() {
         withTempDirectory { dir ->
-            val store = LedgerService(IosDatabases(dir)) { "E-joined" }
+            val store = ledgerIn(dir)
 
             runBlocking {
                 assertNull(store.get("never-uploaded.heic"), "null is a fact about the ledger, not about storage")
@@ -88,9 +92,9 @@ class IosLedgerStoreTest {
     fun `a store reopened over the same container sees what was written`() {
         withTempDirectory { dir ->
             runBlocking {
-                LedgerService(IosDatabases(dir)) { "E-joined" }.recordUnlessSettled(entry("photo-1.heic"))
+                ledgerIn(dir).recordUnlessSettled(entry("photo-1.heic"))
 
-                val reopened = LedgerService(IosDatabases(dir)) { "E-joined" }
+                val reopened = ledgerIn(dir)
                 assertNotNull(
                     reopened.get("photo-1.heic"),
                     "the ledger is the only memory that a photo was already uploaded; losing it re-uploads " +
@@ -105,10 +109,10 @@ class IosLedgerStoreTest {
         withTempDirectory { first ->
             withTempDirectory { second ->
                 runBlocking {
-                    LedgerService(IosDatabases(first)) { "E-joined" }.recordUnlessSettled(entry("photo-1.heic"))
+                    ledgerIn(first).recordUnlessSettled(entry("photo-1.heic"))
 
                     assertNull(
-                        LedgerService(IosDatabases(second)) { "E-joined" }.get("photo-1.heic"),
+                        ledgerIn(second).get("photo-1.heic"),
                         "if the base path were ignored both stores would be the SAME file and this would " +
                             "pass by accident everywhere else",
                     )

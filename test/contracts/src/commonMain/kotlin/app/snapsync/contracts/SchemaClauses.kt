@@ -15,6 +15,7 @@ import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.services.downloads.db.DownloadResource
 import app.snapsync.services.ledger.db.LedgerDatabase
 import app.snapsync.services.ledger.db.LedgerRow
+import app.snapsync.services.ledger.db.Membership
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
@@ -75,6 +76,7 @@ private val LEDGER = ProductionSchema(
         LedgerDatabase(
             it,
             LedgerRow.Adapter(assetIdAdapter = AssetIdText, stateAdapter = EnumColumnAdapter()),
+            Membership.Adapter(directionAdapter = EnumColumnAdapter()),
         )
     },
     queries = { it.ledgerQueries },

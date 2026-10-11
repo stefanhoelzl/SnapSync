@@ -99,6 +99,20 @@ class DatabasesOperator internal constructor(private val held: InMemoryDatabases
 
     /** Delete every database, as deleting the app does (in-memory databases only). */
     fun deleteAll() = held.deleteAll()
+
+    /**
+     * Make every database unreadable, or readable again — a device before its first unlock since boot, when iOS keeps
+     * every App-Group file closed: an open fails, and so does every statement on a database a process already holds.
+     */
+    fun lock(on: Boolean = true) {
+        held.locked = on
+    }
+
+    /** Whether the databases are locked. */
+    val locked: Boolean get() = held.locked
+
+    /** Run [sql] on database [name] — an operator's hand on the system, such as a trigger that refuses a change. */
+    fun execute(name: String, sql: String) = held.execute(name, sql)
 }
 
 /** The device's user defaults — read while the app writes them, so a [SnapshotMap]. */

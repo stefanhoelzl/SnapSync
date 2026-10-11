@@ -1,8 +1,7 @@
 package app.snapsync.services.wake
 
-import app.snapsync.model.PrefRead
-import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.Preferences
+import app.snapsync.mock.DatabasesMock
+import app.snapsync.services.databases.sharedOver
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -10,26 +9,15 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** A background wake asks each event at most once an hour per check (decision record `changes/timely-background-receiving`, D4–D5). */
+/** A background wake asks each event at most once an hour per check, the times kept in the shared database (decision record `changes/timely-background-receiving`, D4–D5). */
 class EventChecksTest {
-
-    private class Prefs(var unreadable: Boolean = false, var refuseWrites: Boolean = false) : Preferences {
-        val values = mutableMapOf<String, String>()
-        override fun get(key: String): PrefRead = when {
-            unreadable -> PrefRead.Unavailable("locked")
-            else -> values[key]?.let(PrefRead::Value) ?: PrefRead.Absent
-        }
-        override fun set(key: String, value: String): WriteOutcome =
-            if (refuseWrites) WriteOutcome.Failed("locked") else WriteOutcome.Ok.also { values[key] = value }
-        override fun remove(key: String): WriteOutcome = WriteOutcome.Ok.also { values.remove(key) }
-    }
 
     private class FixedClock(var now: Instant)
 
     private val start = Instant.parse("2026-09-30T12:00:00Z")
-    private val prefs = Prefs()
+    private val databases = DatabasesMock()
     private val clock = FixedClock(start)
-    private val checks = EventChecks(prefs, now = { clock.now })
+    private val checks = EventChecks(sharedOver(databases.port()), now = { clock.now })
 
     @Test
     fun `an event never asked is due`() {
@@ -60,18 +48,24 @@ class EventChecksTest {
     }
 
     @Test
-    fun `an unreadable or garbled time counts as due`() {
-        prefs.values["app.snapsync.check.photos.$EVENT"] = "yesterday"
-        assertTrue(checks.due(EventCheck.PHOTOS, EVENT), "garbled")
-        prefs.unreadable = true
+    fun `an unreadable time counts as due`() {
+        checks.stamp(EventCheck.PHOTOS, EVENT)
+        databases.operator.lock()
         assertTrue(checks.due(EventCheck.PHOTOS, EVENT), "unreadable")
     }
 
     @Test
     fun `an ask that cannot be recorded leaves the event due`() {
-        prefs.refuseWrites = true
+        databases.operator.lock()
         checks.stamp(EventCheck.PHOTOS, EVENT)
+        databases.operator.lock(false)
         assertTrue(checks.due(EventCheck.PHOTOS, EVENT), "the next wake asks again")
+    }
+
+    @Test
+    fun `a clear that cannot reach the store raises nothing`() {
+        databases.operator.lock()
+        checks.clear(EVENT)
     }
 
     @Test

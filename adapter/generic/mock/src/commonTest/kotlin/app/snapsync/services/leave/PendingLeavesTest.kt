@@ -1,12 +1,9 @@
 package app.snapsync.services.leave
 
-import app.snapsync.mock.inMemoryFiles
-import app.snapsync.model.FileAccess
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
-import app.snapsync.ports.Files
+import app.snapsync.mock.DatabasesMock
 import app.snapsync.services.CapturingLogWriter
 import app.snapsync.services.backend.LeaveNotifier
+import app.snapsync.services.databases.sharedOver
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -15,11 +12,11 @@ import kotlin.test.assertTrue
 
 /**
  * The leaves the backend has not confirmed (capability `event-lifetime`, "A leave made offline still counts"), over the
- * honest in-memory [app.snapsync.ports.Files] and a scripted [LeaveNotifier].
+ * shared database on in-memory SQLite and a scripted [LeaveNotifier]. Each [leaves] is a process of its own.
  */
 class PendingLeavesTest {
 
-    private val shared = mutableMapOf<String, ByteArray>()
+    private val databases = DatabasesMock()
     private val refused = mutableSetOf<String>()
     private val sent = mutableListOf<String>()
     private val answers = mutableListOf<Pair<String, Boolean>>()
@@ -29,7 +26,7 @@ class PendingLeavesTest {
         if (eventId in refused) Result.failure(IllegalStateException("offline")) else Result.success(Unit)
     }
 
-    private fun leaves() = PendingLeaves(inMemoryFiles(shared = shared), notifier)
+    private fun leaves() = PendingLeaves(sharedOver(databases.port()), notifier)
 
     @Test
     fun `a confirmed leave is forgotten`() = runTest {
@@ -47,7 +44,7 @@ class PendingLeavesTest {
             assertEquals(1, deliverAll())
         }
         refused.clear()
-        // A fresh instance over the same shared area: what a relaunch sees.
+        // A fresh instance over the same database: what a relaunch sees.
         val later = leaves()
         assertEquals(setOf("E"), later.outstanding())
         assertEquals(0, later.deliverAll())
@@ -93,13 +90,6 @@ class PendingLeavesTest {
     }
 
     @Test
-    fun `a record written before the answer existed reads as not received`() = runTest {
-        shared["membership/pending-leaves.txt"] = "E\nF received".encodeToByteArray()
-        leaves().deliverAll()
-        assertEquals(listOf("E" to false, "F" to true), answers)
-    }
-
-    @Test
     fun `a delivery that raced a newer record of the same event leaves the newer one owed`() = runTest {
         lateinit var leaves: PendingLeaves
         val racing = LeaveNotifier { eventId, received ->
@@ -107,7 +97,7 @@ class PendingLeavesTest {
             if (!received) leaves.record(eventId, received = true)
             Result.success(Unit)
         }
-        leaves = PendingLeaves(inMemoryFiles(shared = shared), racing)
+        leaves = PendingLeaves(sharedOver(databases.port()), racing)
         leaves.record("E")
         assertEquals(1, leaves.deliverAll())
         assertEquals(true, leaves.received("E"))
@@ -116,7 +106,7 @@ class PendingLeavesTest {
     @Test
     fun `a confirmed leave is recorded delivered and forgotten in silence`() = runTest {
         val log = CapturingLogWriter()
-        val leaves = PendingLeaves(inMemoryFiles(shared = shared), notifier, log.logger())
+        val leaves = PendingLeaves(sharedOver(databases.port()), notifier, log.logger())
         leaves.leave("E", received = true)
         assertEquals(listOf("E" to true), answers)
         assertEquals(emptySet(), leaves.outstanding())
@@ -127,7 +117,7 @@ class PendingLeavesTest {
     fun `an unconfirmed leave stays recorded and says it is retried`() = runTest {
         refused += "E"
         val log = CapturingLogWriter()
-        val leaves = PendingLeaves(inMemoryFiles(shared = shared), notifier, log.logger())
+        val leaves = PendingLeaves(sharedOver(databases.port()), notifier, log.logger())
         leaves.leave("E", received = false)
         assertEquals(setOf("E"), leaves.outstanding())
         assertTrue(
@@ -137,32 +127,35 @@ class PendingLeavesTest {
     }
 
     @Test
-    fun `an unreadable record answers from the leaves this process still owes`() = runTest {
+    fun `a locked record answers nothing outstanding and raises nothing`() = runTest {
+        leaves().record("E")
+        databases.operator.lock()
         val log = CapturingLogWriter()
-        val denied = mutableSetOf(FileArea.SHARED to "membership/pending-leaves.txt")
-        val leaves = PendingLeaves(inMemoryFiles(shared = shared, denied = denied), notifier, log.logger())
-        leaves.record("E", received = true)
-        assertEquals(setOf("E"), leaves.outstanding())
-        assertEquals(true, leaves.received("E"))
+        val leaves = PendingLeaves(sharedOver(databases.port()), notifier, log.logger())
+
+        assertEquals(emptySet(), leaves.outstanding())
+        assertEquals(null, leaves.received("E"))
+        assertEquals(0, leaves.deliverAll(), "nothing it could read is sent")
         assertTrue(
             log.lines.any { (severity, line) -> severity == Severity.Warn && "unreadable" in line },
             "${log.lines}",
         )
+
+        databases.operator.lock(false)
+        assertEquals(setOf("E"), leaves.outstanding(), "the record was left as it was")
     }
 
     @Test
-    fun `a refused write is logged and the leave stays owed by this process`() = runTest {
+    fun `a leave that cannot be recorded is logged and still sent this once`() = runTest {
+        databases.operator.lock()
         val log = CapturingLogWriter()
-        val refusing = object : Files by inMemoryFiles(shared = shared) {
-            override fun write(area: FileArea, path: String, bytes: ByteArray): FileAccess<Unit> =
-                FileResult.Failed("ENOSPC")
-        }
-        val leaves = PendingLeaves(refusing, notifier, log.logger())
-        leaves.record("E")
-        assertTrue(shared.isEmpty(), "nothing reached the record")
-        assertEquals(setOf("E"), leaves.outstanding(), "the leave is held in memory")
+        val leaves = PendingLeaves(sharedOver(databases.port()), notifier, log.logger())
+
+        leaves.leave("E", received = true)
+
+        assertEquals(listOf("E" to true), answers, "the leave reached the backend")
         assertTrue(
-            log.lines.any { (severity, line) -> severity == Severity.Warn && "not written" in line },
+            log.lines.any { (severity, line) -> severity == Severity.Warn && "not recorded" in line },
             "${log.lines}",
         )
     }

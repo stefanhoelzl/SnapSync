@@ -17,7 +17,6 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
@@ -35,7 +34,6 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.ExpiringCompletion
-import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.ui.state.Layer
@@ -247,11 +245,10 @@ class WorldInspectorController(
     ) = launchMutation { mocks.backend.operator.refuseAttestation = reason }
 
     /**
-     * The membership made **unreadable** — the state a real device is in before its
-     * first unlock after a boot. A lever here because it is otherwise unreachable by a reviewer.
+     * The membership made **unreadable** — the state a real device is in before its first unlock after a boot, when
+     * every database is locked. A lever here because it is otherwise unreachable by a reviewer.
      */
-    fun setMembershipUnreadable(unreadable: Boolean) =
-        launchMutation { mocks.disk.operator.deny(FileArea.SHARED, CONFIG_FILE_NAME, unreadable) }
+    fun setMembershipUnreadable(unreadable: Boolean) = launchMutation { mocks.databases.operator.lock(unreadable) }
 
     /**
      * Hold one of [HOLDS] unanswered, or answer it — the only way to review a screen the app shows only while it waits:
@@ -478,7 +475,7 @@ class WorldInspectorController(
             jobLimit = queue.jobLimit,
             backendOffline = mocks.backend.operator.offline,
             refusedAttestation = mocks.backend.operator.refuseAttestation,
-            membershipUnreadable = mocks.disk.operator.isDenied(FileArea.SHARED, CONFIG_FILE_NAME),
+            membershipUnreadable = mocks.databases.operator.locked,
             held = BackendCall.entries.filter { mocks.backend.operator.isHeld(it) }.mapTo(mutableSetOf()) { it.key } +
                 listOfNotNull(ENUMERATION.takeIf { mocks.library.operator.enumerationHeld }),
         )

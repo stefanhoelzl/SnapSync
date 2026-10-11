@@ -1,0 +1,16 @@
+-- `uploadedManifest` — the device manifest the backend last accepted (capability `photo-sharing`): the skip record the
+-- app and the extension both compare against before publishing. At most one row, `id = 0`.
+
+selectUploaded:
+SELECT eventId, version, manifest FROM uploadedManifest WHERE id = 0;
+
+-- Monotonic: a record never moves to an OLDER version of the same event. Two cycles can publish crossing in the
+-- network; the backend keeps the newer, and so does this — an older record landing last would only cost a republish,
+-- but now it cannot land at all (decision record `changes/manifest-versions`, D3).
+recordUploaded:
+INSERT INTO uploadedManifest (id, eventId, version, manifest) VALUES (0, :eventId, :version, :manifest)
+ON CONFLICT (id) DO UPDATE SET eventId = excluded.eventId, version = excluded.version, manifest = excluded.manifest
+WHERE excluded.eventId != uploadedManifest.eventId OR excluded.version >= uploadedManifest.version;
+
+clearUploaded:
+DELETE FROM uploadedManifest;

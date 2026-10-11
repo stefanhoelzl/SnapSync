@@ -5,11 +5,14 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.EventConfig
+import app.snapsync.model.PauseReason.LEGACY_RECORDS
 import app.snapsync.model.SecureStoreUnavailable
+import app.snapsync.model.SharedRecordsReadiness
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -25,6 +28,8 @@ import app.snapsync.services.ledger.LedgerService
  * semantics won (decision record `changes/archive/2026-07-17-establish-shared-composition`, D1).
  */
 class CycleGateRead(
+    /** Whether the shared records can be read here — the extension pauses until the app has copied their legacy homes. */
+    private val records: SharedDatabase,
     private val ledger: LedgerService,
     private val config: ConfigService,
     private val identity: PersistedDeviceIdentity,
@@ -41,11 +46,14 @@ class CycleGateRead(
     private val albumExclusions: suspend (CaptureCutoff) -> Set<AssetId>,
 ) {
     /**
-     * The gate. The suppression reads are last, and only for an admitted cycle: the extension opens the download store
-     * read-only there, so a process that may not create never opens it. A store that is ready then answers whether the
-     * membership's received photos have been recognised ([recognitionGate]).
+     * The gate. The legacy-records check is first; the suppression reads are last, and only for an admitted cycle: the
+     * extension opens the download store read-only there, so a process that may not create never opens it. A store
+     * that is ready then answers whether the membership's received photos have been recognised ([recognitionGate]).
      */
     suspend fun read(): CycleGate {
+        // FIRST, before any record is read: a record still in its legacy home is not in the database yet, and an empty
+        // table there would read as "not joined". An unreadable database falls through, to be skipped below.
+        if (records.readiness() == SharedRecordsReadiness.LegacyPending) return CycleGate.Paused(LEGACY_RECORDS)
         val gate = entryGate()
         if (gate !is CycleGate.Run) return gate
         val ready = suppressionGate(gate, suppression.readiness())

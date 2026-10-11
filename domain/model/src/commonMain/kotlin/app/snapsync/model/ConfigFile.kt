@@ -6,8 +6,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 /**
- * The **config-file envelope** (migration step 11a): the persisted [EventConfig] rides in an App-Group file as
- * `{"v": <version>, "payload": <EventConfig JSON>}`.
+ * The **config-file envelope** (migration step 11a): the persisted [EventConfig] rode in an App-Group file as
+ * `{"v": <version>, "payload": <EventConfig JSON>}`. The membership now lives in the shared database's `membership`
+ * row, so this codec is read only by the one-time copy of an updated device's file into it (`LegacyRecords`; a shim,
+ * `PENDING_CLEANUPS.md`), and leaves with it.
  *
  * The envelope exists for exactly one reason: a **future build must be able to change the format without a past build
  * misreading the result as a leave**. The file read is what decides "this device left the event", so a revert build
@@ -18,7 +20,7 @@ import kotlinx.serialization.json.JsonElement
  * Version handling, exhaustively:
  * - `v == 1`, payload decodes → [ConfigFileDecode.Valid].
  * - `v == 1`, payload does not decode (e.g. no `minPhotoDate`) → [ConfigFileDecode.Unusable] —
- *   which the port mapping (`configReadViaFile`) treats as **unreadable**, never absent: this
+ *   which the membership's legacy copy (`LegacyRecords`) leaves in place, so it reads as **unreadable**, never absent: this
  *   adapter's own atomic writes should make an unusable current-version file unreachable, so one
  *   is an unexplained state, and an unexplained state defers rather than driving a leave. (The
  *   Keychain legacy-item rule — undecodable reads as no config — deliberately does NOT transfer;
@@ -42,7 +44,7 @@ sealed interface ConfigFileDecode {
 
     /**
      * The envelope is this build's version but carries no usable config (payload absent or
-     * undecodable). Mapped to **unreadable** by `configReadViaFile` — never a leave; see the
+     * undecodable). Left in place by the legacy copy, so **unreadable** — never a leave; see the
      * version table on [CONFIG_FILE_VERSION] for why the Keychain legacy-item rule does not apply.
      */
     data object Unusable : ConfigFileDecode
@@ -94,4 +96,4 @@ fun decodeConfigFile(text: String): ConfigFileDecode {
 //
 // What stays here is the envelope codec; the platform-independent fact the adapter reports into is
 // the `Files` port's `FileResult`, and the rule that turns its `NotFound` into a leave lives in
-// `configReadViaFile`.
+// the legacy copy (`LegacyRecords`).

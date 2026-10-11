@@ -7,6 +7,7 @@ import app.snapsync.model.SecureSlots
 import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.ui.state.Layer
 
 // The JVM host's `/device` writes, its gallery read, and what it refuses of the shared vocabulary (`docs/testing.md`,
@@ -88,14 +89,17 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
  * host assembled, so asking assembles no screen a background launch never built.
  *
  * The host's state, never what the screen was last shown: the screen is handed each state by a collector the host
- * launches, so it can lag the state `/device/state` reports — and a test that has just made the membership file
+ * launches, so it can lag the state `/device/state` reports — and a test that has just made the databases
  * unreadable would then find no joined event at all.
  */
 internal fun joinedEventId(rig: JvmRig): String? {
     val screenBuilt = rig.mocks.screen.operator.shown.value != null
     val shown = if (screenBuilt) rig.app.composed.host.screen.value.layer as? Layer.Joined else null
     return shown?.membership?.eventId
-        ?: (ConfigService(rig.mocks.disk.port(), rig.mocks.clock.port()).read() as? ConfigRead.Joined)?.config?.eventId
+        ?: (
+            ConfigService(SharedDatabase(rig.mocks.databases.port(), legacy = null), rig.mocks.clock.port()).read()
+                as? ConfigRead.Joined
+            )?.config?.eventId
 }
 
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */

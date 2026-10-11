@@ -22,7 +22,7 @@ private const val POSIX_EACCES: Long = 13L
  * ⚠️ **This is now solely load-bearing for the leave decision, and it did not used to be.** Until
  * the Stage-2 change deleted the read-only legacy-Keychain fallback
  * (`changes/archive/…-retire-legacy-config-fallback`, D2), a *wrong* `true` here was caught
- * downstream: `configReadViaFile` consulted the fallback on a missing file, the legacy item was
+ * downstream: the membership read consulted the fallback on a missing file, the legacy item was
  * found, the read answered `Joined`, and the device stayed joined. There is no second opinion any
  * more. A read failure misclassified into the not-found class now **reads the device as not joined** —
  * the cycle uploads nothing and the screen returns to the setup gate, where a re-scan would reload the
@@ -54,7 +54,7 @@ private const val POSIX_EACCES: Long = 13L
  * `NSFileReadNoSuchFileError` and fail if Apple ever moves it.
  *
  * The neutral fact this reports into is `FileResult.NotFound`, and the rule that turns it into a leave stays in
- * `configReadViaFile` — nothing about the *decision* moved.
+ * the membership's legacy copy (`LegacyRecords`) — nothing about the *decision* moved.
  */
 fun isFileAbsence(domain: String?, code: Long): Boolean = when (domain) {
     NSCocoaErrorDomain -> code == NSFileReadNoSuchFileError || code == NSFileNoSuchFileError

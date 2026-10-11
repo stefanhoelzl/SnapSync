@@ -1,9 +1,8 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.feature.support.RecordingFiles
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
-import app.snapsync.feature.support.membershipUnreadable
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploaderPin
@@ -305,8 +304,8 @@ class UploadTransitionsTest {
 }
 
 /**
- * The real membership over the files port: joined to `E`, or not joined — or, when [unreadable], a membership file the
- * device cannot read (locked since boot), which the service reads as unreadable whatever the file holds.
+ * The real membership over the shared database: joined to `E`, or not joined — or, when [unreadable], a database the
+ * device cannot read (locked since boot), which the service reads as unreadable whatever the row holds.
  */
 private fun membership(joined: Boolean, unreadable: Boolean): ConfigService = configService(
     initial = EventConfig(
@@ -318,5 +317,5 @@ private fun membership(joined: Boolean, unreadable: Boolean): ConfigService = co
         deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
         .takeIf { joined },
-    files = RecordingFiles().apply { if (unreadable) membershipUnreadable() },
+    store = SharedStore().apply { if (unreadable) membershipUnreadable() },
 )

@@ -1,12 +1,13 @@
 package app.snapsync.feature.support
 
 import app.cash.sqldelight.db.QueryResult
+import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPhotoAccess
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.ConfigFileDecode
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileAccess
@@ -16,15 +17,16 @@ import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.decodeConfigFile
-import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.Clock
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Files
 import app.snapsync.ports.PlatformDeviceId
-import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.config.saveMembership
+import app.snapsync.services.config.toConfig
+import app.snapsync.services.databases.LegacyRecords
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LEDGER_DB_NAME
@@ -110,40 +112,105 @@ class RecordingFiles(
     }
 }
 
-/** The membership file, persisted — what the config service seeds from at construction. */
-fun RecordingFiles.persist(config: EventConfig?) {
-    if (config == null) {
-        shared.remove(
-            CONFIG_FILE_NAME,
-        )
-    } else {
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(config).encodeToByteArray()
+/**
+ * The shared database (`ledger.db`) over in-memory SQLite — where the membership, the ledger and the other shared records
+ * are kept — with the reads and levers a test needs at the `Databases` port. Its legacy homes are empty, so every record
+ * lives here from the first open, as on a fresh install.
+ *
+ * The membership's saves and clears are counted from the database's own change notices, so a test observes what reached
+ * the store rather than what a service says it did.
+ */
+class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
+    val db: SharedDatabase = SharedDatabase(databases.port(), LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
+
+    private var saves = 0
+    private var clears = 0
+    private var refusesSaves = false
+
+    init {
+        db.use { }
+        // SQLDelight's own change notice: once per committed save or clear that reached the store — a clear of no row
+        // included — which a row-level trigger would not see.
+        driver().addListener("membership") {
+            if (persistedConfig() == null) {
+                clears++
+                onCleared()
+            } else {
+                saves++
+            }
+        }
     }
+
+    /** Called after each committed change that left no membership — how a test orders a clear among its steps. */
+    var onCleared: () -> Unit = {}
+
+    /**
+     * The membership, persisted — what the config service seeds from at its first use. Not counted as a save, and
+     * written past the levers below: a test seeds the store it then locks or refuses.
+     */
+    fun persist(config: EventConfig?) {
+        val locked = databases.operator.locked
+        databases.operator.lock(false)
+        if (refusesSaves) databases.operator.execute(LEDGER_DB_NAME, "DROP TRIGGER membershipRefused")
+        db.use { database ->
+            if (config == null) {
+                database.membershipQueries.clearMembership()
+            } else {
+                database.membershipQueries.saveMembership(config)
+            }
+        }
+        if (refusesSaves) refuseSaves()
+        databases.operator.lock(locked)
+        saves = 0
+        clears = 0
+    }
+
+    /** What the membership row holds now, or `null` when there is none. */
+    fun persistedConfig(): EventConfig? =
+        db.use { it.membershipQueries.selectMembership().executeAsOneOrNull()?.toConfig() }
+
+    /** The membership's writes that reached the database since it was seeded. */
+    val configSaves: Int get() = saves
+
+    /** Whether a clear of the membership reached the database (a leave, a reset). */
+    val configCleared: Boolean get() = clears > 0
+
+    /** Lever: every membership save fails at the store, as a full disk's write does. */
+    fun failSaves() {
+        refusesSaves = true
+        refuseSaves()
+    }
+
+    /** Lever: the membership cannot be deleted — a clear fails at the store, so the device stays joined. */
+    fun failClears() = databases.operator.execute(
+        LEDGER_DB_NAME,
+        "CREATE TRIGGER membershipKept BEFORE DELETE ON membership BEGIN SELECT RAISE(ABORT, 'undeletable'); END",
+    )
+
+    /** Lever: every database is unreadable — a device locked since boot. */
+    fun membershipUnreadable() = databases.operator.lock()
+
+    private fun refuseSaves() = databases.operator.execute(
+        LEDGER_DB_NAME,
+        "CREATE TRIGGER membershipRefused BEFORE INSERT ON membership BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+    )
+
+    private fun driver() =
+        (databases.port().open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = true) as DbOpen.Opened).driver
 }
 
-/** What the membership file holds now, or `null` when there is none. */
-fun RecordingFiles.persistedConfig(): EventConfig? =
-    (shared[CONFIG_FILE_NAME]?.decodeToString()?.let(::decodeConfigFile) as? ConfigFileDecode.Valid)?.config
+/** The shared database over [databases], its legacy homes empty — every record lives in the database from the start. */
+fun testShared(databases: Databases = inMemoryDatabases()): SharedDatabase =
+    SharedDatabase(databases, LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
 
-/** The membership's writes that reached the file. */
-val RecordingFiles.configSaves: Int get() = writes(CONFIG_FILE_NAME)
-
-/** Whether the membership file was deleted (a leave, a reset). */
-val RecordingFiles.configCleared: Boolean get() = deleted(CONFIG_FILE_NAME)
-
-/** Lever: the membership file cannot be read or written — a device locked since boot. */
-fun RecordingFiles.membershipUnreadable() {
-    denied += FileArea.SHARED to CONFIG_FILE_NAME
-}
-
-/** The real membership service over [files], seeded with [initial]. */
+/** The real membership service over [store], seeded with [initial]. */
 fun configService(
     initial: EventConfig? = null,
-    files: RecordingFiles = RecordingFiles(),
+    store: SharedStore = SharedStore(),
     clock: Clock = testClock(),
 ): ConfigService {
-    files.persist(initial)
-    return ConfigService(files, clock)
+    store.persist(initial)
+    return ConfigService(store.db, clock)
 }
 
 /** A device identity that resolves to [id] — the app's, minting the platform id over an empty secure store. */
@@ -172,7 +239,7 @@ const val LEDGER_EVENT: String = "E-ledger"
  * event), and the reads a test needs that the app never makes: every row, and which events hold rows.
  */
 class TestLedger(val databases: Databases = inMemoryDatabases(), var joined: String? = LEDGER_EVENT) {
-    val service: LedgerService = LedgerService(databases) { joined }
+    val service: LedgerService = LedgerService(testShared(databases)) { joined }
 
     /** Every row the joined event holds, by key. */
     suspend fun rows(): Map<String, LedgerEntry> = keys().mapNotNull { key ->

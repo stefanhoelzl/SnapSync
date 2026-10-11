@@ -2,9 +2,9 @@ package app.snapsync.membership
 
 import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.support.LEDGER_EVENT
-import app.snapsync.feature.support.RecordingFiles
-import app.snapsync.feature.support.configCleared
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
+import app.snapsync.feature.support.testShared
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryPreferences
@@ -35,12 +35,12 @@ import kotlin.test.assertTrue
  */
 class ResetDeviceStateTest {
 
-    /** The REAL services, over in-memory SQLite and an in-memory shared area; [configFiles] is the membership file. */
+    /** The REAL services, over in-memory SQLite; [configFiles] is the shared database the membership is kept in. */
     private class Fixture(downloadsDb: Databases? = null) {
-        val configFiles = RecordingFiles()
+        val configFiles = SharedStore()
         val config: ConfigService = configService(null, configFiles)
         private val databases = inMemoryDatabases()
-        val ledger = LedgerService(databases) { LEDGER_EVENT }
+        val ledger = LedgerService(testShared(databases)) { LEDGER_EVENT }
         val downloads = DownloadService(downloadsDb ?: databases)
         val mobileData = MobileDataSetting(inMemoryPreferences())
 
@@ -128,7 +128,7 @@ class ResetDeviceStateTest {
         // Best-effort, like leave: a partial reset is strictly better than an aborted one, because
         // whatever was cleared can no longer mislead the next cycle.
         val f = Fixture()
-        f.configFiles.failDeletes = true // the membership file cannot be deleted: the config clear throws
+        f.configFiles.failClears() // the membership cannot be deleted: the config clear throws
         f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", AssetId("asset-1"), LedgerState.COMPLETED))
 
         ResetDeviceState(

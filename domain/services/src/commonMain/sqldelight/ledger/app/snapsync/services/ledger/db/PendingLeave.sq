@@ -1,0 +1,13 @@
+-- `pendingLeave` — the leaves this device made that the backend has not confirmed (capability `event-lifetime`, "A leave
+-- made offline still counts"). `received` is whether this device received every photo of the others.
+
+selectPendingLeaves:
+SELECT eventId, received FROM pendingLeave ORDER BY eventId;
+
+recordPendingLeave:
+INSERT INTO pendingLeave (eventId, received) VALUES (:eventId, :received)
+ON CONFLICT (eventId) DO UPDATE SET received = excluded.received;
+
+-- Only the leave AS SENT: a record replaced while its request was in flight is still owed.
+confirmPendingLeave:
+DELETE FROM pendingLeave WHERE eventId = :eventId AND received = :received;

@@ -30,10 +30,10 @@ import app.snapsync.model.uploadKey
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
-import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
+import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
@@ -629,22 +629,31 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
 )
 
 private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
-    // The membership file made unreadable on the device's disk — a device before its first unlock after a boot.
-    "membership/unreadable" to mocked(
-        MockedSystem.FILES,
+    // Every database made unreadable — a device before its first unlock after a boot, when the operating system keeps
+    // every App-Group file closed: opens fail, and so does every statement on a database a process already holds.
+    "databases/locked" to mocked(
+        MockedSystem.DATABASES,
         RigCommand { params, _ ->
             val on = flag(params, "on")
-            device.disk.operator.deny(FileArea.SHARED, CONFIG_FILE_NAME, on)
-            CommandResult.ok("""{"membershipUnreadable":$on}""")
+            device.databases.operator.lock(on)
+            CommandResult.ok("""{"databasesLocked":$on}""")
         },
     ),
-    // The membership file stays readable and writable but cannot be deleted — a leave whose clear fails, so the app
-    // stays joined to the event it tried to leave.
+    // The membership stays readable and writable but cannot be deleted — a leave whose clear fails, so the app stays
+    // joined to the event it tried to leave. A trigger in the shared database refuses the delete.
     "membership/undeletable" to mocked(
-        MockedSystem.FILES,
+        MockedSystem.DATABASES,
         RigCommand { params, _ ->
             val on = flag(params, "on")
-            device.disk.operator.failDeletes(FileArea.SHARED, CONFIG_FILE_NAME, on)
+            device.databases.operator.execute(
+                LEDGER_DB_NAME,
+                if (on) {
+                    "CREATE TRIGGER IF NOT EXISTS membership_undeletable BEFORE DELETE ON membership " +
+                        "BEGIN SELECT RAISE(ABORT, 'the membership cannot be deleted'); END"
+                } else {
+                    "DROP TRIGGER IF EXISTS membership_undeletable"
+                },
+            )
             CommandResult.ok("""{"membershipUndeletable":$on}""")
         },
     ),

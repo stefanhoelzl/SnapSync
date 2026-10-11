@@ -107,9 +107,10 @@ A 0.4 phone that updates straight to a newer build in the middle of an event sti
 is 0.5, no such membership is live.
 
 - **Parked ledger rows.**
-  - **What:** 12.sqm moved every row under the empty event `''`; `LedgerService` adopts them into the joined
-    event on first use (`queries.adoptParked`, `Ledger.sq` `adoptParked`).
-  - **Remove:** the adopt step, the query, and `LedgerServiceTest`'s parked-row cases.
+  - **What:** 12.sqm moved every row under the empty event `''`; the membership's legacy copy adopts them into the
+    event it copies, or drops them when there is none (`LegacyRecords.copyMembership`, `Ledger.sq` `adoptParked` /
+    `dropParked`).
+  - **Remove:** both queries, their calls in `LegacyRecords`, and `LedgerMigrationTest`'s parked-row cases.
   - **Keep:** 12.sqm itself, until the migration chain is squashed again.
 - **3-field download task tags.**
   - **What:** `domain/services/.../downloads/DownloadJobs.kt` (`LEGACY_TAG_FIELDS`) reads tags written by a
@@ -178,6 +179,31 @@ device below it.
 - **Keep forever:** the fragment-form decoder (a printed QR opens forever) — a plain invite then opens the
   incomplete-invite screen.
 - **Record:** `openspec/changes/encrypt-events-by-default` (proposal, design Non-Goals).
+
+## Once `MIN_APP_VERSION` ≥ the release that moved the shared records
+
+**Unlock condition:** the floor is at or above the first store release that carries the shared database's records
+(`13.sqm`; the next release after 0.5 at the time of writing). Every device that can still talk to the backend has
+then run an app that copied its legacy records, so no legacy file or key is left to read.
+
+### Legacy homes of the shared records (app)
+- **What:** an updated device holds the records the app and the extension share in their pre-database homes. The app
+  copies each into `ledger.db` once, at its first open, and deletes it; the extension pauses until it has.
+  - `domain/services/.../databases/LegacyRecords.kt`: the copy — `eventconfig.json`,
+    `device-manifest/last-uploaded.json`, `membership/pending-leaves.txt`, the Preferences keys
+    `app.snapsync.album.map` / `.filled` and `app.snapsync.check.*`.
+  - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
+    membership read's "still in its legacy file" answer (`ConfigService.read`).
+  - `PauseReason.LEGACY_RECORDS` and its check at the head of `CycleGateRead.read`.
+  - `PushRegistrationRecord.fromLegacyFile` (`push-registration/last-registered.txt` into the Preferences key) and
+    its `files` parameter.
+  - `model/ConfigFile.kt` (the envelope codec), read only by the copy.
+- **Why:** a device that updated mid-event must keep its membership, its pending leaves and its albums.
+- **Remove:** `LegacyRecords` and `LegacyRecordsTest`; `SharedDatabase`'s `legacy` parameter, `imported` and
+  `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
+  copy and its two tests; `ConfigFile.kt`. Add a migration that drops `legacyImport`. Then the `Files` adapter's
+  not-found classification is no longer load-bearing for the leave decision (`FileAbsence.kt`, `CLAUDE.md`).
+- **Record:** this file's PR (phase 2b, "ports: sql + shared records").
 
 ## One-off ops
 

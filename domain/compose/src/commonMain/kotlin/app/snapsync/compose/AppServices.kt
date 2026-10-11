@@ -6,6 +6,8 @@ import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
+import app.snapsync.services.databases.LegacyRecords
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.identity.AttestState
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -38,7 +40,16 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * trigger flow re-reads it before acting (`ConfigService.reload`), because cross-process writes and a
      * pre-first-unlock seed never notify this process's state flow.
      */
-    val config: ConfigService by lazy { ConfigService(process.files, process.clock) }
+    val config: ConfigService by lazy { ConfigService(sharedDatabase, process.clock) }
+
+    /**
+     * The shared database — `ledger.db`, which the extension opens too — holding the upload rows and the small records
+     * both processes share. The app copies the records' legacy homes into it at its first
+     * open ([LegacyRecords]; a shim, `PENDING_CLEANUPS.md`).
+     */
+    val sharedDatabase: SharedDatabase by lazy {
+        SharedDatabase(ports.databases, LegacyRecords(process.files, ports.preferences, log))
+    }
 
     /**
      * What this process knows about its own uploads: the app **reads** it — the status
@@ -46,7 +57,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * `LedgerWriter` over it. On iOS ≥26.1 the extension writes the same App-Group ledger from its own process. Scoped
      * to the event [config] says this process is joined to.
      */
-    val ledger: LedgerService by lazy { LedgerService(ports.databases) { config.config.value?.eventId } }
+    val ledger: LedgerService by lazy { LedgerService(sharedDatabase) { config.config.value?.eventId } }
 
     /** The download store — the app is its one writer and its one migrator. */
     val downloadStore: DownloadService by lazy { DownloadService(ports.databases) }
@@ -58,11 +69,11 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     val stagedBytes: StagingService by lazy { StagingService(process.files) }
 
     /**
-     * The device manifest's skip record, in the shared area — the SAME record the ≥26.1 extension's producer reads.
+     * The device manifest's skip record, in the shared database — the SAME record the ≥26.1 extension's producer reads.
      * Enrolling overwrites the server's manifest with an empty one, so it must invalidate this record or the producer
      * skips the rewrite (see [app.snapsync.feature.membership.ManifestDeviceEnroller]).
      */
-    val manifestStore: DeviceManifestService by lazy { DeviceManifestService(process.files) }
+    val manifestStore: DeviceManifestService by lazy { DeviceManifestService(sharedDatabase) }
 
     /** The attestation token and key id, in the shared store the extension reads. */
     val attestStore: AttestStore by lazy { AttestState(ports.secureStore) }
@@ -86,7 +97,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     val fileCipher: FileCipher by lazy { FileCipher(process.crypto, process.files) }
 
     /** The event album's leave-surviving `eventId → album` map. */
-    val albumMapStore: AlbumMapService by lazy { AlbumMapService(ports.preferences) }
+    val albumMapStore: AlbumMapService by lazy { AlbumMapService(sharedDatabase) }
 
     /**
      * The device's mobile-data choice (decision record `changes/archive/2026-10-07-mobile-data-per-device`, D1) —
@@ -96,10 +107,10 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
 
     /**
      * When a background wake last asked the event for its photos and its state (decision record
-     * `changes/timely-background-receiving`, D4–D5) — over the shared preferences, so it outlives the process a wake
-     * usually is.
+     * `changes/timely-background-receiving`, D4–D5) — in the shared database, so it outlives the process a wake usually
+     * is.
      */
-    val eventChecks: EventChecks by lazy { EventChecks(ports.preferences, now = process.clock::now) }
+    val eventChecks: EventChecks by lazy { EventChecks(sharedDatabase, now = process.clock::now) }
 
     /**
      * The OS-delivered push token, paired with the push service's kind (its adapter's)
@@ -114,7 +125,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * The last push registration the backend accepted, against which a delivered token is compared — so a launch that
      * delivers the unchanged token publishes nothing.
      */
-    val pushRecord: PushRegistrationRecord by lazy { PushRegistrationRecord(process.files) }
+    val pushRecord: PushRegistrationRecord by lazy { PushRegistrationRecord(ports.preferences, process.files) }
 
     /**
      * The device logs a dump reads back, over the process's files: an off-device

@@ -2,70 +2,88 @@ package app.snapsync.services.ledger
 
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.contracts.at
-import app.snapsync.model.LedgerAggregates
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.model.EventConfig
+import app.snapsync.model.FileArea
 import app.snapsync.model.LedgerState
 import app.snapsync.model.TerminalOutcome
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.encodeConfigFile
+import app.snapsync.model.eventEnd
 import app.snapsync.ports.Databases
+import app.snapsync.ports.Files
+import app.snapsync.services.databases.CONFIG_FILE_NAME
+import app.snapsync.services.databases.LegacyRecords
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.databases.strings
 import app.snapsync.services.ledger.db.LedgerDatabase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The ledger's one migration (capability `photo-sharing`): 12.sqm, which parks every row under the empty event,
- * because the joined event lives in a file the migration cannot read; the service adopts them at its first use.
- * v12 is the oldest ledger a device holds. The database is entered at that version THROUGH THE PORT, so the
- * service's own open runs the migration — the path an upgrading phone takes. That the migration also runs on each
- * platform's own SQLite is `DatabasesContract`'s `LEDGER_SCHEMA_MIGRATES_FROM_ITS_FIRST_VERSION`.
+ * The ledger's migrations as a device upgrades through them (capability `photo-sharing`). 12.sqm parked every row
+ * under the empty event, because the joined event lived in a file a migration cannot read; 13.sqm moved the membership
+ * into this database, and the app's copy of that file — the first open after the update — adopts the parked rows into
+ * the event it names, or drops them when there is none. v12 is the oldest ledger a device holds. The database is
+ * entered at its version THROUGH THE PORT, so the app's own open runs the migrations and the copy — the path an
+ * upgrading phone takes. That the migrations also run on each platform's own SQLite is `DatabasesContract`'s
+ * `LEDGER_SCHEMA_MIGRATES_FROM_ITS_FIRST_VERSION`.
  */
 class LedgerMigrationTest {
 
     @Test
-    fun `migration v12 to v13 parks every row and the joined event adopts them at first use`() = runTest {
-        val (databases, driver) = v12Ledger()
-        val backend = LedgerService(databases) { JOINED }
-        backend.manifestVersion() // opens, and so migrates, without touching the event
-        assertEquals(listOf(""), driver.eventIds(), "parked, not lost")
+    fun `an upgrade from v12 adopts every parked row into the membership the app copies`() = runTest {
+        val (databases, driver) = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
+        val ledger = LedgerService(appOpen(databases, membershipFile(JOINED))) { JOINED }
 
-        assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state)
-        // A job queued before the upgrade still settles: the destination survives the rebuild.
-        assertEquals("R-photo.jpg", backend.entryForDestination("/v2/files/R")?.key)
-        assertTrue(backend.markTerminal("R-photo.jpg", TerminalOutcome.COMPLETED))
+        assertEquals(LedgerState.COMPLETED, ledger.get("C-photo.jpg")?.state, "adopted, not lost")
         assertEquals(listOf(JOINED), driver.eventIds())
+        // A job queued before the upgrade still settles: the destination survives both rebuilds.
+        assertEquals("R-photo.jpg", ledger.entryForDestination("/v2/files/R")?.key)
+        assertTrue(ledger.markTerminal("R-photo.jpg", TerminalOutcome.COMPLETED))
     }
 
     @Test
-    fun `parked rows stay parked and invisible while nothing is joined and the next join purges them`() = runTest {
-        val (databases, driver) = v12Ledger()
+    fun `with no membership to copy the parked rows are no event's and go`() = runTest {
+        val (databases, driver) = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
 
-        val backend = LedgerService(databases) { null }
-        assertNull(backend.get("C-photo.jpg"))
-        assertEquals(LedgerAggregates(0, 0), backend.aggregates())
-        assertTrue(backend.rowsNeedingJob().isEmpty())
-        assertEquals(listOf(""), driver.eventIds())
+        LedgerService(appOpen(databases, inMemoryFiles())) { null }.manifestVersion()
 
-        backend.purgeExcept(JOINED)
         assertTrue(driver.eventIds().isEmpty())
     }
 
     @Test
-    fun `a parked key the joined event already holds keeps the joined event's row`() = runTest {
-        val (databases, driver) = v12Ledger()
-        LedgerService(databases) { null }.manifestVersion() // migrated, nothing adopted
-        driver.execute(
-            null,
-            "INSERT INTO ledgerRow (eventId, key, assetId, state) VALUES ('$JOINED', 'C-photo.jpg', 'C', 'DISCOVERED')",
-            0,
+    fun `a later join never adopts what was parked`() = runTest {
+        // The extension opened first and migrated, as it may: nothing is copied, so nothing is adopted or dropped.
+        val (databases, driver) = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
+        LedgerService(SharedDatabase(databases, legacy = null)) { "E-later" }.manifestVersion()
+        assertEquals(listOf(""), driver.eventIds(), "parked, untouched by a process that copies nothing")
+
+        // The app's copy finds no membership file — the device had left — so the rows go, never to "E-later".
+        LedgerService(appOpen(databases, inMemoryFiles())) { "E-later" }.manifestVersion()
+        assertTrue(driver.eventIds().isEmpty())
+    }
+
+    @Test
+    fun `a parked key the copied event already holds keeps that event's row`() = runTest {
+        val (databases, driver) = databaseAt(
+            LEDGER_DB_NAME,
+            LedgerDatabase.Schema.at(
+                13,
+                "INSERT INTO ledgerRow (eventId, key, assetId, state) VALUES ('', 'C-photo.jpg', 'C', 'COMPLETED')",
+                "INSERT INTO ledgerRow (eventId, key, assetId, state) VALUES ('$JOINED', 'C-photo.jpg', 'C', 'DISCOVERED')",
+            ),
         )
 
-        val backend = LedgerService(databases) { JOINED }
+        val ledger = LedgerService(appOpen(databases, membershipFile(JOINED))) { JOINED }
 
-        assertEquals(LedgerState.DISCOVERED, backend.get("C-photo.jpg")?.state)
-        assertEquals(LedgerState.REQUESTED, backend.get("R-photo.jpg")?.state)
+        assertEquals(LedgerState.DISCOVERED, ledger.get("C-photo.jpg")?.state)
         assertEquals(listOf("", JOINED), driver.eventIds(), "the duplicate stays parked until a purge")
     }
 }
@@ -73,8 +91,22 @@ class LedgerMigrationTest {
 /** The event every service in this file is joined to, unless a test says otherwise. */
 private const val JOINED = "E-joined"
 
-/** A v12 ledger — the oldest a device holds — with one settled row and one in flight. */
-private fun v12Ledger(): Pair<Databases, SqlDriver> = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
+/** The shared database as the app opens it, over [files] holding the records' legacy homes. */
+private fun appOpen(databases: Databases, files: Files) =
+    SharedDatabase(databases, LegacyRecords(files, inMemoryPreferences()))
+
+/** A shared area holding the membership's legacy file, joined to [eventId]. */
+private fun membershipFile(eventId: String): Files = inMemoryFiles().apply {
+    val config = EventConfig(
+        eventId,
+        name = "Anna's Birthday",
+        minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
+        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
+        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    )
+    write(FileArea.SHARED, CONFIG_FILE_NAME, encodeConfigFile(config).encodeToByteArray())
+}
 
 /** The distinct events the ledger holds rows for, sorted. */
 private fun SqlDriver.eventIds(): List<String> = strings("SELECT DISTINCT eventId FROM ledgerRow ORDER BY eventId")

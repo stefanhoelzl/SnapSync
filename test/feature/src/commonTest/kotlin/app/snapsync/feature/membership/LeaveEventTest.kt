@@ -2,11 +2,9 @@
 
 package app.snapsync.feature.membership
 
-import app.snapsync.feature.support.RecordingFiles
-import app.snapsync.feature.support.configCleared
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.inertPendingLeaves
-import app.snapsync.feature.support.persistedConfig
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
@@ -30,8 +28,8 @@ private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
 class LeaveEventTest {
 
     /** The membership's file, recording the clear into [order] as it reaches the port. */
-    private fun membershipFiles(order: MutableList<String>? = null) = RecordingFiles().apply {
-        onOperation = { if (it.startsWith("delete")) order?.add("clear") }
+    private fun membershipFiles(order: MutableList<String>? = null) = SharedStore().apply {
+        onCleared = { order?.add("clear") }
     }
 
     // A membership always carries a cutoff (capability `photo-sharing`); leave ignores it.
@@ -108,7 +106,7 @@ class LeaveEventTest {
     fun `a failing config clear still dispatches the notify unconditionally`() = runTest {
         var disabled = false
         var notified = false
-        val files = membershipFiles().apply { failDeletes = true }
+        val files = membershipFiles().apply { failClears() }
 
         LeaveEvent(
             keys = EventKeys(fakeCrypto(), inMemorySecureStore()),

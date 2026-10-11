@@ -2,12 +2,12 @@ package app.snapsync.feature.download
 
 import app.snapsync.feature.support.InMemoryAssetPresence
 import app.snapsync.feature.support.RecordingFiles
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.downloadJobs
-import app.snapsync.feature.support.membershipUnreadable
 import app.snapsync.feature.support.testClock
+import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AssetId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ImportRequest
@@ -69,7 +69,7 @@ class DownloadPushReceiverTest {
             // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no
             // longer defaults: a permissive default is what let "no membership" mean "download freely".
             arm = DownloadArm(enabled = { true }, keyHeld = { true }),
-            checks = EventChecks(inMemoryPreferences(), now = { kotlin.time.Instant.fromEpochMilliseconds(0) }),
+            checks = EventChecks(testShared(), now = { kotlin.time.Instant.fromEpochMilliseconds(0) }),
             readyToImport = { true },
         )
     }
@@ -97,9 +97,9 @@ class DownloadPushReceiverTest {
         // A locked device: the push cannot be matched to an event we cannot read, so nothing is reconciled —
         // and the reason is logged as "unreadable", not as "not joined".
         val union = RecordingUnion()
-        val files = RecordingFiles().apply { membershipUnreadable() }
+        val store = SharedStore().apply { membershipUnreadable() }
         val receiver = DownloadPushReceiver(
-            configSource = ConfigService(files, testClock()),
+            configSource = ConfigService(store.db, testClock()),
             controller = controller(union),
         )
         receiver.onSilentPush(eventA)

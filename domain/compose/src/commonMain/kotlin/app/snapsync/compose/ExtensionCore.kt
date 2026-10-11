@@ -24,6 +24,7 @@ import app.snapsync.services.backend.BackendGateway
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.SuppressionService
 import app.snapsync.services.gallery.AlbumLookupFailure
 import app.snapsync.services.gallery.GalleryAlbums
@@ -134,17 +135,20 @@ private fun extensionServices(
     val build = ports.process.build
     // No version gate: the extension has no screen to show a refusal on.
     val exchange = BackendExchange(ports.http, build, versionGate = null)
-    val config = ConfigService(process.files, process.clock)
+    // The extension never copies the records' legacy homes: it pauses until the app has (see `CycleGateRead`).
+    val records = SharedDatabase(ports.databases, legacy = null)
+    val config = ConfigService(records, process.clock)
     // The app's download store, read-only: both the echo suppression and the recognition record.
     val downloads = SuppressionService(ports.databases)
     return UploadServices(
+        records = records,
         config = config,
         // The same shared choice the app's menu writes, read per job.
         mobileData = MobileDataSetting(ports.preferences),
         deviceIdentity = identity,
         host = build.uploadHost,
         // Scoped to the joined event this process last read; each invocation re-reads the config first.
-        ledger = LedgerService(ports.databases) { config.config.value?.eventId },
+        ledger = LedgerService(records) { config.config.value?.eventId },
         upload = ports.upload,
         gallery = ports.gallery,
         discovery = GalleryDiscovery(ports.gallery),
@@ -154,7 +158,7 @@ private fun extensionServices(
         // Unrestricted, stated: the extension never reads the library under a partial grant — its admission withholds
         // before any read.
         selectionScope = { SelectionScope.Unrestricted },
-        manifestStore = DeviceManifestService(process.files),
+        manifestStore = DeviceManifestService(records),
         manifestPublisher = extensionBackend(exchange, attestStore, identity).manifest,
         suppression = downloads,
         recognition = downloads,
@@ -165,7 +169,7 @@ private fun extensionServices(
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(
             albums,
-            AlbumMapService(ports.preferences),
+            AlbumMapService(records),
             kind = ports.gallery.albumKind,
         ),
         token = token,

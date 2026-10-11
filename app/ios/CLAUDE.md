@@ -160,12 +160,11 @@ family, a transport's guarded terminal write, and the membership reset family. O
 ## Entitlements & Info.plist (the cross-process glue)
 
 - **App Group `group.app.snapsync`** (both `*.entitlements`): the shared on-disk container for the
-  ledger DB the extension writes and the app reads (`LedgerService` over `IosDatabases`) — and for the config file of
-  record (`eventconfig.json`, `ConfigService` over `IosFiles`; save, clear **and read** are file-only — the
-  legacy Keychain write-through ended with the migration and the Stage-2 change deleted the
-  read-only legacy-item fallback behind the read, so the container's lifetime IS the membership's:
-  **reinstall = left the event**, and the not-found error classification (`isFileAbsence`, behind `IosFiles`) is
-  now the only thing between a misread error and a silent logout). **Must be registered in the
+  shared database both processes write (`ledger.db`, `SharedDatabase` over `IosDatabases`): the ledger rows and the
+  membership of record (`ConfigService`; its `membership` row is the only membership there is, so the container's
+  lifetime IS the membership's: **reinstall = left the event**). An updated device's app copies the membership's
+  legacy file (`eventconfig.json`) into it once; until it has, the not-found classification (`isFileAbsence`,
+  behind `IosFiles`) is what stands between a misread error and a silent logout. **Must be registered in the
   Developer portal** and enabled on both App IDs, or signed builds fail to provision.
 - **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
   extension read the shared Keychain items the app writes — the device id

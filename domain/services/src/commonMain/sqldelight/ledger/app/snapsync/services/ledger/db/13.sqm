@@ -1,0 +1,63 @@
+import app.snapsync.model.Direction;
+import kotlin.Boolean;
+
+-- v13 -> v14: the small records both processes share move out of files and Preferences into this database (capability
+-- `photo-sharing`), so one consistency domain — SQLite's transactions — covers them and the upload rows alike. Event
+-- and membership state lives here; device-scoped values stay in Preferences (`docs/architecture.md`, "Storage").
+--
+-- Every table starts EMPTY. The app copies each legacy file or key into its rows after this migration, once per
+-- source, recording each in `legacyImport` (`LegacyRecords`); until a source is marked there it is still in its legacy
+-- place, and nothing reads its table as authoritative. A migration cannot do the copy: it cannot read a file.
+
+-- The membership: at most one row. No row = definitively not joined.
+CREATE TABLE membership (
+    id             INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    eventId        TEXT    NOT NULL,
+    name           TEXT    NOT NULL,
+    minPhotoDate   TEXT    NOT NULL,
+    startsAt       TEXT    NOT NULL,
+    endsAt         TEXT    NOT NULL,
+    maxPhotoDate   TEXT    NOT NULL,
+    deletesAt      TEXT    NOT NULL,
+    direction      TEXT AS Direction NOT NULL,
+    saveToAlbum    INTEGER AS Boolean NOT NULL,
+    closed         INTEGER AS Boolean NOT NULL DEFAULT 0,
+    membersActive  INTEGER,
+    membersSettled INTEGER,
+    keyId          TEXT,
+    CHECK ((membersActive IS NULL) = (membersSettled IS NULL))
+);
+
+-- The last device manifest the backend accepted. The version is a column so a record write can be monotonic.
+CREATE TABLE uploadedManifest (
+    id       INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    eventId  TEXT    NOT NULL,
+    version  INTEGER NOT NULL,
+    manifest TEXT    NOT NULL
+);
+
+-- Leaves this device made that the backend has not confirmed.
+CREATE TABLE pendingLeave (
+    eventId  TEXT NOT NULL PRIMARY KEY,
+    received INTEGER AS Boolean NOT NULL
+);
+
+-- Each event's album, and whether it has held a photo.
+CREATE TABLE eventAlbum (
+    eventId      TEXT NOT NULL PRIMARY KEY,
+    albumLocalId TEXT NOT NULL,
+    filled       INTEGER AS Boolean NOT NULL DEFAULT 0
+);
+
+-- When a background wake last asked the event, per kind of check.
+CREATE TABLE eventCheck (
+    eventId TEXT    NOT NULL,
+    kind    TEXT    NOT NULL,
+    lastAt  INTEGER NOT NULL,
+    PRIMARY KEY (eventId, kind)
+);
+
+-- Which legacy sources the app has copied into rows. A mark commits in the same transaction as the rows it marks.
+CREATE TABLE legacyImport (
+    source TEXT NOT NULL PRIMARY KEY
+);
