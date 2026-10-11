@@ -9,6 +9,7 @@ import app.snapsync.model.PendingResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.DbOpen
+import app.snapsync.services.databases.sharedOver
 import app.snapsync.services.ledger.db.LedgerDatabase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -33,7 +34,7 @@ class LedgerServiceTest {
 
     private val databases = inMemoryDatabases()
     private var joined: String? = JOINED
-    private val ledger = LedgerService(databases) { joined }
+    private val ledger = LedgerService(sharedOver(databases)) { joined }
 
     // ---- the joined event --------------------------------------------------------------------------------
 
@@ -403,7 +404,7 @@ class LedgerServiceTest {
     fun `a reset replaces every row with the baseline verbatim - settled ones included - and purges other events`() = runTest {
         ledger.recordUnlessSettled(entry(key = "old", state = LedgerState.COMPLETED))
         ledger.recordUnlessSettled(entry(key = "a", state = LedgerState.COMPLETED))
-        LedgerService(databases) { OTHER }.recordUnlessSettled(entry(key = "elsewhere"))
+        LedgerService(sharedOver(databases)) { OTHER }.recordUnlessSettled(entry(key = "elsewhere"))
 
         val baseline =
             listOf(entry(key = "a", state = LedgerState.REQUESTED), entry(key = "b", state = LedgerState.COMPLETED))
@@ -412,7 +413,8 @@ class LedgerServiceTest {
         assertNull(ledger.get("old"))
         assertEquals(baseline[0], ledger.get("a"), "the reset family applies no precedence")
         assertEquals(baseline[1], ledger.get("b"))
-        assertNull(LedgerService(databases) { OTHER }.get("elsewhere"), "a reset is a join: no other event survives it")
+        val other = LedgerService(sharedOver(databases)) { OTHER }
+        assertNull(other.get("elsewhere"), "a reset is a join: no other event survives it")
 
         ledger.resetTo(JOINED, emptyList())
         assertEquals(LedgerAggregates(0, 0), ledger.aggregates())

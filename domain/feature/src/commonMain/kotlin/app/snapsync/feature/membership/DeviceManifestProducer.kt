@@ -2,6 +2,7 @@ package app.snapsync.feature.membership
 
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.model.withFinal
@@ -75,22 +76,22 @@ class DeviceManifestProducer(
         val manifest = projectDeviceManifest(deviceId, rows, policy).withVersion(manifestVersion).withFinal(settled)
         val json = manifest.encodeToJson()
         // Skip-if-unchanged, keyed by EVENT. The projected JSON is event-independent (`{deviceId,
-        // assets, version}`), so without the event id in the marker a **switch** to a new event would compare
+        // assets, version}`), so without the event id in the record a **switch** to a new event would compare
         // equal to the prior event's upload and skip writing the new event's (still-absent) device.json.
         //
-        // The marker holds the VERSION too — it rides inside the JSON — and that is load-bearing, not
+        // The record holds the VERSION too — its own column, and inside the JSON — and that is load-bearing, not
         // incidental. Two cycles can read one version while a change commits between their row reads, so one
         // version can name two snapshots; the backend accepts an equal version, so the older can land last.
-        // A marker comparing only the content would then name the newer snapshot while the backend holds the
+        // A record comparing only the content would then name the newer snapshot while the backend holds the
         // older, and skip forever. With the version in it, the next cycle — which reads a higher version —
         // finds no match and republishes (decision record `changes/manifest-versions`, D3).
         //
         // A publish the backend refused as older answers 2xx like a stored one, and is recorded the same way:
         // a snapshot at least as new is already there, and at worst the next cycle republishes once.
-        val marker = "$eventId $json"
-        if (marker == store.loadLastUploaded()) return false
+        val record = UploadedManifest(eventId, manifestVersion, json)
+        if (record == store.loadLastUploaded()) return false
         if (!publisher.publish(eventId, deviceId, manifest)) return false
-        store.saveLastUploaded(marker)
+        store.saveLastUploaded(record)
         return true
     }
 }

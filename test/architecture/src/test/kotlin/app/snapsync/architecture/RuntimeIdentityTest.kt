@@ -27,6 +27,7 @@ private val DOCUMENTED_INVENTORY: Set<String> = setOf(
     "app.snapsync.album.map",
     "app.snapsync.album.filled",
     "app.snapsync.settings.mobileData",
+    "app.snapsync.push.lastRegistered",
     "ledger.db",
     "downloads.db",
     "eventconfig.json",
@@ -132,6 +133,9 @@ class RuntimeIdentityTest {
         // The device's mobile-data choice (`mobile-data-per-device` D1): a drifted key reads every device as "on", so
         // a member who kept photos off mobile data would silently have them sent over it.
         "app.snapsync.settings.mobileData",
+        // The last push registration the backend accepted: a drifted key reads as never registered, so every launch
+        // would republish an unchanged token.
+        "app.snapsync.push.lastRegistered",
         "ledger.db",
         "downloads.db",
         "eventconfig.json",

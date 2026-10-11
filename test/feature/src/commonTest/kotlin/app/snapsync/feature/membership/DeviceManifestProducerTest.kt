@@ -1,6 +1,6 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.mock.inMemoryFiles
+import app.snapsync.feature.support.testShared
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -10,6 +10,7 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.UploadedManifest
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
@@ -73,10 +74,10 @@ class DeviceManifestProducerTest {
         originalFilename = "IMG_$id.JPG",
     )
 
-    /** The REAL manifest record over an in-memory shared area — [lastUploaded] is what it holds. */
-    private fun manifestRecord(): DeviceManifestService = DeviceManifestService(inMemoryFiles())
+    /** The REAL manifest record over an in-memory shared database — [lastUploaded] is what it holds. */
+    private fun manifestRecord(): DeviceManifestService = DeviceManifestService(testShared())
 
-    private val DeviceManifestService.lastUploaded: String? get() = loadLastUploaded()
+    private val DeviceManifestService.lastUploaded: UploadedManifest? get() = loadLastUploaded()
 
     private class FakeUploader(var ok: Boolean = true) : ManifestPublisher {
         val puts = mutableListOf<Triple<String, String, String>>()
@@ -214,7 +215,7 @@ class DeviceManifestProducerTest {
         ).produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals("E", up.puts.single().first)
-        assertTrue(store.lastUploaded!!.endsWith(up.puts.single().third)) // marker records the json
+        assertTrue(store.lastUploaded!!.manifest.endsWith(up.puts.single().third)) // the record holds the json
     }
 
     @Test

@@ -91,7 +91,7 @@ class EncryptedTransfersTest {
     private inner class Device(val id: String, val linkKey: String?, keyId: String?) {
         val files = RecordingFiles()
         val keys = EventKeys(crypto, inMemorySecureStore()).also { k -> linkKey?.let(k::keep) }
-        val config = configService(joined(keyId), files)
+        val config = configService(joined(keyId))
         val cipher = FileCipher(crypto, files)
         val sealing = UploadSealing(keys, cipher, config, testIdentity(id))
     }

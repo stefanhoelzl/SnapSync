@@ -22,6 +22,8 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.HttpTransport
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.databases.LegacyRecords
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.identity.AttestState
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -58,7 +60,7 @@ class ExtensionEntryTest {
 
         // The app renews into the shared item, and a new manifest is due (the app's enrolment invalidates the record).
         attest.setToken("token-after")
-        DeviceManifestService(files).clearLastUploaded()
+        DeviceManifestService(appDatabase).clearLastUploaded()
         host.operator.process()
         assertEquals(
             listOf<String?>("token-before", "token-after"),
@@ -88,11 +90,17 @@ class ExtensionEntryTest {
         }
     }
 
+    /**
+     * The shared database as the APP opens it: its first open copies the records' legacy homes (none here), which is
+     * what lets the extension's cycle run rather than pause.
+     */
+    private val appDatabase by lazy { SharedDatabase(databases, LegacyRecords(files, inMemoryPreferences())) }
+
     /** What the app leaves behind for the extension: an identity, a token, a membership and the download store. */
     private suspend fun joinedWithAToken(token: String) {
         PersistedDeviceIdentity(DeviceIdentityRole.MINTING, secureStore, platformDeviceId = { null }).deviceId()
         attest.setToken(token)
-        ConfigService(files, clock).save(
+        ConfigService(appDatabase, clock).save(
             EventConfig(
                 eventId = "11111111-1111-4111-8111-111111111111",
                 name = "Anna's Birthday",

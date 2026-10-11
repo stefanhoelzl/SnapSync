@@ -1,7 +1,7 @@
 package app.snapsync.feature.album
 
+import app.snapsync.feature.support.testShared
 import app.snapsync.mock.PhotoLibraryMock
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
@@ -55,7 +55,7 @@ class FolderAlbumCoordinatorTest {
     private val gallery: Gallery = library.port().apply {
         listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
     }
-    private val store = AlbumMapService(inMemoryPreferences())
+    private val store = AlbumMapService(testShared())
     private val coordinator = AlbumCoordinator(GalleryAlbums(gallery), store, kind = AlbumKind.FOLDER)
 
     /** A received photo, imported the way the download controller imports it: into [album], then settled. */

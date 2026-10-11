@@ -2,44 +2,58 @@ package app.snapsync.services.push
 
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
+import app.snapsync.model.PrefRead
+import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Files
+import app.snapsync.ports.Preferences
 import co.touchlab.kermit.Logger
+
+/** The registration record's Preferences key — runtime identity. */
+private const val LAST_REGISTERED_KEY = "app.snapsync.push.lastRegistered"
+
+/** Where the record lived before it moved into [Preferences] — runtime identity: an updated device still holds it. */
+private const val LEGACY_FILE = "push-registration/last-registered.txt"
 
 /**
  * The last push registration the backend accepted — what a delivered token is compared
- * against, so a registration is published only when it changed. One file in the shared area, beside the membership and
- * the manifest record: readable on a locked device once it has been unlocked since boot.
+ * against, so a registration is published only when it changed. A device-scoped value, independent of any event and
+ * never committed with anything, so it lives in the shared [Preferences] (`docs/architecture.md`, "Storage"): readable on
+ * a locked device once it has been unlocked since boot, and gone with the install — a reinstall starts with no record
+ * and publishes at its first entry, where an item that outlived the install could suppress that publish against a
+ * backend that has since lost the registration.
  *
- * A file rather than a secure-store item, deliberately: the shared area dies with the install, so a reinstall starts
- * with no record and publishes at its first entry — an item that outlived the install could suppress that publish
- * against a backend that has since lost the registration.
+ * Only the app reads and writes it. An updated device's record is copied from its legacy file at the first read that
+ * finds no key ([files]; a shim, `PENDING_CLEANUPS.md`).
  *
  * **Never raises.** An unreadable record answers `null` and a refused write is logged and dropped: a lost record costs
  * one idempotent publish, and raising would end the registration's collector over a cache.
  */
 class PushRegistrationRecord(
+    private val preferences: Preferences,
     private val files: Files,
     private val log: Logger = Logger.withTag("pushRegistrationRecord"),
 ) {
 
     /** The registration last recorded, or `null` for "none recorded" and "could not read it" alike — both publish. */
-    fun loadLastRegistered(): String? = when (val read = files.read(FileArea.SHARED, LAST_REGISTERED)) {
-        is FileResult.Ok -> read.value.decodeToString()
-        else -> null
+    fun loadLastRegistered(): String? = when (val read = preferences.get(LAST_REGISTERED_KEY)) {
+        is PrefRead.Value -> read.value
+        PrefRead.Absent -> fromLegacyFile()
+        is PrefRead.Unavailable -> null
     }
 
     /** Record [value] as the registration the backend accepted; a write that fails leaves the next entry to publish. */
     fun saveLastRegistered(value: String) {
-        val written = files.write(FileArea.SHARED, LAST_REGISTERED, value.encodeToByteArray())
-        if (written !is FileResult.Ok) {
-            log.w {
-                "the registration record was not written ($written) — the next entry publishes again"
-            }
+        val written = preferences.set(LAST_REGISTERED_KEY, value)
+        if (written != WriteOutcome.Ok) {
+            log.w { "the registration record was not written ($written) — the next entry publishes again" }
         }
     }
 
-    private companion object {
-        /** Runtime identity: installed devices hold their record at this path. */
-        const val LAST_REGISTERED = "push-registration/last-registered.txt"
+    /** The legacy file's record, moved into the key; `null` when there is none or it cannot be moved now. */
+    private fun fromLegacyFile(): String? {
+        val read = files.read(FileArea.SHARED, LEGACY_FILE) as? FileResult.Ok ?: return null
+        val value = read.value.decodeToString()
+        if (preferences.set(LAST_REGISTERED_KEY, value) == WriteOutcome.Ok) files.delete(FileArea.SHARED, LEGACY_FILE)
+        return value
     }
 }

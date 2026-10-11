@@ -3,67 +3,68 @@ package app.snapsync.services.config
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.EventConfig
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.confirmedGone
-import app.snapsync.model.encodeConfigFile
 import app.snapsync.model.hasEnded
 import app.snapsync.model.instantToCutoff
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Clock
-import app.snapsync.ports.Files
+import app.snapsync.services.databases.LegacySource
+import app.snapsync.services.databases.SharedDatabase
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.concurrent.Volatile
 
 /**
- * The config file in the shared area's root (a runtime-identity pin, `docs/architecture.md`): the **storage of
- * record** for the persisted [EventConfig], and its only storage. Both processes read and write it.
- */
-const val CONFIG_FILE_NAME: String = "eventconfig.json"
-
-/**
- * The membership's config: [ConfigSource]/[ConfigStore]/[ConfigReader] over one
- * **versioned-envelope file** in the shared area ([CONFIG_FILE_NAME]), and nothing else.
+ * The membership's config: [ConfigSource]/[ConfigStore]/[ConfigReader] over the one
+ * `membership` row of the shared database ([SharedDatabase]), and nothing else. Both processes read it; the app writes it.
  *
- * That makes **reinstall = left the event** real: the shared container dies with the install, so a reinstalled
- * device reads definitively not joined and rejoins only by re-scanning the invite.
+ * That makes **reinstall = left the event** real: the App-Group container — and the database in it — dies with the
+ * install, so a reinstalled device reads definitively not joined and rejoins only by re-scanning the invite.
  *
- * ⚠️ **"Not found" is solely load-bearing for the leave decision.** Only [FileResult.NotFound] reads as
- * [ConfigRead.None] — definitively not joined; every other answer ([FileResult.Denied], a locked device's
- * read; [FileResult.AreaUnavailable]; [FileResult.Failed]) is **unreadable**, and the caller defers. The
- * classification behind `NotFound` is the `Files` adapter's, pinned by the `Files` contract's "denied is never
- * not found" clause; widening it is a change to the leave decision.
+ * ⚠️ **"No row" is solely load-bearing for the leave decision.** Only a database that ANSWERED, with no row, reads as
+ * [ConfigRead.None] — definitively not joined. A database that cannot be opened or read (a locked device's), a
+ * membership still in its legacy file ([LegacySource.MEMBERSHIP] not copied yet), or a row the model refuses is
+ * **unreadable** ([ConfigRead.Unavailable]), and the caller defers.
  *
- * All decode/decision intelligence is pure and tested (`configReadViaFile` and the reload rules beside this class, the
- * envelope codec in `model/`); this class maps [Files] answers onto them.
- *
- * Seeds [config] synchronously at construction — a file read, never a database or a Keychain item — like the
- * adapter it replaced: a background launch before first unlock seeds `null` (the read is denied → unreadable,
- * never absent), and every trigger flow calls [reload] to repair it before acting. **Readers that act on the
- * absence of a config must use [read], not [config]** — see [ConfigRead].
+ * **Seeded on first use, never at construction**: building the composition opens no database, so [config] reads the
+ * row the first time something asks for it — a foreground launch as it builds its screen, a wake when its flow first
+ * looks. A seed before the first unlock reads unreadable, never absent, and every trigger flow calls [reload] to repair
+ * it before acting. **Readers that act on the absence of a config must use [read], not [config]** — see [ConfigRead].
  */
 class ConfigService(
-    private val files: Files,
+    private val db: SharedDatabase,
     /** The wall clock the membership's own deadline is read against ([isPastDeletion]). */
     private val clock: Clock,
-    private val log: Logger = Logger.withTag("fileConfig"),
+    private val log: Logger = Logger.withTag("membershipConfig"),
 ) {
 
-    private val initial = read()
-    private val state = MutableStateFlow(initial.joinedOrNull())
+    /**
+     * What this process holds of the membership, in its two forms — written together, so they never disagree. Seeded
+     * by the first read, at the first use of either — see the class note.
+     */
+    private class Held(initial: ConfigRead) {
+        val config = MutableStateFlow(initial.joinedOrNull())
+
+        /** `Unreadable` only until a conclusive read. */
+        @Volatile
+        var membership: MembershipRead = membershipAfterReload(initial, MembershipRead.Unreadable)
+
+        fun take(config: EventConfig?, membership: MembershipRead) {
+            this.config.value = config
+            this.membership = membership
+        }
+    }
+
+    private val held: Held by lazy { Held(read()) }
 
     /**
      * The active membership as a level-triggered holder whose current value is always available synchronously — the
      * persisted [EventConfig], or `null` when none is provisioned **as far as this process can tell**. That is fine
      * for the UI, and fatal for anything that acts on absence: those read [membership] or [read].
      */
-    val config: StateFlow<EventConfig?> = state
-
-    /** Written wherever [state] is, so the two never disagree; `Unreadable` only until a conclusive read. */
-    @Volatile
-    private var membershipState: MembershipRead = membershipAfterReload(initial, MembershipRead.Unreadable)
+    val config: StateFlow<EventConfig?> get() = held.config
 
     /**
      * The membership as three answers (decision record `harden-seam-bug-classes`,
@@ -72,58 +73,61 @@ class ConfigService(
      *
      * Read fresh at each use, never held. [MembershipRead.Unreadable] only until a conclusive read.
      */
-    val membership: MembershipRead get() = membershipState
+    val membership: MembershipRead get() = held.membership
 
     suspend fun save(config: EventConfig) {
-        // Deliberately NO equal-config early return: [state] can lag a cross-process writer, so an outer guard
-        // could skip a write the file actually needs. The atomic rewrite of an equal value is harmless, and the
-        // [StateFlow] conflates equal values, so the port's no-redundant-emission contract holds.
-        val written = files.write(FileArea.SHARED, CONFIG_FILE_NAME, encodeConfigFile(config).encodeToByteArray())
-        check(written is FileResult.Ok) { "config file write failed: $written" }
-        state.value = config
-        membershipState = MembershipRead.Member(config)
+        // Deliberately NO equal-config early return: [config] can lag a cross-process writer, so an outer guard
+        // could skip a write the row actually needs. Rewriting an equal row is harmless, and the [StateFlow]
+        // conflates equal values, so the port's no-redundant-emission contract holds. A failed write throws.
+        db.use { it.membershipQueries.saveMembership(config) }
+        held.take(config, MembershipRead.Member(config))
     }
 
     suspend fun clear() {
-        // A throw propagates: the file stays, this build stays joined, and the leave retries visibly rather than
-        // half-completing. An unreachable area is NOT "nothing to delete" — returning there would null the flow
-        // while a file it never touched survived to resurrect the membership at the next launch.
-        when (val deleted = files.delete(FileArea.SHARED, CONFIG_FILE_NAME)) {
-            is FileResult.Ok, FileResult.NotFound -> Unit // deleting an absent file is success
-            else -> error("config file delete failed: $deleted")
-        }
-        state.value = null
-        membershipState = MembershipRead.NotMember
+        // A throw propagates: the row stays, this build stays joined, and the leave retries visibly rather than
+        // half-completing. An unreadable database is NOT "nothing to delete" — returning there would null the flow
+        // while a row it never touched survived to resurrect the membership at the next launch.
+        db.use { it.membershipQueries.clearMembership() }
+        held.take(null, MembershipRead.NotMember)
     }
 
-    /** The three-state read: the pure `configReadViaFile` over this file, and nothing else. */
+    /** The three-state read: the membership row, and nothing else. Never raises. */
     fun read(): ConfigRead {
-        val read = configReadViaFile(files.read(FileArea.SHARED, CONFIG_FILE_NAME))
+        val read = runCatchingCancellable {
+            db.use { database ->
+                when {
+                    !db.imported(LegacySource.MEMBERSHIP) ->
+                        ConfigRead.Unavailable("the membership is still in its legacy file")
+                    else -> database.membershipQueries.selectMembership().executeAsOneOrNull()
+                        ?.let { ConfigRead.Joined(it.toConfig()) }
+                        ?: ConfigRead.None
+                }
+            }
+        }.getOrElse { ConfigRead.Unavailable("the shared database is unreadable: $it") }
         if (read is ConfigRead.Unavailable) {
-            log.w { "config file unreadable (${read.detail}) — NOT 'no config'; caller must defer" }
+            log.w { "membership unreadable (${read.detail}) — NOT 'no config'; caller must defer" }
         }
         return read
     }
 
     /**
-     * The joined event's config for a reader that may run before this process re-read the file: the held [config],
-     * else the file's — `null` when the file holds none or cannot be read now. Never a reader that acts on absence.
+     * The joined event's config for a reader that may run before this process re-read the row: the held [config],
+     * else the row's — `null` when there is none or it cannot be read now. Never a reader that acts on absence.
      */
-    fun joinedOrRead(): EventConfig? = state.value ?: when (val read = read()) {
+    fun joinedOrRead(): EventConfig? = held.config.value ?: when (val read = read()) {
         is ConfigRead.Joined -> read.config
         else -> null
     }
 
     /**
-     * Re-read the file into [config]: cross-process writers do not notify this process's [StateFlow], and a
-     * pre-first-unlock construction seeded `null`. The trigger flows call this at every OS entry, so an
+     * Re-read the row into [config]: cross-process writers do not notify this process's [StateFlow], and a
+     * pre-first-unlock seed read `null`. The trigger flows call this at every OS entry, so an
      * **unreadable** read retains the last good value (`configAfterReload`): at this cadence a transient failure
      * would otherwise clear a good membership mid-session and flip the screen to the setup gate.
      */
     fun reload() {
         val read = read()
-        state.value = configAfterReload(read, state.value)
-        membershipState = membershipAfterReload(read, membershipState)
+        held.take(configAfterReload(read, held.config.value), membershipAfterReload(read, held.membership))
     }
 
     /**
@@ -140,19 +144,19 @@ class ConfigService(
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
     /** The joined event's id, or `null` while not joined — the scope every per-event read takes. */
-    fun activeEventId(): String? = state.value?.eventId
+    fun activeEventId(): String? = held.config.value?.eventId
 
     /**
      * Whether the membership receives others' photos — three-valued, no fallback: `null`
      * while not joined, so a caller arms nothing.
      */
-    fun downloadsEnabled(): Boolean? = state.value?.let { it.direction.includesDownload }
+    fun downloadsEnabled(): Boolean? = held.config.value?.let { it.direction.includesDownload }
 
     /**
      * Whether a fresh read finds a joined membership whose range has ended — what a manifest published now is settled
      * by. An unreadable config or none is "not ended".
      */
     fun freshReadHasEnded(): Boolean = read().joinedOrNull()?.let(::hasEnded) == true
-
-    private fun ConfigRead.joinedOrNull(): EventConfig? = (this as? ConfigRead.Joined)?.config
 }
+
+private fun ConfigRead.joinedOrNull(): EventConfig? = (this as? ConfigRead.Joined)?.config

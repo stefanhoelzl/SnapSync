@@ -1,0 +1,21 @@
+-- `eventAlbum` — each event's album (capability `event-album`): created by the app, read by both processes at placement,
+-- and kept past a leave. `filled` is whether it has held a photo — what tells a folder album the member emptied from one
+-- not filled yet.
+
+selectAlbum:
+SELECT albumLocalId FROM eventAlbum WHERE eventId = :eventId;
+
+-- A new album has held nothing yet, so remembering one resets `filled`.
+rememberAlbum:
+INSERT INTO eventAlbum (eventId, albumLocalId, filled) VALUES (:eventId, :albumLocalId, 0)
+ON CONFLICT (eventId) DO UPDATE SET albumLocalId = excluded.albumLocalId, filled = 0;
+
+selectFilled:
+SELECT filled FROM eventAlbum WHERE eventId = :eventId;
+
+markFilled:
+UPDATE eventAlbum SET filled = 1 WHERE eventId = :eventId;
+
+-- The legacy copy only: an album and its mark as they were.
+importAlbum:
+INSERT OR REPLACE INTO eventAlbum (eventId, albumLocalId, filled) VALUES (:eventId, :albumLocalId, :filled);

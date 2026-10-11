@@ -1,7 +1,5 @@
 package app.snapsync.services.ledger
 
-import app.cash.sqldelight.EnumColumnAdapter
-import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.model.AssetId
 import app.snapsync.model.DONE_STATES
 import app.snapsync.model.LedgerAggregates
@@ -11,18 +9,14 @@ import app.snapsync.model.NEEDS_JOB_STATES
 import app.snapsync.model.PendingResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.ports.Databases
-import app.snapsync.services.databases.AssetIdColumnAdapter
-import app.snapsync.services.databases.openOwned
-import app.snapsync.services.ledger.db.LedgerDatabase
-import app.snapsync.services.ledger.db.LedgerRow
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.upload.TransferRecord
 
 /** The upload ledger's database file — runtime identity (`docs/architecture.md`, section 9): a device holds it. */
 const val LEDGER_DB_NAME: String = "ledger.db"
 
 /**
- * The upload ledger: [LedgerService] over the SQLDelight [LedgerDatabase] (schema:
+ * The upload ledger: [LedgerService] over the shared SQLDelight database (schema:
  * `Ledger.sq` — one table, `(eventId, key)` primary key, an index on `assetId`). [recordUnlessSettled] is one
  * guarded upsert statement, atomic on its own; [aggregates] is one SQL round-trip, so its counts are mutually
  * consistent.
@@ -34,40 +28,22 @@ const val LEDGER_DB_NAME: String = "ledger.db"
  * reset family alone names its event explicitly ([resetTo], [purgeExcept]), because the join it belongs to runs
  * before the joined config is saved.
  *
- * **Opened on first use, through [Databases]**, never at construction: building the composition opens no
- * database (a locked background launch must not be forced into one early). Either process may open it
- * read-write and migrate it — the ledger is shared by the app and the upload extension, one guarded writer per
+ * **Over the shared database ([SharedDatabase])**, opened on first use, never at construction: building the
+ * composition opens no database (a locked background launch must not be forced into one early). Either process may
+ * open it read-write and migrate it — the ledger is shared by the app and the upload extension, one guarded writer per
  * kind of write. A failed open throws [app.snapsync.services.databases.DatabaseUnavailable] from that use and is
  * retried on the next: only a success is kept.
  */
 class LedgerService(
-    databases: Databases,
+    private val db: SharedDatabase,
     /** The event this process is joined to, or null; read at every call, never cached. */
     private val joinedEvent: () -> String?,
 ) : TransferRecord {
 
-    private val queries by lazy {
-        LedgerDatabase(
-            databases.openOwned(LEDGER_DB_NAME, LedgerDatabase.Schema),
-        ).ledgerQueries
-    }
+    private val queries get() = db.use { it.ledgerQueries }
 
-    // The event whose parked rows this process has adopted. A second adoption is a no-op write, so a race between
-    // two callers costs one statement, never a row.
-    private var adoptedFor: String? = null
-
-    /**
-     * The joined event, after adopting into it the rows 12.sqm parked under the empty event — once per event per
-     * process. Null when nothing is joined: the parked rows then wait, and the next join's purge removes them.
-     */
-    private fun event(): String? {
-        val eventId = joinedEvent() ?: return null
-        if (adoptedFor != eventId) {
-            queries.adoptParked(eventId)
-            adoptedFor = eventId
-        }
-        return eventId
-    }
+    /** The joined event, or null when nothing is joined. */
+    private fun event(): String? = joinedEvent()
 
     /**
      * The row for [key], or null when there is none.
@@ -366,15 +342,3 @@ class LedgerService(
 
 /** Keys per `deleteKeys` statement — well under every driver's bind-variable limit. */
 private const val KEY_CHUNK = 500
-
-/**
- * Constructs the generated database with its column adapters wired — the single place that
- * knows how `state` is encoded.
- */
-internal fun LedgerDatabase(driver: SqlDriver): LedgerDatabase = LedgerDatabase(
-    driver,
-    LedgerRow.Adapter(
-        assetIdAdapter = AssetIdColumnAdapter,
-        stateAdapter = EnumColumnAdapter(),
-    ),
-)

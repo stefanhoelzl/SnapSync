@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 /**
  * The cycle's **entry gate** over the real stack — an unreadable config is not an absent config: the real
  * `UploadCycle` and ledger over the backend mock, driven through the control protocol, with only the membership read
- * forced (`membership/unreadable`).
+ * forced (`databases/locked`).
  *
  * These assertions could not be made before the gate moved into the shared core, in either of the two senses that
  * matter:
@@ -31,7 +31,8 @@ class CycleEntryGateIntegrationTest {
     private suspend fun Rig.publishes(): Int = deviceJson("backend/publishes").getValue("applied").jsonPrimitive.int
 
     private suspend fun Rig.membershipUnreadable(on: Boolean) {
-        device("membership/unreadable", "on" to on.toString())
+        // Before the first unlock after a boot every App-Group file is closed: the databases the membership lives in.
+        device("databases/locked", "on" to on.toString())
     }
 
     @Test
@@ -62,7 +63,9 @@ class CycleEntryGateIntegrationTest {
         addPhoto("B")
         val result = cycle()
 
-        assertEquals("completed", result, "an unreadable read is a clean no-op")
+        // The whole App Group is closed, the ledger too, so the extension's after-cycle read of what is still in flight
+        // fails and it answers `failed` — what a device locked since boot answers: it uploaded and claimed nothing.
+        assertEquals("failed", result, "an unreadable device uploads nothing and claims nothing")
         assertEquals(eventId, state().ready.eventId, "unreadable is not a leave")
         assertEquals(createdAfterSettle, jobs().created, "no upload job while the membership is unreadable")
         assertEquals(setOf(primaryKey("A")), objects(), "nothing uploaded while the membership is unreadable")

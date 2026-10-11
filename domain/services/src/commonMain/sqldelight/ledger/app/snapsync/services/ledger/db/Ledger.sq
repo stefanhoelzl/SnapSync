@@ -11,7 +11,8 @@ import app.snapsync.model.LedgerState;
 --   `COMPLETED` row is true for its event only, and the primary key is `(eventId, key)`. Every statement below is
 --   scoped to one `:eventId` — `LedgerService` binds the joined one — so a row of any other event is inert: it can
 --   neither suppress an upload nor count as work. Such rows are removed by the next join's purge (`purgeExcept`),
---   not by the leave. The empty event is where 12.sqm parked the rows that predate it, until `adoptParked`.
+--   not by the leave. The empty event is where 12.sqm parked the rows that predate it, until the membership's legacy copy
+--   adopts or drops them (`adoptParked`, `dropParked`).
 -- - It carries no attempt count and no absence mark: 10.sqm dropped both, because nothing read them (decision record
 --   `changes/shrink-the-ledger-row`).
 -- - `creationDate`, `role`, `contentType`, `originalFilename` carry the DEVICE MANIFEST's presentation detail
@@ -134,12 +135,17 @@ purgeExcept:
 DELETE FROM ledgerRow
 WHERE eventId != :eventId;
 
--- Adopt the rows 12.sqm parked under the empty event into the joined one. `OR IGNORE`: a parked key the joined
--- event already holds keeps the joined event's row, and the parked duplicate stays parked until the next purge.
+-- The rows 12.sqm parked under the empty event belong to the event joined when it ran — the membership the app copies
+-- from its legacy file (`LegacyRecords`), in that copy's transaction and never at a later join, which would hand them to
+-- a different event. `OR IGNORE`: a parked key the joined event already holds keeps the joined event's row, and the
+-- parked duplicate stays parked until the next purge. With no membership the rows are no event's, and go.
 adoptParked:
 UPDATE OR IGNORE ledgerRow
-SET eventId = :eventId
-WHERE eventId = '';
+SET eventId = (SELECT eventId FROM membership WHERE id = 0)
+WHERE eventId = '' AND EXISTS (SELECT 1 FROM membership WHERE id = 0);
+
+dropParked:
+DELETE FROM ledgerRow WHERE eventId = '';
 
 -- Delete exactly the named rows, by primary key (capability `photo-sharing`). KEY-scoped on purpose: every
 -- caller holds evidence about individual rows, and the resources of one asset hold per-key states, so an

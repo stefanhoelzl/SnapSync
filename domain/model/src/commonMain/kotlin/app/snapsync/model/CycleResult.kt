@@ -52,6 +52,25 @@ enum class PauseReason {
      * would re-upload downloaded photos, so it waits for the app — the store's one writer — to migrate.
      */
     OLD_SCHEMA,
+
+    /**
+     * The shared records are still in their legacy files and keys — the app has not copied them into the shared
+     * database since the update (a shim, `PENDING_CLEANUPS.md`). Running would read a membership that is not there
+     * yet; it waits for the app instead, which copies them on its next run.
+     */
+    LEGACY_RECORDS,
+}
+
+/** Whether the shared database's records can be read now. */
+sealed interface SharedRecordsReadiness {
+    /** Every record lives in the database. */
+    data object Ready : SharedRecordsReadiness
+
+    /** Some record is still in its legacy file or key: the app copies it on its next run. */
+    data object LegacyPending : SharedRecordsReadiness
+
+    /** The database cannot be opened or read now (a locked device). [detail] is diagnostics only. */
+    data class Unavailable(val detail: String) : SharedRecordsReadiness
 }
 
 /**

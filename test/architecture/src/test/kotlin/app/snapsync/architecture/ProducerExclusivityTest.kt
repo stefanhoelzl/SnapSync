@@ -6,8 +6,10 @@ import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
 import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPhotoAccess
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploaderPin
@@ -18,6 +20,8 @@ import app.snapsync.model.eventEnd
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.model.selectionScope
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.databases.LegacyRecords
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.upload.ExtensionRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,8 +99,11 @@ class ProducerExclusivityTest {
             set(value) { grantCell.value = value }
         var joined = false
 
-        /** The REAL membership, over an in-memory shared area. */
-        val config = ConfigService(inMemoryFiles(), fixedClock(Instant.parse("2026-01-02T00:00:00Z")))
+        /** The REAL membership, over an in-memory shared database. */
+        val config = ConfigService(
+            SharedDatabase(inMemoryDatabases(), LegacyRecords(inMemoryFiles(), inMemoryPreferences())),
+            fixedClock(Instant.parse("2026-01-02T00:00:00Z")),
+        )
         var pin: UploaderPin? = null
         val registration = PlatformRegistration(grant, registered, supported = osSupported)
         val engine = Engine()

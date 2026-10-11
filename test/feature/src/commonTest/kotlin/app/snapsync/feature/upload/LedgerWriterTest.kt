@@ -1,6 +1,6 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.feature.support.testShared
 import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
  */
 class LedgerWriterTest {
 
-    private val ledger = LedgerService(inMemoryDatabases()) { "E" }
+    private val ledger = LedgerService(testShared()) { "E" }
     private val writer = LedgerWriter(ledger)
 
     @Test

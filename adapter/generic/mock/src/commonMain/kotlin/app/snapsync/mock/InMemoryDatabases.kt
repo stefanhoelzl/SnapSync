@@ -1,11 +1,15 @@
 package app.snapsync.mock
 
+import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import kotlin.concurrent.Volatile
 
 /**
  * The in-memory [Databases]: a REAL SQLite database per name, held in memory for this instance's lifetime — so the
@@ -35,11 +39,16 @@ internal class InMemoryDatabases(
 
     private val openLog = mutableListOf<String>()
 
+    /** Whether every database is unreadable — a device before its first unlock since boot. */
+    @Volatile
+    var locked: Boolean = false
+
     /** Every open asked for, by name, in order. */
     val opened: List<String> get() = lock.locked { openLog.toList() }
 
     override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen = lock.locked {
         openLog += name
+        if (locked) return@locked DbOpen.Failed("locked: the device has not been unlocked since boot")
         refusals[name] ?: runCatchingCancellable { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
             .getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
     }
@@ -58,7 +67,7 @@ internal class InMemoryDatabases(
 
     private fun openReadWrite(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
         val existing = held[name] ?: onDisk(name)
-        val driver = existing ?: Kept(newDriver(name)).also { held[name] = it }
+        val driver = existing ?: Kept(newDriver(name), ::locked).also { held[name] = it }
         val version = if (existing == null) 0L else userVersion(driver)
         when {
             existing == null -> schema.create(driver)
@@ -82,10 +91,19 @@ internal class InMemoryDatabases(
         lock.locked { held.clear() }
     }
 
+    /**
+     * Run [sql] on database [name] as it is held — an operator's hand on the system, never the app's. A database not
+     * created yet is refused: there is nothing to act on.
+     */
+    fun execute(name: String, sql: String) = lock.locked {
+        val driver = checkNotNull(held[name] ?: onDisk(name)) { "no database $name has been created yet" }
+        driver.execute(null, sql, 0)
+    }
+
     /** A database a file already holds — another process's, or an earlier launch's — opened and kept. */
     private fun onDisk(name: String): SqlDriver? = directory
         ?.takeIf { databaseFileExists(it, name) }
-        ?.let { Kept(newFileDriver(it, name)).also { driver -> held[name] = driver } }
+        ?.let { Kept(newFileDriver(it, name), ::locked).also { driver -> held[name] = driver } }
 
     private fun newDriver(name: String): SqlDriver = directory?.let { newFileDriver(it, name) } ?: newInMemoryDriver()
 
@@ -99,8 +117,31 @@ internal class InMemoryDatabases(
  * A held database's handle: [close] keeps it. A caller that closes what it opened — as a file-backed caller may — must
  * not destroy the only copy: an in-memory database lives exactly as long as its connection.
  */
-private class Kept(private val driver: SqlDriver) : SqlDriver by driver {
+private class Kept(private val driver: SqlDriver, private val locked: () -> Boolean) : SqlDriver by driver {
     override fun close() = Unit
+
+    // A locked device's database cannot be read or written, however long ago this process opened it.
+    override fun execute(
+        identifier: Int?,
+        sql: String,
+        parameters: Int,
+        binders: (SqlPreparedStatement.() -> Unit)?,
+    ): QueryResult<Long> = unlocked { driver.execute(identifier, sql, parameters, binders) }
+
+    override fun <R> executeQuery(
+        identifier: Int?,
+        sql: String,
+        mapper: (SqlCursor) -> QueryResult<R>,
+        parameters: Int,
+        binders: (SqlPreparedStatement.() -> Unit)?,
+    ): QueryResult<R> = unlocked { driver.executeQuery(identifier, sql, mapper, parameters, binders) }
+
+    override fun newTransaction(): QueryResult<Transacter.Transaction> = unlocked { driver.newTransaction() }
+
+    private fun <T> unlocked(block: () -> T): T {
+        check(!locked()) { "locked: the device has not been unlocked since boot" }
+        return block()
+    }
 }
 
 /** A new, empty in-memory SQLite database — the platform's own SQLite, one connection's worth of memory. */

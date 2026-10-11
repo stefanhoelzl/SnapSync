@@ -3,13 +3,13 @@ package app.snapsync.feature.membership
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.feature.support.LEDGER_EVENT
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.inertPendingLeaves
+import app.snapsync.feature.support.testShared
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.mock.inMemoryFiles
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
@@ -17,12 +17,11 @@ import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLookup
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.UploadedManifest
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
@@ -30,9 +29,9 @@ import app.snapsync.model.encodeToJson
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.ports.DbOpen
-import app.snapsync.ports.Files
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.leave.PendingLeaves
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
@@ -77,31 +76,35 @@ class EventCompletionTest {
         EventCompletionState(closed, completed),
     )
 
-    private fun manifest(final: Boolean) = "E " + DeviceManifest(
-        deviceId = "D",
-        assets = listOf(
-            DeviceManifestAsset(
-                asset,
-                "2026-07-10T00:00:00Z",
-                listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", "k", "IMG.HEIC")),
+    private fun manifest(final: Boolean) = UploadedManifest(
+        "E",
+        1,
+        DeviceManifest(
+            deviceId = "D",
+            assets = listOf(
+                DeviceManifestAsset(
+                    asset,
+                    "2026-07-10T00:00:00Z",
+                    listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", "k", "IMG.HEIC")),
+                ),
             ),
-        ),
-        version = 1,
-        final = final,
-    ).encodeToJson()
+            version = 1,
+            final = final,
+        ).encodeToJson(),
+    )
 
     /** One scenario's world, over the real services: what the backend answers, what was published, what is pending. */
     private inner class World(
         private val now: String,
         initial: EventConfig? = joined,
-        recorded: String? = manifest(final = true),
+        recorded: UploadedManifest? = manifest(final = true),
         val ledger: LedgerService = TestLedger().service,
-        leavesFiles: Files = inMemoryFiles(),
+        leaves: SharedDatabase = testShared(),
     ) {
         val writes = ConfigWrites()
         val config = writes.service(initial, fixedClock(Instant.parse(now)))
         var answer: EventLookup = details()
-        val manifestRecord = DeviceManifestService(inMemoryFiles()).apply { recorded?.let(::saveLastUploaded) }
+        val manifestRecord = DeviceManifestService(testShared()).apply { recorded?.let(::saveLastUploaded) }
         var received = true
 
         /** Runs while the union is read — where a member's own join or leave lands when it lands during that read. */
@@ -110,12 +113,12 @@ class EventCompletionTest {
         var finalPublishes = 0
         var publishFails = false
         val leavesSent = mutableListOf<String>()
-        val pendingLeaves = PendingLeaves(leavesFiles, { id, _ ->
+        val pendingLeaves = PendingLeaves(leaves, { id, _ ->
             leavesSent += id
             Result.success(Unit)
         })
         var clock: Instant = Instant.parse(now)
-        val checks = EventChecks(inMemoryPreferences(), now = { clock })
+        val checks = EventChecks(testShared(), now = { clock })
 
         suspend fun pending(asset: AssetId) =
             ledger.resetTo(
@@ -268,7 +271,7 @@ class EventCompletionTest {
     fun `a record of another event’s manifest is no settled share here`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z").apply {
             answer = details(closed = true)
-            manifestRecord.saveLastUploaded(manifest(final = true).replaceFirst("E ", "OTHER "))
+            manifestRecord.saveLastUploaded(manifest(final = true).copy(eventId = "OTHER"))
         }
         assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
         assertEquals(1, w.finalPublishes, "a share not settled for this event is settled once more")
@@ -278,7 +281,7 @@ class EventCompletionTest {
     fun `an unreadable manifest record keeps the member`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z").apply {
             answer = details(closed = true)
-            manifestRecord.saveLastUploaded("E not json")
+            manifestRecord.saveLastUploaded(UploadedManifest("E", 1, "not json"))
         }
         assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
     }
@@ -375,11 +378,9 @@ class EventCompletionTest {
     }
 
     @Test
-    fun `a pending-leave record that throws does not stop the end-of-wake step`() = runTest {
-        val throwing = object : Files by inMemoryFiles() {
-            override fun read(area: FileArea, path: String): FileResult<ByteArray> = error("the store threw")
-        }
-        val w = World(now = "2026-07-14T00:00:00Z", leavesFiles = throwing).apply { answer = details(closed = true) }
+    fun `a pending-leave record that cannot be read does not stop the end-of-wake step`() = runTest {
+        val locked = SharedStore().apply { membershipUnreadable() }.db
+        val w = World(now = "2026-07-14T00:00:00Z", leaves = locked).apply { answer = details(closed = true) }
         assertEquals(CompletionOutcome.LEFT, with(w) { completion() }.finish())
         assertNull(w.config.config.value)
     }

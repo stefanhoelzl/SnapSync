@@ -4,6 +4,7 @@ import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
+import app.snapsync.feature.support.testShared
 import app.snapsync.mock.DeviceConditionsMock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
@@ -77,7 +78,7 @@ class CollectDiagnosticDumpTest {
         extLog: String? = null,
         config: EventConfig? = null,
         permission: GalleryAccess = GalleryAccess.GRANTED,
-        ledger: LedgerService = LedgerService(inMemoryDatabases()) { LEDGER_EVENT },
+        ledger: LedgerService = LedgerService(testShared()) { LEDGER_EVENT },
         downloads: DownloadService = DownloadService(inMemoryDatabases()),
         environment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
@@ -447,7 +448,7 @@ class CollectDiagnosticDumpTest {
 
     @Test
     fun `the ledger section is five labelled counts and no rows`() = runTest {
-        val ledger = LedgerService(inMemoryDatabases()) { LEDGER_EVENT }
+        val ledger = LedgerService(testShared()) { LEDGER_EVENT }
         ledger.recordUnlessSettled(LedgerEntry("a.jpg", AssetId("asset-1"), LedgerState.COMPLETED))
         ledger.recordUnlessSettled(LedgerEntry("b.jpg", AssetId("asset-2"), LedgerState.REQUESTED))
 

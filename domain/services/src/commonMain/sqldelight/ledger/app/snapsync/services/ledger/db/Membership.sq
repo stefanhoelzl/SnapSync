@@ -1,0 +1,20 @@
+-- `membership` — the joined event (capability `join-event`): at most one row, `id = 0`. No row is definitively not
+-- joined — the one road to "this device left the event". The event key is written BEFORE this row and forgotten after
+-- it is deleted, so a membership never names a key that is not kept.
+
+selectMembership:
+SELECT eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum, closed,
+    membersActive, membersSettled, keyId
+FROM membership WHERE id = 0;
+
+saveMembership:
+INSERT OR REPLACE INTO membership (
+    id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum, closed,
+    membersActive, membersSettled, keyId
+) VALUES (
+    0, :eventId, :name, :minPhotoDate, :startsAt, :endsAt, :maxPhotoDate, :deletesAt, :direction, :saveToAlbum, :closed,
+    :membersActive, :membersSettled, :keyId
+);
+
+clearMembership:
+DELETE FROM membership;

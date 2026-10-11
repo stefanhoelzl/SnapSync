@@ -22,6 +22,7 @@ import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.UploadSealing
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.gallery.UploadDiscovery
@@ -63,6 +64,8 @@ sealed interface UploaderProcess {
  * silently shipping without it (which is how the app-driven tier once shipped without the direction gate).
  */
 internal class UploadServices(
+    /** The shared database the records below live in — asked first whether they can be read here. */
+    val records: SharedDatabase,
     /** The three-state membership read. Read fresh once per cycle. */
     val config: ConfigService,
     /** The device's mobile-data choice, read as each upload job is created. */
@@ -234,6 +237,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
 
 /** The cycle's entry gate over [ports] — see [CycleGateRead]. */
 private fun cycleGateRead(ports: UploadServices) = CycleGateRead(
+    records = ports.records,
     ledger = ports.ledger,
     config = ports.config,
     identity = ports.deviceIdentity,

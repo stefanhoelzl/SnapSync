@@ -1,0 +1,8 @@
+-- `legacyImport` — which legacy sources the app has copied into this database (`LegacyRecords`; a shim, listed in
+-- `PENDING_CLEANUPS.md`). A source not marked here is still in its legacy file or key.
+
+selectImported:
+SELECT source FROM legacyImport;
+
+markImported:
+INSERT OR IGNORE INTO legacyImport (source) VALUES (:source);

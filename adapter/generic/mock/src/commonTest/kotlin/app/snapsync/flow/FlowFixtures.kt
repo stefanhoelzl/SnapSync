@@ -5,7 +5,6 @@ import app.snapsync.feature.download.DownloadController
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.ImportRequest
@@ -17,6 +16,7 @@ import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.GalleryImport
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.databases.sharedOver
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
@@ -75,13 +75,13 @@ internal fun CoroutineScope.flowDownloadController(union: EventUnionSource): Dow
         stagedBytes = staging,
         myDeviceId = "DEV",
         arm = DownloadArm(enabled = { true }, keyHeld = { true }),
-        checks = EventChecks(inMemoryPreferences(), now = { Instant.parse("2026-07-09T12:00:00Z") }),
+        checks = EventChecks(sharedOver(), now = { Instant.parse("2026-07-09T12:00:00Z") }),
         readyToImport = { true },
     )
 }
 
-/** The real membership service over an empty in-memory shared area — no membership. */
+/** The real membership service over an empty in-memory shared database — no membership. */
 internal fun noMembership(): ConfigService = ConfigService(
-    inMemoryFiles(),
+    sharedOver(),
     fixedClock(Instant.parse("2026-07-09T12:00:00Z")),
 )

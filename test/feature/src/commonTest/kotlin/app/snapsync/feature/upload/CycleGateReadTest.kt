@@ -1,10 +1,10 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.feature.support.RecordingFiles
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.configService
-import app.snapsync.feature.support.membershipUnreadable
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.feature.support.testShared
 import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryDatabases
@@ -23,6 +23,7 @@ import app.snapsync.model.eventEnd
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -73,7 +74,8 @@ class CycleGateReadTest {
 
     private fun gate(
         joined: EventConfig? = event(),
-        files: RecordingFiles = RecordingFiles(),
+        store: SharedStore = SharedStore(),
+        records: SharedDatabase = store.db,
         ledger: LedgerService = TestLedger().service,
         identity: PersistedDeviceIdentity = testIdentity("11111111-1111-4111-8111-111111111111"),
         suppression: Suppression = Suppression(),
@@ -81,8 +83,9 @@ class CycleGateReadTest {
         albumExclusions: suspend (CaptureCutoff) -> Set<AssetId> = { emptySet() },
         eventKeys: EventKeys = EventKeys(fakeCrypto(), inMemorySecureStore()),
     ) = CycleGateRead(
+        records = records,
         ledger = ledger,
-        config = configService(joined, files),
+        config = configService(joined, store),
         identity = identity,
         suppression = suppression,
         recognition = suppression,
@@ -190,10 +193,18 @@ class CycleGateReadTest {
     // ---- could not look ---------------------------------------------------------------------------------
 
     @Test
-    fun `an unreadable membership file skips naming the config read`() = runTest {
-        val files = RecordingFiles().apply { membershipUnreadable() }
+    fun `records still in their legacy homes pause the cycle before anything is read`() = runTest {
+        // The extension's view after an update, before the app copied the records: nothing marked as moved.
+        val pending = SharedDatabase(inMemoryDatabases(), legacy = null)
 
-        val skip = assertIs<CycleGate.Skip>(gate(files = files).read())
+        assertEquals(CycleGate.Paused(PauseReason.LEGACY_RECORDS), gate(records = pending).read())
+    }
+
+    @Test
+    fun `an unreadable membership skips naming the config read`() = runTest {
+        val store = SharedStore().apply { membershipUnreadable() }
+
+        val skip = assertIs<CycleGate.Skip>(gate(store = store).read())
 
         assertTrue(skip.detail.startsWith("protected data unavailable (config: "), skip.detail)
         assertFalse(skip.detail.startsWith("protected data unavailable (config: null"), "the read's detail is named")
@@ -242,7 +253,8 @@ class CycleGateReadTest {
 
     @Test
     fun `an unreadable ledger skips naming the manifest version`() = runTest {
-        val locked = LedgerService(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked")))) { "E" }
+        val databases = inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked")))
+        val locked = LedgerService(testShared(databases)) { "E" }
         val suppression = Suppression()
 
         val skip = assertIs<CycleGate.Skip>(gate(ledger = locked, suppression = suppression).read())

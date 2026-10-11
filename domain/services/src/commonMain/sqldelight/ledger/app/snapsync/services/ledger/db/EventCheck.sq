@@ -1,0 +1,12 @@
+-- `eventCheck` — when a background wake last asked an event, per kind of check (capability `receiving-photos`; decision
+-- record `changes/timely-background-receiving`, D4–D5), in epoch milliseconds.
+
+selectLastCheck:
+SELECT lastAt FROM eventCheck WHERE eventId = :eventId AND kind = :kind;
+
+stampCheck:
+INSERT INTO eventCheck (eventId, kind, lastAt) VALUES (:eventId, :kind, :lastAt)
+ON CONFLICT (eventId, kind) DO UPDATE SET lastAt = excluded.lastAt;
+
+clearChecks:
+DELETE FROM eventCheck WHERE eventId = :eventId;

@@ -13,7 +13,7 @@ class MembershipEnd internal constructor(private val core: AppCore) {
 
     /** The leaves the backend has not confirmed — see [PendingLeaves]. */
     val pendingLeaves: PendingLeaves by lazy {
-        PendingLeaves(core.process.files, core.backend.leave, core.services.log)
+        PendingLeaves(core.services.sharedDatabase, core.backend.leave, core.services.log)
     }
 
     /**

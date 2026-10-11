@@ -1,7 +1,7 @@
 package app.snapsync.feature.album
 
+import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetId
@@ -53,7 +53,7 @@ private class FakeAlbumManager(
 }
 
 /** The REAL album map, over in-memory user defaults. */
-private fun albumMap() = AlbumMapService(inMemoryPreferences())
+private fun albumMap() = AlbumMapService(testShared())
 
 class AlbumCoordinatorTest {
 

@@ -3,17 +3,17 @@
 package app.snapsync.feature.push
 
 import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
+import app.snapsync.model.PrefRead
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.Files
 import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.backend.PushTokenPublisher
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -56,8 +56,8 @@ private class LockableSecureStore(private val inner: SecureStore = inMemorySecur
 
 class PushRegistrationTest {
 
-    /** The REAL record, over an in-memory shared area. */
-    private val record = PushRegistrationRecord(inMemoryFiles())
+    /** The REAL record, over in-memory shared preferences. */
+    private val record = PushRegistrationRecord(inMemoryPreferences(), inMemoryFiles())
     private val secureStore = LockableSecureStore()
 
     /** The app's device identity over [secureStore], minting [deviceId]; a device reset is a new one. */
@@ -337,12 +337,12 @@ class PushRegistrationTest {
     @Test
     fun a_registration_record_that_throws_is_read_as_none_and_the_delivery_publishes() = runTest {
         // Doubt about what the backend accepted re-sends: an extra PUT is harmless, a missed one loses every push.
-        val throwing = object : Files by inMemoryFiles() {
-            override fun read(area: FileArea, path: String): FileResult<ByteArray> = error("the store threw")
+        val throwing = object : Preferences by inMemoryPreferences() {
+            override fun get(key: String): PrefRead = error("the store threw")
         }
         val client = FakePushTokenPublisher()
 
-        PushRegistration(client, PushRegistrationRecord(throwing), identity)
+        PushRegistration(client, PushRegistrationRecord(throwing, inMemoryFiles()), identity)
             .registerIfChanged(PushEndpoint("apns", "T", "sandbox"))
 
         assertEquals(listOf(PushEndpoint("apns", "T", "sandbox")), client.calls)
