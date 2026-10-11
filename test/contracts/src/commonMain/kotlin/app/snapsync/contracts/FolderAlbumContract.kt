@@ -11,7 +11,6 @@ import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.captureCutoff
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryReader
@@ -19,6 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.time.Instant
 
 /** The states a folder-album library can be found in, as far as a clause cares. */
 enum class FolderAlbumState {
@@ -55,7 +55,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
     /** The album title a clause creates. Unique per clause, so a shared library cannot confuse two. */
     fun title(clauseId: String) = "snapsync-contract-$clauseId"
 
-    private fun start(clauseId: String) = captureCutoff(PhotoLibrary.window(name, clauseId).start)
+    private fun start(clauseId: String) = Instant.parse(PhotoLibrary.window(name, clauseId).start)
 
     override val clauses = clauses {
 
@@ -124,8 +124,8 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             },
         ) { subject ->
             val clauseId = "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_STAYS_IN_THE_GALLERY"
-            val policy = PhotoLibrary.policy(name, clauseId)
-            val before = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(policy))
+            val filter = PhotoLibrary.filter(name, clauseId)
+            val before = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(filter))
             assertEquals(subject.seeded, before.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded)
             val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
             val missing = absentAssetId(clauseId)
@@ -138,7 +138,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             val byId = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assetsById(subject.seeded))
             assertEquals(subject.seeded, byId.value.mapTo(mutableSetOf()) { it.assetId }, "each photo keeps its id")
             assertEquals(SEED_COUNT, byId.value.size, "each photo is in the library once")
-            val after = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(policy))
+            val after = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(filter))
             assertEquals(
                 subject.seeded,
                 after.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
@@ -170,30 +170,6 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             assertEquals(1, byId.value.size, "and in the library once")
         }
 
-        // Appended, so no earlier clause's capture window moves.
-        clause(
-            "A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY",
-            FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
-            covers = cells {
-                on<GalleryReader> {
-                    answers(GalleryReader::createAlbum).returns()
-                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Ok::class)
-                    answers(GalleryReader::libraryAssets).withGenericLeaf(GalleryRead.Read::class)
-                }
-            },
-        ) { subject ->
-            val clauseId = "A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY"
-            val policy = PhotoLibrary.policy(name, clauseId)
-            val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
-            assertEquals(WriteOutcome.Ok, subject.gallery.addToAlbum(album, subject.seeded))
-            val library = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.libraryAssets(policy))
-            assertEquals(
-                subject.seeded,
-                library.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
-                "a photo filed into an event album is still the library's: a reinstalled app must find it there",
-            )
-        }
-
         clause(
             "A_MEMBERS_OWN_FOLDER_TAKES_NO_PHOTO",
             FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
@@ -209,8 +185,8 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
                 subject.gallery.addToAlbum(subject.ownFolder, subject.seeded),
                 "only an event album's folder takes a photo; ${subject.ownFolder} is the member's",
             )
-            val policy = PhotoLibrary.policy(name, clauseId)
-            val after = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(policy))
+            val filter = PhotoLibrary.filter(name, clauseId)
+            val after = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(filter))
             assertEquals(
                 subject.seeded,
                 after.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,

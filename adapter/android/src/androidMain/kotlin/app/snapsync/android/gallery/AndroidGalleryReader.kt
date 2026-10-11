@@ -13,7 +13,6 @@ import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EntryScope
 import app.snapsync.model.GalleryAccess
@@ -22,20 +21,17 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.SelectionRule
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.time.Instant
-import java.time.format.DateTimeParseException
-import java.time.temporal.ChronoUnit
+import kotlin.time.Instant
 
 /**
  * The Android [GalleryReader] over MediaStore: photos and videos of the member's
@@ -74,30 +70,14 @@ open class AndroidGalleryReader(
 
     override fun access(): GalleryAccess = access.invoke()
 
-    /** Narrowed by the capture range and the deny-everything rule — the rest falls to the caller's admission. */
-    override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> =
+    /** Narrowed by [filter]'s capture range, to the second the platform reports dates in. */
+    override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> =
         log.invocation(
             EntryScope.None,
             "gallery.assets",
             result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" },
         ) {
-            readable {
-                val narrowing = narrowingFor(policy) ?: return@readable emptyList()
-                items(narrowing).map { it.facts() }
-            }
-        }
-
-    // The same read as [assets]: the default gallery is one scope, the event albums' folders included.
-    override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> =
-        log.invocation(
-            EntryScope.None,
-            "gallery.libraryAssets",
-            result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" },
-        ) {
-            readable {
-                val narrowing = narrowingFor(policy) ?: return@readable emptyList()
-                items(narrowing).map { it.facts() }
-            }
+            readable { items(narrowingFor(filter)).map { it.facts() } }
         }
 
     override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
@@ -122,8 +102,8 @@ open class AndroidGalleryReader(
         buckets + folders.filter { folder -> items(inFolder(folder)).isNotEmpty() }.map { AlbumRecord(it, folderName(it)) }
     }
 
-    override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> = readable {
-        val floor = since?.let { epochMillisOf(it.at.iso) }
+    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> = readable {
+        val floor = createdFrom?.toEpochMilliseconds()
         val where = if (DefaultGallery.isAlbumFolder(album)) {
             inFolder(album)
         } else {
@@ -256,27 +236,16 @@ open class AndroidGalleryReader(
             ?: emptyList<MediaItem>().also { log.w { "the media provider answered no cursor for $collection" } }
     }
 
-    /**
-     * The native narrowing [policy] allows — its capture range — or `null` for a policy that admits nothing, which reads
-     * nothing at all. A bound that does not parse is left out: the read is then wider, never narrower.
-     */
-    private fun narrowingFor(policy: SelectionPolicy): Query? {
+    /** The native narrowing of [filter]: its capture range, compared to the second as the platform reports dates. */
+    private fun narrowingFor(filter: AssetFilter): Query {
         var narrowing = Query()
-        for (rule in policy.rules) when (rule) {
-            SelectionRule.DenyAll -> return null
-            is SelectionRule.CaptureAfter -> epochMillisOf(rule.cutoff.at.iso)?.let {
-                // Floored to its second, as the reported date is: an item inside the cutoff's second is compared by it.
-                narrowing = narrowing.and(Query("datetaken >= ?", listOf((it - it % 1_000).toString())))
-            }
-            is SelectionRule.CaptureBefore -> epochMillisOf(rule.ceiling.at.iso)?.let {
-                // The date is reported to the second, so an item within the ceiling's second is admitted by it.
-                narrowing = narrowing.and(Query("datetaken < ?", listOf((it + 1_000).toString())))
-            }
-            // Not properties MediaStore holds (Android marks no screenshot, no edit) or id sets applied in memory.
-            SelectionRule.ExcludeScreenshots, SelectionRule.ExcludeScreenRecordings,
-            is SelectionRule.MinImageArea, is SelectionRule.MinVideoArea,
-            is SelectionRule.NotEcho, is SelectionRule.NotInDenylistedAlbum,
-            -> Unit
+        filter.createdFrom?.toEpochMilliseconds()?.let {
+            // Floored to its second, as the reported date is: an item inside the bound's second is compared by it.
+            narrowing = narrowing.and(Query("datetaken >= ?", listOf((it - it.mod(1_000L)).toString())))
+        }
+        filter.createdUntil?.toEpochMilliseconds()?.let {
+            // The date is reported to the second, so an item within the bound's second is kept by it.
+            narrowing = narrowing.and(Query("datetaken < ?", listOf((it - it.mod(1_000L) + 1_000).toString())))
         }
         return narrowing
     }
@@ -320,18 +289,12 @@ open class AndroidGalleryReader(
         /** SQLite's bound-parameter ceiling is far higher; ids are inlined, so this bounds the statement's length. */
         private const val MAX_IDS_PER_QUERY = 500
 
-        /** An ISO-8601 instant as epoch milliseconds, or `null` when it does not parse. */
-        fun epochMillisOf(iso: String): Long? =
-            try { Instant.parse(iso).toEpochMilli() } catch (_: DateTimeParseException) { null }
-
         /** `DATE_TAKEN` as the capture date every platform reports — second precision, UTC — or no date. */
         fun captureDateOf(dateTaken: Long?): String =
             if (dateTaken == null || dateTaken == 0L) {
                 ""
             } else {
-                Instant.ofEpochMilli(
-                    dateTaken,
-                ).truncatedTo(ChronoUnit.SECONDS).toString()
+                Instant.fromEpochSeconds(Math.floorDiv(dateTaken, 1_000L)).toString()
             }
     }
 }

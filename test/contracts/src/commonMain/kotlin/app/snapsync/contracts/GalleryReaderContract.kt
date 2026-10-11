@@ -10,7 +10,6 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.PhotoGrantRead
@@ -19,6 +18,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /** The states a [GalleryReader]'s library can be found in, as far as a clause cares. */
 enum class GalleryReaderState {
@@ -72,15 +72,14 @@ enum class GalleryReaderState {
  * Two answers carry everything downstream:
  * - **`NotReadable` is never `Read(empty)`.** A counted zero settles the status screen and an empty
  *   authoritative walk deletes every in-window row; the collapse of the two shipped as `SNAPSYNC-14`/`16`.
- * - **A read by policy never omits an admitted asset.** What it returns is also a walk's presence set, and an
- *   in-window asset it omits has its rows deleted as departed.
+ * - **A read by filter never omits an asset in its range.** The filter is a hint the library may over-return by, and
+ *   what comes back is also a walk's presence set: an in-range asset it omits has its rows deleted as departed.
  *
  * Album titles derive from the clause id, so no clause meets another's album in a shared library.
  */
 object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<GalleryReader>>("GalleryReader") {
 
-    private suspend fun policy(clauseId: String, contributes: Boolean = true) =
-        PhotoLibrary.policy(name, clauseId, contributes)
+    private fun filter(clauseId: String) = PhotoLibrary.filter(name, clauseId)
 
     private fun window(clauseId: String) = PhotoLibrary.window(name, clauseId)
 
@@ -107,7 +106,6 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
                     answers(GalleryReader::resources).with(GalleryRead.NotReadable::class)
                     answers(GalleryReader::albums).with(GalleryRead.NotReadable::class)
                     answers(GalleryReader::albumsById).with(GalleryRead.NotReadable::class)
-                    answers(GalleryReader::libraryAssets).with(GalleryRead.NotReadable::class)
                     answers(GalleryReader::albumMembers).with(GalleryRead.NotReadable::class)
                 }
             },
@@ -120,13 +118,12 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
                 "a process holding no grant reads undetermined or denied, got $access",
             )
             val absent = setOf(absentAssetId(clauseId))
-            assertEquals(GalleryRead.NotReadable, gallery.assets(policy(clauseId)), "no library to count is not a zero")
+            assertEquals(GalleryRead.NotReadable, gallery.assets(filter(clauseId)), "no library to count is not a zero")
             assertEquals(GalleryRead.NotReadable, gallery.assetsById(absent))
             assertEquals(GalleryRead.NotReadable, gallery.resources(absent))
             assertEquals(GalleryRead.NotReadable, gallery.albums(), "an album fetch while undetermined raises a dialog")
             assertEquals(GalleryRead.NotReadable, gallery.albumsById(setOf(absentAlbumId(clauseId))))
-            assertEquals(GalleryRead.NotReadable, gallery.libraryAssets(policy(clauseId)), "nor is the wider library")
-            assertEquals(GalleryRead.NotReadable, gallery.albumMembers(absentAlbumId(clauseId), since = null))
+            assertEquals(GalleryRead.NotReadable, gallery.albumMembers(absentAlbumId(clauseId), createdFrom = null))
         }
 
         clause(
@@ -219,7 +216,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
                 on<GalleryReader>().answers(GalleryReader::assets).withGenericLeaf(GalleryRead.Read::class)
             },
         ) { seeded ->
-            val read = assertIs<GalleryRead.Read<*>>(seeded.port.assets(policy("ASSETS_RETURN_EVERY_SEEDED_ASSET")))
+            val read = assertIs<GalleryRead.Read<*>>(seeded.port.assets(filter("ASSETS_RETURN_EVERY_SEEDED_ASSET")))
             val returned = seeded.port.assetIdsOf(read)
             assertEquals(SEED_COUNT, seeded.ids.size, "the binding seeded what the state promises")
             assertTrue(
@@ -237,27 +234,11 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         ) { seeded ->
             val clauseId = "AN_EMPTY_WINDOW_IS_A_COUNTED_ZERO"
             val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(
-                seeded.port.assets(policy(clauseId)),
+                seeded.port.assets(filter(clauseId)),
                 "a readable library with nothing in the window is a counted zero, never 'no answer'",
             )
             val inWindow = read.value.filter { it.creationDate.iso in window(clauseId) }
             assertTrue(inWindow.isEmpty(), "nothing was seeded in this window, yet ${inWindow.size} came back")
-        }
-
-        clause(
-            "A_NON_CONTRIBUTING_POLICY_READS_NOTHING",
-            GalleryReaderState.GRANTED_SEEDED,
-            covers = cells {
-                on<GalleryReader>().answers(GalleryReader::assets).withGenericLeaf(GalleryRead.Read::class)
-            },
-        ) { seeded ->
-            val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(
-                seeded.port.assets(policy("A_NON_CONTRIBUTING_POLICY_READS_NOTHING", contributes = false)),
-            )
-            assertTrue(
-                read.value.isEmpty(),
-                "a deny-everything policy must narrow to nothing; ${read.value.size} came back",
-            )
         }
 
         clause(
@@ -366,7 +347,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(WriteOutcome.Ok, seeded.port.addToAlbum(album, seeded.ids))
             assertEquals(
                 GalleryRead.Read(seeded.ids),
-                seeded.port.albumMembers(album, captureCutoffOf(window(clauseId).start)),
+                seeded.port.albumMembers(album, Instant.parse(window(clauseId).start)),
                 "every asset added to an album is a member of it, in the id form it was handed in",
             )
         }
@@ -386,7 +367,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             seeded.port.addToAlbum(album, seeded.ids)
             assertEquals(
                 GalleryRead.Read(emptySet()),
-                seeded.port.albumMembers(album, captureCutoffOf(window(clauseId).end)),
+                seeded.port.albumMembers(album, Instant.parse(window(clauseId).end)),
                 "the member read is bounded by the membership's floor, so its cost follows the event, not the library",
             )
         }
@@ -422,7 +403,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(WriteOutcome.Ok, seeded.port.addToAlbum(album, seeded.ids + absentAssetId(clauseId)))
             assertEquals(
                 GalleryRead.Read(seeded.ids),
-                seeded.port.albumMembers(album, captureCutoffOf(window(clauseId).start)),
+                seeded.port.albumMembers(album, Instant.parse(window(clauseId).start)),
                 "an asset the library does not hold is skipped, and the ones it holds are still added",
             )
         }
@@ -447,7 +428,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.Read(listOf(album)), seeded.port.albumsById(setOf(album.id)))
             assertEquals(
                 GalleryRead.Read(seeded.ids),
-                seeded.port.albumMembers(album.id, captureCutoffOf(window(clauseId).start)),
+                seeded.port.albumMembers(album.id, Instant.parse(window(clauseId).start)),
                 "a folder's album holds exactly the assets in the folder — what the album denylist excludes",
             )
         }
@@ -465,33 +446,14 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         ) { seeded ->
             val clauseId = "ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ"
             assertEquals(SEED_COUNT, seeded.ids.size, "the binding seeded what the state promises")
-            val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(seeded.port.assets(policy(clauseId)))
+            val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(seeded.port.assets(filter(clauseId)))
             val leaked = read.value.mapTo(mutableSetOf()) { it.assetId } intersect seeded.ids
             assertTrue(leaked.isEmpty(), "an asset outside the default gallery is never a candidate to share: $leaked")
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.assetsById(seeded.ids))
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.resources(seeded.ids))
         }
-
-        clause(
-            "THE_LIBRARY_READ_HOLDS_EVERY_SEEDED_ASSET",
-            GalleryReaderState.GRANTED_SEEDED,
-            covers = cells {
-                on<GalleryReader>().answers(GalleryReader::libraryAssets).withGenericLeaf(GalleryRead.Read::class)
-            },
-        ) { seeded ->
-            val read = assertIs<GalleryRead.Read<*>>(
-                seeded.port.libraryAssets(policy("THE_LIBRARY_READ_HOLDS_EVERY_SEEDED_ASSET")),
-            )
-            val returned = seeded.port.assetIdsOf(read)
-            assertTrue(
-                returned.containsAll(seeded.ids),
-                "the wider library holds every asset the policy read holds: missing ${seeded.ids - returned}",
-            )
-        }
     }
 
     private fun GalleryReader.assetIdsOf(read: GalleryRead.Read<*>): Set<AssetId> =
         (read.value as List<*>).mapTo(mutableSetOf()) { (it as AssetFacts).assetId }
-
-    private fun captureCutoffOf(iso: String) = captureCutoff(iso)
 }

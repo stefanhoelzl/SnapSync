@@ -6,16 +6,15 @@ import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.WriteOutcome
+import kotlin.time.Instant
 
 /**
  * What either process uses of the device's photo library (`docs/architecture.md`): read its assets, their
@@ -42,19 +41,10 @@ import app.snapsync.model.WriteOutcome
 interface GalleryReader : PhotoGrantRead {
 
     /**
-     * The assets [policy] may admit — facts only, no resources. The implementation narrows its native query by
-     * whichever of the policy's rules it can express and ignores the rest: it MAY return assets the policy
-     * rejects (the caller's admission is authoritative), and MUST NOT omit one it admits, because what comes
-     * back is also a walk's presence set.
+     * The library's assets in [filter]'s range — facts only, no resources. [filter] is a hint (see [AssetFilter]): the
+     * answer may hold assets outside it and never leaves out one inside it, because it is also a walk's presence set.
      */
-    suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>>
-
-    /**
-     * Every asset of the library [policy] narrows to — facts only. What a reinstalled app reads to recognise the photos
-     * it received before. Narrowed and over-returning exactly as [assets] is, and today the same read on every platform
-     * (`changes/archive/2026-10-11-close-share-back-gaps` retired Android's separate candidate scope).
-     */
-    suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>>
+    suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>>
 
     /** The assets among [ids] the library still holds — facts only. A missing id is simply not returned. */
     suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>>
@@ -75,10 +65,11 @@ interface GalleryReader : PhotoGrantRead {
     suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>>
 
     /**
-     * The assets in [album] captured at or after [since], or every member when [since] is null. An unresolvable
-     * album has no members.
+     * The assets in [album] captured at or after [createdFrom], or every member when it is null — a hint as
+     * [AssetFilter]'s bounds are: an earlier member may come back, a later one never stays out. An unresolvable album
+     * has no members.
      */
-    suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>>
+    suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>>
 
     /**
      * How this library holds an album: a [AlbumKind.COLLECTION] an asset is added to, or the [AlbumKind.FOLDER] a

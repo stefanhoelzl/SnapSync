@@ -12,6 +12,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.eventWindow
 import app.snapsync.model.factsFromResources
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
 
 /**
@@ -48,7 +49,8 @@ class MarkedPhotoLookup(
         return when (val scope = selectionScope()) {
             is SelectionScope.Scoped -> fromSnapshot(scope.resources, window, known)
             SelectionScope.Unread -> emptyMap()
-            SelectionScope.Unrestricted -> fromLibrary(window, known)
+            SelectionScope.Unrestricted ->
+                fromLibrary(window, AssetFilter(startsAt.at.instant(), endsAt.at.instant()), known)
         }
     }
 
@@ -78,9 +80,9 @@ class MarkedPhotoLookup(
             .toMap()
     }
 
-    private suspend fun fromLibrary(window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId>? {
+    private suspend fun fromLibrary(window: SelectionPolicy, filter: AssetFilter, known: Set<AssetId>): Map<String, AssetId>? {
         // The whole library (event albums' folders included, as every read now reads them).
-        val facts = when (val read = gallery.libraryAssets(window)) {
+        val facts = when (val read = gallery.assets(filter)) {
             is GalleryRead.Read -> read.value
             GalleryRead.NotReadable -> return null
         }

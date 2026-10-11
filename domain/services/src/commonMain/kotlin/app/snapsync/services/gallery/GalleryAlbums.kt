@@ -60,7 +60,7 @@ class GalleryAlbums(
             GalleryRead.NotReadable -> return emptySet()
         }
         return albums.filter { calibration.isDenylistedAlbum(it.title) }.flatMapTo(mutableSetOf()) { album ->
-            val members = (gallery.albumMembers(album.id, since) as? GalleryRead.Read)?.value.orEmpty()
+            val members = (gallery.albumMembers(album.id, since.at.instant()) as? GalleryRead.Read)?.value.orEmpty()
             log.i { "denylisted album '${album.title}': ${members.size} member(s) in scope" }
             members
         }

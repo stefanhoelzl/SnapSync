@@ -10,19 +10,18 @@ import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -43,6 +42,7 @@ import platform.Photos.PHFetchOptions
 import platform.Photos.PHFetchResult
 import platform.Photos.PHPhotoLibrary
 import platform.UniformTypeIdentifiers.UTType
+import kotlin.time.Instant
 
 /**
  * The PhotoKit [GalleryReader] — every photo-library read and album write either process makes, and the only
@@ -75,11 +75,10 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
     override fun access(): GalleryAccess = currentPhotoPermission()
 
     /**
-     * Narrowed by [predicateFor] — whatever of the policy PhotoKit can express; the rest falls to the caller's
-     * admission. Both QoS classes on the one line: the caller's, and the lane's
+     * Narrowed by [predicateFor] — [filter]'s date range, widened. Both QoS classes on the one line: the caller's, and the lane's
      * the PhotoKit calls were issued at.
      */
-    override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
+    override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> {
         var readQos = "?"
         return log.invocation(
             "gallery.assets",
@@ -89,16 +88,12 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
             readable {
                 readQos = qosLabel()
                 val options = predicateFor(
-                    policy,
+                    filter,
                 )?.let { predicate -> PHFetchOptions().apply { this.predicate = predicate } }
                 photoKitFacts(PHAsset.fetchAssetsWithOptions(options))
             }
         }
     }
-
-    // PhotoKit's library holds no folder the member's own photos are kept apart from: the event album is an album
-    // over the camera roll, so the library a reinstall reads is exactly the one [assets] walks.
-    override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = assets(policy)
 
     override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
         readable { if (ids.isEmpty()) emptyList() else photoKitFacts(fetchById(ids)) }
@@ -138,13 +133,13 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      * rather than fetching nothing: under-returning would silently *admit* a denylisted photo, but fetching
      * nothing at all would make the whole rule a no-op.
      */
-    override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> = readable {
+    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> = readable {
         val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
             .firstObject as? PHAssetCollection
         if (collection == null) {
             emptySet()
         } else {
-            val options = since?.let { Iso8601.parse(it.at.iso) }?.let { bound ->
+            val options = createdFrom?.toNSDate()?.let { bound ->
                 PHFetchOptions().apply {
                     predicate = NSPredicate.predicateWithFormat("creationDate >= %@", argumentArray = listOf(bound))
                 }

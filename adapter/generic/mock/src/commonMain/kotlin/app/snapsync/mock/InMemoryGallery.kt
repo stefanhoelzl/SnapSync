@@ -6,7 +6,6 @@ import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
@@ -16,17 +15,17 @@ import app.snapsync.model.RawResource
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.SelectionRule
 import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.toFacts
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LibraryChangeToken
 import kotlinx.coroutines.flow.update
+import kotlin.time.Instant
 
 /**
  * The honest in-memory [Gallery] (`docs/architecture.md`) — one process's face of a [LibraryState], held to the
@@ -120,34 +119,21 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
             WriteOutcome.Failed("${resource.filename} is no longer in the library")
         }
 
-    override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
+    override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> {
         state.enumeration.await()
         if (state.locked { state.failNextEnumeration.also { state.failNextEnumeration = false } }) {
             // A platform walk that fails is a failure, not a successful read with no answer (`NotReadable`).
             error("the operator forced this enumeration to fail")
         }
+        // Narrowed by the lower bound only, as a platform that cannot express the upper one would: a superset is
+        // what the port allows.
         return readable {
-            if (policy.rules.any { it.deniesEverything }) {
-                emptyList()
-            } else {
-                val floor = policy.rules.filterIsInstance<SelectionRule.CaptureAfter>().maxOfOrNull { it.cutoff.at.iso }
-                state.library.value
-                    .filter { floor == null || it.creationDate >= floor }
-                    .map { it.toFacts() }
-            }
-        }
-    }
-
-    // The whole library — the same read as [assets], which no longer leaves any folder out.
-    override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
-        state.enumeration.await()
-        return readable {
-            val floor = policy.rules.filterIsInstance<SelectionRule.CaptureAfter>().maxOfOrNull { it.cutoff.at.iso }
-            if (policy.rules.any { it.deniesEverything }) {
-                emptyList()
-            } else {
-                state.library.value.filter { floor == null || it.creationDate >= floor }.map { it.toFacts() }
-            }
+            state.library.value.filter {
+                capturedFrom(
+                    it.creationDate,
+                    filter.createdFrom,
+                )
+            }.map { it.toFacts() }
         }
     }
 
@@ -173,10 +159,10 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
 
     override val albumKind: AlbumKind get() = state.albumKind
 
-    override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> = readable {
+    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> = readable {
         val members = allAlbums().firstOrNull { it.first.id == album }?.second.orEmpty()
         val captured = state.library.value
-            .filter { since == null || it.creationDate >= since.at.iso }
+            .filter { capturedFrom(it.creationDate, createdFrom) }
             .mapTo(mutableSetOf()) { it.toFacts().assetId }
         members.filterTo(mutableSetOf()) { it in captured }
     }
@@ -232,6 +218,13 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
                 if (members.isEmpty()) null else AlbumRecord(id, album.title) to members
             }
         }
+    }
+
+    /** Whether a photo captured at [creationDate] lies at or after [from]; an undated one lies in no range. */
+    private fun capturedFrom(creationDate: String, from: Instant?): Boolean {
+        if (from == null) return true
+        val at = Instant.parseOrNull(creationDate) ?: return false
+        return at >= from
     }
 
     private inline fun <T> readable(read: () -> T): GalleryRead<T> =

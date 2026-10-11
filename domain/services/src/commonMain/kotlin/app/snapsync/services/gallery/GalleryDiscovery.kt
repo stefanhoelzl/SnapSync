@@ -24,7 +24,9 @@ class GalleryDiscovery(private val gallery: GalleryReader) : UploadDiscovery {
 
     override suspend fun discover(policy: SelectionPolicy): Discovery {
         val authoritative = gallery.access() == GalleryAccess.GRANTED
-        return when (val read = gallery.assets(policy)) {
+        // A policy that admits nothing reads nothing: its empty answer is as authoritative as a read would have been.
+        val filter = policy.assetFilter() ?: return Discovery(candidates = emptyList(), fullEnumeration = authoritative)
+        return when (val read = gallery.assets(filter)) {
             GalleryRead.NotReadable -> Discovery(candidates = emptyList(), fullEnumeration = false)
             is GalleryRead.Read ->
                 Discovery(candidatesFromFacts(read.value, resourceBatch(gallery)), fullEnumeration = authoritative)

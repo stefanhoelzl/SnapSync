@@ -11,15 +11,16 @@ import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SELECTION_CALIBRATION
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.time.Instant
 
 /**
  * The denylisted-album lookup is **asked only under a full grant** (capability `photo-sharing`), in the
@@ -43,8 +44,7 @@ class AlbumExclusionsTest {
     ) : GalleryReader {
         var lookups = 0
         override fun access(): GalleryAccess = GalleryAccess.GRANTED
-        override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = error("not used")
-        override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = error("not used")
+        override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> = error("not used")
         override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = error("not used")
         override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = error("not used")
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = error("not used")
@@ -62,7 +62,7 @@ class AlbumExclusionsTest {
                 ),
             )
         }
-        override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> =
+        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> =
             GalleryRead.Read(if (album == DENYLISTED) members else setOf(AssetId("own-1")))
 
         private companion object {

@@ -76,6 +76,23 @@ class SelectionPolicyTest {
     }
 
     @Test
+    fun `the named-bounds door derives the same rules as the membership's`() = runTest {
+        val cutoff = captureCutoff("2026-06-01T00:00:00Z")
+        val ceiling = captureCeiling("2026-06-30T00:00:00Z")
+        val named = selectionPolicyFor(
+            includesUpload = true,
+            cutoff = cutoff,
+            ceiling = ceiling,
+            suppressedAssetIds = { emptySet() },
+            albumExcludedAssetIds = { emptySet() },
+        )
+        assertEquals(
+            SelectionPolicy(selectionRulesFor(true, cutoff, ceiling, { emptySet() }, { emptySet() })),
+            named,
+        )
+    }
+
+    @Test
     fun `a policy contributes unless one of its rules refuses everything`() {
         assertTrue(SelectionPolicy(listOf(SelectionRule.ExcludeScreenshots, SelectionRule.MinImageArea(1))).contributes)
         assertFalse(SelectionPolicy(listOf(SelectionRule.ExcludeScreenshots, SelectionRule.DenyAll)).contributes)
