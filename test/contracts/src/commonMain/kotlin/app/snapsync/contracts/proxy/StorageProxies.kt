@@ -7,6 +7,7 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.ports.AttestStore
+import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.Files
 import app.snapsync.ports.PlatformDeviceId
@@ -70,6 +71,18 @@ internal class DatabasesProxy(private val inner: Databases, log: CallLog) : Data
 
     override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean) =
         r.answer("open", inner.open(name, schema, readOnly))
+
+    override fun listen(handlers: DatabaseHandlers) = r.returns(
+        "listen",
+        inner.listen(
+            DatabaseHandlers(
+                onChangedElsewhere = { database ->
+                    r.called("handlers.onChangedElsewhere", Recorder.arg(database, "String"))
+                    handlers.onChangedElsewhere(database)
+                },
+            ),
+        ),
+    )
 }
 
 /** [PlatformDeviceId] as its clause's [CallLog] sees it. */

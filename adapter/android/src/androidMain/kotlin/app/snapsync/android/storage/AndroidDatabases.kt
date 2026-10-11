@@ -10,6 +10,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import java.io.File
@@ -28,8 +29,14 @@ import java.io.File
  * genuine `OPEN_READONLY` connection, and answers [DbOpen.OldSchema] below the schema's. At the schema's version the
  * driver is then opened over the same file with nothing left for it to create or migrate — read-only is this class's
  * discipline from there, as on iOS, because the driver's open helper takes no read-only mode.
+ *
+ * **No other process commits** ([DatabaseHandlers.onChangedElsewhere]): Android runs the app and its background work in
+ * one process, over this one instance, so there is nothing elsewhere to announce.
  */
 class AndroidDatabases(private val context: Context, private val directory: File) : Databases {
+
+    /** One process: no commit is ever another process's, so the handlers are never called. */
+    override fun listen(handlers: DatabaseHandlers) = Unit
 
     /** Production: the app's database directory (a secondary constructor, not a default). */
     constructor(context: Context) : this(context, context.getDatabasePath("placeholder").parentFile!!)

@@ -67,6 +67,7 @@ class ExtensionSafetyTest {
         "CoreCrypto", // digest for the upload keys
         "UniformTypeIdentifiers", // MIME/UTI for the resources it uploads
         "DeviceCheck", // App Attest key material
+        "darwin", // libnotify + libdispatch: the cross-process commit notice on the shared database (`DarwinCommits`)
     )
 
     private fun moduleDir(path: String): File = File(repoRoot, path.removePrefix(":").replace(':', '/'))

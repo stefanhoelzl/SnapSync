@@ -167,7 +167,7 @@ private fun SqlDriver.rows(sql: String, width: Int): List<List<String?>> =
  *
  * They assert that a statement RUNS, never what it answers: that is the services' contract, not the platform's.
  */
-internal fun ClauseList<DatabasesState, Databases>.schemaClauses() {
+internal fun ClauseList<DatabasesState, DatabasesSubject>.schemaClauses() {
     listOf(LEDGER, DOWNLOADS).forEach { production ->
         val prefix = production.label.uppercase()
 
@@ -175,7 +175,7 @@ internal fun ClauseList<DatabasesState, Databases>.schemaClauses() {
             "${prefix}_SCHEMA_EVERY_STATEMENT_RUNS",
             DatabasesState.ABSENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
-        ) { databases ->
+        ) { (databases) ->
             val driver = databases.openedReadWrite("${production.label}.db", production.schema)
             runEveryStatement(production, driver)
             driver.close()
@@ -185,7 +185,7 @@ internal fun ClauseList<DatabasesState, Databases>.schemaClauses() {
             "${prefix}_SCHEMA_MIGRATES_FROM_ITS_FIRST_VERSION",
             DatabasesState.ABSENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
-        ) { databases ->
+        ) { (databases) ->
             databases.openedReadWrite("migrated.db", firstVersionOf(production)).close()
             val migrated = databases.openedReadWrite("migrated.db", production.schema)
             val created = databases.openedReadWrite("created.db", production.schema)
