@@ -3,6 +3,7 @@ package app.snapsync.services.downloads
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.model.SuppressionReadiness
+import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.databases.DatabaseUnavailable
@@ -21,6 +22,7 @@ class SuppressionServiceTest {
     /** Answers [answer] and records every open it was asked for. */
     private class Scripted(var answer: DbOpen) : Databases {
         val opens = mutableListOf<Pair<String, Boolean>>()
+        override fun listen(handlers: DatabaseHandlers) = Unit
         override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen {
             opens += name to readOnly
             return answer

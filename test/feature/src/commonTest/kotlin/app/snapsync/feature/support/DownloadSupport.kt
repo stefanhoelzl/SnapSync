@@ -14,6 +14,7 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.StartResult
 import app.snapsync.model.TransferNetwork
+import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Download
@@ -115,6 +116,8 @@ class RecordingDatabases(private val inner: Databases = inMemoryDatabases()) : D
     class Statement(val sql: String, val args: List<Any?>, val transaction: Any?)
 
     val statements: MutableList<Statement> = mutableListOf()
+
+    override fun listen(handlers: DatabaseHandlers) = inner.listen(handlers)
 
     /** How many transactions were opened — an empty one runs no statement, so it is counted here. */
     var transactions: Int = 0

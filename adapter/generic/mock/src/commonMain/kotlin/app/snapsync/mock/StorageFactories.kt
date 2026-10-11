@@ -38,4 +38,4 @@ fun inMemorySecureStore(
  * reach the branches a device reaches only by accident.
  */
 fun inMemoryDatabases(refusals: Map<String, app.snapsync.ports.DbOpen> = emptyMap()): app.snapsync.ports.Databases =
-    InMemoryDatabases(refusals)
+    InMemoryDatabases(refusals).process()

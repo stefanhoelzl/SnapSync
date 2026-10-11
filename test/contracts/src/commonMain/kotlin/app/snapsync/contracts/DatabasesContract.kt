@@ -1,11 +1,16 @@
 package app.snapsync.contracts
 
+import app.cash.sqldelight.TransacterImpl
 import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -29,7 +34,19 @@ enum class DatabasesState {
 
     /** A file of that name exists and is not a database — the stand-in for "exists, cannot be opened". */
     UNOPENABLE,
+
+    /**
+     * As [CURRENT], and a second process opens it too ([DatabasesSubject.elsewhere]) — the app and the upload extension
+     * over one App-Group file. A binding whose platform runs one process (Android) does not reach it.
+     */
+    SHARED,
 }
+
+/**
+ * The port as a clause receives it: [databases], this process's — the one the clause observes — and, where the binding
+ * can stand one up, [elsewhere]: another process's own [Databases] over the same storage, a new one each call.
+ */
+data class DatabasesSubject(val databases: Databases, val elsewhere: (() -> Databases)? = null)
 
 /**
  * What a `Databases` promises (`docs/architecture.md`; the port's KDoc carries why).
@@ -45,7 +62,7 @@ enum class DatabasesState {
  * binding enters [DatabasesState.CURRENT] and [DatabasesState.OLD] through the port itself ([enterCurrent],
  * [enterOld]) in a directory of its own; [DatabasesState.UNOPENABLE] needs a platform file write, the binding's.
  */
-object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
+object DatabasesContract : Contract<DatabasesState, DatabasesSubject>("Databases") {
 
     /** The one database every clause addresses. */
     const val NAME = "contract-probe.db"
@@ -122,12 +139,6 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             QueryResult.Value(c.next().value && (c.getLong(0) ?: 0L) > 0L)
         }, 0).value
 
-    private fun Databases.opened(schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): SqlDriver {
-        val opened = open(NAME, schema, readOnly)
-        assertIs<DbOpen.Opened>(opened, "expected the database to open (readOnly=$readOnly), got $opened")
-        return opened.driver
-    }
-
     override val clauses = clauses {
         schemaClauses()
 
@@ -135,7 +146,7 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             "ABSENT_READ_WRITE_CREATES_IT",
             DatabasesState.ABSENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
-        ) { databases ->
+        ) { (databases) ->
             val driver = databases.opened(Current, readOnly = false)
             driver.execute(null, "INSERT INTO probe (id, v, w) VALUES (1, '$KEPT', 'x')", 0)
             driver.close()
@@ -148,7 +159,7 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             "ABSENT_READ_ONLY_IS_MISSING_AND_CREATES_NOTHING",
             DatabasesState.ABSENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Missing::class) },
-        ) { databases ->
+        ) { (databases) ->
             assertEquals(DbOpen.Missing, databases.open(NAME, Current, readOnly = true))
             assertEquals(
                 DbOpen.Missing,
@@ -161,7 +172,7 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             "OLD_READ_WRITE_MIGRATES_KEEPING_ROWS",
             DatabasesState.OLD,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
-        ) { databases ->
+        ) { (databases) ->
             val driver = databases.opened(Current, readOnly = false)
             assertTrue(driver.hasColumnW(), "the migration ran")
             assertEquals(KEPT, driver.kept(), "a migration that loses rows loses every suppression handle")
@@ -177,7 +188,7 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
                     answers(Databases::open).with(DbOpen.Opened::class)
                 }
             },
-        ) { databases ->
+        ) { (databases) ->
             assertEquals(DbOpen.OldSchema, databases.open(NAME, Current, readOnly = true))
             // Still at the old version: the old schema opens it as current, with its row, and without the column.
             val stillOld = databases.opened(Old, readOnly = true)
@@ -190,7 +201,7 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             "CURRENT_READ_ONLY_OPENS_AND_READS",
             DatabasesState.CURRENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
-        ) { databases ->
+        ) { (databases) ->
             val driver = databases.opened(Current, readOnly = true)
             assertEquals(KEPT, driver.kept())
             driver.close()
@@ -200,7 +211,7 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             "CURRENT_READ_WRITE_REOPENS_WITH_ITS_ROWS",
             DatabasesState.CURRENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
-        ) { databases ->
+        ) { (databases) ->
             val driver = databases.opened(Current, readOnly = false)
             assertEquals(KEPT, driver.kept(), "a re-open is not a re-create")
             driver.close()
@@ -212,7 +223,7 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             covers = cells {
                 on<Databases>().answers(Databases::open).with(DbOpen.Failed::class)
             },
-        ) { databases ->
+        ) { (databases) ->
             assertIs<DbOpen.Failed>(
                 databases.open(NAME, Current, readOnly = true),
                 "a reader of a later build's schema cannot know what its rows mean",
@@ -223,19 +234,152 @@ object DatabasesContract : Contract<DatabasesState, Databases>("Databases") {
             "UNOPENABLE_READ_ONLY_FAILS_NEVER_MISSING",
             DatabasesState.UNOPENABLE,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Failed::class) },
-        ) { databases ->
+        ) { (databases) ->
             assertIs<DbOpen.Failed>(
                 databases.open(NAME, Current, readOnly = true),
                 "an unreadable database answered as missing reads as 'nothing was ever downloaded'",
             )
         }
 
+        changeClauses()
+
         clause(
             "UNOPENABLE_READ_WRITE_FAILS",
             DatabasesState.UNOPENABLE,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Failed::class) },
-        ) { databases ->
+        ) { (databases) ->
             assertIs<DbOpen.Failed>(databases.open(NAME, Current, readOnly = false))
         }
+    }
+}
+
+/**
+ * The cross-process change notice (`Databases`, "What another process committed"): a commit made through another
+ * process's open of the same database reaches this process's handlers, naming the database; this process's own
+ * commits and a rolled-back transaction never do. The commits are made through a real SQLDelight [TransacterImpl], so
+ * what is held is the order production has — the commit, then the notice to the driver's listeners.
+ */
+private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
+    clause(
+        "COMMIT_ELSEWHERE_NOTIFIES_ITS_DATABASE",
+        DatabasesState.SHARED,
+        covers = cells {
+            on<Databases> {
+                answers(Databases::listen).returns()
+                answers(Databases::open).with(DbOpen.Opened::class)
+                calls(DatabaseHandlers::onChangedElsewhere, String::class)
+            }
+        },
+    ) { subject ->
+        val heard = subject.listening()
+        val here = subject.databases.opened(DatabasesContract.Current, readOnly = false)
+        val other = subject.otherProcess().opened(DatabasesContract.Current, readOnly = false)
+
+        ProbeWriter(other).insert(2)
+
+        awaitWithin { DatabasesContract.NAME in heard.value }
+        here.close()
+        other.close()
+    }
+
+    clause(
+        "READ_ONLY_OPEN_HEARS_CHANGES",
+        DatabasesState.SHARED,
+        covers = cells {
+            on<Databases> {
+                answers(Databases::listen).returns()
+                answers(Databases::open).with(DbOpen.Opened::class)
+                calls(DatabaseHandlers::onChangedElsewhere, String::class)
+            }
+        },
+    ) { subject ->
+        // The extension's suppression view opens read-only; it hears the app's commits all the same.
+        val heard = subject.listening()
+        val here = subject.databases.opened(DatabasesContract.Current, readOnly = true)
+        val other = subject.otherProcess().opened(DatabasesContract.Current, readOnly = false)
+
+        ProbeWriter(other).insert(2)
+
+        awaitWithin { DatabasesContract.NAME in heard.value }
+        here.close()
+        other.close()
+    }
+
+    clause(
+        "ROLLBACK_ELSEWHERE_IS_SILENT",
+        DatabasesState.SHARED,
+        covers = cells {
+            on<Databases> {
+                answers(Databases::listen).returns()
+                answers(Databases::open).with(DbOpen.Opened::class)
+            }
+        },
+    ) { subject ->
+        val heard = subject.listening()
+        val here = subject.databases.opened(DatabasesContract.Current, readOnly = false)
+        val other = subject.otherProcess().opened(DatabasesContract.Current, readOnly = false)
+
+        ProbeWriter(other).insertRolledBack(2)
+
+        transferSettle()
+        assertEquals(emptyList(), heard.value, "a transaction that rolled back changed nothing")
+        here.close()
+        other.close()
+    }
+
+    clause(
+        "OWN_COMMIT_IS_NOT_ELSEWHERE",
+        DatabasesState.CURRENT,
+        covers = cells {
+            on<Databases> {
+                answers(Databases::listen).returns()
+                answers(Databases::open).with(DbOpen.Opened::class)
+            }
+        },
+    ) { subject ->
+        val heard = subject.listening()
+        val here = subject.databases.opened(DatabasesContract.Current, readOnly = false)
+
+        ProbeWriter(here).insert(2)
+
+        transferSettle()
+        assertEquals(emptyList(), heard.value, "this process's own commit is not another process's")
+        here.close()
+    }
+}
+
+/** Every database [DatabasesSubject.databases] heard another process commit to, in order. */
+private fun DatabasesSubject.listening(): StateFlow<List<String>> {
+    val heard = MutableStateFlow(emptyList<String>())
+    databases.listen(DatabaseHandlers(onChangedElsewhere = { name -> heard.update { it + name } }))
+    return heard
+}
+
+private fun DatabasesSubject.otherProcess(): Databases =
+    checkNotNull(elsewhere) { "a SHARED binding stands up the second process" }()
+
+/** [DatabasesContract.NAME] opened at [schema] — a clause that needs it open fails here, naming the answer. */
+private fun Databases.opened(schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): SqlDriver {
+    val opened = open(DatabasesContract.NAME, schema, readOnly)
+    assertIs<DbOpen.Opened>(opened, "expected the database to open (readOnly=$readOnly), got $opened")
+    return opened.driver
+}
+
+/** Writes the probe table as generated SQLDelight code does: in a transaction, its listeners notified of the table. */
+private class ProbeWriter(driver: SqlDriver) : TransacterImpl(driver) {
+    fun insert(id: Long) = transaction { write(id) }
+
+    fun insertRolledBack(id: Long) = transaction {
+        write(id)
+        rollback()
+    }
+
+    private fun write(id: Long) {
+        driver.execute(null, "INSERT INTO probe (id, v) VALUES ($id, 'written')", 0)
+        notifyQueries(PROBE_QUERY) { emit -> emit("probe") }
+    }
+
+    private companion object {
+        const val PROBE_QUERY = 1
     }
 }

@@ -87,8 +87,11 @@ class FileSystemOperator internal constructor(private val disk: FileSystemMock) 
 class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: String? = null) {
     private val held = InMemoryDatabases(refusals, directory)
 
-    /** A process's face: the same databases, as every process on the device opens the same files. */
-    fun port(): Databases = held
+    /**
+     * A process's face: the same databases, as every process on the device opens the same files — and its own, so what
+     * another process commits reaches it ([Databases.listen]). One per process: each call is a new one.
+     */
+    fun port(): Databases = held.process()
 
     val operator: DatabasesOperator = DatabasesOperator(held)
 }

@@ -8,6 +8,7 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.isNoSuchFile
+import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import co.touchlab.kermit.Logger
@@ -20,6 +21,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
 import platform.Foundation.NSFileProtectionKey
+import kotlin.concurrent.Volatile
 
 /**
  * The iOS [Databases]: SQLite files in the **App-Group container**, over SQLDelight's native driver — so the app
@@ -46,6 +48,12 @@ import platform.Foundation.NSFileProtectionKey
  * version check disabled and reads `user_version` itself, answering [DbOpen.OldSchema] below the schema's.
  * (SQLiter keeps its `SQLITE_OPEN_READONLY` flag internal, so "read-only" is this class's discipline — no DDL, no
  * migration, and a caller that reads only — not the connection's mode.)
+ *
+ * **What the other process committed arrives as a Darwin notification** ([DarwinCommits]): each commit through an
+ * opened driver posts the database's notification, and each opened driver observes it, delivering a notice that is
+ * not its own commit to [DatabaseHandlers.onChangedElsewhere]. One open per database per process is the shape
+ * production has (the storage services keep theirs): two opens in one process are two connections, and each would
+ * hear the other's commits as another process's.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosDatabases(private val basePath: String?) : Databases {
@@ -57,6 +65,20 @@ class IosDatabases(private val basePath: String?) : Databases {
 
     private val log = Logger.withTag("databases")
 
+    /** Who is told of another process's commits; until someone listens, nobody is. */
+    @Volatile
+    private var handlers: DatabaseHandlers? = null
+
+    override fun listen(handlers: DatabaseHandlers) {
+        this.handlers = handlers
+    }
+
+    /** [driver], announcing its commits to the other process and hearing the other process's. */
+    private fun signalled(name: String, driver: SqlDriver): SqlDriver {
+        val commits = DarwinCommits(name, driver, log) { handlers?.onChangedElsewhere(name) }
+        return CommitSignalling(driver, committed = commits::post, closed = commits::close)
+    }
+
     override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen {
         val base = basePath
             ?: return DbOpen.Failed(
@@ -64,18 +86,10 @@ class IosDatabases(private val basePath: String?) : Databases {
                     "missing or unprovisioned",
             )
         if (readOnly && !NSFileManager.defaultManager.fileExistsAtPath("$base/$name")) return DbOpen.Missing
-        return runCatchingCancellable {
-            if (readOnly) {
-                openReadOnly(
-                    base,
-                    name,
-                    schema,
-                )
-            } else {
-                openReadWrite(base, name, schema)
-            }
-        }
-            .getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
+        val opened = runCatchingCancellable {
+            if (readOnly) openReadOnly(base, name, schema) else openReadWrite(base, name, schema)
+        }.getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
+        return if (opened is DbOpen.Opened) DbOpen.Opened(signalled(name, opened.driver)) else opened
     }
 
     private fun openReadWrite(base: String, name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {

@@ -38,6 +38,7 @@ class ObjCBoundaryGateTest {
         "dispatch_async", "addObserverForName", "performChanges", "performChangesAndWait",
         "requestAuthorizationForAccessLevel", "getAllTasksWithCompletionHandler", "generateKeyWithCompletionHandler",
         "attestKey", "generateAssertion", "writeDataForAssetResource", "beginBackgroundTaskWithName",
+        "notify_register_dispatch",
     )
 
     /**

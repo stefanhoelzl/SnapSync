@@ -5,11 +5,11 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DatabasesContract
 import app.snapsync.contracts.DatabasesState
+import app.snapsync.contracts.DatabasesSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import java.nio.file.Files
 import kotlin.test.Test
@@ -25,7 +25,7 @@ class FileDatabasesMockTest {
 
     private fun directory(): String = Files.createTempDirectory("mock-databases").toString()
 
-    private val binding = object : Binding<DatabasesState, Databases> {
+    private val binding = object : Binding<DatabasesState, DatabasesSubject> {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches =
@@ -35,8 +35,9 @@ class FileDatabasesMockTest {
                 DatabasesState.OLD,
                 DatabasesState.NEWER,
                 DatabasesState.UNOPENABLE,
+                DatabasesState.SHARED,
             )
-        override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<Databases> {
+        override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<DatabasesSubject> {
             val refusals = if (state == DatabasesState.UNOPENABLE) {
                 mapOf(
                     DatabasesContract.NAME to DbOpen.Failed("unopenable"),
@@ -44,14 +45,15 @@ class FileDatabasesMockTest {
             } else {
                 emptyMap()
             }
-            val databases = DatabasesMock(refusals, directory()).port().recorded(log)
+            val device = DatabasesMock(refusals, directory())
+            val databases = device.port().recorded(log)
             when (state) {
-                DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
+                DatabasesState.CURRENT, DatabasesState.SHARED -> DatabasesContract.enterCurrent(databases)
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)
                 DatabasesState.NEWER -> DatabasesContract.enterNewer(databases)
                 DatabasesState.ABSENT, DatabasesState.UNOPENABLE -> Unit
             }
-            return Entered.Ready(databases)
+            return Entered.Ready(DatabasesSubject(databases, elsewhere = device::port))
         }
     }
 

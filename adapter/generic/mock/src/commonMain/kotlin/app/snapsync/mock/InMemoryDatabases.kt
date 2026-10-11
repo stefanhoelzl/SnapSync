@@ -7,6 +7,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import kotlin.concurrent.Volatile
@@ -29,7 +30,7 @@ import kotlin.concurrent.Volatile
 internal class InMemoryDatabases(
     private val refusals: Map<String, DbOpen>,
     private val directory: String? = null,
-) : Databases {
+) {
 
     // Both processes open from their own threads, and an inspector reads [opened] from another: the opens are one at a
     // time, as a file's create-or-migrate is.
@@ -46,7 +47,13 @@ internal class InMemoryDatabases(
     /** Every open asked for, by name, in order. */
     val opened: List<String> get() = lock.locked { openLog.toList() }
 
-    override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen = lock.locked {
+    /** A process of the device: its own [Databases] over these databases, which every process opens alike. */
+    fun process(): Databases = Process(this)
+
+    /** The processes each database has been opened by, by name — who a commit is announced to. */
+    private val openedBy = mutableMapOf<String, MutableSet<Process>>()
+
+    fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen = lock.locked {
         openLog += name
         if (locked) return@locked DbOpen.Failed("locked: the device has not been unlocked since boot")
         refusals[name] ?: runCatchingCancellable { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
@@ -100,6 +107,15 @@ internal class InMemoryDatabases(
         driver.execute(null, sql, 0)
     }
 
+    /** [driver] as [by] holds it: each commit through it is announced to the other processes that opened [name]. */
+    fun signalling(driver: SqlDriver, name: String, by: Process): SqlDriver {
+        lock.locked { openedBy.getOrPut(name) { mutableSetOf() }.add(by) }
+        return CommitSignalling(driver) {
+            val others = lock.locked { openedBy[name].orEmpty().filter { it !== by } }
+            others.forEach { it.changedElsewhere(name) }
+        }
+    }
+
     /** A database a file already holds — another process's, or an earlier launch's — opened and kept. */
     private fun onDisk(name: String): SqlDriver? = directory
         ?.takeIf { databaseFileExists(it, name) }
@@ -111,6 +127,40 @@ internal class InMemoryDatabases(
         driver.executeQuery(null, "PRAGMA user_version", { cursor ->
             QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L)
         }, 0).value
+}
+
+/**
+ * One process's [Databases] over the device's [databases]: what it opens is what every process opens, and a commit
+ * through its driver is announced to every other process that has the database open — delivered at once, on the
+ * committer's thread, as a test double may (`Databases`, "What another process committed").
+ */
+internal class Process(private val databases: InMemoryDatabases) : Databases {
+
+    /** Who is told of another process's commits; until someone listens, nobody is. */
+    @Volatile
+    private var handlers: DatabaseHandlers? = null
+
+    override fun listen(handlers: DatabaseHandlers) {
+        this.handlers = handlers
+    }
+
+    override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen =
+        when (val opened = databases.open(name, schema, readOnly)) {
+            is DbOpen.Opened -> DbOpen.Opened(databases.signalling(opened.driver, name, this))
+            else -> opened
+        }
+
+    fun changedElsewhere(name: String) {
+        handlers?.onChangedElsewhere(name)
+    }
+}
+
+/** [inner], announcing each finished commit — SQLDelight's notice to its listeners, after the commit — to [committed]. */
+private class CommitSignalling(private val inner: SqlDriver, private val committed: () -> Unit) : SqlDriver by inner {
+    override fun notifyListeners(vararg queryKeys: String) {
+        inner.notifyListeners(*queryKeys)
+        committed()
+    }
 }
 
 /**

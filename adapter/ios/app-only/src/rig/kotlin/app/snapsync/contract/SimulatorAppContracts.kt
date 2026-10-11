@@ -14,6 +14,7 @@ import app.snapsync.contracts.BuildInfoContract
 import app.snapsync.contracts.BuildInfoState
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.ClauseFiles
+import app.snapsync.contracts.DatabasesContract
 import app.snapsync.contracts.DeviceConditionsContract
 import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.DownloadContract
@@ -124,6 +125,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(DownloadContract, SimAppDownloadBinding(), ::hostRefusal),
     simulatorAppContract(BackgroundTimeContract, SimAppBackgroundTimeBinding(), ::hostRefusal),
     simulatorAppContract(BuildInfoContract, SimAppBuildInfoBinding(), ::hostRefusal),
+    simulatorAppContract(DatabasesContract, SimAppDatabasesBinding(), ::hostRefusal),
 ) + otherGrantContracts()
 
 /** Why this process is not the simulator app, or `null` when it is — for bindings that need no photo grant. */

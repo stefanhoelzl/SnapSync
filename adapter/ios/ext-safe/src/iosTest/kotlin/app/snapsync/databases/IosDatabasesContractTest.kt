@@ -5,11 +5,11 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DatabasesContract
 import app.snapsync.contracts.DatabasesState
+import app.snapsync.contracts.DatabasesSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.newTempDirectory
@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
  */
 class IosDatabasesContractTest {
 
-    private val binding = object : Binding<DatabasesState, Databases> {
+    private val binding = object : Binding<DatabasesState, DatabasesSubject> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(
@@ -36,12 +36,15 @@ class IosDatabasesContractTest {
             DatabasesState.NEWER,
             DatabasesState.UNOPENABLE,
         )
-        override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<Databases> {
+        override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<DatabasesSubject> {
             val dir = newTempDirectory()
             val databases = IosDatabases(dir).recorded(log)
             when (state) {
                 DatabasesState.ABSENT -> Unit
                 DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
+                // A test executable is no launchd job: libnotify answers it `NOTIFY_STATUS_OPT_DISABLE`, so a commit's
+                // notice cannot travel here. The simulator app runs this state (`SimAppDatabasesBinding`).
+                DatabasesState.SHARED -> return Entered.Unreachable("libnotify is disabled in a test executable")
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)
                 DatabasesState.NEWER -> DatabasesContract.enterNewer(databases)
                 DatabasesState.UNOPENABLE ->
@@ -50,7 +53,7 @@ class IosDatabasesContractTest {
                         "this is not a database, and it is long enough to have a header\n".repeat(8),
                     )
             }
-            return Entered.Ready(databases) { removeDirectory(dir) }
+            return Entered.Ready(DatabasesSubject(databases)) { removeDirectory(dir) }
         }
     }
 
