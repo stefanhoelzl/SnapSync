@@ -71,9 +71,14 @@ import java.util.concurrent.TimeUnit
  * A wait the background-time hold outlives ends like any other transfer it stops: reported failed, and re-created by a
  * later run — the upload flow's wake for that run asks for an unmetered network.
  *
- * At most [MAX_LIVE] transfers run at once; the next create answers [UploadCreateOutcome.LIMIT_EXCEEDED]. Every end is
- * reported inline through [UploadHandlers.onFinished], once. There are no platform-held jobs to present: no retry is
- * offered, no terminal job waits for an acknowledgement.
+ * **One transfer at a time** ([MAX_LIVE]); the next create answers [UploadCreateOutcome.LIMIT_EXCEEDED], and the core
+ * tops the freed slot up when it ends. Parallel streams add no bandwidth, only divide it: four PUTs on a thin uplink
+ * each moved a few KB/s, and all four were cut off with nothing landed (Bugsink SNAPSYNC-54, 2026-10-08) — where one
+ * at the whole uplink lands a photo, then the next. On a fast link a photo is megabytes, so one stream loses only the
+ * per-request handshake between transfers.
+ *
+ * Every end is reported inline through [UploadHandlers.onFinished], once. There are no platform-held jobs to present:
+ * no retry is offered, no terminal job waits for an acknowledgement.
  */
 class AndroidUpload(
     context: Context,
@@ -305,7 +310,7 @@ class AndroidUpload(
 
     private companion object {
         const val JOURNAL = "upload_journal"
-        const val MAX_LIVE = 4
+        const val MAX_LIVE = 1
         const val CHUNK = 64 * 1024
         const val SOCKET_TIMEOUT_MILLIS = 60_000L
         const val CONTENT_TYPE = "Content-Type"
