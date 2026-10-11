@@ -1436,8 +1436,8 @@ SE2), so:
   the wake's `Completion.onExpired`.
 - **a background-time hold** is an expedited work that runs until the hold ends; its stop is the hold's expiry. It is
   what keeps a process the member just left, or one a worker started, from being frozen mid-unit.
-- **an upload** is an in-process PUT streamed from MediaStore (`UploadSourceKind.RESOURCE`, no staged copy), at most
-  four at once, each end reported inline. The adapter holds background time while any is live; the hold's expiry
+- **an upload** is an in-process PUT streamed from MediaStore (`UploadSourceKind.RESOURCE`, no staged copy), one at a
+  time (parallel streams only divide a thin uplink), each end reported inline. The adapter holds background time while any is live; the hold's expiry
   cancels them, reported failed, to restart on a later run. A small journal names every job not yet reported, and a
   process that died with jobs in it has them reported failed when the next one listens — so a row never waits on a
   transfer that no longer exists. A connection per transfer: a streamed body is sent once, and a pooled connection
