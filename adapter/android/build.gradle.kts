@@ -20,6 +20,8 @@ kotlin {
     sourceSets {
         androidMain.dependencies {
             api(project(":domain:model"))
+            // The Motion Photo codec: an iPhone Live Photo is saved here as one.
+            implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))
             // The screen's vocabulary the Ui port is bound to here (`Ui<UiState, UiIntent>`); never presentation.
             implementation(project(":ui:state"))

@@ -35,9 +35,9 @@ import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
-import app.snapsync.model.jpegXmp
-import app.snapsync.model.locateMotionVideo
-import app.snapsync.model.motionPhotoStill
+import app.snapsync.motionphoto.jpegXmp
+import app.snapsync.motionphoto.locateMotionVideo
+import app.snapsync.motionphoto.motionPhotoStill
 import app.snapsync.ports.GalleryHandlers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

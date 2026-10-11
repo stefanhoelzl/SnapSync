@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.motionphoto
 
 /**
  * **Google's motion-photo format**, as bytes (a moving photo arrives moving): one image file whose XMP describes a

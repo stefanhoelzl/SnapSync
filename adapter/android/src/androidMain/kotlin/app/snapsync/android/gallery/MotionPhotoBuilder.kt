@@ -4,9 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.media.ExifInterface
 import app.snapsync.model.StagedResource
-import app.snapsync.model.motionPhotoStill
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.withExtension
+import app.snapsync.motionphoto.motionPhotoStill
+import app.snapsync.motionphoto.withExtension
 import co.touchlab.kermit.Logger
 import java.io.File
 

@@ -46,6 +46,8 @@ kotlin {
         }
         commonMain.dependencies {
             api(project(":domain:model"))
+            // The Motion Photo codec: an Android motion photo is taken apart into a Live Photo here.
+            implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))
             // The shared PhotoKit discovery walk (IosDiscovery) the URLSession tier reuses.
             api(project(":adapter:ios:ext-safe"))
