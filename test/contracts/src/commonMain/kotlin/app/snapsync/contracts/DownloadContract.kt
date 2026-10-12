@@ -370,8 +370,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             )
         }
 
-        clause(
-            "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE",
+        heldUntilUnrestricted(
             DownloadState.RESTRICTED_NETWORK,
             covers = cells {
                 on<Download> {
@@ -381,26 +380,8 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
                     calls(DownloadHandlers::onCompleted, String::class, null)
                 }
             },
-        ) { subject ->
-            val id = "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE"
-            val lift = assertNotNull(subject.liftRestriction, "a binding that reaches a restricted network can lift it")
-            val owner = ClauseDownloadHandlers(subject.readTemp)
-            val download = subject.open()
-            download.listen(owner.handlers)
-            val tag = "d-$id"
-            val route = subject.base + path(id, FixtureAnswer.Respond(200, length = 8))
-            assertEquals(StartResult.Started, download.start(route, NO_HEADERS, tag, TransferNetwork.UNRESTRICTED_ONLY))
-            heldSettle()
-            assertEquals(
-                emptyList(),
-                owner.events,
-                "a transfer held to unrestricted networks does not run on a restricted one",
-            )
-            lift()
-            awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
-            assertEquals(DownloadEvent.Completed(tag, null), owner.events.last(), "it runs once the network allows it")
-            assertEquals(200, owner.events.filterIsInstance<DownloadEvent.Finished>().single().facts.statusCode)
-        }
+            route = { id -> path(id, FixtureAnswer.Respond(200, length = 8)) },
+        ) { subject -> heldDownload(subject) }
 
         clause(
             "AN_UNFETCHABLE_URL_IS_NOT_STARTED",
@@ -453,8 +434,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             }
         }
 
-        clause(
-            "RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED",
+        relaunchHandedOverThenDrained(
             DownloadState.RELAUNCHED_WITH_EVENTS,
             covers = cells {
                 on<Download> {
@@ -463,20 +443,43 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
                     handle<Completion>().answers(Completion::complete).returns()
                 }
             },
-        ) { subject ->
-            val relaunch = assertNotNull(subject.relaunch, "a binding that reaches this state holds the relaunch")
-            val owner = ClauseDownloadHandlers(subject.readTemp)
-            subject.open().listen(owner.handlers)
-            relaunch()
-            awaitWithin { owner.drainsReported > 0 }
-            assertEquals(1, owner.wakesHandedOver, "the relaunch's completion is handed over once")
-            assertTrue(
-                owner.events.any { it is DownloadEvent.Completed && it.tag == RELAUNCHED_TAG },
-                "the transfer that ended while the app was gone is reported, before the drain: ${owner.events}",
-            )
-        }
+            tag = RELAUNCHED_TAG,
+        ) { subject -> relaunchedDownload(subject) }
     }
 }
 
 /** A clause's transfers carry no headers of their own: the fixture answers what the route asks, whoever asks. */
 private val NO_HEADERS = emptyMap<String, String>()
+
+/** A download session as the shared hold clause drives it: a fresh session, listened to by the clause's own owner. */
+private fun heldDownload(subject: DownloadUnderTest): HeldSession {
+    val owner = ClauseDownloadHandlers(subject.readTemp)
+    val download = subject.open().also { it.listen(owner.handlers) }
+    return object : HeldSession {
+        override suspend fun start(route: String, tag: String, network: TransferNetwork) =
+            download.start(subject.base + route, NO_HEADERS, tag, network) == StartResult.Started
+
+        override suspend fun endOf(tag: String): Boolean? {
+            val completed = owner.events.filterIsInstance<DownloadEvent.Completed>().lastOrNull { it.tag == tag }
+                ?: return null
+            val finished = owner.events.filterIsInstance<DownloadEvent.Finished>().lastOrNull { it.tag == tag }
+            return completed.error == null && finished?.facts?.statusCode in 200..299
+        }
+
+        override val liftRestriction = subject.liftRestriction
+    }
+}
+
+/** A download session the OS relaunched the app for: its owner releases each completion the moment it is handed one. */
+private fun relaunchedDownload(subject: DownloadUnderTest): RelaunchedSession {
+    val relaunch = assertNotNull(subject.relaunch, "a binding that reaches this state holds the relaunch")
+    val owner = ClauseDownloadHandlers(subject.readTemp)
+    subject.open().listen(owner.handlers)
+    return object : RelaunchedSession {
+        override fun deliver() = relaunch()
+        override fun handedOver() = owner.wakesHandedOver
+        override fun drains() = owner.drainsReported
+        override fun toldTimes(tag: String) = owner.events.count { it is DownloadEvent.Completed && it.tag == tag }
+        override fun release() = Unit
+    }
+}
