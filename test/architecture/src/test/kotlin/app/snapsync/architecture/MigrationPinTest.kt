@@ -28,8 +28,10 @@ class MigrationPinTest {
             "7aac4e93ed9dd1aa515699afd8f8f7ff8598183f653a5b9be77481bce169ffd8",
         "download/app/snapsync/services/downloads/db/5.sqm" to
             "c11a859ee1880006b5dd325b5c76c535df9cbc5535d2dd3d9d652dfc2c060bfa",
+        // Re-pinned after it shipped: its `DROP COLUMN` failed on Android 11–13's SQLite, which no later migration can
+        // fix since a fresh install runs this one; rebuilt to leave the same table (the file says why).
         "download/app/snapsync/services/downloads/db/6.sqm" to
-            "a5a78a7ca6cc7d97ccf9a931a9323864eec4f936efe74b70b36deff8bb04c1dd",
+            "68c3a7343a7507addda643b84857a0bc44d0b285f649b5d503438bd7b7116349",
         "download/app/snapsync/services/downloads/db/7.sqm" to
             "c5f9d683f65552aa5fa5144ed7c1c7e35d1ea9d8818d2817aee1d609b1552b7e",
         "ledger/app/snapsync/services/ledger/db/11.sqm" to

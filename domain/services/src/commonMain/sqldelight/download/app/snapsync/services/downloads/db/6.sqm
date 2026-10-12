@@ -1,3 +1,6 @@
+import app.snapsync.model.AssetId;
+import app.snapsync.model.DownloadState;
+
 -- v6 -> v7: which event a received photo belongs to is a row of its own, and a planned resource names its event
 -- (change `event-scoped-local-state`).
 --
@@ -13,6 +16,13 @@
 --
 -- ROW-PRESERVING: no asset or resource row is deleted, and no state or marker changes. Staged paths are stored, not
 -- composed, so no staged file moves.
+--
+-- REBUILT, not `ALTER TABLE … DROP COLUMN`: that needs SQLite 3.35, and Android 11 ships 3.28 (12 and 13: 3.32). As a
+-- `DROP COLUMN` this migration — which every fresh install runs, the schema being derived from the chain — failed
+-- there and left downloads.db unopenable (SNAPSYNC-59/60). Edited after it shipped, against `MigrationPinTest`'s rule,
+-- because no later migration can fix a statement a fresh install runs first; the table it leaves is the one the
+-- `DROP COLUMN` left, so a device that already ran it holds the same schema. The rows are staged in an ordinary
+-- table, the table is re-created without the column, the rows come back, and its one index is re-created.
 CREATE TABLE eventRef (
     eventId        TEXT NOT NULL,
     sourceDeviceId TEXT NOT NULL,
@@ -36,4 +46,24 @@ WHERE EXISTS (
       AND a.eventId IS NOT NULL
 );
 
-ALTER TABLE downloadAsset DROP COLUMN eventId;
+CREATE TABLE downloadAsset_v7 AS
+SELECT sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId FROM downloadAsset;
+
+DROP INDEX downloadAsset_createdLocalId;
+DROP TABLE downloadAsset;
+
+CREATE TABLE downloadAsset (
+    sourceDeviceId TEXT NOT NULL,
+    sourceAssetId  TEXT AS AssetId NOT NULL,
+    state          TEXT AS DownloadState NOT NULL,
+    creationDate   TEXT NOT NULL,
+    createdLocalId TEXT AS AssetId,
+    PRIMARY KEY (sourceDeviceId, sourceAssetId)
+);
+
+INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId)
+SELECT sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId FROM downloadAsset_v7;
+
+DROP TABLE downloadAsset_v7;
+
+CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId);

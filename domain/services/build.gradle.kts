@@ -71,8 +71,10 @@ sqldelight {
             packageName.set("app.snapsync.services.ledger.db")
             srcDirs.setFrom("src/commonMain/sqldelight/ledger")
             deriveSchemaFromMigrations.set(true)
-            // The sqlite-3-35 dialect: the default rejects ALTER TABLE … DROP COLUMN (migrations use it), and the
-            // record write's upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
+            // The sqlite-3-25 dialect: the oldest SQLite a device runs is Android 11's 3.28 (minSdk 30), and the
+            // dialect is what makes SQLDelight refuse anything newer at compile time — a 3.35 dialect let a
+            // `DROP COLUMN` through that left downloads.db unopenable on Android 11–13 (SNAPSYNC-59/60). Not lower:
+            // the record write's upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
             dialect(libs.sqldelight.dialect.sqlite)
         }
         create("DownloadDatabase") {
