@@ -267,9 +267,9 @@ class LegacyRecordsTest {
         val JOINED = EventConfig(
             eventId = "E-joined",
             name = "Anna's Birthday",
-            minPhotoDate = CaptureCutoff(CaptureDate("2026-06-10T00:00:00Z")),
-            maxPhotoDate = CaptureCeiling(CaptureDate("2026-06-20T00:00:00Z")),
-            endsAt = EventEnd(CaptureDate("2026-06-20T00:00:00Z")),
+            minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-06-10T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-06-20T00:00:00Z")),
+            endsAt = EventEnd(CaptureDate.parse("2026-06-20T00:00:00Z")),
             deletesAt = deletesAt("2026-07-20T00:00:00Z"),
         )
     }

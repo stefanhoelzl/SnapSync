@@ -34,11 +34,11 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
-import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.gallery.assetId
 import app.snapsync.services.gallery.assetRefOf
 import app.snapsync.services.gallery.resourcesFrom
 import app.snapsync.services.gallery.role
+import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService

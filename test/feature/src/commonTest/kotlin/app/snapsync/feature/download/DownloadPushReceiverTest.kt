@@ -8,8 +8,6 @@ import app.snapsync.feature.support.downloadJobs
 import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.model.AssetId
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger

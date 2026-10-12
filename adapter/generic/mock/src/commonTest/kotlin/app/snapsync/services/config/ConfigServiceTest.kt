@@ -69,7 +69,7 @@ class ConfigServiceTest {
     @Test
     fun `every field of a membership survives the row`() = runTest {
         val full = SEED.copy(
-            startsAt = EventStart(CaptureDate("2026-06-11T00:00:00Z")),
+            startsAt = EventStart(CaptureDate.parse("2026-06-11T00:00:00Z")),
             direction = Direction.UploadOnly,
             saveToAlbum = true,
             closed = true,
@@ -242,7 +242,7 @@ class ConfigServiceTest {
 
     @Test
     fun `an unreadable config has not ended`() {
-        stored(SEED.copy(endsAt = EventEnd(CaptureDate("2026-06-01T00:00:00Z"))))
+        stored(SEED.copy(endsAt = EventEnd(CaptureDate.parse("2026-06-01T00:00:00Z"))))
         databases.operator.lock()
         assertFalse(service().freshReadHasEnded())
     }

@@ -36,7 +36,6 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferOutcome
-import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.assetId

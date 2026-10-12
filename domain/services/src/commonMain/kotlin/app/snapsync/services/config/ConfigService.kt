@@ -7,7 +7,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.confirmedGone
 import app.snapsync.model.hasEnded
-import app.snapsync.model.instantToCutoff
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Clock
 import app.snapsync.services.databases.LegacySource
