@@ -20,6 +20,7 @@ import {
   V2,
 } from "./support/harness.ts";
 import { canonicalFromMs } from "../src/validators.ts";
+import { OPEN_UNTIL_CLOCK_SLACK_MS } from "../src/lifecycle.ts";
 
 const DAY = 86_400_000;
 const JOIN = (d: string) => `/api/v2/events/${E}/devices/${d}`;
@@ -75,7 +76,7 @@ Deno.test("create → an open-until date before the end, or past the window afte
   for (
     const openUntil of [
       "2026-07-03T17:59:59Z", // before the end
-      canonicalFromMs(NOW + CONFIG.eventWindowMaxSeconds * 1000 + 1000), // past the window after now
+      canonicalFromMs(NOW + CONFIG.eventWindowMaxSeconds * 1000 + OPEN_UNTIL_CLOCK_SLACK_MS + 1000), // past the window after now
       "2026-07-03", // not an instant
     ]
   ) {
@@ -83,12 +84,14 @@ Deno.test("create → an open-until date before the end, or past the window afte
     assertEquals(res.status, 400, openUntil);
     assertEquals(await res.text(), "invalid openUntil", openUntil);
   }
-  // The edges are admitted: exactly the end, and exactly the window after now.
+  // The edges are admitted: exactly the end, and the window after now on a phone whose clock runs ahead.
   assertEquals((await create(db, { ...ended, openUntil: ended.endsAt })).status, 201);
   assertEquals(
     (await create(db, {
       ...ended,
-      openUntil: canonicalFromMs(NOW + CONFIG.eventWindowMaxSeconds * 1000),
+      openUntil: canonicalFromMs(
+        NOW + CONFIG.eventWindowMaxSeconds * 1000 + OPEN_UNTIL_CLOCK_SLACK_MS,
+      ),
     })).status,
     201,
   );

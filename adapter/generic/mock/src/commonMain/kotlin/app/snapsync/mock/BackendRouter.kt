@@ -42,6 +42,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -189,12 +190,13 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
 
     /**
      * The open-until date [raw] asks for over a range ending [endsAt], or `null` for one the backend refuses: absent is
-     * the end; present, at least the end and at most the window after the later of the end and now.
+     * the end; present, at least the end and at most the window after the later of the end and now — plus the hour a
+     * creating phone's clock may run ahead, as the real api allows.
      */
     private fun openUntilOf(raw: String?, endsAt: Instant?): Instant? {
         if (endsAt == null) return null
         val openUntil = raw?.let { instantOrNull(it) ?: return null } ?: return endsAt
-        return openUntil.takeIf { it >= endsAt && it <= maxOf(endsAt, state.now()) + WINDOW_DAYS.days }
+        return openUntil.takeIf { it >= endsAt && it <= maxOf(endsAt, state.now() + OPEN_UNTIL_CLOCK_SLACK) + WINDOW_DAYS.days }
     }
 
     private fun details(eventId: String): HttpResult {
@@ -426,6 +428,9 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         const val UPGRADE_REQUIRED = 426
         const val BAD_GATEWAY = 502
         const val WINDOW_DAYS = 30
+
+        /** How far a creating phone's clock may run ahead when it asks to stay open the whole window. */
+        val OPEN_UNTIL_CLOCK_SLACK = 1.hours
         const val CURSOR = "SnapSync-Cursor"
 
         /** The shape of an encrypted event's key id, as the real `POST /events` validates it. */

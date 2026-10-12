@@ -128,9 +128,16 @@ export function sweepVerdict(
 }
 
 /**
+ * How far a phone's clock may run ahead of this service's when it asks to stay open the whole window from ITS now:
+ * the app offers "30 days" from the device's clock, and a phone a second fast must not be refused for it.
+ */
+export const OPEN_UNTIL_CLOCK_SLACK_MS = 60 * 60 * 1000;
+
+/**
  * Whether a create may keep its event open until [openUntil] (decision record `changes/back-dated-events`, D1):
- * not before its range ends, and at most [windowMaxSeconds] after the later of that end and [nowMs]. Both are
- * canonical instants; anything unparseable is refused.
+ * not before its range ends, and at most [windowMaxSeconds] after the later of that end and [nowMs] — `now` read
+ * [OPEN_UNTIL_CLOCK_SLACK_MS] late, for the creating phone's clock. Both are canonical instants; anything unparseable
+ * is refused.
  */
 export function openUntilAdmitted(
   endsAt: string,
@@ -141,5 +148,5 @@ export function openUntilAdmitted(
   const end = Date.parse(endsAt);
   const until = Date.parse(openUntil);
   if (Number.isNaN(end) || Number.isNaN(until) || until < end) return false;
-  return until <= Math.max(end, nowMs) + windowMaxSeconds * 1000;
+  return until <= Math.max(end, nowMs + OPEN_UNTIL_CLOCK_SLACK_MS) + windowMaxSeconds * 1000;
 }

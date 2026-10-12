@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ButtonDefaults
@@ -69,6 +70,12 @@ fun RowScope.LeaveTextAction(label: String, onClick: () -> Unit) {
 @Composable
 fun RowScope.JoinTextAction(label: String, onClick: () -> Unit, enabled: Boolean) {
     FooterTextAction(label, Icons.Filled.Check, appAccentText(), onClick, enabled)
+}
+
+/** Keeps an event open for guests a while longer: the clock glyph, in the accent colour. */
+@Composable
+fun RowScope.KeepOpenTextAction(label: String, onClick: () -> Unit) {
+    FooterTextAction(label, Icons.Filled.Schedule, appAccentText(), onClick)
 }
 
 /** Leaves a surface without committing it: the close glyph, in the quiet text colour. */

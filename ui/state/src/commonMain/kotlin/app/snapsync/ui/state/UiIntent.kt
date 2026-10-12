@@ -17,6 +17,12 @@ sealed interface UiIntent {
     /** The create form's name, as typed so far. */
     data class CreateName(val name: String) : UiIntent
 
+    /** The back-dated sheet's choice: create the event, guests joining for [days] more days. */
+    data class KeepOpenFor(val days: Int) : UiIntent
+
+    /** The back-dated sheet closed unchosen — its Cancel, a swipe or the scrim: nothing is created. */
+    data object KeepOpenDismiss : UiIntent
+
     /** A tap on [day] in the range calendar. */
     data class RangeDay(val day: LocalDate) : UiIntent
 

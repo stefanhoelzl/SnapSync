@@ -3,6 +3,7 @@ package app.snapsync.feature.creation
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.CreateOutcome
+import app.snapsync.model.eventEnd
 import app.snapsync.services.backend.EventCreation
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,10 +30,18 @@ class CreateEventTest {
         var lastName: String? = null
         var lastStartsAt: String? = null
         var lastEndsAt: String? = null
-        override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome {
+        var lastOpenUntil: String? = null
+        override suspend fun create(
+            name: String,
+            startsAt: String,
+            endsAt: String?,
+            keyId: String?,
+            openUntil: String?,
+        ): CreateOutcome {
             lastName = name
             lastStartsAt = startsAt
             lastEndsAt = endsAt
+            lastOpenUntil = openUntil
             return outcome
         }
     }
@@ -44,13 +53,24 @@ class CreateEventTest {
         var provisioned: String? = null
         val useCase = CreateEvent(client, status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null)
 
-        useCase.create("  My Party  ", startsAt, endsAt)
+        useCase.create("  My Party  ", startsAt, endsAt, openUntil = null)
 
         assertEquals("My Party", client.lastName) // trimmed before the call
         assertEquals(startsAt, client.lastStartsAt) // start date passed through VERBATIM, never re-derived
         assertEquals(endsAt, client.lastEndsAt) // end date passed through VERBATIM too
         assertEquals(eventId, provisioned) // handed to the join-gate routing hook
         assertEquals(CreationStatus.Idle, status.value) // no success state
+    }
+
+    @Test
+    fun `the open-until date of an event created after its end is passed through verbatim`() = runTest {
+        val client = FakeClient(CreateOutcome.Created(eventId))
+        val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
+        val useCase = CreateEvent(client, status, onMinted = { _, _ -> }, minting = null)
+
+        useCase.create("Party", startsAt, endsAt, openUntil = eventEnd("2026-07-28T18:00:00Z"))
+
+        assertEquals("2026-07-28T18:00:00Z", client.lastOpenUntil)
     }
 
     @Test
@@ -65,6 +85,7 @@ class CreateEventTest {
                 startsAt: String,
                 endsAt: String?,
                 keyId: String?,
+                openUntil: String?,
             ): CreateOutcome {
                 calls++
                 gate.await()
@@ -79,9 +100,9 @@ class CreateEventTest {
                 minting = null,
             )
 
-        val first = launch { useCase.create("Party", startsAt, endsAt) }
+        val first = launch { useCase.create("Party", startsAt, endsAt, openUntil = null) }
         runCurrent()
-        useCase.create("Party", startsAt, endsAt)
+        useCase.create("Party", startsAt, endsAt, openUntil = null)
         gate.complete(Unit)
         first.join()
 
@@ -99,7 +120,7 @@ class CreateEventTest {
             minting = null,
         )
 
-        useCase.create("x", startsAt, endsAt)
+        useCase.create("x", startsAt, endsAt, openUntil = null)
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.INVALID_NAME), status.value)
         assertNull(provisioned)
@@ -116,7 +137,7 @@ class CreateEventTest {
             minting = null,
         )
 
-        useCase.create("x", startsAt, endsAt)
+        useCase.create("x", startsAt, endsAt, openUntil = null)
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.INVALID_WINDOW), status.value)
         assertNull(provisioned)
@@ -133,7 +154,7 @@ class CreateEventTest {
             minting = null,
         )
 
-        useCase.create("x", startsAt, endsAt)
+        useCase.create("x", startsAt, endsAt, openUntil = null)
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.SERVER), status.value)
         assertNull(provisioned)
@@ -150,7 +171,7 @@ class CreateEventTest {
             minting = null,
         )
 
-        useCase.create("x", startsAt, endsAt)
+        useCase.create("x", startsAt, endsAt, openUntil = null)
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.UNVERIFIED), status.value)
         assertNull(provisioned)

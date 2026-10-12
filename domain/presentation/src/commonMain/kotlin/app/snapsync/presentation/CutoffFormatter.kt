@@ -14,6 +14,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.periodUntil
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -77,6 +78,13 @@ class CutoffFormatter(
      */
     fun latestEnd(from: LocalDateTime): LocalDateTime =
         (from.toInstant(zone) + EVENT_WINDOW_MAX_SECONDS.seconds).toLocalDateTime(zone)
+
+    /**
+     * The open-until date of an event created now that guests may join for [days] more days (decision record
+     * `changes/back-dated-events`, D1). Added in INSTANTS, like [latestEnd]: the backend bounds it in seconds from its
+     * own now, and "30 local days" across a daylight-saving change is an hour more than the 30 days it admits.
+     */
+    fun openFor(days: Int): EventEnd = EventEnd(CaptureDate.of(now() + days.days))
 
     /** Whether `[from, until]` is no longer than the backend's event window — see [latestEnd]. */
     fun fitsEventWindow(from: LocalDateTime, until: LocalDateTime): Boolean =

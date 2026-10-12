@@ -90,6 +90,7 @@ import kotlinx.coroutines.cancel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /** The event the joined tests are members of. */
@@ -298,6 +299,30 @@ class HostStatusActionsTest {
         completeForm(rig, "My Party")
         onNodeWithText(str(Res.string.create_button)).performClick()
         awaitFired(rig, "create:My Party")
+    }
+
+    @Test
+    fun `a range already over asks first — a choice creates it open that long`() = rigTest(rig()) { rig ->
+        awaitState(rig) { it.layer is Layer.CreateEvent }
+        completeForm(rig, "My Party")
+        rig.clock.instant = Instant.parse("2026-07-09T12:00:00Z") // the 8th is over
+        onNodeWithText(str(Res.string.create_button)).performClick()
+        awaitState(rig) { it.create?.form?.keepOpen != null }
+        onNode(hasText("7 days", substring = true)).performClick()
+        awaitFired(rig, "create:My Party:open-until:2026-07-16T12:00:00Z")
+        awaitState(rig) { it.create?.form?.keepOpen == null }
+    }
+
+    @Test
+    fun `the back-dated sheet's Cancel keeps the form and creates nothing`() = rigTest(rig()) { rig ->
+        awaitState(rig) { it.layer is Layer.CreateEvent }
+        completeForm(rig, "My Party")
+        rig.clock.instant = Instant.parse("2026-07-09T12:00:00Z")
+        onNodeWithText(str(Res.string.create_button)).performClick()
+        awaitState(rig) { it.create?.form?.keepOpen != null }
+        onNodeWithText(str(Res.string.cancel)).performClick()
+        awaitState(rig) { it.create?.form?.let { f -> f.keepOpen == null && f.name == "My Party" } == true }
+        assertTrue(rig.fired.none { it.startsWith("create:") }, "nothing was created: ${rig.fired}")
     }
 
     // ---- the join gate (capability `join-event`) ----

@@ -18,6 +18,11 @@ internal data class CreateDraft(
     val name: String,
     val range: EventRange,
     val rangeTouched: Boolean,
+    /**
+     * Create was tapped for a range already over, and the sheet asks how long guests have to join (decision record
+     * `changes/back-dated-events`, D9) — until it is answered or closed.
+     */
+    val askingHowLong: Boolean = false,
 ) {
     /** The host chose something in the range: it is theirs from now on. */
     fun choose(next: EventRange): CreateDraft = copy(range = next, rangeTouched = true)
@@ -49,3 +54,9 @@ internal data class CreateDraft(
             CreateDraft(session, name = "", range = EventRange(from = now), rangeTouched = false)
     }
 }
+
+/**
+ * How many days guests may still join an event created after its end — the back-dated sheet's choices, the longest
+ * the event window itself.
+ */
+internal val KEEP_OPEN_DAYS = listOf(1, 7, 14, 30)

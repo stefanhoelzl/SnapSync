@@ -19,18 +19,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
+import app.snapsync.ui.components.AppChoiceSheet
 import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppEventRangePicker
+import app.snapsync.ui.components.AppFooterTextActions
 import app.snapsync.ui.components.AppIdentityHeader
 import app.snapsync.ui.components.AppNetworkNotice
 import app.snapsync.ui.components.AppQuestionHeading
 import app.snapsync.ui.components.AppTextField
 import app.snapsync.ui.components.EndTimeGuide
+import app.snapsync.ui.components.KeepOpenTextAction
+import app.snapsync.ui.components.LocalDateFormats
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
 import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.create_button
 import app.snapsync.ui.resources.create_join_hint
 import app.snapsync.ui.resources.create_lasts
@@ -42,7 +47,11 @@ import app.snapsync.ui.resources.create_title
 import app.snapsync.ui.resources.create_when_question
 import app.snapsync.ui.resources.create_window_note
 import app.snapsync.ui.resources.creating
+import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.hero_subtitle
+import app.snapsync.ui.resources.keep_open_body
+import app.snapsync.ui.resources.keep_open_choice
+import app.snapsync.ui.resources.keep_open_title
 import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.store_google_play
@@ -54,11 +63,15 @@ import app.snapsync.ui.resources.update_subtitle
 import app.snapsync.ui.resources.update_title
 import app.snapsync.ui.state.CreateStep
 import app.snapsync.ui.state.EVENT_NAME_MAX_LENGTH
+import app.snapsync.ui.state.KeepOpenSheet
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.StoreName
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 // Event creation: the name/date form and its in-flight state.
@@ -135,6 +148,31 @@ internal fun CreateEventScreen(state: Layer.CreateEvent, callbacks: CreateCallba
             }
         }
         CreateActionsBar(state, callbacks, guide)
+    }
+    form.keepOpen?.let { KeepOpenQuestion(it, callbacks.create) }
+}
+
+/**
+ * The question Create asks first for a range that is already over: how long others may
+ * still join — a choice each, beside the day it leads to, every one creating at once — or Cancel, which keeps the form.
+ */
+@Composable
+private fun KeepOpenQuestion(sheet: KeepOpenSheet, actions: CreateActions) {
+    val dates = LocalDateFormats.current
+    AppChoiceSheet(
+        title = stringResource(Res.string.keep_open_title),
+        body = stringResource(Res.string.keep_open_body),
+        cancelLabel = stringResource(Res.string.cancel),
+        onDismiss = actions.onKeepOpenDismiss,
+    ) {
+        for (choice in sheet.choices) {
+            val label = stringResource(
+                Res.string.keep_open_choice,
+                pluralStringResource(Res.plurals.duration_days, choice.days, choice.days),
+                dates.format(LocalDateTime(choice.until, LocalTime(0, 0)), "MMMEd"),
+            )
+            AppFooterTextActions { KeepOpenTextAction(label = label, onClick = { actions.onKeepOpenFor(choice.days) }) }
+        }
     }
 }
 

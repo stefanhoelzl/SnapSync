@@ -237,7 +237,8 @@ class CreateFlowTest {
 
             creation.value = CreationStatus.InFlight
             awaitState(rig) { it.layer == Layer.CreatingEvent }
-            rig.clock.instant = Instant.parse("2026-07-09T08:30:00Z")
+            // Still before the range's end (8 July 13:00), so the retry is not asked how long others may join.
+            rig.clock.instant = Instant.parse("2026-07-08T08:30:00Z")
             creation.value = CreationStatus.Failed(CreationFailureReason.SERVER)
             awaitState(rig) { it.create?.error == ScreenMessage.CREATE_FAILED }
 

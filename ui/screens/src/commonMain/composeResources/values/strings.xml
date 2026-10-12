@@ -74,6 +74,12 @@
     <string name="create_step_end_time">Pick an end time</string>
     <!-- %1$s is a duration: "2 weeks". -->
     <string name="create_lasts">Event lasts %1$s</string>
+    <!-- The sheet Create opens for a range that is already over: how long others may still join. It must not promise
+         that photos are deleted on the day chosen — deletion follows later, by rules of its own. -->
+    <string name="keep_open_title">This event is already over</string>
+    <string name="keep_open_body">Others can still join and share the photos they took. To keep your photos private, SnapSync holds them only for a limited time. How long should others be able to join?</string>
+    <!-- One choice: "7 days · until Mon, Oct 19". -->
+    <string name="keep_open_choice">%1$s · until %2$s</string>
     <string name="creating">Creating your event …</string>
 
     <!-- The backend refuses this build as too old. -->

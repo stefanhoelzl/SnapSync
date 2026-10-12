@@ -55,7 +55,8 @@ enum class JoinCommit {
  *
  * - [leave] — leave the configured event: cancel in-flight downloads, stop the producer, clear the
  *   config, notify the backend.
- * - [create] — mint a new event with a name and canonical UTC date **range** (`startsAt`, `endsAt`), then
+ * - [create] — mint a new event with a name and canonical UTC date **range** (`startsAt`, `endsAt`) — and, for an
+ *   event created after its end, the day guests may join until (`openUntil`, `null` otherwise) — then
  *   route it into the join gate. Fire-and-forget; outcomes arrive via
  *   the creation status read-model.
  * - [commitJoin] — join (a bodyless membership write, no manifest) then provision the membership's
@@ -105,7 +106,7 @@ enum class JoinCommit {
 interface UserCommands {
     suspend fun leave()
 
-    fun create(name: String, startsAt: EventStart, endsAt: EventEnd)
+    fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?)
 
     suspend fun commitJoin(choice: JoinChoice): JoinCommit
 

@@ -16,8 +16,18 @@ import app.snapsync.wire.models.EventCreate
  * The interactive create always supplies one (the create screen requires a range).
  */
 interface EventCreation {
-    /** [keyId] names an ENCRYPTED event's key (the key never leaves the device); `null` creates a plain event. */
-    suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String? = null): CreateOutcome
+    /**
+     * [keyId] names an ENCRYPTED event's key (the key never leaves the device); `null` creates a plain event.
+     * [openUntil] is the day guests may join until when the event is created after its end (a canonical `…Z` string);
+     * `null` is the event's end, as the backend reads an absent one.
+     */
+    suspend fun create(
+        name: String,
+        startsAt: String,
+        endsAt: String?,
+        keyId: String? = null,
+        openUntil: String? = null,
+    ): CreateOutcome
 }
 
 /**
@@ -50,9 +60,22 @@ class BackendEventCreation(
     private val zone: () -> String?,
 ) : EventCreation {
 
-    override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome {
+    override suspend fun create(
+        name: String,
+        startsAt: String,
+        endsAt: String?,
+        keyId: String?,
+        openUntil: String?,
+    ): CreateOutcome {
         val request = Routes.CreateEvent.request(
-            EventCreate(name = name, startsAt = startsAt, endsAt = endsAt, zone = zone(), keyId = keyId),
+            EventCreate(
+                name = name,
+                startsAt = startsAt,
+                endsAt = endsAt,
+                openUntil = openUntil,
+                zone = zone(),
+                keyId = keyId,
+            ),
         )
         return when (val reply = gateway.send(request, obtainFirst = true)) {
             is CreateEventReply.Created -> CreateOutcome.Created(eventId = reply.event.eventId, name = reply.event.name)

@@ -14,9 +14,9 @@
 
 ## 2. App: create a back-dated event
 
-- [ ] 2.1 `CreateEvent`/`EventCreation`/the gateway carry `openUntil`; the presentation computes `now + N days` as an instant (`CutoffFormatter`); verify a presentation test that 7 days across a DST change stays within the server bound
-- [ ] 2.2 The back-dated sheet: `onCreateEvent` shows it when `endsAt < now` at tap time, four choices + Cancel keeping the draft (design D9), new `UiState` overlay and intents in `:ui:state`, `statusActions` mapping in `:ui:screens`; verify presentation tests (end in the past → sheet; end a minute ahead → no sheet; Cancel keeps name and range) and a `:ui:screens` click test for each button
-- [ ] 2.3 Strings EN + DE for the sheet, worded per `metadata/messaging.md` without promising deletion on day N; run `./gradlew nativeStrings` if an OS-shown key is added; verify `HardCodedUiText` passes in `./gradlew build`
+- [x] 2.1 `CreateEvent`/`EventCreation`/the gateway carry `openUntil`; the presentation computes `now + N days` as an instant (`CutoffFormatter`); verify a presentation test that 7 days across a DST change stays within the server bound
+- [x] 2.2 The back-dated sheet: `onCreateEvent` shows it when `endsAt < now` at tap time, four choices + Cancel keeping the draft (design D9), new `UiState` overlay and intents in `:ui:state`, `statusActions` mapping in `:ui:screens`; verify presentation tests (end in the past → sheet; end a minute ahead → no sheet; Cancel keeps name and range) and a `:ui:screens` click test for each button
+- [x] 2.3 Strings EN + DE for the sheet, worded per `metadata/messaging.md` without promising deletion on day N; run `./gradlew nativeStrings` if an OS-shown key is added; verify `HardCodedUiText` passes in `./gradlew build`
 
 ## 3. App: settle, report, never leave
 

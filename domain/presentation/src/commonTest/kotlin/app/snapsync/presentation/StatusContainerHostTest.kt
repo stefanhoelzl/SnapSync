@@ -252,7 +252,7 @@ private class SpyCreator : EventCreator {
     val created = mutableListOf<String>()
     val starts = mutableListOf<String>()
     val ends = mutableListOf<String>()
-    override suspend fun create(name: String, startsAt: String, endsAt: String) {
+    override suspend fun create(name: String, startsAt: String, endsAt: String, openUntil: EventEnd?) {
         created += name
         starts += startsAt
         ends += endsAt
@@ -376,7 +376,9 @@ class StatusContainerHostTest {
                 foreground = foreground,
             ),
             scope,
-            commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
+            commands = testCommands(
+                create = { n, st, en, ou -> scope.launch { creator.create(n, st.at.iso, en.at.iso, ou) } },
+            ),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
@@ -2776,7 +2778,9 @@ class StatusContainerHostRefusalTest {
                 verification = DeviceVerification(refusal = refusal),
             ),
             scope,
-            commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
+            commands = testCommands(
+                create = { n, st, en, ou -> scope.launch { creator.create(n, st.at.iso, en.at.iso, ou) } },
+            ),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),

@@ -59,6 +59,9 @@
     <string name="create_step_name">Event benennen</string>
     <string name="create_step_end_time">Endzeit wählen</string>
     <string name="create_lasts">Dauer: %1$s</string>
+    <string name="keep_open_title">Dieses Event ist schon vorbei</string>
+    <string name="keep_open_body">Andere können trotzdem noch beitreten und die Fotos teilen, die sie gemacht haben. Damit eure Fotos privat bleiben, bewahrt SnapSync sie nur für begrenzte Zeit auf. Wie lange sollen andere noch beitreten können?</string>
+    <string name="keep_open_choice">%1$s · bis %2$s</string>
     <string name="creating">Dein Event wird erstellt …</string>
 
     <string name="update_eyebrow">UPDATE NÖTIG</string>

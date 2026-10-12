@@ -102,7 +102,16 @@ class UiStateFieldContractTest {
             Layer.CreateEvent(FRESH_CREATE_FORM, ScreenMessage.CREATE_FAILED, NetworkNotice.OFFLINE),
             optional = setOf("error", "network"),
         )
-        assertFieldContract(CreateForm.serializer(), FRESH_CREATE_FORM)
+        assertFieldContract(
+            CreateForm.serializer(),
+            FRESH_CREATE_FORM.copy(keepOpen = KeepOpenSheet(listOf(KeepOpenChoice(7, LocalDate(2026, 7, 13))))),
+            optional = setOf("keepOpen"),
+        )
+        assertFieldContract(
+            KeepOpenSheet.serializer(),
+            KeepOpenSheet(listOf(KeepOpenChoice(7, LocalDate(2026, 7, 13)))),
+        )
+        assertFieldContract(KeepOpenChoice.serializer(), KeepOpenChoice(7, LocalDate(2026, 7, 13)))
         assertFieldContract(
             PickerView.serializer(),
             FRESH_CREATE_FORM.picker.copy(

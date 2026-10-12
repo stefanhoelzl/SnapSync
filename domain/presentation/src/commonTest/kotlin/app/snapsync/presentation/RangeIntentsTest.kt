@@ -75,7 +75,7 @@ class RangeIntentsTest {
     @Test
     fun `Create creates only a form that may be created and creates what it shows`() = runTest {
         val created = mutableListOf<Triple<String, EventStart, app.snapsync.model.EventEnd>>()
-        host(backgroundScope, created = { n, s, e -> created += Triple(n, s, e) }).testWithInternalState(this) {
+        host(backgroundScope, created = { n, s, e, _ -> created += Triple(n, s, e) }).testWithInternalState(this) {
             runOnCreate()
             containerHost.onIntent(UiIntent.ConfirmCreate)
             testScheduler.runCurrent()
@@ -160,6 +160,109 @@ class RangeIntentsTest {
         }
     }
 
+    @Test
+    fun `a range already over asks how long guests have to join before anything is created`() = runTest {
+        val created = mutableListOf<Created>()
+        host(backgroundScope, created = { n, s, e, o -> created += Created(n, s, e, o) }).testWithInternalState(this) {
+            runOnCreate()
+            pastRange { testScheduler.runCurrent() }
+            containerHost.onIntent(UiIntent.ConfirmCreate)
+            testScheduler.runCurrent()
+            assertTrue(created.isEmpty(), "nothing is created yet: $created")
+            val sheet = assertNotNull(form().keepOpen, "the sheet asks")
+            assertEquals(
+                listOf(1 to day(10), 7 to day(16), 14 to day(23), 30 to LocalDate(2026, 8, 8)),
+                sheet.choices.map { it.days to it.until },
+                "each choice beside the day it leads to",
+            )
+
+            // Cancelling keeps the draft.
+            val draft = form().copy(keepOpen = null)
+            containerHost.onIntent(UiIntent.KeepOpenDismiss)
+            testScheduler.runCurrent()
+            assertEquals(draft, form(), "the form is as the host left it")
+            assertTrue(created.isEmpty(), "and nothing was created")
+
+            // A choice creates at once, guests joining for that many days from now.
+            containerHost.onIntent(UiIntent.ConfirmCreate)
+            testScheduler.runCurrent()
+            containerHost.onIntent(UiIntent.KeepOpenFor(7))
+            testScheduler.runCurrent()
+            assertEquals(
+                listOf(
+                    Created(
+                        "Party",
+                        eventStart("2026-07-01T12:00:00Z"),
+                        eventEnd("2026-07-02T13:00:00Z"),
+                        eventEnd("2026-07-16T12:00:00Z"),
+                    ),
+                ),
+                created,
+            )
+            assertNull(form().keepOpen, "the sheet closed")
+
+            // A retry — after a create that failed — asks again; a tap that outlived the sheet creates nothing.
+            containerHost.onIntent(UiIntent.KeepOpenFor(7))
+            testScheduler.runCurrent()
+            assertEquals(1, created.size, "no sheet, no create")
+            containerHost.onIntent(UiIntent.ConfirmCreate)
+            testScheduler.runCurrent()
+            assertNotNull(form().keepOpen, "Create asks again")
+            containerHost.onIntent(UiIntent.KeepOpenFor(2))
+            testScheduler.runCurrent()
+            assertEquals(1, created.size, "a number the sheet does not offer creates nothing")
+            // The form beneath the sheet emptied of its name: the answer closes the sheet and creates nothing.
+            containerHost.onIntent(UiIntent.CreateName(""))
+            containerHost.onIntent(UiIntent.KeepOpenFor(7))
+            testScheduler.runCurrent()
+            assertEquals(1, created.size, "a form that may not be created is not")
+            assertNull(form().keepOpen)
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `an event ending a minute from now is created without the sheet`() = runTest {
+        val created = mutableListOf<Created>()
+        host(backgroundScope, created = { n, s, e, o -> created += Created(n, s, e, o) }).testWithInternalState(this) {
+            runOnCreate()
+            containerHost.onIntent(UiIntent.CreateName("Party"))
+            containerHost.onIntent(UiIntent.RangeDay(day(9)))
+            containerHost.onIntent(UiIntent.RangeUntilHour(12))
+            containerHost.onIntent(UiIntent.RangeUntilMinute(1))
+            testScheduler.runCurrent()
+            containerHost.onIntent(UiIntent.ConfirmCreate)
+            testScheduler.runCurrent()
+            assertNull(form().keepOpen)
+            assertEquals(listOf(eventEnd("2026-07-09T12:01:00Z") to null), created.map { it.ends to it.openUntil })
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    /** One create the container fired. */
+    private data class Created(
+        val name: String,
+        val starts: EventStart,
+        val ends: app.snapsync.model.EventEnd,
+        val openUntil: app.snapsync.model.EventEnd?,
+    )
+
+    /** "Party", 1 July 12:00 to 2 July 13:00 — over a week before the clock's 9 July. */
+    private fun org.orbitmvi.orbit.test.OrbitScopedTestContextInternal<ScreenModel, *, *, StatusContainerHost>.pastRange(
+        settle: () -> Unit,
+    ) {
+        containerHost.onIntent(UiIntent.CreateName("Party"))
+        containerHost.onIntent(UiIntent.RangeDay(day(1)))
+        containerHost.onIntent(UiIntent.RangeDay(day(2)))
+        containerHost.onIntent(UiIntent.RangeUntilHour(13))
+        containerHost.onIntent(UiIntent.RangeUntilMinute(0))
+        settle()
+        assertTrue(form().canCreate, "the past range is complete: ${form().picker}")
+    }
+
+    private fun org.orbitmvi.orbit.test.OrbitScopedTestContextInternal<ScreenModel, *, *, StatusContainerHost>.form() =
+        (containerHost.screen.value.layer as Layer.CreateEvent).form
+
     private val UiState.joining get() = layer as? Layer.JoiningEvent
 
     private fun org.orbitmvi.orbit.test.OrbitScopedTestContextInternal<ScreenModel, *, *, StatusContainerHost>.picker() =
@@ -180,7 +283,8 @@ class RangeIntentsTest {
 
     private fun host(
         scope: CoroutineScope,
-        created: (String, EventStart, app.snapsync.model.EventEnd) -> Unit = { _, _, _ -> },
+        created: (String, EventStart, app.snapsync.model.EventEnd, app.snapsync.model.EventEnd?) -> Unit =
+            { _, _, _, _ -> },
     ) = StatusContainerHost(
         StatusSources(
             object : SyncStatusSource {

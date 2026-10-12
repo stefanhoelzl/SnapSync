@@ -464,14 +464,16 @@ class StatusContainerHost(
      *
      * [startsAt] arrives as the screen's **local** wall-clock pick and is converted here, through the same
      * [CutoffFormatter] the join surface uses — so the app has exactly one origin of "now" and one
-     * local→UTC conversion, and `:ui:screens` stays free of any clock or timezone knowledge.
+     * local→UTC conversion, and `:ui:screens` stays free of any clock or timezone knowledge. [openUntil] is the day
+     * guests may join until, for an event created after its end (the back-dated sheet's choice); `null` otherwise.
      */
-    fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime) =
+    fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: EventEnd? = null) =
         guardedIntent(Guarded.Create) {
             commands.create(
                 name,
                 EventStart(cutoffFormatter.toCutoff(startsAt)),
                 EventEnd(cutoffFormatter.toCutoff(endsAt)),
+                openUntil,
             )
         }
 
@@ -485,12 +487,36 @@ class StatusContainerHost(
          */
         fun onName(name: String) = local.update { it.copy(create = it.create.copy(name = name)) }
 
-        /** Create the event the form describes — inert unless the draft may be created: complete, inside the window. */
+        /**
+         * Create the event the form describes — inert unless the draft may be created: complete, inside the window. A
+         * range already over when Create is tapped first asks how long guests have to join (decision record
+         * `changes/back-dated-events`, D9); the answer, [onKeepOpenFor], creates it.
+         */
         fun onConfirm() {
             val draft = local.value.create
             val end = display.creatableEnd(draft) ?: return
+            if (cutoffFormatter.toCutoff(end) < cutoffFormatter.nowCutoff()) {
+                local.update { it.copy(create = it.create.copy(askingHowLong = true)) }
+                return
+            }
             onCreateEvent(draft.name, draft.range.from, end)
         }
+
+        /**
+         * The back-dated sheet's answer: create the event the form describes, guests joining for [days] more days. Inert
+         * unless the sheet is asking and [days] is one of its choices — a tap that outlived the sheet creates nothing.
+         * The sheet closes either way, so a create that fails returns to the form and the next Create asks again.
+         */
+        fun onKeepOpenFor(days: Int) {
+            val draft = local.value.create
+            if (!draft.askingHowLong || days !in KEEP_OPEN_DAYS) return
+            onKeepOpenDismiss()
+            val end = display.creatableEnd(draft) ?: return
+            onCreateEvent(draft.name, draft.range.from, end, cutoffFormatter.openFor(days))
+        }
+
+        /** The back-dated sheet closed unchosen: the form stays exactly as the host left it, and nothing is created. */
+        fun onKeepOpenDismiss() = local.update { it.copy(create = it.create.copy(askingHowLong = false)) }
     }
 
     /**

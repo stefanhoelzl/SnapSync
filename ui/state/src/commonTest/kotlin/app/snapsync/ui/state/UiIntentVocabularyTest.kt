@@ -19,6 +19,8 @@ class UiIntentVocabularyTest {
     private fun kind(intent: UiIntent): String = when (intent) {
         UiIntent.ConfirmCreate -> "ConfirmCreate"
         is UiIntent.CreateName -> "CreateName"
+        is UiIntent.KeepOpenFor -> "KeepOpenFor"
+        UiIntent.KeepOpenDismiss -> "KeepOpenDismiss"
         is UiIntent.RangeDay -> "RangeDay"
         is UiIntent.RangeDragStart -> "RangeDragStart"
         is UiIntent.RangeDragEnd -> "RangeDragEnd"
@@ -77,6 +79,8 @@ class UiIntentVocabularyTest {
             listOf(
                 UiIntent.ConfirmCreate,
                 UiIntent.CreateName("Picnic"),
+                UiIntent.KeepOpenFor(7),
+                UiIntent.KeepOpenDismiss,
                 UiIntent.RangeDay(day),
                 UiIntent.RangeDragStart(day),
                 UiIntent.RangeDragEnd(day),
