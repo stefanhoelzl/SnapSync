@@ -1,7 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.AssetRef
-import app.snapsync.model.ImportRequest
 import app.snapsync.model.WriteOutcome
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
@@ -108,13 +106,13 @@ class GalleryHandlers(
      * observed — so the marker that keeps it from being uploaded back lands first.
      * The write is synchronous, on the delivering thread. If a change block runs again, the last call wins.
      */
-    val onImportPlaceholder: (AssetRef, PlatformAssetId) -> Unit,
+    val onImportPlaceholder: (correlation: String, created: PlatformAssetId) -> Unit,
     /**
      * An import's outcome, once, from the platform's completion — which runs even when the requester is gone, so
      * the outcome is persisted here, inline, and never only returned (`docs/architecture.md`, "A delivery the
      * platform makes once is persisted before the entry point returns").
      */
-    val onImportSettled: (AssetRef, ImportOutcome) -> Unit,
+    val onImportSettled: (correlation: String, outcome: ImportOutcome) -> Unit,
 )
 
 /**
@@ -123,12 +121,12 @@ class GalleryHandlers(
  */
 interface GalleryImport : Port {
     /**
-     * Create one asset from [request]'s staged resources in one platform transaction. The placeholder and the
+     * Create one asset from [request]'s files in one platform transaction. The placeholder and the
      * outcome reach the registered [GalleryHandlers] (`onImportPlaceholder` inside the change, `onImportSettled` on
      * the completion); this returns the same outcome, only after `onImportSettled` has **returned**. Nothing bounds
      * the wait: an import the platform never reports never returns.
      */
-    suspend fun import(request: ImportRequest): ImportOutcome
+    suspend fun import(request: GalleryImportRequest): ImportOutcome
 }
 
 /**

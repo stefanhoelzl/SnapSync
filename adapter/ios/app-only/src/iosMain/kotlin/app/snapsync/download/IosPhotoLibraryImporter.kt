@@ -1,16 +1,14 @@
 package app.snapsync.download
 
-import app.snapsync.gallery.Iso8601
+import app.snapsync.gallery.toNSDate
 import app.snapsync.ios.qos.qosLabel
-import app.snapsync.model.AssetRef
-import app.snapsync.model.ImportRequest
-import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.ResourceRole
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.ResourceKind
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -31,17 +29,14 @@ import platform.Photos.PHPhotosErrorMissingResource
  * The PhotoKit import behind [app.snapsync.gallery.IosGallery]: rebuilds one foreign asset from its
  * staged resources via a single `PHAssetCreationRequest` (all resources added before the one
  * `performChanges` commit — there is no API to append to an existing asset), landing in the camera
- * roll. Role→`PHAssetResourceType`: `live`→`pairedVideo`; `primary`→`photo`/`video`/`audio` by
- * `contentType`. An unrecognised type is logged and skipped. A lone photo that is an Android motion photo is first
- * offered as a Live Photo ([LivePhotoFromMotionPhoto]), falling back to exactly this import.
+ * roll. Each file's kind is its `PHAssetResourceType`: `photo`, `video`, `pairedVideo`. A lone photo that is an Android
+ * motion photo is first offered as a Live Photo ([LivePhotoFromMotionPhoto]), falling back to exactly this import.
  *
- * Naming: each resource is created with an explicit `originalFilename` — the capturing device's own
- * name, carried through the manifest and the union, with SnapSync's mark added (see `ReceivedPhotoName`) — every
- * resource of one asset carries the same token. Left to PhotoKit, the resource would be named after the staged
- * file, which is the storage object key.
+ * Naming: each resource is created with an explicit `originalFilename` — the name the request gives it. Left to
+ * PhotoKit, the resource would be named after the staged file, which is the storage object key.
  *
- * Echo-suppression: the created asset's local identifier (sanitized to the upload-key `assetId` form,
- * `/`→`_`, so the upload extension's discovery matches it) reaches the registered `onImportPlaceholder`
+ * Echo-suppression: the created asset's local identifier — the same id the gallery reader hands out — reaches the
+ * registered `onImportPlaceholder`
  * **inside** the change block — before the new asset can be observed — so it is never re-uploaded. The outcome
  * reaches `onImportSettled` from the completion, before the caller is resumed.
  *
@@ -59,8 +54,7 @@ internal class IosPhotoLibraryImporter(
 
     private val livePhotos = LivePhotoFromMotionPhoto(log)
 
-    suspend fun import(request: ImportRequest, handlers: GalleryHandlers): ImportOutcome {
-        val ref = request.ref
+    suspend fun import(request: GalleryImportRequest, handlers: GalleryHandlers): ImportOutcome {
         // A received Android motion photo becomes a Live Photo (decision record
         // `changes/archive/2026-10-01-live-motion-unification` D4/D5): its still and video are built beside the staged original, never
         // from it, so when Photos refuses the pair — even consuming its files — the original is still here, and is
@@ -71,33 +65,20 @@ internal class IosPhotoLibraryImporter(
                 val paired = commit(request, pair.resources, handlers)
                 if (paired is ImportOutcome.Imported) return paired
                 val reason = (paired as ImportOutcome.Failed).message
-                log.w { "${ref.sourceAssetId}: Photos refused the Live Photo ($reason) — imported as its still" }
+                log.w { "${request.correlation}: Photos refused the Live Photo ($reason) — imported as its still" }
             } finally {
                 pair.delete()
             }
         }
-        val typed = request.resources.mapNotNull { r ->
-            val type = resourceType(r.role, r.contentType)
-            if (type == null) {
-                log.w { "skip resource ${r.resourceKey}: unmapped role=${r.role} contentType=${r.contentType}" }
-                null
-            } else {
-                Triple(type, r.stagedPath, ReceivedPhotoName.mark(r.originalFilename, r.resourceKey, ref))
-            }
-        }
-        if (typed.isEmpty()) {
-            return ImportOutcome.Failed("no importable resources for ${ref.sourceAssetId}")
-                .also { handlers.onImportSettled(ref, it) }
-        }
-        return commit(request, typed, handlers)
+        return commit(request, request.files.map { Triple(typeOf(it.kind), it.path, it.name) }, handlers)
     }
 
     /** The Live Photo a lone received photo carries as a motion photo, or null to import it as it is. */
-    private suspend fun livePhotoOf(request: ImportRequest): LivePhotoFromMotionPhoto.Pair? {
-        val primary = request.resources.singleOrNull()
-            ?.takeIf { it.role == ResourceRole.PRIMARY.wire && it.contentType.startsWith("image/") }
+    private suspend fun livePhotoOf(request: GalleryImportRequest): LivePhotoFromMotionPhoto.Pair? {
+        val still = request.files.singleOrNull()
+            ?.takeIf { it.kind == ResourceKind.PHOTO && it.contentType.startsWith("image/") }
             ?: return null
-        return livePhotos.pair(request.ref, primary)
+        return livePhotos.pair(request.correlation, still)
     }
 
     private val LivePhotoFromMotionPhoto.Pair.resources: List<Triple<Long, String, String>>
@@ -105,20 +86,14 @@ internal class IosPhotoLibraryImporter(
 
     /** One `performChanges` creating one asset from [typed], settled through [handlers] before it answers. */
     private suspend fun commit(
-        request: ImportRequest,
+        request: GalleryImportRequest,
         typed: List<Triple<Long, String, String>>,
         handlers: GalleryHandlers,
     ): ImportOutcome {
-        val ref = request.ref
-        val creationDate = request.creationDate
-        val album = request.album
-        // The shared default formatter (second precision only, exactly as before) — see [Iso8601].
-        val captureDate = Iso8601.parse(creationDate)
-        if (captureDate == null) {
-            log.w {
-                "unparseable creationDate '$creationDate' for ${ref.sourceAssetId} — will default to import time"
-            }
-        }
+        val correlation = request.correlation
+        val album = request.album?.value
+        val captureDate = request.created?.toNSDate()
+        if (captureDate == null) log.w { "$correlation: no capture date — the library stamps the import time" }
 
         // Resolved before the transaction: an album the member deleted files nothing and fails nothing.
         val collection = album?.let { id ->
@@ -159,7 +134,7 @@ internal class IosPhotoLibraryImporter(
                     // below judges that commit exactly as it judges any other: no placeholder means `Failed`, and
                     // an asset that did land is reported as landed, because retrying it would duplicate it.
                     objcBoundary(log, "import.changeBlock") {
-                        requestCreation(ref, typed, captureDate, collection, created, callerQos, handlers)
+                        requestCreation(correlation, typed, captureDate, collection, created, callerQos, handlers)
                     }
                 },
                 { success, error ->
@@ -174,7 +149,12 @@ internal class IosPhotoLibraryImporter(
                                 consumedResources = success,
                             ),
                         ) {
-                            settle(ref, success, error, created).also { handlers.onImportSettled(ref, it) }
+                            settle(
+                                correlation,
+                                success,
+                                error,
+                                created,
+                            ).also { handlers.onImportSettled(correlation, it) }
                         }
                     }
                 },
@@ -215,7 +195,7 @@ internal class IosPhotoLibraryImporter(
 
     /** The change block's body: request the asset, write its marker, and file it in the event album. */
     private fun requestCreation(
-        ref: AssetRef,
+        correlation: String,
         typed: List<Triple<Long, String, String>>,
         captureDate: NSDate?,
         collection: PHAssetCollection?,
@@ -233,7 +213,7 @@ internal class IosPhotoLibraryImporter(
         // With both QoS classes: the thread that asked for the commit, and the one PhotoKit runs this block on —
         // the class the request propagated at (commits at QOS_CLASS_BACKGROUND measured 6–7× slower, SE2).
         log.i {
-            "import: change block running for ${ref.sourceAssetId} (${typed.size} resource(s)); " +
+            "import: change block running for $correlation (${typed.size} resource(s)); " +
                 "qos caller=$callerQos block=${qosLabel()}"
         }
         val request = PHAssetCreationRequest.creationRequestForAsset()
@@ -241,8 +221,7 @@ internal class IosPhotoLibraryImporter(
             // Name the resource EXPLICITLY. With a nil options argument PhotoKit names it
             // after the file we hand it — and that file is staged under its storage object
             // name, so the photo would land in the library called
-            // "<assetId>-primary.heic". The name is decided in `:domain` model/
-            // (`ReceivedPhotoName`), which is where the mark and its fallback are unit-tested.
+            // "<assetId>-primary.heic". The name is the one the request gives: the app decides it.
             val options = PHAssetResourceCreationOptions().apply {
                 originalFilename = filename
                 // MOVE, not copy. Two things follow, and both are
@@ -280,7 +259,7 @@ internal class IosPhotoLibraryImporter(
             created.localId = id
             // The marker, synchronously, on this thread — before the commit is observable. A row pruned out
             // from under this import is the handler's to report (it knows whether the write landed).
-            handlers.onImportPlaceholder(ref, id)
+            handlers.onImportPlaceholder(correlation, id)
         }
         // Event album: add the just-created asset to the event
         // album in THIS commit (atomic — never briefly loose).
@@ -295,7 +274,7 @@ internal class IosPhotoLibraryImporter(
      * this completion — so the row is settled by the party that learned the outcome, before anyone is resumed.
      */
     private fun settle(
-        ref: AssetRef,
+        correlation: String,
         success: Boolean,
         error: NSError?,
         created: CreatedAsset,
@@ -303,7 +282,7 @@ internal class IosPhotoLibraryImporter(
         // The commit's own verdict, logged before it is interpreted: a failed commit and a missing placeholder both
         // reduce to one `Failed`, and only this line tells them apart after the fact.
         val id = created.localId
-        log.i { "import: commit for ${ref.sourceAssetId} success=$success created=$id error=${error?.localizedDescription}" }
+        log.i { "import: commit for $correlation success=$success created=$id error=${error?.localizedDescription}" }
         // The settle (the caller's `onImportSettled`, called with this verdict before anyone is resumed) writes the
         // row FIRST; the requester forgets its claim only after this returns. Forgetting is what re-enables the
         // adjudicator's absent branch for this ref, so it must not happen while the row still looks unconfirmed
@@ -327,21 +306,19 @@ internal class IosPhotoLibraryImporter(
         }
     }
 
-    /** Map a generic role + MIME content type to the PhotoKit resource-type raw value, or null if unmapped. */
-    private fun resourceType(role: String, contentType: String): Long? = when (role) {
-        "live" -> PAIRED_VIDEO
-        "primary" -> when {
-            contentType.startsWith("image/") -> PHOTO
-            contentType.startsWith("video/") -> 2L // video
-            contentType.startsWith("audio/") -> 3L // audio
-            else -> null
-        }
-        else -> null
+    /** The PhotoKit resource-type raw value of a [kind] of resource. */
+    private fun typeOf(kind: ResourceKind): Long = when (kind) {
+        ResourceKind.PHOTO -> PHOTO
+        ResourceKind.VIDEO -> VIDEO
+        ResourceKind.PAIRED_VIDEO -> PAIRED_VIDEO
     }
 
     private companion object {
         /** `PHAssetResourceType.photo`. */
         const val PHOTO = 1L
+
+        /** `PHAssetResourceType.video`. */
+        const val VIDEO = 2L
 
         /** `PHAssetResourceType.pairedVideo`: a Live Photo's video. */
         const val PAIRED_VIDEO = 9L

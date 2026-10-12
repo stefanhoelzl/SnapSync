@@ -1,8 +1,7 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.ImportRequest
-import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
 import kotlin.test.assertEquals
@@ -29,7 +28,7 @@ interface LivePhotoLibrary : ImportedLibrary {
 /** The gallery's import, a way to stage the state's photo, and the handle over its library — as [StagedImport]. */
 class StagedLiveImport(
     val importer: GalleryImport,
-    val stage: () -> List<StagedResource>,
+    val stage: () -> List<ImportFile>,
     val library: LivePhotoLibrary,
 )
 
@@ -54,9 +53,10 @@ object LivePhotoImportContract : Contract<LivePhotoImportState, StagedLiveImport
             },
         ) { subject ->
             val clauseId = "A_MOTION_PHOTO_IMPORTS_AS_ONE_LIVE_PHOTO"
-            val ref = GalleryImportContract.ref(clauseId)
             val window = PhotoLibrary.window(name, clauseId)
-            val result = subject.importer.import(ImportRequest(ref, subject.stage(), window.seedDate, album = null))
+            val result = subject.importer.import(
+                GalleryImportContract.request(clauseId, subject.stage(), window.seedDate),
+            )
             val id = assertIs<ImportOutcome.Imported>(result, "a motion photo imports").created
             assertEquals(true, subject.library.isLivePhoto(id), "the library made a Live Photo of it")
             assertEquals(
@@ -65,7 +65,7 @@ object LivePhotoImportContract : Contract<LivePhotoImportState, StagedLiveImport
                 "one asset: its still and its video",
             )
             assertEquals(window.seedDate, subject.library.captureDate(id), "at its capture date")
-            assertEquals(MarkerState.CONFIRMED, subject.library.marker(ref))
+            assertEquals(MarkerState.CONFIRMED, subject.library.marker(GalleryImportContract.correlation(clauseId)))
         }
 
         clause(
@@ -76,13 +76,14 @@ object LivePhotoImportContract : Contract<LivePhotoImportState, StagedLiveImport
             },
         ) { subject ->
             val clauseId = "A_FILE_THAT_ONLY_LOOKS_LIKE_A_MOTION_PHOTO_IMPORTS_AS_ITS_STILL"
-            val ref = GalleryImportContract.ref(clauseId)
             val window = PhotoLibrary.window(name, clauseId)
-            val result = subject.importer.import(ImportRequest(ref, subject.stage(), window.seedDate, album = null))
+            val result = subject.importer.import(
+                GalleryImportContract.request(clauseId, subject.stage(), window.seedDate),
+            )
             val id = assertIs<ImportOutcome.Imported>(result, "it still arrives").created
             assertEquals(false, subject.library.isLivePhoto(id), "as a plain photo")
             assertEquals(listOf("photo"), subject.library.resourceKinds(id), "the file as it was staged, once")
-            assertEquals(MarkerState.CONFIRMED, subject.library.marker(ref))
+            assertEquals(MarkerState.CONFIRMED, subject.library.marker(GalleryImportContract.correlation(clauseId)))
         }
     }
 }

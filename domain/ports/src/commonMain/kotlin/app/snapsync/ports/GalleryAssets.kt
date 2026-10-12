@@ -62,21 +62,3 @@ interface GalleryResourceHandle
  * baseline and on an observer emission, never go back to the gallery on its own.
  */
 class SelectionSnapshot(val assets: List<GalleryAssetResources>)
-
-/** What an import did, as the platform reported it. */
-sealed interface ImportOutcome {
-    /** The asset was created as [created]. */
-    data class Imported(val created: PlatformAssetId) : ImportOutcome
-
-    /**
-     * The import did not complete — the platform reported the change failed. [consumedResources]: the platform took
-     * the files before it failed (it ingests a resource before validating it), so nothing is left to retry from; an
-     * adapter that cannot tell answers `false`. [placeholder]: the asset the change block had reported creating, or
-     * `null` when it reported none.
-     */
-    data class Failed(
-        val message: String,
-        val consumedResources: Boolean = false,
-        val placeholder: PlatformAssetId? = null,
-    ) : ImportOutcome
-}

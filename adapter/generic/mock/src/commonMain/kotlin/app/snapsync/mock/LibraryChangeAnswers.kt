@@ -1,7 +1,5 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AssetRef
-
 /**
  * How the in-memory photo library answers one import's change: the stand-in for `performChanges`, whose
  * change block, commit and completion are three separate platform events.
@@ -13,13 +11,13 @@ import app.snapsync.model.AssetRef
  */
 interface LibraryChangeAnswers {
     /** Before the change block runs. A message refuses the change: no marker, no asset. */
-    suspend fun beforeChange(ref: AssetRef): String? = null
+    suspend fun beforeChange(correlation: String): String? = null
 
     /** After the block wrote the marker, before the commit lands. A message fails the change: no asset. */
-    suspend fun beforeCommit(ref: AssetRef): String? = null
+    suspend fun beforeCommit(correlation: String): String? = null
 
     /** After the commit landed (the asset exists). A message is a completion reporting failure anyway. */
-    suspend fun afterCommit(ref: AssetRef): String? = null
+    suspend fun afterCommit(correlation: String): String? = null
 
     companion object {
         /** The ordinary library: every change runs, lands and reports success. */

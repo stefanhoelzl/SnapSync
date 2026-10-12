@@ -28,13 +28,13 @@ import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.ImportFile
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.ResourceKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -151,15 +151,7 @@ class AndroidGalleryContractTest {
             val staging = File(context.filesDir, "folder-album-staging").apply { mkdirs() }
             val stage = {
                 val file = File(staging, "${System.nanoTime()}.jpg").apply { writeBytes(PhotoLibrary.jpeg) }
-                listOf(
-                    StagedResource(
-                        "key-$clauseId",
-                        ResourceRole.PRIMARY.wire,
-                        "image/jpeg",
-                        "IMG_0001.JPG",
-                        file.absolutePath,
-                    ),
-                )
+                listOf(ImportFile(file.absolutePath, "image/jpeg", ResourceKind.PHOTO, "IMG_0001.JPG"))
             }
             return Entered.Ready(FolderAlbums(gallery, seeded, PlatformAlbumId(MediaStoreSeeder.CAMERA), stage)) {
                 MediaStoreSeeder.delete(seeded)

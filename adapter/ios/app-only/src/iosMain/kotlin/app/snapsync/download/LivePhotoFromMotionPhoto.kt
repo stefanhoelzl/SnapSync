@@ -1,8 +1,5 @@
 package app.snapsync.download
 
-import app.snapsync.model.AssetRef
-import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.StagedResource
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.motionphoto.motionPresentationTimestampUs
@@ -11,6 +8,7 @@ import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
+import app.snapsync.ports.ImportFile
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -127,14 +125,14 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
 
     /**
      * The Live Photo [primary] carries, when it is a motion photo this device can take apart; null imports it as it is.
-     * Both files are named with [ref]'s SnapSync mark (`ReceivedPhotoName`), as every received photo is.
+     * The still keeps [primary]'s name and the video takes it with its own extension; [label] names the import in logs.
      */
-    suspend fun pair(ref: AssetRef, primary: StagedResource): Pair? = withContext(Dispatchers.Default) {
-        val assetId = "${ref.sourceAssetId}"
+    suspend fun pair(label: String, primary: ImportFile): Pair? = withContext(Dispatchers.Default) {
+        val assetId = label
         // The XMP first, through ImageIO, which reads no more of the file than its metadata: every received photo passes
         // here, and only a motion photo is worth reading whole.
-        val xmp = xmpOf(primary.stagedPath)?.takeIf { MOTION_MARK in it || LEGACY_MOTION_MARK in it } ?: return@withContext null
-        val file = checkedObjCValue("dataWithContentsOfFile") { NSData.dataWithContentsOfFile(primary.stagedPath, 0u, it) }
+        val xmp = xmpOf(primary.path)?.takeIf { MOTION_MARK in it || LEGACY_MOTION_MARK in it } ?: return@withContext null
+        val file = checkedObjCValue("dataWithContentsOfFile") { NSData.dataWithContentsOfFile(primary.path, 0u, it) }
             .onFailure { log.w(it) { "$assetId: the staged photo is unreadable — imported as it is" } }
             .getOrNull()?.toByteArray() ?: return@withContext null
         val video = locateMotionVideo(xmp, file) ?: return@withContext null
@@ -145,7 +143,7 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         }.onFailure {
             log.w(it) { "$assetId: no scratch directory — imported as it is" }
         }.getOrNull() ?: return@withContext null
-        val name = ReceivedPhotoName.mark(primary.originalFilename, primary.resourceKey, ref)
+        val name = primary.name
         val stillIn = "$dir$identifier-in.${extensionOf(name)}"
         val stillOut = "$dir$identifier.${extensionOf(name)}"
         val mp4 = "$dir$identifier.mp4"

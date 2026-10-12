@@ -2,15 +2,18 @@ package app.snapsync.mock
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.ImportRequest
-import app.snapsync.model.StagedResource
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryImportRequest
+import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.ResourceKind
+import app.snapsync.services.gallery.correlation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The photo-library mock's import properties — the ones every download test silently depends on.
@@ -27,16 +30,17 @@ class PhotoLibraryImportTest {
 
     private val ref = AssetRef("DEV-F", AssetId("FQ"))
 
-    private fun resource() = StagedResource(
-        resourceKey = "FQ-primary.heic",
-        role = "primary",
-        contentType = "image/heic",
-        originalFilename = "IMG.HEIC",
-        stagedPath = "/stage/fq",
-    )
+    private fun file() = ImportFile("/stage/fq", "image/heic", ResourceKind.PHOTO, "IMG.HEIC")
 
     private suspend fun Gallery.importOnce(): ImportOutcome =
-        import(ImportRequest(ref, listOf(resource()), "2026-06-30T10:00:00Z", album = null))
+        import(
+            GalleryImportRequest(
+                ref.correlation(),
+                listOf(file()),
+                Instant.parse("2026-06-30T10:00:00Z"),
+                album = null,
+            ),
+        )
 
     /**
      * The marker writes are the registered handlers, so every gallery here is listened to first — an import before

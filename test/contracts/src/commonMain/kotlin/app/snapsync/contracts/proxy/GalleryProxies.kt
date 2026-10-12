@@ -1,11 +1,11 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
-import app.snapsync.model.ImportRequest
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryChangeToken
@@ -66,7 +66,7 @@ fun GalleryImport.recorded(log: CallLog): GalleryImport = GalleryImportProxy(thi
 internal class GalleryImportProxy(private val inner: GalleryImport, log: CallLog) : GalleryImport {
     private val r = log.recorder("GalleryImport")
 
-    override suspend fun import(request: ImportRequest) = r.answer("import", inner.import(request))
+    override suspend fun import(request: GalleryImportRequest) = r.answer("import", inner.import(request))
 }
 
 /**
@@ -86,17 +86,17 @@ internal class GalleryProxy(private val inner: Gallery, log: CallLog) :
         "listen",
         inner.listen(
             GalleryHandlers(
-                onImportPlaceholder = { ref, id ->
+                onImportPlaceholder = { correlation, id ->
                     r.called(
                         "handlers.onImportPlaceholder",
-                        Recorder.arg(ref, "AssetRef"),
+                        Recorder.arg(correlation, "String"),
                         Recorder.arg(id, "PlatformAssetId"),
                     )
-                    handlers.onImportPlaceholder(ref, id)
+                    handlers.onImportPlaceholder(correlation, id)
                 },
-                onImportSettled = { ref, result ->
-                    r.called("handlers.onImportSettled", Recorder.arg(ref, "AssetRef"), Recorder.arg(result))
-                    handlers.onImportSettled(ref, result)
+                onImportSettled = { correlation, result ->
+                    r.called("handlers.onImportSettled", Recorder.arg(correlation, "String"), Recorder.arg(result))
+                    handlers.onImportSettled(correlation, result)
                 },
             ),
         ),

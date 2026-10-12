@@ -3,10 +3,10 @@ package app.snapsync.android.gallery
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.media.ExifInterface
-import app.snapsync.model.StagedResource
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.motionphoto.motionPhotoStill
 import app.snapsync.motionphoto.withExtension
+import app.snapsync.ports.ImportFile
 import co.touchlab.kermit.Logger
 import java.io.File
 
@@ -28,20 +28,20 @@ import java.io.File
 internal class MotionPhotoBuilder(private val scratchDir: File, private val log: Logger) {
 
     /**
-     * The motion photo built from [still] and [video], as a staged JPEG in the scratch directory — or null, and the
-     * still is imported as it is. The caller deletes the returned file once the import is over.
+     * The motion photo built from [still] and [video], as a JPEG in the scratch directory — or null, and the still is
+     * imported as it is. The caller deletes the returned file once the import is over. [assetId] names it in logs.
      */
-    fun build(assetId: String, still: StagedResource, video: StagedResource): StagedResource? =
+    fun build(assetId: String, still: ImportFile, video: ImportFile): ImportFile? =
         // Catches an `OutOfMemoryError` too: the full-size bitmap is the one allocation here that can fail.
         runCatchingCancellable { assemble(assetId, still, video) }.getOrElse { fallBack(assetId, it) }
 
-    private fun assemble(assetId: String, still: StagedResource, video: StagedResource): StagedResource? {
+    private fun assemble(assetId: String, still: ImportFile, video: ImportFile): ImportFile? {
         scratchDir.mkdirs()
         val out = File(scratchDir, SCRATCH_NAME)
-        val source = File(still.stagedPath)
+        val source = File(still.path)
         val isJpeg = source.inputStream().use { it.read() == 0xFF && it.read() == 0xD8 }
         if (!isJpeg) reencode(source, out)
-        val videoFile = File(video.stagedPath)
+        val videoFile = File(video.path)
         val withXmp = motionPhotoStill(if (isJpeg) source.readBytes() else out.readBytes(), videoFile.length())
         if (withXmp == null) {
             log.w { "$assetId: the still cannot carry motion-photo XMP — imported as its still" }
@@ -55,14 +55,12 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
         log.i {
             "$assetId: built a motion photo (${if (isJpeg) "JPEG kept" else "re-encoded to JPEG"}, video ${videoFile.length()} B)"
         }
-        // The sender's name, its extension following the bytes; the import adds SnapSync's mark (`ReceivedPhotoName`).
-        // An unknown name stays unknown, and the key's extension follows instead, so the mark names it `snapsync-….jpg`.
-        val name = still.originalFilename
-        return still.copy(
+        // The still's name, its extension following the bytes.
+        return ImportFile(
+            path = out.path,
             contentType = "image/jpeg",
-            originalFilename = if (isJpeg || name.isEmpty()) name else withExtension(name, ".jpg"),
-            resourceKey = if (isJpeg) still.resourceKey else withExtension(still.resourceKey, ".jpg"),
-            stagedPath = out.path,
+            kind = still.kind,
+            name = if (isJpeg) still.name else withExtension(still.name, ".jpg"),
         )
     }
 
@@ -89,7 +87,7 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
         to.saveAttributes()
     }
 
-    private fun fallBack(assetId: String, e: Throwable): StagedResource? {
+    private fun fallBack(assetId: String, e: Throwable): ImportFile? {
         log.w(e) { "$assetId: the motion photo could not be built — imported as its still" }
         File(scratchDir, SCRATCH_NAME).delete()
         return null

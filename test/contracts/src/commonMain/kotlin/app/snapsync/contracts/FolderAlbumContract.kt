@@ -1,9 +1,5 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.AssetRef
-import app.snapsync.model.ImportRequest
-import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAlbum
@@ -11,6 +7,7 @@ import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.PlatformAlbumId
@@ -39,7 +36,7 @@ class FolderAlbums(
     val gallery: Gallery,
     val seeded: Set<PlatformAssetId>,
     val ownFolder: PlatformAlbumId,
-    val stage: () -> List<StagedResource>,
+    val stage: () -> List<ImportFile>,
 )
 
 /**
@@ -165,9 +162,10 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
         ) { subject ->
             val clauseId = "AN_IMPORT_INTO_AN_ALBUM_LANDS_THERE"
             val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
-            val ref = AssetRef(sourceDeviceId = "contract-device", sourceAssetId = AssetId(clauseId))
             val window = PhotoLibrary.window(name, clauseId)
-            val result = subject.gallery.import(ImportRequest(ref, subject.stage(), window.seedDate, album.value))
+            val result = subject.gallery.import(
+                GalleryImportContract.request(clauseId, subject.stage(), window.seedDate, album),
+            )
             val id = assertIs<ImportOutcome.Imported>(result, "an ordinary photo imports").created
             val members = assertIs<GalleryRead.Read<Set<PlatformAssetId>>>(subject.gallery.albumMembers(album, null))
             assertEquals(setOf(id), members.value, "the received photo is in the album the moment it exists")

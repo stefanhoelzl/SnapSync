@@ -9,10 +9,10 @@ import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.ImportRequest
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryChangeToken
@@ -82,13 +82,13 @@ class AndroidGallery(
 
     override suspend fun widenSelection(): LibraryGrant = permission.widenSelection()
 
-    override suspend fun import(request: ImportRequest): ImportOutcome {
-        val handlers = handlers.orNull("the import of ${request.ref.sourceAssetId}")
+    override suspend fun import(request: GalleryImportRequest): ImportOutcome {
+        val handlers = handlers.orNull("the import of ${request.correlation}")
             ?: return ImportOutcome.Failed("no import handlers registered")
         val result = withContext(Dispatchers.IO) {
-            importer.import(request) { id -> handlers.onImportPlaceholder(request.ref, id) }
+            importer.import(request) { id -> handlers.onImportPlaceholder(request.correlation, id) }
         }
-        handlers.onImportSettled(request.ref, result)
+        handlers.onImportSettled(request.correlation, result)
         return result
     }
 

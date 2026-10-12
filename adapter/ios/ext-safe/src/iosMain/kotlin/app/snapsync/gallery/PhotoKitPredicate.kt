@@ -43,8 +43,8 @@ internal fun predicateFor(filter: AssetFilter): NSPredicate? {
     return NSPredicate.predicateWithFormat(clauses.joinToString(" AND "), argumentArray = args)
 }
 
-/** [this] instant moved by [seconds], as the `NSDate` a predicate compares against. */
-internal fun Instant.toNSDate(seconds: Double = 0.0): NSDate =
+/** [this] instant moved by [seconds], as an `NSDate`. */
+fun Instant.toNSDate(seconds: Double = 0.0): NSDate =
     NSDate.dateWithTimeIntervalSince1970(epochSeconds.toDouble() + nanosecondsOfSecond / NANOS_PER_SECOND + seconds)
 
 private const val NANOS_PER_SECOND = 1_000_000_000.0

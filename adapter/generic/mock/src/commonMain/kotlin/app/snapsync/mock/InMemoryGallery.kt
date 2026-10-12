@@ -1,10 +1,5 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AssetRef
-import app.snapsync.model.ImportRequest
-import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
@@ -12,6 +7,7 @@ import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.GalleryResourceHandle
@@ -21,7 +17,6 @@ import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
-import app.snapsync.ports.ResourceKind
 import app.snapsync.ports.SelectionSnapshot
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,30 +83,34 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         if (opening && state.access.value == LibraryGrant.LIMITED && picked != null) deliver(SelectionSnapshot(picked))
     }
 
-    override suspend fun import(request: ImportRequest): ImportOutcome {
+    override suspend fun import(request: GalleryImportRequest): ImportOutcome {
         val handlers = checkNotNull(state.listener?.takeIf { it.face === this }?.handlers) {
             "an import before listen has nowhere to record its marker"
         }
-        val ref = request.ref
-        state.imports.attempt(ref)
-        val attempt = state.locked { (state.attempts.getOrElse(ref) { 0 } + 1).also { state.attempts[ref] = it } }
-        fun settle(outcome: ImportOutcome) = outcome.also { handlers.onImportSettled(ref, it) }
-        state.answers.beforeChange(ref)?.let { return settle(ImportOutcome.Failed(it)) }
+        val correlation = request.correlation
+        state.imports.attempt(correlation)
+        val attempt = state.locked {
+            (state.attempts.getOrElse(correlation) { 0 } + 1).also { state.attempts[correlation] = it }
+        }
+        fun settle(outcome: ImportOutcome) = outcome.also { handlers.onImportSettled(correlation, it) }
+        state.answers.beforeChange(correlation)?.let { return settle(ImportOutcome.Failed(it)) }
         val suffix = if (attempt == 1) "" else "-$attempt"
-        val createdLocalId = PlatformAssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
-        handlers.onImportPlaceholder(ref, createdLocalId)
-        state.answers.beforeCommit(ref)?.let { return settle(ImportOutcome.Failed(it, placeholder = createdLocalId)) }
-        val created = createdAsset(createdLocalId, request.ref, request.resources, request.creationDate)
+        val createdLocalId = PlatformAssetId("imported-${correlation.replace('/', '-')}$suffix")
+        handlers.onImportPlaceholder(correlation, createdLocalId)
+        state.answers.beforeCommit(correlation)?.let {
+            return settle(ImportOutcome.Failed(it, placeholder = createdLocalId))
+        }
+        val created = createdAsset(createdLocalId, request)
         state.locked {
             state.library.update { it + created }
             state.ownImports += createdLocalId
             if (state.albumKind == LibraryAlbumKind.FOLDER) {
-                request.album?.takeIf {
-                    it in state.created
-                }?.let { state.folderOf[createdLocalId] = it }
+                request.album?.value?.takeIf { it in state.created }?.let { state.folderOf[createdLocalId] = it }
             }
         }
-        state.answers.afterCommit(ref)?.let { return settle(ImportOutcome.Failed(it, placeholder = createdLocalId)) }
+        state.answers.afterCommit(correlation)?.let {
+            return settle(ImportOutcome.Failed(it, placeholder = createdLocalId))
+        }
         return settle(ImportOutcome.Imported(createdLocalId))
     }
 
@@ -243,28 +242,19 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     private inline fun <T> readable(read: () -> T): GalleryRead<T> =
         if (state.access.value in READABLE) GalleryRead.Read(read()) else GalleryRead.NotReadable
 
-    private fun createdAsset(id: PlatformAssetId, ref: AssetRef, resources: List<StagedResource>, creationDate: String) =
-        GalleryAssetResources(
-            GalleryAsset(
-                id = id,
-                created = Instant.parseOrNull(creationDate),
-                isScreenshot = false,
-                isScreenRecording = false,
-                isVideo = false,
-                isEdited = false,
-                pixelArea = null,
-            ),
-            resources.map { staged ->
-                GalleryResource(
-                    kind = if (staged.role == ResourceRole.LIVE.wire) ResourceKind.PAIRED_VIDEO else ResourceKind.PHOTO,
-                    contentType = staged.contentType,
-                    // The SAME naming rule both platform importers apply (`ReceivedPhotoName`), so an in-memory library
-                    // carries the mark a reinstalled app reads back, exactly where a device would.
-                    originalFilename = ReceivedPhotoName.mark(staged.originalFilename, staged.resourceKey, ref),
-                    handle = InMemoryResource(id),
-                )
-            },
-        )
+    private fun createdAsset(id: PlatformAssetId, request: GalleryImportRequest) = GalleryAssetResources(
+        GalleryAsset(
+            id = id,
+            created = request.created,
+            isScreenshot = false,
+            isScreenRecording = false,
+            isVideo = false,
+            isEdited = false,
+            pixelArea = null,
+        ),
+        // Each file under the name it was handed: the library stores what the app named it.
+        request.files.map { GalleryResource(it.kind, it.contentType, it.name, InMemoryResource(id)) },
+    )
 
     private class Token(private val readAt: List<GalleryAssetResources>) : LibraryChangeToken {
         override fun sameLibraryAs(other: LibraryChangeToken): Boolean = other is Token && other.readAt === readAt

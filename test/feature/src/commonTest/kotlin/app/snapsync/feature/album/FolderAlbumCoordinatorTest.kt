@@ -7,21 +7,23 @@ import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
-import app.snapsync.model.ImportRequest
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.StagedResource
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryImportRequest
+import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryAlbumKind
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.ResourceKind
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId
+import app.snapsync.services.gallery.correlation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,6 +33,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The event album where the library's album is the FOLDER a photo lives in (Android; capability `event-album`,
@@ -61,9 +64,14 @@ class FolderAlbumCoordinatorTest {
 
     /** A received photo, imported the way the download controller imports it: into [album], then settled. */
     private suspend fun receive(name: String, album: AlbumId?): PlatformAssetId {
-        val staged = StagedResource("k-$name", ResourceRole.PRIMARY.wire, "image/jpeg", "$name.JPG", "staged:/$name")
+        val file = ImportFile("staged:/$name", "image/jpeg", ResourceKind.PHOTO, "$name.JPG")
         val result = gallery.import(
-            ImportRequest(AssetRef("other", AssetId(name)), listOf(staged), "2026-09-30T10:00:00Z", album),
+            GalleryImportRequest(
+                AssetRef("other", AssetId(name)).correlation(),
+                listOf(file),
+                Instant.parse("2026-09-30T10:00:00Z"),
+                album?.let(::PlatformAlbumId),
+            ),
         )
         val id = assertIs<ImportOutcome.Imported>(result).created
         album?.let { coordinator.onImportedInto(event, it) }

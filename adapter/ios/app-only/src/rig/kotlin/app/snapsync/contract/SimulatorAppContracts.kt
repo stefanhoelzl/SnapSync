@@ -54,14 +54,13 @@ import app.snapsync.device.IosDeviceConditions
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.StagedResource
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.ImportFile
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ProcessInfo
@@ -272,15 +271,7 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             val key = "contract-$clauseId-$staged-primary.jpg"
             val path = NSTemporaryDirectory() + key
             check(bytes.toNSData().writeToFile(path, atomically = true)) { "could not stage $path" }
-            listOf(
-                StagedResource(
-                    resourceKey = key,
-                    role = ResourceRole.PRIMARY.wire,
-                    contentType = "image/jpeg",
-                    originalFilename = "IMG_0001.JPG",
-                    stagedPath = path,
-                ),
-            )
+            listOf(ImportFile(path, "image/jpeg", ResourceKind.PHOTO, "IMG_0001.JPG"))
         }
         val library = object : ImportedLibrary {
             override suspend fun captureDate(id: PlatformAssetId): String? {
@@ -323,7 +314,7 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
             val key = "contract-$clauseId-primary.jpg"
             val path = NSTemporaryDirectory() + key
             check(bytes.toNSData().writeToFile(path, atomically = true)) { "could not stage $path" }
-            listOf(StagedResource(key, ResourceRole.PRIMARY.wire, "image/jpeg", "PXL_0001.MP.jpg", path))
+            listOf(ImportFile(path, "image/jpeg", ResourceKind.PHOTO, "PXL_0001.MP.jpg"))
         }
         val library = object : LivePhotoLibrary {
             override suspend fun captureDate(id: PlatformAssetId): String? =
