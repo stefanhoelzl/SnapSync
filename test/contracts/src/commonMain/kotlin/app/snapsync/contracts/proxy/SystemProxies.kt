@@ -111,5 +111,6 @@ fun DateFormatting.recorded(log: CallLog): DateFormatting = DateFormattingProxy(
 internal class DateFormattingProxy(private val inner: DateFormatting, log: CallLog) : DateFormatting {
     private val r = log.recorder("DateFormatting")
 
-    override fun formats(languageTag: String?) = r.returns("formats", inner.formats(languageTag))
+    override fun deviceLocale() = r.returns("deviceLocale", inner.deviceLocale())
+    override fun formats(locale: app.snapsync.model.DateLocale) = r.returns("formats", inner.formats(locale))
 }

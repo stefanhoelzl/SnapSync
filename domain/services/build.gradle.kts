@@ -40,6 +40,8 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
+            // A date-formatting double formats a `LocalDateTime`, the value `DateFormats` takes.
+            implementation(libs.kotlinx.datetime)
         }
     }
 }
