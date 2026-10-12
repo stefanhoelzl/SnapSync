@@ -11,7 +11,7 @@ it shares, because a stray meme is visible and harmless while an event photo tha
 is a failure nobody can notice or fix; on Android only the phone's camera folder (DCIM) is shared, for
 cleaner events. It also promises what the other members see of that contribution over
 time — a photo appears only once it is complete, disappears when the member deletes or stops sharing it
-until the event closes (after which what each member shares is fixed, capability `event-lifetime`), and a
+until the event's photos are deleted (capability `event-lifetime`), and a
 photo already in the event is not uploaded again because the member rejoins, switches events and back, or reinstalls.
 How the photos travel is capability `delivery`; what arrives on the other side is capability `receiving-photos`.
 

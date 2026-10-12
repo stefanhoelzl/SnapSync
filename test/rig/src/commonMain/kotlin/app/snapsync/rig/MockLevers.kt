@@ -163,11 +163,13 @@ private fun MockWorld.backendReads(op: (suspend MockWorld.(Map<String, String>) 
         command = RigCommand { params, _ ->
             withEvent(params) { event ->
                 val (registered, name) = reach!!.eventOf(event)
+                val closedAt = reach.closedAtOf(event)
                 CommandResult.ok(
                     buildJsonObject {
                         put("event", event)
                         put("registered", registered)
                         put("name", name)
+                        put("closedAt", closedAt)
                     }.toString(),
                 )
             }
@@ -291,6 +293,18 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
             OK
         }
     },
+    // Whether the sweep may delete the event's photos early: its open-until date passed, and everyone still in it has
+    // shared and received everything.
+    "backend/finished" to op { params ->
+        withEvent(params) { event ->
+            CommandResult.ok(
+                buildJsonObject {
+                    put("event", event)
+                    put("finished", device.backend.operator.isFinished(event))
+                }.toString(),
+            )
+        }
+    },
     "backend/fail-listing" to op { params ->
         device.backend.operator.failDeviceListing = flag(params, "on")
         OK
@@ -338,6 +352,7 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
     // A fellow member with complete photos, through the backend's public surface. `event` defaults to the joined
     // one; `assets` is a comma-separated list of asset ids. `kind=motion-photo` makes each a real Google motion photo
     // (`PhotoLibrary.motionPhoto`), as an Android member's camera shares it; otherwise each is a placeholder photo.
+    // `final=true` declares the member's share settled, as a device does once the event's range has ended.
     "foreign-device" to needs(
         Need.Reach,
         command = RigCommand { params, _ ->
@@ -361,8 +376,33 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
                         else -> foreignAsset(it)
                     }
                 }
-                val eventId = addForeignDevice(who, manifest, event, if (motion) PhotoLibrary.motionPhoto else null)
+                val final = params["final"]?.toBoolean() ?: false
+                val eventId =
+                    addForeignDevice(who, manifest, event, if (motion) PhotoLibrary.motionPhoto else null, final)
                 CommandResult.ok("""{"device":${jsonString(who)},"eventId":${jsonString(eventId)}}""")
+            }
+        },
+    ),
+    // A fellow member leaving, through the backend's public surface — as any build's leave reaches it.
+    "foreign-device/leave" to needs(
+        Need.Reach,
+        command = RigCommand { params, _ ->
+            val who = params["device"] ?: return@RigCommand CommandResult.badRequest("device is required")
+            withEvent(params) { event ->
+                reach!!.leave(event, who)
+                OK
+            }
+        },
+    ),
+    // A fellow member saying it holds every photo of the others up to where the event's union stands now — what a
+    // current build reports once its downloads are in its library; a build that predates the report never sends it.
+    "foreign-device/received" to needs(
+        Need.Reach,
+        command = RigCommand { params, _ ->
+            val who = params["device"] ?: return@RigCommand CommandResult.badRequest("device is required")
+            withEvent(params) { event ->
+                reach!!.reportReceived(event, who)
+                OK
             }
         },
     ),
@@ -894,6 +934,7 @@ private suspend fun MockWorld.addForeignDevice(
     assets: List<DeviceManifestAsset>,
     event: String?,
     bytes: ByteArray? = null,
+    final: Boolean = false,
 ): String {
     val reach = reach!!
     val eventId = event ?: reach.createEvent(FOREIGN_EVENT_NAME, FOREIGN_EVENT_START)
@@ -913,7 +954,7 @@ private suspend fun MockWorld.addForeignDevice(
             }
         }
     }
-    reach.publish(eventId, DeviceManifest(deviceId = who, assets = assets))
+    reach.publish(eventId, DeviceManifest(deviceId = who, assets = assets, final = final))
     return eventId
 }
 

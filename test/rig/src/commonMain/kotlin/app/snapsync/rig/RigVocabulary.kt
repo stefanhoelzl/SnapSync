@@ -84,6 +84,8 @@ object RigVocabulary {
         "device/invite-link-hints",
         "device/encrypt-new-events",
         "device/foreign-device",
+        "device/foreign-device/leave",
+        "device/foreign-device/received",
         // The integration surface's observable reads of the world's simulated systems (capability
         // `docs/testing.md`, "The seam-to-UI-state integration surface") — what the backend, the crash
         // reporter and the push service recorded.
@@ -107,6 +109,7 @@ object RigVocabulary {
         "device/backend/hold",
         "device/backend/next-event-id",
         "device/backend/complete",
+        "device/backend/finished",
         "device/backend/fail-listing",
         "device/backend/fail-union",
         "device/backend/deposit",

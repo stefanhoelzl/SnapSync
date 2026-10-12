@@ -12,12 +12,14 @@ weeks — a day out, a party, a holiday), synced gallery-to-gallery; you never c
 look at your own gallery. No accounts and no name asked — a member stays anonymous; creating or joining takes
 seconds. Marketing copy follows `metadata/messaging.md` (principles + glossary). The host picks the
 event's **date range** at creation (at most **30 days** long), and that **end** is the capture-date ceiling —
-it bounds which photos may be uploaded and does not by itself close anything, so a guest who scans days late
-still joins and contributes their in-window photos **until the event closes**. After the end each device
-settles its share; once every member has (or 3 days after the later of the end and the last photo's arrival)
-the event **closes** — nobody joins, nothing changes — each member leaves on its own once it has everything,
-and the nightly sweep deletes the photos (`changes/early-event-completion`). The stamped lifetime (30 days from
-`max(createdAt, startsAt)`) stays the latest an event can live. Named futures (don't build for them; don't deepen assumptions
+it bounds which photos may be uploaded and closes nothing. Each event has an **open-until date** — its end, or, for an
+event created after its end, the 1/7/14/30 days the host chose — and **nothing closes**: joining, sharing, receiving
+and renaming keep working until the photos are deleted, so a guest who scans days late still joins and contributes
+their in-window photos. The nightly sweep deletes the photos once the open-until date has passed and every member
+still in it has shared and received everything, or 3 days after the later of the open-until date, the last join and
+the last photo's arrival, or once everyone left; the app never leaves an event on its own — a deleted event is shown
+as over (`changes/back-dated-events`). The stamped lifetime (30 days from `max(createdAt, openUntil)`) stays the
+latest an event can live. Named futures (don't build for them; don't deepen assumptions
 against them unnamed): paid events (device count is the only lever) · concurrent multi-event
 membership (single active membership is the *current* contract).
 

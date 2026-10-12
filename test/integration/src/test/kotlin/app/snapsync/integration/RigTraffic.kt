@@ -61,18 +61,23 @@ suspend fun Rig.manifest(event: String? = null, device: String? = null): Map<Str
     }
 }
 
-/** A fellow member of [event] (the joined one by default) whose [assets] are complete on the backend. */
+/**
+ * A fellow member of [event] (the joined one by default) whose [assets] are complete on the backend; [final] declares
+ * its share settled, as a device does once the event's range has ended.
+ */
 suspend fun Rig.foreignDevice(
     device: String,
     vararg assets: String,
     event: String? = null,
     filename: String? = null,
+    final: Boolean = false,
 ): String {
     val params = listOfNotNull(
         "device" to device,
         "assets" to assets.joinToString(","),
         event?.let { "event" to it },
         filename?.let { "filename" to it },
+        ("final" to "true").takeIf { final },
     ).toTypedArray()
     return deviceJson("foreign-device", *params).getValue("eventId").jsonPrimitive.content
 }

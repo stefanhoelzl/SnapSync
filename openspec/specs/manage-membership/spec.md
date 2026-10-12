@@ -3,10 +3,10 @@
 ## Purpose
 Serves a joined member — host or guest, who have the same powers — for everything they do with their
 membership after joining: rename the event for everyone, change what they share and receive without leaving, and
-leave — each until the event closes, after which only leaving remains. It promises that leaving is instant, works
+leave — each until the event's photos are deleted, after which only leaving remains. It promises that leaving is instant, works
 offline, and never deletes a photo anyone already has, and that a membership survives app updates, restarts, and a
-locked phone. Inviting others is capability `invite-link`; the app leaving on its own once the event is finished for it
-is capability `event-lifetime`; what a capture range admits is capability `photo-sharing`; the album is capability
+locked phone. Inviting others is capability `invite-link`; what becomes of a finished or deleted event is capability
+`event-lifetime`; what a capture range admits is capability `photo-sharing`; the album is capability
 `event-album`.
 Decision record: changes/archive/2026-07-21-add-reconfigure-membership
 

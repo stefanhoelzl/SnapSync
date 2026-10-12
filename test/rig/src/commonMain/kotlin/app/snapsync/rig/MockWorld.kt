@@ -23,13 +23,16 @@ import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.GatedRequest
 import app.snapsync.wire.api.GetEventReply
 import app.snapsync.wire.api.JoinEventReply
+import app.snapsync.wire.api.LeaveEventReply
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.PublishManifestReply
 import app.snapsync.wire.api.Reply
+import app.snapsync.wire.api.ReportReceivedReply
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.EventCreate
 import app.snapsync.wire.models.Manifest
 import app.snapsync.wire.models.ManifestAsset
+import app.snapsync.wire.models.Received
 import app.snapsync.wire.models.Role
 import app.snapsync.wire.runtime.WireResponse
 
@@ -128,6 +131,13 @@ class BackendReach(
         else -> error("the event details route answered $reply for $eventId")
     }
 
+    /**
+     * The `closedAt` the event read serves — what a build that predates open-until dates acts on — or `null` while it
+     * serves none, and for an event the backend does not hold.
+     */
+    suspend fun closedAtOf(eventId: String): String? =
+        (send(Routes.GetEvent.request(eventId)) as? GetEventReply.Found)?.eventDetails?.closedAt
+
     /** `POST /events` — an event the backend mints. */
     suspend fun createEvent(name: String, startsAt: String): String {
         val reply = send(Routes.CreateEvent.request(EventCreate(name = name, startsAt = startsAt)))
@@ -137,6 +147,22 @@ class BackendReach(
     suspend fun join(eventId: String, deviceId: String) {
         val reply = send(Routes.JoinEvent.request(eventId, deviceId))
         if (reply != JoinEventReply.Joined) refused("join $deviceId to $eventId", reply)
+    }
+
+    suspend fun leave(eventId: String, deviceId: String) {
+        val reply = send(Routes.LeaveEvent.request(eventId, deviceId))
+        if (reply != LeaveEventReply.Left) refused("leave $deviceId from $eventId", reply)
+    }
+
+    /**
+     * [deviceId] reports it holds every photo of the others up to the position the union of [eventId] stands at now —
+     * what a current build says once its downloads are all in its library.
+     */
+    suspend fun reportReceived(eventId: String, deviceId: String) {
+        val page = send(Routes.EventFiles.request(eventId, snapSyncTrigger = UnionTrigger.FOREGROUND.wire))
+        val position = (page as? EventFilesReply.Page ?: refused("the union", page)).snapSyncCursor.toLong()
+        val reply = send(Routes.ReportReceived.request(eventId, deviceId, Received(position)))
+        if (reply != ReportReceivedReply.Recorded) refused("$deviceId's received report", reply)
     }
 
     suspend fun publish(eventId: String, manifest: DeviceManifest) {
