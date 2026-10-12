@@ -2,9 +2,6 @@ package app.snapsync.feature.album
 
 import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumRecord
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AssetId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.WriteOutcome

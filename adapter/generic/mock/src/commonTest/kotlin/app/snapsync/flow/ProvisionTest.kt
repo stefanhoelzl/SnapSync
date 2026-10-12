@@ -2,9 +2,6 @@ package app.snapsync.flow
 
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumRecord
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCeiling

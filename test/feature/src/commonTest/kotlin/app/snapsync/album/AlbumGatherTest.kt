@@ -10,10 +10,6 @@ import app.snapsync.feature.support.galleryAccess
 import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumRecord
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EntryScope

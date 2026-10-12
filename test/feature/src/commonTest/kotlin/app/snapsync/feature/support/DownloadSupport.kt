@@ -12,8 +12,6 @@ import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
