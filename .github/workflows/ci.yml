@@ -79,12 +79,15 @@ env:
   # run (build − offset) and one at or below it to ios.yml's. Never lower it; never change it once a build used it.
   BUILD_NUMBER_OFFSET: 2000
 
-# A newer push to a ref cancels its own in-progress run, main included (the next merge's build supersedes a cancelled
-# delivery). The event is part of the group so a push and a dispatch on the SAME ref never cancel each other: a probe
-# build killed by an unrelated push to its branch is a wasted TestFlight round-trip.
+# A newer push to a BRANCH cancels its own in-progress run. On main it never does: a cancelled gate fails `ci`, so every
+# merge landing inside the previous one's run left a red commit on main. Main's runs queue instead, one at a time, so
+# deliveries also land in build-number order. (GitHub keeps one PENDING run per group: a third merge while one runs and
+# one waits still displaces the waiting one — the newest commit's run covers it.) The event is part of the group so a
+# push and a dispatch on the SAME ref never cancel each other: a probe build killed by an unrelated push to its branch
+# is a wasted TestFlight round-trip.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # ── Linux ────────────────────────────────────────────────────────────────────────────────────────────────────────
