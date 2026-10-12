@@ -17,8 +17,8 @@ class MembershipEntryTest {
     private val cfg = EventConfig(
         eventId = "NEW",
         name = "New",
-        minPhotoDate = CaptureCutoff(CaptureDate("2026-07-01T00:00:00Z")),
-        maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-08T00:00:00Z")),
+        minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-07-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-07-08T00:00:00Z")),
         direction = Direction.Both,
         saveToAlbum = false,
         endsAt = eventEnd("2099-12-31T00:00:00Z"),

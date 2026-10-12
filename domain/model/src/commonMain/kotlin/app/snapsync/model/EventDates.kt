@@ -11,13 +11,12 @@ import kotlin.jvm.JvmInline
 import kotlin.time.Instant
 
 /**
- * The **date vocabulary**: one canonical instant type plus a distinct type per *role* it can play, so a date can never
- * be used as a date it is not.
+ * The **date vocabulary**: one instant type plus a distinct type per *role* it can play, so a date can never be used
+ * as a date it is not.
  *
- * Every date in this system is the same *shape* — the canonical UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` the iOS
- * enumerator produces (`Cutoff.kt` is the single origin of that shape) — and therefore, as a bare
- * `String`, every one of them is assignable to every other. That is not a theoretical hazard; it is the
- * bug this vocabulary exists to make impossible:
+ * Every date here is an instant to the second, and every role holds one, so as plain instants every one of them
+ * would be assignable to every other. That is not a theoretical hazard; it is the bug this vocabulary exists to make
+ * impossible:
  *
  * - `add-event-date-range` added the capture-date **ceiling** to the byte filter and the join preview but
  *   not to the manifest projection or the status total `N`, because `Contribution.Since -> c.cutoff`
@@ -29,23 +28,33 @@ import kotlin.time.Instant
  * With distinct role types both are **compile errors**. The friction is the point: writing
  * `creationDate >= cutoff.at` forces you to name which bound you meant.
  *
- * **Ordering survives the wrapping.** Every comparison is a plain `String` compare on the underlying
- * `iso`, which is chronological *only because* the shape is the fixed-width canonical UTC one — the same
- * invariant the `creationDate >= cutoff` filter has always relied on. Feed an off-shape string in and it
- * silently lies; that has not changed, and it is why [CaptureDate] is the only constructor and the shape
- * is pinned in one place.
+ * **A date compares as an instant**, never as text: an off-shape string (a fractional second, an offset) cannot sort
+ * wrongly because no string is ever compared.
  *
- * **Serialization is transparent.** Each type serializes as its bare `iso` string, so the wire payloads
- * and the persisted `EventConfig` are byte-identical to before this vocabulary existed — the backend is
- * untouched and an already-persisted config still parses. `EventConfigTest`/`EventDatesTest` pin that.
+ * **Serialization is transparent.** Each role serializes as the canonical UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` text of its
+ * instant ([CaptureDate.iso]), so the wire payloads and the persisted `EventConfig` are byte-identical to before this
+ * vocabulary existed — the backend is untouched and an already-persisted config still parses. A text that does not
+ * parse is a decode failure. `EventConfigTest`/`EventDatesTest` pin that.
  */
-@Serializable(with = CaptureDateSerializer::class)
 @JvmInline
-value class CaptureDate(val iso: String) : Comparable<CaptureDate> {
-    override fun compareTo(other: CaptureDate): Int = iso.compareTo(other.iso)
+value class CaptureDate private constructor(val at: Instant) : Comparable<CaptureDate> {
+    override fun compareTo(other: CaptureDate): Int = at.compareTo(other.at)
 
-    /** The raw canonical string — for logging and for the wire, never for a cross-role assignment. */
+    /** The canonical UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` text — for logging and for the wire, never for a comparison. */
+    val iso: String get() = canonicalText(at)
+
     override fun toString(): String = iso
+
+    companion object {
+        /** [instant] as a capture date: truncated to its second, toward the earlier instant. */
+        fun of(instant: Instant): CaptureDate = CaptureDate(Instant.fromEpochSeconds(instant.epochSeconds))
+
+        /** The capture date [text] names — any ISO-8601 instant — or `null` when it names none. */
+        fun parseOrNull(text: String): CaptureDate? = Instant.parseOrNull(text)?.let(::of)
+
+        /** The capture date [text] names; a text that names none is the caller's error. */
+        fun parse(text: String): CaptureDate = of(Instant.parse(text))
+    }
 }
 
 /**
@@ -58,10 +67,6 @@ value class CaptureDate(val iso: String) : Comparable<CaptureDate> {
 @Serializable(with = CaptureCutoffSerializer::class)
 @JvmInline
 value class CaptureCutoff(val at: CaptureDate) : Comparable<CaptureCutoff> {
-    init {
-        requireInstant(at)
-    }
-
     override fun compareTo(other: CaptureCutoff): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
 }
@@ -76,10 +81,6 @@ value class CaptureCutoff(val at: CaptureDate) : Comparable<CaptureCutoff> {
 @Serializable(with = CaptureCeilingSerializer::class)
 @JvmInline
 value class CaptureCeiling(val at: CaptureDate) : Comparable<CaptureCeiling> {
-    init {
-        requireInstant(at)
-    }
-
     override fun compareTo(other: CaptureCeiling): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
 }
@@ -92,10 +93,6 @@ value class CaptureCeiling(val at: CaptureDate) : Comparable<CaptureCeiling> {
 @Serializable(with = EventStartSerializer::class)
 @JvmInline
 value class EventStart(val at: CaptureDate) : Comparable<EventStart> {
-    init {
-        requireInstant(at)
-    }
-
     override fun compareTo(other: EventStart): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
 }
@@ -109,10 +106,6 @@ value class EventStart(val at: CaptureDate) : Comparable<EventStart> {
 @Serializable(with = EventEndSerializer::class)
 @JvmInline
 value class EventEnd(val at: CaptureDate) : Comparable<EventEnd> {
-    init {
-        requireInstant(at)
-    }
-
     override fun compareTo(other: EventEnd): Int = at.compareTo(other.at)
     override fun toString(): String = at.iso
 }
@@ -131,19 +124,6 @@ value class DeletesAt(val at: CaptureDate) : Comparable<DeletesAt> {
     override fun toString(): String = at.iso
 }
 
-/**
- * The four roles a membership's dates are read through (the floor, the ceiling, the event's start and end) hold a
- * readable instant BY CONSTRUCTION, so nothing downstream carries a branch for one that is not: a screen converts them
- * to local time unconditionally. Every producer already writes one — the wire boundary normalizes the backend's dates
- * (`EventDirectory`) and a local pick is canonical by construction ([localToCutoff]) — so the check refuses only a
- * value no build writes. Where such a value is DECODED (a corrupt stored config), the decode fails and reads as
- * unusable, which defers and never leaves. [CaptureDate] itself stays unchecked: an asset's capture date may
- * legitimately be absent (`""`).
- */
-private fun requireInstant(at: CaptureDate) {
-    Instant.parse(at.iso)
-}
-
 /** The underlying canonical string of any capture-date role — for logging and wire encoding only. */
 val CaptureCutoff.iso: String get() = at.iso
 
@@ -160,19 +140,19 @@ val EventEnd.iso: String get() = at.iso
 val DeletesAt.iso: String get() = at.iso
 
 /** Build a role from a raw canonical string — the one narrow door from the wire into the vocabulary. */
-fun captureCutoff(iso: String): CaptureCutoff = CaptureCutoff(CaptureDate(iso))
+fun captureCutoff(iso: String): CaptureCutoff = CaptureCutoff(CaptureDate.parse(iso))
 
 /** Build a role from a raw canonical string — the one narrow door from the wire into the vocabulary. */
-fun captureCeiling(iso: String): CaptureCeiling = CaptureCeiling(CaptureDate(iso))
+fun captureCeiling(iso: String): CaptureCeiling = CaptureCeiling(CaptureDate.parse(iso))
 
 /** Build a role from a raw canonical string — the one narrow door from the wire into the vocabulary. */
-fun eventStart(iso: String): EventStart = EventStart(CaptureDate(iso))
+fun eventStart(iso: String): EventStart = EventStart(CaptureDate.parse(iso))
 
 /** Build a role from a raw canonical string — the one narrow door from the wire into the vocabulary. */
-fun eventEnd(iso: String): EventEnd = EventEnd(CaptureDate(iso))
+fun eventEnd(iso: String): EventEnd = EventEnd(CaptureDate.parse(iso))
 
 /** Build a role from a raw canonical string — the one narrow door from the wire into the vocabulary. */
-fun deletesAt(iso: String): DeletesAt = DeletesAt(CaptureDate(iso))
+fun deletesAt(iso: String): DeletesAt = DeletesAt(CaptureDate.parse(iso))
 
 /**
  * Transparent `String` codecs. Written out rather than relying on the plugin's value-class inlining
@@ -188,9 +168,6 @@ internal abstract class IsoSerializer<T>(
     override fun serialize(encoder: Encoder, value: T) = encoder.encodeString(unwrap(value))
     override fun deserialize(decoder: Decoder): T = wrap(decoder.decodeString())
 }
-
-internal object CaptureDateSerializer :
-    IsoSerializer<CaptureDate>("app.snapsync.model.CaptureDate", ::CaptureDate, CaptureDate::iso)
 
 internal object CaptureCutoffSerializer :
     IsoSerializer<CaptureCutoff>("app.snapsync.model.CaptureCutoff", ::captureCutoff, { it.at.iso })

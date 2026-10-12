@@ -439,7 +439,7 @@ class ProxyCompletenessTest {
             val k = PortGrid.bindingFor(type).classifier as? KClass<*> ?: return null
             return when {
                 // Every date role wraps a CaptureDate and refuses one that is not an instant; a port is called with real ones.
-                k == CaptureDate::class -> CaptureDate("2026-01-01T00:00:00Z")
+                k == CaptureDate::class -> CaptureDate.parse("2026-01-01T00:00:00Z")
                 k == String::class -> "d"
                 k == Int::class -> 0
                 k == Long::class -> 0L

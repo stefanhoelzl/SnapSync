@@ -222,4 +222,13 @@ class SelectionPolicyTest {
             asset("SMALL", width = 800, height = 600) + asset("GIF", width = 480, height = 270, mime = "image/gif")
         assertEquals(setOf("SHOT", "SMALL", "GIF"), excluded(resources))
     }
+
+    @Test
+    fun `an undated asset is in no capture range and a resource with no stored date is undated`() {
+        val undated = AssetFacts(AssetId("U"), creationDate = null)
+        assertFalse(SelectionRule.CaptureAfter(captureCutoff("2026-01-01T00:00:00Z")).admits(undated))
+        assertFalse(SelectionRule.CaptureBefore(captureCeiling("2026-12-31T00:00:00Z")).admits(undated))
+        val resource = Resource("U-primary.jpg", AssetId("U"), "image/jpeg", emptyMap(), Unit)
+        assertEquals(null, factsFromResources(listOf(resource)).single().creationDate)
+    }
 }

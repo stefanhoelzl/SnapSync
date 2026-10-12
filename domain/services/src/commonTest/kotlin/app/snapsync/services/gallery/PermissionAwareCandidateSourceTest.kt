@@ -46,7 +46,7 @@ class PermissionAwareCandidateSourceTest {
             return CandidateRead.Readable(
                 ids.map { id ->
                     object : Candidate {
-                        override val facts = AssetFacts(AssetId(id), CaptureDate("2026-06-01T00:00:00Z"))
+                        override val facts = AssetFacts(AssetId(id), CaptureDate.parse("2026-06-01T00:00:00Z"))
                         override suspend fun resources(): List<Resource> = emptyList()
                     }
                 },

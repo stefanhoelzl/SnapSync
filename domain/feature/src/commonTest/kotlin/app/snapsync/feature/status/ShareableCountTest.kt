@@ -31,7 +31,7 @@ private fun asset(
     height: Long = 3024,
 ) = AssetFacts(
     assetId = AssetId(id),
-    creationDate = CaptureDate(creationDate),
+    creationDate = CaptureDate.parseOrNull(creationDate),
     isScreenshot = isScreenshot,
     pixelArea = width * height,
 )

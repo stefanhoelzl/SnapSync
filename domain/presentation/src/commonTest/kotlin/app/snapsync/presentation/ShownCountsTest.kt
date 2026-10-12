@@ -41,8 +41,8 @@ class ShownCountsTest {
             membership = EventConfig(
                 eventId = "5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e",
                 name = "Anna's Birthday",
-                minPhotoDate = CaptureCutoff(CaptureDate("2026-07-06T14:32:11Z")),
-                maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-13T14:32:11Z")),
+                minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-07-06T14:32:11Z")),
+                maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-07-13T14:32:11Z")),
                 endsAt = eventEnd("2099-12-31T00:00:00Z"),
                 deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             ).shown(),

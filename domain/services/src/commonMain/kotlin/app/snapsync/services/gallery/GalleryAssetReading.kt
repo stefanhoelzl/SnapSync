@@ -13,21 +13,17 @@ import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.instantToCutoff
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.ResourceKind
 
-/**
- * The app's facts of the asset the platform describes. An asset the platform holds no capture date for carries the
- * empty date, which no event window holds.
- */
+/** The app's facts of the asset the platform describes. */
 fun GalleryAsset.facts(): AssetFacts =
     AssetFacts(
         assetId = id.assetId(),
-        creationDate = created?.let(::instantToCutoff) ?: CaptureDate(""),
+        creationDate = created?.let(CaptureDate::of),
         isScreenshot = isScreenshot,
         isScreenRecording = isScreenRecording,
         isVideo = isVideo,
@@ -48,7 +44,7 @@ fun resourcesFrom(assets: List<GalleryAssetResources>): List<Resource> = assets.
             assetId = facts.assetId,
             contentType = resource.contentType,
             metadata = mapOf(
-                RESOURCE_META_CREATION_DATE to facts.creationDate.iso,
+                RESOURCE_META_CREATION_DATE to facts.creationDate?.iso.orEmpty(),
                 RESOURCE_META_ORIGINAL_FILENAME to resource.originalFilename,
                 RESOURCE_META_MIME to resource.contentType,
                 RESOURCE_META_IS_SCREENSHOT to facts.isScreenshot.toString(),

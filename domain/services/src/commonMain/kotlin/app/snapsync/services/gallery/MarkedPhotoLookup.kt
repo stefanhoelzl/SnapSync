@@ -50,7 +50,7 @@ class MarkedPhotoLookup(
             is SelectionScope.Scoped -> fromSnapshot(scope.resources, window, known)
             SelectionScope.Unread -> emptyMap()
             SelectionScope.Unrestricted ->
-                fromLibrary(window, AssetFilter(startsAt.at.instant(), endsAt.at.instant()), known)
+                fromLibrary(window, AssetFilter(startsAt.at.at, endsAt.at.at), known)
         }
     }
 

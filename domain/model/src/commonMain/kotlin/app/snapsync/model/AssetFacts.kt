@@ -32,7 +32,8 @@ class AssetFacts(
      * both rules admit everything on device) no longer compiles.
      */
     val assetId: AssetId,
-    val creationDate: CaptureDate,
+    /** When it was captured, or `null` when the platform holds no capture date — which no event window holds. */
+    val creationDate: CaptureDate?,
     val isScreenshot: Boolean = false,
     val isScreenRecording: Boolean = false,
     val isVideo: Boolean = false,
@@ -71,7 +72,7 @@ fun factsFromResources(resources: List<Resource>): List<AssetFacts> =
         val meta = group.first().metadata
         AssetFacts(
             assetId = assetId,
-            creationDate = CaptureDate(meta[RESOURCE_META_CREATION_DATE] ?: ""),
+            creationDate = CaptureDate.parseOrNull(meta[RESOURCE_META_CREATION_DATE].orEmpty()),
             isScreenshot = meta[RESOURCE_META_IS_SCREENSHOT]?.toBooleanStrictOrNull() == true,
             isScreenRecording = meta[RESOURCE_META_IS_SCREEN_RECORDING]?.toBooleanStrictOrNull() == true,
             isVideo = meta[RESOURCE_META_IS_VIDEO]?.toBooleanStrictOrNull() == true,

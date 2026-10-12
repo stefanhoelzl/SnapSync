@@ -81,8 +81,7 @@ internal fun directionOf(shareOn: Boolean, receiveOn: Boolean): Direction = when
 /**
  * "Now" is offered only while the present is INSIDE the event window (`startsAt <= now <= endsAt`).
  *
- * Compared in the canonical cutoff-string domain — fixed-width UTC, so lexicographic IS chronological. An
- * absent start means the window is not known yet, which is not the same as "now qualifies"; an absent end
+ * Compared as instants. An absent start means the window is not known yet, which is not the same as "now qualifies"; an absent end
  * means no upper bound, which is.
  */
 internal fun nowWithinWindow(now: CaptureDate, startsAt: CaptureDate?, endsAt: CaptureDate?): Boolean =
@@ -96,7 +95,7 @@ internal fun nowWithinWindow(now: CaptureDate, startsAt: CaptureDate?, endsAt: C
  * "From now" pick is unrecoverable, and is just a custom start once "now" has moved on
  * (decision record `simplify-join-screen`, D1).
  */
-internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> LocalDateTime?): RangeForm {
+internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> LocalDateTime): RangeForm {
     val fromAtFloor = membership.minPhotoDate.at == membership.startsAt.at
     val untilAtCeiling = membership.maxPhotoDate.at == membership.endsAt.at
     val whole = fromAtFloor && untilAtCeiling

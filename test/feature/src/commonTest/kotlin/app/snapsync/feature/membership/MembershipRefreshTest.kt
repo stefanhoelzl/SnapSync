@@ -46,8 +46,8 @@ private val CUTOFF = captureCutoff("2026-07-06T14:32:11Z")
 private val ENDS = eventEnd("2026-07-13T14:32:11Z")
 private val CEILING = captureCeiling("2026-07-13T14:32:11Z")
 private val DELETES = deletesAt("2026-08-05T14:32:11Z") // the event's retention deadline
-private val BEFORE_DEADLINE = CaptureDate("2026-07-20T00:00:00Z")
-private val AFTER_DEADLINE = CaptureDate("2026-08-06T00:00:00Z")
+private val BEFORE_DEADLINE = CaptureDate.parse("2026-07-20T00:00:00Z")
+private val AFTER_DEADLINE = CaptureDate.parse("2026-08-06T00:00:00Z")
 
 class MembershipRefreshTest {
 

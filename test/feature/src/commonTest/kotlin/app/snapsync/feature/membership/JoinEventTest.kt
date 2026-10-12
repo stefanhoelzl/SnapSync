@@ -371,7 +371,7 @@ class JoinEventTest {
 
         assertEquals(CaptureCutoff(future.at), provisioned.single().minPhotoDate)
         assertTrue(
-            CaptureDate("2026-07-06T14:32:11Z") < provisioned.single().minPhotoDate.at,
+            CaptureDate.parse("2026-07-06T14:32:11Z") < provisioned.single().minPhotoDate.at,
             "no photo taken today satisfies `creationDate >= cutoff` for a 2099 cutoff",
         )
     }

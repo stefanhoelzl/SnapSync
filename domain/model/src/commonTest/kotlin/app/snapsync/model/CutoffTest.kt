@@ -6,50 +6,39 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import kotlin.time.Clock
 import kotlin.time.Instant
 
 class CutoffTest {
 
-    private fun clockAt(iso: String) = object : Clock {
-        override fun now(): Instant = Instant.parse(iso)
+    @Test
+    fun `a capture date is its instant to the second and its text the exact UTC Z shape`() {
+        assertEquals("2026-07-06T14:32:11Z", CaptureDate.of(Instant.parse("2026-07-06T14:32:11.987654Z")).iso)
+        assertEquals("2026-01-02T03:04:05Z", CaptureDate.of(Instant.parse("2026-01-02T03:04:05Z")).iso)
+        assertEquals(Instant.parse("2026-07-06T14:32:11Z"), CaptureDate.parse("2026-07-06T14:32:11.5Z").at)
     }
 
     @Test
-    fun `now formats to the exact UTC Z shape`() {
-        assertEquals(CaptureDate("2026-07-06T14:32:11Z"), nowCutoff(clockAt("2026-07-06T14:32:11Z")))
-    }
-
-    @Test
-    fun `now truncates to whole seconds with no fractional part`() {
-        assertEquals(CaptureDate("2026-07-06T14:32:11Z"), nowCutoff(clockAt("2026-07-06T14:32:11.987654Z")))
-    }
-
-    @Test
-    fun `all fields are zero-padded to a fixed width`() {
-        assertEquals(CaptureDate("2026-01-02T03:04:05Z"), nowCutoff(clockAt("2026-01-02T03:04:05Z")))
-    }
-
-    @Test
-    fun `a fetched createdAt is already the cutoff shape and is reused verbatim`() {
-        val createdAt = "2026-07-04T18:00:00Z"
-        assertEquals(CaptureDate(createdAt), instantToCutoff(Instant.parse(createdAt)))
+    fun `a text from outside names a capture date or none`() {
+        assertEquals(CaptureDate.parse("2026-07-06T14:32:11Z"), CaptureDate.parseOrNull("2026-07-06T16:32:11+02:00"))
+        assertEquals(null, CaptureDate.parseOrNull(""))
+        assertEquals(null, CaptureDate.parseOrNull("not a date"))
+        assertFailsWith<IllegalArgumentException> { CaptureDate.parse("not a date") }
     }
 
     @Test
     fun `a local pick converts to the corresponding UTC cutoff`() {
         // 16:32:11 local in CEST (UTC+2, July) is 14:32:11 UTC.
         val local = LocalDateTime(2026, 7, 6, 16, 32, 11)
-        assertEquals(CaptureDate("2026-07-06T14:32:11Z"), localToCutoff(local, TimeZone.of("Europe/Berlin")))
+        assertEquals(CaptureDate.parse("2026-07-06T14:32:11Z"), localToCutoff(local, TimeZone.of("Europe/Berlin")))
     }
 
     @Test
-    fun `the compare against creationDate is a lexicographic at-or-after`() {
-        val cutoff = CaptureDate("2026-07-06T14:32:11Z")
-        assertTrue(CaptureDate("2026-07-06T14:32:12Z") >= cutoff, "strictly after is in scope")
-        assertTrue(CaptureDate("2026-07-06T14:32:11Z") >= cutoff, "equal instant is in scope")
-        assertTrue(CaptureDate("2026-07-06T14:32:10Z") < cutoff, "strictly before is out of scope")
-        assertTrue(CaptureDate("") < cutoff, "an undated asset (empty creationDate) is out of scope")
+    fun `capture dates compare as instants`() {
+        val cutoff = CaptureDate.parse("2026-07-06T14:32:11Z")
+        assertTrue(CaptureDate.parse("2026-07-06T14:32:12Z") >= cutoff, "strictly after is in scope")
+        assertTrue(CaptureDate.parse("2026-07-06T14:32:11Z") >= cutoff, "equal instant is in scope")
+        assertTrue(CaptureDate.parse("2026-07-06T14:32:10Z") < cutoff, "strictly before is out of scope")
+        assertTrue(CaptureDate.parse("2026-07-06T16:32:12+02:00") > cutoff, "an offset is no string to mis-sort")
     }
 
     // ── the event-start floor (capability `photo-sharing`) ─────────────────────────────────────
@@ -118,7 +107,7 @@ class CutoffTest {
             CaptureCutoff(future.at),
             clampToFloor(chosen = captureCutoff("2026-07-14T12:00:00Z"), startsAt = future),
         )
-        assertTrue(CaptureDate("2026-07-14T12:00:00Z") < future.at, "no photo of today satisfies a 2099 cutoff")
+        assertTrue(CaptureDate.parse("2026-07-14T12:00:00Z") < future.at, "no photo of today satisfies a 2099 cutoff")
     }
 
     private val endsAt = eventEnd("2026-07-21T18:00:00Z")

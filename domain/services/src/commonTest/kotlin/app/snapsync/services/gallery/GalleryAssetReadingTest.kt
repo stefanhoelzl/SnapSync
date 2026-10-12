@@ -22,9 +22,13 @@ class GalleryAssetReadingTest {
     fun `an asset's facts are the platform's under the app's id and an undated one carries no date`() {
         val dated = platformPhoto("x/L0/001", created = "2026-06-01T10:00:00.750Z").asset.facts()
         assertEquals(AssetId("x_L0_001"), dated.assetId)
-        assertEquals(CaptureDate("2026-06-01T10:00:00Z"), dated.creationDate, "to the second, as every date compared")
+        assertEquals(
+            CaptureDate.parse("2026-06-01T10:00:00Z"),
+            dated.creationDate,
+            "to the second, as every date compared",
+        )
         assertEquals(4032L * 3024L, dated.pixelArea)
-        assertEquals(CaptureDate(""), platformPhoto("u", created = null).asset.facts().creationDate)
+        assertEquals(null, platformPhoto("u", created = null).asset.facts().creationDate)
     }
 
     @Test

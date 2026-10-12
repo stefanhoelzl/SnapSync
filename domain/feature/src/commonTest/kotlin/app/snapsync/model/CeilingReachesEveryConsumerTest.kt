@@ -97,7 +97,11 @@ class CeilingReachesEveryConsumerTest {
     @Test
     fun `the join preview counts only the in-window asset`() = runTest {
         val facts = discovered.map {
-            AssetFacts(it.assetId, CaptureDate(it.metadata[RESOURCE_META_CREATION_DATE]!!), pixelArea = 12_000_000)
+            AssetFacts(
+                it.assetId,
+                CaptureDate.parse(it.metadata[RESOURCE_META_CREATION_DATE]!!),
+                pixelArea = 12_000_000,
+            )
         }
         val source = object : CandidateSource {
             override suspend fun candidates(policy: SelectionPolicy) =

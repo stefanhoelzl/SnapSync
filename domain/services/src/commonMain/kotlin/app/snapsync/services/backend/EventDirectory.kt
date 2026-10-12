@@ -7,12 +7,9 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLookup
 import app.snapsync.model.EventStart
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.instantToCutoff
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.GetEventReply
 import app.snapsync.wire.api.Routes
-import kotlin.time.Instant
 
 /**
  * Fetches an event's details by id for the join confirmation gate. Non-throwing: a transport/parse
@@ -77,19 +74,8 @@ class BackendEventDirectory(private val gateway: BackendGateway) : EventDirector
     }
 
     /**
-     * Normalize a fetched instant into the canonical cutoff shape, or `null` when it does not parse.
-     *
-     * This is the boundary that makes [EventLookup.Found.startsAt] canonical **by construction**. The backend
-     * already serves the canonical shape (it refuses any other at creation), so today this changes nothing — it is
-     * here because an off-shape date, should one ever arrive (a fractional second, say), is quietly poisonous
-     * downstream: the clamp is a *lexicographic* `maxOf`, so
-     * `…T00:00:00.182Z` sorts before `…T00:00:00Z`; and were such a value to win the clamp it would be persisted as
-     * the cutoff, which the iOS walk parses with a bare `NSISO8601DateFormatter` that REJECTS a fractional second —
-     * silently costing the bounded PhotoKit fetch.
-     *
-     * `instantToCutoff` truncates toward the earlier instant (dropping the fraction), the inclusive direction — so
-     * a photo taken within the cutoff's own second is admitted rather than lost.
+     * A fetched date as a capture date, or `null` when it names no instant. Truncated to its second toward the earlier
+     * instant, the inclusive direction — so a photo taken within the date's own second is admitted rather than lost.
      */
-    private fun canonicalOrNull(raw: String): CaptureDate? =
-        runCatchingCancellable { instantToCutoff(Instant.parse(raw)) }.getOrNull()
+    private fun canonicalOrNull(raw: String): CaptureDate? = CaptureDate.parseOrNull(raw)
 }

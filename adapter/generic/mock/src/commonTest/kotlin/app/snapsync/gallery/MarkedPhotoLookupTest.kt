@@ -30,8 +30,8 @@ import kotlin.test.assertTrue
 /** The join's read of the library's SnapSync-marked photos (capability `receiving-photos`), over the in-memory gallery. */
 class MarkedPhotoLookupTest {
 
-    private val start = EventStart(CaptureDate("2026-06-01T00:00:00Z"))
-    private val end = EventEnd(CaptureDate("2026-06-10T00:00:00Z"))
+    private val start = EventStart(CaptureDate.parse("2026-06-01T00:00:00Z"))
+    private val end = EventEnd(CaptureDate.parse("2026-06-10T00:00:00Z"))
     private val refA = AssetRef("dev-a", AssetId("SRC-A"))
     private val refB = AssetRef("dev-b", AssetId("SRC-B"))
 

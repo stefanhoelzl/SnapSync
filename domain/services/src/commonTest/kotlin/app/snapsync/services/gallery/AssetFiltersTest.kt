@@ -1,6 +1,5 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCeiling
@@ -54,12 +53,5 @@ class AssetFiltersTest {
     @Test
     fun `a policy that admits nothing reads nothing`() {
         assertNull(SelectionPolicy(listOf(SelectionRule.DenyAll)).assetFilter())
-    }
-
-    @Test
-    fun `a date that does not parse is no bound - the read is wider and never narrower`() {
-        assertNull(CaptureDate("").instant())
-        assertNull(CaptureDate("not a date").instant())
-        assertEquals(Instant.parse("2026-06-01T00:00:00Z"), CaptureDate("2026-06-01T00:00:00Z").instant())
     }
 }

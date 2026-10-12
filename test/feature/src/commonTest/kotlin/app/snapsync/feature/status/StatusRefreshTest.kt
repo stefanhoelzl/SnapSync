@@ -66,7 +66,7 @@ class StatusRefreshTest {
         override suspend fun candidates(policy: SelectionPolicy): CandidateRead = CandidateRead.Readable(
             listOf(
                 object : Candidate {
-                    override val facts = AssetFacts(AssetId("A"), CaptureDate("2026-06-01T00:00:00Z"))
+                    override val facts = AssetFacts(AssetId("A"), CaptureDate.parse("2026-06-01T00:00:00Z"))
                     override suspend fun resources(): List<Resource> = emptyList()
                 },
             ),

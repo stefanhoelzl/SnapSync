@@ -226,8 +226,8 @@ class CollectDiagnosticDumpTest {
             config = EventConfig(
                 eventId = "5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e",
                 name = "Anna's Birthday",
-                minPhotoDate = CaptureCutoff(CaptureDate("2026-07-01T00:00:00Z")),
-                maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-08T00:00:00Z")),
+                minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-07-01T00:00:00Z")),
+                maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-07-08T00:00:00Z")),
                 direction = Direction.Both,
                 saveToAlbum = true,
                 endsAt = eventEnd("2099-12-31T00:00:00Z"),
@@ -413,8 +413,8 @@ class CollectDiagnosticDumpTest {
             config = EventConfig(
                 eventId = "5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e",
                 name = "n".repeat(100),
-                minPhotoDate = CaptureCutoff(CaptureDate("2026-07-01T00:00:00Z")),
-                maxPhotoDate = CaptureCeiling(CaptureDate("2026-07-08T00:00:00Z")),
+                minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-07-01T00:00:00Z")),
+                maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-07-08T00:00:00Z")),
                 direction = Direction.Both,
                 saveToAlbum = true,
                 endsAt = eventEnd("2099-12-31T00:00:00Z"),
