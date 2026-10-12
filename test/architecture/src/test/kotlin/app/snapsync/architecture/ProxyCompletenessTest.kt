@@ -13,7 +13,6 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.reflect.KCallable
 import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
@@ -21,7 +20,6 @@ import kotlin.reflect.KParameter
 import kotlin.reflect.KProperty
 import kotlin.reflect.KType
 import kotlin.reflect.full.callSuspendBy
-import kotlin.reflect.full.companionObjectInstance
 import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.full.isSuperclassOf
 import kotlin.reflect.full.memberProperties
@@ -39,14 +37,11 @@ import kotlin.test.fail
  *
  * The runner fails a clause whose declared cell never occurred, which is only as honest as the proxy that records it. So
  * this drives EVERY cell [PortGrid] derives through the port's proxy (`app.snapsync.contracts.proxy.<Port>Proxy`, built
- * as `(adapter, log)`): an adapter double made by reflection answers the cell's variant — or throws the member's
- * declared type, or calls the handler, callback or handle the cell names — and the proxy must record exactly that cell
+ * as `(adapter, log)`): an adapter double made by reflection answers the cell's variant — or calls the handler,
+ * callback or handle the cell names — and the proxy must record exactly that cell
  * for that member, and no other variant of it. A proxy that forgot a member, a handler, a handle or a callback, or
  * renders one under another name, fails here naming the cell. A port another port extends is driven through the
  * extending port's proxy too, since its members are recorded under the port declaring them.
- *
- * A proxy names each member's `@Throws` itself (Kotlin/Native cannot read the annotation); its `THROWS` must equal the
- * port's declarations exactly, and a throw of another type or a cancellation must pass unrecorded.
  */
 class ProxyCompletenessTest {
 
@@ -81,29 +76,6 @@ class ProxyCompletenessTest {
                 "a proxy does not record these cells as the grid writes them:\n  " + failures.joinToString("\n  "),
             )
         }
-    }
-
-    @Test
-    fun `every proxy names exactly its port's declared throws`() {
-        val wrong = PortGrid.ports.mapNotNull { port ->
-            val proxy = proxyClass(port) ?: return@mapNotNull null
-            val declared = allMembers(port).mapNotNull { m ->
-                val types = (m as? KFunction<*>)?.javaMethod?.exceptionTypes.orEmpty()
-                types.singleOrNull()?.let { m.name to it.kotlin }
-            }.toMap()
-
-            @Suppress("UNCHECKED_CAST")
-            val named = (
-                proxy.companionObjectInstance?.let { c ->
-                    c::class.memberProperties.firstOrNull {
-                        it.name == "THROWS"
-                    }?.getter?.call(c)
-                }
-                    as Map<String, KClass<*>>?
-                ).orEmpty()
-            if (named == declared) null else "${port.simpleName}Proxy names $named, the port declares $declared"
-        }
-        if (wrong.isNotEmpty()) fail(wrong.joinToString("\n"))
     }
 
     @Test
@@ -149,31 +121,10 @@ class ProxyCompletenessTest {
             }
         }
 
-        /**
-         * Throws the member's declared type through [call], then a throw of another type and a cancellation, which must
-         * pass unrecorded.
-         */
-        private fun throws(member: KCallable<*>, call: () -> Any?) {
-            val declared = (member as KFunction<*>).javaMethod!!.exceptionTypes.single()
-            val raises =
-                listOf(
-                    allocate(declared) as Throwable,
-                    AssertionError("not the declared type"),
-                    CancellationException("cancelled"),
-                )
-            raises.forEachIndexed { i, raised ->
-                val before = log.cells
-                answers[javaName(member)] = { throw raised }
-                runCatching { call() }
-                check(i == 0 || log.cells == before) { "an undeclared throw was recorded: ${log.cells - before}" }
-            }
-        }
-
-        /** Answers [variant] from [member] (a value, or a throw of the declared type), then reads it through [call]. */
+        /** Answers [variant] from [member], then reads it through [call]. */
         private fun drive(member: KCallable<*>, variant: String, call: () -> Any?) {
             val type = member.returnType
             val k = type.classifier as? KClass<*>
-            if (variant == "throws") return throws(member, call)
             when {
                 k != null && k.isSubclassOf(StateFlow::class) -> {
                     answers[javaName(member)] = { MutableStateFlow(valueOf(type.arguments.single().type!!, variant)) }

@@ -2,8 +2,6 @@ package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.answerVariant
-import kotlin.coroutines.cancellation.CancellationException
-import kotlin.reflect.KClass
 
 /**
  * What a recording proxy writes into its clause's [CallLog]: the grid's own cell text under one OWNER — a port, or a
@@ -26,22 +24,6 @@ class Recorder internal constructor(private val log: CallLog, private val owner:
         log.record("$owner.$member → ${if (value == null) "null" else RETURNS}")
         return value
     }
-
-    /**
-     * Runs [block], recording [member]'s `throws` cell only when what it throws is the member's DECLARED type
-     * ([declared], its `@Throws` — named here because Kotlin/Native cannot read the annotation at run time). Any other
-     * throw, and every cancellation, passes unrecorded; the throw is always rethrown unchanged.
-     */
-    inline fun <R> throwing(member: String, declared: KClass<out Throwable>, block: () -> R): R =
-        try {
-            block()
-        } catch (t: Throwable) {
-            if (t !is CancellationException && declared.isInstance(t)) recordThrow(member)
-            throw t
-        }
-
-    @PublishedApi
-    internal fun recordThrow(member: String) = log.record("$owner.$member → throws")
 
     /**
      * A call the adapter makes into what the core handed it: a handler (`handlers.onLink`) or a member's callback

@@ -10,7 +10,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
 | `AppUploadEngine` | `:domain:feature` | `:test:architecture` Engine; `:test:feature` FakeEngine | yes |
-| `AttestStore` | `:domain:ports` | `:adapter:generic:mock` InMemoryAttestStore; `:domain:services` AttestState, CachedAttestStore, Item, SharedItem; `:test:contracts` AttestStoreProxy, UnusedAttestStore | yes |
+| `AttestStore` | `:domain:services` | `:domain:services` AttestState, CachedAttestStore, Item, SharedItem | no |
 | `BackgroundTime` | `:domain:ports` | `:adapter:android` AndroidBackgroundTime; `:adapter:generic:mock` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime; `:domain:services` Time; `:test:contracts` BackgroundTimeProxy; `:test:feature` Time | yes |
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:android` Hold; `:adapter:generic:mock` Hold; `:adapter:ios:app-only` Held, Refused; `:test:contracts` HoldProxy | no |
 | `BackgroundTransfer` | `:domain:services` | `:domain:services` OsQueueTransfer, SessionTransfer; `:test:feature` FakePlatform, Library | yes |
@@ -112,11 +112,13 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences; `:domain:services` Prefs; `:test:contracts` PreferencesProxy | yes |
 | `ProcessInfo` | `:domain:ports` | `:adapter:android` AndroidProcessInfo; `:adapter:generic:mock` InMemoryProcessInfo, Reading; `:adapter:ios:app-only` IosProcessInfo; `:test:contracts` ProcessInfoProxy | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics; `:test:contracts` ProcessMetricsProxy | no |
+| `ProveResult` | `:domain:ports` | `:domain:ports` Ok | no |
 | `PushNotifications` | `:domain:ports` | `:adapter:android` AndroidPushNotifications; `:adapter:ios:app-only` IosPushNotifications; `:test:contracts` PushNotificationsProxy | no |
 | `PushTokenPublisher` | `:domain:services` | `:domain:services` BackendPushTokenPublisher; `:test:feature` FakePushTokenPublisher | yes |
 | `RangeEdit` | `:domain:presentation` | `:domain:presentation` Day, DragEnd, DragStart, FromHour, FromMinute, Sweep, UntilHour, UntilMinute, UntilMinuteDrag | no |
 | `ReceivedReporter` | `:domain:services` | `:domain:services` BackendReceivedReporter | no |
 | `RecognitionSource` | `:domain:services` | `:domain:services` Recognition, SuppressionService; `:test:feature` Recognised, Suppression | yes |
+| `Refused` | `:domain:ports` | `:domain:ports` Failed, NotAvailable, UnknownKey | no |
 | `RegistrationAnswer` | `:domain:model` | `:domain:model` Answered, Unsupported | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable, Unsupported | no |
 | `RenameOutcome` | `:domain:model` | `:domain:model` InvalidName, Renamed, Transient | no |

@@ -34,6 +34,7 @@ class AndroidFilesContractTest {
             FilesState.READ_ONLY_DIRECTORY,
             FilesState.UNSEARCHABLE_DIRECTORY,
             FilesState.LOOPED_LINK,
+            FilesState.DENIED_SUBDIRECTORY,
         )
 
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
@@ -53,6 +54,10 @@ class AndroidFilesContractTest {
             when (state) {
                 FilesState.DENIED -> revokeAllAccess(File(shared, path))
                 FilesState.DENIED_DIRECTORY -> directory.setReadable(false, false)
+                FilesState.DENIED_SUBDIRECTORY -> {
+                    files.write(FileArea.SHARED, FilesContract.innerPath(clauseId), FilesContract.seed(clauseId))
+                    File(shared, FilesContract.innerPath(clauseId)).parentFile!!.setReadable(false, false)
+                }
                 FilesState.READ_ONLY_DIRECTORY -> directory.setWritable(false, false)
                 FilesState.UNSEARCHABLE_DIRECTORY -> revokeAllAccess(directory)
                 FilesState.LOOPED_LINK -> File(shared, path).toPath().let { link ->
@@ -62,6 +67,7 @@ class AndroidFilesContractTest {
                 FilesState.EMPTY, FilesState.HOLDING, FilesState.UNAVAILABLE -> Unit
             }
             return Entered.Ready(files) {
+                restoreOwnerAccess(File(shared, FilesContract.innerPath(clauseId)).parentFile!!)
                 restoreOwnerAccess(directory)
                 restoreOwnerAccess(File(shared, path))
                 shared.deleteRecursively()

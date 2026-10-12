@@ -1,6 +1,5 @@
 package app.snapsync.services.trust
 
-import app.snapsync.ports.AttestStore
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

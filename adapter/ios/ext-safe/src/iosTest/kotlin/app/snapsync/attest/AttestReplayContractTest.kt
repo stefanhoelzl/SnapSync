@@ -1,10 +1,7 @@
 package app.snapsync.attest
 
 import app.snapsync.attest.contract.ReplayingAppAttestApi
-import app.snapsync.attest.contract.attestStoreInState
 import app.snapsync.attest.contract.integrityInState
-import app.snapsync.contracts.AttestStoreContract
-import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -15,22 +12,19 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.contract.RECORDINGS
-import app.snapsync.keychain.contract.ReplayingKeychainApi
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DeviceIntegrity
 import kotlin.test.Test
 
 /**
- * App Attest and the attestation store on an entitled device, REPLAYED (`docs/architecture.md`): the
- * CURRENT [IosDeviceIntegrity] and `AttestState` over [app.snapsync.keychain.IosSecureStore] run against what iOS answered when
- * `test/contracts/recordings/DeviceIntegrity@IOS_DEVICE_APP.rec` and `AttestStore@IOS_DEVICE_APP.rec` were recorded,
- * and the current clauses judge.
+ * App Attest on an entitled device, REPLAYED (`docs/architecture.md`): the CURRENT [IosDeviceIntegrity] runs against
+ * what iOS answered when `test/contracts/recordings/DeviceIntegrity@IOS_DEVICE_APP.rec` was recorded, and the current
+ * clauses judge.
  *
  * What the App Attest replay proves is the adapter's half: the calls it makes, in order, and the
  * `clientDataHash` it computes from each challenge — the value the edge's verifier recomputes. The recorded
  * attestation and assertion bytes are masked (they are a device's credential, and the repository is public),
  * so whether Apple's bytes verify is not proven here; `api/test/attest.test.ts` proves it against a real
- * Apple fixture. A change that asks App Attest or the Keychain something else reads `Diverged`: re-record on
+ * Apple fixture. A change that asks App Attest something else reads `Diverged`: re-record on
  * the device (the `rig-channel` runbook).
  */
 class AttestReplayContractTest {
@@ -51,30 +45,7 @@ class AttestReplayContractTest {
     @Test
     fun `the recorded device App Attest satisfies the DeviceIntegrity contract`() = verify(DeviceIntegrityContract, key)
 
-    private val store = object : Binding<AttestStoreState, AttestStore> {
-        override val host = Host.IOS_DEVICE_APP
-        override val kind = BindingKind.Replay
-        override val reaches = setOf(AttestStoreState.EMPTY, AttestStoreState.HOLDING)
-
-        override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> {
-            if (state !in reaches) return Entered.Unreachable("the entitled app runs unlocked")
-            return replayerFor(RECORDINGS, STORE, clauseId) { replayer ->
-                attestStoreInState(
-                    ReplayingKeychainApi(replayer),
-                    state,
-                    clauseId,
-                    log,
-                    afterDispose = replayer::assertExhausted,
-                )
-            }
-        }
-    }
-
-    @Test
-    fun `the recorded device Keychain satisfies the AttestStore contract`() = verify(AttestStoreContract, store)
-
     private companion object {
         const val KEY = "DeviceIntegrity@IOS_DEVICE_APP"
-        const val STORE = "AttestStore@IOS_DEVICE_APP"
     }
 }

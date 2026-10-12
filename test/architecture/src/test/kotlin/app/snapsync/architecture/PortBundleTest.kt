@@ -52,6 +52,7 @@ class PortBundleTest {
         "GalleryResourceHandle" to "the platform's own resource, handed out by the gallery and handed back — a handle, not a seam",
         "ImportOutcome" to "what an import did — a sealed answer the gallery's import returns",
         "GalleryRead" to "what a gallery read produced, or that the gallery cannot be read — a sealed answer",
+        "ProveResult" to "what the integrity service proved, or why it refused — a sealed answer",
         "ChangeOutcome" to "what the platform answered a change to an upload — a sealed answer",
         "TransferSource" to "the bytes a session transfer sends, a file or a library resource — a sealed value handed in",
         "OsUploadJobHandle" to "the OS's own upload job, presented by the queue and handed back — a handle, not a seam",

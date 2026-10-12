@@ -42,6 +42,12 @@ enum class FilesState {
 
     /** [FilesContract.path] in the SHARED area is a symbolic link to itself: every lookup through it loops. */
     LOOPED_LINK,
+
+    /**
+     * [FilesContract.directory] in the SHARED area holds [FilesContract.path], and a subdirectory holding
+     * [FilesContract.innerPath] that this process may not list — met only part-way through a listing.
+     */
+    DENIED_SUBDIRECTORY,
 }
 
 /**
@@ -58,6 +64,9 @@ object FilesContract : Contract<FilesState, Files>("Files") {
 
     /** The clause's file, relative to its area: inside [directory]. */
     fun path(clauseId: String) = "${directory(clauseId)}/file.bin"
+
+    /** A file one level below [directory], in the subdirectory a [FilesState.DENIED_SUBDIRECTORY] binding denies. */
+    fun innerPath(clauseId: String) = "${directory(clauseId)}/inner/file.bin"
 
     /** What a [FilesState.HOLDING] binding writes: ASCII lines, several times [SMALL]. */
     fun seed(clauseId: String): ByteArray =
@@ -458,6 +467,20 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertIs<FileResult.Denied>(files.readTail(FileArea.SHARED, p, SMALL))
             assertIs<FileResult.Denied>(files.readRange(FileArea.SHARED, p, 0, SMALL))
             assertEquals(FileResult.Ok(true), files.exists(FileArea.SHARED, p), "it is there")
+        }
+
+        clause(
+            "DENIED_SUBDIRECTORY_LIST_IS_DENIED_NEVER_PART",
+            FilesState.DENIED_SUBDIRECTORY,
+            covers = cells {
+                on<Files>().answers(Files::list).with(FileResult.Denied::class)
+            },
+        ) { files ->
+            // A listing that skipped what it could not read would answer the readable part as if it were everything.
+            assertIs<FileResult.Denied>(
+                files.list(FileArea.SHARED, directory("DENIED_SUBDIRECTORY_LIST_IS_DENIED_NEVER_PART")),
+                "a subdirectory met part-way that could not be listed makes the whole listing denied",
+            )
         }
 
         clause(

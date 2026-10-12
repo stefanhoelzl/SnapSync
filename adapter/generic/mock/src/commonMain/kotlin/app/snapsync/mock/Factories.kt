@@ -3,7 +3,6 @@ package app.snapsync.mock
 import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.NetworkAccess
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.NetworkMonitor
@@ -25,9 +24,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * and observes it there.
  */
 fun inMemoryDeviceIntegrity(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available)
-
-fun inMemoryAttestStore(token: String? = null, keyId: String? = null): AttestStore =
-    InMemoryAttestStore(token, keyId)
 
 fun inMemoryCrashReporter(
     started: MutableStateFlow<Boolean>,

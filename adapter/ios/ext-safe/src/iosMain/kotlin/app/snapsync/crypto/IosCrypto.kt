@@ -1,5 +1,7 @@
 package app.snapsync.crypto
 
+import app.snapsync.model.AesKey
+import app.snapsync.model.GcmNonce
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Crypto
 import dev.whyoleg.cryptography.CryptographyProvider
@@ -58,24 +60,21 @@ class IosCrypto : Crypto {
         return out
     }
 
-    override fun aesGcmSeal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray =
-        cipher(key).encryptWithIvBlocking(nonce, plaintext)
+    override fun aesGcmSeal(key: AesKey, nonce: GcmNonce, plaintext: ByteArray): ByteArray =
+        cipher(key).encryptWithIvBlocking(nonce.bytes, plaintext)
 
-    override fun aesGcmOpen(key: ByteArray, nonce: ByteArray, sealed: ByteArray): ByteArray? {
+    override fun aesGcmOpen(key: AesKey, nonce: GcmNonce, sealed: ByteArray): ByteArray? {
         if (sealed.size < TAG_LENGTH) return null
         val cipher = cipher(key)
         // CryptoKit answers a seal that does not authenticate by throwing; nothing else here throws for valid inputs.
-        return runCatchingCancellable { cipher.decryptWithIvBlocking(nonce, sealed) }.getOrNull()
+        return runCatchingCancellable { cipher.decryptWithIvBlocking(nonce.bytes, sealed) }.getOrNull()
     }
 
-    private fun cipher(key: ByteArray): IvAuthenticatedCipher {
-        require(key.size == KEY_LENGTH) { "AES-256 key length ${key.size}" }
-        return gcm.keyDecoder().decodeFromByteArrayBlocking(AES.Key.Format.RAW, key).cipher()
-    }
+    private fun cipher(key: AesKey): IvAuthenticatedCipher =
+        gcm.keyDecoder().decodeFromByteArrayBlocking(AES.Key.Format.RAW, key.bytes).cipher()
 
     private companion object {
         const val HASH_LENGTH = 32
-        const val KEY_LENGTH = 32
         const val TAG_LENGTH = 16
     }
 }

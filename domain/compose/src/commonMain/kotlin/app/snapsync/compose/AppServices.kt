@@ -1,7 +1,6 @@
 package app.snapsync.compose
 
 import app.snapsync.model.DeviceIdentityRole
-import app.snapsync.ports.AttestStore
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
@@ -18,6 +17,7 @@ import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.push.PushTokenSource
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.staging.StagingService
+import app.snapsync.services.trust.AttestStore
 import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 

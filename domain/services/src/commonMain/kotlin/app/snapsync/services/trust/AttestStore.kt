@@ -1,4 +1,4 @@
-package app.snapsync.ports
+package app.snapsync.services.trust
 
 import app.snapsync.model.SecureStoreUnavailable
 
@@ -7,16 +7,18 @@ import app.snapsync.model.SecureStoreUnavailable
  * readable while the device is locked, addressable by **both** processes — the upload extension must
  * read the token, and the OS invokes it when the device is idle, which usually means locked.
  *
- * Binding note: on iOS both are [SecureStore] items in the **shared Keychain access group**, the same
- * one holding the device id.
+ * A service seam, not a platform port: the platform's store is the [app.snapsync.ports.SecureStore] port, and
+ * [app.snapsync.services.identity.AttestState] keeps both values in two of its shared slots — on iOS the **shared
+ * Keychain access group**, the same one holding the device id. The seam stands because two implementations sit
+ * behind it: that store, and the in-memory token copy each process composes in front of it ([CachedAttestStore]).
  */
-interface AttestStore : Port {
+interface AttestStore {
 
     /**
      * The current token, or null if none was ever stored. MAY be expired — the reader decides.
      *
      * Absence: null means the token is **absent** and nothing else. An unreadable store is NOT
-     * collapsed here — [readExisting] throws [SecureStoreUnavailable] instead, and [SecureStoreRead]
+     * collapsed here — `readExisting` throws [SecureStoreUnavailable] instead, and [app.snapsync.model.SecureStoreRead]
      * keeps `Absent` and `Unavailable` apart on purpose ("never mistaken for absence"). That
      * separation is what lets a caller treat null as "not attested yet" and mint.
      */

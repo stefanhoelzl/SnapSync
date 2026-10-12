@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 
 /**
  * The format's pure half: the layout and HKDF's expansion. The bytes it produces under real primitives are held to the
@@ -63,7 +64,7 @@ class EncryptedFileFormatTest {
         val fileKey = Recording()
         val ad = EncryptedFileFormat.associatedData("e", "d", "a", "live")
         assertEquals("snapsync/v1/e/d/a/live", ad.decodeToString())
-        assertEquals(32, EncryptedFileFormat.fileKeyOf(ByteArray(32), byteArrayOf(5), ad, fileKey).size)
+        assertEquals(32, EncryptedFileFormat.fileKeyOf(ByteArray(32), byteArrayOf(5), ad, fileKey).bytes.size)
         assertEquals(listOf<Byte>(5), fileKey.calls[0].first, "the file's salt")
         assertEquals(ad.toList() + 1, fileKey.calls[1].second, "bound to what the file is")
     }
@@ -114,7 +115,20 @@ class EncryptedFileFormatTest {
         assertEquals(65536 - 40, EncryptedFileFormat.ciphertextSegmentLength(0))
         assertEquals(65536, EncryptedFileFormat.ciphertextSegmentLength(7))
         val nonce = EncryptedFileFormat.segmentNonce(head.noncePrefix, 0x01020304, last = true)
-        assertContentEquals(head.noncePrefix + byteArrayOf(1, 2, 3, 4, 1), nonce)
-        assertEquals(0, EncryptedFileFormat.segmentNonce(head.noncePrefix, 0, last = false)[11].toInt())
+        assertContentEquals(head.noncePrefix + byteArrayOf(1, 2, 3, 4, 1), nonce.bytes)
+        assertEquals(0, EncryptedFileFormat.segmentNonce(head.noncePrefix, 0, last = false).bytes[11].toInt())
+    }
+
+    @Test
+    fun `a cipher key and a nonce are of their exact length or not made at all`() {
+        assertContentEquals(ByteArray(32) { 7 }, AesKey.of(ByteArray(32) { 7 })?.bytes)
+        assertNull(AesKey.of(ByteArray(16)), "a 16-byte key would run AES-128")
+        assertNull(AesKey.of(ByteArray(33)))
+        assertContentEquals(ByteArray(12) { 3 }, GcmNonce.of(ByteArray(12) { 3 })?.bytes)
+        assertNull(GcmNonce.of(ByteArray(11)))
+        val held = ByteArray(32)
+        val key = AesKey.of(held)
+        held[0] = 1
+        assertEquals(0, key?.bytes?.get(0)?.toInt(), "a key keeps its own copy of the bytes it was made from")
     }
 }

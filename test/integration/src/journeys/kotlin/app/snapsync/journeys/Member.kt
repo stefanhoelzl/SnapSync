@@ -102,7 +102,7 @@ class Member(private val http: HttpClient, backend: String) {
             noncePrefix = ByteArray(EncryptedFileFormat.NONCE_PREFIX_LENGTH).also(random::nextBytes),
         )
         val associated = EncryptedFileFormat.associatedData(eventId, deviceId, assetId.value, ResourceRole.PRIMARY.wire)
-        val fileKey = SecretKeySpec(EncryptedFileFormat.fileKeyOf(key, head.salt, associated, hmac), "AES")
+        val fileKey = SecretKeySpec(EncryptedFileFormat.fileKeyOf(key, head.salt, associated, hmac).bytes, "AES")
         var file = EncryptedFileFormat.encodeHead(head)
         var offset = 0
         var segment = 0
@@ -111,7 +111,7 @@ class Member(private val http: HttpClient, backend: String) {
             val last = end == JPEG.size
             val nonce = EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, fileKey, GCMParameterSpec(EncryptedFileFormat.TAG_LENGTH * Byte.SIZE_BITS, nonce))
+            cipher.init(Cipher.ENCRYPT_MODE, fileKey, GCMParameterSpec(EncryptedFileFormat.TAG_LENGTH * Byte.SIZE_BITS, nonce.bytes))
             file += cipher.doFinal(JPEG, offset, end - offset)
             offset = end
             segment++

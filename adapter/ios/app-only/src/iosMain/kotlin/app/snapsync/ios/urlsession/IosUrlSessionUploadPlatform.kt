@@ -101,8 +101,12 @@ class IosUrlSessionUploadPlatform internal constructor(
             // and they outlive us, so this is the only count that binds across a relaunch.
             if (session.tasks().size >= cap) return@invocation CreateOutcome.LIMIT_EXCEEDED
             val url = NSURL.URLWithString(target.url) ?: return@invocation CreateOutcome.FAILED
-            // Tagged with the ledger key — the only field present across the lifecycle.
-            session.upload(uploadUrlRequest(url, target), file, tag)
+            // Tagged with the ledger key — the only field present across the lifecycle. A file that cannot be read is no
+            // transfer: refused now, never one that fails later.
+            if (!session.upload(uploadUrlRequest(url, target), file, tag)) {
+                log.w { "create: $file cannot be read — not creating" }
+                return@invocation CreateOutcome.FAILED
+            }
             CreateOutcome.CREATED
         }
 

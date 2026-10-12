@@ -41,6 +41,7 @@ class IosFilesContractTest {
             FilesState.READ_ONLY_DIRECTORY,
             FilesState.UNSEARCHABLE_DIRECTORY,
             FilesState.LOOPED_LINK,
+            FilesState.DENIED_SUBDIRECTORY,
         )
 
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
@@ -56,6 +57,10 @@ class IosFilesContractTest {
             when (state) {
                 FilesState.DENIED -> chmod("$shared/$path", NO_PERMISSIONS)
                 FilesState.DENIED_DIRECTORY -> chmod(directory, OWNER_SEARCH_ONLY)
+                FilesState.DENIED_SUBDIRECTORY -> {
+                    bare.write(FileArea.SHARED, FilesContract.innerPath(clauseId), FilesContract.seed(clauseId))
+                    chmod("$directory/inner", OWNER_SEARCH_ONLY)
+                }
                 FilesState.READ_ONLY_DIRECTORY -> chmod(directory, OWNER_READ_SEARCH)
                 FilesState.UNSEARCHABLE_DIRECTORY -> chmod(directory, NO_PERMISSIONS)
                 FilesState.LOOPED_LINK -> {
@@ -65,6 +70,7 @@ class IosFilesContractTest {
                 FilesState.EMPTY, FilesState.HOLDING, FilesState.UNAVAILABLE -> Unit
             }
             return Entered.Ready(bare.recorded(log)) {
+                chmod("$directory/inner", OWNER_ALL)
                 chmod(directory, OWNER_ALL)
                 chmod("$shared/$path", OWNER_READ_WRITE)
                 removeDirectory(shared)

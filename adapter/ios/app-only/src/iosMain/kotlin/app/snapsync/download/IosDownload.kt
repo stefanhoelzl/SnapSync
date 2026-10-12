@@ -13,6 +13,7 @@ import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
 import co.touchlab.kermit.Logger
 import platform.Foundation.NSError
+import platform.Foundation.NSLock
 import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
 import platform.Foundation.setValue
@@ -69,22 +70,36 @@ class IosDownload internal constructor(
      * [transferSessionConfiguration] — background on every shipped binary, default on `iosSimulatorArm64` — whose
      * policy (cellular allowed, no discretionary deferral, relaunch on completion) is declared there; a transfer's own
      * request narrows the networks it may use ([start]).
+     *
+     * Built under [building], so one process opens ONE session for its identifier: two callers racing here would
+     * otherwise each open one — the loser's left to deliver events nobody reads — and the loser's re-read of the
+     * winner could find it already invalidated.
      */
     private fun session(): DownloadSession {
         current.load()?.let { return it }
-        val built = AtomicReference<DownloadSession?>(null)
-        val session = api.open(
-            identifier,
-            DownloadSessionEvents(
-                finished = { task, facts, path -> onFinished(task, facts, path) },
-                completed = { task, error -> onComplete(task, error) },
-                invalidated = { error -> built.load()?.let { onInvalidated(it, error) } },
-                drained = { onEventsFinished() },
-            ),
-        )
-        built.store(session)
-        return if (current.compareAndSet(null, session)) session else checkNotNull(current.load())
+        building.lock()
+        try {
+            current.load()?.let { return it }
+            val built = AtomicReference<DownloadSession?>(null)
+            val session = api.open(
+                identifier,
+                DownloadSessionEvents(
+                    finished = { task, facts, path -> onFinished(task, facts, path) },
+                    completed = { task, error -> onComplete(task, error) },
+                    invalidated = { error -> built.load()?.let { onInvalidated(it, error) } },
+                    drained = { onEventsFinished() },
+                ),
+            )
+            built.store(session)
+            current.store(session)
+            return session
+        } finally {
+            building.unlock()
+        }
     }
+
+    /** Held while a session is built ([session]). */
+    private val building = NSLock()
 
     override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
         val nsUrl = NSURL.URLWithString(url) ?: return StartResult.NotStarted

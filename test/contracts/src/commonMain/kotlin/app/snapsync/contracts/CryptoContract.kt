@@ -1,10 +1,12 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AesKey
+import app.snapsync.model.GcmNonce
 import app.snapsync.ports.Crypto
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /** The primitives keep no state, so there is one: the platform's own implementation, ready. */
@@ -24,8 +26,14 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
         s.length / 2,
     ) { s.substring(2 * it, 2 * it + 2).toInt(16).toByte() }
 
-    private val GCM_KEY = hex("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308")
-    private val GCM_NONCE = hex("cafebabefacedbaddecaf888")
+    private fun key(bytes: ByteArray): AesKey = assertNotNull(AesKey.of(bytes), "a vector key is 32 bytes")
+    private fun nonce(bytes: ByteArray): GcmNonce = assertNotNull(GcmNonce.of(bytes), "a vector nonce is 12 bytes")
+
+    private val ZERO_KEY get() = key(ByteArray(32))
+    private val ZERO_NONCE get() = nonce(ByteArray(12))
+    private val GCM_KEY get() = key(hex("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308"))
+    private val GCM_NONCE_BYTES = hex("cafebabefacedbaddecaf888")
+    private val GCM_NONCE get() = nonce(GCM_NONCE_BYTES)
     private val GCM_PLAIN = hex(
         "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a72" +
             "1c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255",
@@ -65,6 +73,25 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
         }
 
         clause(
+            "AN_EMPTY_KEY_MACS_AS_RFC_2104_SAYS",
+            CryptoState.READY,
+            covers = cells { on<Crypto>().answers(Crypto::hmacSha256).returns() },
+        ) { crypto ->
+            // RFC 2104 pads a key with zeros to the block, so the empty key is a key like any other — and JCA's
+            // `SecretKeySpec` refuses it, which is what this pins on every platform.
+            assertContentEquals(
+                hex("b613679a0814d9ec772f95d778c35fc5ff1697c493715653c6c712144292c5ad"),
+                crypto.hmacSha256(ByteArray(0), ByteArray(0)),
+                "the empty key over the empty message",
+            )
+            assertContentEquals(
+                hex("76d9e7194e7dbc3aa00bbe8ffb9f6fcb5a932170f971f948bb2ab61607d2b9d6"),
+                crypto.hmacSha256(ByteArray(0), "what do ya want for nothing?".encodeToByteArray()),
+                "the empty key over a message",
+            )
+        }
+
+        clause(
             "AES_256_GCM_IS_THE_SPECIFICATIONS_KNOWN_ANSWERS",
             CryptoState.READY,
             covers = cells {
@@ -76,19 +103,19 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
         ) { crypto ->
             assertContentEquals(
                 hex("530f8afbc74536b9a963b4f1c4cb738b"),
-                crypto.aesGcmSeal(ByteArray(32), ByteArray(12), ByteArray(0)),
+                crypto.aesGcmSeal(ZERO_KEY, ZERO_NONCE, ByteArray(0)),
                 "test case 13: nothing sealed is the tag alone",
             )
             assertContentEquals(
                 hex("cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919"),
-                crypto.aesGcmSeal(ByteArray(32), ByteArray(12), ByteArray(16)),
+                crypto.aesGcmSeal(ZERO_KEY, ZERO_NONCE, ByteArray(16)),
                 "test case 14",
             )
             assertContentEquals(GCM_SEALED, crypto.aesGcmSeal(GCM_KEY, GCM_NONCE, GCM_PLAIN), "test case 15")
             assertContentEquals(GCM_PLAIN, crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, GCM_SEALED), "and it opens")
             assertContentEquals(
                 ByteArray(0),
-                crypto.aesGcmOpen(ByteArray(32), ByteArray(12), hex("530f8afbc74536b9a963b4f1c4cb738b")),
+                crypto.aesGcmOpen(ZERO_KEY, ZERO_NONCE, hex("530f8afbc74536b9a963b4f1c4cb738b")),
             )
         }
 
@@ -101,27 +128,12 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, flipped(0)), "a changed ciphertext byte")
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, flipped(GCM_SEALED.size - 1)), "a changed tag byte")
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, GCM_SEALED.copyOf(GCM_SEALED.size - 1)), "a cut seal")
-            assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE.copyOf().also { it[11] = 0 }, GCM_SEALED), "another nonce")
-            assertNull(crypto.aesGcmOpen(ByteArray(32), GCM_NONCE, GCM_SEALED), "another key")
+            assertNull(
+                crypto.aesGcmOpen(GCM_KEY, nonce(GCM_NONCE_BYTES.copyOf().also { it[11] = 0 }), GCM_SEALED),
+                "another nonce",
+            )
+            assertNull(crypto.aesGcmOpen(ZERO_KEY, GCM_NONCE, GCM_SEALED), "another key")
             assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, ByteArray(15)), "shorter than a tag")
-        }
-
-        clause(
-            "A_KEY_THAT_IS_NOT_AES_256_IS_REFUSED",
-            CryptoState.READY,
-            covers = cells {
-                on<Crypto> {
-                    answers(Crypto::aesGcmSeal).throws()
-                    answers(Crypto::aesGcmOpen).throws()
-                }
-            },
-        ) { crypto ->
-            assertFailsWith<IllegalArgumentException>("a 16-byte key would seal AES-128") {
-                crypto.aesGcmSeal(ByteArray(16), GCM_NONCE, GCM_PLAIN)
-            }
-            assertFailsWith<IllegalArgumentException>("nor does one open") {
-                crypto.aesGcmOpen(ByteArray(33), GCM_NONCE, GCM_SEALED)
-            }
         }
 
         clause(

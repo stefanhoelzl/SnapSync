@@ -39,6 +39,7 @@ class StorageMockContractBindingsTest {
                 FilesState.UNAVAILABLE -> Entered.Ready(inMemoryFiles(shared = null).recorded(log))
                 // The double holds paths, not directories with permissions, and no links.
                 FilesState.DENIED_DIRECTORY,
+                FilesState.DENIED_SUBDIRECTORY,
                 FilesState.READ_ONLY_DIRECTORY,
                 FilesState.UNSEARCHABLE_DIRECTORY,
                 FilesState.LOOPED_LINK,

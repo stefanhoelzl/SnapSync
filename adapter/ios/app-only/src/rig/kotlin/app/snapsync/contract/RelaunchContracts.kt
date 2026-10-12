@@ -164,9 +164,10 @@ internal class RecordingUploadSessionApi(
 }
 
 private class RecordingUploadSession(private val real: UploadSession, private val recorder: Recorder) : UploadSession {
-    override fun upload(request: NSURLRequest, file: String, tag: String) {
-        real.upload(request, file, tag)
-        recorder.record("upload(url=${request.URL?.absoluteString} tag=$tag)", "started")
+    override fun upload(request: NSURLRequest, file: String, tag: String): Boolean {
+        val started = real.upload(request, file, tag)
+        recorder.record("upload(url=${request.URL?.absoluteString} tag=$tag)", if (started) "started" else "unreadable")
+        return started
     }
 
     override suspend fun tasks(): List<TransferTask> =
@@ -208,9 +209,10 @@ private fun deliverDue(replayer: Replayer, events: SessionEvents) {
 }
 
 private class ReplayingUploadSession(private val replayer: Replayer, private val events: SessionEvents) : UploadSession {
-    override fun upload(request: NSURLRequest, file: String, tag: String) {
-        replayer.answer("upload(url=${request.URL?.absoluteString} tag=$tag)")
+    override fun upload(request: NSURLRequest, file: String, tag: String): Boolean {
+        val started = replayer.answer("upload(url=${request.URL?.absoluteString} tag=$tag)") == "started"
         deliverDue(replayer, events)
+        return started
     }
 
     override suspend fun tasks(): List<TransferTask> {

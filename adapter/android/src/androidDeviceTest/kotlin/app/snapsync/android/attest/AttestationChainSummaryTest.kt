@@ -1,6 +1,7 @@
 package app.snapsync.android.attest
 
 import app.snapsync.android.network.EmulatorNetwork
+import app.snapsync.ports.ProveResult
 import kotlinx.coroutines.test.runTest
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -8,6 +9,7 @@ import java.security.cert.X509Certificate
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 
 /**
@@ -23,7 +25,7 @@ class AttestationChainSummaryTest {
 
     @Test
     fun `a fresh proof summarises the certificates above the leaf and fingerprints the root key`() = runTest {
-        val proof = AndroidDeviceIntegrity().prove("summary-challenge")
+        val proof = assertIs<ProveResult.Ok>(AndroidDeviceIntegrity().prove("summary-challenge")).proof
         val summary = assertNotNull(proof.chain, "a fresh Android proof carries its chain summary")
         val chain = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.getCertificateChain(proof.handle)
             .map { it as X509Certificate }
@@ -45,6 +47,7 @@ class AttestationChainSummaryTest {
             chain.drop(1).map { it.issuerX500Principal.getName("RFC2253") },
             summary.certificates.map { it.issuer },
         )
-        assertEquals(null, AndroidDeviceIntegrity().prove("renewal", proof.handle).chain, "a renewal carries none")
+        val renewal = assertIs<ProveResult.Ok>(AndroidDeviceIntegrity().prove("renewal", proof.handle)).proof
+        assertEquals(null, renewal.chain, "a renewal carries none")
     }
 }

@@ -41,6 +41,9 @@ enum class TransferSessionState {
     /** Nothing in flight: any session reports each transfer's end as it happens. */
     REPORTS_AS_IT_HAPPENS,
 
+    /** Nothing in flight, on a platform whose session reads a file it is handed from the device's disk. */
+    READS_FILES_FROM_DISK,
+
     /**
      * The app relaunched by the operating system in the background to deliver its session's events: a transfer the
      * binding prepared — tagged [TransferSessionContract.relaunchedTag] — ended while the app was not running, and the
@@ -108,6 +111,9 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
     /** The tag a relaunched state's prepared transfer was made under, which its end is told with. */
     fun relaunchedTag(clauseId: String): String = uploadClauseKey(clauseId)
 
+    /** A file no device holds: no host has a `/nonexistent` directory. */
+    private const val MISSING_FILE = "/nonexistent/snapsync-contract/missing.bin"
+
     private fun key(clauseId: String, n: Int = 1) = uploadClauseKey(clauseId, n)
 
     override val clauses = clauses {
@@ -131,6 +137,24 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
                 CreateOutcome.FAILED,
                 subject.session.create(subject.unusable(key(id)), subject.target(route), key(id)),
                 "a source the session cannot send is not a transfer; the caller must not record REQUESTED for it",
+            )
+            transferSettle()
+            assertNull(subject.objects.landed(route), "nothing was sent")
+        }
+
+        clause(
+            "CREATE_FROM_A_MISSING_FILE_IS_REFUSED_NEVER_AN_ABORT",
+            TransferSessionState.READS_FILES_FROM_DISK,
+            created(CreateOutcome.FAILED),
+        ) { subject ->
+            val id = "CREATE_FROM_A_MISSING_FILE_IS_REFUSED_NEVER_AN_ABORT"
+            val route = path(id, UPLOAD_ACCEPT)
+            // iOS's background session raises an Objective-C exception for a file it cannot read — one no Kotlin catch
+            // stops, so the process would abort: the session must find out first and refuse.
+            assertEquals(
+                CreateOutcome.FAILED,
+                subject.session.create(TransferSource.File(MISSING_FILE), subject.target(route), key(id)),
+                "a file that is not there is not a transfer",
             )
             transferSettle()
             assertNull(subject.objects.landed(route), "nothing was sent")

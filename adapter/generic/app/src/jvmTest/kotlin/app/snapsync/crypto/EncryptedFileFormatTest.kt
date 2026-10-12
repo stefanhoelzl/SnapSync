@@ -218,10 +218,10 @@ class EncryptedFileFormatTest {
         val head = assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(seal.head)).head
         assertContentEquals(cipher.keyIdOf(eventKey), head.keyId)
         assertContentEquals(
-            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, ad, Hmac(JcaCrypto()::hmacSha256)),
-            seal.fileKey,
+            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, ad, Hmac(JcaCrypto()::hmacSha256)).bytes,
+            seal.fileKey.bytes,
         )
-        assertTrue(!seal.fileKey.contentEquals(eventKey))
+        assertTrue(!seal.fileKey.bytes.contentEquals(eventKey))
         val again = assertIs<HeadRead.Read>(
             EncryptedFileFormat.decodeHead(cipher.sealedElsewhere(eventKey, ad).head),
         ).head

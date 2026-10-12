@@ -1,5 +1,7 @@
 package app.snapsync.mock
 
+import app.snapsync.model.AesKey
+import app.snapsync.model.GcmNonce
 import app.snapsync.ports.Crypto
 
 /**
@@ -20,13 +22,19 @@ private class FakeCrypto : Crypto {
         HASH_LENGTH,
     )
 
-    override fun aesGcmSeal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray {
+    override fun aesGcmSeal(key: AesKey, nonce: GcmNonce, plaintext: ByteArray): ByteArray =
+        seal(key.bytes, nonce.bytes, plaintext)
+
+    override fun aesGcmOpen(key: AesKey, nonce: GcmNonce, sealed: ByteArray): ByteArray? =
+        open(key.bytes, nonce.bytes, sealed)
+
+    private fun seal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray {
         val pad = stream(mix(key) + mix(nonce), plaintext.size)
         val body = ByteArray(plaintext.size) { (plaintext[it].toInt() xor pad[it].toInt()).toByte() }
         return body + tag(key, nonce, body)
     }
 
-    override fun aesGcmOpen(key: ByteArray, nonce: ByteArray, sealed: ByteArray): ByteArray? {
+    private fun open(key: ByteArray, nonce: ByteArray, sealed: ByteArray): ByteArray? {
         if (sealed.size < TAG_LENGTH) return null
         val body = sealed.copyOf(sealed.size - TAG_LENGTH)
         if (!tag(key, nonce, body).contentEquals(sealed.copyOfRange(body.size, sealed.size))) return null

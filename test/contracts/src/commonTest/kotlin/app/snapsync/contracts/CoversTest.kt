@@ -1,7 +1,6 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
@@ -32,7 +31,6 @@ class CoversTest {
     fun `every kind of cell renders as the grid writes it`() {
         val covers = cells {
             on<SecureStore>().answers(SecureStore::read).with(SecureStoreRead.Unavailable::class)
-            on<AttestStore>().answers(AttestStore::token).throws()
             backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
             backend(Routes.GetEvent.ID, EventNotFound::class)
             on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.LIMITED)
@@ -47,7 +45,6 @@ class CoversTest {
         assertEquals(
             listOf(
                 "SecureStore.read → SecureStoreRead.Unavailable",
-                "AttestStore.token → throws",
                 "Backend.challenge → Issued",
                 "Backend.* → EventNotFound",
                 "GalleryReader.access → LibraryGrant.LIMITED",

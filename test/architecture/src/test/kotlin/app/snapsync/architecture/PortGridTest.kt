@@ -7,8 +7,8 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **The port grid: every answer an adapter can give, as cells** (`docs/testing.md`, "The port grid"). REPORT ONLY —
- * it fails nothing but its own scan breaking.
+ * **The port grid: every answer an adapter can give, as cells** (`docs/testing.md`, "The port grid"). A REPORT — it
+ * fails nothing but its own scan breaking, and a port member that declares a throw.
  *
  * The contract-coverage gate ([ContractCoverageTest]) asks whether every clause runs against something real. This asks
  * the other question: of everything a port's adapter can answer, which cells exist at all. A cell is one of
@@ -22,8 +22,8 @@ import kotlin.test.assertTrue
  *
  * Variants: a sealed type → each leaf subtype (`Reply.Ok`; the OUTER type of a generic only); an enum → each entry;
  * `Boolean` → `true`/`false`; a `Flow<T>` → T's; anything else → one `returns` cell, or its type name as an argument.
- * A nullable type adds `null`. Errors are reduced into values (`docs/architecture.md`), so a throw is a cell only where
- * the member DECLARES it (`@Throws`) — one `throws` cell, whatever it throws. A member
+ * A nullable type adds `null`. A throw is never a cell: a port answers every expected failure as a value, and no port
+ * member declares a throw (`@Throws`) — the one assertion this report makes beyond its own scan. A member
  * the interface itself implements (a default body) is not the adapter's answer and is not a cell; a member inherited
  * from another port is counted under the port declaring it, except a generic base's ([Listenable.listen]), counted
  * under every port that binds it.
@@ -87,8 +87,23 @@ class PortGridTest {
         )
     }
 
+    /**
+     * **No port throws for an expected failure** (`docs/architecture.md`, "A port answers every expected failure as a
+     * value"). A declared throw is the one failure the compiler would let a caller ignore; every expected failure is a
+     * value in the member's signature instead, and a precondition our own code would have to violate is the adapter's
+     * guard, pinned by its contract.
+     */
     @Test
-    fun `the grid expands a generic sealed return, an enum, a nullable, a handle and a declared throw`() {
+    fun `no port member declares a throw`() {
+        assertTrue(
+            PortGrid.declaredThrows.isEmpty(),
+            "these port members declare @Throws — answer the failure as a value in the signature, or guard it in the " +
+                "adapter as a precondition: ${PortGrid.declaredThrows}",
+        )
+    }
+
+    @Test
+    fun `the grid expands a generic sealed return, an enum, a nullable and a handle`() {
         val texts = cells.map { it.text }.toSet()
         val canaries = listOf(
             "Backend.challenge → Issued",
@@ -96,7 +111,7 @@ class PortGridTest {
             "SecureStore.read → SecureStoreRead.Unavailable",
             "LibraryChangeTokenRead.changeToken → null",
             "Wake.ExpiringCompletion.complete → returns",
-            "AttestStore.token → throws",
+            "DeviceIntegrity.prove → ProveResult.Refused.Failed",
         )
         val missing = canaries - texts
         assertTrue(missing.isEmpty(), "port grid: expected cells are missing, so the variant expansion broke: $missing")
@@ -115,7 +130,7 @@ class PortGridTest {
     private fun looksCovered(cell: PortGrid.Cell, text: String): Boolean {
         if (!Regex("""\b${Regex.escape(cell.member)}\b""").containsMatchIn(text)) return false
         return cell.variants.all { v ->
-            v == PortGrid.RETURNS || v == PortGrid.THROWS || v == "true" || v == "false" || v == "null" || v.firstOrNull()?.isUpperCase() != true ||
+            v == PortGrid.RETURNS || v == "true" || v == "false" || v == "null" || v.firstOrNull()?.isUpperCase() != true ||
                 v.substringAfterLast('.').let { leaf -> Regex("""\b${Regex.escape(leaf)}\b""").containsMatchIn(text) }
         }
     }

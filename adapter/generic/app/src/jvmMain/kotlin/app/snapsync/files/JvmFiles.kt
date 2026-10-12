@@ -8,6 +8,7 @@ import app.snapsync.model.FileTail
 import app.snapsync.ports.Files
 import java.io.File
 import java.io.IOException
+import java.io.UncheckedIOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AccessDeniedException
@@ -149,6 +150,9 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
             op(file)
         } catch (e: IOException) {
             e.toAccessFailure()
+        } catch (e: UncheckedIOException) {
+            // What a directory walk's stream throws for the I/O failure it met on the way — its constructor requires it.
+            e.cause!!.toAccessFailure()
         }
     }
 

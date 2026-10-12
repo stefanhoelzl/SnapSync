@@ -168,7 +168,7 @@ family, a transport's guarded terminal write, and the membership reset family. O
   Developer portal** and enabled on both App IDs, or signed builds fail to provision.
 - **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
   extension read the shared Keychain items the app writes — the device id
-  (`KeychainDeviceIdentity`) and the attestation token (`KeychainAttestStore`). The legacy config
+  (`PersistedDeviceIdentity`) and the attestation token (`AttestState`). The legacy config
   item used to be a third; the Stage-2 change deleted its reader, so nothing addresses it any more
   and an already-migrated device simply carries it as an inert orphan (purging it would mean keeping
   the seat, its runtime-identity pin, and a Keychain call on the leave path alive to delete data no

@@ -110,9 +110,6 @@ class Answer<R> internal constructor(private val builder: CellsBuilder, private 
      */
     fun withGenericLeaf(variant: KClass<*>) = builder.add(prefix + variantName(variant))
 
-    /** The member's declared throw (`@Throws` on the port member): the answer of a store that could not look. */
-    fun throws() = builder.add(prefix + "throws")
-
     /** The one cell of an answer that is neither sealed, enum, `Boolean` nor nullable. */
     fun returns() = builder.add(prefix + "returns")
 }

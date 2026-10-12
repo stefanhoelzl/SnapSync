@@ -88,7 +88,7 @@ class ClockOperator internal constructor(private val mock: ClockMock) {
 class DeviceIntegrityMock {
     internal val keys = EnclaveKeys()
 
-    /** A process's face; the upload extension, and a simulator, have no App Attest: `available = false`. */
+    /** A process's face; a simulator has no App Attest: `available = false`. */
     fun port(available: Boolean): DeviceIntegrity = InMemoryDeviceIntegrity(available, keys)
 }
 

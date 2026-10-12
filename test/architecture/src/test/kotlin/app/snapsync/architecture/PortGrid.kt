@@ -58,6 +58,18 @@ internal object PortGrid {
     val cells: List<Cell> by lazy { (ports.flatMap(::cellsOf) + wireCells()).sortedBy { it.text } }
 
     /**
+     * Every member of a port, or of a handle a port hands out, that declares a throw (`@Throws`), as `Owner.member` —
+     * which must be none (`docs/architecture.md`, "A port answers every expected failure as a value"; [PortGridTest]).
+     * Read during the derivation of [cells], over exactly the members the grid makes cells of.
+     */
+    val declaredThrows: List<String> by lazy {
+        cells
+        throwing.toSortedSet().toList()
+    }
+
+    private val throwing = mutableListOf<String>()
+
+    /**
      * The backend's cells (`docs/architecture.md`, "The backend boundary"): one per outcome of every operation's
      * generated reply — `Backend.<operationId> → <Outcome>` for the operation's own, and ONE `Backend.* → <Outcome>`
      * for an outcome several operations answer with a single type. The backend is no port: the app reaches it over
@@ -109,7 +121,8 @@ internal object PortGrid {
 
     private fun memberCells(port: String, owner: String, member: KCallable<*>, handles: MutableSet<KClass<*>>): List<Cell> {
         noteHandle(member.returnType, handles)
-        val returns = (variants(member.returnType, plain = RETURNS) + listOfNotNull(THROWS.takeIf { declaresThrows(member) }))
+        if (declaresThrows(member)) throwing += "$owner.${member.name}"
+        val returns = variants(member.returnType, plain = RETURNS)
             .map { Cell(port, "$owner.${member.name} → $it", member.name, listOf(it)) }
         val callbacks = member.parameters.filter { it.kind == KParameter.Kind.VALUE && isFunction(it.type) }
             .flatMap { callbackCells(port, "$owner.${member.name}.${it.name}", member.name, it.type, handles) }
@@ -154,8 +167,8 @@ internal object PortGrid {
     fun relativeName(k: KClass<*>): String = k.qualifiedName!!.removePrefix(k.java.`package`.name + ".")
 
     /**
-     * Whether [member] declares a throw as one of its answers (`@Throws`). Kotlin's `@Throws` is source-retained and
-     * compiled into the method's `throws` clause, so it is read off the Java method.
+     * Whether [member] declares a throw (`@Throws`). Kotlin's `@Throws` is source-retained and compiled into the
+     * method's `throws` clause, so it is read off the Java method.
      */
     private fun declaresThrows(member: KCallable<*>): Boolean =
         (member as? KFunction<*>)?.javaMethod?.exceptionTypes?.isNotEmpty() == true
@@ -215,5 +228,4 @@ internal object PortGrid {
     /** The owner of the wire cells — what a clause's `backend(…)` renders, and what the gateway records. */
     const val BACKEND = "Backend"
     const val RETURNS = "returns"
-    const val THROWS = "throws"
 }

@@ -2,7 +2,6 @@
 
 package app.snapsync.attest
 
-import app.snapsync.mock.InMemoryAttestStore
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
@@ -13,12 +12,14 @@ import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.TokenOutcome
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.ports.ProveResult
 import app.snapsync.services.backend.BackendExchange
+import app.snapsync.services.identity.AttestState
 import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.trust.AttestStore
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.trust.tokenExpirySeconds
 import app.snapsync.services.version.AppVersionGate
@@ -45,27 +46,42 @@ private fun token(expiresInDays: Long) = "$DEVICE.${NOW_SECONDS + expiresInDays 
 
 private class FakeKey(
     val supported: Boolean = true,
-    var attestThrows: Boolean = false,
-    var assertThrows: Boolean = false,
+    var attestRefused: Boolean = false,
+    var assertRefused: Boolean = false,
     val chain: app.snapsync.model.AttestationChain? = null,
 ) : DeviceIntegrity {
     var generated = 0
     var attested = 0
     var asserted = 0
 
-    override fun isAvailable(): Boolean = supported
-    override suspend fun prove(challenge: String, handle: String?): Proof {
-        if (handle != null) {
-            asserted++
-            if (assertThrows) throw IllegalStateException("the Secure Enclave key is gone")
-            return Proof(handle, ProofFormat.APP_ATTEST, byteArrayOf(4, 5, 6))
+    override suspend fun prove(challenge: String, handle: String?): ProveResult =
+        if (handle != null) assert(handle) else attest()
+
+    private fun assert(handle: String): ProveResult {
+        asserted++
+        return when {
+            !supported -> ProveResult.Refused.NotAvailable("no App Attest in this process")
+            assertRefused -> ProveResult.Refused.UnknownKey("the Secure Enclave key is gone")
+            else -> ProveResult.Ok(Proof(handle, ProofFormat.APP_ATTEST, byteArrayOf(4, 5, 6)))
         }
-        val key = "key-${++generated}"
+    }
+
+    private fun attest(): ProveResult {
         attested++
-        if (attestThrows) throw IllegalStateException("Apple said no")
-        return Proof(key, ProofFormat.APP_ATTEST, byteArrayOf(1, 2, 3), chain)
+        return when {
+            !supported -> ProveResult.Refused.NotAvailable("no App Attest in this process")
+            attestRefused -> ProveResult.Refused.Failed("Apple said no").also { generated++ }
+            else -> ProveResult.Ok(Proof("key-${++generated}", ProofFormat.APP_ATTEST, byteArrayOf(1, 2, 3), chain))
+        }
     }
 }
+
+/** The production store over an in-memory secure store, holding [token] and [keyId]. */
+private fun heldStore(token: String? = null, keyId: String? = null): AttestStore =
+    AttestState(inMemorySecureStore()).also { store ->
+        keyId?.let(store::setKeyId)
+        token?.let(store::setToken)
+    }
 
 /** The backend's verdict when a test scripts no token: the default reason, as v2 names it. */
 private val REFUSED = TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE)
@@ -150,7 +166,7 @@ private class FakeClient(
 private fun attestation(
     key: FakeKey = FakeKey(),
     client: FakeClient = FakeClient(),
-    store: AttestStore = InMemoryAttestStore(),
+    store: AttestStore = heldStore(),
 ) = Triple(
     DeviceAttestation(
         key,
@@ -178,7 +194,7 @@ class DeviceAttestationTest {
     fun `attested is true for a usable token even if a concurrent path reported no refresh`() = runTest {
         // A fresh token short-circuits ensureFresh to true anyway; the second clause additionally
         // covers any path where the refresh reports false while the stored token is still usable.
-        val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(20), "k"))
+        val (attestation, client, _) = attestation(store = heldStore(token(20), "k"))
         client.challenge = null // even with no network, a fresh token is a non-event
         attestation.refresh()
         assertTrue(attestation.attested.value)
@@ -200,7 +216,7 @@ class DeviceAttestationTest {
     // EMPTY store, so the word "only" was carried by the name and by nothing else.
     @Test
     fun `attested stays true for a token inside the renewal margin whose renewal fails`() = runTest {
-        val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(3), "k"))
+        val (attestation, client, _) = attestation(store = heldStore(token(3), "k"))
         client.challenge = null // offline, exactly as on 2026-08-17
         attestation.refresh()
 
@@ -211,7 +227,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `attested is false for an expired token that could not be replaced`() = runTest {
-        val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(-1), "k"))
+        val (attestation, client, _) = attestation(store = heldStore(token(-1), "k"))
         client.challenge = null
         attestation.refresh()
         assertFalse(attestation.attested.value)
@@ -222,7 +238,7 @@ class DeviceAttestationTest {
         // Its expiry cannot be read, so it cannot be shown to be valid and the backend will reject it.
         // Calling it usable would put the member back behind a screen reading "Syncing" while every
         // upload 401s -- the lie the Unattested rung exists to prevent.
-        val (attestation, client, _) = attestation(store = InMemoryAttestStore("not-a-token", "k"))
+        val (attestation, client, _) = attestation(store = heldStore("not-a-token", "k"))
         client.challenge = null
         attestation.refresh()
         assertFalse(attestation.attested.value)
@@ -231,7 +247,7 @@ class DeviceAttestationTest {
     @Test
     fun `narrowing what is SURFACED did not narrow when the app renews`() = runTest {
         val key = FakeKey()
-        val (attestation, client, _) = attestation(key, store = InMemoryAttestStore(token(3), "k"))
+        val (attestation, client, _) = attestation(key, store = heldStore(token(3), "k"))
 
         attestation.refresh()
 
@@ -244,7 +260,7 @@ class DeviceAttestationTest {
         // The other half of SNAPSYNC-20. A background wake with no network wrote `false` on 2026-08-17
         // 13:37; the process stayed alive but suspended, and the member saw that verdict rendered as the
         // first frame of a foreground entry 25 h 47 min later, under conditions that no longer held.
-        val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(-1), "k"))
+        val (attestation, client, _) = attestation(store = heldStore(token(-1), "k"))
         client.challenge = null
         attestation.refresh()
         assertFalse(attestation.attested.value, "the offline wake concluded the device is stuck")
@@ -290,7 +306,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `a proof this device could not produce is not told as the service's refusal`() = runTest {
-        val (attestation, _, _) = attestation(FakeKey(attestThrows = true))
+        val (attestation, _, _) = attestation(FakeKey(attestRefused = true))
         attestation.refresh()
         assertNull(attestation.refusal.value)
         assertFalse(attestation.attested.value)
@@ -394,7 +410,7 @@ class DeviceAttestationTest {
         // become rare, and rare renewal means a narrow window near expiry — the exact failure the design
         // exists to avoid.
         val key = FakeKey()
-        val store = InMemoryAttestStore(token = token(1), keyId = "existing-key")
+        val store = heldStore(token = token(1), keyId = "existing-key")
         val (attest, client, _) = attestation(key, store = store)
 
         assertTrue(attest.ensureFresh())
@@ -409,7 +425,7 @@ class DeviceAttestationTest {
     @Test
     fun `a fresh token is left alone - no challenge no network no Secure Enclave`() = runTest {
         val key = FakeKey()
-        val store = InMemoryAttestStore(token = token(29), keyId = "existing-key")
+        val store = heldStore(token = token(29), keyId = "existing-key")
         val (attest, client, _) = attestation(key, store = store)
 
         assertTrue(attest.ensureFresh())
@@ -425,10 +441,10 @@ class DeviceAttestationTest {
     fun `renewal starts once less than 7 days remain - not at expiry`() = runTest {
         // The margin is the whole point: waiting for expiry would mean the FIRST failed upload is what
         // discovers the dead token.
-        val (fresh, _, _) = attestation(store = InMemoryAttestStore(token(8), "k"))
+        val (fresh, _, _) = attestation(store = heldStore(token(8), "k"))
         assertFalse(fresh.isStale(token(8)))
 
-        val (stale, _, _) = attestation(store = InMemoryAttestStore(token(6), "k"))
+        val (stale, _, _) = attestation(store = heldStore(token(6), "k"))
         assertTrue(stale.isStale(token(6)))
     }
 
@@ -447,7 +463,7 @@ class DeviceAttestationTest {
         // forever with no way back.
         val key = FakeKey()
         val client = FakeClient(renew = null) // the backend refuses the assertion
-        val store = InMemoryAttestStore(token = token(1), keyId = "forgotten-key")
+        val store = heldStore(token = token(1), keyId = "forgotten-key")
         val (attest, _, _) = attestation(key, client, store)
 
         assertTrue(attest.ensureFresh())
@@ -462,7 +478,7 @@ class DeviceAttestationTest {
     fun `a failed attestation stores nothing and never throws`() = runTest {
         // ensureFresh runs on background wakes. A throw here would take down work that has nothing to do
         // with attestation.
-        val key = FakeKey(attestThrows = true)
+        val key = FakeKey(attestRefused = true)
         val (attest, _, store) = attestation(key)
 
         assertFalse(attest.ensureFresh())
@@ -477,7 +493,7 @@ class DeviceAttestationTest {
         // challenge — not a new key on Apple's throttled path, and never a dropped token.
         val key = FakeKey()
         val client = FakeClient().apply { renewAnswers += TokenOutcome.ChallengeStale }
-        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val store = heldStore(token = token(1), keyId = "k")
         val (attest, _, _) = attestation(key, client, store)
 
         assertTrue(attest.ensureFresh())
@@ -496,7 +512,7 @@ class DeviceAttestationTest {
         )) {
             val key = FakeKey()
             val client = FakeClient().apply { renewAnswers += answers }
-            val store = InMemoryAttestStore(token = token(1), keyId = "k")
+            val store = heldStore(token = token(1), keyId = "k")
             val (attest, _, _) = attestation(key, client, store)
 
             assertFalse(attest.ensureFresh(), "$answers")
@@ -532,7 +548,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `no challenge means the existing token is left in place - not discarded`() = runTest {
-        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val store = heldStore(token = token(1), keyId = "k")
         val (attest, _, _) = attestation(client = FakeClient(challenge = null), store = store)
 
         assertFalse(attest.ensureFresh())
@@ -541,25 +557,24 @@ class DeviceAttestationTest {
     }
 
     @Test
-    fun `a process without App Attest never attests - this is the extension`() = runTest {
-        // DCAppAttestService.isSupported is FALSE in the upload extension (verified on device). The
-        // extension must read the app's token and send it, never try to mint its own.
+    fun `a process without App Attest is refused at the proof and mints nothing`() = runTest {
+        // DCAppAttestService.isSupported is FALSE on a simulator: the proof is refused locally, so nothing reaches the
+        // backend's mint, and the token held stays as it was.
         val key = FakeKey(supported = false)
-        val store = InMemoryAttestStore(token = token(1))
+        val store = heldStore(token = token(1))
         val (attest, client, _) = attestation(key, store = store)
 
-        attest.ensureFresh()
+        assertFalse(attest.ensureFresh())
 
-        assertEquals(0, key.attested)
-        assertEquals(0, key.asserted)
+        assertEquals(1, key.attested, "the attestation was asked for — and refused")
         assertEquals(0, client.mintCalls)
         assertEquals(0, client.renewCalls)
-        assertEquals(token(1), store.token()) // it just reads what the app left
+        assertEquals(token(1), store.token())
     }
 
     @Test
     fun `the token is readable even when expired - the extension sends it and lets the 401 retry`() {
-        val store = InMemoryAttestStore(token = token(-5))
+        val store = heldStore(token = token(-5))
         val (attest, _, _) = attestation(store = store)
 
         // Deliberately NOT null: refusing to hand out an expired token would mean building no request at
@@ -580,7 +595,7 @@ class DeviceAttestationTest {
         // still 30 days from expiring — after the signing key is rotated, or after the leave cascade
         // collects this device's attestation record. Treating "rejected" as "fine" made the app re-send the
         // same dead credential forever, 401ing behind a screen that cheerfully said "Syncing".
-        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val store = heldStore(token = token(30), keyId = "k")
         val (attest, _, _) = attestation(store = store)
 
         assertFalse(attest.isStale(store.token())) // looks perfectly healthy…
@@ -596,7 +611,7 @@ class DeviceAttestationTest {
         // the throttled path. The Secure-Enclave key is still perfectly good — only the server-issued token
         // died — so the keyId is kept and the next refresh renews with an assertion.
         val key = FakeKey()
-        val store = InMemoryAttestStore(token = token(30), keyId = "still-good-key")
+        val store = heldStore(token = token(30), keyId = "still-good-key")
         val (attest, client, _) = attestation(key, store = store)
 
         attest.onRejected(token(30))
@@ -613,7 +628,7 @@ class DeviceAttestationTest {
     fun `a late rejection of a replaced token leaves the replacement alone and asks for nothing`() = runTest {
         // B3: requests carrying T1 were in flight when a renewal stored T2; their refusals arrive afterwards.
         // Clearing unconditionally erased T2 and sent the device round the loop once per late refusal.
-        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val store = heldStore(token = token(30), keyId = "k")
         val (attest, _, _) = attestation(store = store)
         val t1 = "T1-that-was-replaced"
 
@@ -625,7 +640,7 @@ class DeviceAttestationTest {
     fun `a burst of rejections of one token clears it once`() = runTest {
         // Every in-flight request carrying the dead token is refused. The first clears it; the rest find nothing
         // of theirs to clear, so the caller triggers one refresh, not one per request.
-        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val store = heldStore(token = token(30), keyId = "k")
         val (attest, _, _) = attestation(store = store)
 
         assertEquals(listOf(true, false, false), List(3) { attest.onRejected(token(30)) })
@@ -637,7 +652,7 @@ class DeviceAttestationTest {
         // refresh — three concurrent /attest/renew calls for a single rejection. The second and third are
         // pure waste aimed at Apple's throttled path; the first already fixed it.
         val key = FakeKey()
-        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val store = heldStore(token = token(1), keyId = "k")
         val (attest, client, _) = attestation(key, store = store)
 
         val results = List(5) { async { attest.ensureFresh() } }.awaitAll()
@@ -662,7 +677,7 @@ class DeviceAttestationTest {
         runCurrent()
         assertEquals(1, mints.size)
 
-        val renewed = attestation(store = InMemoryAttestStore(token = token(1), keyId = "k"))
+        val renewed = attestation(store = heldStore(token = token(1), keyId = "k"))
         val renews = mutableListOf<Unit>()
         backgroundScope.launch { renewed.first.tokenChanged.toList(renews) }
         runCurrent()
@@ -678,7 +693,7 @@ class DeviceAttestationTest {
     fun `a token the extension dropped is seen at the next wake - and renewed`() = runTest {
         // The extension compare-and-clears a rejected token in the SHARED item; this process's copy cannot see
         // that. Every refresh re-reads the store of record first, so the wake that follows renews it.
-        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val store = heldStore(token = token(30), keyId = "k")
         val (attest, client, _) = attestation(client = FakeClient(renew = token(29)), store = store)
         assertEquals(token(30), attest.token())
 
@@ -693,7 +708,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `a rejection of a token the other process already dropped re-reads - and triggers nothing`() = runTest {
-        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val store = heldStore(token = token(30), keyId = "k")
         val (attest, _, _) = attestation(store = store)
         assertEquals(token(30), attest.token())
         store.clearToken() // the extension dropped it; a request carrying our copy is then refused
@@ -705,7 +720,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `this process’s own renewal is what the next request carries`() = runTest {
-        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val store = heldStore(token = token(1), keyId = "k")
         val (attest, _, _) = attestation(store = store)
         assertEquals(token(1), attest.token())
 
@@ -718,7 +733,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `a rejection drops the token and answers the renewed one to retry with`() = runTest {
-        val store = InMemoryAttestStore(token = token(29), keyId = "k")
+        val store = heldStore(token = token(29), keyId = "k")
         val (attest, client, _) = attestation(store = store)
 
         assertEquals(token(30), attest.rejected(token(29)), "the call is retried with what the renewal obtained")
@@ -728,7 +743,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `a burst of rejections of one token renews once and every call retries with the new token`() = runTest {
-        val store = InMemoryAttestStore(token = token(29), keyId = "k")
+        val store = heldStore(token = token(29), keyId = "k")
         val (attest, client, _) = attestation(store = store)
 
         val retries = List(3) { async { attest.rejected(token(29)) } }.awaitAll()
@@ -743,7 +758,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `a rejection whose recovery obtains nothing offers no retry`() = runTest {
-        val store = InMemoryAttestStore(token = token(29), keyId = "k")
+        val store = heldStore(token = token(29), keyId = "k")
         val client = FakeClient(challenge = null)
         val (attest, _, _) = attestation(client = client, store = store)
 
@@ -764,7 +779,7 @@ class DeviceAttestationTest {
         val attest = DeviceAttestation(
             FakeKey(),
             refusing.exchange(gate),
-            InMemoryAttestStore(),
+            heldStore(),
             identityOf(DEVICE),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
         )
@@ -782,8 +797,8 @@ class DeviceAttestationTest {
 
     @Test
     fun `an assertion the Secure Enclave cannot produce falls back to a full attestation`() = runTest {
-        val key = FakeKey(assertThrows = true)
-        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val key = FakeKey(assertRefused = true)
+        val store = heldStore(token = token(1), keyId = "k")
         val (attest, client, _) = attestation(key, store = store)
 
         assertTrue(attest.ensureFresh())
@@ -797,7 +812,7 @@ class DeviceAttestationTest {
     fun `an unreadable device identity leaves the token in place and never attests`() = runTest {
         val key = FakeKey()
         val client = FakeClient()
-        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val store = heldStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
             key,
             client.exchange(),
@@ -817,7 +832,7 @@ class DeviceAttestationTest {
         val client = FakeClient().apply {
             renewAnswer = HttpResult.Response(201, mapOf("Content-Type" to "application/json"), """{"no":"token"}""")
         }
-        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val store = heldStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
             FakeKey(),
             client.exchange(),
@@ -832,7 +847,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `a rejection whose compare cannot be made is logged and recovers nothing it should not`() = runTest {
-        val store = object : AttestStore by InMemoryAttestStore(token = token(30), keyId = "k") {
+        val store = object : AttestStore by heldStore(token = token(30), keyId = "k") {
             override fun clearTokenIf(expected: String): Boolean = throw IllegalStateException("keychain locked")
         }
         val (attest, _, _) = attestation(store = store)
@@ -843,7 +858,7 @@ class DeviceAttestationTest {
 
     @Test
     fun `a recovery over a store that cannot be read offers nothing and never throws`() = runTest {
-        val store = object : AttestStore by InMemoryAttestStore(token = token(29), keyId = "k") {
+        val store = object : AttestStore by heldStore(token = token(29), keyId = "k") {
             override fun token(): String? = throw SecureStoreUnavailable("keychain locked")
         }
         val (attest, client, _) = attestation(store = store)
@@ -854,8 +869,21 @@ class DeviceAttestationTest {
     }
 
     @Test
+    fun `an attested keyId the store cannot keep refuses the minted token`() = runTest {
+        val store = object : AttestStore by heldStore() {
+            override fun setKeyId(keyId: String) = throw SecureStoreUnavailable("keychain locked")
+        }
+        val (attest, client, _) = attestation(store = store)
+
+        assertFalse(attest.ensureFresh(), "a token whose key could not be kept is not accepted")
+
+        assertEquals(1, client.mintCalls)
+        assertNull(store.token(), "the minted token was never stored")
+    }
+
+    @Test
     fun `a renewed token the store cannot keep leaves the held one judging the device`() = runTest {
-        val store = object : AttestStore by InMemoryAttestStore(token = token(1), keyId = "k") {
+        val store = object : AttestStore by heldStore(token = token(1), keyId = "k") {
             override fun setToken(token: String) = throw SecureStoreUnavailable("keychain locked")
         }
         val (attest, client, _) = attestation(store = store)
@@ -870,7 +898,7 @@ class DeviceAttestationTest {
     fun `a renewal the backend has no record for attests afresh`() = runTest {
         val key = FakeKey()
         val client = FakeClient().apply { renewAnswers += TokenOutcome.NotAttested }
-        val store = InMemoryAttestStore(token = token(1), keyId = "existing-key")
+        val store = heldStore(token = token(1), keyId = "existing-key")
         val (attest, _, _) = attestation(key, client, store)
 
         assertTrue(attest.ensureFresh())

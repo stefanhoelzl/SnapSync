@@ -56,7 +56,7 @@ class UploadSealing(
     fun edgeHeaders(seal: UploadSeal.Sealed): Map<String, String> {
         val elsewhere = cipher.sealedElsewhere(seal.eventKey, seal.associatedData)
         return mapOf(
-            EncryptedFileFormat.FILE_KEY_HEADER to encodeEventKey(elsewhere.fileKey),
+            EncryptedFileFormat.FILE_KEY_HEADER to encodeEventKey(elsewhere.fileKey.bytes),
             EncryptedFileFormat.FILE_HEAD_HEADER to encodeEventKey(elsewhere.head),
         )
     }

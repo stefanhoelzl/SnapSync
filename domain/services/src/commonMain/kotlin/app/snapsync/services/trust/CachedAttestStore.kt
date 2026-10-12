@@ -1,6 +1,5 @@
 package app.snapsync.services.trust
 
-import app.snapsync.ports.AttestStore
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 

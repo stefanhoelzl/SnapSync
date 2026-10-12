@@ -5,9 +5,9 @@ import app.snapsync.model.ProofFormat
 import app.snapsync.model.RefusalFacts
 import app.snapsync.model.TokenOutcome
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.ProveResult
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.Credential
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -56,10 +56,11 @@ fun tokenExpirySeconds(token: String): Long? = token.split(".").getOrNull(1)?.to
  * The device-attestation service: obtain and keep alive the bearer
  * token every backend call carries — and, as the app's [Credential], recover from the backend rejecting it.
  *
- * **Only the app process runs this.** App Attest is unavailable in the upload extension
- * ([DeviceIntegrity.isAvailable] is false there — verified on device), so the extension only ever *reads*
- * [AttestStore.token], sends whatever it finds, and drops a token the backend rejects ([ExtensionCredential]).
- * Everything here — attest, renew, the staleness check — happens in the app.
+ * **Only the app process runs this.** The upload extension has no [DeviceIntegrity] — App Attest is unavailable
+ * there, verified on device — so it only ever *reads* [AttestStore.token], sends whatever it finds, and drops a token
+ * the backend rejects ([ExtensionCredential]). Everything here — attest, renew, the staleness check — happens in the
+ * app. An app process without the service (a simulator) goes the ordinary way and is refused at the proof
+ * ([ProveResult.Refused.NotAvailable]), so it never holds a token.
  *
  * It reaches the backend through the [BackendExchange], never the gateway: the three `/attest/…` routes it calls are
  * open (their `401`s are that route's own answer, never a verdict on a token), and a recovery that went through the
@@ -322,13 +323,6 @@ class DeviceAttestation(
         // the wake point (every launch, foreground, silent push and BGTask refreshes), so it is also what bounds
         // how long [token] can serve a copy the other process has outdated.
         store.reread()
-        if (!integrity.isAvailable()) {
-            // The extension. It must never reach here — but if it ever does, do nothing rather than
-            // half-attesting: it has no App Attest to attest WITH.
-            log.d { "App Attest is unavailable in this process — not attesting" }
-            return Attempt(fresh = !isStale(store.token()))
-        }
-
         val current = store.token()
         if (!isStale(current)) return Attempt(fresh = true)
 
@@ -392,9 +386,12 @@ class DeviceAttestation(
      * logged here, at `Warn`: the app recovers by attesting afresh, and this rides as a breadcrumb.
      */
     private suspend fun renew(deviceId: String, keyId: String): TokenOutcome = withFreshChallenge { challenge ->
-        val assertion = runCatchingCancellable { integrity.prove(challenge, keyId) }.getOrElse {
-            log.w(it) { "could not produce a renewal assertion — attesting afresh" }
-            return@withFreshChallenge TokenOutcome.ProofFailed
+        val assertion = when (val proved = integrity.prove(challenge, keyId)) {
+            is ProveResult.Ok -> proved.proof
+            is ProveResult.Refused -> {
+                log.w { "could not produce a renewal assertion (${proved.reason}) — attesting afresh" }
+                return@withFreshChallenge TokenOutcome.ProofFailed
+            }
         }
         renewOutcome(
             exchange.send(Routes.RenewToken.request(RenewRequest(deviceId, base64(assertion.bytes), challenge))),
@@ -407,8 +404,16 @@ class DeviceAttestation(
      * would send every future renewal down the assertion path, against a key the server has never heard of.
      */
     private suspend fun mint(deviceId: String): TokenOutcome = withFreshChallenge { challenge ->
+        val proof = when (val proved = integrity.prove(challenge)) {
+            is ProveResult.Ok -> proved.proof
+            is ProveResult.Refused -> {
+                // Local: the platform could not produce the proof, so the service gave no verdict to tell the user.
+                log.w { "attestation failed (${proved.reason})" }
+                return@withFreshChallenge TokenOutcome.ProofFailed
+            }
+        }
+        // The keyId write throws where the store could not keep it (`AttestState`): the token is then not accepted.
         runCatchingCancellable {
-            val proof = integrity.prove(challenge)
             val outcome = mintOutcome(
                 exchange.send(
                     Routes.MintToken.request(
@@ -420,8 +425,7 @@ class DeviceAttestation(
             if (outcome is TokenOutcome.Refused) facts = RefusalFacts(outcome.reason, outcome.detail, proof.chain)
             outcome
         }.getOrElse {
-            // Local: the platform could not produce the proof, so the service gave no verdict to tell the user.
-            log.w(it) { "attestation failed" }
+            log.w(it) { "the attested keyId could not be stored — not accepting the token" }
             TokenOutcome.ProofFailed
         }
     }

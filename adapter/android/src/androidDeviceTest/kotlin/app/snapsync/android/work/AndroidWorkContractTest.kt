@@ -155,6 +155,7 @@ class AndroidWorkContractTest {
             TransferSessionState.RESTRICTED_NETWORK,
             TransferSessionState.TAKES_RESOURCES_AND_FILES,
             TransferSessionState.REPORTS_AS_IT_HAPPENS,
+            TransferSessionState.READS_FILES_FROM_DISK,
         )
 
         override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {

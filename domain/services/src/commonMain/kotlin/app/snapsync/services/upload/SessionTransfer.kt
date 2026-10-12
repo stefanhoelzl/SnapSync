@@ -86,6 +86,11 @@ class SessionTransfer(private val session: TransferSession, private val setup: T
     /**
      * Held from a file's export until its transfer exists (or the file is released), and by [releaseUnclaimedStaging]
      * — so the sweep never sees an exported file whose transfer is about to be made as unclaimed.
+     *
+     * It is also what keeps the staged file in place when the session is handed it: every other deleter releases only
+     * the file of a transfer that already exists ([recordFinished], a refused start, [cancelAll] over the session's live
+     * transfers). An iOS background session raises an exception no Kotlin catch stops for a file it cannot read; its
+     * adapter checks first, and this lock is why that check meets no concurrent delete.
      */
     private val staging = Mutex()
 
