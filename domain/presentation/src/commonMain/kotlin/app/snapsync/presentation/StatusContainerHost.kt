@@ -1213,6 +1213,7 @@ class StatusContainerHost(
                         load.endsAt,
                         load.deletesAt,
                         load.completion.members?.active,
+                        load.openUntil,
                     ),
                     JoinPhase.Detailed.Step.Ready,
                 )
@@ -1244,7 +1245,7 @@ class StatusContainerHost(
         val choice = JoinChoice(
             p.eventId, event.name, event.startsAt, event.endsAt, event.deletesAt,
             range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum,
-            linkKey = p.linkKey, eventKeyId = p.eventKeyId,
+            linkKey = p.linkKey, eventKeyId = p.eventKeyId, openUntil = event.openUntil,
         )
         pending.value = p.copy(phase = JoinProgress.Detailed(event, JoinPhase.Detailed.Step.Committing))
         beginMembership()
@@ -1347,7 +1348,7 @@ class StatusContainerHost(
         val commit = commands.commitJoin(
             JoinChoice(
                 eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction, saveToAlbum,
-                linkKey = linkKey, eventKeyId = load.keyId,
+                linkKey = linkKey, eventKeyId = load.keyId, openUntil = load.openUntil,
             ),
         )
         // The headless path has no surface to park on, so it names the reason in the log instead — the

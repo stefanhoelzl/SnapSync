@@ -94,4 +94,6 @@ data class EventDetails(
     val deletesAt: DeletesAt,
     /** How many members the event had when its details were read — the join screen shows it; `null` if not served. */
     val members: Int? = null,
+    /** The day guests may join until, as served; the commit persists it so the joined screen shows it at once. */
+    val openUntil: EventEnd? = null,
 )

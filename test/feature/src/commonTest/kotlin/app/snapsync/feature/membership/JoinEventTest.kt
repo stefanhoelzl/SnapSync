@@ -55,6 +55,7 @@ private val CEILING = captureCeiling("2026-07-08T09:00:00Z")
 /** The event's server-derived retention deadline (capability `event-lifetime`), carried on every details
  *  load and persisted onto the membership as the self-leave's offline witness. */
 private val DELETES_AT = deletesAt("2026-07-31T09:00:00Z")
+private val OPEN_UNTIL = eventEnd("2026-07-15T09:00:00Z")
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
 private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
@@ -119,6 +120,22 @@ class JoinEventTest {
             listOf(EventConfig(EVENT_A, "Anna's Wedding", CUTOFF, STARTS_AT, ENDS_AT, CEILING, DELETES_AT)),
             provisioned,
         )
+    }
+
+    @Test
+    fun `a back-dated event's open-until date is kept from the join on`() = runTest {
+        // Kept at the commit, not first at the next refresh: the joined screen says until when others can join
+        // as soon as it shows (capability `sync-status`).
+        val provisioned = mutableListOf<EventConfig>()
+        joinEvent(config = null, enrollResult = JoinResult.JOINED, provisioned = provisioned)
+            .join(
+                JoinChoice(
+                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                    openUntil = OPEN_UNTIL,
+                ),
+            )
+
+        assertEquals(OPEN_UNTIL, provisioned.single().openUntil)
     }
 
     @Test

@@ -141,6 +141,7 @@ class JoinEvent(
                 direction = choice.direction,
                 saveToAlbum = choice.saveToAlbum,
                 keyId = choice.eventKeyId,
+                openUntil = choice.openUntil,
             ),
         )
         return JoinOutcome.Committed
