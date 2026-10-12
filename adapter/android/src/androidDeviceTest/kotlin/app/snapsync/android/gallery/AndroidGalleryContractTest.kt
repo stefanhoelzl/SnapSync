@@ -33,6 +33,7 @@ import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -160,7 +161,7 @@ class AndroidGalleryContractTest {
                     ),
                 )
             }
-            return Entered.Ready(FolderAlbums(gallery, seeded, MediaStoreSeeder.CAMERA, stage)) {
+            return Entered.Ready(FolderAlbums(gallery, seeded, PlatformAlbumId(MediaStoreSeeder.CAMERA), stage)) {
                 MediaStoreSeeder.delete(seeded)
                 imported.forEach { id ->
                     context.contentResolver.delete(

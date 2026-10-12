@@ -174,11 +174,7 @@ private fun extensionServices(
             )
         },
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
-        albumCoordinator = AlbumCoordinator(
-            albums,
-            AlbumMapService(records),
-            kind = ports.gallery.albumKind,
-        ),
+        albumCoordinator = AlbumCoordinator(albums, AlbumMapService(records)),
         token = token,
         // A retry re-reads the shared item: the app may have renewed the token this copy still holds.
         freshToken = {

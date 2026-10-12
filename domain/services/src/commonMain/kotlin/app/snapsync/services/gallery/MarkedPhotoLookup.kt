@@ -3,7 +3,6 @@ package app.snapsync.services.gallery
 import app.snapsync.model.AssetId
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
@@ -13,6 +12,7 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.model.eventWindow
 import app.snapsync.model.factsFromResources
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 
 /**

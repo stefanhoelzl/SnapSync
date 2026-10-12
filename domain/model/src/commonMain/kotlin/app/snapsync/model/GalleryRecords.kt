@@ -1,25 +1,7 @@
 package app.snapsync.model
 
-/** An album's identity as the gallery hands it out; opaque to the core. */
+/** An album's identity as the app keeps it: the gallery's id of it, opaque to the core. */
 typealias AlbumId = String
-
-/**
- * What a gallery read produced: the answer, or the statement that the gallery cannot be read at all right now
- * (`docs/architecture.md`, "Absence is never silent").
- *
- * [NotReadable] is the platform's own fact — no grant that lets this process see the library — and never
- * "nothing matched": a read that found nothing is `Read(empty)`, a counted zero. What a read under a
- * **partial** grant means (the selection, not the library) is for the caller to judge; the gallery answers
- * with what the platform shows.
- */
-sealed interface GalleryRead<out T> {
-    data class Read<out T>(val value: T) : GalleryRead<T>
-
-    data object NotReadable : GalleryRead<Nothing>
-}
-
-/** One user-created album: an album the member or another app made (never a system-made smart album). */
-data class AlbumRecord(val id: AlbumId, val title: String)
 
 /**
  * One foreign asset to rebuild in the gallery from its staged [resources], identified by the [ref] it came from — the

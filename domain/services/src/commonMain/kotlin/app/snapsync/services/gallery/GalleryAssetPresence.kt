@@ -3,7 +3,7 @@ package app.snapsync.services.gallery
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.GalleryRead
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 
 /**

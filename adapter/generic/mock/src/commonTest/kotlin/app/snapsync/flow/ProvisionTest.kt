@@ -4,14 +4,17 @@ import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
+import app.snapsync.ports.GalleryAlbum
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.databases.sharedOver
@@ -210,12 +213,15 @@ class ProvisionTest {
         private val order: MutableList<String>,
         private val recordCreate: Boolean,
     ) : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
-        override suspend fun createAlbum(title: String): AlbumId? {
+        override suspend fun createAlbum(title: String): PlatformAlbumId? {
             if (recordCreate) order += "album"
-            return "album-for-$title"
+            return PlatformAlbumId("album-for-$title")
         }
-        override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
-            GalleryRead.Read(ids.map { AlbumRecord(it, "album") })
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome = WriteOutcome.Ok
+        override suspend fun albumsById(ids: Set<PlatformAlbumId>): GalleryRead<List<GalleryAlbum>> =
+            GalleryRead.Read(ids.map { GalleryAlbum(it, "album") })
+        override suspend fun addToAlbum(
+            album: PlatformAlbumId,
+            assets: Set<PlatformAssetId>,
+        ): WriteOutcome = WriteOutcome.Ok
     }
 }

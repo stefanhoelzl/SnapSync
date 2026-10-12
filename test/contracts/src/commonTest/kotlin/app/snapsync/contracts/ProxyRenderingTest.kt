@@ -1,7 +1,6 @@
 package app.snapsync.contracts
 
 import app.snapsync.contracts.proxy.recorded
-import app.snapsync.model.AlbumId
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.HttpResult
@@ -19,6 +18,7 @@ import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Wake
@@ -186,10 +186,10 @@ private object UnusedReader : GalleryReader {
     override suspend fun assetsById(ids: Set<PlatformAssetId>) = error("unused")
     override suspend fun resources(ids: Set<PlatformAssetId>) = error("unused")
     override suspend fun albums() = error("unused")
-    override suspend fun albumsById(ids: Set<AlbumId>) = error("unused")
-    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) = error("unused")
+    override suspend fun albumsById(ids: Set<PlatformAlbumId>) = error("unused")
+    override suspend fun albumMembers(album: PlatformAlbumId, createdFrom: Instant?) = error("unused")
     override val albumKind get() = error("unused")
     override suspend fun createAlbum(title: String) = error("unused")
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>) = error("unused")
+    override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>) = error("unused")
     override suspend fun export(resource: GalleryResourceHandle, to: String) = error("unused")
 }

@@ -4,15 +4,18 @@ import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AssetId
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
+import app.snapsync.ports.GalleryAlbum
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
@@ -39,17 +42,17 @@ private class FakeAlbumManager(
     var createCount = 0
     val added = mutableListOf<Pair<String, List<AssetId>>>()
 
-    override suspend fun createAlbum(title: String): AlbumId? {
+    override suspend fun createAlbum(title: String): PlatformAlbumId? {
         createCount++
-        return createResult?.also { existingIds.add(it) }
+        return createResult?.also { existingIds.add(it) }?.let(::PlatformAlbumId)
     }
 
-    override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
-        GalleryRead.Read(ids.filter { it in existingIds }.map { AlbumRecord(it, "Birthday") })
+    override suspend fun albumsById(ids: Set<PlatformAlbumId>): GalleryRead<List<GalleryAlbum>> =
+        GalleryRead.Read(ids.filter { it.value in existingIds }.map { GalleryAlbum(it, "Birthday") })
 
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
+    override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
         if (failAdd) error("boom")
-        added.add(album to assets.map { it.assetId() })
+        added.add(album.value to assets.map { it.assetId() })
         return addOutcome
     }
 }

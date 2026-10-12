@@ -5,22 +5,22 @@ package app.snapsync.gallery
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.logging.invocation
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumRecord
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -106,7 +106,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         }
 
     /** User albums only: a smart album's title is system-localized, so nothing can be decided on it. */
-    override suspend fun albums(): GalleryRead<List<AlbumRecord>> = readable {
+    override suspend fun albums(): GalleryRead<List<GalleryAlbum>> = readable {
         records(
             PHAssetCollection.fetchAssetCollectionsWithType(
                 PHAssetCollectionTypeAlbum,
@@ -116,12 +116,12 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         )
     }
 
-    override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = readable {
+    override suspend fun albumsById(ids: Set<PlatformAlbumId>): GalleryRead<List<GalleryAlbum>> = readable {
         if (ids.isEmpty()) {
             emptyList()
         } else {
             records(
-                PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(ids.toList(), null),
+                PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(ids.map { it.value }, null),
             )
         }
     }
@@ -132,10 +132,10 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      * nothing at all would make the whole rule a no-op.
      */
     override suspend fun albumMembers(
-        album: AlbumId,
+        album: PlatformAlbumId,
         createdFrom: Instant?,
     ): GalleryRead<Set<PlatformAssetId>> = readable {
-        val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
+        val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album.value), null)
             .firstObject as? PHAssetCollection
         if (collection == null) {
             emptySet()
@@ -150,9 +150,9 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         }
     }
 
-    override val albumKind: AlbumKind = AlbumKind.COLLECTION
+    override val albumKind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION
 
-    override suspend fun createAlbum(title: String): AlbumId? {
+    override suspend fun createAlbum(title: String): PlatformAlbumId? {
         var placeholderId: String? = null
         return checkedObjC("createAlbum") { error ->
             PHPhotoLibrary.sharedPhotoLibrary().performChangesAndWait(
@@ -165,7 +165,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
                 error = error,
             )
         }.fold(
-            onSuccess = { placeholderId },
+            onSuccess = { placeholderId?.let(::PlatformAlbumId) },
             onFailure = {
                 log.w(it) { "createAlbum failed" }
                 null
@@ -206,9 +206,9 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      * lets a repeated gather re-add without placing anything twice. See
      * changes/archive/2026-09-21-album-gathers-retroactively.
      */
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
+    override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
         if (assets.isEmpty()) return WriteOutcome.Ok
-        val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
+        val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album.value), null)
             .firstObject as? PHAssetCollection
             ?: return WriteOutcome.Failed("album $album no longer resolves")
         val found = fetchById(assets)
@@ -242,12 +242,12 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
     private fun fetchById(ids: Set<PlatformAssetId>): PHFetchResult =
         PHAsset.fetchAssetsWithLocalIdentifiers(ids.map { it.value }, null)
 
-    private fun records(collections: PHFetchResult): List<AlbumRecord> = buildList {
+    private fun records(collections: PHFetchResult): List<GalleryAlbum> = buildList {
         var i = 0uL
         while (i < collections.count) {
             val album = collections.objectAtIndex(i) as PHAssetCollection
             i++
-            album.localizedTitle?.let { add(AlbumRecord(album.localIdentifier, it)) }
+            album.localizedTitle?.let { add(GalleryAlbum(PlatformAlbumId(album.localIdentifier), it)) }
         }
     }
 }

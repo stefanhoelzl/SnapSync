@@ -1,11 +1,14 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.SelectionCalibration
 import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryAlbumKind
+import app.snapsync.ports.PlatformAlbumId
 import co.touchlab.kermit.Logger
 
 /**
@@ -18,6 +21,9 @@ class GalleryAlbums(
     private val log: Logger = Logger.withTag("albums"),
 ) {
 
+    /** How the member's library holds an album, as the app reads the platform's answer. */
+    val kind: AlbumKind get() = gallery.albumKind.albumKind()
+
     /**
      * Create a new album titled [name] and return its id, or `null` if creation failed. **Only the app**
      * calls this (it is the sole creator; see [AlbumCoordinator]).
@@ -29,11 +35,14 @@ class GalleryAlbums(
      * `saveToAlbum` opt-in is an open product question (decision record:
      * `changes/archive/…-absence-is-never-silent`, Open Questions).
      */
-    suspend fun ensureCreated(name: String): String? = gallery.createAlbum(name)
+    suspend fun ensureCreated(name: String): String? {
+        val created = gallery.createAlbum(name) ?: return null
+        return created.value
+    }
 
     /** An album the gallery cannot read does not resolve — the caller then creates, which fails the same way. */
     suspend fun exists(albumLocalId: String): Boolean =
-        when (val read = gallery.albumsById(setOf(albumLocalId))) {
+        when (val read = gallery.albumsById(setOf(PlatformAlbumId(albumLocalId)))) {
             is GalleryRead.Read -> read.value.isNotEmpty()
             GalleryRead.NotReadable -> false
         }
@@ -45,7 +54,10 @@ class GalleryAlbums(
      */
     suspend fun add(albumLocalId: String, assetIds: List<AssetId>): Boolean {
         if (assetIds.isEmpty()) return false
-        val outcome = gallery.addToAlbum(albumLocalId, assetIds.mapTo(linkedSetOf()) { it.platformId() })
+        val outcome = gallery.addToAlbum(
+            PlatformAlbumId(albumLocalId),
+            assetIds.mapTo(linkedSetOf()) { it.platformId() },
+        )
         if (outcome != WriteOutcome.Ok) log.w { "add to album $albumLocalId: $outcome (${assetIds.size} asset(s))" }
         return outcome == WriteOutcome.Ok
     }
@@ -65,4 +77,10 @@ class GalleryAlbums(
             members.map { it.assetId() }
         }
     }
+}
+
+/** What the platform's way of holding an album means to the app: the same kind. */
+fun LibraryAlbumKind.albumKind(): AlbumKind = when (this) {
+    LibraryAlbumKind.COLLECTION -> AlbumKind.COLLECTION
+    LibraryAlbumKind.FOLDER -> AlbumKind.FOLDER
 }

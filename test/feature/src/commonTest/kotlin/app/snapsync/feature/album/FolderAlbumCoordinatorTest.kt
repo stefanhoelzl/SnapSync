@@ -4,7 +4,6 @@ import app.snapsync.feature.support.testShared
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
@@ -18,6 +17,7 @@ import app.snapsync.model.eventEnd
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
@@ -52,12 +52,12 @@ class FolderAlbumCoordinatorTest {
         deletesAt = deletesAt("2026-10-30T00:00:00Z"),
         saveToAlbum = true,
     )
-    private val library = PhotoLibraryMock().apply { operator.albumKind = AlbumKind.FOLDER }
+    private val library = PhotoLibraryMock().apply { operator.albumKind = LibraryAlbumKind.FOLDER }
     private val gallery: Gallery = library.port().apply {
         listen(GalleryHandlers(onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
     }
     private val store = AlbumMapService(testShared())
-    private val coordinator = AlbumCoordinator(GalleryAlbums(gallery), store, kind = AlbumKind.FOLDER)
+    private val coordinator = AlbumCoordinator(GalleryAlbums(gallery), store)
 
     /** A received photo, imported the way the download controller imports it: into [album], then settled. */
     private suspend fun receive(name: String, album: AlbumId?): PlatformAssetId {

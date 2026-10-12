@@ -1,10 +1,6 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetRef
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
@@ -12,14 +8,18 @@ import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.ports.SelectionSnapshot
@@ -46,7 +46,7 @@ import kotlin.time.Instant
  * - Albums: an asset added to an album is a member of it; an asset the library does not hold is skipped;
  *   adding to an album that does not exist fails. Albums it creates get deterministic ids (`album-<n>`), the other
  *   apps' albums `user-album:<title>`.
- * - **A [AlbumKind.FOLDER] library plays Android's**: an album the app created is the folder its photos live in, so it
+ * - **A [LibraryAlbumKind.FOLDER] library plays Android's**: an album the app created is the folder its photos live in, so it
  *   resolves and lists only while it holds one; an import with an album lands in that folder; an add MOVES a photo this
  *   library imported and skips any other (the platform will not let the app move a camera photo). Every read reaches
  *   into the album folders as into any folder of the default gallery.
@@ -105,7 +105,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         state.locked {
             state.library.update { it + created }
             state.ownImports += createdLocalId
-            if (state.albumKind == AlbumKind.FOLDER) {
+            if (state.albumKind == LibraryAlbumKind.FOLDER) {
                 request.album?.takeIf {
                     it in state.created
                 }?.let { state.folderOf[createdLocalId] = it }
@@ -156,16 +156,16 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         state.library.value.filter { it.id in ids }
     }
 
-    override suspend fun albums(): GalleryRead<List<AlbumRecord>> = readable { allAlbums().map { it.first } }
+    override suspend fun albums(): GalleryRead<List<GalleryAlbum>> = readable { allAlbums().map { it.first } }
 
-    override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = readable {
+    override suspend fun albumsById(ids: Set<PlatformAlbumId>): GalleryRead<List<GalleryAlbum>> = readable {
         val deleted = state.locked { state.deletedAlbums.toSet() }
-        allAlbums().map { it.first }.filter { it.id in ids && it.id !in deleted }
+        allAlbums().map { it.first }.filter { it.id in ids && it.id.value !in deleted }
     }
 
-    override val albumKind: AlbumKind get() = state.albumKind
+    override val albumKind: LibraryAlbumKind get() = state.albumKind
 
-    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> = readable {
+    override suspend fun albumMembers(album: PlatformAlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> = readable {
         val members = allAlbums().firstOrNull { it.first.id == album }?.second.orEmpty()
         val captured = state.library.value
             .filter { capturedFrom(it.asset.created, createdFrom) }
@@ -173,25 +173,28 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         members.filterTo(mutableSetOf()) { it in captured }
     }
 
-    override suspend fun createAlbum(title: String): AlbumId? {
+    override suspend fun createAlbum(title: String): PlatformAlbumId? {
         return state.locked {
             val id = "album-${state.albumCounter++}"
             state.created[id] = LibraryState.Album(title)
             state.createdLog += id to title
-            id
+            PlatformAlbumId(id)
         }
     }
 
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
+    override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
+        val albumId = album.value
         state.adds.await()
         return state.locked {
-            state.addedLog += album to assets.toList()
-            val target = state.created[album] ?: return@locked WriteOutcome.Failed("album $album does not resolve")
+            state.addedLog += albumId to assets.toList()
+            val target = state.created[albumId] ?: return@locked WriteOutcome.Failed("album $albumId does not resolve")
             val held = state.library.value.mapTo(mutableSetOf()) { it.id }
             when (state.albumKind) {
-                AlbumKind.COLLECTION -> target.members += assets.filter { it in held }
+                LibraryAlbumKind.COLLECTION -> target.members += assets.filter { it in held }
                 // A move of what this library imported; anything else is skipped, as the platform refuses it.
-                AlbumKind.FOLDER -> assets.filter { it in held && it in state.ownImports }.forEach { state.folderOf[it] = album }
+                LibraryAlbumKind.FOLDER -> assets.filter {
+                    it in held && it in state.ownImports
+                }.forEach { state.folderOf[it] = albumId }
             }
             WriteOutcome.Ok
         }
@@ -209,19 +212,24 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
 
     override suspend fun changeToken(): LibraryChangeToken = Token(state.library.value)
 
-    private fun allAlbums(): List<Pair<AlbumRecord, Set<PlatformAssetId>>> = createdAlbums() +
-        state.userAlbums.value.map { (title, members) -> AlbumRecord("user-album:$title", title) to members }
+    private fun allAlbums(): List<Pair<GalleryAlbum, Set<PlatformAssetId>>> = createdAlbums() +
+        state.userAlbums.value.map { (title, members) -> GalleryAlbum(PlatformAlbumId("user-album:$title"), title) to members }
 
-    /** The app's albums: every one under [AlbumKind.COLLECTION]; under [AlbumKind.FOLDER] only a folder holding a photo. */
-    private fun createdAlbums(): List<Pair<AlbumRecord, Set<PlatformAssetId>>> = state.locked { createdAlbumsLocked() }
+    /**
+     * The app's albums: every one under [LibraryAlbumKind.COLLECTION]; under [LibraryAlbumKind.FOLDER] only a folder
+     * holding a photo.
+     */
+    private fun createdAlbums(): List<Pair<GalleryAlbum, Set<PlatformAssetId>>> = state.locked { createdAlbumsLocked() }
 
-    private fun createdAlbumsLocked(): List<Pair<AlbumRecord, Set<PlatformAssetId>>> = when (state.albumKind) {
-        AlbumKind.COLLECTION -> state.created.map { (id, album) -> AlbumRecord(id, album.title) to album.members.toSet() }
-        AlbumKind.FOLDER -> {
+    private fun createdAlbumsLocked(): List<Pair<GalleryAlbum, Set<PlatformAssetId>>> = when (state.albumKind) {
+        LibraryAlbumKind.COLLECTION -> state.created.map { (id, album) ->
+            GalleryAlbum(PlatformAlbumId(id), album.title) to album.members.toSet()
+        }
+        LibraryAlbumKind.FOLDER -> {
             val held = state.library.value.mapTo(mutableSetOf()) { it.id }
             state.created.mapNotNull { (id, album) ->
                 val members = state.folderOf.filter { (asset, folder) -> folder == id && asset in held }.keys
-                if (members.isEmpty()) null else AlbumRecord(id, album.title) to members
+                if (members.isEmpty()) null else GalleryAlbum(PlatformAlbumId(id), album.title) to members
             }
         }
     }

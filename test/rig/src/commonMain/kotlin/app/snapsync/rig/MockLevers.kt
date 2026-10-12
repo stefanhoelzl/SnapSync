@@ -7,7 +7,6 @@ import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.CrashEvent
@@ -25,6 +24,7 @@ import app.snapsync.model.TransferOutcome
 import app.snapsync.model.UploadError
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.rig.gallery.GalleryReport
@@ -494,9 +494,9 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
     "album/kind" to mocked(
         MockedSystem.LIBRARY,
         RigCommand { params, _ ->
-            val kind = AlbumKind.entries.firstOrNull { it.name.equals(params["kind"], ignoreCase = true) }
+            val kind = LibraryAlbumKind.entries.firstOrNull { it.name.equals(params["kind"], ignoreCase = true) }
             if (kind == null) {
-                CommandResult.badRequest("kind is one of ${AlbumKind.entries.joinToString { it.name.lowercase() }}")
+                CommandResult.badRequest("kind is one of ${LibraryAlbumKind.entries.joinToString { it.name.lowercase() }}")
             } else {
                 device.library.operator.albumKind = kind
                 CommandResult.ok("""{"albumKind":"${kind.name.lowercase()}"}""")

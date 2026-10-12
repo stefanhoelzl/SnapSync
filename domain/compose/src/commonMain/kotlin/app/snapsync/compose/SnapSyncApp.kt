@@ -39,6 +39,7 @@ import app.snapsync.flow.Background
 import app.snapsync.flow.Foreground
 import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
@@ -361,6 +362,9 @@ class AppCore internal constructor(
     /** The device's mobile-data choice, for the status host's menu and waiting line. */
     val mobileDataChoice: StateFlow<Boolean> get() = services.mobileData.allowed
 
+    /** How this phone's library holds an event album, for the status host's album wording. */
+    val albumKind: AlbumKind get() = albumManager.kind
+
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant
 
@@ -440,7 +444,7 @@ class AppCore internal constructor(
     // Event album: the coordinator over the shared leave-surviving map.
     // The APP is the SOLE creator (on the permission grant); both processes only add.
     val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(albumManager, services.albumMapStore, kind = ports.gallery.albumKind)
+        AlbumCoordinator(albumManager, services.albumMapStore)
     }
 
     // The event album's gather: place what the device already holds for the event.

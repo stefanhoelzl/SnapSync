@@ -8,12 +8,12 @@ import app.snapsync.model.AssetRef
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
