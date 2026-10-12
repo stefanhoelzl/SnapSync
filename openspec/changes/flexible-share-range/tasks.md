@@ -34,7 +34,7 @@
 - [x] 5.3 The outside-reach line under the count on the join screen and in settings; verify `:ui:screens` tests for before, after, both, and none
 - [x] 5.4 Strings EN + DE per design D6: add `range_event_start`, `share_outside_before/after/both` and `calendar_event_day`; change `range_custom` (DE "Anpassen"), `share_detail_counting`/`share_detail_count` (no preset prefix), `access_range_body`, `create_window_note` and `share_range_change`; drop `range_whole_event`, `share_range_whole_event` and `share_range_from_now`; verify `./gradlew build` (HardCodedUiText, unused resources) passes
 - [ ] 5.5 Review every state in the world harness through the `ui-harness` driver (join screen with each chip, a custom range before and after the event, the calendar with marked event days, settings), in light and dark; verify by reading back `/phone.png` for each
-- [ ] 5.6 Refresh the marketing screenshots only if a `Shots.kt` state shows the join screen; verify `ShotsTest` in `./gradlew build`
+- [x] 5.6 Refresh the marketing screenshots only if a `Shots.kt` state shows the join screen; verify `ShotsTest` in `./gradlew build`
 
 ## 6. Integration and outside the app
 
