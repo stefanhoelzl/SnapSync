@@ -34,7 +34,9 @@ internal fun testCreateActions(
     onName: (String) -> Unit = {},
     range: RangeGestures = testRangeGestures(),
     onCreate: () -> Unit = {},
-) = CreateActions(onName, range, onCreate)
+    onKeepOpenFor: (Int) -> Unit = {},
+    onKeepOpenDismiss: () -> Unit = {},
+) = CreateActions(onName, range, onCreate, onKeepOpenFor, onKeepOpenDismiss)
 
 internal fun testRangeGestures() = RangeGestures(
     onDay = {},

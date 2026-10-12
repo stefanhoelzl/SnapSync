@@ -19,6 +19,8 @@ import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.CreateForm
 import app.snapsync.ui.state.CreateStep
 import app.snapsync.ui.state.JoinedEvent
+import app.snapsync.ui.state.KeepOpenChoice
+import app.snapsync.ui.state.KeepOpenSheet
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeView
 import app.snapsync.ui.state.RefusalCause
@@ -109,8 +111,13 @@ internal class Display(
             },
             canCreate = creatableEnd(draft) != null,
             maxDays = EVENT_WINDOW_MAX_SECONDS.seconds.inWholeDays.toInt(),
+            keepOpen = if (draft.askingHowLong) keepOpen() else null,
         )
     }
+
+    /** The back-dated sheet: each choice beside the day it keeps the event open until, from now. */
+    private fun keepOpen(): KeepOpenSheet =
+        KeepOpenSheet(KEEP_OPEN_DAYS.map { days -> KeepOpenChoice(days, dates.toLocal(dates.openFor(days)).date) })
 }
 
 /** A range calendar open over a participation surface: the range it shows, held to the surface's window. */

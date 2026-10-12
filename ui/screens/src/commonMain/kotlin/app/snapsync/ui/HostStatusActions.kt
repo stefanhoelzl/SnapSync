@@ -65,6 +65,8 @@ private fun statusActions(dispatch: (UiIntent) -> Unit, range: RangeGestures) = 
         onName = { dispatch(UiIntent.CreateName(it)) },
         range = range,
         onCreate = { dispatch(UiIntent.ConfirmCreate) },
+        onKeepOpenFor = { dispatch(UiIntent.KeepOpenFor(it)) },
+        onKeepOpenDismiss = { dispatch(UiIntent.KeepOpenDismiss) },
     ),
     // The store page is the build's, opened by the container; a state that names
     // no store makes the intent inert.

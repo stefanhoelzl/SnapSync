@@ -86,8 +86,13 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
 
     // Create: mint via the backend; the use-case routes the minted event into the SAME join
     // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
-    override fun create(name: String, startsAt: EventStart, endsAt: EventEnd) = detachedOnCoreLane("tap.create") {
-        eventCreator.create(name, startsAt.at.iso, endsAt.at.iso)
+    override fun create(
+        name: String,
+        startsAt: EventStart,
+        endsAt: EventEnd,
+        openUntil: EventEnd?,
+    ) = detachedOnCoreLane("tap.create") {
+        eventCreator.create(name, startsAt.at.iso, endsAt.at.iso, openUntil)
     }
 
     // The join gate's commit: join (no body, no manifest) then

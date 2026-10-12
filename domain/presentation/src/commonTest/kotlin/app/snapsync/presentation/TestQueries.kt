@@ -42,7 +42,7 @@ internal fun counting(count: suspend (CaptureCutoff, CaptureCeiling?) -> Int?): 
 /** The user-command bundle with the inert defaults the production implementation does not carry. */
 internal fun testCommands(
     leave: suspend () -> Unit = {},
-    create: (name: String, startsAt: EventStart, endsAt: EventEnd) -> Unit = { _, _, _ -> },
+    create: (name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?) -> Unit = { _, _, _, _ -> },
     commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed },
     share: (url: String, title: String) -> Unit = { _, _ -> },
     requestAccess: () -> Unit = {},
@@ -61,7 +61,8 @@ internal fun testCommands(
 ): UserCommands = object : UserCommands {
     override suspend fun leave() = leave.invoke()
 
-    override fun create(name: String, startsAt: EventStart, endsAt: EventEnd) = create.invoke(name, startsAt, endsAt)
+    override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?) =
+        create.invoke(name, startsAt, endsAt, openUntil)
 
     override suspend fun commitJoin(choice: JoinChoice) = commitJoin.invoke(choice)
 

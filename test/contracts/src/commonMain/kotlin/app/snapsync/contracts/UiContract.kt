@@ -40,6 +40,8 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
     val EVERY_INTENT: List<KClass<out UiIntent>> = listOf(
         UiIntent.ConfirmCreate::class,
         UiIntent.CreateName::class,
+        UiIntent.KeepOpenFor::class,
+        UiIntent.KeepOpenDismiss::class,
         UiIntent.RangeDay::class,
         UiIntent.RangeDragStart::class,
         UiIntent.RangeDragEnd::class,
@@ -104,6 +106,8 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
                     calls(UiHandlers<UiIntent>::onLive)
                     calls(UiHandlers<UiIntent>::onIntent, UiIntent.ConfirmCreate::class)
                     calls(UiHandlers<UiIntent>::onIntent, UiIntent.CreateName::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.KeepOpenFor::class)
+                    calls(UiHandlers<UiIntent>::onIntent, UiIntent.KeepOpenDismiss::class)
                     calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeDay::class)
                     calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeDragStart::class)
                     calls(UiHandlers<UiIntent>::onIntent, UiIntent.RangeDragEnd::class)

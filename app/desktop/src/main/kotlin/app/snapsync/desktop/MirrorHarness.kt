@@ -219,6 +219,9 @@ private fun mirrorActions(
                     note("the host's form is not complete")
                 }
             },
+            // `/user/create` answers the back-dated sheet itself (its `openUntilDays`), so the mirror never shows one.
+            onKeepOpenFor = { note("a range already over is answered by /user/create's openUntilDays") },
+            onKeepOpenDismiss = inert("dismiss the back-dated sheet"),
         ),
         onOpenStore = { note("open the store: the mirror opens no browser") },
         participation = ParticipationActions(

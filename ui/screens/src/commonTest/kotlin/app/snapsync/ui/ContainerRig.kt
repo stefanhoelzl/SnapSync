@@ -125,8 +125,8 @@ internal class ContainerRig(
                 this@ContainerRig.config.value = null
             }
 
-            override fun create(name: String, startsAt: EventStart, endsAt: EventEnd) {
-                record("create:$name")
+            override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?) {
+                record("create:$name${openUntil?.let { ":open-until:${it.at.iso}" }.orEmpty()}")
                 createdCell.update { it + Triple(name, startsAt, endsAt) }
             }
 

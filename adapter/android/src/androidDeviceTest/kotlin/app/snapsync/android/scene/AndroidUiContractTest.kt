@@ -297,7 +297,7 @@ class AndroidUiContractTest {
                     this@Rig.config.value = null
                 }
 
-                override fun create(name: String, startsAt: EventStart, endsAt: EventEnd) = Unit
+                override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?) = Unit
 
                 override suspend fun commitJoin(choice: JoinChoice) = JoinCommit.Failed
 
@@ -432,6 +432,34 @@ class AndroidUiContractTest {
         // The form: the name, every calendar gesture, every wheel — then Create.
         createForm()
         onNodeWithText(str(Res.string.create_button)).performClick()
+        // A range already over: Create asks first how long others may join — closed once, then answered.
+        pastRange()
+        onNodeWithText(str(Res.string.create_button)).performClick()
+        awaitShown { it.create?.form?.keepOpen != null }
+        onNodeWithText(str(Res.string.cancel)).performClick()
+        awaitShown { it.create?.form?.keepOpen == null }
+        onNodeWithText(str(Res.string.create_button)).performClick()
+        awaitShown { it.create?.form?.keepOpen != null }
+        onNode(hasText("1 day", substring = true)).performClick()
+        awaitShown { it.create?.form?.keepOpen == null }
+    }
+
+    /** The form moved onto Thursday 2 July — before the clock's Monday 6 July — 11:01 to 13:xx. */
+    private fun ComposeUiTest.pastRange() {
+        onNode(dateDescribed("Thursday", "2", "July", "2026")).performClick()
+        awaitShown { it.create?.form?.picker?.let { p -> p.from.date == JULY_2 && p.endPending } == true }
+        onNode(dateDescribed("Thursday", "2", "July", "2026")).performClick()
+        awaitShown { it.create?.form?.picker?.let { p -> p.endDay == JULY_2 && !p.endPending } == true }
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_minute), useUnmergedTree = true)
+            .performScrollTo()
+            .performTouchInput {
+                down(center)
+                moveBy(Offset(0f, -height / 2f))
+                up()
+            }
+        awaitShown { it.create?.form?.picker?.untilMinute != null }
+        wheelRow(ComponentRes.string.wheel_end_hour, "13")
+        awaitShown { it.create?.form?.canCreate == true }
     }
 
     private fun ComposeUiTest.openMenu() {
@@ -499,6 +527,7 @@ class AndroidUiContractTest {
     private val UiState.create get() = layer as? Layer.CreateEvent
 
     private companion object {
+        val JULY_2 = kotlinx.datetime.LocalDate(2026, 7, 2)
         val JULY_7 = kotlinx.datetime.LocalDate(2026, 7, 7)
         val JULY_8 = kotlinx.datetime.LocalDate(2026, 7, 8)
         val JULY_11 = kotlinx.datetime.LocalDate(2026, 7, 11)

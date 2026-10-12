@@ -63,12 +63,15 @@ class StatusActions(
 
 /**
  * What the CREATE FORM asks for: the name as it is typed, the range calendar's gestures,
- * and Create — which creates the form as the app holds it.
+ * and Create — which creates the form as the app holds it — and, for a range already over, the sheet's answer: how many
+ * days others may still join, or closing it unchosen.
  */
 class CreateActions(
     val onName: (String) -> Unit,
     val range: RangeGestures,
     val onCreate: () -> Unit,
+    val onKeepOpenFor: (days: Int) -> Unit,
+    val onKeepOpenDismiss: () -> Unit,
 )
 
 /**

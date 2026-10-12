@@ -38,7 +38,8 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
     "leave" to RigUserCommand { dispatch(UiIntent.LeaveEvent) },
     // The create form, filled as a person fills it: the name typed, the days swept, each
     // wheel settled — then Create. The form's own rules apply, so a window the form cannot hold (inverted, or longer
-    // than an event may last) is created as the form makes it, never as stated.
+    // than an event may last) is created as the form makes it, never as stated. A range already over asks how long
+    // others may join first: `openUntilDays` answers it (7 when not given); for any other range the answer is inert.
     "create" to RigUserCommand { params ->
         val from = localDateTime(params["startsAt"])
         val until = localDateTime(params["endsAt"])
@@ -49,6 +50,7 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
         dispatch(UiIntent.RangeUntilHour(until.hour))
         dispatch(UiIntent.RangeUntilMinute(until.minute))
         dispatch(UiIntent.ConfirmCreate)
+        dispatch(UiIntent.KeepOpenFor(params["openUntilDays"]?.toInt() ?: DEFAULT_OPEN_UNTIL_DAYS))
     },
     // The create form's name alone, as typed.
     "createName" to RigUserCommand { params ->
@@ -125,6 +127,9 @@ private suspend fun awaitShown(state: () -> UiState, what: String, shown: (UiSta
     }
     throw UserCommandRefused("the screen never showed $what")
 }
+
+/** How long others may still join an event `/user/create` makes after its end, when the caller does not say. */
+private const val DEFAULT_OPEN_UNTIL_DAYS = 7
 
 private const val SHOWN_POLLS = 100
 private const val SHOWN_POLL_MS = 50L

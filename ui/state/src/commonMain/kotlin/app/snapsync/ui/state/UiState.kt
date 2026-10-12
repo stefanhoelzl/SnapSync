@@ -727,7 +727,20 @@ data class CreateForm(
     val canCreate: Boolean,
     /** The longest event window, in whole days — what the range's note states. */
     val maxDays: Int,
+    /**
+     * The question a Create for a range that is already over asks first — how long guests have to join — or `null`
+     * while it is not asked.
+     */
+    val keepOpen: KeepOpenSheet? = null,
 )
+
+/** The sheet that asks how long guests have to join an event created after its end: one [choices] each. */
+@Serializable
+data class KeepOpenSheet(val choices: List<KeepOpenChoice>)
+
+/** Guests may join for [days] more days — until [until], the day the sheet names beside it. */
+@Serializable
+data class KeepOpenChoice(val days: Int, val until: LocalDate)
 
 /** What the create form asks for next, in the order it asks. */
 @Serializable

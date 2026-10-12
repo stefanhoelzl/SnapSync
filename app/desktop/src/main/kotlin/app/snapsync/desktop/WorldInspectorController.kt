@@ -381,7 +381,9 @@ class WorldInspectorController(
      * app never reached it.
      */
     private suspend fun joinNewEvent(): String? {
-        createIntents(PRESET_EVENT, LocalDateTime.parse(PAST_START), LocalDateTime.parse(PAST_END))
+        // Should the device's clock stand past the preset's range, Create asks how long others may join: a week, as a
+        // host would. Inert otherwise.
+        (createIntents(PRESET_EVENT, LocalDateTime.parse(PAST_START), LocalDateTime.parse(PAST_END)) + PRESET_KEEP_OPEN)
             .forEach(mocks.screen.operator::tap)
         withTimeoutOrNull(AWAIT) { shown.first { (it?.layer as? Layer.JoiningEvent)?.range != null } }
             ?: return null.also { appendConsole("preset: the join gate never opened") }
@@ -567,6 +569,9 @@ enum class PolicyAsset(val label: String, val prefix: String, val build: (String
     /** A 1080p recording: below the IMAGE floor, above the VIDEO floor — so it must still upload. */
     HD_VIDEO("+ 1080p video", "video", { LibraryAssets.hdVideo(it) }),
 }
+
+/** A preset's answer to the back-dated sheet — inert when its range is not over. */
+private val PRESET_KEEP_OPEN = UiIntent.KeepOpenFor(7)
 
 /** The create form filled as a person fills it — the name, the days swept, each wheel settled — then Create. */
 private fun createIntents(name: String, from: LocalDateTime, until: LocalDateTime): List<UiIntent> = listOf(

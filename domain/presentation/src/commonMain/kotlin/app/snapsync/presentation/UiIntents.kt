@@ -15,6 +15,8 @@ fun StatusContainerHost.onIntent(intent: UiIntent) {
     when (intent) {
         UiIntent.ConfirmCreate -> create.onConfirm()
         is UiIntent.CreateName -> create.onName(intent.name)
+        is UiIntent.KeepOpenFor -> create.onKeepOpenFor(intent.days)
+        UiIntent.KeepOpenDismiss -> create.onKeepOpenDismiss()
         is UiIntent.RangeDay -> picker.onEdit(RangeEdit.Day(intent.day))
         is UiIntent.RangeDragStart -> picker.onEdit(RangeEdit.DragStart(intent.day))
         is UiIntent.RangeDragEnd -> picker.onEdit(RangeEdit.DragEnd(intent.day))
