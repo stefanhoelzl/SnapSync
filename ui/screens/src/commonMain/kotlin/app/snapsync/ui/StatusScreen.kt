@@ -119,7 +119,7 @@ fun StatusScreen(
         // each is shown when it is). Null everywhere else, so the create layer and the join gate keep their own
         // bottom edge.
         val bottomActions: (@Composable ColumnScope.() -> Unit)? = if (chrome.showsJoinedChrome) {
-            { JoinedFooter(actions, closed = chrome.closed, invitable = chrome.invitable) }
+            { JoinedFooter(actions, deleted = chrome.deleted, invitable = chrome.invitable) }
         } else {
             null
         }
@@ -232,8 +232,8 @@ private class StatusChrome(
     val showsJoinedChrome: Boolean,
     val canRename: Boolean,
     val pinsActionCluster: Boolean,
-    /** The joined event has closed: only Leave remains. */
-    val closed: Boolean,
+    /** The joined event's photos were deleted: only Leave remains, and it does not ask. */
+    val deleted: Boolean,
     /** There is a whole invite to offer — not for an encrypted event whose key cannot be read. */
     val invitable: Boolean,
 )
@@ -243,8 +243,8 @@ private fun statusChrome(state: UiState): StatusChrome {
     val showsJoinedChrome = joinedLayer != null
     return StatusChrome(
         showsJoinedChrome = showsJoinedChrome,
-        canRename = joinedLayer != null && !joinedLayer.closed,
-        closed = joinedLayer?.closed == true,
+        canRename = joinedLayer != null && !joinedLayer.deleted,
+        deleted = joinedLayer?.deleted == true,
         invitable = joinedLayer?.inviteUrl != null,
         // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the create form
         // its Create + hint (the in-flight create screen too, so the swap does not jump), and the joined screen docks
@@ -436,8 +436,9 @@ private fun BugReportSheet(
 /**
  * The joined layer's docked footer: the two equal ways to
  * invite — share the link, show its QR code — then, set apart by a line, the quiet text actions for the
- * event's settings and for leaving. A CLOSED event admits nobody and changes nothing any more, so it offers
- * only Leave; an encrypted event whose key this device cannot read offers no invite.
+ * event's settings and for leaving. A DELETED event has nothing left to invite to or change, so it offers only Leave —
+ * which then leaves at once, there being nothing to lose by it; an encrypted event whose key this device cannot read
+ * offers no invite.
  *
  * Settings is deliberately NOT suppressed while a `pendingSwitch` is carried, though it once was: the race that
  * justified it is prevented downstream by `ReconfigureEvent`'s own `eventId` guard, and a `pendingSwitch` is
@@ -445,22 +446,25 @@ private fun BugReportSheet(
  * the reported symptom in `SNAPSYNC-26`.
  */
 @Composable
-private fun JoinedFooter(actions: StatusActions, closed: Boolean, invitable: Boolean) {
+private fun JoinedFooter(actions: StatusActions, deleted: Boolean, invitable: Boolean) {
     // An encrypted event's invite is offered only whole: no key read, no invite.
-    if (!closed && invitable) {
+    if (!deleted && invitable) {
         AppFooterTextActions {
             ShareTextAction(label = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
             QrTextAction(label = stringResource(Res.string.show_qr), onClick = actions.joined.onQrOpen)
         }
     }
     AppFooterTextActions {
-        if (!closed) {
+        if (!deleted) {
             SettingsTextAction(
                 label = stringResource(Res.string.footer_settings),
                 onClick = actions.surfaces.onOpenReconfigure,
             )
         }
-        LeaveTextAction(label = stringResource(Res.string.leave_event), onClick = actions.surfaces.onConfirmLeaveOpen)
+        LeaveTextAction(
+            label = stringResource(Res.string.leave_event),
+            onClick = if (deleted) actions.joined.onLeaveEvent else actions.surfaces.onConfirmLeaveOpen,
+        )
     }
 }
 

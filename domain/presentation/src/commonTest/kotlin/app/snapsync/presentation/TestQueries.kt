@@ -22,10 +22,13 @@ import kotlinx.coroutines.flow.StateFlow
 internal fun testQueries(
     load: suspend (eventId: String, linkKey: String?) -> JoinLoad = { _, _ -> JoinLoad.Failed },
     count: suspend (CaptureCutoff, CaptureCeiling?) -> Int? = { _, _ -> null },
+    losesNothing: suspend () -> Boolean = { false },
 ): UserQueries = object : UserQueries {
     override suspend fun loadJoinDetails(eventId: String, linkKey: String?) = load(eventId, linkKey)
 
     override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?) = count(cutoff, until)
+
+    override suspend fun switchLosesNothing() = losesNothing()
 }
 
 /** A query bundle that answers nothing: every details load fails and no count is available. */

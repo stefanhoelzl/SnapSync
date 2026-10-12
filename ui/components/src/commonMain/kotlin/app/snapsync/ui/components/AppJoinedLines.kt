@@ -55,3 +55,18 @@ fun AppStatusDetail(text: String) {
         textAlign = TextAlign.Center,
     )
 }
+
+/**
+ * What stands in place of the status line once an event is over for good: the [title] as loud as a status, the
+ * [body] beneath it as quiet as the counts.
+ */
+@Composable
+fun AppOverStatement(title: String, body: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+        textAlign = TextAlign.Center,
+    )
+    AppStatusDetail(body)
+}

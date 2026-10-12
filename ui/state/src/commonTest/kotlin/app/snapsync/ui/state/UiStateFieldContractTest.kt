@@ -46,6 +46,7 @@ class UiStateFieldContractTest {
         "Picnic",
         JoinPhase.Detailed.Step.DeviceRefused,
         ScreenMessage.DEVICE_MODIFIED,
+        members = 3,
     )
 
     @Test
@@ -148,12 +149,14 @@ class UiStateFieldContractTest {
                 renameState = RenameState.Failed(ScreenMessage.RENAME_FAILED),
                 surface = JoinedSurface.Reconfigure(range, saveFailed = true, askingToStopSharing = true),
                 notice = ScreenMessage.RENAME_NAME_REFUSED,
-                closed = true,
-                waiting = Waiting(waitingFor = 2, active = 3),
+                deleted = true,
+                members = 4,
+                sharingNote = SharingNote.WaitingFor(2),
+                joinableUntil = at,
             ),
             optional = setOf(
-                "pendingSwitch", "canChoosePhotos", "timing", "counts", "renameState", "surface", "notice", "closed",
-                "waiting",
+                "pendingSwitch", "canChoosePhotos", "timing", "counts", "renameState", "surface", "notice", "deleted",
+                "members", "sharingNote", "joinableUntil",
             ),
         )
     }
@@ -169,7 +172,7 @@ class UiStateFieldContractTest {
         )
         assertFieldContract(SyncCounts.serializer(), SyncCounts(DirectionCount.Progress(1, 2), DirectionCount.Off))
         assertFieldContract(DirectionCount.Progress.serializer(), DirectionCount.Progress(1, 2))
-        assertFieldContract(Waiting.serializer(), Waiting(waitingFor = 2, active = 3))
+        assertFieldContract(SharingNote.WaitingFor.serializer(), SharingNote.WaitingFor(2))
         assertFieldContract(JoinedEvent.serializer(), membership)
         assertFieldContract(EventTiming.Upcoming.serializer(), EventTiming.Upcoming(TimeLeft.Days(2)))
         assertFieldContract(EventTiming.Running.serializer(), EventTiming.Running(TimeLeft.Hours(5)))
@@ -180,7 +183,7 @@ class UiStateFieldContractTest {
 
     @Test
     fun `the join phase and the range require what was loaded and resolved`() {
-        assertFieldContract(JoinPhase.Detailed.serializer(), detailed, optional = setOf("refusal"))
+        assertFieldContract(JoinPhase.Detailed.serializer(), detailed, optional = setOf("refusal", "members"))
         assertFieldContract(JoinStage.Unloaded.serializer(), JoinStage.Unloaded(JoinPhase.LoadFailed))
         assertFieldContract(JoinStage.Loaded.serializer(), JoinStage.Loaded(detailed, range))
         assertFieldContract(

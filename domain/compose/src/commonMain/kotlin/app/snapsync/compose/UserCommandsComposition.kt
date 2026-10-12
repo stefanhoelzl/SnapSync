@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.feature.membership.QuietSwitch
 import app.snapsync.feature.membership.toCommit
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
@@ -191,9 +192,16 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
  * photo-library or network read never runs on the thread that asked.
  */
 internal fun AppCore.userQueriesFor(): UserQueries = object : UserQueries {
+    // Whether another event's invite may leave the joined one without asking: one read of the event when the invite
+    // is opened, and this device's own "holds everything" answer.
+    private val quietSwitch = QuietSwitch(services.config, backend.directory, downloadController::holdsEverythingFor)
+
     override suspend fun loadJoinDetails(eventId: String, linkKey: String?): JoinLoad =
         awaitingOnCoreLane("query.loadJoinDetails", "eventId=$eventId") { joinEvent.loadJoin(eventId, linkKey) }
 
     override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
         awaitingOnCoreLane("query.shareableCount") { loadShareableCount(cutoff, until) }
+
+    override suspend fun switchLosesNothing(): Boolean =
+        awaitingOnCoreLane("query.switchLosesNothing") { quietSwitch.losesNothing() }
 }

@@ -16,20 +16,28 @@ import app.snapsync.ui.components.AccessPrompt
 import app.snapsync.ui.components.AppDatesLine
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppHeadingStatement
+import app.snapsync.ui.components.AppOverStatement
 import app.snapsync.ui.components.AppSectionDivider
 import app.snapsync.ui.components.AppStatusDetail
 import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
+import app.snapsync.ui.components.LocalDateFormats
 import app.snapsync.ui.components.appDateRangeLabel
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.counts_line
+import app.snapsync.ui.resources.counts_line_members
 import app.snapsync.ui.resources.counts_not_receiving
 import app.snapsync.ui.resources.counts_not_sharing
 import app.snapsync.ui.resources.counts_received
 import app.snapsync.ui.resources.counts_received_progress
 import app.snapsync.ui.resources.counts_shared
 import app.snapsync.ui.resources.counts_shared_progress
+import app.snapsync.ui.resources.event_over_body
+import app.snapsync.ui.resources.event_over_title
+import app.snapsync.ui.resources.everyone_shared
+import app.snapsync.ui.resources.joinable_until
 import app.snapsync.ui.resources.joined_statement
+import app.snapsync.ui.resources.members_count
 import app.snapsync.ui.resources.timing_ended
 import app.snapsync.ui.resources.timing_ends_in
 import app.snapsync.ui.resources.timing_starts_in
@@ -38,10 +46,11 @@ import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.SharingNote
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
-import app.snapsync.ui.state.Waiting
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 // The joined membership's own screen: the joined statement and the event's dates
@@ -68,6 +77,11 @@ internal fun JoinedLayer(
         // A rejected event link, if one just arrived. First because it is about what the member JUST DID, and it
         // self-clears on its own; without it a bad scan while joined said nothing at all.
         state.notice?.let { AppErrorBanner(it.text()) }
+        if (state.deleted) {
+            // Over for good: what it was is all there is left to say — no explanation of a sharing that has ended.
+            OverBlock(state)
+            return@Column
+        }
         StatusBlock(state, access)
         // The line where the pinned status ends and the scrolling explanation begins.
         AppSectionDivider()
@@ -105,7 +119,19 @@ private fun StatusBlock(state: Layer.Joined, access: AccessActions) {
                 if (health == SyncHealth.NoNetwork(NetworkNotice.BLOCKED)) access.onOpenSettings()
             },
         )
-        CountsLine(state.counts, state.waiting)
+        CountsLine(state.counts, state.members, state.sharingNote)
+    }
+}
+
+/** A deleted event: the statement that it is over in place of the status line, and the counts as they last stood. */
+@Composable
+private fun OverBlock(state: Layer.Joined) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        AppOverStatement(stringResource(Res.string.event_over_title), stringResource(Res.string.event_over_body))
+        CountsLine(state.counts, members = null, note = null)
     }
 }
 
@@ -130,13 +156,18 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
 }
 
 /**
- * The counts line beneath the status line: per direction, what went through.
- * Absent whenever the reduction sent no counts — every status but "Up to date" and work in progress. The ended event's
- * waiting note rides beneath it: it is only ever set under "Up to date", where the counts are present too.
+ * The counts line beneath the status line: how many members the event has, then per direction what went through.
+ * The photo counts are absent whenever the reduction sent none — every status but "Up to date" and work in progress —
+ * and the member count then stands alone. The ended event's note rides beneath it: it is only ever set under
+ * "Up to date", where the counts are present too.
  */
 @Composable
-private fun CountsLine(counts: SyncCounts?, waiting: Waiting?) {
-    if (counts == null) return
+private fun CountsLine(counts: SyncCounts?, members: Int?, note: SharingNote?) {
+    val people = members?.let { pluralStringResource(Res.plurals.members_count, it, it) }
+    if (counts == null) {
+        people?.let { AppStatusDetail(it) }
+        return
+    }
     val shared = counts.shared.label(
         Res.string.counts_shared,
         Res.string.counts_shared_progress,
@@ -147,8 +178,19 @@ private fun CountsLine(counts: SyncCounts?, waiting: Waiting?) {
         Res.string.counts_received_progress,
         Res.string.counts_not_receiving,
     )
-    AppStatusDetail(Phrase.Of(Res.string.counts_line, listOf(shared, received)).text())
-    waiting?.let { AppStatusDetail(stringResource(Res.string.waiting_members, it.waitingFor, it.active)) }
+    AppStatusDetail(
+        if (people == null) {
+            Phrase.Of(Res.string.counts_line, listOf(shared, received)).text()
+        } else {
+            Phrase.Of(Res.string.counts_line_members, listOf(people, shared, received)).text()
+        },
+    )
+    when (note) {
+        is SharingNote.WaitingFor ->
+            AppStatusDetail(pluralStringResource(Res.plurals.waiting_members, note.members, note.members))
+        SharingNote.EveryoneShared -> AppStatusDetail(stringResource(Res.string.everyone_shared))
+        null -> Unit
+    }
 }
 
 /** `12/15 shared` while work remains, `15 shared` once complete, or what an off direction says. */
@@ -166,9 +208,13 @@ internal fun DirectionCount.label(done: StringResource, progress: StringResource
  */
 @Composable
 internal fun JoinedHeadingDetails(state: Layer.Joined) {
-    AppHeadingStatement(stringResource(Res.string.joined_statement))
+    // A deleted event is over: there is nothing to have joined any more, so it keeps only its dates.
+    if (!state.deleted) AppHeadingStatement(stringResource(Res.string.joined_statement))
     val range = appDateRangeLabel(start = state.membership.startsAt, end = state.membership.endsAt, today = state.today)
     AppDatesLine(range, state.timing.phrase()?.text())
+    state.joinableUntil?.let { until ->
+        AppStatusDetail(stringResource(Res.string.joinable_until, LocalDateFormats.current.format(until, "MMMEd")))
+    }
 }
 
 /** "starts in 2 days", "ends in 5 hours", "ended" — or nothing, for a membership with no stored end. */

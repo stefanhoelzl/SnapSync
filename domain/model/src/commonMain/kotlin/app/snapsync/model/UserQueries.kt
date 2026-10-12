@@ -17,9 +17,14 @@ package app.snapsync.model
  *   a block / retry / ready outcome, and [JoinLoad.WrongLink] when the link's key (`linkKey`) does not open the event.
  * - [shareableCount] — how many of the member's own photos the range `[cutoff, until]` would share,
  *   or `null` when the grant permits no count. Purely local.
+ * - [switchLosesNothing] — whether opening another event's invite may leave the joined event without asking: its
+ *   photos were deleted, or its range has ended, every member still in it has shared everything, and this device
+ *   holds everything it receives. One read of the event; any doubt answers `false`.
  */
 interface UserQueries {
     suspend fun loadJoinDetails(eventId: String, linkKey: String?): JoinLoad
 
     suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int?
+
+    suspend fun switchLosesNothing(): Boolean
 }

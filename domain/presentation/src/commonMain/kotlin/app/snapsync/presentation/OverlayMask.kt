@@ -9,7 +9,7 @@ import app.snapsync.ui.state.offersMenu
  *
  * The leave confirmation and the rename sheet both belong to a membership — there is nothing to leave or
  * rename without one — so on any other layer they are not shown, whatever the cell holds. The invite's QR
- * code belongs to an OPEN membership: a closed event admits nobody, so it is not shown there either. The app menu is
+ * code and the rename sheet belong to an event that still exists: a deleted one offers neither. The app menu is
  * not shown where the layer does not offer it ([offersMenu]): a create or a join committing under an open
  * drawer closes it. The diagnostic sheet and the report's notice are reachable from every layer and never masked.
  *
@@ -20,7 +20,7 @@ import app.snapsync.ui.state.offersMenu
 internal fun Overlays.maskedFor(layer: Layer): Overlays {
     val membership = when {
         layer !is Layer.Joined -> copy(confirmingLeave = false, renaming = false, showingQr = false)
-        layer.closed -> copy(showingQr = false)
+        layer.deleted -> copy(renaming = false, showingQr = false)
         // No whole invite to show: a QR code already open closes.
         layer.inviteUrl == null -> copy(showingQr = false)
         else -> this

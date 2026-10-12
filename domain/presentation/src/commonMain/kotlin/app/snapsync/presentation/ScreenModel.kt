@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.BuildLabel
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.EventConfig
@@ -82,6 +83,14 @@ internal class Display(
 
     /** The device's date. */
     fun today(): LocalDate = dates.nowLocal().date
+
+    /**
+     * Until when guests can still join [config]'s event, for an event created after its end (its open-until date lies
+     * past its end) while that date is still ahead of [now] and the event's photos are not deleted; `null` otherwise.
+     */
+    fun joinableUntil(config: EventConfig, now: CaptureDate): LocalDateTime? = config.openUntil
+        ?.takeIf { !config.deleted && it.at > config.endsAt.at && it.at > now }
+        ?.let(dates::toLocal)
 
     /** What a created event's range may be: anywhere in time, at most the event window long, its end time the host's. */
     val createBounds: RangeBounds = RangeBounds.lastingAtMost(dates::latestEnd)

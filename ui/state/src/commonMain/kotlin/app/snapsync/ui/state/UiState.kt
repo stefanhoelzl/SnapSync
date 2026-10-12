@@ -278,16 +278,23 @@ sealed interface Layer {
          */
         val notice: ScreenMessage? = null,
         /**
-         * The event has CLOSED: the joined layer offers only Leave — no invite, share, settings or rename — while its
-         * last photos arrive; the membership then ends on its own.
+         * The event's photos were deleted: the joined layer says the event is over and
+         * offers only Leave, which does not ask — no invite, settings, rename or member count. The membership stays
+         * until the member leaves or opens another invite; the app never leaves on its own.
          */
-        val closed: Boolean = false,
+        val deleted: Boolean = false,
+        /** How many members the event has now — joined and not left — as last read; `null` when unknown or deleted. */
+        val members: Int? = null,
         /**
-         * The ended event's waiting line: shown only while the range has ended, the event has not closed and this
-         * member's own part is in sync — how many of the event's current members it is still waiting for to finish
-         * sharing. `null` hides it.
+         * The ended event's note beneath the counts: whom it still waits for to finish sharing, or that everyone has.
+         * Shown only once the range has ended and this member is up to date; `null` hides it.
          */
-        val waiting: Waiting? = null,
+        val sharingNote: SharingNote? = null,
+        /**
+         * For an event created after its end, until when guests can still join — its open-until date, while that has
+         * not passed. `null` for every other event, and once it has passed.
+         */
+        val joinableUntil: LocalDateTime? = null,
     ) : Layer {
         /** The event's declared end has passed (`now > endsAt`). Informational only: sync continues. */
         val ended: Boolean get() = timing == EventTiming.Ended
@@ -424,6 +431,8 @@ sealed interface JoinPhase {
          * under the member.
          */
         val refusal: ScreenMessage? = null,
+        /** How many members the event has now — joined and not left — as the details read served; `null` if not. */
+        val members: Int? = null,
     ) : JoinPhase {
         override val screenName: String get() = "Detailed"
 
@@ -642,12 +651,17 @@ data class JoinedEvent(
     val savesToAlbum: Boolean,
 )
 
-/**
- * The ended event's waiting line: how many of the event's [active] members it still waits
- * for to finish sharing.
- */
+/** The ended event's note beneath the counts: whom it still waits for to finish sharing, or that everyone has. */
 @Serializable
-data class Waiting(val waitingFor: Int, val active: Int)
+sealed interface SharingNote {
+    /** [members] of the event's present members have not yet finished sharing. */
+    @Serializable
+    data class WaitingFor(val members: Int) : SharingNote
+
+    /** Every member still in the event has shared all their photos. */
+    @Serializable
+    data object EveryoneShared : SharingNote
+}
 
 /**
  * A participation surface's choices and the range they make, as the join gate and the event settings show them.

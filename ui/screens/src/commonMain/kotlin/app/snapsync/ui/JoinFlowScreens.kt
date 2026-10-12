@@ -299,6 +299,7 @@ private fun readyState(
     val range = stage.range
     return ReadyState(
         eventName = stage.phase.eventName,
+        members = stage.phase.members,
         participation = ParticipationState(
             range = range,
             rangeLabel = appRangeLabel(range.from, range.until),

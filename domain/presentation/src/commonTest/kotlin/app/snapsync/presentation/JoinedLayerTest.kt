@@ -19,18 +19,20 @@ import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.SharingNote
 import app.snapsync.ui.state.SyncHealth
-import app.snapsync.ui.state.Waiting
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 private const val EVENT_ID = "44444444-4444-4444-8444-444444444444"
@@ -93,25 +95,66 @@ class JoinedLayerTest {
     // ---- who the event is waiting for ------------------------------------------------------------
 
     @Test
-    fun `who the event waits for is told only to an in-sync member of an ended open event that still waits`() = runTest {
-        val waiting = MemberCounts(active = 3, settled = 1)
+    fun `who the event waits for is told only to an in-sync member of an ended event`() = runTest {
+        val waiting = MemberCounts(active = 3, settled = 1, waiting = 2)
         assertEquals(
-            Waiting(waitingFor = 2, active = 3),
-            joined(backgroundScope, ENDED.copy(members = waiting)).layer().waiting,
+            SharingNote.WaitingFor(2),
+            joined(backgroundScope, ENDED.copy(members = waiting)).layer().sharingNote,
         )
 
         val notWhen = mapOf(
             "the event is still under way" to joined(backgroundScope, MEMBERSHIP.copy(members = waiting)),
-            "the event has closed" to joined(backgroundScope, ENDED.copy(members = waiting, closed = true)),
+            "the event's photos were deleted" to joined(backgroundScope, ENDED.copy(members = waiting, deleted = true)),
             "this member is still sharing" to joined(
                 backgroundScope,
                 ENDED.copy(members = waiting),
                 snapshot = SyncStatus.Ready(SyncProgress(1, 3, 4, 0, active = true, estimatedRemaining = null)),
             ),
-            "nobody is left to wait for" to joined(backgroundScope, ENDED.copy(members = MemberCounts(3, 3))),
             "the counts are unknown" to joined(backgroundScope, ENDED),
         )
-        for ((case, host) in notWhen) assertNull(host.layer().waiting, case)
+        for ((case, host) in notWhen) assertNull(host.layer().sharingNote, case)
+    }
+
+    @Test
+    fun `once nobody is left to wait for everyone has shared and a late guest turns it back`() = runTest {
+        val config = MutableStateFlow<EventConfig?>(ENDED.copy(members = MemberCounts(3, 3, waiting = 0)))
+        val host = joined(backgroundScope, configFlow = config)
+        assertEquals(SharingNote.EveryoneShared, host.layer().sharingNote)
+
+        config.value = ENDED.copy(members = MemberCounts(4, 3, waiting = 1))
+        assertEquals(
+            SharingNote.WaitingFor(1),
+            host.screen.first { (it.layer as? Layer.Joined)?.sharingNote is SharingNote.WaitingFor }
+                .let { (it.layer as Layer.Joined).sharingNote },
+        )
+    }
+
+    // ---- members, the deleted event, the back-dated line --------------------------------------------
+
+    @Test
+    fun `the member count is the event's present members and none once its photos are deleted`() = runTest {
+        assertEquals(4, joined(backgroundScope, MEMBERSHIP.copy(members = MemberCounts(4, 0))).layer().members)
+        assertNull(joined(backgroundScope, MEMBERSHIP).layer().members, "not read yet")
+        val deleted = joined(backgroundScope, ENDED.copy(members = MemberCounts(4, 4), deleted = true)).layer()
+        assertTrue(deleted.deleted)
+        assertNull(deleted.members)
+    }
+
+    @Test
+    fun `a back-dated event says until when others can join while that day is ahead`() = runTest {
+        // Clock: 2026-07-09T12:00Z. ENDED ends 2026-07-08.
+        val backDated = ENDED.copy(openUntil = eventEnd("2026-07-15T12:00:00Z"))
+        assertEquals(
+            LocalDateTime.parse("2026-07-15T12:00"),
+            joined(backgroundScope, backDated).layer().joinableUntil,
+        )
+        val notWhen = mapOf(
+            "a regular event" to ENDED.copy(openUntil = ENDED.endsAt),
+            "no open-until date served" to ENDED,
+            "the day has passed" to ENDED.copy(openUntil = eventEnd("2026-07-09T06:00:00Z")),
+            "the event's photos were deleted" to backDated.copy(deleted = true),
+        )
+        for ((case, config) in notWhen) assertNull(joined(backgroundScope, config).layer().joinableUntil, case)
     }
 
     // ---- the invite --------------------------------------------------------------------------------

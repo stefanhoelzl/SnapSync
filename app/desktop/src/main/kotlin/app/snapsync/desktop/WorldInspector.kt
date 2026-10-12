@@ -32,6 +32,7 @@ import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SecureSlots
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferFailure
+import kotlin.time.Instant
 
 /** The failures a live job can be given, by the label its button shows. */
 private val JOB_FAILURES = listOf(
@@ -112,10 +113,7 @@ fun WorldInspector(
             OutlinedButton(onClick = { controller.createEvent("Future event", FUTURE_START, FUTURE_END) }) {
                 Text("Create event (not started)")
             }
-            OutlinedButton(
-                enabled = snap.joinedEventId != null,
-                onClick = { controller.leaveEvent() },
-            ) { Text("Leave") }
+            LifeLevers(controller, snap.joinedEventId)
         }
 
         // ---- Gallery | Backend ------------------------------------------------------------------
@@ -305,8 +303,25 @@ private fun TwoUp(left: @Composable () -> Unit, right: @Composable () -> Unit) {
  * and uploads. [FUTURE_START] is far enough out that it stays in the future for the life of the project — the event
  * that has not begun, whose clamped cutoff admits no photo.
  */
+/**
+ * The membership's Leave, and the event's life past its range: the phone's clock (and the backend's, which reads the same one) set past "started"'s
+ * range — that event has ended, and a new one with the same range is created after its end, the back-dated create —
+ * and the nightly sweep deleting the joined event's photos, which the phone learns on its next event read.
+ */
+@Composable
+private fun LifeLevers(controller: WorldInspectorController, joinedEventId: String?) {
+    OutlinedButton(enabled = joinedEventId != null, onClick = { controller.leaveEvent() }) { Text("Leave") }
+    OutlinedButton(onClick = {
+        controller.lever("clock → $AFTER_PAST_END") { clock.operator.now = Instant.parse(AFTER_PAST_END) }
+    }) { Text("Clock: after the range") }
+    OutlinedButton(enabled = joinedEventId != null, onClick = {
+        controller.lever("sweep: $joinedEventId's photos deleted") { joinedEventId?.let(backend.operator::complete) }
+    }) { Text("Sweep: delete photos") }
+}
+
 internal const val PAST_START = "2026-05-15T00:00:00"
 internal const val PAST_END = "2026-06-14T00:00:00"
+internal const val AFTER_PAST_END = "2026-06-20T12:00:00Z"
 internal const val FUTURE_START = "2099-12-01T00:00:00"
 internal const val FUTURE_END = "2099-12-31T00:00:00"
 

@@ -48,8 +48,10 @@ import app.snapsync.ui.resources.join_access_sheet_title
 import app.snapsync.ui.resources.join_both_off
 import app.snapsync.ui.resources.join_button
 import app.snapsync.ui.resources.join_button_allow
+import app.snapsync.ui.resources.members_count
 import app.snapsync.ui.state.AlbumStyle
 import app.snapsync.ui.state.RangeView
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 // The **Ready** join surface: the decision the guest actually makes. Split out of
@@ -77,7 +79,10 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
     Column(modifier = Modifier.fillMaxSize()) {
-        AppEventHeaderCompact(title = state.eventName)
+        AppEventHeaderCompact(
+            title = state.eventName,
+            subtitle = state.members?.let { pluralStringResource(Res.plurals.members_count, it, it) },
+        )
         Spacer(Modifier.height(BAND_GAP))
         // The line where the pinned identity ends and the scrolling choices begin.
         AppSectionDivider()
@@ -196,6 +201,8 @@ private fun joinAlbumNote(participation: ParticipationState): String = with(part
 /** What the **Ready** join surface displays. */
 internal class ReadyState(
     val eventName: String,
+    /** How many members the event has now, as its details were read; `null` when not served. */
+    val members: Int? = null,
     val participation: ParticipationState,
     /** Confirming also raises iOS's photo-access dialog — see [ReadyLayout]. */
     val asksAccessOnJoin: Boolean,

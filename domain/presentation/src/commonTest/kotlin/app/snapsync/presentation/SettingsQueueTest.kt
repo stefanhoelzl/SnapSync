@@ -161,17 +161,17 @@ class SettingsQueueTest {
     }
 
     @Test
-    fun `settings left open when the event closes give way to the status`() = runTest {
+    fun `settings left open when the event's photos are deleted give way to the status`() = runTest {
         val world = World()
         val host = host(world, backgroundScope)
         host.surfaces.onOpenReconfigure()
         runCurrent()
         host.screen.first { (it.layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure }
 
-        world.config.value = MEMBERSHIP.copy(closed = true)
+        world.config.value = MEMBERSHIP.copy(deleted = true)
 
         host.screen.first {
-            (it.layer as? Layer.Joined)?.let { joined -> joined.closed && joined.surface == JoinedSurface.Status } == true
+            (it.layer as? Layer.Joined)?.let { joined -> joined.deleted && joined.surface == JoinedSurface.Status } == true
         }
     }
 }

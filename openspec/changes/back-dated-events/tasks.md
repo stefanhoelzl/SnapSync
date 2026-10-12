@@ -27,11 +27,11 @@
 
 ## 4. App: switching and screens
 
-- [ ] 4.1 `switchDecision` + the link handler read the current event once on a different invite and skip the dialog only per design D8; verify feature/presentation tests: finished + received → straight to join screen; one member waiting → dialog; offline → dialog; deleted → straight to join screen; cancel there → no event
-- [ ] 4.2 The joined screen: deleted state (over, photos removed, counts, Leave only; Leave without confirm), the member count on the counts line, "Waiting for N members" / "Everyone has shared their photos", and "Guests can join until …" for a back-dated event before its open-until date; drop the closed variant and the closed-only invite rule; verify `:ui:screens` tests per state and presentation reducer tests
-- [ ] 4.3 The join screen shows the member count from the event read; verify a presentation test and a `:ui:screens` test
-- [ ] 4.4 Strings EN + DE for every new line; verify `./gradlew build` (HardCodedUiText, Compose rules) passes
-- [ ] 4.5 World harness: the new states reachable through existing levers (a past range create, the sweep completing, a finished event); verify each renders via the `ui-harness` driver
+- [x] 4.1 `switchDecision` + the link handler read the current event once on a different invite and skip the dialog only per design D8; verify feature/presentation tests: finished + received → straight to join screen; one member waiting → dialog; offline → dialog; deleted → straight to join screen; cancel there → no event
+- [x] 4.2 The joined screen: deleted state (over, photos removed, counts, Leave only; Leave without confirm), the member count on the counts line, "Waiting for N members" / "Everyone has shared their photos", and "Guests can join until …" for a back-dated event before its open-until date; drop the closed variant and the closed-only invite rule; verify `:ui:screens` tests per state and presentation reducer tests
+- [x] 4.3 The join screen shows the member count from the event read; verify a presentation test and a `:ui:screens` test
+- [x] 4.4 Strings EN + DE for every new line; verify `./gradlew build` (HardCodedUiText, Compose rules) passes
+- [x] 4.5 World harness: the new states reachable through existing levers (a past range create, the sweep completing, a finished event); verify each renders via the `ui-harness` driver
 
 ## 5. Integration and contract of record
 
