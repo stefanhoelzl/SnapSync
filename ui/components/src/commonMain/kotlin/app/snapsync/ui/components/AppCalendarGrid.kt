@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,7 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -63,11 +65,18 @@ import org.jetbrains.compose.resources.stringResource
 /** A day's circle: small enough for six weeks and the wheels beneath to fit a small phone's form. */
 private val DAY_CIRCLE = 32.dp
 
+/** The line under an event's days, and the room beneath the circles it is drawn in. */
+private val MARK_LINE = 2.5.dp
+private val MARK_ROOM = 4.dp
+
+/** How far a lone event day's line reaches either side of its centre, where no neighbour continues it. */
+private val MARK_CAP = 7.dp
+
 /**
  * The month grid in **range mode**: the two endpoint days are filled with the brand-green circle, the days
  * strictly between them wear a lighter `primaryContainer` band, days the bounds do not allow are greyed and inert,
- * and the bounds' marked days (an event's own) carry a dot beneath their number: a 7-column Monday-start grid of whole
- * weeks.
+ * and the bounds' marked days (an event's own) are joined by a line beneath their numbers, rounded off at the event's
+ * first and last day: a 7-column Monday-start grid of whole weeks.
  */
 @Composable
 internal fun RangeCalendarGrid(
@@ -103,6 +112,11 @@ internal fun RangeCalendarGrid(
                                     inRange = date > rangeStart && date < rangeEnd,
                                     isToday = date == bounds.today,
                                     isMarked = bounds.marks(date),
+                                    // The line breaks where a week does, as the range band does.
+                                    marksBefore = col > 0 && bounds.marks(date.plus(-1, DateTimeUnit.DAY)),
+                                    marksAfter = col < DAYS_PER_WEEK - 1 &&
+                                        bounds.marks(date.plus(1, DateTimeUnit.DAY)),
+                                    markable = bounds.marked != null,
                                 ),
                                 enabled = bounds.allows(date),
                                 onClick = { onPick(date) },
@@ -144,6 +158,7 @@ private fun RangeDayCell(
             // The connecting band for strictly-between days spans the full cell width so the range reads as
             // one continuous stripe rather than isolated dots.
             .background(if (position.inRange) scheme.primaryContainer else Color.Transparent)
+            .eventLine(position, scheme.primary)
             .selectable(
                 selected = endpoint,
                 enabled = enabled,
@@ -155,7 +170,7 @@ private fun RangeDayCell(
     ) {
         Box(
             modifier = Modifier
-                .padding(1.dp)
+                .padding(start = 1.dp, top = 1.dp, end = 1.dp, bottom = if (position.markable) MARK_ROOM else 1.dp)
                 .size(DAY_CIRCLE)
                 .clip(CircleShape)
                 .background(fill)
@@ -173,7 +188,6 @@ private fun RangeDayCell(
                 ),
                 color = textColor,
             )
-            if (position.isMarked) MarkDot(onEndpoint = endpoint)
         }
     }
 }
@@ -187,24 +201,28 @@ private fun dayLabel(date: LocalDate, position: DayInRange): String {
 }
 
 /**
- * The event's own day, beneath whatever range is chosen: a dot under the number, in the number's colour so it reads
- * on the filled endpoint as on a plain day.
+ * The event's own days, beneath whatever range is chosen: one line under the numbers, carried edge to edge where the
+ * neighbouring day is an event day too, so the event reads as one connected stretch; rounded off at its first and last
+ * day, and broken where a week ends, as the range band is.
  */
-@Composable
-private fun BoxScope.MarkDot(onEndpoint: Boolean) {
-    val scheme = MaterialTheme.colorScheme
-    Box(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 3.dp)
-            .size(MARK_DOT)
-            .clip(CircleShape)
-            .background(if (onEndpoint) scheme.onPrimary else scheme.primary),
-    )
-}
-
-/** The dot that marks an event's own day. */
-private val MARK_DOT = 4.dp
+private fun Modifier.eventLine(position: DayInRange, color: Color): Modifier =
+    if (!position.isMarked) {
+        this
+    } else {
+        drawBehind {
+            val y = size.height - MARK_LINE.toPx() / 2
+            val centre = size.width / 2
+            val start = if (position.marksBefore) 0f else centre - MARK_CAP.toPx()
+            val end = if (position.marksAfter) size.width else centre + MARK_CAP.toPx()
+            drawLine(
+                color = color,
+                start = Offset(start, y),
+                end = Offset(end, y),
+                strokeWidth = MARK_LINE.toPx(),
+                cap = if (position.marksBefore && position.marksAfter) StrokeCap.Butt else StrokeCap.Round,
+            )
+        }
+    }
 
 /**
  * Centres the picker horizontally on the anchor (a pane-wide `Box`, so this is the pane's centre) and
@@ -336,6 +354,11 @@ internal class DayInRange(
     val isToday: Boolean,
     /** One of the event's own days, marked beneath the range (see [CalendarBounds.marked]). */
     val isMarked: Boolean = false,
+    /** The day before and the day after are event days too: the line beneath carries on to that side. */
+    val marksBefore: Boolean = false,
+    val marksAfter: Boolean = false,
+    /** Whether this calendar marks days at all: every day then keeps the room beneath its circle, so rows stay even. */
+    val markable: Boolean = false,
 )
 
 /** Any Monday: the header names a week's days from it. */

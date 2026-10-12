@@ -81,7 +81,9 @@ fun AppShareRangeRow(
 ) {
     val scheme = MaterialTheme.colorScheme
     Column(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 8.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Compact enough that the three choices fit one row on a small phone in every shipped language; a large type
+        // size still wraps them rather than clipping one.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             RangeChip(
                 label = stringResource(Res.string.share_range_event_start),
                 selected = choices.preset == RangeChoice.EVENT_START,
@@ -136,11 +138,11 @@ private fun RangeChip(label: String, selected: Boolean, hint: String? = null, on
             .background(if (selected) scheme.primaryContainer else scheme.surface, shape)
             .clickable(onClickLabel = hint, role = Role.RadioButton, onClick = onClick)
             .semantics { this.selected = selected }
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 11.dp, vertical = 6.dp),
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge.copy(
+            style = MaterialTheme.typography.labelMedium.copy(
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             ),
             color = if (selected) scheme.onPrimaryContainer else scheme.onSurface,
