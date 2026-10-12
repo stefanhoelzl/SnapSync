@@ -1,7 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.LinkDelivery
-
 /**
  * **The links the platform opens this app with**: a Universal Link delivered cold at
  * launch or warm to a running app, and an opened URL. On iOS the scene delegate's user activities and SwiftUI's
@@ -13,8 +11,29 @@ import app.snapsync.model.LinkDelivery
  */
 interface Links : Listenable<LinkHandlers>
 
+/**
+ * What the platform opened the app with, as the platform delivered it. Each names the [hook] that delivered it — the
+ * platform's own entry (a cold Universal Link, a warm continuation, an opened URL, an activity's intent) — for the
+ * log, so a device log records which path ran.
+ */
+sealed interface LinkDelivery {
+    val hook: String
+
+    /** A link, complete: the fragment an invite carries its payload in is intact. */
+    data class Link(override val hook: String, val url: String) : LinkDelivery
+
+    /** The referrer this installation came with, raw — at most once per installation, on a foreground start only. */
+    data class InstallReferrer(override val hook: String, val referrer: String) : LinkDelivery
+
+    /** The platform opened the app with something that is not a link; [kind] names it as the platform does. */
+    data class NotALink(override val hook: String, val kind: String?) : LinkDelivery
+
+    /** A link delivery that carried no URL. Not expected; delivered so it never passes for "never called". */
+    data class NoUrl(override val hook: String) : LinkDelivery
+}
+
 /** What the platform's link deliveries tell the core. Built only by a composition. */
 class LinkHandlers(
-    /** A link arrived, raw. The handler assembles the status host first: a link is a person opening the app. */
+    /** The app was opened with [LinkDelivery]. The handler assembles the status host first: a person opened the app. */
     val onLink: (LinkDelivery) -> Unit,
 )

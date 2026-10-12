@@ -56,8 +56,8 @@ step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`swit
 - **App entry** (`iosApp/iosApp/iOSApp.swift`): UIKit `@main` app delegate + scene delegate. The scene
   delegate forwards every delivered `NSUserActivity` whole, under its own entry name per half —
   `onLaunchActivity` (cold) / `onSceneContinueActivity` (warm), so a dump says WHICH hook the platform
-  invoked — the browsing-web filter and the raw `absoluteString` (fragment included) are Kotlin's tested
-  `model/` codec, routed on to `onOpenUrl`. A silent push forwards its `userInfo` dictionary whole
+  invoked — `IosLinks` tells a browsing-web activity with its raw `absoluteString` (fragment included) from one with
+  no URL and from any other activity, and the core's `LinkOpening` routes a link on to `onOpenUrl`. A silent push forwards its `userInfo` dictionary whole
   (`onSilentPush(userInfo:completion:)`; the `eventId` extraction is the tested payload codec).
   Foreground/background are **not** a Swift split any more: `SnapSyncRoot.onLaunch()` (called from
   `didFinishLaunchingWithOptions`) installs Kotlin-side `NSNotificationCenter` observers for

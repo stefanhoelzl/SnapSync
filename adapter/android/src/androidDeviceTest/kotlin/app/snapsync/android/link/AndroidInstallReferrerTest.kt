@@ -3,12 +3,9 @@ package app.snapsync.android.link
 import android.content.Context
 import android.content.SharedPreferences
 import app.snapsync.android.storage.context
-import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.LINK_ORIGIN
-import app.snapsync.model.LinkDelivery
-import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
+import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import co.touchlab.kermit.Logger
 import kotlin.test.AfterTest
@@ -48,14 +45,17 @@ class AndroidInstallReferrerTest {
             it(answer)
         }, links, Logger.withTag("test")).deliverOnce()
 
+    /** The referrers delivered, raw — whether one carries an invite is the core's. */
+    private fun referrers() = delivered.map { (it as LinkDelivery.InstallReferrer).referrer }
+
     @Test
-    fun `an invite is delivered as its event link once`() {
-        start(ReferrerAnswer.Referrer(invite.substringAfter('#')))
-        assertEquals(listOf(invite), delivered.map { it.url })
-        assertTrue(delivered.single().isWebLink, "it opens exactly as a tapped web link")
+    fun `a referrer is delivered raw once`() {
+        val referrer = invite.substringAfter('#')
+        start(ReferrerAnswer.Referrer(referrer))
+        assertEquals(listOf(referrer), referrers())
 
         val asks = mutableListOf<Unit>()
-        start(ReferrerAnswer.Referrer(invite.substringAfter('#')), asks)
+        start(ReferrerAnswer.Referrer(referrer), asks)
         assertEquals(
             1,
             delivered.size,
@@ -65,19 +65,13 @@ class AndroidInstallReferrerTest {
     }
 
     @Test
-    fun `an encrypted events referrer is delivered as its whole invite`() {
-        val key = encodeEventKey(ByteArray(EncryptedFileFormat.KEY_LENGTH))
-        start(ReferrerAnswer.Referrer(invite.substringAfter('#') + "&k=$key"))
-        assertEquals(listOf("$LINK_ORIGIN/join/11111111-1111-4111-8111-111111111111#k=$key"), delivered.map { it.url })
-    }
-
-    @Test
-    fun `an organic install is recorded and delivers nothing`() {
-        start(ReferrerAnswer.Referrer("utm_source=google-play&utm_medium=organic"))
-        assertTrue(delivered.isEmpty())
+    fun `an organic install referrer is delivered too and recorded`() {
+        val organic = "utm_source=google-play&utm_medium=organic"
+        start(ReferrerAnswer.Referrer(organic))
+        assertEquals(listOf(organic), referrers(), "telling it from an invite is the core's")
         val asks = mutableListOf<Unit>()
         start(ReferrerAnswer.Referrer(invite.substringAfter('#')), asks)
-        assertTrue(asks.isEmpty() && delivered.isEmpty(), "the installation's referrer was handled")
+        assertTrue(asks.isEmpty() && delivered.size == 1, "the installation's referrer was handled")
     }
 
     @Test
@@ -93,6 +87,6 @@ class AndroidInstallReferrerTest {
         start(ReferrerAnswer.TryLater)
         assertTrue(delivered.isEmpty())
         start(ReferrerAnswer.Referrer(invite.substringAfter('#')))
-        assertEquals(listOf(invite), delivered.map { it.url })
+        assertEquals(listOf(invite.substringAfter('#')), referrers())
     }
 }
