@@ -269,7 +269,7 @@ private fun snapshot(
 ) = SyncProgress(pending, completed, total, failed, active, estimatedRemaining)
 
 /** What the fixed clock below yields as a cutoff — the seed when `createdAt` is absent or unparseable. */
-private val NOW_CUTOFF = CaptureDate("2026-07-09T12:00:00Z")
+private val NOW_CUTOFF = CaptureDate.parse("2026-07-09T12:00:00Z")
 
 /** The fixed clock's date, in the UTC these tests run in. */
 private val TODAY = LocalDate(2026, 7, 9)
@@ -495,7 +495,7 @@ class StatusContainerHostTest {
                     SyncHealth.InSync,
                     config = notStartedConfig(),
                     counts = counts(0 to 0),
-                    timing = eventTiming(futureStart, FAR_END, CaptureDate("2026-07-09T18:00:01Z")),
+                    timing = eventTiming(futureStart, FAR_END, CaptureDate.parse("2026-07-09T18:00:01Z")),
                 ),
                 containerHost.screen.value,
             )

@@ -219,7 +219,7 @@ class RangeResolutionTest {
 
     // ── nowWithinWindow ─────────────────────────────────────────────────────────────────────────
 
-    private fun d(iso: String) = CaptureDate(iso)
+    private fun d(iso: String) = CaptureDate.parse(iso)
 
     @Test
     fun `now inside the window offers the now preset`() {

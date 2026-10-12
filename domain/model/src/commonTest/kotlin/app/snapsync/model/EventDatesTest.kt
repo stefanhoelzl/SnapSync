@@ -22,13 +22,11 @@ class EventDatesTest {
 
     @Test
     fun `lexicographic order is chronological for the canonical shape`() {
-        val earlier = CaptureDate("2026-07-06T14:32:11Z")
-        val later = CaptureDate("2026-07-06T14:32:12Z")
+        val earlier = CaptureDate.parse("2026-07-06T14:32:11Z")
+        val later = CaptureDate.parse("2026-07-06T14:32:12Z")
         assertTrue(earlier < later)
         assertTrue(later > earlier)
-        assertEquals(earlier, CaptureDate("2026-07-06T14:32:11Z"))
-        // The undated asset: sorts before every real date, so any real cutoff excludes it.
-        assertTrue(CaptureDate("") < earlier)
+        assertEquals(earlier, CaptureDate.parse("2026-07-06T14:32:11Z"))
     }
 
     @Test
@@ -47,7 +45,6 @@ class EventDatesTest {
         // THE compatibility property. `EventConfig` is the only record of a join and the invite QR is
         // derived from it, so an encoding that wrapped these in an object would strand every joined
         // device permanently — with nothing in the app to surface the event id back.
-        assertEquals("\"2026-07-06T14:32:11Z\"", json.encodeToString(CaptureDate("2026-07-06T14:32:11Z")))
         assertEquals("\"2026-07-06T14:32:11Z\"", json.encodeToString(captureCutoff("2026-07-06T14:32:11Z")))
         assertEquals("\"2026-07-06T14:32:11Z\"", json.encodeToString(captureCeiling("2026-07-06T14:32:11Z")))
         assertEquals("\"2026-07-06T14:32:11Z\"", json.encodeToString(eventStart("2026-07-06T14:32:11Z")))
@@ -58,7 +55,7 @@ class EventDatesTest {
     @Test
     fun `every role logs and goes on the wire as the canonical string it was built from`() {
         val instant = "2026-07-06T14:32:11Z"
-        assertEquals(instant, "${CaptureDate(instant)}")
+        assertEquals(instant, "${CaptureDate.parse(instant)}")
         assertEquals(instant, captureCutoff(instant).iso)
         assertEquals(instant, captureCeiling(instant).iso)
         assertEquals(instant, eventStart(instant).iso)

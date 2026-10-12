@@ -66,7 +66,7 @@ class GalleryReport(
             // the app can hold. Without it the deny-everything narrowing — the one that keeps a
             // download-only member off a whole-library walk — is unobservable on a device.
             includesUpload = includesUpload,
-            cutoff = CaptureCutoff(CaptureDate(cutoff)),
+            cutoff = CaptureCutoff(CaptureDate.parse(cutoff)),
             ceiling = null,
             // The operator reads the POLICY here, not the device's echo/album state — this route
             // answers "what would this cutoff admit", so the two port-read exclusions are out of scope.
@@ -95,7 +95,7 @@ class GalleryReport(
             val refusedBy = if (admitted) null else rules.firstOrNull { !it.admits(facts) }
             AssetView(
                 assetId = facts.assetId.value,
-                captureDate = facts.creationDate.iso,
+                captureDate = facts.creationDate?.iso.orEmpty(),
                 pixelArea = facts.pixelArea,
                 isScreenshot = facts.isScreenshot,
                 isScreenRecording = facts.isScreenRecording,

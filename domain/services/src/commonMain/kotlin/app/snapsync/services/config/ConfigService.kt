@@ -1,5 +1,6 @@
 package app.snapsync.services.config
 
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.EventConfig
@@ -134,13 +135,13 @@ class ConfigService(
      * Has this membership's own retention deadline [deletesAt] passed? The self-leave's
      * OFFLINE witness — see [confirmedGone] for why it is exact.
      */
-    fun isPastDeletion(deletesAt: DeletesAt): Boolean = confirmedGone(deletesAt, instantToCutoff(clock.now()))
+    fun isPastDeletion(deletesAt: DeletesAt): Boolean = confirmedGone(deletesAt, CaptureDate.of(clock.now()))
 
     /**
      * Has [config]'s event range ended? Read on the same clock as [isPastDeletion]; an
      * end not yet learned has not passed — see [hasEnded].
      */
-    fun hasEnded(config: EventConfig): Boolean = config.hasEnded(instantToCutoff(clock.now()))
+    fun hasEnded(config: EventConfig): Boolean = config.hasEnded(CaptureDate.of(clock.now()))
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
     /** The joined event's id, or `null` while not joined — the scope every per-event read takes. */

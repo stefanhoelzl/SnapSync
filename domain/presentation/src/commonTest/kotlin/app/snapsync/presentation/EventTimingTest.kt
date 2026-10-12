@@ -18,10 +18,10 @@ import kotlin.time.Duration.Companion.seconds
  */
 class EventTimingTest {
 
-    private val start = EventStart(CaptureDate("2026-07-12T14:00:00Z"))
-    private val end = EventEnd(CaptureDate("2026-07-14T22:00:00Z"))
+    private val start = EventStart(CaptureDate.parse("2026-07-12T14:00:00Z"))
+    private val end = EventEnd(CaptureDate.parse("2026-07-14T22:00:00Z"))
 
-    private fun at(iso: String) = eventTiming(start, end, CaptureDate(iso))
+    private fun at(iso: String) = eventTiming(start, end, CaptureDate.parse(iso))
 
     @Test
     fun `a span is floored to its largest whole unit`() {

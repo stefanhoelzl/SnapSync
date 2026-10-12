@@ -281,21 +281,28 @@ sealed interface SelectionRule {
     }
 
     /**
-     * The capture-date **lower** bound: at or after [cutoff]. An asset with no `creationDate` (the empty
-     * string) sorts before any real cutoff and is therefore excluded — the one place a missing fact
-     * excludes rather than admits, because an undated asset cannot be shown to be in the event window.
+     * The capture-date **lower** bound: at or after [cutoff]. An asset with no `creationDate` is excluded — the one
+     * place a missing fact excludes rather than admits, because an undated asset cannot be shown to be in the event
+     * window.
      */
     data class CaptureAfter(val cutoff: CaptureCutoff) : SelectionRule {
-        override fun admits(facts: AssetFacts): Boolean = facts.creationDate >= cutoff.at
+        override fun admits(facts: AssetFacts): Boolean {
+            val creationDate = facts.creationDate ?: return false
+            return creationDate >= cutoff.at
+        }
         override val deniesEverything: Boolean get() = false
     }
 
     /**
      * The capture-date **upper** bound (the ceiling): at or before [ceiling]. This is the rule that
-     * reached only two of four consumers before the policy became one value — see [SelectionPolicy].
+     * reached only two of four consumers before the policy became one value — see [SelectionPolicy]. An undated asset
+     * is excluded, as by [CaptureAfter].
      */
     data class CaptureBefore(val ceiling: CaptureCeiling) : SelectionRule {
-        override fun admits(facts: AssetFacts): Boolean = facts.creationDate <= ceiling.at
+        override fun admits(facts: AssetFacts): Boolean {
+            val creationDate = facts.creationDate ?: return false
+            return creationDate <= ceiling.at
+        }
         override val deniesEverything: Boolean get() = false
     }
 

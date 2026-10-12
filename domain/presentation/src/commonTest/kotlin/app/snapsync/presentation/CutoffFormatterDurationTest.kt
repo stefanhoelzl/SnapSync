@@ -49,11 +49,10 @@ class CutoffFormatterDurationTest {
     }
 
     @Test
-    fun `a cutoff that does not parse has no local value rather than throwing`() {
-        assertEquals(null, f.toLocal(app.snapsync.model.CaptureDate("not a date")))
+    fun `a capture date is its local value in the zone`() {
         assertEquals(
             LocalDateTime(2026, 7, 14, 18, 0),
-            f.toLocal(app.snapsync.model.CaptureDate("2026-07-14T18:00:00Z")),
+            f.toLocal(app.snapsync.model.CaptureDate.parse("2026-07-14T18:00:00Z")),
         )
     }
 }

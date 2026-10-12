@@ -6,9 +6,7 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
-import app.snapsync.model.iso
 import app.snapsync.model.localToCutoff
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ui.state.CoarseDuration
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
@@ -20,15 +18,13 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
- * Bridges the join screen's **local** date-time picker and the UTC `…Z` capture-date cutoff string.
+ * Bridges the join screen's **local** date-time picker and the capture dates.
  * Injected into the screen so `:ui:screens` needs no clock or
  * timezone knowledge: it holds only a `LocalDateTime` and calls these methods. **Pure given its
  * inputs** (migration step 9): [now] and [zone] arrive injected — production binds the `Clock` port
  * (`:adapter:generic:app`'s `SystemClock`: its now, and its zone read once, by the host composition)
  * as plain function/value inputs, since the armed presentation gate forbids this module naming
- * `ports/`); tests pass a fixed instant and zone for determinism. Reuses the config cutoff codec
- * ([localToCutoff]) so the string it produces is byte-identical to the enumerator's `creationDate`
- * shape (the lexicographic-compare invariant).
+ * `ports/`); tests pass a fixed instant and zone for determinism.
  */
 class CutoffFormatter(
     private val now: () -> Instant,
@@ -46,36 +42,27 @@ class CutoffFormatter(
     /** How long until the clock's next minute begins — never zero, so a clock that does not move waits a minute. */
     fun millisToNextMinute(): Long = MILLIS_PER_MINUTE - now().toEpochMilliseconds().mod(MILLIS_PER_MINUTE)
 
-    /** Convert a picked local wall-clock value to the UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` cutoff string. */
+    /** A picked local wall-clock value as the capture date it names. */
     fun toCutoff(local: LocalDateTime): CaptureDate = localToCutoff(local, zone)
 
-    /** Parse a UTC `…Z` cutoff (the event's `startsAt`) back to a local value for the picker. */
-    fun toLocal(cutoff: CaptureDate): LocalDateTime? =
-        runCatchingCancellable { Instant.parse(cutoff.iso).toLocalDateTime(zone) }.getOrNull()
+    /** A capture date as a local value for the picker. */
+    fun toLocal(date: CaptureDate): LocalDateTime = date.at.toLocalDateTime(zone)
 
-    /** A membership's or event's date as a local value — never absent: these roles hold an instant by construction. */
-    fun toLocal(start: EventStart): LocalDateTime = local(start.iso)
-
-    /** See the [EventStart] overload. */
-    fun toLocal(end: EventEnd): LocalDateTime = local(end.iso)
+    /** A membership's or event's date as a local value. */
+    fun toLocal(start: EventStart): LocalDateTime = toLocal(start.at)
 
     /** See the [EventStart] overload. */
-    fun toLocal(floor: CaptureCutoff): LocalDateTime = local(floor.iso)
+    fun toLocal(end: EventEnd): LocalDateTime = toLocal(end.at)
 
     /** See the [EventStart] overload. */
-    fun toLocal(ceiling: CaptureCeiling): LocalDateTime = local(ceiling.iso)
+    fun toLocal(floor: CaptureCutoff): LocalDateTime = toLocal(floor.at)
 
-    private fun local(iso: String): LocalDateTime = Instant.parse(iso).toLocalDateTime(zone)
+    /** See the [EventStart] overload. */
+    fun toLocal(ceiling: CaptureCeiling): LocalDateTime = toLocal(ceiling.at)
 
     /**
-     * "Now" directly as a canonical `…Z` string — the form the event-start comparison needs
-     * (`startsAt > nowCutoff()`).
-     *
-     * Comparing in the **cutoff string domain** rather than converting `startsAt` to a local time and
-     * comparing `LocalDateTime`s is deliberate: the strings are fixed-width canonical UTC, so a plain
-     * lexicographic `>` IS the chronological answer — the very same property the `creationDate >= cutoff`
-     * filter relies on. Round-tripping through local time would introduce a zone and a parse that can
-     * fail, for a comparison that needs neither.
+     * "Now" as a capture date — the form the event-start comparison needs (`startsAt > nowCutoff()`): comparing
+     * instants rather than local values needs no zone.
      */
     fun nowCutoff(): CaptureDate = toCutoff(nowLocal())
 

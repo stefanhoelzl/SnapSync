@@ -43,7 +43,7 @@ class AssetIdTest {
 
     @Test
     fun `the echo and album rules match on the one form`() {
-        val facts = AssetFacts(AssetId(CANONICAL), CaptureDate("2026-07-21T07:46:58Z"))
+        val facts = AssetFacts(AssetId(CANONICAL), CaptureDate.parse("2026-07-21T07:46:58Z"))
         assertFalse(SelectionRule.NotEcho(setOf(AssetId(CANONICAL))).admits(facts))
         assertFalse(SelectionRule.NotInDenylistedAlbum(setOf(AssetId(CANONICAL))).admits(facts))
     }

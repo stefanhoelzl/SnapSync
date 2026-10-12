@@ -70,7 +70,7 @@ class FactsOnlyAdmissionTest {
         height: Long = 3024,
     ) = AssetFacts(
         assetId = AssetId(assetId),
-        creationDate = CaptureDate(creationDate),
+        creationDate = CaptureDate.parseOrNull(creationDate),
         isScreenshot = isScreenshot,
         pixelArea = width * height,
     )

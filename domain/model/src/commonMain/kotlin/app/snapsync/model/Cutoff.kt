@@ -4,36 +4,24 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
-import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * Capture-date cutoff string helpers.
- *
- * A cutoff is compared against an asset's `creationDate` **lexicographically** (`creationDate >=
- * cutoff`), so it MUST be byte-identical in shape to what the iOS enumerator produces — a bare
- * `NSISO8601DateFormatter()`: UTC `yyyy-MM-dd'T'HH:mm:ss'Z'`, **second** precision, no offset, no
- * fractional seconds. These helpers are the single origin of that shape for "now" and manual picks;
- * an event's fetched `startsAt` floor is already this shape (the wire's one time shape) and is reused verbatim.
- *
- * The [Clock] is injected (DI, not `expect`/`actual`) so "now" is unit-testable in `commonTest`.
+ * Capture-date helpers: the one formatter of a capture date's canonical text, the local-pick conversion, the clamps and
+ * the deletion witness.
  */
-
-/** Format any instant to the exact UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` cutoff shape. */
-fun instantToCutoff(instant: Instant): CaptureDate {
-    val dt = instant.toLocalDateTime(TimeZone.UTC)
-    return CaptureDate(buildCutoff(dt.year, dt.month.ordinal + 1, dt.day, dt.hour, dt.minute, dt.second))
-}
-
-/** The "now" cutoff from the injected [clock], in the required UTC `…Z` shape. */
-fun nowCutoff(clock: Clock): CaptureDate = instantToCutoff(clock.now())
 
 /**
- * Convert a picked **local** wall-clock date-time (in the device [zone]) to the UTC `…Z` cutoff,
- * so a manual pick compares correctly against the UTC `creationDate` strings.
+ * The canonical text of [instant]: UTC `yyyy-MM-dd'T'HH:mm:ss'Z'`, second precision, no offset, no fractional second —
+ * the one shape the wire and the persisted config carry.
  */
-fun localToCutoff(local: LocalDateTime, zone: TimeZone): CaptureDate =
-    instantToCutoff(local.toInstant(zone))
+internal fun canonicalText(instant: Instant): String {
+    val dt = instant.toLocalDateTime(TimeZone.UTC)
+    return buildCutoff(dt.year, dt.month.ordinal + 1, dt.day, dt.hour, dt.minute, dt.second)
+}
+
+/** A picked **local** wall-clock date-time in the device [zone], as the capture date it names. */
+fun localToCutoff(local: LocalDateTime, zone: TimeZone): CaptureDate = CaptureDate.of(local.toInstant(zone))
 
 /**
  * Clamp a [chosen] cutoff up to the event's [startsAt] **floor** — the effective cutoff is
@@ -51,10 +39,6 @@ fun localToCutoff(local: LocalDateTime, zone: TimeZone): CaptureDate =
  * The floor can only ever **narrow** a membership's scope. A host who sets a distant-past start lowers
  * the *default* a joiner sees (which the joiner sees and can override upward); a host can never cause a
  * photo taken before `startsAt` to be uploaded, nor raise a member above the member's own choice.
- *
- * A plain string `maxOf` is correct **only because** of the format invariant above: both operands are the
- * canonical fixed-width UTC shape, so lexicographic order IS chronological order — the very same property
- * the `creationDate >= cutoff` filter relies on. Feed it an off-shape string and it silently lies.
  */
 fun clampToFloor(chosen: CaptureCutoff, startsAt: EventStart): CaptureCutoff =
     CaptureCutoff(maxOf(chosen.at, startsAt.at))
@@ -69,9 +53,6 @@ fun clampToFloor(chosen: CaptureCutoff, startsAt: EventStart): CaptureCutoff =
  * membership's window, never widen it beyond the member's own pick. A photo taken after `endsAt` is not a late event
  * photo but a **non-event** photo, and the window the member is committing to is shown before confirm — so the ceiling
  * is neither coarse nor silent. Every photo `<= endsAt` is still admitted on doubt.
- *
- * As with [clampToFloor], the plain string `minOf` is correct **only because** both operands are the
- * canonical fixed-width UTC shape, so lexicographic order IS chronological order.
  */
 fun clampToCeiling(chosen: CaptureCeiling, endsAt: EventEnd): CaptureCeiling =
     CaptureCeiling(minOf(chosen.at, endsAt.at))
@@ -91,9 +72,6 @@ fun clampToCeiling(chosen: CaptureCeiling, endsAt: EventEnd): CaptureCeiling =
  * device has departed, and departing clears the local config before the backend is told — so a device
  * that still holds a membership can only ever be observing a **deadline** deletion, which is precisely
  * what this tests.
- *
- * As with the clamps above, the plain string compare is correct **only because** both operands are the
- * canonical fixed-width UTC shape, so lexicographic order IS chronological order.
  */
 fun confirmedGone(deletesAt: DeletesAt, now: CaptureDate): Boolean = now > deletesAt.at
 

@@ -208,8 +208,8 @@ class ConfigServiceTest {
     @Test
     fun `an event has ended only once its end is behind the clock`() {
         val service = service()
-        assertTrue(service.hasEnded(SEED.copy(endsAt = EventEnd(CaptureDate("2026-06-01T00:00:00Z")))))
-        assertFalse(service.hasEnded(SEED.copy(endsAt = EventEnd(CaptureDate("2026-07-01T00:00:00Z")))))
+        assertTrue(service.hasEnded(SEED.copy(endsAt = EventEnd(CaptureDate.parse("2026-06-01T00:00:00Z")))))
+        assertFalse(service.hasEnded(SEED.copy(endsAt = EventEnd(CaptureDate.parse("2026-07-01T00:00:00Z")))))
     }
 
     // ---- the reads the composition takes ---------------------------------------------------------------------
@@ -237,7 +237,7 @@ class ConfigServiceTest {
     @Test
     fun `a fresh read says whether the joined range has ended`() {
         assertFalse(joined(SEED).freshReadHasEnded())
-        assertTrue(joined(SEED.copy(endsAt = EventEnd(CaptureDate("2026-06-01T00:00:00Z")))).freshReadHasEnded())
+        assertTrue(joined(SEED.copy(endsAt = EventEnd(CaptureDate.parse("2026-06-01T00:00:00Z")))).freshReadHasEnded())
     }
 
     @Test
@@ -254,9 +254,9 @@ private val NOW: Instant = Instant.parse("2026-06-15T12:00:00Z")
 private fun config(eventId: String) = EventConfig(
     eventId = eventId,
     name = "Event $eventId",
-    minPhotoDate = CaptureCutoff(CaptureDate("2026-06-10T00:00:00Z")),
-    maxPhotoDate = CaptureCeiling(CaptureDate("2026-06-20T00:00:00Z")),
-    endsAt = EventEnd(CaptureDate("2026-06-20T00:00:00Z")),
+    minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-06-10T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-06-20T00:00:00Z")),
+    endsAt = EventEnd(CaptureDate.parse("2026-06-20T00:00:00Z")),
     deletesAt = deletesAt("2026-07-20T00:00:00Z"),
 )
 
