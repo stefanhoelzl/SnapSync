@@ -76,8 +76,9 @@ fun NSURLRequest?.contentTypeHeader(): String? {
 
 /**
  * The outcome of `creationRequestForJobWithDestination`, from the error it reported (`null` = created).
- * `PHPhotosErrorLimitExceeded` is the system's in-flight job cap — the services defer the remainder. Any other error
- * means the job was **not** created.
+ * `PHPhotosErrorLimitExceeded` is the system's in-flight job cap — the services defer the remainder. Measured inside
+ * the extension (SE2, iOS 26.6.2, 2026-10-12, `OsUploadQueue@IOS_DEVICE_PHOTOKIT_EXT.rec`): 200 jobs in flight, the
+ * 201st refused with 3307. No API declares it. Any other error means the job was **not** created.
  */
 fun createResultFor(errorCode: Long?): CreateOutcome = when (errorCode) {
     null -> CreateOutcome.CREATED

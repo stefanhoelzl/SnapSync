@@ -1,0 +1,236 @@
+# contract: OsUploadQueue
+# host: IOS_DEVICE_PHOTOKIT_EXT
+# file: OsUploadQueue@IOS_DEVICE_PHOTOKIT_EXT.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-12T16:45:09Z
+# live CREATE_MAKES_A_JOB: Passed
+# live AT_CAP_DEFERS: Passed
+# live PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED: Passed
+# live PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY: Passed
+# live PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED: Passed
+[AT_CAP_DEFERS]
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-1/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-2/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-3/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-4/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-5/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-6/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-7/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-8/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-9/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-10/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-11/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-12/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-13/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-14/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-15/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-16/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-17/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-18/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-19/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-20/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-21/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-22/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-23/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-24/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-25/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-26/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-27/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-28/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-29/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-30/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-31/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-32/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-33/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-34/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-35/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-36/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-37/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-38/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-39/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-40/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-41/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-42/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-43/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-44/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-45/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-46/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-47/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-48/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-49/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-50/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-51/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-52/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-53/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-54/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-55/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-56/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-57/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-58/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-59/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-60/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-61/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-62/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-63/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-64/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-65/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-66/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-67/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-68/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-69/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-70/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-71/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-72/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-73/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-74/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-75/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-76/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-77/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-78/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-79/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-80/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-81/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-82/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-83/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-84/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-85/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-86/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-87/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-88/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-89/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-90/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-91/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-92/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-93/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-94/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-95/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-96/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-97/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-98/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-99/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-100/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-101/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-102/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-103/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-104/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-105/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-106/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-107/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-108/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-109/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-110/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-111/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-112/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-113/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-114/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-115/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-116/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-117/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-118/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-119/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-120/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-121/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-122/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-123/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-124/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-125/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-126/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-127/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-128/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-129/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-130/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-131/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-132/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-133/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-134/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-135/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-136/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-137/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-138/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-139/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-140/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-141/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-142/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-143/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-144/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-145/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-146/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-147/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-148/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-149/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-150/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-151/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-152/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-153/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-154/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-155/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-156/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-157/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-158/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-159/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-160/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-161/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-162/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-163/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-164/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-165/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-166/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-167/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-168/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-169/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-170/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-171/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-172/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-173/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-174/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-175/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-176/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-177/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-178/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-179/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-180/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-181/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-182/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-183/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-184/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-185/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-186/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-187/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-188/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-189/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-190/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-191/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-192/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-193/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-194/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-195/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-196/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-197/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-198/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-199/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-200/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-201/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=false code=3307 desc=The operation couldn’t be completed. (PHPhotosErrorDomain error 3307.)
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/AT_CAP_DEFERS/upload-0/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=false code=3307 desc=The operation couldn’t be completed. (PHPhotosErrorDomain error 3307.)
+landed(/OsUploadQueue/AT_CAP_DEFERS/upload-0/s200-n0-len) -> none
+[CREATE_MAKES_A_JOB]
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/CREATE_MAKES_A_JOB/upload-1/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+[PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY]
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY/upload-1/s500-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+fetch(RETRY) -> n=1 [url=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY/upload-1/s500-n0-len ct=image/jpeg state=FAILED err=- res=- type=-]
+retry(url=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY/upload-1/s500-n0-len to=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY/upload-1/s500-n0-len method=PUT headers=Content-Type:image/jpeg) -> ok=true code=- desc=-
+[PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED]
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+fetch(RETRY) -> n=1 [url=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len ct=image/jpeg state=FAILED err=- res=- type=-]
+retry(url=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len to=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len method=PUT headers=Content-Type:image/jpeg) -> ok=true code=- desc=-
+fetch(ACKNOWLEDGE) -> n=1 [url=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len ct=image/jpeg state=FAILED err=- res=- type=-]
+acknowledge(url=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len) -> ok=true code=- desc=-
+fetch(ACKNOWLEDGE) -> n=0
+[PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED]
+create(to=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+fetch(ACKNOWLEDGE) -> n=1 [url=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s200-n0-len ct=image/jpeg state=SUCCEEDED err=- res=- type=-]
+acknowledge(url=http://127.0.0.1:18099/api/v2/OsUploadQueue/PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s200-n0-len) -> ok=true code=- desc=-
+fetch(ACKNOWLEDGE) -> n=0
+landed(/OsUploadQueue/PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s200-n0-len) -> ct=image/jpeg
