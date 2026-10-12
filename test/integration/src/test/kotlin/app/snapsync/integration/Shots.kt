@@ -63,6 +63,11 @@ suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
     permission("granted")
     device("clock/advance", "to" to Shot.NOW)
     relaunch()
+    // Plain events, as a shipped build creates them (`PENDING_CLEANUPS.md`): the other member's photos are seeded
+    // as plain bytes, which an encrypted event's real cipher could not open, and an encrypted event's invite QR
+    // would carry a random key — a different `in_sync` raw on every run. The switch is the running process's, so it
+    // follows the launch.
+    device("encrypt-new-events", "on" to "false")
     when (shot) {
         Shot.CREATE -> Unit
         Shot.JOINING -> {
