@@ -65,7 +65,8 @@ internal class PartialGrantRun {
 
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
             if (state !in reaches) return Entered.Unreachable("this APK holds a partial grant, and only that")
-            return Entered.Ready(PhotoAccess(permission().recorded(log)))
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            return Entered.Ready(PhotoAccess(AndroidGallery(context, permission(), scope).recorded(log)))
         }
     }
 

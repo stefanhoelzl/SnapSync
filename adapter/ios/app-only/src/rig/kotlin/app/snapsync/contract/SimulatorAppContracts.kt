@@ -56,7 +56,6 @@ import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
@@ -65,6 +64,7 @@ import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.protection.IosProcessInfo
 import co.touchlab.kermit.Logger
@@ -137,7 +137,7 @@ internal fun hostRefusal(): String? = if (currentHost != Host.IOS_SIM_APP) {
 
 /** Why this process cannot run the simulator app's bindings, or `null` when it can. */
 private fun refusal(): String? = hostRefusal() ?: when {
-    currentPhotoPermission() != GalleryAccess.GRANTED ->
+    currentPhotoPermission() != LibraryGrant.GRANTED ->
         "the simulator app holds ${currentPhotoPermission()}, not GRANTED; grant photo access with applesimutils " +
             "before launch (simctl privacy writes a TCC row PhotoKit does not consult)"
     else -> null
@@ -246,7 +246,7 @@ class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
         if (state !in reaches) return Entered.Unreachable("a simulator holds the full grant, and has no partial one")
         if (state == PhotoAccessState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
-        val adapter = PhotoLibraryPermission().recorded(log)
+        val adapter = photoAccessGallery().recorded(log)
         return Entered.Ready(PhotoAccess(adapter))
     }
 }

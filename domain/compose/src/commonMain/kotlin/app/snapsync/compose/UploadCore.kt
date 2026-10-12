@@ -13,7 +13,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.Upload
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendUploadRequests
@@ -26,6 +25,7 @@ import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
@@ -51,8 +51,8 @@ sealed interface UploaderProcess {
     }
 
     /** The extension, admitting on its own [grant] read — a status read, never a request. */
-    class Extension(private val grant: PhotoGrantRead) : UploaderProcess {
-        override fun admission() = extensionAdmission(grant.access())
+    class Extension(private val grant: GalleryReader) : UploaderProcess {
+        override fun admission() = extensionAdmission(grant.access().galleryAccess())
     }
 }
 

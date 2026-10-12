@@ -2,7 +2,7 @@ package app.snapsync.services.gallery
 
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -13,10 +13,10 @@ import kotlinx.coroutines.flow.StateFlow
  * The grant itself is the platform's and arrives through the port: the platform re-reads it at every return to the
  * foreground, since a change made in Settings reaches the app no other way.
  */
-class GalleryAccessState(private val source: PhotoAccessStatusSource) {
+class GalleryAccessState(source: StateFlow<LibraryGrant>) {
 
     /** The grant, level-triggered: its current value is always available synchronously. */
-    val grant: StateFlow<GalleryAccess> get() = source.permission
+    val grant: StateFlow<GalleryAccess> = GalleryAccessFlow(source)
 
     /**
      * Whether the app may read the library at all — a full or a partial grant. Under a partial grant the user's

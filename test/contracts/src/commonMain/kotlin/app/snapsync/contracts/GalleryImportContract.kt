@@ -41,7 +41,6 @@ class ImportDeliveries {
     private val settles = mutableMapOf<AssetRef, ImportResult>()
 
     val handlers = GalleryHandlers(
-        onChanged = {},
         onImportPlaceholder = { ref, id -> placeholders[ref] = id },
         onImportSettled = { ref, result -> settles[ref] = result },
     )

@@ -19,7 +19,6 @@ import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.LogSink
 import app.snapsync.ports.NetworkMonitor
-import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushNotifications
@@ -95,7 +94,6 @@ class JvmSystems(
     val gallery: Gallery,
     /** The upload cycle's own face of the library — the extension's reads. */
     val cycleGallery: Gallery,
-    val photoAccess: PhotoAccessStatusSource,
     /** The app uploader's transfer session. */
     val appUpload: Upload,
     /** The OS-driven tier's upload-job queue, which the upload cycle creates its jobs on. */

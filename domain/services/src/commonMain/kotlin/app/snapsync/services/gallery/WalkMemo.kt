@@ -3,9 +3,9 @@ package app.snapsync.services.gallery
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
-import app.snapsync.ports.PhotoGrantRead
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -57,7 +57,7 @@ enum class WalkMemoUse {
 class WalkMemo(
     private val walk: UploadDiscovery,
     private val changeToken: LibraryChangeTokenRead,
-    private val grant: PhotoGrantRead,
+    private val grant: GalleryReader,
     private val use: WalkMemoUse,
     private val log: Logger,
 ) : UploadDiscovery {
@@ -77,7 +77,7 @@ class WalkMemo(
     private var entry: Entry? = null
 
     override suspend fun discover(policy: SelectionPolicy): Discovery {
-        val grantNow = grant.access()
+        val grantNow = grant.access().galleryAccess()
         if (grantNow != GalleryAccess.GRANTED) return walk.discover(policy)
         val token = changeToken.changeToken() ?: return walk.discover(policy)
         val held = lock.withLock { entry }?.takeIf { it.matches(token, policy) }

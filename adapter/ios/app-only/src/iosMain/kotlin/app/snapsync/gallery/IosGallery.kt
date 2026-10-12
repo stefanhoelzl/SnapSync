@@ -4,20 +4,24 @@ import app.snapsync.download.IosPhotoLibraryImporter
 import app.snapsync.ios.discovery.libraryChangeTokenOf
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
+import app.snapsync.model.SelectionSnapshot
 import app.snapsync.permission.PhotoKitSelection
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeToken
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.selection.SelectionSnapshotLane
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import platform.Photos.PHPhotoLibrary
@@ -32,9 +36,9 @@ import platform.Photos.PHPhotoLibrary
  * the extension cannot hold a change token, a walk memo or an observer even by accident (its
  * 32 MB limit leaves no room for a held walk).
  *
- * What it observes reaches the handlers registered by [listen]: the selection snapshots from the observer's one
- * serial lane ([SelectionSnapshotLane]), which opens only while [observeChanges] is on and the grant is partial; an
- * import's placeholder from inside its change block, and its outcome from its completion.
+ * The selection snapshots arrive on [selection], from the observer's one serial lane ([SelectionSnapshotLane]), which
+ * opens only while [observeChanges] is on and the grant is partial. What [listen]'s handlers hear is an import's
+ * placeholder from inside its change block, and its outcome from its completion.
  */
 class IosGallery(
     private val reader: IosGalleryReader,
@@ -45,32 +49,35 @@ class IosGallery(
 
     private val handlers = HandlerSlot<GalleryHandlers>("Gallery", BeforeListen.Logged(log))
 
+    override val grant: StateFlow<LibraryGrant> = permission.grant
+
+    private val read = MutableStateFlow<SelectionSnapshot?>(null)
+    override val selection: StateFlow<SelectionSnapshot?> = read.asStateFlow()
+
+    /** Read through the permission adapter, so the read is published to [grant] too. */
+    override fun access(): LibraryGrant = permission.current()
+
     private val importer = IosPhotoLibraryImporter()
 
     // ONE serial lane for every read, change and emission — the ordering the lane class exists for.
-    private val selection = SelectionSnapshotLane(
-        permission = permission.permission,
+    private val lane = SelectionSnapshotLane(
+        permission = permission.grant,
         scope = scope,
         lane = Dispatchers.Default.limitedParallelism(1),
         platform = PhotoKitSelection(),
     )
 
     init {
-        // The lane replays its latest snapshot, so one read before the handlers arrive is kept, not lost.
-        scope.launch {
-            selection.snapshots.collect { snapshot ->
-                handlers.orNull("a selection snapshot", BeforeListen.Dropped)?.onChanged(snapshot)
-            }
-        }
+        scope.launch { lane.snapshots.collect { read.value = it } }
     }
 
     override fun listen(handlers: GalleryHandlers) = this.handlers.set(handlers)
 
-    override fun observeChanges(enabled: Boolean) = selection.observe(enabled)
+    override fun observeChanges(enabled: Boolean) = lane.observe(enabled)
 
-    override suspend fun requestAccess(): GalleryAccess = permission.requestAccess()
+    override suspend fun requestAccess(): LibraryGrant = permission.requestAccess()
 
-    override suspend fun widenSelection(): GalleryAccess = permission.widenSelection()
+    override suspend fun widenSelection(): LibraryGrant = permission.widenSelection()
 
     /**
      * Without registered handlers there is nowhere to record the marker that keeps the created asset from being

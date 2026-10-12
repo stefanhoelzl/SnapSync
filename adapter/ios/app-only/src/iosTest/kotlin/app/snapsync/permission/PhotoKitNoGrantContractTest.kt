@@ -1,5 +1,6 @@
 package app.snapsync.permission
 
+import app.snapsync.contract.photoAccessGallery
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -16,7 +17,7 @@ import app.snapsync.contracts.verify
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.GalleryAccess
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +33,7 @@ class PhotoKitNoGrantContractTest {
     private val unreachable = "the Kotlin/Native test executable has no bundle identifier, so no photo grant reaches it"
 
     private fun holdsNoGrant(): Boolean = currentPhotoPermission().let {
-        it == GalleryAccess.NOT_DETERMINED || it == GalleryAccess.DENIED
+        it == LibraryGrant.NOT_DETERMINED || it == LibraryGrant.DENIED
     }
 
     private val photoAccess = object : Binding<PhotoAccessState, PhotoAccess> {
@@ -45,11 +46,11 @@ class PhotoKitNoGrantContractTest {
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
             val holds = when (state) {
                 PhotoAccessState.NO_GRANT -> holdsNoGrant()
-                PhotoAccessState.REFUSED -> currentPhotoPermission() == GalleryAccess.DENIED
+                PhotoAccessState.REFUSED -> currentPhotoPermission() == LibraryGrant.DENIED
                 else -> false
             }
             if (!holds) return Entered.Unreachable(unreachable)
-            val adapter = PhotoLibraryPermission().recorded(log)
+            val adapter = photoAccessGallery().recorded(log)
             return Entered.Ready(PhotoAccess(adapter))
         }
     }
@@ -61,7 +62,7 @@ class PhotoKitNoGrantContractTest {
         override val reaches = setOf(GalleryState.TOKEN_WITHHELD)
 
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
-            if (state !in reaches || currentPhotoPermission() != GalleryAccess.DENIED) {
+            if (state !in reaches || currentPhotoPermission() != LibraryGrant.DENIED) {
                 return Entered.Unreachable(
                     unreachable,
                 )

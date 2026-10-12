@@ -62,7 +62,6 @@ class JvmMocks(
                 extensionRegistry = extensionRegistry.port(),
                 gallery = library.port(),
                 cycleGallery = library.port(),
-                photoAccess = library.photoAccess(),
                 appUpload = uploadSession.port(),
                 cycleUpload = uploadQueue.port(),
                 download = downloads.port(),

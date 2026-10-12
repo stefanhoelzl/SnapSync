@@ -4,7 +4,6 @@ import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
@@ -12,7 +11,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.ports.LibraryGrant
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -97,8 +96,8 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             GalleryReaderState.NO_GRANT,
             covers = cells {
                 oneOf {
-                    on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.NOT_DETERMINED)
-                    on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.DENIED)
+                    on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.NOT_DETERMINED)
+                    on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.DENIED)
                 }
                 on<GalleryReader> {
                     answers(GalleryReader::assets).with(GalleryRead.NotReadable::class)
@@ -114,7 +113,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             val clauseId = "NO_GRANT_READS_NOTHING"
             val access = gallery.access()
             assertTrue(
-                access == GalleryAccess.NOT_DETERMINED || access == GalleryAccess.DENIED,
+                access == LibraryGrant.NOT_DETERMINED || access == LibraryGrant.DENIED,
                 "a process holding no grant reads undetermined or denied, got $access",
             )
             val absent = setOf(absentAssetId(clauseId))
@@ -130,20 +129,20 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             "NEVER_ASKED_READS_UNDETERMINED",
             GalleryReaderState.NEVER_ASKED,
             covers = cells {
-                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.NOT_DETERMINED)
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.NOT_DETERMINED)
             },
         ) { seeded ->
-            assertEquals(GalleryAccess.NOT_DETERMINED, seeded.port.access(), "never asked is still undecided")
+            assertEquals(LibraryGrant.NOT_DETERMINED, seeded.port.access(), "never asked is still undecided")
         }
 
         clause(
             "REFUSED_READS_DENIED",
             GalleryReaderState.REFUSED,
             covers = cells {
-                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.DENIED)
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.DENIED)
             },
         ) { seeded ->
-            assertEquals(GalleryAccess.DENIED, seeded.port.access(), "asked and refused is denied")
+            assertEquals(LibraryGrant.DENIED, seeded.port.access(), "asked and refused is denied")
         }
 
         clause(
@@ -203,10 +202,10 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             "GRANTED_READS_GRANTED",
             GalleryReaderState.GRANTED_EMPTY_WINDOW,
             covers = cells {
-                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.GRANTED)
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.GRANTED)
             },
         ) { seeded ->
-            assertEquals(GalleryAccess.GRANTED, seeded.port.access())
+            assertEquals(LibraryGrant.GRANTED, seeded.port.access())
         }
 
         clause(

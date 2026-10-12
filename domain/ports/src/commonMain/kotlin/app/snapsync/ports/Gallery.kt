@@ -6,7 +6,6 @@ import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
@@ -14,6 +13,7 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.WriteOutcome
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
 
 /**
@@ -38,7 +38,14 @@ import kotlin.time.Instant
  * Every read hops off the caller's lane itself: each platform call is a synchronous round-trip into the photo
  * service, which no timeout can abandon.
  */
-interface GalleryReader : PhotoGrantRead {
+interface GalleryReader : Port {
+
+    /**
+     * The grant as the platform reports it right now — a status read, never a request, so it raises no dialog. Cheap
+     * and synchronous. The upload extension decides its own admission from it at every gate: it has no long-lived
+     * grant to observe, and its grant is read in its own process.
+     */
+    fun access(): LibraryGrant
 
     /**
      * The library's assets in [filter]'s range — facts only, no resources. [filter] is a hint (see [AssetFilter]): the
@@ -107,12 +114,6 @@ interface GalleryReader : PhotoGrantRead {
  */
 class GalleryHandlers(
     /**
-     * The whole selection under a partial grant, once when observation begins (the start's baseline) and once
-     * per change — only while [Gallery.observeChanges] is on and the grant is partial. **Conflated**: only the latest
-     * snapshot matters, so a handler hands it on rather than doing the work in place.
-     */
-    val onChanged: (SelectionSnapshot) -> Unit,
-    /**
      * The asset an import is creating, called INSIDE the platform's change block — before the asset can be
      * observed — so the marker that keeps it from being uploaded back lands first.
      * The write is synchronous, on the delivering thread. If a change block runs again, the last call wins.
@@ -148,6 +149,20 @@ interface GalleryImport : Port {
 interface Gallery : GalleryReader, LibraryChangeTokenRead, GalleryImport, Listenable<GalleryHandlers> {
 
     /**
+     * The grant as last read. Neither PhotoKit nor MediaStore calls back when it changes, so a change is
+     * **synthetic**: a re-read on every foreground, the answers of [requestAccess] and [widenSelection], and every
+     * [access] call — each publishes what it read here, so this never holds an older answer than [access] gave.
+     */
+    val grant: StateFlow<LibraryGrant>
+
+    /**
+     * The whole selection under a partial grant, as last read: the baseline when observation begins, then one per
+     * change — only while [observeChanges] is on and the grant is partial. `null` until the first one is read; it then
+     * keeps the latest. **Conflated**: only the latest snapshot matters.
+     */
+    val selection: StateFlow<SelectionSnapshot?>
+
+    /**
      * Open ([enabled]) or close the selection observer. Open, it observes **only while the grant is partial** — a
      * baseline snapshot when observation begins and one per change after — and closes by itself when the grant
      * moves away. Called on composition, on every start — a background one included, so a wake that builds no screen
@@ -159,14 +174,14 @@ interface Gallery : GalleryReader, LibraryChangeTokenRead, GalleryImport, Listen
      * Ask the member for access and answer the grant that results. With no visible screen to ask on it asks
      * nothing and answers [access]. Asking again after the member answered changes nothing.
      */
-    suspend fun requestAccess(): GalleryAccess
+    suspend fun requestAccess(): LibraryGrant
 
     /**
      * Present the platform's surface for revising a **partial** grant's selection and answer the grant afterwards. The
      * selection the member picks arrives through the selection observer, never as this answer. The app suppresses the
      * platform's own automatic prompt, so this is the member's one route to widen what the app sees.
      */
-    suspend fun widenSelection(): GalleryAccess
+    suspend fun widenSelection(): LibraryGrant
 }
 
 /**

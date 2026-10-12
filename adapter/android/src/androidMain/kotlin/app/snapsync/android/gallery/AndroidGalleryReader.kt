@@ -15,18 +15,17 @@ import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EntryScope
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -61,14 +60,14 @@ import kotlin.time.Instant
  */
 open class AndroidGalleryReader(
     context: Context,
-    private val access: () -> GalleryAccess,
+    private val access: () -> LibraryGrant,
     private val log: Logger = Logger.withTag("gallery"),
 ) : GalleryReader {
 
     protected val appContext: Context = context.applicationContext
     private val resolver: ContentResolver get() = appContext.contentResolver
 
-    override fun access(): GalleryAccess = access.invoke()
+    override fun access(): LibraryGrant = access.invoke()
 
     /** Narrowed by [filter]'s capture range, to the second the platform reports dates in. */
     override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> =
@@ -185,7 +184,7 @@ open class AndroidGalleryReader(
 
     /** The read on [Dispatchers.IO], or [GalleryRead.NotReadable] with no query when no grant allows one. */
     protected suspend fun <T> readable(read: () -> T): GalleryRead<T> =
-        if (!access().grantsPhotoAccess) {
+        if (access() !in READABLE) {
             GalleryRead.NotReadable
         } else {
             GalleryRead.Read(
@@ -368,3 +367,6 @@ internal class MediaItem(
         private fun Cursor.longOrNull(column: Int): Long? = if (isNull(column)) null else getLong(column)
     }
 }
+
+/** The grants under which a library read answers anything — a full or a partial one. */
+private val READABLE = setOf(LibraryGrant.GRANTED, LibraryGrant.LIMITED)

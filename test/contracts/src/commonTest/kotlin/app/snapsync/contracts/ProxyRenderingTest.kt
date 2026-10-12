@@ -1,21 +1,25 @@
 package app.snapsync.contracts
 
 import app.snapsync.contracts.proxy.recorded
+import app.snapsync.model.AlbumId
+import app.snapsync.model.AssetId
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.HttpResult
+import app.snapsync.model.Resource
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Files
+import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.HttpTransport
-import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
@@ -26,6 +30,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.time.Instant
 
 /**
  * A recording proxy renders a RUNTIME answer exactly as a declaration renders its class literal — the check every clause
@@ -45,7 +50,9 @@ class ProxyRenderingTest {
             override fun delete(slot: SecureSlot) = WriteOutcome.Ok
         }.recorded(log)
         store.read(SecureSlot("s", "a", shared = false))
-        val grant = PhotoGrantRead { GalleryAccess.LIMITED }.recorded(log)
+        val grant = object : GalleryReader by UnusedReader {
+            override fun access() = LibraryGrant.LIMITED
+        }.recorded(log)
         grant.access()
         val files = object : Files by UnusedFiles {
             override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.Ok(ByteArray(0))
@@ -65,7 +72,7 @@ class ProxyRenderingTest {
 
         val declared = cells {
             on<SecureStore>().answers(SecureStore::read).with(SecureStoreRead.Absent::class)
-            on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.LIMITED)
+            on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.LIMITED)
             on<Files>().answers(Files::read).withGenericLeaf(FileResult.Ok::class)
             backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
             on<AttestStore>().answers(AttestStore::token).with(null)
@@ -171,4 +178,18 @@ private object UnusedAttestStore : AttestStore {
     override fun setKeyId(keyId: String) = error("unused")
     override fun clearToken() = error("unused")
     override fun clearTokenIf(expected: String) = error("unused")
+}
+
+private object UnusedReader : GalleryReader {
+    override fun access() = error("unused")
+    override suspend fun assets(filter: AssetFilter) = error("unused")
+    override suspend fun assetsById(ids: Set<AssetId>) = error("unused")
+    override suspend fun resources(ids: Set<AssetId>) = error("unused")
+    override suspend fun albums() = error("unused")
+    override suspend fun albumsById(ids: Set<AlbumId>) = error("unused")
+    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) = error("unused")
+    override val albumKind get() = error("unused")
+    override suspend fun createAlbum(title: String) = error("unused")
+    override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>) = error("unused")
+    override suspend fun export(resource: Resource, to: String) = error("unused")
 }

@@ -22,7 +22,7 @@ class GalleryCandidateSource(private val gallery: GalleryReader) : CandidateSour
     override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
         // A policy that admits nothing reads nothing — a counted zero, as long as the library could be read at all.
         val filter = policy.assetFilter()
-            ?: return if (gallery.access().grantsPhotoAccess) CandidateRead.Readable(emptyList()) else CandidateRead.NotReadable
+            ?: return if (gallery.access().galleryAccess().grantsPhotoAccess) CandidateRead.Readable(emptyList()) else CandidateRead.NotReadable
         return when (val read = gallery.assets(filter)) {
             GalleryRead.NotReadable -> CandidateRead.NotReadable
             is GalleryRead.Read -> CandidateRead.Readable(candidatesFromFacts(read.value, resourceBatch(gallery)))

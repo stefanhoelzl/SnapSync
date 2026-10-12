@@ -5,7 +5,6 @@ import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
-import app.snapsync.mock.inMemoryPhotoAccess
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
@@ -15,12 +14,12 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.LedgerEntry
 import app.snapsync.ports.Clock
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Files
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.config.saveMembership
@@ -227,9 +226,9 @@ fun unreadableIdentity(): PersistedDeviceIdentity =
 
 /** What the photo-library grant means, over the permission port's in-memory mock and the test's own [grant] cell. */
 fun galleryAccess(
-    grant: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED),
+    grant: MutableStateFlow<LibraryGrant> = MutableStateFlow(LibraryGrant.GRANTED),
 ): GalleryAccessState =
-    GalleryAccessState(inMemoryPhotoAccess(grant))
+    GalleryAccessState(grant)
 
 /** The event a [TestLedger] is joined to unless a test says otherwise. */
 const val LEDGER_EVENT: String = "E-ledger"

@@ -1,7 +1,7 @@
 package app.snapsync.compose
 
+import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeTokenRead
-import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.gallery.WalkMemo
 import app.snapsync.services.gallery.WalkMemoUse
@@ -37,6 +37,6 @@ val APP_WALK_MEMO_USE: WalkMemoUse = WalkMemoUse.SERVE
 fun appUploadDiscovery(
     walk: UploadDiscovery,
     changeToken: LibraryChangeTokenRead,
-    grant: PhotoGrantRead,
+    grant: GalleryReader,
     log: Logger,
 ): UploadDiscovery = WalkMemo(walk, changeToken, grant, APP_WALK_MEMO_USE, log)

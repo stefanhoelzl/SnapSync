@@ -44,7 +44,7 @@ class PhotoLibraryImportTest {
      * every pass creates another asset (`docs/testing.md`).
      */
     private fun importer(library: PhotoLibraryMock = PhotoLibraryMock()) = library.port().apply {
-        listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
+        listen(GalleryHandlers(onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
     }
 
     /** Every created asset gets its own identifier, exactly as PhotoKit mints a fresh one per request. */

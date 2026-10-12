@@ -1,7 +1,7 @@
 package app.snapsync.selection
 
 import app.snapsync.model.ConfinedTo
-import app.snapsync.model.GalleryAccess
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
@@ -40,7 +40,7 @@ interface SelectionPlatform<F : Any, C : Any, S> {
  * "State reached from OS callbacks is confined", `docs/architecture.md`; decision record
  * `harden-seam-bug-classes`, D12).
  *
- * Observes only while the grant is [GalleryAccess.LIMITED] **and** observation is switched on ([observe] — the
+ * Observes only while the grant is [LibraryGrant.LIMITED] **and** observation is switched on ([observe] — the
  * gallery's `observeChanges`, called only from host assembly): a baseline snapshot when observation begins, and one
  * per change after it. Every piece of work — beginning, ending, the baseline, each change — goes through ONE channel
  * consumed on ONE serial [lane], so:
@@ -61,7 +61,7 @@ interface SelectionPlatform<F : Any, C : Any, S> {
  * written only by the permission collector and read by the consumer.
  */
 class SelectionSnapshotLane<F : Any, C : Any, S>(
-    permission: StateFlow<GalleryAccess>,
+    permission: StateFlow<LibraryGrant>,
     scope: CoroutineScope,
     /** Serial: production passes `Dispatchers.Default.limitedParallelism(1)`. */
     lane: CoroutineDispatcher,
@@ -116,7 +116,7 @@ class SelectionSnapshotLane<F : Any, C : Any, S>(
         }
         scope.launch {
             var limited = false
-            combine(permission, enabled) { status, on -> on && status == GalleryAccess.LIMITED }.collect { nowLimited ->
+            combine(permission, enabled) { status, on -> on && status == LibraryGrant.LIMITED }.collect { nowLimited ->
                 if (nowLimited == limited) return@collect
                 limited = nowLimited
                 generation++

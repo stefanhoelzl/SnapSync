@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.GalleryAccess
+import app.snapsync.ports.LibraryGrant
 
 /**
  * A contract an app build can run in-app, on the [host] it is registered for (`docs/architecture.md`). The
@@ -15,7 +15,7 @@ import app.snapsync.model.GalleryAccess
 class InAppContract(
     val name: String,
     val host: Host,
-    val grant: GalleryAccess? = null,
+    val grant: LibraryGrant? = null,
     val run: (params: Map<String, String>) -> String,
 )
 

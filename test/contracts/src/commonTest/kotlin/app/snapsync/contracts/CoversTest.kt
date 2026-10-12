@@ -1,6 +1,5 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.BackgroundTime
@@ -8,11 +7,12 @@ import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.ExpiringCompletion
+import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeTokenRead
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
-import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Wake
 import app.snapsync.wire.api.ChallengeReply
@@ -35,8 +35,8 @@ class CoversTest {
             on<AttestStore>().answers(AttestStore::token).throws()
             backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
             backend(Routes.GetEvent.ID, EventNotFound::class)
-            on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.LIMITED)
-            on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
+            on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.LIMITED)
+            on<Gallery>().emits(Gallery::grant).with(LibraryGrant.DENIED)
             on<LibraryChangeTokenRead>().answers(LibraryChangeTokenRead::changeToken).with(null)
             on<Lifecycle>().calls(LifecycleHandlers::onForeground)
             on<Download>().calls(DownloadHandlers::onCompleted, String::class, null)
@@ -50,8 +50,8 @@ class CoversTest {
                 "AttestStore.token → throws",
                 "Backend.challenge → Issued",
                 "Backend.* → EventNotFound",
-                "PhotoGrantRead.access → GalleryAccess.LIMITED",
-                "PhotoAccessStatusSource.permission → GalleryAccess.DENIED",
+                "GalleryReader.access → LibraryGrant.LIMITED",
+                "Gallery.grant → LibraryGrant.DENIED",
                 "LibraryChangeTokenRead.changeToken → null",
                 "Lifecycle.handlers.onForeground()",
                 "Download.handlers.onCompleted(String, null)",
@@ -66,25 +66,25 @@ class CoversTest {
     @Test
     fun `a clause with no declared cell is refused`() {
         assertFailsWith<IllegalArgumentException> {
-            Clause<GalleryAccess, Unit>("C", GalleryAccess.GRANTED, cells { }) { }
+            Clause<LibraryGrant, Unit>("C", LibraryGrant.GRANTED, cells { }) { }
         }
     }
 
     @Test
     fun `a one-of group renders apart from the outright claims`() {
         val covers = cells {
-            on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.GRANTED)
+            on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.GRANTED)
             oneOf {
-                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.NOT_DETERMINED)
-                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.DENIED)
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.NOT_DETERMINED)
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.DENIED)
             }
         }
-        assertEquals(listOf("PhotoGrantRead.access → GalleryAccess.GRANTED"), covers.cells)
+        assertEquals(listOf("GalleryReader.access → LibraryGrant.GRANTED"), covers.cells)
         assertEquals(
             listOf(
                 listOf(
-                    "PhotoGrantRead.access → GalleryAccess.NOT_DETERMINED",
-                    "PhotoGrantRead.access → GalleryAccess.DENIED",
+                    "GalleryReader.access → LibraryGrant.NOT_DETERMINED",
+                    "GalleryReader.access → LibraryGrant.DENIED",
                 ),
             ),
             covers.oneOf,
@@ -94,7 +94,7 @@ class CoversTest {
     @Test
     fun `a one-of group of one cell is refused`() {
         assertFailsWith<IllegalArgumentException> {
-            cells { oneOf { on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.DENIED) } }
+            cells { oneOf { on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.DENIED) } }
         }
     }
 }

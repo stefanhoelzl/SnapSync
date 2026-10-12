@@ -17,7 +17,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EntryScope
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -30,6 +29,7 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
@@ -105,7 +105,7 @@ class AlbumGatherTest {
         private val databases = inMemoryDatabases()
         val ledger = LedgerService(testShared(databases)) { LEDGER_EVENT }
         val downloads = DownloadService(databases)
-        val grant = MutableStateFlow(if (granted) GalleryAccess.GRANTED else GalleryAccess.DENIED)
+        val grant = MutableStateFlow(if (granted) LibraryGrant.GRANTED else LibraryGrant.DENIED)
         val albums = AlbumMapService(testShared()).apply { put("E2", "ALBUM-2") }
         val gather = AlbumGather(
             configSource = config,

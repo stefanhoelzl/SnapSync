@@ -16,7 +16,6 @@ import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.FileArea
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
@@ -27,10 +26,12 @@ import app.snapsync.model.UploadError
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.resourcesFrom
 import app.snapsync.model.uploadKey
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
 import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.ledger.LEDGER_DB_NAME
@@ -476,9 +477,9 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
     "permission" to mocked(
         MockedSystem.LIBRARY,
         RigCommand { params, _ ->
-            val status = GalleryAccess.entries.firstOrNull { it.name.equals(params["status"], ignoreCase = true) }
+            val status = LibraryGrant.entries.firstOrNull { it.name.equals(params["status"], ignoreCase = true) }
             if (status == null) {
-                CommandResult.badRequest("status must be one of ${GalleryAccess.entries.joinToString("|")}, was '${params["status"]}'")
+                CommandResult.badRequest("status must be one of ${LibraryGrant.entries.joinToString("|")}, was '${params["status"]}'")
             } else {
                 device.library.operator.access = status
                 CommandResult.ok("""{"permission":"${status.name}"}""")
@@ -840,7 +841,7 @@ fun MockWorld.mockGalleryReader(): suspend (
     val library = device.library
     val reader = GalleryReport(
         candidates = PermissionAwareCandidateSource(
-            permission = library.operator.grant,
+            permission = GalleryAccessState(library.operator.grant).grant,
             walk = GalleryCandidateSource(library.port()),
             // Read per request, as the rest of this reader is.
             selection = MutableStateFlow(library.operator.selection.value?.let(::resourcesFrom)),

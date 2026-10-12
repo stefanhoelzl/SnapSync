@@ -28,7 +28,6 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
@@ -39,6 +38,7 @@ import app.snapsync.motionphoto.jpegXmp
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.motionphoto.motionPhotoStill
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -81,7 +81,6 @@ class AndroidImportContractTest {
 
     /** What the import tells its owner: kept, and every created row remembered for the cleanup. */
     private val handlers = GalleryHandlers(
-        onChanged = {},
         onImportPlaceholder = deliveries.handlers.onImportPlaceholder,
         onImportSettled = { ref, result ->
             deliveries.handlers.onImportSettled(ref, result)
@@ -117,7 +116,7 @@ class AndroidImportContractTest {
     private val importer = object : Binding<GalleryImportState, StagedImport> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val grant = GalleryAccess.GRANTED
+        override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(GalleryImportState.GRANTED_VALID_STAGED, GalleryImportState.GRANTED_INVALID_STAGED)
 
         override fun create(state: GalleryImportState, clauseId: String, log: CallLog): Entered<StagedImport> {

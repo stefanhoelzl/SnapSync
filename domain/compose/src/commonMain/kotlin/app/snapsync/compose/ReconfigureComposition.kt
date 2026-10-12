@@ -2,7 +2,6 @@ package app.snapsync.compose
 
 import app.snapsync.feature.membership.ReconfigureEvent
 import app.snapsync.model.UnionTrigger
-import app.snapsync.model.grantsPhotoAccess
 import kotlinx.coroutines.launch
 
 /**
@@ -21,7 +20,7 @@ internal fun AppCore.reconfigureEventFor(): ReconfigureEvent =
                 cfg.eventId,
                 cfg.name,
                 cfg.saveToAlbum,
-                hasUsableAccess = ports.photoAccess.permission.value.grantsPhotoAccess,
+                hasUsableAccess = galleryAccess.usable,
             )
         },
         // Detached: `tap.reconfigure` is awaited by Save, and a gather's cost grows with what is held.

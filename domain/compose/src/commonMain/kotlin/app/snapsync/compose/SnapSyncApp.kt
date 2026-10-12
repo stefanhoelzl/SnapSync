@@ -50,13 +50,11 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
 import app.snapsync.model.extensionRegistrable
-import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
@@ -75,7 +73,6 @@ import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
-import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
@@ -112,7 +109,6 @@ import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -140,8 +136,6 @@ class AppPorts(
     val secureStore: SecureStore,
     /** The platform's own stable device id, where it has one — what a first mint adopts. */
     val platformDeviceId: PlatformDeviceId,
-    /** The photo-library grant, as a state the core observes. */
-    val photoAccess: PhotoAccessStatusSource,
     /**
      * The device's photo library (`docs/architecture.md`): every read the status total, the join preview, the
      * download guard and the event album make, the album writes, and the `requestAccess` / `choosePhotos`
@@ -356,7 +350,7 @@ class AppCore internal constructor(
         shareableCountSource.count(includesUpload = true, cutoff = cutoff, ceiling = until)
 
     /** What the photo-library grant means now, over the permission port — the one read every feature takes. */
-    val galleryAccess: GalleryAccessState by lazy { GalleryAccessState(ports.photoAccess) }
+    val galleryAccess: GalleryAccessState by lazy { GalleryAccessState(ports.gallery.grant) }
 
     /** The membership's cell, for readers outside the core (the status host), which see no service type. */
     val membership: StateFlow<EventConfig?> get() = services.config.config
@@ -470,7 +464,7 @@ class AppCore internal constructor(
     val extensionRegistrableNow: () -> Boolean = {
         extensionRegistrable(
             osSupportsOsDrivenUpload = ports.process.build.osSupportsOsDrivenUpload,
-            permission = ports.photoAccess.permission.value,
+            permission = galleryAccess.grant.value,
             pin = ports.devControls.uploaderPin(),
         )
     }
@@ -482,7 +476,7 @@ class AppCore internal constructor(
     val appUploadAdmission: () -> UploadAdmission = {
         // The scope, not the raw cell: an unread partial-grant selection withholds (`appAdmission`), and it is
         // the same derivation discovery reads through `selectionScope()`.
-        appAdmission(ports.photoAccess.permission.value, selectionScope(), ports.devControls.uploaderPin())
+        appAdmission(galleryAccess.grant.value, selectionScope(), ports.devControls.uploaderPin())
     }
 
     /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads; the delegate records the
@@ -655,14 +649,9 @@ class AppCore internal constructor(
     /** The latest selection snapshot, set only by the selection subscription below — see [LatestSelection]. */
     private val selection = LatestSelection()
 
-    // The gallery's selection snapshots, handed over by its `onChanged` handler. CONFLATED: each is the whole
-    // selection, so an unconsumed older one is superseded — and one that arrives before the collector below runs
-    // is kept for it, never dropped (the baseline a background-launched, later-foregrounded process used to lose).
-    private val selectionChanges = Channel<SelectionSnapshot>(Channel.CONFLATED)
-
     /** What the gallery tells this core — registered by the host zone's `listen` (see [galleryHandlers]). */
     val galleryHandlers: GalleryHandlers =
-        galleryHandlers(ImportMarkers(services.downloadStore, services.log), selectionChanges)
+        galleryHandlers(ImportMarkers(services.downloadStore, services.log))
 
     /** What the operating system's wakes and transfer sessions tell this core — see [AppEvents]. */
     val events: AppEvents = AppEvents(this)
@@ -672,7 +661,7 @@ class AppCore internal constructor(
      * port's current value over the snapshot cell — see [LatestSelection.scopeUnder]. A call and not a value because
      * the answer changes between cycles.
      */
-    fun selectionScope(): SelectionScope = selection.scopeUnder(ports.photoAccess.permission.value)
+    fun selectionScope(): SelectionScope = selection.scopeUnder(galleryAccess.grant.value)
 
     /**
      * The one derivation, for this composition's status readers.
@@ -721,7 +710,7 @@ class AppCore internal constructor(
         denylistedAlbumMembers(
             albumManager,
             cutoff,
-            ports.photoAccess.permission.value,
+            galleryAccess.grant.value,
             AlbumLookupFailure.AdmitOnDoubt,
             services.log,
         )
@@ -821,7 +810,7 @@ class AppCore internal constructor(
             cadenceFacts = {
                 cadenceFacts(
                     services.config,
-                    ports.photoAccess.permission.value,
+                    galleryAccess.grant.value,
                     extensionRegistrableNow(),
                     extensionRegistration,
                 )
@@ -843,7 +832,7 @@ class AppCore internal constructor(
             refreshStatus = { statusRefresh.run() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
             // parameter, and album creation works under a LIMITED grant (measured).
-            hasUsableAccess = { ports.photoAccess.permission.value.grantsPhotoAccess },
+            hasUsableAccess = { galleryAccess.usable },
             registerPush = { pushRegistration.reRegister(services.pushTokens) },
         )
     }
@@ -862,7 +851,7 @@ class AppCore internal constructor(
 
     /** How many photos a partial grant's selection holds, for a bug report — the snapshot cell is this core's. */
     internal fun selectionPhotosNow(): Fact<Int> =
-        selection.photosUnder(ports.photoAccess.permission.value)
+        selection.photosUnder(galleryAccess.grant.value)
 
     /**
      * Install the **port-state-transition subscriptions** on the permission StateFlow (spec
@@ -900,7 +889,7 @@ class AppCore internal constructor(
             // With one sweep per process and no re-arm, a sweep that ran before a partial grant's selection was read
             // would defer every inherited row to the next launch — and on a URLSession-driven relaunch that never
             // foregrounds, potentially every launch. So it waits until the presence source can answer.
-            selection.awaitAnswerable(ports.photoAccess.permission.value)
+            selection.awaitAnswerable(galleryAccess.grant.value)
             downloadController.sweepInterruptedImports()
         }
     }
@@ -958,7 +947,8 @@ class AppCore internal constructor(
             // A selection bringing marked photos no pass recognised withholds the membership BEFORE any reader sees
             // it, and recognises them first (`changes/archive/2026-10-11-close-share-back-gaps`).
             selection.follow(
-                selectionChanges,
+                // The gallery keeps its latest snapshot, so one read before this collector runs is kept, not lost.
+                ports.gallery.selection,
                 beforePublish = { receivedPhotoAdoption.beforeSelectionPublished(services.config.config.value, it) },
             ) {
                 receivedPhotoAdoption.afterSelectionPublished(services.config.config.value)

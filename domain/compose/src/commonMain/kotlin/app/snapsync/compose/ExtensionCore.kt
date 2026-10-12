@@ -30,6 +30,7 @@ import app.snapsync.services.gallery.AlbumLookupFailure
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.gallery.denylistedAlbumMembers
+import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.identity.AttestState
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
@@ -164,7 +165,13 @@ private fun extensionServices(
         recognition = downloads,
         // A failed denylisted-album lookup fails the cycle here; the next invocation retries.
         albumExclusions = { cutoff ->
-            denylistedAlbumMembers(albums, cutoff, ports.gallery.access(), AlbumLookupFailure.FailCycle, log)
+            denylistedAlbumMembers(
+                albums,
+                cutoff,
+                ports.gallery.access().galleryAccess(),
+                AlbumLookupFailure.FailCycle,
+                log,
+            )
         },
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(

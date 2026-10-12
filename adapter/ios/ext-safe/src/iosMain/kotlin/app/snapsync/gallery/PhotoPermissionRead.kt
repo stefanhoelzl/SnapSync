@@ -1,6 +1,6 @@
 package app.snapsync.gallery
 
-import app.snapsync.model.GalleryAccess
+import app.snapsync.ports.LibraryGrant
 import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusLimited
@@ -8,7 +8,7 @@ import platform.Photos.PHAuthorizationStatusNotDetermined
 import platform.Photos.PHPhotoLibrary
 
 /**
- * The current photo grant, in the shared vocabulary — the ONE `PHAuthorizationStatus` → [GalleryAccess]
+ * The current photo grant, in the shared vocabulary — the ONE `PHAuthorizationStatus` → [LibraryGrant]
  * mapping, read by both processes.
  *
  * It lives here, in the module the extension links, because the extension needs it too: its cycle withholds
@@ -18,11 +18,11 @@ import platform.Photos.PHPhotoLibrary
  *
  * A status read, never a request: it can present no dialog.
  */
-fun currentPhotoPermission(): GalleryAccess =
+fun currentPhotoPermission(): LibraryGrant =
     when (PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)) {
-        PHAuthorizationStatusAuthorized -> GalleryAccess.GRANTED
-        PHAuthorizationStatusLimited -> GalleryAccess.LIMITED
-        PHAuthorizationStatusNotDetermined -> GalleryAccess.NOT_DETERMINED
+        PHAuthorizationStatusAuthorized -> LibraryGrant.GRANTED
+        PHAuthorizationStatusLimited -> LibraryGrant.LIMITED
+        PHAuthorizationStatusNotDetermined -> LibraryGrant.NOT_DETERMINED
         // .denied, .restricted — refused or unchangeable.
-        else -> GalleryAccess.DENIED
+        else -> LibraryGrant.DENIED
     }

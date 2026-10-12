@@ -4,12 +4,11 @@ import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RawAsset
 import app.snapsync.model.SelectionSnapshot
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
-import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,13 +18,13 @@ import kotlin.concurrent.Volatile
 
 /**
  * **The photo library's mock** (`docs/testing.md`, "Mocks"): the library the device keeps — its assets, the grant,
- * the albums, what was imported — which survives a relaunch of the app; the [port] and [photoAccess] faces a process
+ * the albums, what was imported — which survives a relaunch of the app; the [port] face a process
  * reads it through; and the [operator] face that plays the person holding the phone and the library's own answers.
  */
 class PhotoLibraryMock(
-    access: GalleryAccess = GalleryAccess.GRANTED,
+    access: LibraryGrant = LibraryGrant.GRANTED,
     /** What the person answers the permission dialog with, the one time it is asked. */
-    requestAnswer: GalleryAccess = GalleryAccess.GRANTED,
+    requestAnswer: LibraryGrant = LibraryGrant.GRANTED,
 ) {
     internal val state = LibraryState(
         library = MutableStateFlow(emptyList()),
@@ -37,9 +36,6 @@ class PhotoLibraryMock(
 
     /** One process's face of the library. */
     fun port(): Gallery = InMemoryGallery(state)
-
-    /** One process's view of the grant — the same grant the [port] reads. */
-    fun photoAccess(): PhotoAccessStatusSource = InMemoryPhotoAccess(state.access)
 
     val operator: PhotoLibraryOperator = PhotoLibraryOperator(state)
 }
@@ -76,13 +72,13 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     // ---- the grant --------------------------------------------------------------------------------
 
     /** The grant, as a cell. */
-    val grant: StateFlow<GalleryAccess> = state.access.asStateFlow()
+    val grant: StateFlow<LibraryGrant> = state.access.asStateFlow()
 
     /** The grant, as the person set it in Settings. */
-    var access: GalleryAccess by state.access::value
+    var access: LibraryGrant by state.access::value
 
     /** What the person answers the permission dialog with, the one time it is asked. */
-    var requestAnswer: GalleryAccess by state::answer
+    var requestAnswer: LibraryGrant by state::answer
 
     // ---- the selection observer -------------------------------------------------------------------
 
@@ -93,7 +89,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     val selection: StateFlow<List<RawAsset>?> = state.selection.asStateFlow()
 
     /** Whether the running process's selection observer is open (composition opens it, on every start). */
-    val observing: Boolean get() = state.listener?.observing == true
+    val observing: Boolean get() = state.observer != null
 
     /** How many times the app presented the limited-library picker — the person's answer arrives as [changeSelection]. */
     val pickersShown: Int get() = state.pickersShown
@@ -104,10 +100,9 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
      * nothing: a process whose observer is closed would hear nothing.
      */
     fun changeSelection(assets: List<RawAsset>) {
-        val listener = checkNotNull(state.listener) { "no process registered with the photo library" }
-        check(listener.observing) { "the selection observer is not open — the composition opens it" }
+        val observer = checkNotNull(state.observer) { "the selection observer is not open — the composition opens it" }
         state.selection.value = assets
-        listener.handlers.onChanged(SelectionSnapshot(assets))
+        observer.deliver(SelectionSnapshot(assets))
     }
 
     // ---- the library's answers --------------------------------------------------------------------
@@ -219,9 +214,9 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
  */
 internal class LibraryState(
     val library: MutableStateFlow<List<RawAsset>>,
-    val access: MutableStateFlow<GalleryAccess>,
+    val access: MutableStateFlow<LibraryGrant>,
     val userAlbums: StateFlow<Map<String, Set<AssetId>>>,
-    answer: GalleryAccess,
+    answer: LibraryGrant,
     /** How the library answers each change; `null` is the [imports] script's answers. */
     answers: LibraryChangeAnswers?,
 ) {
@@ -229,14 +224,12 @@ internal class LibraryState(
 
     fun <T> locked(block: () -> T): T = lock.locked(block)
 
-    @Volatile var answer: GalleryAccess = answer
+    @Volatile var answer: LibraryGrant = answer
 
     class Album(val title: String, val members: MutableSet<AssetId> = mutableSetOf())
 
-    /** The process whose composition registered last — its handlers, and whether its selection observer is open. */
-    class Listener(val face: Any, val handlers: GalleryHandlers) {
-        @Volatile var observing: Boolean = false
-    }
+    /** The process whose composition registered last, and its handlers. */
+    class Listener(val face: Any, val handlers: GalleryHandlers)
 
     val imports = ImportScript()
     val selection = MutableStateFlow<List<RawAsset>?>(null)
@@ -246,6 +239,9 @@ internal class LibraryState(
     val answers: LibraryChangeAnswers = answers ?: imports.answers
 
     @Volatile var listener: Listener? = null
+
+    /** The process face whose selection observer is open — the one a changed selection is delivered to. */
+    @Volatile var observer: InMemoryGallery? = null
 
     val attempts = mutableMapOf<AssetRef, Int>()
     var albumCounter = 0

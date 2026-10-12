@@ -13,7 +13,6 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.RawAsset
@@ -25,6 +24,7 @@ import app.snapsync.model.UnionTrigger
 import app.snapsync.model.deletesAt
 import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
@@ -78,7 +78,7 @@ class ReceivedPhotoAdoptionTest {
     private class World(
         union: Result<List<UnionAsset>>,
         library: List<RawAsset>,
-        val grant: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED),
+        val grant: MutableStateFlow<LibraryGrant> = MutableStateFlow(LibraryGrant.GRANTED),
     ) {
         val store = DownloadService(inMemoryDatabases())
         var unionReads = 0
@@ -202,14 +202,14 @@ class ReceivedPhotoAdoptionTest {
         val world = World(
             Result.success(unionOf(ref("A"))),
             listOf(received("L-A", ref("A"))),
-            MutableStateFlow(GalleryAccess.NOT_DETERMINED),
+            MutableStateFlow(LibraryGrant.NOT_DETERMINED),
         )
         val adoption = world.adoption(me)
         adoption.adopt(cfg)
         adoption.ensureAdopted(cfg)
         assertTrue(world.store.suppressedLocalIds().isEmpty(), "nothing readable yet")
 
-        world.grant.value = GalleryAccess.GRANTED
+        world.grant.value = LibraryGrant.GRANTED
         adoption.ensureAdopted(cfg)
         assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds(), "the first readable pass adopts")
 
@@ -390,7 +390,7 @@ class ReceivedPhotoAdoptionTest {
         val world = World(
             Result.success(unionOf(ref("A"))),
             listOf(received("L-A", ref("A"))),
-            MutableStateFlow(GalleryAccess.NOT_DETERMINED),
+            MutableStateFlow(LibraryGrant.NOT_DETERMINED),
         )
         world.adoption(me).adopt(cfg)
         assertFalse(world.store.recognition.isRecognised(cfg.eventId), "a pass that could not look recognised nothing")

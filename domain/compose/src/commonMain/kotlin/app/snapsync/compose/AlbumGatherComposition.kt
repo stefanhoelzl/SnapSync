@@ -7,6 +7,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.ports.EntryContext
 import app.snapsync.services.gallery.GalleryAccessState
+import app.snapsync.services.gallery.galleryAccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -47,5 +48,5 @@ internal fun albumGather(
 
  */
 internal fun CoroutineScope.launchAlbumGrantSubscription(services: AppServices, gather: AlbumGather): Job = launch {
-    services.ports.photoAccess.permission.collect { status -> gather.onAccessChanged(status.grantsPhotoAccess) }
+    services.ports.gallery.grant.collect { grant -> gather.onAccessChanged(grant.galleryAccess().grantsPhotoAccess) }
 }

@@ -1,11 +1,11 @@
 package app.snapsync.mock
 
 import app.snapsync.model.FileArea
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.TransferNetwork
+import app.snapsync.ports.LibraryGrant
 
 /**
  * **The device as mocks** (`docs/testing.md`, "Mocks"): one mock per external system, each holding what that system
@@ -90,8 +90,8 @@ open class MockDevice(
         disk.operator.area(FileArea.PRIVATE).clear()
         databases.operator.deleteAll()
         preferences.values.clear()
-        library.operator.access = GalleryAccess.NOT_DETERMINED
-        library.operator.requestAnswer = GalleryAccess.NOT_DETERMINED
+        library.operator.access = LibraryGrant.NOT_DETERMINED
+        library.operator.requestAnswer = LibraryGrant.NOT_DETERMINED
     }
 
     /** The marketing version the app's build declares to the backend mock — a cell an operator may change. */

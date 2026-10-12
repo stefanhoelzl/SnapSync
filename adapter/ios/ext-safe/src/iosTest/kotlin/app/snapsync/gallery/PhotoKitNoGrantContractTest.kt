@@ -10,8 +10,8 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlin.test.Test
 
@@ -29,7 +29,7 @@ class PhotoKitNoGrantContractTest {
 
     /** Whether this process holds no grant, as the adapters' own read reports it. */
     private fun holdsNoGrant(): Boolean = currentPhotoPermission().let {
-        it == GalleryAccess.NOT_DETERMINED || it == GalleryAccess.DENIED
+        it == LibraryGrant.NOT_DETERMINED || it == LibraryGrant.DENIED
     }
 
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
@@ -43,7 +43,7 @@ class PhotoKitNoGrantContractTest {
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
             if (state !in reaches || !holdsNoGrant()) return Entered.Unreachable(unreachable)
-            if (state == GalleryReaderState.REFUSED && currentPhotoPermission() != GalleryAccess.DENIED) {
+            if (state == GalleryReaderState.REFUSED && currentPhotoPermission() != LibraryGrant.DENIED) {
                 return Entered.Unreachable(unreachable)
             }
             return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))

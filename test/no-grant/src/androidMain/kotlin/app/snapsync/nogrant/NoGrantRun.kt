@@ -79,7 +79,9 @@ internal class NoGrantRun {
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
             if (state !in reaches) return Entered.Unreachable("this APK declares no photo permission: nothing is granted")
             record(asked = state == PhotoAccessState.REFUSED)
-            return Entered.Ready(PhotoAccess(AndroidPhotoPermission(context, foreground).recorded(log)))
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val gallery = AndroidGallery(context, AndroidPhotoPermission(context, foreground), scope)
+            return Entered.Ready(PhotoAccess(gallery.recorded(log)))
         }
     }
 

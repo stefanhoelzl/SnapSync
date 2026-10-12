@@ -1,12 +1,21 @@
 package app.snapsync.compose
 
-import app.snapsync.model.GalleryAccess
+import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumRecord
+import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
+import app.snapsync.model.GalleryRead
+import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.WriteOutcome
 import app.snapsync.model.noContribution
+import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
-import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.gallery.WalkMemoUse
@@ -14,6 +23,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Instant
 
 /**
  * The app process's discovery binding (decision record `changes/own-work-per-wake`, D9) serves an unchanged
@@ -43,7 +53,7 @@ class AppUploadDiscoveryTest {
         val discovery = appUploadDiscovery(
             walk,
             tokens,
-            PhotoGrantRead { GalleryAccess.GRANTED },
+            FullGrant,
             Logger.withTag("test"),
         )
 
@@ -51,5 +61,21 @@ class AppUploadDiscoveryTest {
         discovery.discover(noContribution())
 
         assertEquals(1, walks, "an unchanged library is answered from the memo")
+    }
+
+    /** A library under a full grant whose reads the binding never makes: it asks only the grant. */
+    private object FullGrant : GalleryReader {
+        override fun access() = LibraryGrant.GRANTED
+        override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> = error("not used")
+        override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = error("not used")
+        override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = error("not used")
+        override suspend fun albums(): GalleryRead<List<AlbumRecord>> = error("not used")
+        override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = error("not used")
+        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> =
+            error("not used")
+        override val albumKind = AlbumKind.COLLECTION
+        override suspend fun createAlbum(title: String): AlbumId? = error("not used")
+        override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = error("not used")
+        override suspend fun export(resource: Resource, to: String): WriteOutcome = error("not used")
     }
 }

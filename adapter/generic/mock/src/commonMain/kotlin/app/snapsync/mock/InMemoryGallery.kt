@@ -6,7 +6,6 @@ import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
@@ -18,12 +17,15 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.toFacts
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LibraryChangeToken
+import app.snapsync.ports.LibraryGrant
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.time.Instant
 
@@ -63,20 +65,27 @@ import kotlin.time.Instant
  */
 internal class InMemoryGallery(private val state: LibraryState) : Gallery {
 
+    override val grant: StateFlow<LibraryGrant> = state.access.asStateFlow()
+
+    private val read = MutableStateFlow<SelectionSnapshot?>(null)
+    override val selection: StateFlow<SelectionSnapshot?> = read.asStateFlow()
+
+    /** This process's observer reads [snapshot] — the operator's changed selection, or the baseline. */
+    internal fun deliver(snapshot: SelectionSnapshot) {
+        read.value = snapshot
+    }
+
     override fun listen(handlers: GalleryHandlers) {
         state.listener = LibraryState.Listener(this, handlers)
     }
 
     override fun observeChanges(enabled: Boolean) {
-        val listener = state.listener?.takeIf { it.face === this } ?: return
-        val opening = enabled && !listener.observing
-        listener.observing = enabled
+        val opening = enabled && state.observer !== this
+        if (enabled) state.observer = this else if (state.observer === this) state.observer = null
         // The baseline: a partial grant's observer reads the selection when it opens. A person who never picked one
         // has nothing to read — the process stays unread until they do.
         val picked = state.selection.value
-        if (opening && state.access.value == GalleryAccess.LIMITED && picked != null) {
-            listener.handlers.onChanged(SelectionSnapshot(picked))
-        }
+        if (opening && state.access.value == LibraryGrant.LIMITED && picked != null) deliver(SelectionSnapshot(picked))
     }
 
     override suspend fun import(request: ImportRequest): ImportResult {
@@ -106,7 +115,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         return settle(ImportResult.Imported(createdLocalId))
     }
 
-    override fun access(): GalleryAccess = state.access.value
+    override fun access(): LibraryGrant = state.access.value
 
     /**
      * An in-memory library holds no bytes and there is no file to write, so an export of a resource it still holds is
@@ -191,12 +200,12 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         }
     }
 
-    override suspend fun requestAccess(): GalleryAccess {
-        state.access.compareAndSet(GalleryAccess.NOT_DETERMINED, state.answer)
+    override suspend fun requestAccess(): LibraryGrant {
+        state.access.compareAndSet(LibraryGrant.NOT_DETERMINED, state.answer)
         return state.access.value
     }
 
-    override suspend fun widenSelection(): GalleryAccess {
+    override suspend fun widenSelection(): LibraryGrant {
         state.pickersShown++
         return state.access.value
     }
@@ -228,7 +237,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     private inline fun <T> readable(read: () -> T): GalleryRead<T> =
-        if (state.access.value.grantsPhotoAccess) GalleryRead.Read(read()) else GalleryRead.NotReadable
+        if (state.access.value in READABLE) GalleryRead.Read(read()) else GalleryRead.NotReadable
 
     private fun createdAsset(id: AssetId, ref: AssetRef, resources: List<StagedResource>, creationDate: String) = RawAsset(
         assetId = id,
@@ -249,3 +258,6 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         override fun sameLibraryAs(other: LibraryChangeToken): Boolean = other is Token && other.readAt === readAt
     }
 }
+
+/** The grants under which a library read answers anything — a full or a partial one. */
+private val READABLE = setOf(LibraryGrant.GRANTED, LibraryGrant.LIMITED)

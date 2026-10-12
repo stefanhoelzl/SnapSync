@@ -15,6 +15,7 @@ import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -43,7 +44,7 @@ class AlbumExclusionsTest {
         private val failure: Throwable? = null,
     ) : GalleryReader {
         var lookups = 0
-        override fun access(): GalleryAccess = GalleryAccess.GRANTED
+        override fun access(): LibraryGrant = LibraryGrant.GRANTED
         override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> = error("not used")
         override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = error("not used")
         override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = error("not used")

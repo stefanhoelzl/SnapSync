@@ -8,7 +8,7 @@ import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.resourcesFrom
 import app.snapsync.model.selectionPhotos
 import app.snapsync.model.selectionScope
-import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
@@ -46,17 +46,17 @@ class LatestSelection {
     /**
      * Follow the gallery's selection [changes]: each one becomes the latest snapshot, then [onChanged] runs — one
      * emission, ONE read serving every consumer: one discovery serves both the status total
-     * and the enqueue. Returns only when [changes] is closed.
+     * and the enqueue. Returns only when [changes] completes.
      *
      * [beforePublish] sees each snapshot BEFORE any reader can: what it withholds (a membership whose newly visible
      * received photos are not recognised yet) is withheld before a cycle could admit from the snapshot.
      */
     suspend fun follow(
-        changes: ReceiveChannel<SelectionSnapshot>,
+        changes: Flow<SelectionSnapshot?>,
         beforePublish: suspend (List<Resource>) -> Unit,
         onChanged: suspend () -> Unit,
     ) {
-        for (change in changes) {
+        changes.filterNotNull().collect { change ->
             val resources = resourcesFrom(change.assets)
             beforePublish(resources)
             latest.value = resources

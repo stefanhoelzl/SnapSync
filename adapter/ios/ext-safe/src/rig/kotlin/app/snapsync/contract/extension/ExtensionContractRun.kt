@@ -8,11 +8,11 @@ import app.snapsync.contracts.Recording
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.runEntry
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RegistrationOutcome
 import app.snapsync.model.RegistrationState
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.LibraryGrant
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSThread
 import kotlin.time.Duration
@@ -120,7 +120,7 @@ private fun merge(bodies: List<String>): String {
 private fun refusalFor(membershipRefusal: () -> String?, registry: () -> ExtensionRegistry): String? = when {
     NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null ->
         "this process is a simulator app; the upload extension is recorded on a device"
-    currentPhotoPermission() != GalleryAccess.GRANTED ->
+    currentPhotoPermission() != LibraryGrant.GRANTED ->
         "the upload-job contract records under a full photo grant; this process holds ${currentPhotoPermission()}"
     registry().isEnabled() == RegistrationState.UNSUPPORTED -> "this OS carries no upload extension (below iOS 26.1)"
     else -> membershipRefusal()

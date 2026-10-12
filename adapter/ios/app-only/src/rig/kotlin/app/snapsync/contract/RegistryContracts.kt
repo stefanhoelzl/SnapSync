@@ -14,8 +14,8 @@ import app.snapsync.ios.registry.PhotoKitExtensionRegistry
 import app.snapsync.ios.registry.PlatformWriteAnswer
 import app.snapsync.ios.registry.SystemExtensionRegistrationApi
 import app.snapsync.ios.registry.osCarriesUploadExtension
-import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 
 /*
@@ -94,7 +94,7 @@ internal class DeviceRegistryGrantedBinding(private val recorder: Recorder) :
     Binding<ExtensionRegistryState, ExtensionRegistry> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
-    override val grant = GalleryAccess.GRANTED
+    override val grant = LibraryGrant.GRANTED
     override val reaches = setOf(ExtensionRegistryState.RECORD_ABSENT, ExtensionRegistryState.RECORD_PRESENT)
 
     override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
@@ -112,7 +112,7 @@ internal class DeviceRegistryLimitedBinding(private val recorder: Recorder) :
     Binding<ExtensionRegistryState, ExtensionRegistry> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
-    override val grant = GalleryAccess.LIMITED
+    override val grant = LibraryGrant.LIMITED
     override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
 
     override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {

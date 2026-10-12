@@ -1,10 +1,9 @@
 package app.snapsync.mock
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RawAsset
 import app.snapsync.ports.Gallery
-import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -14,19 +13,14 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The gallery over the caller's own cells: [library] (the assets; an import that lands adds its asset here),
- * [access] (the grant — share it with [inMemoryPhotoAccess] so the status source and the gallery agree), and
+ * [access] (the grant), and
  * [userAlbums] (the albums other apps made, title → asset ids). [answer] is what the member will choose if
  * asked while undetermined; [answers] how the library answers each import's change (the default always succeeds).
  */
 fun inMemoryGallery(
     library: MutableStateFlow<List<RawAsset>>,
-    access: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED),
+    access: MutableStateFlow<LibraryGrant> = MutableStateFlow(LibraryGrant.GRANTED),
     userAlbums: StateFlow<Map<String, Set<AssetId>>> = MutableStateFlow(emptyMap()),
-    answer: GalleryAccess = GalleryAccess.GRANTED,
+    answer: LibraryGrant = LibraryGrant.GRANTED,
     answers: LibraryChangeAnswers = LibraryChangeAnswers.Ordinary,
 ): Gallery = InMemoryGallery(LibraryState(library, access, userAlbums, answer, answers))
-
-/** The photo-permission status over the caller's own [status] cell. */
-fun inMemoryPhotoAccess(
-    status: MutableStateFlow<GalleryAccess>,
-): PhotoAccessStatusSource = InMemoryPhotoAccess(status)

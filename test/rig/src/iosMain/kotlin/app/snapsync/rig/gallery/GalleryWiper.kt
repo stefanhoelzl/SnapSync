@@ -1,6 +1,6 @@
 package app.snapsync.rig.gallery
 
-import app.snapsync.model.GalleryAccess
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -158,7 +158,7 @@ class WipeOutcome(
 suspend fun wipeGallery(
     log: Logger,
     scope: WipeScope,
-    requestAccess: suspend () -> GalleryAccess,
+    requestAccess: suspend () -> LibraryGrant,
     window: WipeWindow? = null,
 ): WipeOutcome {
     // Ask for access first. Without it the fetch returns an empty result and the command looks like it did

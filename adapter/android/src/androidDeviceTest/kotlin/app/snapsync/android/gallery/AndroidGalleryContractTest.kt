@@ -29,11 +29,11 @@ import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -58,7 +58,7 @@ class AndroidGalleryContractTest {
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val grant = GalleryAccess.GRANTED
+        override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(
             GalleryReaderState.GRANTED_SEEDED,
             GalleryReaderState.GRANTED_EMPTY_WINDOW,
@@ -102,7 +102,7 @@ class AndroidGalleryContractTest {
     private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val grant = GalleryAccess.GRANTED
+        override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(GalleryState.GRANTED)
 
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
@@ -128,7 +128,7 @@ class AndroidGalleryContractTest {
     private val folderAlbums = object : Binding<FolderAlbumState, FolderAlbums> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val grant = GalleryAccess.GRANTED
+        override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED)
 
         override fun create(state: FolderAlbumState, clauseId: String, log: CallLog): Entered<FolderAlbums> {
@@ -138,7 +138,6 @@ class AndroidGalleryContractTest {
             val gallery = AndroidGallery(context, permission(), scope).recorded(log).apply {
                 listen(
                     GalleryHandlers(
-                        onChanged = {},
                         onImportPlaceholder = { _, id -> imported += id },
                         onImportSettled = { _, _ -> },
                     ),
@@ -198,7 +197,8 @@ class AndroidGalleryContractTest {
                 return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
             }
             MediaStoreSeeder.grantFull()
-            return Entered.Ready(PhotoAccess(permission().recorded(log)))
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            return Entered.Ready(PhotoAccess(AndroidGallery(context, permission(), scope).recorded(log)))
         }
     }
 
