@@ -13,8 +13,10 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.assetId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -45,9 +47,9 @@ private class FakeAlbumManager(
     override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
         GalleryRead.Read(ids.filter { it in existingIds }.map { AlbumRecord(it, "Birthday") })
 
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
+    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
         if (failAdd) error("boom")
-        added.add(album to assets.toList())
+        added.add(album to assets.map { it.assetId() })
         return addOutcome
     }
 }

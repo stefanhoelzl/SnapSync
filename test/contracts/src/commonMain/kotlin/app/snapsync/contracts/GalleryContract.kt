@@ -1,12 +1,12 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.AssetId
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.delay
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -49,7 +49,7 @@ enum class GalleryState {
 class GalleryChange(
     val gallery: Gallery,
     /** The assets a [GalleryState.PARTIAL] selection holds. */
-    val selection: Set<AssetId> = emptySet(),
+    val selection: Set<PlatformAssetId> = emptySet(),
     val change: suspend () -> Unit,
 )
 
@@ -134,7 +134,7 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
             subject.gallery.observeChanges(true)
             try {
                 awaitWithin { subject.gallery.selection.value != null }
-                val selected = subject.gallery.selection.value!!.assets.map { it.assetId }.toSet()
+                val selected = subject.gallery.selection.value!!.assets.map { it.asset.id }.toSet()
                 assertTrue(
                     selected.containsAll(subject.selection),
                     "the baseline is the selection: missing ${subject.selection - selected}",

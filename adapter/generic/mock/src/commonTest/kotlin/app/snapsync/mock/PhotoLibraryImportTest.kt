@@ -3,10 +3,10 @@ package app.snapsync.mock
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.ImportOutcome
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertNotEquals
@@ -35,7 +35,7 @@ class PhotoLibraryImportTest {
         stagedPath = "/stage/fq",
     )
 
-    private suspend fun Gallery.importOnce(): ImportResult =
+    private suspend fun Gallery.importOnce(): ImportOutcome =
         import(ImportRequest(ref, listOf(resource()), "2026-06-30T10:00:00Z", album = null))
 
     /**
@@ -52,12 +52,12 @@ class PhotoLibraryImportTest {
     fun a_repeat_import_mints_a_different_created_identifier() = runTest {
         val importer = importer()
 
-        val first = importer.importOnce() as ImportResult.Imported
-        val second = importer.importOnce() as ImportResult.Imported
+        val first = importer.importOnce() as ImportOutcome.Imported
+        val second = importer.importOnce() as ImportOutcome.Imported
 
         assertNotEquals(
-            first.createdLocalId,
-            second.createdLocalId,
+            first.created,
+            second.created,
             "a second asset must be distinguishable from the first, or no test can observe a duplicate",
         )
     }
@@ -73,13 +73,13 @@ class PhotoLibraryImportTest {
         val importer = importer(library)
         library.operator.imports.failNextImport = true
 
-        assertTrue(importer.importOnce() is ImportResult.Failed)
-        val afterFailure = importer.importOnce() as ImportResult.Imported
+        assertTrue(importer.importOnce() is ImportOutcome.Failed)
+        val afterFailure = importer.importOnce() as ImportOutcome.Imported
 
-        val fresh = importer().importOnce() as ImportResult.Imported
+        val fresh = importer().importOnce() as ImportOutcome.Imported
         assertNotEquals(
-            fresh.createdLocalId,
-            afterFailure.createdLocalId,
+            fresh.created,
+            afterFailure.created,
             "an import that follows a failure must not mint the identifier a first import would",
         )
     }
@@ -94,7 +94,7 @@ class PhotoLibraryImportTest {
         importer.importOnce()
 
         assertTrue(
-            library.operator.current().map { it.assetId }.toSet().size == 2,
+            library.operator.current().map { it.id }.toSet().size == 2,
             "two created assets, two distinct identifiers in the library",
         )
     }

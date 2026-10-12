@@ -6,15 +6,15 @@ import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
-import app.snapsync.model.SelectionSnapshot
 import app.snapsync.permission.PhotoKitSelection
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.SelectionSnapshot
 import app.snapsync.selection.SelectionSnapshotLane
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -83,9 +83,9 @@ class IosGallery(
      * Without registered handlers there is nowhere to record the marker that keeps the created asset from being
      * uploaded back, so nothing is created: an error, and an import the caller retries later.
      */
-    override suspend fun import(request: ImportRequest): ImportResult {
+    override suspend fun import(request: ImportRequest): ImportOutcome {
         val handlers = handlers.orNull("the import of ${request.ref.sourceAssetId}")
-            ?: return ImportResult.Failed("no import handlers registered")
+            ?: return ImportOutcome.Failed("no import handlers registered")
         return importer.import(request, handlers)
     }
 

@@ -44,8 +44,7 @@ class SelectionPolicyContainmentTest {
     private val carriers = setOf(
         "AssetFacts.kt",
         "EventDates.kt",
-        "RawAsset.kt",
-        "RawAssetMapping.kt",
+        "GalleryAssetReading.kt",
         "DeviceManifest.kt",
         "DeviceManifestMapping.kt",
         "Ledger.kt",

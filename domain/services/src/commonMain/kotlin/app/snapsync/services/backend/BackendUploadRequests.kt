@@ -92,7 +92,7 @@ class BackendUploadRequests(
      * PhotoKit **UTI** (`public.jpeg`), a value no HTTP client, CDN or browser understands.
      *
      * The MIME rides in the resource's metadata, resolved iOS-side by `UTType.preferredMIMEType`
-     * (`RawAssetMapping`), and every other consumer already prefers it the same way — `toLedgerRow` does
+     * (`resourcesFrom`), and every other consumer already prefers it the same way — `toLedgerRow` does
      * `metadata[RESOURCE_META_MIME] ?: contentType`, so the device manifest and the event union have
      * always carried the MIME. Only this header did not, so every stored object was typed with a UTI.
      * Measured on device 2026-08-07: `content-type: public.jpeg` at the origin.

@@ -2,6 +2,7 @@
 
 package app.snapsync.ios.upload
 
+import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJobState
 import app.snapsync.objc.ObjCFailure
@@ -103,8 +104,8 @@ internal class SystemUploadJobApi(private val log: Logger) : UploadJobApi {
     }
 
     override fun create(destination: NSURLRequest, resource: Any): ChangeAnswer {
-        val phResource = resource as? PHAssetResource
-            ?: return ChangeAnswer(ok = false, code = null, description = "the resource payload is not a PHAssetResource")
+        val phResource = (resource as? PhotoKitResource)?.resource
+            ?: return ChangeAnswer(ok = false, code = null, description = "the resource payload is not a PhotoKit resource")
         return change("createJob") {
             PHAssetResourceUploadJobChangeRequest.creationRequestForJobWithDestination(destination, phResource)
         }

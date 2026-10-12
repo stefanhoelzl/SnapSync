@@ -12,13 +12,12 @@ import kotlin.jvm.JvmInline
  * **The rule** ([isCanonicalAssetId]): non-empty, only RFC 3986 *unreserved* characters (`A–Z a–z 0–9 - . _ ~`),
  * and never `..`. That makes it a single URL path segment the backend's `validateFilename` accepts
  * (`api/src/validators.ts`) with an encoded spelling identical to the decoded one (the ledger's recorded
- * `destinationPath` relies on that), a safe storage object name, and free of the `\n` the download task tag
- * joins its fields on. Construction enforces it, so a non-canonical id is unrepresentable.
+ * `destinationPath` relies on that), and free of the `\n` the download task tag joins its fields on.
+ * Construction enforces it, so a non-canonical id is unrepresentable.
  *
- * **Only a platform adapter maps a native id to this form**, and the mapping must be reversible, since the
- * adapter has to find the asset again by it. PhotoKit's `localIdentifier` (`{UUID}/L0/NNN`) maps `/`→`_`,
- * exact because a UUID never carries `_` (`:adapter:ios:ext-safe`'s `PhotoKitAssetIds`). A platform whose
- * native id already obeys the rule (a decimal media-store id) maps by identity.
+ * **One reversible encoding mints it from the platform's own id**, in the gallery services — the core finds the
+ * asset again by decoding it. PhotoKit's `localIdentifier` (`{UUID}/L0/NNN`) becomes `{UUID}_L0_NNN`, and a decimal
+ * media-store id is itself.
  *
  * [toString] is the canonical string itself, so an id interpolates into a key or a log line unchanged.
  */

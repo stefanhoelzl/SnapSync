@@ -9,14 +9,14 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.PlatformAssetId
 import co.touchlab.kermit.Logger
 import java.io.File
 import java.io.IOException
@@ -29,7 +29,7 @@ import kotlin.time.Instant
  *
  * 1. **Insert pending** (`IS_PENDING = 1`) into the image or video collection, by the `PRIMARY` resource's content
  *    type. A pending item is invisible to every other app and to this app's own reads, so its `_ID` — the asset's
- *    identity ([AssetId]) — is handed to [onPlaceholder] before anything can observe it: that record is what keeps the
+ *    identity ([PlatformAssetId]) — is handed to [onPlaceholder] before anything can observe it: that record is what keeps the
  *    received photo from being shared back.
  * 2. **Copy the staged bytes**, unchanged: a HEIC stays a HEIC, a MOV stays a QuickTime movie. A Live Photo is the one
  *    exception: its still and video are first built into a motion photo ([MotionPhotoBuilder], BEFORE step 1, so a
@@ -48,7 +48,7 @@ import kotlin.time.Instant
  *
  * **MediaStore stores whatever bytes it is given**, so the library's own "reject what I cannot read" is done here: an
  * original that does not decode (an image with no bounds, a video with no dimensions), and a content type that is
- * neither an image nor a video, are refused for good ([ImportResult.Failed] with `consumedResources`), so the photo is
+ * neither an image nor a video, are refused for good ([ImportOutcome.Failed] with `consumedResources`), so the photo is
  * settled rather than retried forever and never lands in the camera roll broken.
  */
 internal class MediaStoreImport(context: Context, private val log: Logger) {
@@ -59,7 +59,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     private var orphansCleaned = false
 
     @Synchronized
-    fun import(request: ImportRequest, onPlaceholder: (AssetId) -> Unit): ImportResult {
+    fun import(request: ImportRequest, onPlaceholder: (PlatformAssetId) -> Unit): ImportOutcome {
         cleanOrphansOnce()
         val original = request.resources.firstOrNull { it.role == ResourceRole.PRIMARY.wire }
             ?: return refused("no original to import among ${request.resources.map { it.role }}")
@@ -93,28 +93,28 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         primary: StagedResource,
         collection: Uri,
         folder: String,
-        onPlaceholder: (AssetId) -> Unit,
-    ): ImportResult {
+        onPlaceholder: (PlatformAssetId) -> Unit,
+    ): ImportOutcome {
         val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary, folder, request.ref)) }
             .onFailure { log.w(it) { "${request.ref.sourceAssetId}: the insert was refused" } }
             .getOrNull()
-            ?: return ImportResult.Failed("MediaStore refused the insert")
-        val id = AssetId(ContentUris.parseId(uri).toString())
+            ?: return ImportOutcome.Failed("MediaStore refused the insert")
+        val id = PlatformAssetId(ContentUris.parseId(uri).toString())
         onPlaceholder(id)
         try {
             copy(primary, uri)
         } catch (e: IOException) {
             discard(uri)
-            return ImportResult.Failed("the bytes could not be written: ${e.message}", placeholder = id)
+            return ImportOutcome.Failed("the bytes could not be written: ${e.message}", placeholder = id)
         }
         stampModified(uri, request.creationDate)
         val published = runCatchingCancellable { resolver.update(uri, publishedValues(), null) }.getOrDefault(0)
         if (published != 1) {
             discard(uri)
-            return ImportResult.Failed("the item could not be published", placeholder = id)
+            return ImportOutcome.Failed("the item could not be published", placeholder = id)
         }
         log.i { "${request.ref.sourceAssetId}: imported as $id into $folder" }
-        return ImportResult.Imported(id)
+        return ImportOutcome.Imported(id)
     }
 
     private fun cleanOrphansOnce() {
@@ -196,7 +196,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         if (path == null || !File(path).setLastModified(millis)) log.w { "$uri: the modification time could not be set" }
     }
 
-    private fun refused(reason: String) = ImportResult.Failed(reason, consumedResources = true)
+    private fun refused(reason: String) = ImportOutcome.Failed(reason, consumedResources = true)
         .also { log.w { "import refused for good: $reason" } }
 
     companion object {

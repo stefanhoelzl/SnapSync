@@ -4,10 +4,9 @@ import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.SelectionSnapshot
-import app.snapsync.model.resourcesFrom
 import app.snapsync.model.selectionPhotos
 import app.snapsync.model.selectionScope
+import app.snapsync.ports.SelectionSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

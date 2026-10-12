@@ -52,8 +52,8 @@ class CreatedUpload(val filename: String, val contentType: String) {
  * sets. It decides nothing — which ledger row a job belongs to and what its end means are the upload services'.
  *
  * - `create` enqueues a PENDING job and answers `CREATED`, unless the in-flight cap is reached (`LIMIT_EXCEEDED`), the
- *   create is set to fail, or the source is not this platform's handle (`FAILED`) — its photos carry `Unit`, as a
- *   device's carry a `PHAssetResource`. [acceptsAnyHandle] is the launch-time adapters' queue on a device whose photo
+ *   create is set to fail, or the source is not this platform's handle (`FAILED`) — the in-memory library's
+ *   [InMemoryResource], as a device's is a PhotoKit resource. [acceptsAnyHandle] is the launch-time adapters' queue on a device whose photo
  *   library is REAL: it takes the `PHAssetResource` a real library hands over and moves no bytes of it — a mocked
  *   queue's request carries placeholder bytes to the mocked backend.
  * - The operator's `completeJob` performs the job's own request over [network]: a `2xx` makes it terminal-succeeded,
@@ -129,7 +129,7 @@ class UploadQueueMock(
         override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
             if (failCreate) return UploadCreateOutcome.FAILED
             val data = (source as? UploadSource.Resource)?.handle ?: return UploadCreateOutcome.FAILED
-            if (data != Unit && !acceptsAnyHandle) return UploadCreateOutcome.FAILED
+            if (data !is InMemoryResource && !acceptsAnyHandle) return UploadCreateOutcome.FAILED
             val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
                 ?: "application/octet-stream"
             return locked {

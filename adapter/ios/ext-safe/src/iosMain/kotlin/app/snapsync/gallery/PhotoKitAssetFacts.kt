@@ -1,39 +1,36 @@
 package app.snapsync.gallery
 
-import app.snapsync.model.AssetFacts
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureDate
+import app.snapsync.ports.GalleryAsset
+import app.snapsync.ports.PlatformAssetId
+import platform.Foundation.timeIntervalSince1970
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetMediaTypeVideo
+import kotlin.math.floor
+import kotlin.time.Instant
 
 /**
- * The **PhotoKit → neutral facts** interpretation, so the domain reads neutral asset facts: the one place a
- * `PHAssetMediaSubtype` bitmask or a `PHAssetMediaType` integer is read.
+ * The **PhotoKit → port** interpretation of an asset: the one place a `PHAssetMediaSubtype` bitmask or a
+ * `PHAssetMediaType` integer is read, so the port carries booleans and an area and never a PhotoKit value.
  *
- * It lives in `iosMain` because that is where these constants can be **verified against the SDK**. A copy
- * in `commonMain` would be asserted, in a JVM test, against another copy — the exact drift shape
- * `RuntimeIdentityTest` exists to catch. `:domain` therefore decides admission on booleans and an area
- * and never names a PhotoKit value; the `:test:architecture` PhotoKit-ABI guard keeps it that way.
+ * It lives in `iosMain` because that is where these constants can be **verified against the SDK**. The
+ * `:test:architecture` PhotoKit-ABI guard keeps every other module from naming one.
  *
  * Every field is a plain in-memory `PHAsset` property, so this costs **no** extra XPC round-trip — the
- * expensive call is `assetResourcesForAsset` (~110 ms/asset on an SE2), and it is untouched.
- *
- * The GIF fact is deliberately absent here: it lives on a *resource*'s MIME type, not on the asset, and
- * is folded in by `RawAsset.toFacts()` once the resources are known.
+ * expensive call is `assetResourcesForAsset` (~110 ms/asset on an SE2), and it is untouched. The capture date is
+ * truncated to the second, as every capture date the app compares is.
  */
-internal fun PHAsset.toAssetFacts(assetId: AssetId, creationDate: String): AssetFacts {
+internal fun PHAsset.toGalleryAsset(): GalleryAsset {
     val subtypes = mediaSubtypes.toLong()
     val width = pixelWidth.toLong()
     val height = pixelHeight.toLong()
-    return AssetFacts(
-        assetId = assetId,
-        creationDate = CaptureDate(creationDate),
+    return GalleryAsset(
+        id = PlatformAssetId(localIdentifier),
+        created = creationDate?.let { Instant.fromEpochSeconds(floor(it.timeIntervalSince1970).toLong()) },
         isScreenshot = subtypes and SUBTYPE_SCREENSHOT != 0L,
         isScreenRecording = subtypes and SUBTYPE_SCREEN_RECORDING != 0L,
         isVideo = mediaType == PHAssetMediaTypeVideo,
         isEdited = hasAdjustments,
-        // Unknown or non-positive dimensions cross as `null` — the policy admits on doubt rather than
-        // treating a zero area as "below every floor", which would delete real photos silently.
+        // Unknown or non-positive dimensions are unknown, never a zero area below every floor.
         pixelArea = (width * height).takeIf { width > 0 && height > 0 },
     )
 }
@@ -49,7 +46,7 @@ internal const val SUBTYPE_SCREEN_RECORDING: Long = 1L shl 19
 
 /**
  * The subtype bits that exclude an asset outright — inlined into the fetch predicate as a **narrowing**
- * optimization (see `PhotoLibraryRawAssetSource.fetchOptionsSince`, and the hard-won constraint that the
+ * optimization (see `PhotoKitPredicate`, and the hard-won constraint that the
  * predicate form must be `NOT ((mediaSubtypes & N) != 0)`).
  *
  * It can neither widen nor narrow the admitted set: the in-memory admission re-checks the same facts and

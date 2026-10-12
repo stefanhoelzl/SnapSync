@@ -10,7 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.SEED_COUNT
-import app.snapsync.model.AssetId
+import app.snapsync.ports.PlatformAssetId
 import java.io.File
 import java.time.Instant
 import java.time.ZoneOffset
@@ -42,17 +42,17 @@ internal object MediaStoreSeeder {
     }
 
     /** [count] photos captured at [isoDate], in [folder] (a `RELATIVE_PATH`, ending in `/`). */
-    fun seed(folder: String, isoDate: String, count: Int = SEED_COUNT): Set<AssetId> =
+    fun seed(folder: String, isoDate: String, count: Int = SEED_COUNT): Set<PlatformAssetId> =
         (1..count).mapTo(linkedSetOf()) { n -> insert(folder, isoDate, "contract-${System.nanoTime()}-$n.jpg") }
 
     /** Delete [ids] — this APK's own items. */
-    fun delete(ids: Set<AssetId>) {
+    fun delete(ids: Set<PlatformAssetId>) {
         ids.forEach { id ->
             context.contentResolver.delete(ContentUris.withAppendedId(IMAGES, id.value.toLong()), null, null)
         }
     }
 
-    private fun insert(folder: String, isoDate: String, name: String): AssetId {
+    private fun insert(folder: String, isoDate: String, name: String): PlatformAssetId {
         val taken = Instant.parse(isoDate)
         val file = File.createTempFile("seed", ".jpg", context.cacheDir)
         try {
@@ -73,7 +73,7 @@ internal object MediaStoreSeeder {
             val uri = checkNotNull(resolver.insert(IMAGES, values)) { "MediaStore refused the insert into $folder" }
             checkNotNull(resolver.openOutputStream(uri)).use { out -> file.inputStream().use { it.copyTo(out) } }
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-            return AssetId(ContentUris.parseId(uri).toString())
+            return PlatformAssetId(ContentUris.parseId(uri).toString())
         } finally {
             file.delete()
         }

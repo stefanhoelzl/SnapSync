@@ -27,6 +27,7 @@ import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadTarget
 import app.snapsync.ports.Download
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.Upload
 import kotlin.test.Test
 
@@ -124,7 +125,7 @@ class TransferContractBindingsTest {
                         val key = UploadContract.key(clauseId, n = n + 1)
                         val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
                         check(
-                            networked.create(UploadSource.Resource(Unit), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key) == UploadCreateOutcome.CREATED,
+                            networked.create(UploadSource.Resource(InMemoryResource(PlatformAssetId("photo"))), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key) == UploadCreateOutcome.CREATED,
                         )
                     }
                 }
@@ -133,8 +134,8 @@ class TransferContractBindingsTest {
                 UploadUnderTest(
                     upload = networked.recorded(log),
                     base = base,
-                    // The mocked photos carry `Unit` as their platform handle, as a device's carry a `PHAssetResource`.
-                    usable = { UploadSource.Resource(Unit) },
+                    // The mocked photos carry the in-memory library's handle, as a device's carry a PhotoKit resource.
+                    usable = { UploadSource.Resource(InMemoryResource(PlatformAssetId("photo"))) },
                     unusable = { UploadSource.Resource(NotThisPlatformsHandle) },
                     ended = { emptyList<UploadJob>() },
                     objects = networked.objects,

@@ -20,6 +20,7 @@ import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.GetEventReply
@@ -125,12 +126,12 @@ class MockStateTest {
     @Test
     fun the_restored_library_keeps_its_photos_grant_selection_and_albums() = runTest {
         val copy = copyOf(drive())
-        assertEquals(listOf("A1", "S1"), copy.library.operator.current().map { it.assetId.value })
-        assertTrue(copy.library.operator.current()[1].facts.isScreenshot)
+        assertEquals(listOf("A1", "S1"), copy.library.operator.current().map { it.id.value })
+        assertTrue(copy.library.operator.current()[1].asset.isScreenshot)
         assertEquals(LibraryGrant.LIMITED, copy.library.operator.access)
-        assertEquals(listOf("A1"), copy.library.operator.selection.value?.map { it.assetId.value })
+        assertEquals(listOf("A1"), copy.library.operator.selection.value?.map { it.id.value })
         assertEquals(listOf("album-0" to "Party"), copy.library.operator.created)
-        assertEquals(listOf(AssetId("A1")), copy.library.operator.assetsIn("album-0"))
+        assertEquals(listOf(PlatformAssetId("A1")), copy.library.operator.assetsIn("album-0"))
         assertEquals(listOf(AssetRef("D2", AssetId("F1"))), copy.library.operator.imports.imported)
     }
 
@@ -192,7 +193,7 @@ class MockStateTest {
         device.library.state.selection.value = listOf(LibraryAssets.photo("A1"))
         val gallery = device.library.port()
         val album = checkNotNull(gallery.createAlbum("Party"))
-        gallery.addToAlbum(album, setOf(AssetId("A1")))
+        gallery.addToAlbum(album, setOf(PlatformAssetId("A1")))
         device.library.state.imports.restoreImported(listOf(AssetRef("D2", AssetId("F1"))))
 
         device.disk.operator.write(FileArea.SHARED, "eventconfig.json", "{}".encodeToByteArray())
@@ -220,7 +221,7 @@ class MockStateTest {
         device.wakes.port().schedule(WakeId.Heartbeat, WakeTrigger.After(1.hours, network = WakeNetwork.ANY))
         device.extensionRegistry.port().setEnabled(true)
         device.uploadQueue.port().create(
-            UploadSource.Resource(Unit),
+            UploadSource.Resource(InMemoryResource(PlatformAssetId("photo"))),
             UploadTarget(
                 "https://x/api/v2/files/devices/$DEVICE/A1/primary?filename=A1-primary.jpg",
                 mapOf("Content-Type" to "image/jpeg"),

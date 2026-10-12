@@ -49,6 +49,8 @@ class PortBundleTest {
         "BackgroundTimeHold" to "one hold on the process's background time, answered by the BackgroundTime port",
         "LibraryChangeToken" to "an opaque value the gallery answers and is later handed back — a value, not a seam",
         "DbOpen" to "the result of opening a database — a sealed answer the Databases port returns",
+        "GalleryResourceHandle" to "the platform's own resource, handed out by the gallery and handed back — a handle, not a seam",
+        "ImportOutcome" to "what an import did — a sealed answer the gallery's import returns",
     )
 
     @Test

@@ -3,15 +3,10 @@ package app.snapsync.services.gallery
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.CandidateRead
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.GalleryRead
-import app.snapsync.model.RawAsset
-import app.snapsync.model.RawResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
@@ -19,8 +14,11 @@ import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesOf
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,14 +37,14 @@ class GalleryServicesTest {
     private class ScriptedGallery(
         var access: LibraryGrant = LibraryGrant.GRANTED,
         var readable: Boolean = true,
-        var assets: List<RawAsset> = emptyList(),
+        var assets: List<GalleryAssetResources> = emptyList(),
         var albums: List<AlbumRecord> = emptyList(),
-        var members: Map<AlbumId, Set<AssetId>> = emptyMap(),
+        var members: Map<AlbumId, Set<PlatformAssetId>> = emptyMap(),
         var created: AlbumId? = "album-new",
         var addOutcome: WriteOutcome = WriteOutcome.Ok,
     ) : GalleryReader {
         val calls = mutableListOf<String>()
-        val adds = mutableListOf<Pair<AlbumId, Set<AssetId>>>()
+        val adds = mutableListOf<Pair<AlbumId, Set<PlatformAssetId>>>()
 
         private fun <T> read(name: String, value: () -> T): GalleryRead<T> {
             calls += name
@@ -54,32 +52,27 @@ class GalleryServicesTest {
         }
 
         override fun access(): LibraryGrant = access
-        override suspend fun assets(filter: AssetFilter) = read("assets") { assets.map { it.facts } }
-        override suspend fun assetsById(ids: Set<AssetId>) =
-            read("assetsById") { assets.map { it.facts }.filter { it.assetId in ids } }
-        override suspend fun resources(ids: Set<AssetId>) =
-            read("resources($ids)") { assets.filter { it.facts.assetId in ids } }
+        override suspend fun assets(filter: AssetFilter) = read("assets") { assets.map { it.asset } }
+        override suspend fun assetsById(ids: Set<PlatformAssetId>) =
+            read("assetsById") { assets.map { it.asset }.filter { it.id in ids } }
+        override suspend fun resources(ids: Set<PlatformAssetId>) =
+            read("resources(${ids.map { it.value }})") { assets.filter { it.asset.id in ids } }
         override suspend fun albums() = read("albums") { albums }
         override suspend fun albumsById(ids: Set<AlbumId>) = read("albumsById") { albums.filter { it.id in ids } }
         override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) =
             read("albumMembers($album)") { members[album].orEmpty() }
         override val albumKind: AlbumKind = AlbumKind.COLLECTION
         override suspend fun createAlbum(title: String): AlbumId? = created.also { calls += "createAlbum($title)" }
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
+        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
             adds += album to assets
             return addOutcome
         }
 
-        override suspend fun export(resource: app.snapsync.model.Resource, to: String): WriteOutcome =
+        override suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome =
             WriteOutcome.Failed("no export in this script")
     }
 
-    private fun photo(id: String) = RawAsset(
-        assetId = AssetId(id),
-        creationDate = "2026-06-01T10:00:00Z",
-        rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG.JPG", Unit)),
-        facts = AssetFacts(AssetId(id), CaptureDate("2026-06-01T10:00:00Z")),
-    )
+    private fun photo(id: String) = platformPhoto(id)
 
     private val policy = SelectionPolicy(listOf(SelectionRule.CaptureAfter(captureCutoff("2026-01-01T00:00:00Z"))))
 
@@ -245,7 +238,10 @@ class GalleryServicesTest {
         gallery.addOutcome = WriteOutcome.Failed("gone")
         albums.add("album-1", listOf(AssetId("C"))) // a failed add is logged, never thrown
         assertEquals(
-            listOf("album-1" to setOf(AssetId("A"), AssetId("B")), "album-1" to setOf(AssetId("C"))),
+            listOf(
+                "album-1" to setOf(PlatformAssetId("A"), PlatformAssetId("B")),
+                "album-1" to setOf(PlatformAssetId("C")),
+            ),
             gallery.adds,
         )
     }
@@ -258,7 +254,11 @@ class GalleryServicesTest {
                 AlbumRecord("tg", "TELEGRAM"),
                 AlbumRecord("trip", "Signal Hill Hike"),
             ),
-            members = mapOf("wa" to setOf(AssetId("A")), "tg" to setOf(AssetId("B")), "trip" to setOf(AssetId("C"))),
+            members = mapOf(
+                "wa" to setOf(PlatformAssetId("A")),
+                "tg" to setOf(PlatformAssetId("B")),
+                "trip" to setOf(PlatformAssetId("C")),
+            ),
         )
         val denied = GalleryAlbums(
             gallery,
@@ -281,7 +281,10 @@ class GalleryServicesTest {
         val membersUnreadable = object : GalleryReader by ScriptedGallery(
             albums = listOf(AlbumRecord("wa", "WhatsApp")),
         ) {
-            override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> =
+            override suspend fun albumMembers(
+                album: AlbumId,
+                createdFrom: Instant?,
+            ): GalleryRead<Set<PlatformAssetId>> =
                 GalleryRead.NotReadable
         }
         assertEquals(emptySet(), GalleryAlbums(membersUnreadable).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff))

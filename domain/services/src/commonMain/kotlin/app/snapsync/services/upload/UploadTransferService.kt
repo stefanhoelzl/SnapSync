@@ -21,6 +21,7 @@ import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.invocation
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.Upload
 import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.crypto.UploadSealing
@@ -256,7 +257,14 @@ class UploadTransferService(
         val exportPath = located(exportedTo) ?: return UploadCreateOutcome.FAILED
         // The directory the export writes into: `write` creates parents, and the empty file is replaced by the export.
         files.write(FileArea.SHARED, exportedTo, ByteArray(0))
-        when (val exported = gallery.export(resource, exportPath)) {
+        // A resource the library did not read carries no handle of its own to export.
+        val handle = resource.data as? GalleryResourceHandle
+        val exported = if (handle == null) {
+            WriteOutcome.Failed("not a library resource")
+        } else {
+            gallery.export(handle, exportPath)
+        }
+        when (exported) {
             WriteOutcome.Ok -> Unit
             else -> {
                 log.w { "createJob: exporting ${resource.filename} failed ($exported) — not creating" }

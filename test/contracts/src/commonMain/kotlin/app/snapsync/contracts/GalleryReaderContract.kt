@@ -2,16 +2,15 @@ package app.snapsync.contracts
 
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
-import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryRead
-import app.snapsync.model.RawAsset
-import app.snapsync.model.Resource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.resourcesFrom
+import app.snapsync.ports.GalleryAsset
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.ResourceKind
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -158,20 +157,15 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         ) { seeded ->
             val files =
                 assertNotNull(seeded.files, "a binding that reaches this state gives the clause a place to write")
-            val read = assertIs<GalleryRead.Read<List<RawAsset>>>(seeded.port.resources(seeded.ids))
-            val asset = read.value.first()
-            val raw = asset.rawResources.first { it.role == ResourceRole.PRIMARY }
-            val resource = Resource(raw.originalFilename, asset.assetId, raw.mimeContentType, emptyMap(), raw.handle)
+            val read = assertIs<GalleryRead.Read<List<GalleryAssetResources>>>(seeded.port.resources(seeded.ids))
+            val resource = read.value.first().resources.first { it.kind == ResourceKind.PHOTO }
             val to = files.pathOf("exported.bin")
-            assertEquals(WriteOutcome.Ok, seeded.port.export(resource, to), "the library's own resource exports")
+            assertEquals(WriteOutcome.Ok, seeded.port.export(resource.handle, to), "the library's own resource exports")
             assertTrue((files.read(to)?.size ?: 0) > 0, "and its bytes are at the path it was given")
             val foreign = files.pathOf("foreign.bin")
             assertIs<WriteOutcome.Failed>(
-                seeded.port.export(
-                    Resource("IMG_0001.JPG", asset.assetId, "image/jpeg", emptyMap(), "not a handle"),
-                    foreign,
-                ),
-                "a resource that is not the library's own handle cannot be produced",
+                seeded.port.export(object : GalleryResourceHandle {}, foreign),
+                "a handle the library did not hand out cannot be produced",
             )
             assertNull(files.read(foreign), "and nothing is left where it was to go")
         }
@@ -232,11 +226,11 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             },
         ) { seeded ->
             val clauseId = "AN_EMPTY_WINDOW_IS_A_COUNTED_ZERO"
-            val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(
+            val read = assertIs<GalleryRead.Read<List<GalleryAsset>>>(
                 seeded.port.assets(filter(clauseId)),
                 "a readable library with nothing in the window is a counted zero, never 'no answer'",
             )
-            val inWindow = read.value.filter { it.creationDate.iso in window(clauseId) }
+            val inWindow = read.value.filter { asset -> asset.created?.let { it.toString() in window(clauseId) } == true }
             assertTrue(inWindow.isEmpty(), "nothing was seeded in this window, yet ${inWindow.size} came back")
         }
 
@@ -248,10 +242,10 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             },
         ) { seeded ->
             val asked = seeded.ids + absentAssetId("ASSETS_BY_ID_RETURN_EXACTLY_THE_ONES_STILL_THERE")
-            val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(seeded.port.assetsById(asked))
+            val read = assertIs<GalleryRead.Read<List<GalleryAsset>>>(seeded.port.assetsById(asked))
             assertEquals(
                 seeded.ids,
-                read.value.mapTo(mutableSetOf()) { it.assetId },
+                read.value.mapTo(mutableSetOf()) { it.id },
                 "a missing id is simply not returned",
             )
         }
@@ -264,22 +258,16 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             },
         ) { seeded ->
             val asked = seeded.ids + absentAssetId("RESOURCES_BY_ID_CARRY_EACH_ORIGINAL")
-            val read = assertIs<GalleryRead.Read<List<RawAsset>>>(seeded.port.resources(asked))
+            val read = assertIs<GalleryRead.Read<List<GalleryAssetResources>>>(seeded.port.resources(asked))
             assertEquals(
                 seeded.ids,
-                read.value.mapTo(mutableSetOf()) { it.facts.assetId },
+                read.value.mapTo(mutableSetOf()) { it.asset.id },
                 "a missing id is not returned",
             )
             for (asset in read.value) {
                 assertTrue(
-                    asset.rawResources.any { it.role == ResourceRole.PRIMARY },
-                    "a seeded photo has an original to upload: ${asset.facts.assetId}",
-                )
-            }
-            for (resource in resourcesFrom(read.value)) {
-                assertTrue(
-                    resource.filename.startsWith("${resource.assetId}-"),
-                    "an upload key is <assetId>-<role>.<ext>, got ${resource.filename}",
+                    asset.resources.any { it.kind == ResourceKind.PHOTO },
+                    "a seeded photo carries its still as an original: ${asset.asset.id}",
                 )
             }
         }
@@ -445,14 +433,14 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         ) { seeded ->
             val clauseId = "ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ"
             assertEquals(SEED_COUNT, seeded.ids.size, "the binding seeded what the state promises")
-            val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(seeded.port.assets(filter(clauseId)))
-            val leaked = read.value.mapTo(mutableSetOf()) { it.assetId } intersect seeded.ids
+            val read = assertIs<GalleryRead.Read<List<GalleryAsset>>>(seeded.port.assets(filter(clauseId)))
+            val leaked = read.value.mapTo(mutableSetOf()) { it.id } intersect seeded.ids
             assertTrue(leaked.isEmpty(), "an asset outside the default gallery is never a candidate to share: $leaked")
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.assetsById(seeded.ids))
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.resources(seeded.ids))
         }
     }
 
-    private fun GalleryReader.assetIdsOf(read: GalleryRead.Read<*>): Set<AssetId> =
-        (read.value as List<*>).mapTo(mutableSetOf()) { (it as AssetFacts).assetId }
+    private fun GalleryReader.assetIdsOf(read: GalleryRead.Read<*>): Set<PlatformAssetId> =
+        (read.value as List<*>).mapTo(mutableSetOf()) { (it as GalleryAsset).id }
 }

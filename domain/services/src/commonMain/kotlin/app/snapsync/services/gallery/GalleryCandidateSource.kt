@@ -6,7 +6,6 @@ import app.snapsync.model.ResourceBatch
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromFacts
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
 
 /**
@@ -25,18 +24,20 @@ class GalleryCandidateSource(private val gallery: GalleryReader) : CandidateSour
             ?: return if (gallery.access().galleryAccess().grantsPhotoAccess) CandidateRead.Readable(emptyList()) else CandidateRead.NotReadable
         return when (val read = gallery.assets(filter)) {
             GalleryRead.NotReadable -> CandidateRead.NotReadable
-            is GalleryRead.Read -> CandidateRead.Readable(candidatesFromFacts(read.value, resourceBatch(gallery)))
+            is GalleryRead.Read -> CandidateRead.Readable(
+                candidatesFromFacts(read.value.map { it.facts() }, resourceBatch(gallery)),
+            )
         }
     }
 }
 
 /**
- * The resources of a set of assets through [gallery], mapped by the shared [resourcesFrom] (role filter,
- * upload-key derivation), keyed by asset id. An unreadable gallery reads no resources: a candidate it
- * produced then has none, which uploads nothing rather than something wrong.
+ * The resources of a set of assets through [gallery], mapped by [resourcesFrom] (role, upload key), keyed by asset id.
+ * An unreadable gallery reads no resources: a candidate it produced then has none, which uploads nothing rather than
+ * something wrong.
  */
 internal fun resourceBatch(gallery: GalleryReader): ResourceBatch = ResourceBatch { ids ->
-    when (val read = gallery.resources(ids)) {
+    when (val read = gallery.resources(ids.mapTo(linkedSetOf()) { it.platformId() })) {
         GalleryRead.NotReadable -> emptyMap()
         is GalleryRead.Read -> resourcesFrom(read.value).groupBy { it.assetId }
     }

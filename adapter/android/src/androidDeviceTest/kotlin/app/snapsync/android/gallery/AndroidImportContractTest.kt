@@ -30,7 +30,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
@@ -38,7 +37,9 @@ import app.snapsync.motionphoto.jpegXmp
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.motionphoto.motionPhotoStill
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -84,7 +85,7 @@ class AndroidImportContractTest {
         onImportPlaceholder = deliveries.handlers.onImportPlaceholder,
         onImportSettled = { ref, result ->
             deliveries.handlers.onImportSettled(ref, result)
-            if (result is ImportResult.Imported) created += uriOf(result.createdLocalId)
+            if (result is ImportOutcome.Imported) created += uriOf(result.created)
         },
     )
 
@@ -132,12 +133,12 @@ class AndroidImportContractTest {
             val library = object : ImportedLibrary {
                 // The date the library sorts the item by: the scan's DATE_TAKEN, or — for a file with no date of its own,
                 // which the contract's plain JPEG is — the DATE_MODIFIED the import stamped (seconds).
-                override suspend fun captureDate(id: AssetId): String? =
+                override suspend fun captureDate(id: PlatformAssetId): String? =
                     (dateTaken(id) ?: modified(id)?.times(MILLIS_PER_SECOND))?.let(::iso)
                 override val deliveries = this@AndroidImportContractTest.deliveries
 
                 // The column the gallery reader reports as the primary resource's original filename.
-                override suspend fun primaryFilename(id: AssetId): String? = column(
+                override suspend fun primaryFilename(id: PlatformAssetId): String? = column(
                     id,
                     MediaStore.MediaColumns.DISPLAY_NAME,
                 )
@@ -158,7 +159,7 @@ class AndroidImportContractTest {
             val result = gallery.import(
                 ImportRequest(ref, listOf(stagedResource(fixture, type, fixture(fixture))), iso(CAPTURED), null),
             )
-            val id = assertIs<ImportResult.Imported>(result, "$fixture imports").createdLocalId
+            val id = assertIs<ImportOutcome.Imported>(result, "$fixture imports").created
             assertEquals(MarkerState.CONFIRMED, deliveries.marker(ref))
             assertEquals(MediaStoreImport.CAMERA_FOLDER, column(id, MediaStore.MediaColumns.RELATIVE_PATH), fixture)
             assertEquals(
@@ -188,9 +189,9 @@ class AndroidImportContractTest {
             stagedResource("$stem.HEIC", "image/heic", fixture("iphone-live.heic")),
             stagedResource("$stem.MOV", "video/quicktime", mov, ResourceRole.LIVE),
         )
-        val id = assertIs<ImportResult.Imported>(
+        val id = assertIs<ImportOutcome.Imported>(
             gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null)),
-        ).createdLocalId
+        ).created
         assertEquals(MarkerState.CONFIRMED, deliveries.marker(ref))
         assertEquals(
             "image/jpeg",
@@ -246,9 +247,9 @@ class AndroidImportContractTest {
             stagedResource("$stem.MOV", "video/quicktime", mov, ResourceRole.LIVE),
         )
         val ref = ref("jpeg-live")
-        val id = assertIs<ImportResult.Imported>(
+        val id = assertIs<ImportOutcome.Imported>(
             gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null)),
-        ).createdLocalId
+        ).created
         assertEquals(
             ReceivedPhotoName.mark("$stem.JPG", "key-$stem.JPG", ref),
             column(id, MediaStore.MediaColumns.DISPLAY_NAME),
@@ -271,9 +272,9 @@ class AndroidImportContractTest {
             stagedResource("$stem.MOV", "video/quicktime", fixture("iphone.mov"), ResourceRole.LIVE),
         )
         val ref = ref("fallback")
-        val id = assertIs<ImportResult.Imported>(
+        val id = assertIs<ImportOutcome.Imported>(
             gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null)),
-        ).createdLocalId
+        ).created
         assertContentEquals(still, bytesOf(id), "the still, unchanged")
         assertEquals(1, countNamed(ReceivedPhotoName.mark("$stem.JPG", "key-$stem.JPG", ref)), "once")
         assertEquals(MarkerState.CONFIRMED, deliveries.marker(ref))
@@ -283,7 +284,7 @@ class AndroidImportContractTest {
     fun `what a killed import leaves is invisible and absent and cleaned at the next import`(): Unit = runBlocking {
         // An import killed between its pending insert and its publish: the item exists only as a pending row.
         val pending = insertPending("killed.jpg")
-        val id = AssetId(ContentUris.parseId(pending).toString())
+        val id = PlatformAssetId(ContentUris.parseId(pending).toString())
         val read = assertIs<GalleryRead.Read<List<app.snapsync.model.AssetFacts>>>(gallery.assetsById(setOf(id)))
         assertTrue(read.value.isEmpty(), "a pending item reads as absent, so the startup sweep imports again")
 
@@ -312,7 +313,7 @@ class AndroidImportContractTest {
                 album,
             ),
         )
-        val id = assertIs<ImportResult.Imported>(result).createdLocalId
+        val id = assertIs<ImportOutcome.Imported>(result).created
         assertEquals(album, column(id, MediaStore.MediaColumns.RELATIVE_PATH), "saved straight into the album's folder")
         assertEquals(0, countNamed("IMG_7.JPG"), "not loose in the camera folder first")
     }
@@ -348,9 +349,9 @@ class AndroidImportContractTest {
                 null,
             ),
         )
-        val failed = assertIs<ImportResult.Failed>(result)
+        val failed = assertIs<ImportOutcome.Failed>(result)
         assertTrue(failed.consumedResources, "settled, never retried")
-        assertIs<ImportResult.Failed>(deliveries.settled(ref), "the refusal is settled")
+        assertIs<ImportOutcome.Failed>(deliveries.settled(ref), "the refusal is settled")
     }
 
     private fun ref(name: String) = AssetRef(
@@ -368,12 +369,12 @@ class AndroidImportContractTest {
             javaClass.classLoader?.getResourceAsStream("import/$name"),
         ) { "no fixture $name" }.use { it.readBytes() }
 
-    private fun uriOf(id: AssetId): Uri = MediaStore.Files.getContentUri(
+    private fun uriOf(id: PlatformAssetId): Uri = MediaStore.Files.getContentUri(
         MediaStore.VOLUME_EXTERNAL_PRIMARY,
         id.value.toLong(),
     )
 
-    private fun column(id: AssetId, name: String): String? =
+    private fun column(id: PlatformAssetId, name: String): String? =
         context.contentResolver.query(
             uriOf(id),
             arrayOf(name),
@@ -381,9 +382,9 @@ class AndroidImportContractTest {
             null,
         )?.use { if (it.moveToFirst()) it.getString(0) else null }
 
-    private fun modified(id: AssetId): Long? = column(id, MediaStore.MediaColumns.DATE_MODIFIED)?.toLongOrNull()
+    private fun modified(id: PlatformAssetId): Long? = column(id, MediaStore.MediaColumns.DATE_MODIFIED)?.toLongOrNull()
 
-    private fun dateTaken(id: AssetId): Long? = column(id, MediaStore.MediaColumns.DATE_TAKEN)?.toLongOrNull()
+    private fun dateTaken(id: PlatformAssetId): Long? = column(id, MediaStore.MediaColumns.DATE_TAKEN)?.toLongOrNull()
 
     /**
      * A name no earlier run left in the camera folder. MediaStore resolves a collision by renaming (a camera-style
@@ -391,7 +392,7 @@ class AndroidImportContractTest {
      */
     private fun uniqueStem(prefix: String) = "${prefix}_${System.nanoTime()}"
 
-    private fun bytesOf(id: AssetId): ByteArray =
+    private fun bytesOf(id: PlatformAssetId): ByteArray =
         checkNotNull(context.contentResolver.openInputStream(uriOf(id))) { "no stream for $id" }.use { it.readBytes() }
 
     private fun countNamed(name: String): Int = context.contentResolver.query(

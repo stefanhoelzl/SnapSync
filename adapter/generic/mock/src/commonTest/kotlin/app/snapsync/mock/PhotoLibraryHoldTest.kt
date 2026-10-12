@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AssetId
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -53,7 +53,7 @@ class PhotoLibraryHoldTest {
         val album = gallery.createAlbum("Event")!!
         library.operator.holdAdds()
 
-        val add = launch { gallery.addToAlbum(album, setOf(AssetId("A"))) }
+        val add = launch { gallery.addToAlbum(album, setOf(PlatformAssetId("A"))) }
         runCurrent()
         assertTrue(add.isActive, "the add waits while held")
 

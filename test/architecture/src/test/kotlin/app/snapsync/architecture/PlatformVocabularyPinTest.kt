@@ -76,13 +76,13 @@ class PlatformVocabularyPinTest {
                 "PHAssetResourceUploadJobStateCancelled" to 5L,
             ),
         ),
-        // Decoded by `photoKitResourceRole` (:adapter:ios:ext-safe, capability `sync-status`).
+        // Decoded by `photoKitResourceKind` (:adapter:ios:ext-safe).
         // Consequence of an untaught case is worse than above: the fallback DROPS the resource, so an
         // untaught original resource type is a photo that never uploads, with no error anywhere.
         PinnedEnum(
             framework = "Photos",
             prefix = "PHAssetResourceType",
-            decodedBy = "photoKitResourceRole (adapter/ios/ext-safe/…/gallery/PhotoKitResourceRole.kt)",
+            decodedBy = "photoKitResourceKind (adapter/ios/ext-safe/…/gallery/PhotoKitResourceKind.kt)",
             constants = mapOf(
                 "PHAssetResourceTypePhoto" to 1L,
                 "PHAssetResourceTypeVideo" to 2L,

@@ -30,10 +30,12 @@ import app.snapsync.model.eventEnd
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.assetId
 import app.snapsync.services.ledger.LedgerService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -59,12 +61,12 @@ class AlbumGatherTest {
         /** Whether an album may be created — only the grant's ensure ([AlbumGather.onAccessChanged]) creates one. */
         private val creates: Boolean = false,
     ) : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
-        val calls = mutableListOf<List<AssetId>>()
+        val calls = mutableListOf<List<PlatformAssetId>>()
         val created = mutableListOf<String>()
 
         /** When set, every add waits for it — a gather holding its lock. */
         var gate: CompletableDeferred<Unit>? = null
-        val added: Set<AssetId> get() = calls.flatten().toSet()
+        val added: Set<AssetId> get() = calls.flatten().mapTo(mutableSetOf()) { it.assetId() }
         override suspend fun createAlbum(title: String): AlbumId? {
             check(creates) { "the gather never creates an album" }
             created += title
@@ -72,7 +74,7 @@ class AlbumGatherTest {
         }
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
             GalleryRead.Read(ids.map { AlbumRecord(it, "Trip") })
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
+        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
             gate?.await()
             calls += assets.toList()
             if (calls.size == failingCall) error("boom")

@@ -1,34 +1,14 @@
 package app.snapsync.gallery
 
-import platform.Foundation.NSDate
 import platform.Foundation.NSISO8601DateFormatWithInternetDateTime
 import platform.Foundation.NSISO8601DateFormatter
-import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.Foundation.timeIntervalSince1970
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/**
- * The shared formatters are **byte-identical** to the per-call ones they replaced ([Iso8601]).
- *
- * A capture date is compared lexicographically in `commonMain` and published in the manifest, so a formatter
- * that drifted by one option (a fraction, a time zone) would change what the policy admits and what the event
- * sees. Pinned against freshly built formatters rather than against literals alone, so the pin holds whatever
- * Foundation's defaults are — the claim is "identical to before", not "equal to this string".
- */
+/** The shared formatter is a default one ([Iso8601]): its parse is the importer's per-call one. */
 class Iso8601Test {
-
-    private val instants = listOf(0.0, 1_780_000_000.0, 1_780_000_000.182, 1_799_999_999.999)
-
-    @Test
-    fun `the shared formatter formats exactly as a fresh default one`() {
-        for (seconds in instants) {
-            val date = NSDate.dateWithTimeIntervalSince1970(seconds)
-            assertEquals(NSISO8601DateFormatter().stringFromDate(date), Iso8601.format(date), "at $seconds")
-        }
-        assertEquals("1970-01-01T00:00:00Z", Iso8601.format(NSDate.dateWithTimeIntervalSince1970(0.0)))
-    }
 
     @Test
     fun `the shared formatter carries Foundation's default options`() {

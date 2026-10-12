@@ -20,10 +20,10 @@ class GalleryAssetPresence(private val gallery: GalleryReader) : ImportedAssetPr
     override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> {
         if (localIds.isEmpty()) return emptyMap()
         if (gallery.access().galleryAccess() != GalleryAccess.GRANTED) return localIds.associateWith { AssetPresence.UNKNOWN }
-        return when (val read = gallery.assetsById(localIds)) {
+        return when (val read = gallery.assetsById(localIds.mapTo(linkedSetOf()) { it.platformId() })) {
             GalleryRead.NotReadable -> localIds.associateWith { AssetPresence.UNKNOWN }
             is GalleryRead.Read -> {
-                val present = read.value.mapTo(mutableSetOf()) { it.assetId }
+                val present = read.value.mapTo(mutableSetOf()) { it.id.assetId() }
                 // Every id asked about gets an entry: a whole-library view may say ABSENT, and saying it
                 // explicitly is what lets the caller clear a stale marker rather than leave the row stuck.
                 localIds.associateWith { if (it in present) AssetPresence.PRESENT else AssetPresence.ABSENT }

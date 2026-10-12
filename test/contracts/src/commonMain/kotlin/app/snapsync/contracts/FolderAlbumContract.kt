@@ -3,17 +3,18 @@ package app.snapsync.contracts
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
 import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.PlatformAssetId
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -36,7 +37,7 @@ enum class FolderAlbumState {
  */
 class FolderAlbums(
     val gallery: Gallery,
-    val seeded: Set<AssetId>,
+    val seeded: Set<PlatformAssetId>,
     val ownFolder: AlbumId,
     val stage: () -> List<StagedResource>,
 )
@@ -125,8 +126,8 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
         ) { subject ->
             val clauseId = "A_MOVED_PHOTO_KEEPS_ITS_ID_AND_STAYS_IN_THE_GALLERY"
             val filter = PhotoLibrary.filter(name, clauseId)
-            val before = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(filter))
-            assertEquals(subject.seeded, before.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded)
+            val before = assertIs<GalleryRead.Read<List<GalleryAsset>>>(subject.gallery.assets(filter))
+            assertEquals(subject.seeded, before.value.mapTo(mutableSetOf()) { it.id } intersect subject.seeded)
             val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
             val missing = absentAssetId(clauseId)
             assertEquals(
@@ -135,13 +136,13 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
                 "a missing id is skipped",
             )
             assertEquals(WriteOutcome.Ok, subject.gallery.addToAlbum(album, subject.seeded), "a second move is a no-op")
-            val byId = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assetsById(subject.seeded))
-            assertEquals(subject.seeded, byId.value.mapTo(mutableSetOf()) { it.assetId }, "each photo keeps its id")
+            val byId = assertIs<GalleryRead.Read<List<GalleryAsset>>>(subject.gallery.assetsById(subject.seeded))
+            assertEquals(subject.seeded, byId.value.mapTo(mutableSetOf()) { it.id }, "each photo keeps its id")
             assertEquals(SEED_COUNT, byId.value.size, "each photo is in the library once")
-            val after = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(filter))
+            val after = assertIs<GalleryRead.Read<List<GalleryAsset>>>(subject.gallery.assets(filter))
             assertEquals(
                 subject.seeded,
-                after.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
+                after.value.mapTo(mutableSetOf()) { it.id } intersect subject.seeded,
                 "an event album is a folder of the default gallery like any other: its photos are read where they are",
             )
         }
@@ -155,7 +156,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
                     answers(GalleryReader::albumMembers).withGenericLeaf(GalleryRead.Read::class)
                     answers(GalleryReader::assetsById).withGenericLeaf(GalleryRead.Read::class)
                 }
-                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Imported::class)
             },
         ) { subject ->
             val clauseId = "AN_IMPORT_INTO_AN_ALBUM_LANDS_THERE"
@@ -163,10 +164,10 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             val ref = AssetRef(sourceDeviceId = "contract-device", sourceAssetId = AssetId(clauseId))
             val window = PhotoLibrary.window(name, clauseId)
             val result = subject.gallery.import(ImportRequest(ref, subject.stage(), window.seedDate, album))
-            val id = assertIs<ImportResult.Imported>(result, "an ordinary photo imports").createdLocalId
-            val members = assertIs<GalleryRead.Read<Set<AssetId>>>(subject.gallery.albumMembers(album, null))
+            val id = assertIs<ImportOutcome.Imported>(result, "an ordinary photo imports").created
+            val members = assertIs<GalleryRead.Read<Set<PlatformAssetId>>>(subject.gallery.albumMembers(album, null))
             assertEquals(setOf(id), members.value, "the received photo is in the album the moment it exists")
-            val byId = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assetsById(setOf(id)))
+            val byId = assertIs<GalleryRead.Read<List<GalleryAsset>>>(subject.gallery.assetsById(setOf(id)))
             assertEquals(1, byId.value.size, "and in the library once")
         }
 
@@ -186,10 +187,10 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
                 "only an event album's folder takes a photo; ${subject.ownFolder} is the member's",
             )
             val filter = PhotoLibrary.filter(name, clauseId)
-            val after = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assets(filter))
+            val after = assertIs<GalleryRead.Read<List<GalleryAsset>>>(subject.gallery.assets(filter))
             assertEquals(
                 subject.seeded,
-                after.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
+                after.value.mapTo(mutableSetOf()) { it.id } intersect subject.seeded,
                 "nothing moved",
             )
         }

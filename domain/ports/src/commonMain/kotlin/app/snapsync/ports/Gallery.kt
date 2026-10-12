@@ -3,15 +3,9 @@ package app.snapsync.ports
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
-import app.snapsync.model.RawAsset
-import app.snapsync.model.Resource
-import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.WriteOutcome
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
@@ -51,16 +45,16 @@ interface GalleryReader : Port {
      * The library's assets in [filter]'s range — facts only, no resources. [filter] is a hint (see [AssetFilter]): the
      * answer may hold assets outside it and never leaves out one inside it, because it is also a walk's presence set.
      */
-    suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>>
+    suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>>
 
     /** The assets among [ids] the library still holds — facts only. A missing id is simply not returned. */
-    suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>>
+    suspend fun assetsById(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAsset>>
 
     /**
-     * The assets among [ids] with every platform resource each carries, in one request. A missing id is simply
-     * not returned; an asset whose resources carry no uploadable role is returned with them as they are.
+     * The assets among [ids] with their original resources, in one request. A missing id is simply not returned; an
+     * asset with no original resource of a [ResourceKind] is returned with none.
      */
-    suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>>
+    suspend fun resources(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAssetResources>>
 
     /**
      * Every user-created album (never a system smart album, whose titles are localized). On Android an album is a
@@ -76,7 +70,7 @@ interface GalleryReader : Port {
      * [AssetFilter]'s bounds are: an earlier member may come back, a later one never stays out. An unresolvable album
      * has no members.
      */
-    suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>>
+    suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>>
 
     /**
      * How this library holds an album: a [AlbumKind.COLLECTION] an asset is added to, or the [AlbumKind.FOLDER] a
@@ -98,14 +92,14 @@ interface GalleryReader : Port {
      * library created takes photos while still empty; an asset the platform will not let this app move (one it did
      * not save itself) is skipped, never asked about.
      */
-    suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome
+    suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome
 
     /**
      * Write [resource]'s bytes to the platform file [to] (a `Files.locate` answer), replacing whatever it held — for an
-     * uploader that sends from a file. A resource that is not this library's own handle, or one the library can no
-     * longer produce, is [WriteOutcome.Failed]; nothing is left at [to] then.
+     * uploader that sends from a file. A handle this library did not hand out, or one it can no longer produce, is
+     * [WriteOutcome.Failed]; nothing is left at [to] then.
      */
-    suspend fun export(resource: Resource, to: String): WriteOutcome
+    suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome
 }
 
 /**
@@ -118,13 +112,13 @@ class GalleryHandlers(
      * observed — so the marker that keeps it from being uploaded back lands first.
      * The write is synchronous, on the delivering thread. If a change block runs again, the last call wins.
      */
-    val onImportPlaceholder: (AssetRef, AssetId) -> Unit,
+    val onImportPlaceholder: (AssetRef, PlatformAssetId) -> Unit,
     /**
      * An import's outcome, once, from the platform's completion — which runs even when the requester is gone, so
      * the outcome is persisted here, inline, and never only returned (`docs/architecture.md`, "A delivery the
      * platform makes once is persisted before the entry point returns").
      */
-    val onImportSettled: (AssetRef, ImportResult) -> Unit,
+    val onImportSettled: (AssetRef, ImportOutcome) -> Unit,
 )
 
 /**
@@ -138,7 +132,7 @@ interface GalleryImport : Port {
      * the completion); this returns the same outcome, only after `onImportSettled` has **returned**. Nothing bounds
      * the wait: an import the platform never reports never returns.
      */
-    suspend fun import(request: ImportRequest): ImportResult
+    suspend fun import(request: ImportRequest): ImportOutcome
 }
 
 /**

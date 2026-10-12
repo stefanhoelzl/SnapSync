@@ -8,20 +8,20 @@ import app.snapsync.logging.invocation
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
-import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryRead
-import app.snapsync.model.RawAsset
-import app.snapsync.model.RawResource
-import app.snapsync.model.Resource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAsset
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResource
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -47,8 +47,7 @@ import kotlin.time.Instant
  * The PhotoKit [GalleryReader] — every photo-library read and album write either process makes, and the only
  * place outside the app's own adapters that touches `PHAsset`, `PHAssetResource` or `PHAssetCollection`.
  *
- * **Asset ids cross canonical** ([PhotoKitAssetIds]): every id handed out is minted from its `localIdentifier`
- * and every id handed in is mapped back, so the core holds one form. Album ids cross as PhotoKit's own.
+ * **Ids cross as PhotoKit's own**: an asset's `localIdentifier`, an album's `localIdentifier`.
  *
  * **Facts are cheap; resources are not.** [assets] reads plain in-memory `PHAsset` properties;
  * `PHAssetResource.assetResourcesForAsset` — a synchronous XPC round-trip into `photolibraryd`, ~110 ms per asset
@@ -77,7 +76,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      * Narrowed by [predicateFor] — [filter]'s date range, widened. Both QoS classes on the one line: the caller's, and the lane's
      * the PhotoKit calls were issued at.
      */
-    override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> {
+    override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> {
         var readQos = "?"
         return log.invocation(
             "gallery.assets",
@@ -89,21 +88,21 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
                 val options = predicateFor(
                     filter,
                 )?.let { predicate -> PHFetchOptions().apply { this.predicate = predicate } }
-                photoKitFacts(PHAsset.fetchAssetsWithOptions(options))
+                photoKitAssets(PHAsset.fetchAssetsWithOptions(options))
             }
         }
     }
 
-    override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
-        readable { if (ids.isEmpty()) emptyList() else photoKitFacts(fetchById(ids)) }
+    override suspend fun assetsById(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAsset>> =
+        readable { if (ids.isEmpty()) emptyList() else photoKitAssets(fetchById(ids)) }
 
-    override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> =
+    override suspend fun resources(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAssetResources>> =
         log.invocation(
             "gallery.resources",
             params = "${ids.size} asset(s), qos=${qosLabel()}",
-            result = { "${(it as? GalleryRead.Read)?.value?.sumOf { a -> a.rawResources.size } ?: "not readable"} resource(s)" },
+            result = { "${(it as? GalleryRead.Read)?.value?.sumOf { a -> a.resources.size } ?: "not readable"} resource(s)" },
         ) {
-            readable { if (ids.isEmpty()) emptyList() else photoKitRawAssets(fetchById(ids)) }
+            readable { if (ids.isEmpty()) emptyList() else photoKitAssetResources(fetchById(ids)) }
         }
 
     /** User albums only: a smart album's title is system-localized, so nothing can be decided on it. */
@@ -132,7 +131,10 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      * rather than fetching nothing: under-returning would silently *admit* a denylisted photo, but fetching
      * nothing at all would make the whole rule a no-op.
      */
-    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> = readable {
+    override suspend fun albumMembers(
+        album: AlbumId,
+        createdFrom: Instant?,
+    ): GalleryRead<Set<PlatformAssetId>> = readable {
         val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
             .firstObject as? PHAssetCollection
         if (collection == null) {
@@ -144,7 +146,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
                 }
             }
             val assets = PHAsset.fetchAssetsInAssetCollection(collection, options)
-            buildSet { assets.forEachAsset { asset -> asset.canonicalIdOrReport()?.let(::add) } }
+            buildSet { assets.forEachAsset { asset -> add(PlatformAssetId(asset.localIdentifier)) } }
         }
     }
 
@@ -176,9 +178,9 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      * export for the same key). It moved here from the app's `URLSession` uploader in phase 11f: reading a resource's
      * bytes is the photo library's, and the uploader now takes the file.
      */
-    override suspend fun export(resource: Resource, to: String): WriteOutcome {
-        val handle = resource.data as? PHAssetResource
-            ?: return WriteOutcome.Failed("${resource.filename}: the payload is not a PHAssetResource")
+    override suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome {
+        val handle = (resource as? PhotoKitResource)?.resource
+            ?: return WriteOutcome.Failed("$resource is not a PhotoKit resource")
         val file = NSURL.fileURLWithPath(to)
         checkedObjC("removeItemAtURL") { NSFileManager.defaultManager.removeItemAtURL(file, error = it) }
         val error: NSError? = objcCallback(log, "export.completion") { done ->
@@ -193,7 +195,9 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         return if (error == null) {
             WriteOutcome.Ok
         } else {
-            WriteOutcome.Failed("${resource.filename}: ${ObjCFailure.of("writeDataForAssetResource", error).message}")
+            WriteOutcome.Failed(
+                "${handle.originalFilename}: ${ObjCFailure.of("writeDataForAssetResource", error).message}",
+            )
         }
     }
 
@@ -202,7 +206,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      * lets a repeated gather re-add without placing anything twice. See
      * changes/archive/2026-09-21-album-gathers-retroactively.
      */
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
+    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
         if (assets.isEmpty()) return WriteOutcome.Ok
         val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
             .firstObject as? PHAssetCollection
@@ -235,8 +239,8 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
             )
         }
 
-    private fun fetchById(ids: Set<AssetId>): PHFetchResult =
-        PHAsset.fetchAssetsWithLocalIdentifiers(ids.map(PhotoKitAssetIds::localIdentifierOf), null)
+    private fun fetchById(ids: Set<PlatformAssetId>): PHFetchResult =
+        PHAsset.fetchAssetsWithLocalIdentifiers(ids.map { it.value }, null)
 
     private fun records(collections: PHFetchResult): List<AlbumRecord> = buildList {
         var i = 0uL
@@ -248,46 +252,37 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
     }
 }
 
-/** The facts of every asset of an already-fetched [result] — plain in-memory properties, no resource read. */
-fun photoKitFacts(result: PHFetchResult): List<AssetFacts> = buildList {
-    result.forEachAsset { asset ->
-        val id = asset.canonicalIdOrReport() ?: return@forEachAsset
-        add(asset.toAssetFacts(id, creationDateOf(asset)))
-    }
+/** Every asset of an already-fetched [result] — plain in-memory properties, no resource read. */
+fun photoKitAssets(result: PHFetchResult): List<GalleryAsset> = buildList {
+    result.forEachAsset { asset -> add(asset.toGalleryAsset()) }
 }
 
 /**
- * Every asset of an already-fetched [result] with all of its resources — one `assetResourcesForAsset` round-trip
+ * Every asset of an already-fetched [result] with its original resources — one `assetResourcesForAsset` round-trip
  * per asset. Two callers hold a fetch result already and must not issue another fetch to reach its assets: the
  * by-identifier read above, and the `LIMITED` selection observer, whose re-fetch would repeat a read already paid
  * for (the read discipline under a partial grant is about reading the right source — not about alert suppression).
  */
-fun photoKitRawAssets(result: PHFetchResult): List<RawAsset> = buildList {
+fun photoKitAssetResources(result: PHFetchResult): List<GalleryAssetResources> = buildList {
     result.forEachAsset { asset ->
-        val id = asset.canonicalIdOrReport() ?: return@forEachAsset
-        val creationDate = creationDateOf(asset)
-        val rawResources = PHAssetResource.assetResourcesForAsset(asset).map { any ->
+        val resources = PHAssetResource.assetResourcesForAsset(asset).mapNotNull { any ->
             val resource = any as PHAssetResource
-            RawResource(
-                // The role, not the raw PHAssetResourceType: the ABI table is this module's
-                // (`photoKitResourceRole`), so no platform value crosses the port.
-                role = photoKitResourceRole(resource.type),
+            // The kind, not the raw PHAssetResourceType: the ABI table is this module's (`photoKitResourceKind`).
+            val kind = photoKitResourceKind(resource.type) ?: return@mapNotNull null
+            GalleryResource(
+                kind = kind,
                 // Apple's UTI→MIME table stays iOS-only — and the resolved MIME is the ONLY content type reported,
                 // so the UTI never reaches the wire. Measured at the origin (SE2, iOS 26.6): objects typed with the
                 // raw UTI were stored as `public.jpeg`, which no HTTP client interprets.
-                mimeContentType = UTType.typeWithIdentifier(resource.uniformTypeIdentifier)?.preferredMIMEType
+                contentType = UTType.typeWithIdentifier(resource.uniformTypeIdentifier)?.preferredMIMEType
                     ?: "application/octet-stream",
                 originalFilename = resource.originalFilename,
-                handle = resource, // opaque PHAssetResource, crosses uninterpreted
+                handle = PhotoKitResource(resource),
             )
         }
-        add(RawAsset(id, creationDate, rawResources, asset.toAssetFacts(id, creationDate)))
+        add(GalleryAssetResources(asset.toGalleryAsset(), resources))
     }
 }
-
-// Per-asset capture timestamp (ISO-8601), through the ONE shared formatter: building one per asset was most of a
-// walk's CPU (see [Iso8601]).
-private fun creationDateOf(asset: PHAsset): String = asset.creationDate?.let { Iso8601.format(it) } ?: ""
 
 private inline fun PHFetchResult.forEachAsset(action: (PHAsset) -> Unit) {
     var i = 0uL

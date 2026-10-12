@@ -19,8 +19,8 @@ class UploadKeysTest {
         assertEquals("X-live.mov", live)
     }
 
-    // The platform resource-type → role table moved to `:adapter:ios:ext-safe`
-    // (`photoKitResourceRole`) with the `PHAssetResourceType` constants it reads. Asserting it here
+    // The platform resource-type table lives in `:adapter:ios:ext-safe`
+    // (`photoKitResourceKind`) with the `PHAssetResourceType` constants it reads. Asserting it here
     // meant asserting bare integers against bare integers: nothing in a JVM run could disagree, and
     // an ABI table written in literals is invisible to every gate. Its tests moved with it and now
     // name Apple's constants, including the edited-Live-Photo case.

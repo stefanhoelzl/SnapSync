@@ -8,12 +8,12 @@ import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
 import app.snapsync.model.StartResult
 import app.snapsync.model.TransferNetwork
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.ImportOutcome
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.sharedOver
@@ -45,7 +45,7 @@ private object InertDownload : Download {
 private object NoImports : GalleryImport {
     override suspend fun import(
         request: ImportRequest,
-    ): ImportResult = ImportResult.Failed("the flow tests never import")
+    ): ImportOutcome = ImportOutcome.Failed("the flow tests never import")
 }
 
 /** A library that can tell nothing about an imported asset — no flow test adjudicates one. */

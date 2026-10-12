@@ -3,7 +3,6 @@ package app.snapsync.services.upload
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.FileAccess
@@ -14,7 +13,6 @@ import app.snapsync.model.FileTail
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
@@ -31,8 +29,12 @@ import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Files
+import app.snapsync.ports.GalleryAsset
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
 import app.snapsync.services.gallery.Discovery
@@ -124,26 +126,34 @@ class UploadTransferServiceTest {
     private class Library(val exportable: Set<String> = emptySet()) : GalleryReader {
         val exports = mutableListOf<Pair<String, String>>()
         override fun access() = LibraryGrant.GRANTED
-        override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
+        override suspend fun assets(
+            filter: AssetFilter,
+        ): GalleryRead<List<GalleryAsset>> = GalleryRead.Read(emptyList())
         override suspend fun assetsById(
-            ids: Set<AssetId>,
-        ): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
-        override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = GalleryRead.Read(emptyList())
+            ids: Set<PlatformAssetId>,
+        ): GalleryRead<List<GalleryAsset>> = GalleryRead.Read(emptyList())
+        override suspend fun resources(
+            ids: Set<PlatformAssetId>,
+        ): GalleryRead<List<GalleryAssetResources>> = GalleryRead.Read(emptyList())
         override suspend fun albums(): GalleryRead<List<AlbumRecord>> = GalleryRead.Read(emptyList())
         override suspend fun albumsById(
             ids: Set<AlbumId>,
         ): GalleryRead<List<AlbumRecord>> = GalleryRead.Read(emptyList())
-        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> =
+        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> =
             GalleryRead.Read(emptySet())
         override val albumKind: AlbumKind = AlbumKind.COLLECTION
         override suspend fun createAlbum(title: String): AlbumId? = null
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>) = WriteOutcome.Ok
-        override suspend fun export(resource: Resource, to: String): WriteOutcome {
-            if (resource.filename !in exportable) return WriteOutcome.Failed("gone")
-            exports += resource.filename to to
+        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>) = WriteOutcome.Ok
+        override suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome {
+            val key = (resource as KeyHandle).key
+            if (key !in exportable) return WriteOutcome.Failed("gone")
+            exports += key to to
             return WriteOutcome.Ok
         }
     }
+
+    /** The test library's handle of a resource: the key it was read under. */
+    private data class KeyHandle(val key: String) : GalleryResourceHandle
 
     /** The shared area as a set of paths, located under `/shared/` — or unreachable when [reachable] is off. */
     private class SharedArea(
@@ -272,7 +282,7 @@ class UploadTransferServiceTest {
 
     @Test
     fun `a file uploader is handed the exported file which goes when no job was created`() = runTest {
-        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), "handle")
+        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), KeyHandle("A-primary.jpg"))
         val upload = ScriptedUpload(accepts = UploadSourceKind.FILE, createAnswer = UploadCreateOutcome.LIMIT_EXCEEDED)
         val library = Library(exportable = setOf("A-primary.jpg"))
         val files = SharedArea()
@@ -336,10 +346,21 @@ class UploadTransferServiceTest {
 
     @Test
     fun `a resource the library can no longer export is not a job`() = runTest {
-        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), "handle")
+        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), KeyHandle("A-primary.jpg"))
         val upload = ScriptedUpload(accepts = UploadSourceKind.FILE)
         val outcome = service(upload).createJob(UploadRequest(url, emptyMap(), resource), resource)
         assertEquals(UploadCreateOutcome.FAILED, outcome)
+        assertTrue(upload.created.isEmpty())
+    }
+
+    @Test
+    fun `a resource the library did not read has nothing to export and is not a job`() = runTest {
+        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), Unit)
+        val upload = ScriptedUpload(accepts = UploadSourceKind.FILE)
+        val library = Library(exportable = setOf("A-primary.jpg"))
+        val outcome = service(upload, library = library).createJob(UploadRequest(url, emptyMap(), resource), resource)
+        assertEquals(UploadCreateOutcome.FAILED, outcome)
+        assertTrue(library.exports.isEmpty(), "the library is never asked")
         assertTrue(upload.created.isEmpty())
     }
 

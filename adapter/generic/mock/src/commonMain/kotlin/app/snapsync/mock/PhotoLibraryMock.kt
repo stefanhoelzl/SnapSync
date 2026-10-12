@@ -2,13 +2,13 @@ package app.snapsync.mock
 
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.RawAsset
-import app.snapsync.model.SelectionSnapshot
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.SelectionSnapshot
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,24 +49,24 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     // ---- the library ------------------------------------------------------------------------------
 
     /** The whole library, unscoped — an operator read (the app has no unbounded walk). */
-    fun current(): List<RawAsset> = state.library.value
+    fun current(): List<GalleryAssetResources> = state.library.value
 
     /** The library as a cell. */
-    val contents: StateFlow<List<RawAsset>> = state.library.asStateFlow()
+    val contents: StateFlow<List<GalleryAssetResources>> = state.library.asStateFlow()
 
     /** The library becomes exactly [assets]. */
-    fun set(assets: List<RawAsset>) {
+    fun set(assets: List<GalleryAssetResources>) {
         state.library.value = assets
     }
 
     // The app imports into the same cell from its own thread: each change is one atomic update, never a read and a
     // write another change can land between.
-    fun add(asset: RawAsset) {
+    fun add(asset: GalleryAssetResources) {
         state.library.update { it + asset }
     }
 
-    fun remove(assetId: AssetId) {
-        state.library.update { library -> library.filterNot { it.assetId == assetId } }
+    fun remove(assetId: PlatformAssetId) {
+        state.library.update { library -> library.filterNot { it.id == assetId } }
     }
 
     // ---- the grant --------------------------------------------------------------------------------
@@ -86,7 +86,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
      * The person's selection under a partial grant, as they last picked it — `null` until they have. The operating
      * system keeps it across a process; which of it a process has been told is that process's own business.
      */
-    val selection: StateFlow<List<RawAsset>?> = state.selection.asStateFlow()
+    val selection: StateFlow<List<GalleryAssetResources>?> = state.selection.asStateFlow()
 
     /** Whether the running process's selection observer is open (composition opens it, on every start). */
     val observing: Boolean get() = state.observer != null
@@ -99,7 +99,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
      * process's observer, as the real observer delivers one. Fails loudly when no observer is open, rather than doing
      * nothing: a process whose observer is closed would hear nothing.
      */
-    fun changeSelection(assets: List<RawAsset>) {
+    fun changeSelection(assets: List<GalleryAssetResources>) {
         val observer = checkNotNull(state.observer) { "the selection observer is not open — the composition opens it" }
         state.selection.value = assets
         observer.deliver(SelectionSnapshot(assets))
@@ -124,20 +124,20 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     val created: List<Pair<String, String>> get() = state.locked { state.createdLog.toList() }
 
     /** Every add the app made, in order: (album id, the assets asked for). */
-    val added: List<Pair<String, List<AssetId>>> get() = state.locked { state.addedLog.toList() }
+    val added: List<Pair<String, List<PlatformAssetId>>> get() = state.locked { state.addedLog.toList() }
 
     /** Every asset id the app asked to add to [albumId], across all adds, in order. */
-    fun assetsIn(albumId: String): List<AssetId> =
+    fun assetsIn(albumId: String): List<PlatformAssetId> =
         state.locked { state.addedLog.filter { it.first == albumId }.flatMap { it.second } }
 
     /**
      * The photos in the app's album [albumId]: under [AlbumKind.COLLECTION] every asset it was asked to add, in order
      * ([assetsIn]); under [AlbumKind.FOLDER] the photos its folder holds now.
      */
-    fun contentsOf(albumId: String): List<AssetId> = when (state.albumKind) {
+    fun contentsOf(albumId: String): List<PlatformAssetId> = when (state.albumKind) {
         AlbumKind.COLLECTION -> assetsIn(albumId)
         AlbumKind.FOLDER -> {
-            val held = state.library.value.mapTo(mutableSetOf()) { it.assetId }
+            val held = state.library.value.mapTo(mutableSetOf()) { it.id }
             state.locked {
                 state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
             }
@@ -147,7 +147,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     /** Put [assetId] into an album some other app made, titled [title] — e.g. `placeIn("WhatsApp", "A1")`. */
     fun placeIn(title: String, assetId: String) {
         val cell = checkNotNull(state.writableAlbums) { "this library's other-app albums are a read-only cell" }
-        cell.update { albums -> albums + (title to (albums[title].orEmpty() + AssetId(assetId))) }
+        cell.update { albums -> albums + (title to (albums[title].orEmpty() + PlatformAssetId(assetId))) }
     }
 
     /**
@@ -160,7 +160,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
             AlbumKind.FOLDER -> state.locked {
                 val inside = state.folderOf.filterValues { it == albumId }.keys.toSet()
                 state.folderOf.keys.removeAll(inside)
-                state.library.update { library -> library.filterNot { it.assetId in inside } }
+                state.library.update { library -> library.filterNot { it.id in inside } }
             }
         }
     }
@@ -179,7 +179,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     }
 
     /** The album folder [assetId] lives in under [AlbumKind.FOLDER], or `null` — the camera folder. */
-    fun folderOf(assetId: AssetId): String? = state.locked { state.folderOf[assetId] }
+    fun folderOf(assetId: PlatformAssetId): String? = state.locked { state.folderOf[assetId] }
 
     /** Every add waits until [releaseAdds]. Holding again while held changes nothing. */
     fun holdAdds() = state.adds.hold()
@@ -213,9 +213,9 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
  * thread while an inspector reads them from another.
  */
 internal class LibraryState(
-    val library: MutableStateFlow<List<RawAsset>>,
+    val library: MutableStateFlow<List<GalleryAssetResources>>,
     val access: MutableStateFlow<LibraryGrant>,
-    val userAlbums: StateFlow<Map<String, Set<AssetId>>>,
+    val userAlbums: StateFlow<Map<String, Set<PlatformAssetId>>>,
     answer: LibraryGrant,
     /** How the library answers each change; `null` is the [imports] script's answers. */
     answers: LibraryChangeAnswers?,
@@ -226,13 +226,13 @@ internal class LibraryState(
 
     @Volatile var answer: LibraryGrant = answer
 
-    class Album(val title: String, val members: MutableSet<AssetId> = mutableSetOf())
+    class Album(val title: String, val members: MutableSet<PlatformAssetId> = mutableSetOf())
 
     /** The process whose composition registered last, and its handlers. */
     class Listener(val face: Any, val handlers: GalleryHandlers)
 
     val imports = ImportScript()
-    val selection = MutableStateFlow<List<RawAsset>?>(null)
+    val selection = MutableStateFlow<List<GalleryAssetResources>?>(null)
 
     /** How many times the app presented the limited-library picker. */
     @Volatile var pickersShown: Int = 0
@@ -247,7 +247,7 @@ internal class LibraryState(
     var albumCounter = 0
     val created = mutableMapOf<AlbumId, Album>()
     val createdLog = mutableListOf<Pair<String, String>>()
-    val addedLog = mutableListOf<Pair<String, List<AssetId>>>()
+    val addedLog = mutableListOf<Pair<String, List<PlatformAssetId>>>()
     val deletedAlbums = mutableSetOf<String>()
     val adds = OperatorHold()
     val enumeration = OperatorHold()
@@ -259,13 +259,13 @@ internal class LibraryState(
     @Volatile var albumKind = AlbumKind.COLLECTION
 
     /** Under [AlbumKind.FOLDER], the app's album folder each photo in one lives in; a photo in none is in the camera folder. */
-    val folderOf = mutableMapOf<AssetId, AlbumId>()
+    val folderOf = mutableMapOf<PlatformAssetId, AlbumId>()
 
     /** What this library imported — the photos the app saved itself, which it may move. */
-    val ownImports = mutableSetOf<AssetId>()
+    val ownImports = mutableSetOf<PlatformAssetId>()
 
     /** [userAlbums] as the operator writes it — a caller-supplied read-only cell is never written. */
-    val writableAlbums: MutableStateFlow<Map<String, Set<AssetId>>>? get() = userAlbums as? MutableStateFlow
+    val writableAlbums: MutableStateFlow<Map<String, Set<PlatformAssetId>>>? get() = userAlbums as? MutableStateFlow
 }
 
 /**

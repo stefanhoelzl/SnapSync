@@ -26,7 +26,7 @@ import kotlin.test.assertNull
  * the upload services', tested there (`UploadJobDecisionsTest`).
  *
  * Every assertion names the SDK's **own constants** rather than the integers behind them — the lesson
- * `PhotoKitResourceRoleTest` records: a table over Apple's ABI asserted as bare integers against bare integers is
+ * `PhotoKitResourceKindTest` records: a table over Apple's ABI asserted as bare integers against bare integers is
  * indistinguishable from arithmetic.
  *
  * Two tests below pass `null` where cinterop declares the value non-null. **That is the point.** A job's `destination`

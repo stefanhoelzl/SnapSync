@@ -19,11 +19,11 @@ import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.simulatorAppContract
 import app.snapsync.gallery.IosGalleryReader
-import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import co.touchlab.kermit.Logger
 
 /**
@@ -74,7 +74,7 @@ class SimAppPartialGalleryBinding : Binding<GalleryState, GalleryChange> {
         if (state !in reaches) return Entered.Unreachable("this launch holds a partial grant")
         val seedDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate
         val selection = seedPhotos(seedDate).mapTo(linkedSetOf()) {
-            checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" }
+            PlatformAssetId(it)
         }
         return Entered.Ready(GalleryChange(contractGallery().recorded(log), selection) { seedPhotos(seedDate) })
     }

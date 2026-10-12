@@ -2,6 +2,7 @@
 
 package app.snapsync.ios.upload
 
+import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.logging.invocation
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.UploadCreateOutcome
@@ -19,7 +20,6 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import platform.Photos.PHAssetResource
 import kotlin.reflect.KClass
 
 /**
@@ -165,7 +165,7 @@ object SimulatorUploadJobs : SimulatorJobSets()
  * the in-flight limit. Every decision about a job (its row, its disposition, which offered retry is a key's) is the
  * upload services', exactly as over the real queue.
  *
- * It takes a payload of [payloadType] only — the type boundary the real adapter draws at `PHAssetResource`: a payload
+ * It takes a payload of [payloadType] only — the type boundary the real adapter draws at a PhotoKit resource: a payload
  * of any other type is not a job. A contract binding on a host with no photo library passes its own stand-in's type.
  */
 internal class SimulatorUploadJobQueue(
@@ -174,8 +174,8 @@ internal class SimulatorUploadJobQueue(
     private val payloadType: KClass<*>,
 ) : Upload {
 
-    /** The substitute the app composes: the process-wide sets, and `PHAssetResource` as the only usable payload. */
-    constructor(log: Logger) : this(log, SimulatorUploadJobs, PHAssetResource::class)
+    /** The substitute the app composes: the process-wide sets, and a PhotoKit resource as the only usable payload. */
+    constructor(log: Logger) : this(log, SimulatorUploadJobs, PhotoKitResource::class)
 
     override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
     override val acceptsFiles: Boolean = false
@@ -195,7 +195,7 @@ internal class SimulatorUploadJobQueue(
         log.invocation("simulated.create", params = "tag=$tag", result = { "$it" }) {
             val resource = (source as? UploadSource.Resource)?.handle
             if (!payloadType.isInstance(resource)) {
-                log.w { "create: the payload is not a PHAssetResource — not creating" }
+                log.w { "create: the payload is not a PhotoKit resource — not creating" }
                 return@invocation UploadCreateOutcome.FAILED
             }
             jobs.record(target.asCreatedJob(tag, isRetry = false, resource))

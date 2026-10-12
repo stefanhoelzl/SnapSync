@@ -6,7 +6,6 @@ import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.candidatesFromFacts
-import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
 
 /**
@@ -29,7 +28,10 @@ class GalleryDiscovery(private val gallery: GalleryReader) : UploadDiscovery {
         return when (val read = gallery.assets(filter)) {
             GalleryRead.NotReadable -> Discovery(candidates = emptyList(), fullEnumeration = false)
             is GalleryRead.Read ->
-                Discovery(candidatesFromFacts(read.value, resourceBatch(gallery)), fullEnumeration = authoritative)
+                Discovery(
+                    candidatesFromFacts(read.value.map { it.facts() }, resourceBatch(gallery)),
+                    fullEnumeration = authoritative,
+                )
         }
     }
 
@@ -40,7 +42,8 @@ class GalleryDiscovery(private val gallery: GalleryReader) : UploadDiscovery {
      */
     override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
         if (keys.isEmpty()) return emptyList()
-        return when (val read = gallery.resources(keys.mapTo(linkedSetOf(), ::assetIdFromUploadKey))) {
+        val ids = keys.mapTo(linkedSetOf()) { assetIdFromUploadKey(it).platformId() }
+        return when (val read = gallery.resources(ids)) {
             GalleryRead.NotReadable -> emptyList()
             is GalleryRead.Read -> resourcesFrom(read.value).filter { it.filename in keys }
         }

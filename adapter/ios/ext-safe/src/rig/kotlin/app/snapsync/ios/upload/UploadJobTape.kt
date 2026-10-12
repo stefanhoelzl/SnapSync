@@ -6,13 +6,13 @@ import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Landed
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
+import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJobState
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.HTTPMethod
 import platform.Foundation.NSURLRequest
 import platform.Foundation.allHTTPHeaderFields
-import platform.Photos.PHAssetResource
 
 /*
  * The upload-job seam and the fixture reads, recorded inside the upload extension and replayed on every CI build
@@ -39,7 +39,7 @@ private fun NSURLRequest.render(): String {
 
 private fun resourceKind(resource: Any?): String = when (resource) {
     null -> NONE
-    is PHAssetResource, ReplayPhoto -> "photo"
+    is PhotoKitResource, ReplayPhoto -> "photo"
     else -> "other"
 }
 

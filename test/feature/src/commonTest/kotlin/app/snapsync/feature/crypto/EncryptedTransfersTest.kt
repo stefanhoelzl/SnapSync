@@ -39,6 +39,7 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
 import app.snapsync.services.crypto.DownloadOpening
@@ -121,7 +122,7 @@ class EncryptedTransfersTest {
     /** A library whose export writes [photo] where it is told — into the device's in-memory shared area. */
     private fun exporting(files: RecordingFiles): GalleryReader =
         object : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
-            override suspend fun export(resource: Resource, to: String): WriteOutcome {
+            override suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome {
                 files.write(FileArea.SHARED, to.removePrefix("mem:/shared/"), photo)
                 return WriteOutcome.Ok
             }
@@ -154,7 +155,10 @@ class EncryptedTransfersTest {
         sealing = device.sealing,
     )
 
-    private val resource = Resource(KEY, AssetId(ASSET), "public.heic", emptyMap(), Unit)
+    private val resource = Resource(KEY, AssetId(ASSET), "public.heic", emptyMap(), TestPhoto)
+
+    /** The photo library's handle of the one photo these transfers send. */
+    private object TestPhoto : GalleryResourceHandle
     private val request = UploadRequest(
         "https://edge.example/api/v2/events/$EVENT/files/devices/$DEVICE_A/$ASSET/primary?filename=IMG.HEIC",
         mapOf("Content-Type" to "image/heic"),
