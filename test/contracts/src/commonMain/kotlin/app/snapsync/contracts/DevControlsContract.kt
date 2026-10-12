@@ -15,8 +15,9 @@ enum class DevControlsState {
     SHIPPED,
 
     /**
-     * A rig build whose controls the channel switched: the app's uploader pinned off, invite hints honoured, new events
-     * created plain — and a reset the channel can deliver ([DevControlsUnderTest.resetFromChannel]).
+     * A rig build whose controls the channel switched away from a shipped build's: the app's uploader pinned off, invite
+     * hints honoured, new events created encrypted (a shipped build creates plain ones until encrypted creation is
+     * re-enabled, `PENDING_CLEANUPS.md`) — and a reset the channel can deliver ([DevControlsUnderTest.resetFromChannel]).
      */
     SWITCHED,
 }
@@ -26,7 +27,7 @@ class DevControlsUnderTest(val controls: DevControls, val resetFromChannel: (sus
 
 /**
  * What the build's developer controls promise the composition (`docs/architecture.md`): a shipped build answers every
- * control as shipped — no pin, hints ignored, events encrypted — and a rig build answers what its channel set, and
+ * control as shipped — no pin, hints ignored, events plain — and a rig build answers what its channel set, and
  * delivers the channel's reset to the composition that listened.
  */
 object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("DevControls") {
@@ -44,14 +45,14 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
                     answers(DevControls::listen).returns()
                     answers(DevControls::uploaderPin).with(null)
                     answers(DevControls::inviteLinkHints).with(InviteLinkHints.Ignored)
-                    answers(DevControls::createsPlainEvents).with(false)
+                    answers(DevControls::createsPlainEvents).with(true)
                 }
             },
         ) { subject ->
             subject.controls.listen(DevHandlers(onReset = { error("a shipped build resets nothing") }))
             assertNull(subject.controls.uploaderPin(), "both uploaders, as a shipped build runs them")
             assertEquals(InviteLinkHints.Ignored, subject.controls.inviteLinkHints(), "a link is an ordinary invite")
-            assertFalse(subject.controls.createsPlainEvents(), "every event is created encrypted")
+            assertTrue(subject.controls.createsPlainEvents(), "every event is created plain")
         }
 
         clause(
@@ -62,7 +63,7 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
                     answers(DevControls::listen).returns()
                     answers(DevControls::uploaderPin).returns()
                     answers(DevControls::inviteLinkHints).with(InviteLinkHints.Honoured)
-                    answers(DevControls::createsPlainEvents).with(true)
+                    answers(DevControls::createsPlainEvents).with(false)
                     calls(DevHandlers::onReset)
                 }
             },
@@ -72,7 +73,7 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
             subject.controls.listen(DevHandlers(onReset = { resets++ }))
             assertEquals(PINNED, subject.controls.uploaderPin(), "the pin the channel set")
             assertEquals(InviteLinkHints.Honoured, subject.controls.inviteLinkHints(), "a rig joins headlessly")
-            assertTrue(subject.controls.createsPlainEvents(), "the channel switched encryption off")
+            assertFalse(subject.controls.createsPlainEvents(), "the channel switched encryption on")
             reset()
             assertEquals(1, resets, "the channel's reset reaches the composition that listened")
         }

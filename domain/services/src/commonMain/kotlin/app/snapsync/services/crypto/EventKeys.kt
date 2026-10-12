@@ -140,7 +140,8 @@ class MintedKey(val linkKey: String, val keyId: String)
 /**
  * **Whether a new event is encrypted, and its key** (the encrypted file format, `docs/architecture.md`): a fresh key
  * for every event, unless the build's development control asks for a plain one ([DevControls.createsPlainEvents] —
- * a rig build's switch, inert in production). Asked once per create.
+ * a rig build's switch; a production build answers plain until encrypted creation is re-enabled, `PENDING_CLEANUPS.md`).
+ * Asked once per create.
  */
 class EventKeyMinting(private val keys: EventKeys, private val controls: DevControls) {
     fun forNewEvent(): MintedKey? = if (controls.createsPlainEvents()) null else keys.mint()

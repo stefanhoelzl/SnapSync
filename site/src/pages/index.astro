@@ -241,14 +241,7 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           the invite only with people you want to have them. A photo is shared exactly as it was
           taken, including the details it carries, such as where it was taken, if your camera
           recorded that. Photos are stored to make sharing work and are deleted with the event (see
-          below). In an event created with SnapSync 0.6 or later, every photo is stored encrypted,
-          with a key that exists only on the phones in the event and in the event's invite link; our
-          service is never given that key, so it cannot open the stored photos. The one exception is
-          an iPhone that uploads photos in the background through the system's own photo uploader:
-          there, each photo reaches our service unencrypted together with a key that opens only that
-          photo, and our service encrypts it as it arrives and keeps neither the key nor the
-          unencrypted photo. Legal basis: performance of the service you asked for (GDPR Art.
-          6(1)(b)).
+          below). Legal basis: performance of the service you asked for (GDPR Art. 6(1)(b)).
         </li>
         <li>
           <strong>A random device ID.</strong> Each install generates a random identifier so the

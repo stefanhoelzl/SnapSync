@@ -29,9 +29,10 @@ interface DevControls : Listenable<DevHandlers> {
 
     /**
      * Whether an event this device creates is PLAIN rather than encrypted (the encrypted file format,
-     * `docs/architecture.md`), read at every create. **Always `false` in a production build**, which encrypts every
-     * event it creates; a rig build answers `true` only to reach the plain events older builds still create, and the
-     * change that retires plain events deletes this read.
+     * `docs/architecture.md`), read at every create. **Always `true` in a production build for now**, which creates plain
+     * events until encrypted creation is re-enabled (`PENDING_CLEANUPS.md`, "Re-enable encrypted creation"); a rig build
+     * encrypts by default and answers `true` only when its channel switches encryption off. The change that retires
+     * plain events deletes this read.
      */
     fun createsPlainEvents(): Boolean
 }

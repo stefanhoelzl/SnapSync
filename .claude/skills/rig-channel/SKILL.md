@@ -591,7 +591,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   motion photo, as an Android member shares it),
   `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read),
   `device/encrypt-new-events?on=false` (the next event this device creates is PLAIN — its invite the fragment form;
-  every build, like a shipped one, encrypts by default, its invite carrying `#k=`. The mocked download session's fixed
+  a rig build encrypts by default, its invite carrying `#k=` — unlike a shipped one, which creates plain events until
+  encrypted creation is re-enabled (`PENDING_CLEANUPS.md`). The mocked download session's fixed
   JPEG does not open as an encrypted file, so a mocked-download world stages nothing of an encrypted event: create a
   plain one to see downloads land on a device; the JVM host seals them itself),
   `device/invite?event=` (JVM host only: the event's whole invite, key included, as its creating device shares it),

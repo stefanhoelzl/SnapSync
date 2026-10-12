@@ -382,7 +382,7 @@ class EncryptedTransfersTest {
     fun a_new_event_is_encrypted_unless_the_builds_control_asks_for_a_plain_one() {
         val controls = app.snapsync.mock.DevControlsMock()
         val minting = EventKeyMinting(EventKeys(crypto, inMemorySecureStore()), controls.port())
-        assertEquals(16, minting.forNewEvent()!!.keyId.length, "a shipped build encrypts every event")
+        assertEquals(16, minting.forNewEvent()!!.keyId.length, "a build asking for no plain event encrypts it")
         controls.operator.encryptsNewEvents = false
         assertEquals(null, minting.forNewEvent(), "a rig build may still create a plain event")
     }

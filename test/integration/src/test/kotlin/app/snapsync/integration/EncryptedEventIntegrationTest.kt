@@ -11,8 +11,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * An encrypted event, as a member meets it (the encrypted file format, `docs/architecture.md`) — every event a build
- * creates, unless a rig build asks for a plain one by `device/encrypt-new-events?on=false`. Its invite carries its key;
+ * An encrypted event, as a member meets it (the encrypted file format, `docs/architecture.md`) — every event a rig
+ * build creates unless it asks for a plain one by `device/encrypt-new-events?on=false` (a shipped build creates plain
+ * events until encrypted creation is re-enabled, `PENDING_CLEANUPS.md`). Its invite carries its key;
  * an invite without it — a link cut short in sharing — opens the incomplete-invite wall and joins nothing.
  */
 class EncryptedEventIntegrationTest {
@@ -22,10 +23,10 @@ class EncryptedEventIntegrationTest {
     @Test
     @Verifies(
         spec = "invite-link",
-        requirement = "The invite link format stays openable forever",
-        scenario = "A new event's invite carries its key",
+        requirement = "Every invite form opens in every future version",
+        scenario = "An encrypted event's invite carries its key",
     )
-    fun a_shipped_build_creates_an_encrypted_event_whose_invite_carries_its_key() = rigTest {
+    fun an_encrypted_event_s_invite_carries_its_key() = rigTest {
         val event = createAndJoin()
         val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl!!
         assertTrue(invite.startsWith("$LINK_ORIGIN/join/$event#k="), invite)
@@ -33,7 +34,7 @@ class EncryptedEventIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "invite-link", requirement = "The invite link format stays openable forever")
+    @Verifies(spec = "invite-link", requirement = "Every invite form opens in every future version")
     fun a_plain_event_keeps_the_fragment_form_invite() = rigTest {
         creatingPlain()
         createAndJoin()

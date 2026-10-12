@@ -19,7 +19,7 @@ class PathFormLinkIntegrationTest {
     @Test
     @Verifies(
         spec = "invite-link",
-        requirement = "The invite link format stays openable forever",
+        requirement = "Every invite form opens in every future version",
         scenario = "A path-form link opens the join screen",
     )
     fun a_path_form_link_opens_the_join_screen_for_its_event() = rigTest {
