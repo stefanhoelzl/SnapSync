@@ -4,7 +4,7 @@
 Serves the guest (and the host, who joins the event they just created the same way): an invite opens
 SnapSync on a join screen where they see which event they are invited to, decide whether to share and whether to
 receive, and choose the capture-date range they share from — and nothing is shared or joined until they confirm. It
-promises that a guest who arrives late can still join until the event closes, and that a membership always has a
+promises that a guest who arrives late can still join until the event's photos are deleted, and that a membership always has a
 bounded capture range so a guest's whole camera roll is never uploaded. A device is in at most one event at a time.
 The invite itself — its format, where it leads, and what opening another event's invite does — is capability
 `invite-link`; what a chosen range admits is capability `photo-sharing`; the album choice is capability `event-album`.

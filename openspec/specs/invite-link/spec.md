@@ -6,7 +6,8 @@ only thing they need. It promises that an invite printed or sent today keeps ope
 whoever holds the whole invite can join the event and see its photos, with no account, approval or password, while
 one cut short opens nothing; that it opens SnapSync on its join screen, or leads through the store and back when the
 app is missing; that a damaged invite, or the invite of the event already joined, changes nothing, while another
-event's invite asks before switching; and that the joined screen offers the invite to pass on until the event closes.
+event's invite asks before switching unless nothing can be lost; and that the joined screen offers the invite to pass
+on until the event's photos are deleted.
 What the join screen does is capability `join-event`; what the web page does with an invite is capability
 `event-site`. Decision record: changes/archive/2026-10-08-encrypt-events-by-default
 
