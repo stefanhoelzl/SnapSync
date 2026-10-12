@@ -1228,9 +1228,11 @@ shared with real users. **Never add a whole-zone reset.** Clean up targeted only
 ### The encrypted file format
 
 The stored bytes of an **encrypted** event's resource. An event is encrypted when it was created with a key; the
-key travels only inside the invite link's fragment and the server holds nothing but its `key_id`. Every build
-creates encrypted events (0.6 on; every build from 0.5 reads them); a rig build can still create a plain one, which
-older builds create and the backend still accepts, until a later change retires plain events.
+key travels only inside the invite link's fragment and the server holds nothing but its `key_id`. A shipped build
+creates PLAIN events for now (every build from 0.5 reads encrypted ones), so every invite it shares opens on 0.4; a rig
+build creates encrypted events by default and can still create a plain one. Encrypted creation returns to shipped
+builds once the minimum app version is 0.5 (`PENDING_CLEANUPS.md`, "Re-enable encrypted creation"), and a later change
+retires plain events.
 
 ```
 prefix    version (1 byte, 0x01) ‖ key id (8 bytes)                       SnapSync's own
@@ -1251,7 +1253,8 @@ segments  AES-256-GCM, 64 KiB ciphertext each (the first shorter by the     │ 
 **Where each step runs in the app** (all in `services/crypto`, over the `Crypto` port):
 
 - **The key** is minted by the creating device (`EventKeys.mint`, unless `DevControls.createsPlainEvents` — inert
-  `false` in production; a rig build's `device/encrypt-new-events?on=false` — answers `true`), sent as its id alone (`POST /events {keyId}`), and
+  `true` in production until encrypted creation is re-enabled; a rig build answers `true` only after
+  `device/encrypt-new-events?on=false`), sent as its id alone (`POST /events {keyId}`), and
   kept on every member's device in the secure store's shared slot `SecureSlots.EVENT_KEY` — written by the join,
   removed by a leave, a reset or a plain join. `EventConfig` holds only `keyId`.
 - **The link decides, never the backend** (`JoinEvent`): a link whose `#k=` does not name the event's `key_id`, or

@@ -26,7 +26,7 @@ class RigDevControlsContractTest {
             if (state !in reaches) return Entered.Unreachable("a rig build's controls are the channel's to set")
             val controls = RigDevControls().apply {
                 pin = DevControlsContract.PINNED
-                encrypts = false
+                encrypts = true
             }
             return Entered.Ready(DevControlsUnderTest(controls.recorded(log), resetFromChannel = controls::reset))
         }

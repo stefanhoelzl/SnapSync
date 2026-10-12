@@ -21,11 +21,14 @@ middle of an event.
 
 ### The floor itself
 - **What:** `MIN_APP_VERSION` in `api/src/config.ts`.
-- **Deadline: before the 0.6 promote.** 0.6 creates encrypted events, whose invite is the keyed path form
-  `/join/<uuid>#k=…`. 0.4 reports that as a damaged invite, not as "update required"; the floor turns it into the
-  update screen. Record: `openspec/changes/encrypt-events-by-default` (design, Migration Plan).
+- **Deadline: before the release that re-enables encrypted creation** (below). That release creates encrypted
+  events, whose invite is the keyed path form `/join/<uuid>#k=…`. 0.4 reports that as a damaged invite, not as
+  "update required"; the floor turns it into the update screen. 0.6 creates plain events, so it does not need the
+  floor. Records: `openspec/changes/encrypt-events-by-default` (design, Migration Plan),
+  `openspec/changes/archive/2026-10-12-defer-encrypt-by-default`.
 - **Extra check before raising it:** no 0.4 device is a member of an open event, so nobody is cut off mid-event.
-  Run against the database and expect `0`:
+  Run against the database and expect `0` (2026-10-12: `5`, in 2 open events — why 0.6 deferred encrypted
+  creation):
   ```sql
   SELECT count(*) FROM memberships m
     JOIN events e ON e.id = m.event_id
@@ -129,16 +132,56 @@ is 0.5, no such membership is live.
   never `done`.
 - **Value:** the default is harmless. Making the parameter required is optional.
 
-## At the 0.6 promote
+## Re-enable encrypted creation
+
+**Unlock condition:** the `MIN_APP_VERSION` 0.5 bump above is merged and deployed.
+
+**Order:** floor merged → this re-enable merged → the privacy claim (next section) merged → promote that release.
+
+### Shipped builds create encrypted events again (app + site + spec)
+- **What:** 0.6 ships with encrypted creation switched off in production, so every invite it shares opens on 0.4
+  (`openspec/changes/archive/2026-10-12-defer-encrypt-by-default`). Every encrypted-event path stays built and tested; only creation is
+  off. A rig build already encrypts by default.
+  - `adapter/generic/app/.../dev/InertDevControls.kt`: `createsPlainEvents()` answers `true` — and its KDoc, and
+    `InertDevControlsTest`.
+  - The KDoc of `DevControls.createsPlainEvents` (`domain/ports`) and `EventKeyMinting`
+    (`domain/services/.../crypto/EventKeys.kt`).
+  - `DevControlsContract`: the shipped clause expects `true`, the switched clause `false`, and
+    `RigDevControlsContractTest` sets `encrypts = true` for `SWITCHED`.
+  - The `invite-link` spec: "Every invite form opens in every future version" says every event this version creates
+    is plain with the fragment form, and "Only the whole invite opens an event's photos" speaks of "an encrypted
+    event".
+  - The Privacy Policy in `site/src/pages/index.astro` ("What we process, and why", "Photos you share") lost its
+    encryption paragraph.
+  - `docs/architecture.md` ("The encrypted file format"), `CLAUDE.md` (the `:domain` entry's Crypto line),
+    `.claude/skills/rig-channel/SKILL.md` (`device/encrypt-new-events`), the comment at `encrypt-new-events` in
+    `test/rig/.../MockLevers.kt`, and the KDoc of `EncryptedEventIntegrationTest`.
+- **Why:** 0.4 cannot open an encrypted event's invite, and the floor could not rise before the 0.6 promote.
+- **Re-enable:** one OpenSpec change. It MODIFIES both `invite-link` requirements back: every event this version
+  creates is encrypted, with the keyed path form as its QR code and shared link, and the scenario "A new event's
+  invite carries its key" (re-point `EncryptedEventIntegrationTest`'s `@Verifies` to it). In the code:
+  - flip `InertDevControls` to `false`, with its test and KDoc;
+  - restore the KDoc, the contract and the rig binding as they were before `defer-encrypt-by-default`;
+  - reword the docs and the skill.
+  - Put the policy paragraph back after "…deleted with the event (see below).", with `<version>` the release's own:
+    > In an event created with SnapSync `<version>` or later, every photo is stored encrypted, with a key that exists
+    > only on the phones in the event and in the event's invite link; our service is never given that key, so it
+    > cannot open the stored photos. The one exception is an iPhone that uploads photos in the background through the
+    > system's own photo uploader: there, each photo reaches our service unencrypted together with a key that opens
+    > only that photo, and our service encrypts it as it arrives and keeps neither the key nor the unencrypted photo.
+- **Record:** `openspec/changes/archive/2026-10-12-defer-encrypt-by-default` (design D1–D5), `openspec/changes/encrypt-events-by-default`.
+
+## At the promote that re-enables encrypted creation
 
 ### The privacy claim on the site and the store listing (site + metadata)
 - **What:** "Private by design" gains a concrete line, true on every upload path: photos are stored so only your
   group can open them. Wording rule: `metadata/messaging.md` (no "encrypted", "secure" or "safe").
   - the `privacy-story` section of `site/src/pages/index.astro`
   - `metadata/listing/en-US.json` (the description), which both stores render from at the promote
-- **Why not earlier:** the site deploys on every merge, and before 0.6 no shipped build creates an encrypted
-  event. It stays untrue for the plain events 0.5 creates until those are retired (below); accepted.
-- **Ship:** merge just before dispatching the 0.6 promote, after the floor above.
+- **Why not earlier:** the site deploys on every merge, and before that release no shipped build creates an
+  encrypted event (0.6 creates plain ones, `openspec/changes/archive/2026-10-12-defer-encrypt-by-default`). It stays untrue for the plain
+  events 0.5 and 0.6 create until those are retired (below); accepted.
+- **Ship:** merge just before dispatching that release's promote, after the floor and the re-enable above.
 - **Record:** `openspec/changes/encrypt-events-by-default` (design D7).
 
 ## Once `MIN_APP_VERSION` ≥ 0.6
@@ -154,10 +197,11 @@ device below it.
 - **Remove:** drop the `isDownloadRedirect` exemption from the version gate, and `isDownloadRedirect` with it.
   `api/test/union-read.test.ts` (the download redirect) gains the header on its redirect requests.
 
-## Once `MIN_APP_VERSION` ≥ 0.6 and no plain event is open
+## Once `MIN_APP_VERSION` ≥ the release that re-enables encrypted creation, and no plain event is open
 
 **Unlock condition:**
-- the floor is 0.6 — 0.5 still creates plain (unencrypted) events, and
+- the floor is at or above the release that re-enables encrypted creation (above) — 0.5 and 0.6 still create plain
+  (unencrypted) events, and
 - no open event is plain. Run against the database and expect `0`:
   ```sql
   SELECT count(*) FROM events WHERE key_id IS NULL AND closed_at IS NULL AND completed_at IS NULL;
