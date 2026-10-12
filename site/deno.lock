@@ -39,7 +39,7 @@
     "packageJson": {
       "dependencies": [
         "npm:@astrojs/check@~0.9.10",
-        "npm:astro@^7.3.5",
+        "npm:astro@^7.3.6",
         "npm:fflate@~0.8.3",
         "npm:prettier-plugin-astro@^1.1.0",
         "npm:prettier@^3.9.9",
