@@ -1165,8 +1165,8 @@ class StatusContainerHost(
             // and the details source fails the load rather than invent one). Loaded details always open the
             // confirm surface; whether its confirm also raises the access dialog is read live
             // ([asksAccessOnJoin]), so a switch whose leave has just cleared the config needs no re-derivation.
-            // A closed (or finished) event is refused before any choice is offered.
-            is JoinLoad.Found -> if (load.completion.closed) {
+            // An event whose photos are deleted is refused before any choice is offered.
+            is JoinLoad.Found -> if (load.completion.completed) {
                 JoinProgress.Closed
             } else {
                 JoinProgress.Detailed(

@@ -1,10 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.feature.support.ConfigWrites
-import app.snapsync.feature.support.inertPendingLeaves
-import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
-import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
@@ -17,9 +14,7 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.services.config.ConfigService
-import app.snapsync.services.crypto.EventKeys
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -68,25 +63,12 @@ class MembershipRefreshTest {
     private fun found(name: String, endsAt: EventEnd = ENDS) =
         JoinLoad.Found(name, STARTS, endsAt, DELETES)
 
-    /**
-     * The rule under test, with "now" pinned. Defaults BEFORE the deadline (the disbelieving side).
-     *
-     * The teardown is the REAL [LeaveEvent] over the same config service, so an ABSENT verdict is asserted by
-     * its actual effect — the membership gone — rather than by a spy that could drift from it.
-     */
-    private fun TestScope.refresh(config: Membership, now: CaptureDate = BEFORE_DEADLINE) =
-        MembershipRefresh(
-            configSource = config.service(now),
-            leaveEvent = LeaveEvent(
-                keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
-                config = config.service(now),
-                stopUploads = {},
-                notifyLeave = { _, _ -> },
-                everythingReceived = { false },
-                scope = this,
-                pendingLeaves = inertPendingLeaves(),
-            ),
-        )
+    /** How many times a confirmed deletion stopped the event's transfers. */
+    private var stopped = 0
+
+    /** The rule under test, with "now" pinned. Defaults BEFORE the deadline (the disbelieving side). */
+    private fun refresh(config: Membership, now: CaptureDate = BEFORE_DEADLINE) =
+        MembershipRefresh(configSource = config.service(now), stopTransfers = { stopped++ })
 
     @Test
     fun `stores a changed name as the whole config with the cutoff preserved`() = runTest {
@@ -139,20 +121,19 @@ class MembershipRefreshTest {
 
     // ── The two-witness absence verdict (capability `manage-membership`) ───────────────────────────────────
     //
-    // ABSENT is the ONE destructive answer, and reaching it needs a definitive `NotFound` AND the
-    // membership's own persisted deadline to have passed. One witness is OFFLINE, so no backend fault can
-    // manufacture both: a zone-wide misconfiguration that 404s every event would otherwise destroy every
-    // membership in the install base at once, unrecoverably — this config is the only record of the join
-    // and the invite QR is derived from it.
+    // ABSENT marks the event deleted, and reaching it needs a definitive `NotFound` AND the membership's own
+    // persisted deadline to have passed. One witness is OFFLINE, so no backend fault can manufacture both: a zone-wide
+    // misconfiguration that 404s every event would otherwise show every member's event as over at once.
 
     @Test
-    fun `NotFound past the deadline is ABSENT and tears the membership down`() = runTest {
+    fun `NotFound past the deadline is ABSENT and marks the event deleted - keeping the membership`() = runTest {
         val config = Membership(joined)
         assertEquals(
             RefreshOutcome.ABSENT,
             refresh(config, now = AFTER_DEADLINE).refresh("E", JoinLoad.NotFound),
         )
-        assertNull(config.config.value) // the real teardown ran: the device is back to unjoined
+        assertEquals(joined.copy(deleted = true), config.config.value, "the app never leaves an event on its own")
+        assertEquals(1, stopped, "every transfer for the event stops")
     }
 
     @Test
@@ -165,6 +146,7 @@ class MembershipRefreshTest {
             refresh(config, now = BEFORE_DEADLINE).refresh("E", JoinLoad.NotFound),
         )
         assertEquals(joined, config.config.value) // membership completely intact
+        assertEquals(0, stopped)
     }
 
     @Test
@@ -197,41 +179,52 @@ class MembershipRefreshTest {
         )
     }
 
-    // ── Early completion (capability `event-lifetime`) ─────────────────────────────────────────────────
+    // ── The end of an event's life (capability `event-lifetime`) ───────────────────────────────────────
 
     @Test
-    fun `a COMPLETED event ends the membership before its deadline`() = runTest {
+    fun `a COMPLETED event is marked deleted before its deadline and kept`() = runTest {
         val config = Membership(joined)
-        val completed = JoinLoad.Found(
-            joined.name,
-            STARTS,
-            ENDS,
-            DELETES,
-            EventCompletionState(closed = true, completed = true),
-        )
+        val completed = JoinLoad.Found(joined.name, STARTS, ENDS, DELETES, EventCompletionState(completed = true))
         assertEquals(RefreshOutcome.COMPLETED, refresh(config).refresh("E", completed))
-        assertNull(config.config.value)
+        assertEquals(joined.copy(deleted = true), config.config.value)
+        assertEquals(1, stopped)
     }
 
     @Test
-    fun `a CLOSED event is recorded with its member counts`() = runTest {
+    fun `a deletion already marked is marked once`() = runTest {
+        val config = Membership(joined.copy(deleted = true))
+        val completed = JoinLoad.Found(joined.name, STARTS, ENDS, DELETES, EventCompletionState(completed = true))
+        assertEquals(RefreshOutcome.COMPLETED, refresh(config).refresh("E", completed))
+        assertNull(config.saved)
+        assertEquals(0, stopped)
+    }
+
+    @Test
+    fun `member counts and the open-until date follow the server`() = runTest {
         val config = Membership(joined)
-        val closed = JoinLoad.Found(
+        val served = JoinLoad.Found(
             joined.name,
             STARTS,
             ENDS,
             DELETES,
-            EventCompletionState(closed = true, completed = false, members = MemberCounts(active = 4, settled = 4)),
+            EventCompletionState(completed = false, members = MemberCounts(active = 4, settled = 2, waiting = 1)),
+            openUntil = eventEnd("2026-07-20T00:00:00Z"),
         )
-        assertEquals(RefreshOutcome.CLOSED, refresh(config).refresh("E", closed))
-        assertEquals(joined.copy(closed = true, members = MemberCounts(4, 4)), config.saved)
+        assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", served))
+        assertEquals(
+            joined.copy(members = MemberCounts(4, 2, 1), openUntil = eventEnd("2026-07-20T00:00:00Z")),
+            config.saved,
+        )
     }
 
     @Test
-    fun `a stale OPEN answer never reopens a closed membership`() = runTest {
-        val config = Membership(joined.copy(closed = true))
+    fun `an answer without an open-until date keeps the one known`() = runTest {
+        val known = joined.copy(openUntil = eventEnd("2026-07-20T00:00:00Z"))
+        val config = Membership(known)
         refresh(config).refresh("E", found(joined.name))
-        assertEquals(true, config.config.value?.closed)
+        assertNull(config.saved)
+        refresh(config).refresh("E", found(joined.name).copy(openUntil = eventEnd("2026-07-20T00:00:00Z")))
+        assertNull(config.saved, "an unchanged one saves nothing either")
     }
 
     @Test
@@ -240,22 +233,8 @@ class MembershipRefreshTest {
         val config = Membership(counted)
         refresh(config).refresh(
             "E",
-            JoinLoad.Found(counted.name, STARTS, ENDS, DELETES, EventCompletionState(false, false, MemberCounts(3, 1))),
+            JoinLoad.Found(counted.name, STARTS, ENDS, DELETES, EventCompletionState(false, MemberCounts(3, 1))),
         )
-        assertNull(config.saved)
-    }
-
-    @Test
-    fun `a closed answer for an already-closed membership saves nothing`() = runTest {
-        val config = Membership(joined.copy(closed = true))
-        val closed = JoinLoad.Found(
-            joined.name,
-            STARTS,
-            ENDS,
-            DELETES,
-            EventCompletionState(closed = true, completed = false),
-        )
-        assertEquals(RefreshOutcome.CLOSED, refresh(config).refresh("E", closed))
         assertNull(config.saved)
     }
 }

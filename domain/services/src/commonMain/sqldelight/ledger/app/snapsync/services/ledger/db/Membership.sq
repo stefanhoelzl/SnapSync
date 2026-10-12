@@ -4,16 +4,16 @@
 
 selectMembership:
 SELECT eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum, closed,
-    membersActive, membersSettled, keyId
+    membersActive, membersSettled, membersWaiting, keyId, openUntil, deleted
 FROM membership WHERE id = 0;
 
 saveMembership:
 INSERT OR REPLACE INTO membership (
     id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum, closed,
-    membersActive, membersSettled, keyId
+    membersActive, membersSettled, membersWaiting, keyId, openUntil, deleted
 ) VALUES (
     0, :eventId, :name, :minPhotoDate, :startsAt, :endsAt, :maxPhotoDate, :deletesAt, :direction, :saveToAlbum, :closed,
-    :membersActive, :membersSettled, :keyId
+    :membersActive, :membersSettled, :membersWaiting, :keyId, :openUntil, :deleted
 );
 
 clearMembership:

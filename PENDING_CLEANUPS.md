@@ -288,6 +288,19 @@ also carries the stamp, and keeps it).
   `ClosedError`'s `SetFixed` outcome on `publishManifest` and the app's handling of it.
 - **Record:** `openspec/changes/back-dated-events` (design, D2/D5).
 
+### What stands in for the old close in the app and its mocks (app)
+- **What:** the app and its mocks still know an event can have closed.
+  - `domain/model/.../EventConfig.kt`: `EventConfig.closed`, which only a membership persisted by an earlier build
+    carries (the `closed` column of ledger.db's `membership` row, `13.sqm`), and what reads it.
+  - `adapter/generic/mock/.../BackendMock.kt`: `BackendState.Event.closed`, which only a state saved by an earlier mock
+    carries, and its branches in `join`, `publish` and `BackendRouter.change`.
+  - `test/contracts/.../BackendContract.kt`: the wire-fixture state `CLOSED_BEFORE_OPEN_UNTIL` and its clause.
+- **Why:** a member joined to an event that closed before this release must not be shown it as open while the
+  backend still refuses its rename.
+- **Remove:** the field and its readers (a migration drops the column), the mock's branches and the fixture state, with
+  the api entry above.
+- **Record:** `openspec/changes/back-dated-events` (design, D2/D5).
+
 ## One-off ops
 
 ### Bytes still in the old storage layout (api)

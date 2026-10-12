@@ -20,10 +20,10 @@
 
 ## 3. App: settle, report, never leave
 
-- [ ] 3.1 The download side reports its fully received union position (design D4) through a new `BackendGateway` need-shaped service; verify a feature test over the mocks that the report is sent only once the plan is empty and everything is in the library or deleted, and a contract clause in `BackendContract` against the real api/
-- [ ] 3.2 `EventCompletion` keeps delivering pending leaves, settling and now reporting, and never calls `LeaveEvent` (design D7); verify feature tests: a finished event stays joined in the background and the foreground
-- [ ] 3.3 `MembershipRefresh` turns a confirmed deletion into a local **deleted** flag on the membership (stored in ledger.db's membership row) instead of a leave, transfers stop; the safeguards stay; verify feature tests for completed, 404 past `deletesAt`, premature 404, offline and 5xx
-- [ ] 3.4 Update `BackendMock` to the new lifecycle (no close, derived `closedAt`, `waiting`, received route, `openUntil`) so the JVM rig matches the real api/; verify the backend port contract runs green against both the mock and `LiveEdge`
+- [x] 3.1 The download side reports its fully received union position (design D4) through a new `BackendGateway` need-shaped service; verify a feature test over the mocks that the report is sent only once the plan is empty and everything is in the library or deleted, and a contract clause in `BackendContract` against the real api/
+- [x] 3.2 `EventCompletion` keeps delivering pending leaves, settling and now reporting, and never calls `LeaveEvent` (design D7); verify feature tests: a finished event stays joined in the background and the foreground
+- [x] 3.3 `MembershipRefresh` turns a confirmed deletion into a local **deleted** flag on the membership (stored in ledger.db's membership row) instead of a leave, transfers stop; the safeguards stay; verify feature tests for completed, 404 past `deletesAt`, premature 404, offline and 5xx
+- [x] 3.4 Update `BackendMock` to the new lifecycle (no close, derived `closedAt`, `waiting`, received route, `openUntil`) so the JVM rig matches the real api/; verify the backend port contract runs green against both the mock and `LiveEdge`
 
 ## 4. App: switching and screens
 

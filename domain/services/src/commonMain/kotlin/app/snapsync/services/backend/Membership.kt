@@ -9,8 +9,10 @@ import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.JoinEventReply
 import app.snapsync.wire.api.LeaveEventReply
 import app.snapsync.wire.api.PublishManifestReply
+import app.snapsync.wire.api.ReportReceivedReply
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.api.Unauthorized
+import app.snapsync.wire.models.Received
 
 /**
  * Create or reactivate this device's membership in an event.
@@ -38,8 +40,7 @@ fun interface ManifestPublisher {
 /**
  * Tells the shared event that **this device is leaving it**, and whether it holds
  * every photo of the others ([received]). The backend records the membership as gone — `done` when it left having
- * everything, `left` otherwise — keeps what it shared in the union, and closes an ended event the leave leaves with
- * nobody still unsettled.
+ * everything, `left` otherwise — and keeps what it shared in the union.
  *
  * **This device, always — which is why no `deviceId` crosses it.** The identity doing the leaving is a per-process
  * constant, never a choice the caller makes; taking it as a parameter would widen the service to "make any device
@@ -55,6 +56,18 @@ fun interface LeaveNotifier {
 }
 
 /**
+ * Tells the shared event up to which union position **this device** holds every photo of the others — a member is done
+ * once it has received everything, which is what lets the backend delete an event's photos as soon as every member has
+ * them. This device, always, for the reason [LeaveNotifier] gives.
+ *
+ * `true` once the backend recorded it (or a higher position already was); `false` for any doubt, which the next wake
+ * repeats. Never throws.
+ */
+fun interface ReceivedReporter {
+    suspend fun report(eventId: String, position: Long): Boolean
+}
+
+/**
  * [EventJoin] over the backend. The refusals are mapped rather than flattened, because the caller can act on the
  * difference: [JoinEventReply.Full] is the event at capacity — a sentence the join surface can show — while
  * [EventNotFound] means the event is gone and anything else is a failure a retry may heal.
@@ -65,7 +78,7 @@ class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
         when (gateway.send(Routes.JoinEvent.request(eventId, deviceId), obtainFirst = true)) {
             JoinEventReply.Joined -> JoinResult.JOINED
             JoinEventReply.Full -> JoinResult.EVENT_FULL
-            // A closed (or completed) event admits nobody.
+            // A completed event — or one closed before events stopped closing — admits nobody.
             is Closed -> JoinResult.EVENT_CLOSED
             EventNotFound -> JoinResult.EVENT_NOT_FOUND
             // Still refused after the recovery: no credential the service accepts (the attestation says why).
@@ -76,7 +89,7 @@ class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
 
 /**
  * [ManifestPublisher] over the backend: `true` exactly when the backend published the snapshot — or refused it for
- * good because the event has closed. A publish from a device holding no membership is refused
+ * good because the event completed (or closed before events stopped closing). A publish from a device holding no membership is refused
  * ([PublishManifestReply.NotAMember]) rather than silently creating one.
  */
 class BackendManifestPublisher(private val gateway: BackendGateway) : ManifestPublisher {
@@ -85,7 +98,7 @@ class BackendManifestPublisher(private val gateway: BackendGateway) : ManifestPu
         val body = manifest.onWire() ?: return false
         return when (gateway.send(Routes.PublishManifest.request(eventId, deviceId, body))) {
             PublishManifestReply.Published -> true
-            // A CLOSED event's asset sets are fixed and a COMPLETED one holds none: the
+            // A legacy CLOSED event's asset sets are fixed and a COMPLETED one holds none: the
             // refusal is final, so it is recorded like a publish — re-sending the same snapshot every cycle could
             // never change the answer.
             is Closed, is PublishManifestReply.SetFixed -> true
@@ -114,5 +127,21 @@ class BackendLeaveNotifier(
             EventNotFound -> Result.success(Unit)
             else -> Result.failure(IllegalStateException("leave $eventId/$id: $reply"))
         }
+    }
+}
+
+/**
+ * [ReceivedReporter] over the backend, for the device [identity] names — read per call, as [BackendLeaveNotifier]
+ * reads it.
+ */
+class BackendReceivedReporter(
+    private val gateway: BackendGateway,
+    private val identity: PersistedDeviceIdentity,
+) : ReceivedReporter {
+
+    override suspend fun report(eventId: String, position: Long): Boolean {
+        val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return false }
+        return gateway.send(Routes.ReportReceived.request(eventId, id, Received(position))) ==
+            ReportReceivedReply.Recorded
     }
 }

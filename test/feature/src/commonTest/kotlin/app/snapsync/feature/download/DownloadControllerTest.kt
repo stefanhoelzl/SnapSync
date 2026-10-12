@@ -52,6 +52,7 @@ import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration.Companion.hours
@@ -240,7 +241,7 @@ class DownloadControllerTest {
     @Test
     fun a_lost_key_is_never_taken_for_everything_received() = runTest {
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))), keyHeld = { false })
-        assertFalse(c.everythingReceived("event"), "a member missing photos is never told it holds them all")
+        assertNull(c.receivedPosition("event"), "a member missing photos is never told it holds them all")
     }
 
     @Test
@@ -422,28 +423,34 @@ class DownloadControllerTest {
         assertEquals(setOf(AssetId("L-KEPT")), store.suppressedLocalIds())
     }
 
-    // ── everythingReceived (capability `manage-membership`, "The app leaves on its own …") ──────────
+    // ── receivedPosition (capability `event-lifetime`, a member is done once it has received everything) ──────
 
     @Test
-    fun everything_is_received_only_once_every_foreign_asset_is_settled() = runTest {
+    fun the_position_is_reported_only_once_every_foreign_asset_is_settled() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val c = controller(FakeUnion(listOf(asset(myDevice, "MINE"), asset("DEVICE-A", "Q"))), store = store)
+        val union = FakeUnion(listOf(asset(myDevice, "MINE"), asset("DEVICE-A", "Q")), position = 7)
+        val c = controller(union, store = store)
         val ref = AssetRef("DEVICE-A", AssetId("Q"))
 
-        assertFalse(c.everythingReceived("event"), "a foreign photo not even planned is missing")
+        assertNull(c.receivedPosition("event"), "a foreign photo not even planned is missing")
         c.reconcile("event", UnionTrigger.FOREGROUND)
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
-        assertFalse(c.everythingReceived("event"), "staged but not imported is not received")
+        assertNull(c.receivedPosition("event"), "staged but not imported is not received")
         c.importReady()
-        assertTrue(c.everythingReceived("event"), "own photos never count; the one foreign photo is in the library")
+        assertEquals(7, c.receivedPosition("event"), "own photos never count; the one foreign photo is in the library")
+        assertEquals(
+            UnionTrigger.RECEIVED_CHECK to null,
+            union.reads.last().let { it.second to it.first },
+            "a full read",
+        )
     }
 
     @Test
-    fun a_membership_that_does_not_receive_has_nothing_to_wait_for_and_an_unreadable_union_keeps_it() = runTest {
-        val union = FakeUnion(listOf(asset("DEVICE-A", "Q")))
-        assertTrue(controller(union, downloadEnabled = { false }).everythingReceived("event"))
-        assertFalse(controller(FakeUnion(emptyList(), ok = false)).everythingReceived("event"))
+    fun a_membership_that_does_not_receive_reports_the_position_it_read_and_an_unreadable_union_reports_none() = runTest {
+        val union = FakeUnion(listOf(asset("DEVICE-A", "Q")), position = 3)
+        assertEquals(3, controller(union, downloadEnabled = { false }).receivedPosition("event"))
+        assertNull(controller(FakeUnion(emptyList(), ok = false)).receivedPosition("event"))
     }
 
     /** A membership of "event" in [direction] — what a leave asks about once the joined configuration is gone. */
@@ -1734,7 +1741,7 @@ class DownloadControllerTest {
         c.importReady()
 
         union.assets = listOf(asset("DEVICE-A", "Q"))
-        assertFalse(c.holdsEveryForeignPhoto("event"), "R's download is still pending")
+        assertNull(c.receivedPosition("event"), "R's download is still pending")
     }
 
     @Test

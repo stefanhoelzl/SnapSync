@@ -112,10 +112,10 @@ class CycleGateRead(
      * Whether this process may create now. Each root states its own answer — the app from resolution, the extension
      * from its own grant read. A LOST event key withholds in both: nothing is walked, staged, sealed or published until
      * the invite brings it back, where an unreadable one still runs and withholds at each
-     * seal.
+     * seal. So does an event whose photos are deleted: it takes no more.
      */
     private fun admissionFor(membership: EventConfig?): UploadAdmission =
-        if (eventKeys.lostFor(membership)) UploadAdmission.Withheld else admission()
+        if (membership?.deleted == true || eventKeys.lostFor(membership)) UploadAdmission.Withheld else admission()
 }
 
 /** The skip line [CycleGateRead] hands the cycle: which read failed, and how. */

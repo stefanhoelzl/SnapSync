@@ -57,13 +57,15 @@ class BackendEventDirectory(private val gateway: BackendGateway) : EventDirector
                     startsAt = EventStart(startsAt),
                     endsAt = EventEnd(endsAt),
                     deletesAt = DeletesAt(deletesAt),
-                    // Presence is the fact; the instants are the backend's record.
+                    // Presence is the fact; the instant is the backend's record. `closedAt` is read by builds that
+                    // predate open-until dates only (`PENDING_CLEANUPS.md`): an event no longer closes for this one.
                     completion = EventCompletionState(
-                        closed = meta.closedAt != null || meta.completedAt != null,
                         completed = meta.completedAt != null,
-                        members = MemberCounts(meta.members.active, meta.members.`final`),
+                        members = MemberCounts(meta.members.active, meta.members.`final`, meta.members.waiting),
                     ),
                     keyId = meta.keyId,
+                    // Not one of the required four: an unreadable one costs only the "guests can join until" line.
+                    openUntil = canonicalOrNull(meta.openUntil)?.let(::EventEnd),
                 )
             } else {
                 EventLookup.Failed

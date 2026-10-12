@@ -85,15 +85,21 @@ class LiveEdgeContractsTest {
 
     /**
      * The gateway against a wire fixture (`docs/testing.md`, "Hosts"): a loopback server that answers every route one
-     * way — success in bytes no backend version this build speaks would send, a failing store, or a migration window.
+     * way — success in bytes no backend version this build speaks would send, a failing store, a migration window, or
+     * the refusals only an event that ended for good still gives.
      * It stands in for a backend in that condition, and counts as live for those states alone, because each clause
      * judges only the client's reading — the real engine and socket, reading bytes the clause chose.
      */
     private val wireFixture = object : Binding<BackendState, EdgeSubject<BackendClient>> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
-        override val reaches =
-            setOf(BackendState.UNREADABLE_SUCCESS, BackendState.SERVER_FAILING, BackendState.IN_MAINTENANCE)
+        override val reaches = setOf(
+            BackendState.UNREADABLE_SUCCESS,
+            BackendState.SERVER_FAILING,
+            BackendState.IN_MAINTENANCE,
+            BackendState.ENDED_FOR_GOOD,
+            BackendState.CLOSED_BEFORE_OPEN_UNTIL,
+        )
 
         override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<BackendClient>> {
             if (state !in reaches) return Entered.Unreachable("a wire fixture is no backend: it answers one thing")
@@ -101,6 +107,8 @@ class LiveEdgeContractsTest {
                 BackendState.SERVER_FAILING -> Triple(HTTP_BAD_GATEWAY, mapOf(CONTENT_TYPE to TEXT), "upstream error")
                 BackendState.IN_MAINTENANCE ->
                     Triple(HTTP_UNAVAILABLE, mapOf(CONTENT_TYPE to TEXT, "Retry-After" to "60"), "maintenance")
+                BackendState.ENDED_FOR_GOOD -> Triple(HTTP_GONE, mapOf(CONTENT_TYPE to JSON), CLOSED_BODY)
+                BackendState.CLOSED_BEFORE_OPEN_UNTIL -> Triple(HTTP_CONFLICT, mapOf(CONTENT_TYPE to JSON), CLOSED_BODY)
                 else -> Triple(HTTP_OK, emptyMap(), "<html>a page from somewhere else</html>")
             }
             val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
@@ -138,6 +146,10 @@ class LiveEdgeContractsTest {
         const val HTTP_OK = 200
         const val HTTP_BAD_GATEWAY = 502
         const val HTTP_UNAVAILABLE = 503
+        const val HTTP_GONE = 410
+        const val HTTP_CONFLICT = 409
+        const val JSON = "application/json"
+        const val CLOSED_BODY = "{\"error\":\"closed\"}"
         const val CONTENT_TYPE = "Content-Type"
         const val TEXT = "text/plain; charset=UTF-8"
     }

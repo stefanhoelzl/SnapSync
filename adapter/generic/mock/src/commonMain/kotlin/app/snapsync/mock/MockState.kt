@@ -454,6 +454,8 @@ private class EventDto(
     val createdAtMillis: Long,
     val startsAtMillis: Long,
     val endsAtMillis: Long,
+    /** Absent in a state saved before open-until dates: such an event is open until its end. */
+    val openUntilMillis: Long? = null,
     val closed: Boolean = false,
     val completed: Boolean = false,
     val keyId: String? = null,
@@ -466,6 +468,7 @@ private class MembershipDto(
     val departed: Boolean,
     val manifest: String?,
     val manifestVersion: Long?,
+    val receivedPosition: Long? = null,
 )
 
 @Serializable
@@ -537,6 +540,7 @@ private class BackendDto(
                 Instant.fromEpochMilliseconds(e.createdAtMillis),
                 Instant.fromEpochMilliseconds(e.startsAtMillis),
                 Instant.fromEpochMilliseconds(e.endsAtMillis),
+                Instant.fromEpochMilliseconds(e.openUntilMillis ?: e.endsAtMillis),
                 e.closed,
                 e.completed,
                 e.keyId,
@@ -544,7 +548,12 @@ private class BackendDto(
         }
         memberships.forEach {
             state.memberships[it.event to it.device] =
-                BackendState.Membership(it.departed, it.manifest?.let(::deviceManifestFromJson), it.manifestVersion)
+                BackendState.Membership(
+                    it.departed,
+                    it.manifest?.let(::deviceManifestFromJson),
+                    it.manifestVersion,
+                    it.receivedPosition,
+                )
         }
         deviceConfigs.forEach { (device, config) -> state.deviceConfigs[device] = PushEndpoint(config.first, config.second, config.third) }
         state.deviceConfigWrites.putAll(deviceConfigWrites)
@@ -570,13 +579,21 @@ private class BackendDto(
                     e.createdAt.toEpochMilliseconds(),
                     e.startsAt.toEpochMilliseconds(),
                     e.endsAt.toEpochMilliseconds(),
+                    e.openUntil.toEpochMilliseconds(),
                     e.closed,
                     e.completed,
                     e.keyId,
                 )
             },
             memberships = state.memberships.map { (key, m) ->
-                MembershipDto(key.first, key.second, m.departed, m.manifest?.encodeToJson(), m.manifestVersion)
+                MembershipDto(
+                    key.first,
+                    key.second,
+                    m.departed,
+                    m.manifest?.encodeToJson(),
+                    m.manifestVersion,
+                    m.receivedPosition,
+                )
             },
             deviceConfigs = state.deviceConfigs.mapValues { Triple(it.value.kind, it.value.token, it.value.env) },
             deviceConfigWrites = state.deviceConfigWrites.toMap(),

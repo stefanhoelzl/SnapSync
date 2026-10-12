@@ -299,12 +299,8 @@ class JoinGateIntegrationTest {
     // just the rule (`MembershipRefreshTest` covers the verdict matrix in isolation).
 
     @Test
-    @Verifies(
-        spec = "event-lifetime",
-        requirement = "The app leaves on its own once the event is finished for it",
-        scenario = "A deleted event past its date is left automatically",
-    )
-    fun a_swept_event_returns_the_device_to_unjoined_on_the_next_foreground() = rigTest {
+    @Verifies(spec = "event-lifetime", requirement = "Deletion is never announced and never touches anyone's library")
+    fun a_swept_event_keeps_the_device_in_it_on_the_next_foreground() = rigTest {
         val event = registerEvent(name = "Anna's Wedding")
         openLink(inviteLink(event))
         awaitReady()
@@ -317,11 +313,9 @@ class JoinGateIntegrationTest {
         device("clock/advance", "to" to PAST_EVERY_DEADLINE)
 
         os("app", "onForeground")
-        awaitState { it.ui.layer is Layer.CreateEvent }
-        assertFalse(
-            state().ready.configResolved,
-            "the membership is torn down and the device is back at the setup gate",
-        )
+        // The app never leaves an event on its own: the member stays, and is shown the event is over.
+        neverWithin(what = "a deleted event is never left on its own") { !it.ready.configResolved }
+        assertEquals(event, state().ready.eventId)
     }
 
     @Test

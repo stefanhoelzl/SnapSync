@@ -61,6 +61,7 @@ const UNION_TRIGGERS = [
   "grant",
   "reconfigure",
   "leave-check",
+  "received-check",
 ] as const;
 
 /** The response header naming the position a union answer covers (decision record D3). */

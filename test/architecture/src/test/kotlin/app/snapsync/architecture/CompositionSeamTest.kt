@@ -176,7 +176,7 @@ class CompositionSeamTest {
             "compose/'s best-effort wrapper over the LeaveNotifier PORT, which logs a failed Result rather " +
             "than failing the leave — the port is where the network crossing is declared",
         "LeaveEvent.everythingReceived" to
-            "the sibling DownloadController.holdsEveryForeignPhoto (its union read is the EventUnionSource service), " +
+            "the sibling DownloadController.holdsEverythingFor (its union read is the EventUnionSource service), " +
             "asked of the snapshotted membership since the config is cleared by then — feature-blindness",
         "MembershipEntry.stopUploads" to "the sibling UploadTransitions.onLeave() — feature-blindness",
         "MembershipEntry.notifyLeave" to "the same best-effort wrapper as LeaveEvent.notifyLeave, over the LeaveNotifier port",
@@ -249,9 +249,12 @@ class CompositionSeamTest {
             "run after the tail rather than inside it",
         "EventCompletion.publishFinal" to
             "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
-        "EventCompletion.everythingReceived" to
-            "the sibling DownloadController.everythingReceived (its union read is the EventUnionSource service) — " +
+        "EventCompletion.receivedPosition" to
+            "the sibling DownloadController.receivedPosition (its union read is the EventUnionSource service) — " +
             "feature-blindness",
+        "MembershipRefresh.stopTransfers" to
+            "the siblings DownloadController.onLeaveOrSwitch() and UploadTransitions.onLeave(), as a leave stops them — " +
+            "feature-blindness; their platform touches are the transfer adapters' own",
         "SelectionScopedDiscovery.selectionScope" to "UploadServices.selectionScope, forwarded — a pure core read",
         "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
         "UploadCycle.readGate" to "uploadCycle's own entry-gate translation over the services (readGate in UploadCore.kt)",

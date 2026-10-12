@@ -1,0 +1,14 @@
+import kotlin.Boolean;
+
+-- v14 -> v15: an event no longer closes; it stays open until its photos are deleted (capability `event-lifetime`). The
+-- membership learns three more of the event's facts, each from the event's details:
+--
+--   openUntil       until when the event stays open — its range end, or the date the host chose for an event created
+--                   after its end. NULL until the details first carry it.
+--   membersWaiting  how many present members are still sharing — the waiting line. NULL beside counts recorded
+--                   before it, which then fall back to active minus settled.
+--   deleted         the server confirmed the event's photos are deleted. The membership stays, shown as over; the app
+--                   never leaves on its own. Every existing row is a membership whose event was not known deleted.
+ALTER TABLE membership ADD COLUMN openUntil TEXT;
+ALTER TABLE membership ADD COLUMN membersWaiting INTEGER;
+ALTER TABLE membership ADD COLUMN deleted INTEGER AS Boolean NOT NULL DEFAULT 0;

@@ -2,7 +2,6 @@ package app.snapsync.contracts
 
 import app.snapsync.wire.api.AppTooOld
 import app.snapsync.wire.api.ChangeEventReply
-import app.snapsync.wire.api.Closed
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.GetEventReply
@@ -17,6 +16,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
 /**
@@ -107,6 +109,44 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.eventClauses()
         assertAnswer<CreateEventReply.InvalidWindow>(s.create("Too long", endsAt = "2030-02-15T00:00:00Z"))
     }
 
+    // An event created after its end stays open until the date its host chose — at most
+    // the window after the later of its end and now; the backend reads its own clock, so the clause reads the wall's.
+    clause(
+        "CREATE_A_BACK_DATED_EVENT_IS_OPEN_UNTIL_THE_CHOSEN_DATE",
+        BackendState.SERVING,
+        covers = cells { backend(Routes.CreateEvent.ID, CreateEventReply.Created::class) },
+    ) { s ->
+        val openUntil = wholeSecondsFromNow(7.days)
+        val created = assertAnswer<CreateEventReply.Created>(
+            s.create("Last weekend", SEEDED_ENDED_STARTS_AT, SEEDED_ENDED_ENDS_AT, openUntil = openUntil),
+        ).event
+        assertSameInstant(openUntil, created.openUntil, "the date the host chose")
+        assertSameInstant(
+            (Instant.parse(openUntil) + 30.days).toString(),
+            created.deletesAt,
+            "deletesAt is openUntil + 30 days",
+        )
+    }
+
+    clause(
+        "CREATE_AN_OPEN_UNTIL_PAST_THE_WINDOW_IS_REFUSED_AS_THE_WINDOW",
+        BackendState.SERVING,
+        covers = cells { backend(Routes.CreateEvent.ID, CreateEventReply.InvalidWindow::class) },
+    ) { s ->
+        assertAnswer<CreateEventReply.InvalidWindow>(
+            s.create(
+                "Too long open",
+                SEEDED_ENDED_STARTS_AT,
+                SEEDED_ENDED_ENDS_AT,
+                openUntil = wholeSecondsFromNow(40.days),
+            ),
+        )
+        assertAnswer<CreateEventReply.InvalidWindow>(
+            s.create("Open before its end", openUntil = SEEDED_STARTS_AT),
+            "an event is open at least until its end",
+        )
+    }
+
     clause(
         "GET_AN_EXISTING_EVENT_IS_SERVED_WITH_ITS_WINDOW",
         BackendState.EVENT_EXISTS,
@@ -116,9 +156,10 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.eventClauses()
         assertEquals(s.seeded.event!!.name, meta.name)
         assertSameInstant(SEEDED_STARTS_AT, meta.startsAt, "the start the creator chose")
         assertSameInstant(SEEDED_ENDS_AT, meta.endsAt, "the end the creator chose")
-        // The lifetime is 30 days from max(createdAt, startsAt); the seeded start is in the future.
-        assertSameInstant("2030-01-31T00:00:00Z", meta.deletesAt, "deletesAt is startsAt + 30 days")
-        listOf(meta.createdAt, meta.startsAt, meta.endsAt, meta.deletesAt).forEach {
+        assertSameInstant(SEEDED_ENDS_AT, meta.openUntil, "an event created before its end is open until its end")
+        // The lifetime is 30 days from max(createdAt, openUntil); the seeded end is in the future.
+        assertSameInstant("2030-02-07T00:00:00Z", meta.deletesAt, "deletesAt is openUntil + 30 days")
+        listOf(meta.createdAt, meta.startsAt, meta.endsAt, meta.openUntil, meta.deletesAt).forEach {
             assertTrue(WHOLE_SECOND.matches(it), "an instant is whole-second UTC: $it")
         }
     }
@@ -211,16 +252,17 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.changeClauses(
     }
 
     clause(
-        "CHANGE_A_CLOSED_EVENT_IS_CLOSED",
+        "CHANGE_AN_EVENT_EVERYONE_SHARED_IS_RENAMED",
         BackendState.ENDED_MEMBER,
         covers = cells {
-            backend(Routes.ChangeEvent.ID, Closed::class)
+            backend(Routes.ChangeEvent.ID, ChangeEventReply.Changed::class)
             backend(Routes.GetEvent.ID, GetEventReply.Found::class)
         },
     ) { s ->
+        // Nothing closes an event any more: its name changes until its photos are deleted.
         settle(s)
-        assertAnswer<Closed>(s.rename("Renamed"), "a closed event changes no more")
-        assertEquals(s.seeded.event?.name, s.details(s.seeded.eventId).name)
+        assertAnswer<ChangeEventReply.Changed>(s.rename("Renamed"))
+        assertEquals("Renamed", s.details(s.seeded.eventId).name)
     }
 }
 
@@ -239,7 +281,13 @@ private suspend fun EdgeSubject<BackendClient>.create(
     startsAt: String = SEEDED_STARTS_AT,
     endsAt: String? = SEEDED_ENDS_AT,
     keyId: String? = null,
-): CreateEventReply = port.send(Routes.CreateEvent.request(EventCreate(name, startsAt, endsAt, keyId = keyId)))
+    openUntil: String? = null,
+): CreateEventReply =
+    port.send(Routes.CreateEvent.request(EventCreate(name, startsAt, endsAt, openUntil = openUntil, keyId = keyId)))
+
+/** The wall clock plus [after], whole-second UTC — the description's `Timestamp`. */
+private fun wholeSecondsFromNow(after: Duration): String =
+    Instant.fromEpochSeconds((Clock.System.now() + after).epochSeconds).toString()
 
 /** Change this state's event's name. */
 private suspend fun EdgeSubject<BackendClient>.rename(name: String): ChangeEventReply =

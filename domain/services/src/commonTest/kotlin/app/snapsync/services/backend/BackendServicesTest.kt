@@ -8,6 +8,7 @@ import app.snapsync.model.EventLookup
 import app.snapsync.model.HttpResult
 import app.snapsync.model.JoinResult
 import app.snapsync.model.ManifestResource
+import app.snapsync.model.MemberCounts
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenameOutcome
 import app.snapsync.model.ResourceRole
@@ -36,8 +37,8 @@ class BackendServicesTest {
 
     private fun event(name: String = "Party") =
         """{"eventId":"E1","name":"$name","createdAt":"2026-06-01T00:00:00Z","startsAt":"2026-07-01T00:00:00Z",""" +
-            """"endsAt":"2026-07-08T00:00:00Z","capacity":40,"deletesAt":"2026-07-31T00:00:00Z","closedAt":null,""" +
-            """"completedAt":null}"""
+            """"endsAt":"2026-07-08T00:00:00Z","openUntil":"2026-07-08T00:00:00Z","capacity":40,""" +
+            """"deletesAt":"2026-07-31T00:00:00Z","closedAt":null,"completedAt":null}"""
 
     private fun details(
         name: String = "Party",
@@ -46,11 +47,13 @@ class BackendServicesTest {
         deletesAt: String = "2026-07-31T00:00:00Z",
         closedAt: String? = null,
         completedAt: String? = null,
+        openUntil: String = endsAt,
     ): HttpResult = json(
         200,
         """{"eventId":"E","name":"$name","createdAt":"2026-06-01T00:00:00Z","startsAt":"$startsAt",""" +
-            """"endsAt":"$endsAt","capacity":40,"deletesAt":"$deletesAt","closedAt":${closedAt.quoted()},""" +
-            """"completedAt":${completedAt.quoted()},"members":{"active":2,"final":1}}""",
+            """"endsAt":"$endsAt","openUntil":"$openUntil","capacity":40,"deletesAt":"$deletesAt",""" +
+            """"closedAt":${closedAt.quoted()},"completedAt":${completedAt.quoted()},""" +
+            """"members":{"active":2,"final":1,"waiting":1}}""",
     )
 
     private fun String?.quoted() = this?.let { "\"$it\"" } ?: "null"
@@ -64,6 +67,8 @@ class BackendServicesTest {
         assertEquals("2026-07-01T00:00:00Z", found.startsAt.at.iso)
         assertEquals("2026-07-08T00:00:00Z", found.endsAt.at.iso)
         assertEquals("2026-07-31T00:00:00Z", found.deletesAt.at.iso)
+        assertEquals("2026-07-08T00:00:00Z", found.openUntil?.at?.iso, "open until its end")
+        assertEquals(MemberCounts(active = 2, settled = 1, waiting = 1), found.completion.members)
         assertEquals(2, found.completion.members?.active)
         assertEquals(1, found.completion.members?.settled)
     }
@@ -89,15 +94,41 @@ class BackendServicesTest {
         }
     }
 
-    /** Presence is the fact (capability `event-lifetime`): a completed event is closed too, whatever its record says. */
+    /**
+     * Presence is the fact (capability `event-lifetime`): only a completed event's photos are deleted. `closedAt` is for
+     * builds that predate open-until dates and means nothing to this one.
+     */
     @Test
-    fun a_served_read_says_whether_the_event_closed_and_completed() = runTest {
-        suspend fun completion(closedAt: String?, completedAt: String?) = assertIs<EventLookup.Found>(
+    fun a_served_read_says_whether_the_event_completed_and_ignores_closed_at() = runTest {
+        suspend fun completed(closedAt: String?, completedAt: String?) = assertIs<EventLookup.Found>(
             servicesAnswering(details(closedAt = closedAt, completedAt = completedAt)).directory.fetch("E"),
-        ).completion.let { it.closed to it.completed }
-        assertEquals(false to false, completion(closedAt = null, completedAt = null))
-        assertEquals(true to false, completion(closedAt = "2026-07-09T00:00:00Z", completedAt = null))
-        assertEquals(true to true, completion(closedAt = null, completedAt = "2026-07-10T00:00:00Z"))
+        ).completion.completed
+        assertEquals(false, completed(closedAt = null, completedAt = null))
+        assertEquals(false, completed(closedAt = "2026-07-09T00:00:00Z", completedAt = null))
+        assertEquals(true, completed(closedAt = "2026-07-10T00:00:00Z", completedAt = "2026-07-10T00:00:00Z"))
+    }
+
+    @Test
+    fun a_served_read_carries_the_date_its_host_chose_and_an_unreadable_one_costs_only_that() = runTest {
+        val chosen = assertIs<EventLookup.Found>(
+            servicesAnswering(details(openUntil = "2026-07-20T00:00:00Z")).directory.fetch("E"),
+        )
+        assertEquals("2026-07-20T00:00:00Z", chosen.openUntil?.at?.iso)
+        val garbled = assertIs<EventLookup.Found>(
+            servicesAnswering(details(openUntil = "garbage")).directory.fetch("E"),
+        )
+        assertEquals(null, garbled.openUntil)
+    }
+
+    // ── what the device received ───────────────────────────────────────────────────────────────────
+
+    @Test
+    fun a_received_position_is_reported_only_when_the_backend_recorded_it() = runTest {
+        assertEquals(true, servicesAnswering(text(200, "")).received.report("E", 7))
+        assertEquals(false, servicesAnswering(text(409, "not a member")).received.report("E", 7))
+        assertEquals(false, servicesAnswering(text(502, "upstream")).received.report("E", 7))
+        assertEquals(false, servicesAnswering(offline).received.report("E", 7))
+        assertEquals(false, servicesAnswering(ok(), MapSecureStore(unavailable = true)).received.report("E", 7))
     }
 
     @Test

@@ -144,35 +144,39 @@ class DownloadController(
     private val importing = mutableSetOf<AssetRef>()
 
     /**
-     * Whether this device holds every photo of the others it receives — the app leaves on its own once the event is
-     * finished for it: every foreign asset the event serves is SETTLED here — imported,
-     * or deleted by the member, or judged unimportable — and nothing is still waiting to download or to import. A
-     * membership that does not receive has nothing to wait for. A union that cannot be read answers `false`: the doubt
-     * keeps the member. Always a FULL read (decision record `changes/incremental-union`, D6): it runs only once the
-     * event has closed, so its union no longer changes, and it is the one decision where doubt must keep the member.
+     * The union position up to which this device holds every photo of the others it receives, or `null` when it does
+     * not — what it reports so the backend can delete the event's photos once every member has them (a member is done
+     * once it has received everything). A membership that does not receive needs nothing: it answers the position it
+     * read. A union that cannot be read answers `null`: a doubt reports nothing.
      */
-    suspend fun everythingReceived(eventId: String): Boolean =
-        arm.enabled() != true || holdsEveryForeignPhoto(eventId)
+    suspend fun receivedPosition(eventId: String): Long? =
+        heldPosition(eventId, UnionTrigger.RECEIVED_CHECK, receives = arm.enabled() == true)
 
     /**
-     * [everythingReceived] for the membership [membership] describes, asked without the joined configuration — what a
-     * leave asks once it has cleared that configuration: every foreign asset the event
-     * serves is settled here and nothing waits to download or import. A membership that does not receive has nothing to
-     * wait for. A union that cannot be read answers `false`. A FULL read too, for the same reason: doubt must not report
-     * a member that lacks photos as having everything.
+     * Whether this device holds every photo of the others in the membership [membership] describes, asked without the
+     * joined configuration — what a leave asks once it has cleared that configuration. A membership that does not
+     * receive has nothing to wait for. A union that cannot be read answers `false`: doubt must not report a member that
+     * lacks photos as having everything.
      */
-    suspend fun holdsEverythingFor(membership: EventConfig): Boolean =
-        !membership.direction.includesDownload || holdsEveryForeignPhoto(membership.eventId)
+    suspend fun holdsEverythingFor(membership: EventConfig): Boolean = !membership.direction.includesDownload ||
+        heldPosition(membership.eventId, UnionTrigger.LEAVE_CHECK, receives = true) != null
 
-    /** [holdsEverythingFor]'s answer for a membership that receives. */
-    suspend fun holdsEveryForeignPhoto(eventId: String): Boolean {
-        val assets = union.union(eventId, null, UnionTrigger.LEAVE_CHECK).getOrElse { return false }.assets
-        val foreign = assets.filter { it.deviceId != myDeviceId }.map { AssetRef(it.deviceId, it.assetId) }
-        return mutex.withLock {
+    /**
+     * The position a FULL read of the union covers (decision record `changes/incremental-union`, D6 — the answer must
+     * cover the whole union up to the position it names), when this device [receives] nothing or every foreign asset
+     * it serves is SETTLED here — imported, deleted by the member, or judged unimportable — and nothing waits to
+     * download or import; `null` otherwise, and for a union that cannot be read.
+     */
+    private suspend fun heldPosition(eventId: String, trigger: UnionTrigger, receives: Boolean): Long? {
+        val page = union.union(eventId, null, trigger).getOrElse { return null }
+        if (!receives) return page.cursor
+        val foreign = page.assets.filter { it.deviceId != myDeviceId }.map { AssetRef(it.deviceId, it.assetId) }
+        val holds = mutex.withLock {
             store.settledAmong(foreign).size == foreign.size &&
                 store.pendingDownloads().isEmpty() &&
                 store.importableAssets().isEmpty()
         }
+        return page.cursor.takeIf { holds }
     }
 
     /**

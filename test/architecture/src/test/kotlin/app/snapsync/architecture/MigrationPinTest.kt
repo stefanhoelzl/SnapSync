@@ -38,6 +38,8 @@ class MigrationPinTest {
             "124dfb8345efa5745dff8df5a584933f86cb9bb0f6c8700d0b61ed7d2c5321b5",
         "ledger/app/snapsync/services/ledger/db/13.sqm" to
             "495f541590bff52cefbffc96817800604ccef42c95a8fbcbf1800e8a131b1bcf",
+        "ledger/app/snapsync/services/ledger/db/14.sqm" to
+            "39642ee5a2d20528e9c65c2b3798927d9b6cbb62633443438672c12704835ab3",
     )
 
     @Test

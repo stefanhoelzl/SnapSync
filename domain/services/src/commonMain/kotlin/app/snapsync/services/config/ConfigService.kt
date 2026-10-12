@@ -148,9 +148,9 @@ class ConfigService(
 
     /**
      * Whether the membership receives others' photos — three-valued, no fallback: `null`
-     * while not joined, so a caller arms nothing.
+     * while not joined, so a caller arms nothing. A membership whose event's photos are deleted receives nothing more.
      */
-    fun downloadsEnabled(): Boolean? = held.config.value?.let { it.direction.includesDownload }
+    fun downloadsEnabled(): Boolean? = held.config.value?.let { it.direction.includesDownload && !it.deleted }
 
     /**
      * Whether a fresh read finds a joined membership whose range has ended — what a manifest published now is settled

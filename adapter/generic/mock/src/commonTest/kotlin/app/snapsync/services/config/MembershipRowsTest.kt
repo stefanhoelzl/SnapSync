@@ -26,7 +26,10 @@ class MembershipRowsTest {
             closed = false,
             membersActive = 3,
             membersSettled = null,
+            membersWaiting = null,
             keyId = null,
+            openUntil = null,
+            deleted = false,
         )
         assertNull(row.toConfig().members)
     }

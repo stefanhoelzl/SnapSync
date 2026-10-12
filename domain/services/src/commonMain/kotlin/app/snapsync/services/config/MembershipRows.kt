@@ -25,7 +25,10 @@ fun MembershipQueries.saveMembership(config: EventConfig) = saveMembership(
     closed = config.closed,
     membersActive = config.members?.active?.toLong(),
     membersSettled = config.members?.settled?.toLong(),
+    membersWaiting = config.members?.waiting?.toLong(),
     keyId = config.keyId,
+    openUntil = config.openUntil?.at?.iso,
+    deleted = config.deleted,
 )
 
 /** The membership row as the config it stores. A value the model refuses (a malformed instant) throws. */
@@ -41,9 +44,11 @@ fun SelectMembership.toConfig(): EventConfig = EventConfig(
     saveToAlbum = saveToAlbum,
     closed = closed,
     members = if (membersActive != null && membersSettled != null) {
-        MemberCounts(membersActive.toInt(), membersSettled.toInt())
+        MemberCounts(membersActive.toInt(), membersSettled.toInt(), membersWaiting?.toInt())
     } else {
         null
     },
     keyId = keyId,
+    openUntil = openUntil?.let { EventEnd(CaptureDate.parse(it)) },
+    deleted = deleted,
 )

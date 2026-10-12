@@ -4,62 +4,61 @@ import app.snapsync.model.contained
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventDirectory
+import app.snapsync.services.backend.ReceivedReporter
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.leave.PendingLeaves
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.wake.EventCheck
 import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 
 /**
- * The end of a wake, for an event that may be finished — the app leaves on its own once the event is finished for
- * it (decision record `changes/early-event-completion`, D3–D6).
+ * The end of a wake, for an event whose range has ended — this device tells the event when it is done with it, so
+ * the event's photos are deleted as soon as every member has them (decision record
+ * `changes/back-dated-events`, D4 and D7). The app **never leaves an event on its own** here: a finished event stays
+ * joined, and one whose photos the server confirms deleted is marked so ([MembershipRefresh]) and stays too.
  *
  * Every wake the app gets — a foreground, a silent push, the heartbeat, a transfer relaunch — ends in the tail, and
  * the tail's end runs [finish] once. It does, in order:
  *
- * 1. **Delivers the leaves the backend has not confirmed** ([PendingLeaves]) — a leave made offline must still
- *    count, or a finished event would wait for its clock.
- * 2. Nothing more while the event's range has not ended: before the end nothing can close, so no request is spent.
+ * 1. **Delivers the leaves the backend has not confirmed** ([PendingLeaves]) — a leave made offline must still count.
+ * 2. Nothing more while the event's range has not ended — nobody can be done before it — or once its photos are
+ *    known to be deleted.
  * 3. **Settles this device's share** ([publishFinal]) when its last published manifest is not yet marked final — the
  *    upload cycle marks it once the range has ended, but under a partial grant the tail itself publishes nothing, so
  *    this is what makes sure every device eventually says "settled".
- * 4. **Reads the event's state** ([EventDirectory]) and folds it through the one [MembershipRefresh] rule: a
- *    completed event ends the membership there, and a closed one is recorded. A **bounded** step — a wake that is not
- *    a push, an opening or a join — reads it at most once an hour per event ([EventChecks]; decision record
- *    `changes/timely-background-receiving`, D5): the close is announced by a push, so this read only covers a lost one,
- *    and a member that leaves a closed event up to an hour late changes nothing anyone can see.
- * 5. **Leaves once the closed event has nothing left for this device**: every photo it shares has reached the event
- *    (the ledger holds no unfinished upload of an asset its final manifest declares) and every photo of the others it receives
- *    is in its library or was deleted there ([everythingReceived]). A photo that repeatedly fails to arrive keeps
- *    the member — the event's clock ends it instead.
+ * 4. **Reads the event's state** ([EventDirectory]) and folds it through the one [MembershipRefresh] rule — which marks
+ *    a deleted event. A **bounded** step — a wake that is not a push, an opening or a join — reads it at most once an
+ *    hour per event ([EventChecks]; decision record `changes/timely-background-receiving`, D5).
+ * 5. **Reports up to which union position this device holds every photo of the others** ([receivedPosition] →
+ *    [reporter]), when it does. A higher position than the last one reported only: the backend keeps the
+ *    highest, so repeating one changes nothing.
  *
- * The leave is [LeaveEvent]'s, without a dialog and without anything shown: the next open lands on the create screen.
- * Every doubt resolves toward staying joined — a failed read, an unreadable record, an unconfirmed upload.
+ * Every doubt resolves toward reporting nothing — a failed read, an unreadable record — and the next wake repeats.
  */
 class EventCompletion(
     private val config: ConfigService,
     private val refresh: MembershipRefresh,
-    private val leaveEvent: LeaveEvent,
-    /** The event's details (`GET /events/:id`), sealed: completed, closed, open, gone, or could not tell. */
+    /** The event's details (`GET /events/:id`), sealed: completed, open, gone, or could not tell. */
     private val directory: EventDirectory,
     /** The last manifest this device published, as recorded: `"<eventId> <json>"`. */
     private val manifestRecord: DeviceManifestService,
-    /** The upload ledger — which of this device's resources have not finished uploading. */
-    private val ledger: LedgerService,
     private val pendingLeaves: PendingLeaves,
     /** Publish this device's manifest once more — the sibling uploader's discovery → publish (feature-blindness). */
     private val publishFinal: suspend () -> Unit,
     /**
-     * Whether every photo of the others this device receives is in its library or was deleted there — the sibling
-     * download controller's answer (feature-blindness).
+     * The union position up to which this device holds every photo of the others, or `null` when it does not — the
+     * sibling download controller's answer (feature-blindness).
      */
-    private val everythingReceived: suspend (eventId: String) -> Boolean,
+    private val receivedPosition: suspend (eventId: String) -> Long?,
+    /** Tells the backend that position. */
+    private val reporter: ReceivedReporter,
     /** When a wake last read the event's state — every read stamps it; a [finish] that is bounded honours it. */
     private val checks: EventChecks,
     private val log: Logger = Logger.withTag("EventCompletion"),
 ) {
+    /** The last position the backend recorded for an event, this process — so an unchanged one is not sent again. */
+    private val reported = mutableMapOf<String, Long>()
 
     /**
      * The end of every wake whose tail covered the whole pass (decision record `changes/timely-background-receiving`,
@@ -72,8 +71,8 @@ class EventCompletion(
         bounded: Boolean,
         photoCheck: suspend (eventId: String) -> Unit,
     ): CompletionOutcome {
-        config.activeEventId()?.takeIf { checksPhotos }?.let { eventId ->
-            log.contained("the bounded photo check failed; the next wake runs it again") { photoCheck(eventId) }
+        config.config.value?.takeIf { checksPhotos && !it.deleted }?.let { joined ->
+            log.contained("the bounded photo check failed; the next wake runs it again") { photoCheck(joined.eventId) }
         }
         return finish(bounded)
     }
@@ -85,6 +84,7 @@ class EventCompletion(
     suspend fun finish(bounded: Boolean = false): CompletionOutcome {
         pendingLeaves.deliverAll() // never raises: what it cannot read or confirm waits for the next wake
         val current = config.config.value ?: return CompletionOutcome.NOT_JOINED
+        if (current.deleted) return CompletionOutcome.DELETED
         if (!config.hasEnded(current)) return CompletionOutcome.NOT_ENDED
         val eventId = current.eventId
 
@@ -102,29 +102,23 @@ class EventCompletion(
         }
         checks.stamp(EventCheck.CLOSE, eventId)
         when (refresh.refresh(eventId, directory.fetch(eventId).toJoinLoad())) {
-            RefreshOutcome.COMPLETED, RefreshOutcome.ABSENT -> return CompletionOutcome.LEFT
-            RefreshOutcome.INCONCLUSIVE, RefreshOutcome.REFRESHED -> return CompletionOutcome.WAITING
-            RefreshOutcome.CLOSED -> Unit
+            RefreshOutcome.COMPLETED, RefreshOutcome.ABSENT -> return CompletionOutcome.DELETED
+            RefreshOutcome.INCONCLUSIVE, RefreshOutcome.REFRESHED -> Unit
         }
 
-        val final = published(eventId)?.takeIf { it.final } ?: return CompletionOutcome.WAITING
-        val declared = final.assets.mapTo(mutableSetOf()) { it.assetId }
-        val ownArrived = runCatchingCancellable { ledger.pendingResources().none { it.assetId in declared } }
-            .getOrDefault(false)
-        if (!ownArrived) return CompletionOutcome.WAITING
-        val received = runCatchingCancellable { everythingReceived(eventId) }.getOrDefault(false)
-        if (!received) return CompletionOutcome.WAITING
-        // The reads above take time — the union's is a full one, over the network — and a member's own join or leave
-        // can land meanwhile. The leave tears down whatever is configured, so it runs only while that is still the
-        // membership this step found finished, never the one that replaced it.
-        if (config.config.value?.eventId != eventId) {
-            log.i { "event $eventId was left or replaced while its completion was checked — nothing to leave" }
+        val position = runCatchingCancellable { receivedPosition(eventId) }.getOrNull()
+            ?: return CompletionOutcome.WAITING
+        // The read above takes time — the union's is a full one, over the network — and a member's own join or leave
+        // can land meanwhile: a report is only ever about the membership this step found.
+        if (config.config.value?.eventId != eventId || position <= (reported[eventId] ?: -1L)) {
             return CompletionOutcome.WAITING
         }
-
-        log.i { "event $eventId is closed and this device has everything — leaving it" }
-        leaveEvent.leave()
-        return CompletionOutcome.LEFT
+        if (reporter.report(eventId, position)) {
+            reported[eventId] = position
+            log.i { "event $eventId: this device holds every photo of the others up to $position" }
+            return CompletionOutcome.REPORTED
+        }
+        return CompletionOutcome.WAITING
     }
 
     /** The last published manifest for [eventId], or `null` when none is recorded for it or it cannot be read. */
@@ -133,20 +127,23 @@ class EventCompletion(
         ?.let { runCatchingCancellable { deviceManifestFromJson(it.manifest) }.getOrNull() }
 }
 
-/** What [EventCompletion.finish] found. Only [LEFT] changed anything the member sees. */
+/** What [EventCompletion.finish] found. Only [DELETED] changed anything the member sees. */
 enum class CompletionOutcome {
     /** No membership. */
     NOT_JOINED,
 
-    /** The event's range has not ended (or its end is not known yet): nothing can close. */
+    /** The event's range has not ended (or its end is not known yet): nobody can be done with it. */
     NOT_ENDED,
 
     /**
-     * Ended, and still waiting — for the others to settle, for the close, or for this device's own photos; or the
-     * membership was left or replaced while the step checked it, and there is nothing of it left to leave.
+     * Ended, and nothing reported — this device does not hold everything yet, the read was bounded or failed, the
+     * position was already reported, or the membership was left or replaced while the step checked it.
      */
     WAITING,
 
-    /** The membership ended: the event completed, or it closed and this device had everything. */
-    LEFT,
+    /** This device told the backend up to which position it holds every photo of the others. */
+    REPORTED,
+
+    /** The event's photos are deleted: the membership is marked so, and stays. */
+    DELETED,
 }

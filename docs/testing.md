@@ -619,8 +619,10 @@ build the same classes over caller-held cells.
   for another device than the path names, and its operator can make any operation answer a fault before it runs
   (`fail(operationId, BackendFault, times)` — a failing store, a maintenance window, no answer, a malformed body). It holds the real backend's rules the contract checks and the ones it does not: membership is
   one record with an active/departed state (the real backend's `done`/`left` split is observable through no route,
-  so the mock keeps none), the union spans departed members, the publish or leave that leaves no active member
-  unsettled closes the event, capacity counts every device ever
+  so the mock keeps none), the union spans departed members, nothing closes an event (an event is open until its
+  open-until date and its photos stay until the operator plays the sweep's completion; `closedAt` is derived for
+  builds that predate open-until dates, judged by the mock's clock — a device's mocks pass the time they play), a
+  member's received position only ever rises, capacity counts every device ever
   enrolled, a rejoin clears the stored manifest version, a strictly older manifest is answered and changes nothing,
   names are 1–100 characters, and a write that makes something newly servable records a silent push to every other
   active member holding a token (`pushesSent`, the APNs mock). An OS upload reaches the mock through

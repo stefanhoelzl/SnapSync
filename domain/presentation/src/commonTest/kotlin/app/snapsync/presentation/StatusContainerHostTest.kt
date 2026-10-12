@@ -2623,7 +2623,7 @@ private fun phaseAt(
 class ClosedEventJoinTest {
 
     @Test
-    fun `a closed event is refused at load with no commit`() = runTest {
+    fun `an event whose photos are deleted is refused at load with no commit`() = runTest {
         var commits = 0
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
@@ -2636,7 +2636,7 @@ class ClosedEventJoinTest {
                     EventStart(CUTOFF.at),
                     ENDS_AT,
                     DELETES_AT,
-                    EventCompletionState(closed = true, completed = false),
+                    EventCompletionState(completed = true),
                 )
             },
             commitJoin = { _ ->

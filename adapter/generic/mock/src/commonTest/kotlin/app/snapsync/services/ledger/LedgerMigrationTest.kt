@@ -2,11 +2,14 @@ package app.snapsync.services.ledger
 
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.contracts.at
+import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.LedgerState
+import app.snapsync.model.MemberCounts
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -15,6 +18,7 @@ import app.snapsync.model.encodeConfigFile
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.Databases
 import app.snapsync.ports.Files
+import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.CONFIG_FILE_NAME
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.SharedDatabase
@@ -24,7 +28,10 @@ import app.snapsync.services.ledger.db.LedgerDatabase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The ledger's migrations as a device upgrades through them (capability `photo-sharing`). 12.sqm parked every row
@@ -85,6 +92,37 @@ class LedgerMigrationTest {
 
         assertEquals(LedgerState.DISCOVERED, ledger.get("C-photo.jpg")?.state)
         assertEquals(listOf("", JOINED), driver.eventIds(), "the duplicate stays parked until a purge")
+    }
+
+    @Test
+    fun `an upgrade from v14 keeps the membership - its event not known deleted and open until its end`() = runTest {
+        val (databases, _) = databaseAt(
+            LEDGER_DB_NAME,
+            LedgerDatabase.Schema.at(
+                14,
+                "INSERT INTO membership (id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, " +
+                    "direction, saveToAlbum, closed, membersActive, membersSettled, keyId) VALUES (0, '$JOINED', " +
+                    "'Picnic', '2026-07-06T14:00:00Z', '2026-07-06T14:00:00Z', '2026-07-07T00:00:00Z', " +
+                    "'2026-07-07T00:00:00Z', '2026-08-05T00:00:00Z', 'Both', 0, 0, 3, 1, NULL)",
+                // Every legacy home was copied at an earlier open.
+                "INSERT INTO legacyImport (source) VALUES ('membership'), ('manifest'), ('pendingLeaves'), " +
+                    "('album'), ('checks')",
+            ),
+        )
+
+        val read = ConfigService(appOpen(databases, inMemoryFiles()), fixedClock(Instant.parse("2026-07-10T00:00:00Z")))
+            .read()
+
+        val config = assertIs<ConfigRead.Joined>(read).config
+        assertEquals(JOINED, config.eventId)
+        assertEquals(false, config.deleted)
+        assertNull(config.openUntil)
+        assertEquals(MemberCounts(active = 3, settled = 1, waiting = null), config.members)
+        assertEquals(
+            2,
+            config.members?.waitingFor,
+            "counts recorded before the waiting one fall back to the difference",
+        )
     }
 }
 
