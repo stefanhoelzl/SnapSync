@@ -13,11 +13,11 @@ import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.HttpTransport
+import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
-import app.snapsync.ports.Upload
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendGateway
@@ -38,6 +38,7 @@ import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.services.trust.ExtensionCredential
+import app.snapsync.services.upload.Uploader
 import app.snapsync.services.upload.runProcessCycle
 
 /**
@@ -61,8 +62,8 @@ class ExtensionPorts(
     val platformDeviceId: PlatformDeviceId,
     /** The extension's photo library: reads and album adds only — and the grant it reads, which admits its cycle. */
     val gallery: GalleryReader,
-    /** The upload-job queue the cycle creates its jobs on. */
-    val upload: Upload,
+    /** The OS's upload-job queue the cycle creates its jobs on. */
+    val uploadQueue: OsUploadQueue,
     /** HTTP: the backend's protocol is composed over it, behind a credential that only drops a rejected token. */
     val http: HttpTransport,
     /** The operating system's invocations of this extension — the one entry port, listened to at composition. */
@@ -150,7 +151,7 @@ private fun extensionServices(
         host = build.uploadHost,
         // Scoped to the joined event this process last read; each invocation re-reads the config first.
         ledger = LedgerService(records) { config.config.value?.eventId },
-        upload = ports.upload,
+        uploader = Uploader.Queue(ports.uploadQueue),
         gallery = ports.gallery,
         discovery = GalleryDiscovery(ports.gallery),
         // This process's own grant read — the extension withholds its cycle without a full grant: the OS invokes a

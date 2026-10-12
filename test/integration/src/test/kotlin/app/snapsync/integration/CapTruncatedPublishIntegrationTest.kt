@@ -34,7 +34,7 @@ class CapTruncatedPublishIntegrationTest {
 
         // Cycle 1: two jobs created, the third is left over → the cycle cannot drain.
         assertEquals("processing", cycle())
-        assertEquals(setOf(primaryKey("A"), primaryKey("B")), jobs().live.toSet())
+        assertEquals(setOf(primaryJob("A"), primaryJob("B")), jobs().live.toSet())
 
         // The two uploads land, freeing both slots — and the next cycle is STILL truncated, because three assets
         // remain and only two can be in flight. This is the steady state of a device that is behind: it never

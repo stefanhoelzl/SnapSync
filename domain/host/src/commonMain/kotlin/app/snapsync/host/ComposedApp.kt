@@ -100,7 +100,7 @@ fun snapSyncHost(
     ports.wake.listen(core.events.wakeHandlers)
     // The transfer sessions' events — a background relaunch that hands back finished transfers must find these.
     ports.download.listen(core.events.downloadHandlers)
-    ports.appUpload.listen(core.events.uploadHandlers)
+    ports.uploadSession.listen(core.events.uploadHandlers)
     core.installCompositionSubscriptions()
     val composed = ComposedApp(core, process, cutoffFormatter, ports.dateFormatting) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).

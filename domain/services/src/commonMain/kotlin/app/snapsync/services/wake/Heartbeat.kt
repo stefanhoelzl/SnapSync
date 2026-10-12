@@ -1,11 +1,11 @@
 package app.snapsync.services.wake
 
 import app.snapsync.model.ScheduleResult
-import app.snapsync.model.TransferNetwork
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.Wake
 import co.touchlab.kermit.Logger
 import kotlin.time.Duration.Companion.hours

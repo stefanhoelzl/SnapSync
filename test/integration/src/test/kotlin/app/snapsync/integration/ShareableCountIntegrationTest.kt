@@ -35,7 +35,7 @@ class ShareableCountIntegrationTest {
 
         // …and the cycle uploads exactly that set — the count is not a separate, looser rule.
         cycle()
-        assertEquals(listOf(primaryKey("CAM")), jobs().live)
+        assertEquals(listOf(primaryJob("CAM")), jobs().live)
         assertEquals(1, jobs().created)
     }
 

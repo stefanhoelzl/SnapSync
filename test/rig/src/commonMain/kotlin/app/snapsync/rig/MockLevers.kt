@@ -20,13 +20,13 @@ import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.TransferOutcome
-import app.snapsync.model.UploadError
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.TransferOutcome
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
@@ -382,7 +382,7 @@ private fun MockWorld.transferLevers(): Map<String, Lever> = mapOf(
         MockedSystem.UPLOAD_QUEUE,
         RigCommand { _, _ ->
             val queue = device.uploadQueue.operator
-            CommandResult.ok("""{"live":${jsonList(queue.liveJobKeys())},"created":${queue.created.size}}""")
+            CommandResult.ok("""{"live":${jsonList(queue.liveJobs())},"created":${queue.created.size}}""")
         },
     ),
     "jobs/limit" to mocked(
@@ -397,14 +397,15 @@ private fun MockWorld.transferLevers(): Map<String, Lever> = mapOf(
             }
         },
     ),
-    // Without `key`, every live job — what a caller that just ran a cycle usually means.
+    // Without `job` (`<assetId>/<role>`, what its destination names), every live job — what a caller that just ran a
+    // cycle usually means.
     "jobs/complete" to mocked(
         MockedSystem.UPLOAD_QUEUE,
         RigCommand { params, _ ->
             val queue = device.uploadQueue.operator
-            val keys = params["key"]?.let(::listOf) ?: queue.liveJobKeys()
-            keys.forEach { queue.completeJob(it) }
-            CommandResult.ok("""{"completed":${jsonList(keys)}}""")
+            val jobs = params["job"]?.let(::listOf) ?: queue.liveJobs()
+            jobs.forEach { queue.completeJob(it) }
+            CommandResult.ok("""{"completed":${jsonList(jobs)}}""")
         },
     ),
     // The app uploader's transfer session: its live transfers and how many it was ever handed.
@@ -428,16 +429,15 @@ private fun MockWorld.transferLevers(): Map<String, Lever> = mapOf(
     "jobs/fail" to mocked(
         MockedSystem.UPLOAD_QUEUE,
         RigCommand { params, _ ->
-            val key = params["key"]
-            val error = uploadError(params["error"])
+            // `error` is what the OS says of the failure — `network`, `http:503`, anything: nothing reads it but the log.
+            val job = params["job"]
+            val error = params["error"]?.takeIf { it.isNotBlank() }
             when {
-                key == null -> CommandResult.badRequest("key is required")
-                error == null -> CommandResult.badRequest(
-                    "error must be network|cancelled|unknown|http:<status>, was '${params["error"]}'",
-                )
+                job == null -> CommandResult.badRequest("job is required: <assetId>/<role>")
+                error == null -> CommandResult.badRequest("error is required: what the OS says of the failure")
                 else -> {
-                    device.uploadQueue.operator.failJob(key, error)
-                    CommandResult.ok("""{"failed":${jsonString(key)},"error":${jsonString(error.toString())}}""")
+                    device.uploadQueue.operator.failJob(job, TransferFailure(error))
+                    CommandResult.ok("""{"failed":${jsonString(job)},"error":${jsonString(error)}}""")
                 }
             }
         },
@@ -979,15 +979,6 @@ private fun dumpJson(dump: CrashEvent) = buildJsonObject {
 }
 
 internal fun flag(params: Map<String, String>, name: String): Boolean = params[name]?.toBoolean() ?: true
-
-private fun uploadError(raw: String?): UploadError? = when {
-    raw == null -> null
-    raw.equals("network", ignoreCase = true) -> UploadError.Network
-    raw.equals("cancelled", ignoreCase = true) -> UploadError.Cancelled
-    raw.equals("unknown", ignoreCase = true) -> UploadError.Unknown("rig")
-    raw.startsWith("http:") -> raw.removePrefix("http:").toIntOrNull()?.let { UploadError.Http(it) }
-    else -> null
-}
 
 internal fun jsonList(values: List<String>): String = values.joinToString(prefix = "[", postfix = "]") {
     jsonString(it)

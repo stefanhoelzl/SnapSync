@@ -6,24 +6,21 @@ import android.net.Uri
 import app.snapsync.android.gallery.MediaOriginals
 import app.snapsync.android.gallery.MediaStoreResource
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadSourceKind
-import app.snapsync.model.UploadTarget
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
-import app.snapsync.ports.Upload
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.Transfer
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.TransferHandle
+import app.snapsync.ports.TransferHandlers
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferSession
+import app.snapsync.ports.TransferSource
+import app.snapsync.ports.UploadTarget
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import io.ktor.client.HttpClient
@@ -55,7 +52,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The Android app uploader: each job is an HTTP PUT of a photo's original, streamed
- * straight from MediaStore ([UploadSourceKind.RESOURCE] — no staged copy), run in this process.
+ * straight from MediaStore ([takesResources] — no staged copy), run in this process.
  *
  * Android has no transfer daemon that finishes an upload for a process that is gone, so:
  * - **While any transfer is live, this adapter holds background time** ([BackgroundTime]): leaving the app does not
@@ -72,14 +69,13 @@ import java.util.concurrent.TimeUnit
  * A wait the background-time hold outlives ends like any other transfer it stops: reported failed, and re-created by a
  * later run — the upload flow's wake for that run asks for an unmetered network.
  *
- * **One transfer at a time** ([MAX_LIVE]); the next create answers [UploadCreateOutcome.LIMIT_EXCEEDED], and the core
+ * **One transfer at a time** ([MAX_LIVE]); the next create answers [CreateOutcome.LIMIT_EXCEEDED], and the core
  * tops the freed slot up when it ends. Parallel streams add no bandwidth, only divide it: four PUTs on a thin uplink
  * each moved a few KB/s, and all four were cut off with nothing landed (Bugsink SNAPSYNC-54, 2026-10-08) — where one
  * at the whole uplink lands a photo, then the next. On a fast link a photo is megabytes, so one stream loses only the
  * per-request handshake between transfers.
  *
- * Every end is reported inline through [UploadHandlers.onFinished], once. There are no platform-held jobs to present:
- * no retry is offered, no terminal job waits for an acknowledgement.
+ * Every end is reported inline through [TransferHandlers.onFinished], once.
  */
 class AndroidUpload(
     context: Context,
@@ -94,12 +90,12 @@ class AndroidUpload(
      * ([awaitUnrestrictedNetwork] on a device).
      */
     private val unrestricted: suspend () -> Unit,
-) : Upload {
+) : TransferSession {
 
     private val appContext = context.applicationContext
     private val journal = appContext.getSharedPreferences(journalName, Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val live = ConcurrentHashMap<String, Transfer>()
+    private val live = ConcurrentHashMap<String, Live>()
 
     /**
      * A connection per transfer, never a pooled one: a streamed body is sent once, so a pooled connection the server
@@ -112,25 +108,22 @@ class AndroidUpload(
     }
     private var hold: BackgroundTimeHold? = null
 
-    private val handlers = HandlerSlot<UploadHandlers>("Upload", BeforeListen.Dropped)
+    private val handlers = HandlerSlot<TransferHandlers>("TransferSession", BeforeListen.Dropped)
 
-    override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
-
-    /** An encrypted event's sealed file is sent from disk, streamed like a library item. */
-    override val acceptsFiles: Boolean = true
+    /** A library item is streamed from MediaStore; an encrypted event's sealed file is sent from disk like it. */
+    override val takesResources: Boolean = true
 
     /** Register the core's handlers, then report what a previous process left unfinished — each as a failure. */
-    override fun listen(handlers: UploadHandlers) {
+    override fun listen(handlers: TransferHandlers) {
         this.handlers.set(handlers)
-        val orphans = journal.all.mapNotNull { (tag, path) -> (path as? String)?.let { tag to it } }
-            .filter { (tag, _) -> !live.containsKey(tag) }
-        for ((tag, path) in orphans) {
+        val orphans = journal.all.keys.filter { tag -> !live.containsKey(tag) }
+        for (tag in orphans) {
             log.i { "$tag: its transfer ended with the process that ran it — reported failed, for a retry" }
-            finish(tag, job(tag, path, UploadJobState.FAILED, UploadError.Cancelled))
+            finish(tag, TransferFailure("cancelled"))
         }
     }
 
-    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
+    override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome =
         log.invocation(
             EntryScope.None,
             "upload.create",
@@ -138,41 +131,32 @@ class AndroidUpload(
             result = { "$it" },
         ) { start(source, target, tag) }
 
-    private fun start(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
+    private fun start(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
         val body = when (source) {
-            is UploadSource.Resource -> (source.handle as? MediaStoreResource)?.uri?.let(Body::MediaItem)
+            is TransferSource.Resource -> (source.handle as? MediaStoreResource)?.uri?.let(Body::MediaItem)
             // A file that is not there is no job: refused now, never a transfer that fails later.
-            is UploadSource.File -> File(source.path).takeIf { it.isFile }?.let(Body::LocalFile)
-        } ?: return UploadCreateOutcome.FAILED.also {
+            is TransferSource.File -> File(source.path).takeIf { it.isFile }?.let(Body::LocalFile)
+        } ?: return CreateOutcome.FAILED.also {
             log.w { "$tag: the source is neither a MediaStore item nor a file here" }
         }
-        val path = runCatchingCancellable { URI(target.url).rawPath }.getOrNull()
-            ?: return UploadCreateOutcome.FAILED.also { log.w { "$tag: the destination is not a URL" } }
+        runCatchingCancellable { URI(target.url).rawPath }.getOrNull()
+            ?: return CreateOutcome.FAILED.also { log.w { "$tag: the destination is not a URL" } }
         synchronized(live) {
-            if (live.size >= maxLive) return UploadCreateOutcome.LIMIT_EXCEEDED
-            journal.edit().putString(tag, path).commit()
-            val transfer = Transfer(tag, path)
+            if (live.size >= maxLive) return CreateOutcome.LIMIT_EXCEEDED
+            // The journal names the transfer, so a process that dies with it reports it at the next listen.
+            journal.edit().putBoolean(tag, true).commit()
+            val transfer = Live(tag)
             live[tag] = transfer
             if (live.size == 1) hold = time.begin("uploads") { expireAll() }
             transfer.job = scope.launch { transfer.run(body, target) }
         }
-        return UploadCreateOutcome.CREATED
+        return CreateOutcome.CREATED
     }
 
-    override suspend fun jobs(set: UploadJobSet): List<UploadJob> = when (set) {
-        UploadJobSet.IN_FLIGHT -> live.values.map { job(it.tag, it.path, UploadJobState.PENDING, null) }
-        UploadJobSet.RETRY_OFFERED, UploadJobSet.TERMINAL -> emptyList()
-    }
+    override suspend fun live(): List<Transfer> = live.values.map { Transfer(it, it.tag) }
 
-    override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome =
-        ChangeOutcome.Refused(null, "Android offers no retry of its own")
-
-    override suspend fun acknowledge(job: UploadJob): ChangeOutcome = ChangeOutcome.Applied
-
-    override suspend fun cancel(job: UploadJob): ChangeOutcome {
-        val transfer = job.tag?.let { live[it] } ?: return ChangeOutcome.Refused(null, "no such transfer")
-        transfer.job?.cancel()
-        return ChangeOutcome.Applied
+    override suspend fun cancel(transfer: Transfer) {
+        (transfer.handle as? Live)?.job?.cancel()
     }
 
     /** The hold's time is up: stop every transfer; each reports its own failure. */
@@ -182,14 +166,14 @@ class AndroidUpload(
     }
 
     /** Report [tag]'s end once: persisted by the core inline, then dropped from the journal and the live set. */
-    private fun finish(tag: String, job: UploadJob) {
+    private fun finish(tag: String, error: TransferFailure?) {
         log.invocation(
             EntryScope.None,
             "upload.didComplete",
-            params = "tag=$tag state=${job.state}",
+            params = "tag=$tag error=$error",
             severity = Severity.Debug,
         ) {
-            handlers.orNull("$tag's end")?.onFinished?.invoke(job)
+            handlers.orNull("$tag's end")?.onFinished?.invoke(tag, error)
         }
         journal.edit().remove(tag).commit()
         synchronized(live) {
@@ -201,38 +185,28 @@ class AndroidUpload(
         }
     }
 
-    private fun job(tag: String, path: String, state: UploadJobState, error: UploadError?) =
-        UploadJob(
-            handle = null,
-            tag = tag,
-            destinationPath = path,
-            contentType = null,
-            state = state,
-            error = error,
-            source = null,
-        )
-
-    private inner class Transfer(val tag: String, val path: String) {
+    /** One transfer this process runs. */
+    private inner class Live(val tag: String) : TransferHandle {
         var job: Job? = null
 
         suspend fun run(body: Body, target: UploadTarget) {
-            val (state, error) = try {
+            val error = try {
                 if (target.network == TransferNetwork.UNRESTRICTED_ONLY) awaitUnrestricted()
                 val status = put(body, target)
-                if (status in 200..299) UploadJobState.SUCCEEDED to null else UploadJobState.FAILED to UploadError.Http(status)
+                if (status in 200..299) null else TransferFailure("http:$status")
             } catch (e: CancellationException) {
                 // Stopped — a leave's cancel, or the hold's expiry: reported, then the cancellation goes on.
-                report(UploadJobState.CANCELLED, UploadError.Cancelled)
+                report(TransferFailure("cancelled"))
                 throw e
             } catch (e: IOException) {
                 log.i { "$tag: the transfer broke: ${e::class.simpleName}: ${e.message}" }
-                UploadJobState.FAILED to UploadError.Network
+                TransferFailure("network")
             } catch (e: SecurityException) {
-                UploadJobState.FAILED to UploadError.Unknown("the photo can no longer be read: ${e.message}")
+                TransferFailure("the photo can no longer be read: ${e.message}")
             } catch (e: IllegalStateException) {
-                UploadJobState.FAILED to UploadError.Unknown("${e::class.simpleName}: ${e.message}")
+                TransferFailure("${e::class.simpleName}: ${e.message}")
             }
-            report(state, error)
+            report(error)
         }
 
         private suspend fun awaitUnrestricted() {
@@ -240,9 +214,9 @@ class AndroidUpload(
             unrestricted()
         }
 
-        private suspend fun report(state: UploadJobState, error: UploadError?) {
-            if (state != UploadJobState.SUCCEEDED) log.i { "$tag: $state ($error)" }
-            withContext(NonCancellable) { finish(tag, job(tag, path, state, error)) }
+        private suspend fun report(error: TransferFailure?) {
+            if (error != null) log.i { "$tag: failed ($error)" }
+            withContext(NonCancellable) { finish(tag, error) }
         }
 
         private suspend fun put(body: Body, target: UploadTarget): Int {

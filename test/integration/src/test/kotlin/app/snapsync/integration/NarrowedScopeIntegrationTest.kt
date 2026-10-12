@@ -55,13 +55,13 @@ class NarrowedScopeIntegrationTest {
 
         cycle()
         assertEquals(
-            listOf(primaryKey("LATE")),
+            listOf(primaryJob("LATE")),
             jobs().live,
             "the excluded row costs no job — the narrowing reaches the bytes, not only the manifest",
         )
 
         // …and it keeps not uploading, cycle after cycle.
-        completeJobs(primaryKey("LATE"))
+        completeJobs(primaryJob("LATE"))
         cycle()
         cycle()
         assertEquals(setOf(primaryKey("LATE")), objects(), "no excluded asset's bytes ever reach the backend")
@@ -89,7 +89,7 @@ class NarrowedScopeIntegrationTest {
         cycle()
 
         assertEquals(
-            listOf(primaryKey("Z01")),
+            listOf(primaryJob("Z01")),
             jobs().live,
             "the admitted row is enqueued even though 20 excluded rows sort ahead of it",
         )

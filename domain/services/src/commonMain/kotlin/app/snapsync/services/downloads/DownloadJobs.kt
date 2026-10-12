@@ -5,13 +5,13 @@ import app.snapsync.model.AssetRef
 import app.snapsync.model.ConfinedTo
 import app.snapsync.model.EntryScope
 import app.snapsync.model.PendingDownload
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.TransferOutcome
 import app.snapsync.model.invocation
 import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
+import app.snapsync.ports.StartResult
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.SEALED_SUFFIX
 import app.snapsync.services.staging.StagingService

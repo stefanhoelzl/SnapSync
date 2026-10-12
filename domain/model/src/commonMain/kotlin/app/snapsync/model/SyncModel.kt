@@ -14,19 +14,16 @@ package app.snapsync.model
  * photo share it), in its canonical form — the platform adapter minted it. The engine carries it through
  * to the ledger but never interprets it — it plays no part in the decision.
  *
- * [data] is the opaque platform payload backing this resource (iOS: `PHAssetResource`; tests:
- * bytes) — always present, and never read by the engine or the provider: only the platform
- * that wrote it reads it back, at its own execution edge. Deliberately `Any`, not a generic —
- * a type parameter would infect every seam type while the engine never reads it, and erases to
- * `id` in the exported ObjC header anyway. It is the one non-serializable field: platforms
- * that persist jobs re-attach the payload on rehydration.
+ * [data] is the photo library's own resource backing this one ([LibraryResource]) — opaque, and never read by the
+ * engine or the provider: only the gallery services read it, at the upload. `null` where the resource was rebuilt
+ * from its key alone and the library's resource is not held.
  */
 class Resource(
     val filename: String,
     val assetId: AssetId,
     val contentType: String,
     val metadata: Map<String, String>,
-    val data: Any,
+    val data: LibraryResource?,
 )
 
 /**
@@ -43,7 +40,7 @@ sealed interface SyncEvent {
     class ResourceChanged(val resource: Resource) : SyncEvent
 
     /** A previously issued upload failed; [request] is the newest retained request for it. */
-    class UploadFailed(val request: UploadRequest, val error: UploadError) : SyncEvent
+    class UploadFailed(val request: UploadRequest, val error: UploadFailure) : SyncEvent
 
     /**
      * The platform created (or retried) the upload for [request] — reported AFTER the create/retry call
@@ -57,15 +54,10 @@ sealed interface SyncEvent {
 }
 
 /**
- * An upload failure, mapped from the platform's raw error at the seam. The policy ignores the
- * distinction (retry forever) — the taxonomy exists for logging.
+ * That an upload failed, and what the platform said of it ([detail]). The policy ignores why (it retries forever), so
+ * the reason is carried for the log alone.
  */
-sealed interface UploadError {
-    data object Network : UploadError
-    data class Http(val status: Int) : UploadError
-    data object Cancelled : UploadError
-    data class Unknown(val detail: String) : UploadError
-}
+data class UploadFailure(val detail: String)
 
 /**
  * A complete, executable upload: PUT the resource's bytes to [url] with exactly [headers] — the one unit of

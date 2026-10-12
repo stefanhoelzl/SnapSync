@@ -310,13 +310,13 @@ class OwnDeviceGalleryStatusSourceTest {
     }
 
     private fun resource(filename: String, assetId: String) =
-        Resource(filename, AssetId(assetId), "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE), Unit)
+        Resource(filename, AssetId(assetId), "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE), null)
 
     private fun datedResource(filename: String, assetId: String, creationDate: String) =
-        Resource(filename, AssetId(assetId), "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to creationDate), Unit)
+        Resource(filename, AssetId(assetId), "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to creationDate), null)
 
     private fun undatedResource(filename: String, assetId: String) =
-        Resource(filename, AssetId(assetId), "image/jpeg", emptyMap(), Unit)
+        Resource(filename, AssetId(assetId), "image/jpeg", emptyMap(), null)
 
     /** A resource carrying the origin facts (capability `photo-sharing`). */
     private fun originResource(
@@ -335,7 +335,7 @@ class OwnDeviceGalleryStatusSourceTest {
             RESOURCE_META_IS_VIDEO to "false",
             RESOURCE_META_PIXEL_AREA to (width * height).toString(),
         ),
-        Unit,
+        null,
     )
 
     @Test

@@ -108,7 +108,7 @@ is no per-root cycle or feature assembly any more.
   host; `process()` runs one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING`
   requeue and the raw-value handoff through the tested `ports/` rules.
 - The app-driven tier's uploader (`compose/AppUploader.kt`) runs the same cycle assembly (`uploadCycle`) over the
-  app's own services and `Upload` port (the background-`URLSession` adapter); the app's `TailRunner` drives it.
+  app's own services and `TransferSession` port (the background-`URLSession` adapter); the app's `TailRunner` drives it.
 
 **Neither is the direction gate** (capability `delivery`). Whether a membership uploads **at all** is
 decided inside `UploadCycle`, from a required `Contribution` (`:domain` `model/`) carrying the membership's

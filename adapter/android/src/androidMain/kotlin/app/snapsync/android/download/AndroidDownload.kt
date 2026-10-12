@@ -9,14 +9,14 @@ import android.net.Uri
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.TransferOutcome
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.StartResult
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferOutcome
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CompletableDeferred

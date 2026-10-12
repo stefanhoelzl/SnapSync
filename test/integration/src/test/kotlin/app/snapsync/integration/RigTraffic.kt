@@ -12,7 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 suspend fun Rig.cycle(): String =
     Json.parseToJsonElement(os("photokit-ext", "processRawValue")).jsonObject.getValue("result").jsonPrimitive.content
 
-/** The operating system's upload jobs: the keys still live, and how many were ever created. */
+/** The operating system's upload jobs: the ones still live (`<assetId>/<role>`), and how many were ever created. */
 suspend fun Rig.jobs(): Rig.Jobs = deviceJson("jobs").let { json ->
     Rig.Jobs(
         live = json.getValue("live").jsonArray.map { it.jsonPrimitive.content },
@@ -20,9 +20,9 @@ suspend fun Rig.jobs(): Rig.Jobs = deviceJson("jobs").let { json ->
     )
 }
 
-/** The OS finishes every live job (or one), as a transfer landing. */
-suspend fun Rig.completeJobs(key: String? = null) {
-    if (key == null) device("jobs/complete") else device("jobs/complete", "key" to key)
+/** The OS finishes every live job (or the one [job] names, `<assetId>/<role>`), as a transfer landing. */
+suspend fun Rig.completeJobs(job: String? = null) {
+    if (job == null) device("jobs/complete") else device("jobs/complete", "job" to job)
 }
 
 /** Upload everything the cycle picks up: a cycle, every job landing, and a cycle to settle and publish. */

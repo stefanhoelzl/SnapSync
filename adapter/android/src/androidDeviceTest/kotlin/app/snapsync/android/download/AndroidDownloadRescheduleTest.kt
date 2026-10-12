@@ -7,7 +7,7 @@ import android.net.Uri
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.ClauseDownloadHandlers
 import app.snapsync.contracts.DownloadEvent
-import app.snapsync.model.TransferNetwork
+import app.snapsync.ports.TransferNetwork
 import java.io.File
 import java.net.InetAddress
 import java.net.ServerSocket

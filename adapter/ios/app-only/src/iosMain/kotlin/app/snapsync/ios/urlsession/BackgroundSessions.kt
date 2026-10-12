@@ -42,8 +42,8 @@ class BackgroundSessions(
         /**
          * Routes the relaunches for [identifier] to [handle] — a session this process brings up outside the composition.
          * No shipped build claims one: a rig build's contract run claims its own session's, recorded across the relaunch
-         * it causes (`UploadContract`'s relaunched state). Claimed before the composition's first relaunch is routed, as
-         * the root's adapter set is built.
+         * it causes (`TransferSessionContract`'s relaunched state). Claimed before the composition's first relaunch is
+         * routed, as the root's adapter set is built.
          */
         fun claim(identifier: String, handle: (completion: () -> Unit) -> Unit) {
             while (true) {

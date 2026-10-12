@@ -53,7 +53,11 @@ class DeclaredIntentIntegrationTest {
             declared.getValue("LIVE"),
             "BOTH roles are declared — that declaration is what the backend measures arrival against",
         )
-        assertEquals(setOf(first), objects(), "and only one resource's bytes have actually landed")
+        // The job is named `<asset>/<role>`; the object it landed is `<asset>-<role>.<ext>`.
+        assertTrue(
+            objects().single().startsWith(first.replace('/', '-') + "."),
+            "and only one resource's bytes have actually landed: ${objects()}",
+        )
         assertTrue(
             "LIVE" !in union(event),
             "so the union hides it: a declared role with no stored byte makes the asset incomplete",

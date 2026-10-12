@@ -57,7 +57,7 @@ class SelectionScopedDiscoveryTest {
             assetId = AssetId(name),
             contentType = "image/jpeg",
             metadata = emptyMap(),
-            data = Unit,
+            data = null,
         )
 
     @Test

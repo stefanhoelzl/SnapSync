@@ -297,7 +297,7 @@ Where bindings live: beside their implementations.
   no battery, so its battery reads failed — the contract holds the battery only to its range. That `IosDeviceConditions`
   leaves `UIDevice`'s battery monitoring as it found it is unobservable through the port and is stated on the adapter;
   how a report renders each fact, and a read that stalls, run on the JVM (`CollectDiagnosticDumpTest`).
-- A transfer held to unrestricted networks (capability `mobile-data`): `Upload`'s and `Download`'s
+- A transfer held to unrestricted networks (capability `mobile-data`): `TransferSession`'s and `Download`'s
   `A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE` run live on `ANDROID_EMU` (metered Wi-Fi, via the shared
   `MeteredWifi` entry) and over the transfer mocks; `AndroidWorkContractTest` pins that an unrestricted wake waits out a
   metered network. iOS has no host for them — the simulator shares its Mac's network, and the device's transfer
@@ -569,7 +569,7 @@ Some states exist only once the app has left the person's hands, and their runs 
 (`BackgroundTime`). Each holds background time and waits — reading the app's own state, unrecorded — for the person
 to put the phone there. Two span launches, and are asked for in two steps (`?step=arm`, then `?step=collect`): the
 relaunch, where the app prepares a transfer in a session of its own and exits, and iOS relaunches it in the
-background to deliver the transfer's end (`Upload@IOS_DEVICE_APP.rec`, and `SharePresenter@IOS_DEVICE_APP.rec` from
+background to deliver the transfer's end (`TransferSession@IOS_DEVICE_APP.rec`, and `SharePresenter@IOS_DEVICE_APP.rec` from
 the same windowless launch); and MetricKit's delivery, which the run waits for across launches, about a day
 (`ProcessMetrics@IOS_DEVICE_APP.rec`). A step that records nothing answers `409`, so it never lands in a `.rec`.
 
@@ -973,7 +973,7 @@ screen (it is held to `ReadModelImportsTest` like the other consumers). It offer
   mocks, because deposited state cannot be un-set, and joins through the app's own create form and join gate.
 - **Invoke extension**: the extension's `process()` through its entry port, then the silent push a member's upload
   makes the backend send, whose receiver is the download reconcile. **Heartbeat** fires the scheduled wake.
-- gallery and backend columns, the upload queue (Complete / Fail with an `UploadError`), downloads
+- gallery and backend columns, the upload queue (Complete / Fail with what the OS says of it), downloads
   (Stage), failure levers, and Create event with a past or future start.
 - an engine console that streams Kermit output, each invoke's `CycleResult`, and what the share sheet was handed (it
   is copied to the clipboard).

@@ -15,8 +15,8 @@ import kotlin.test.assertTrue
  * the VALUE is the only reading that sees what a run sees. Scope is derived — every `object` in the contracts package
  * extending [Contract] — never listed, so a new contract is in the catalog the day it compiles.
  *
- * The one `Contract` not here is the extension's single-clause re-wrap of `UploadContract` in an iOS rig source set,
- * which carries `UploadContract`'s own clauses and adds none.
+ * The `Contract`s not here are the iOS rig source sets' single-clause re-wraps of a contract (the extension's of
+ * `OsUploadQueueContract`, the relaunch's), which carry that contract's own clauses and add none.
  */
 internal object ContractCatalog {
 

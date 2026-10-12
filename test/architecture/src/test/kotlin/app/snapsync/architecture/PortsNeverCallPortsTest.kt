@@ -33,11 +33,18 @@ class PortsNeverCallPortsTest {
         "SimulatorSecureStore.files" to "unowned: the same",
     )
 
+    /**
+     * The interfaces that extend `Port`, directly or through another port. A handle or value a port hands over (a
+     * `GalleryResourceHandle` a job record keeps) is an interface too, and holding one reaches no second system.
+     */
     private val ports: Set<String> by lazy {
-        SourceScan.kotlinFiles()
+        val supertypes = SourceScan.kotlinFiles()
             .filter { it.path.startsWith("/domain/ports/src/commonMain/") }
-            .flatMap { src -> PORT.findAll(src.text).map { it.groupValues[1] }.toList() }
-            .toSet()
+            .flatMap { src -> INTERFACE.findAll(src.text).map { it.groupValues[1] to it.groupValues[2] }.toList() }
+            .associate { (name, supers) -> name to SUPERTYPE.findAll(supers).map { it.value }.toSet() }
+        generateSequence(setOf("Port")) { known ->
+            known + supertypes.filterValues { it.any(known::contains) }.keys
+        }.zipWithNext().first { (a, b) -> a == b }.first - "Port"
     }
 
     private val adapterSources: List<SourceScan.Source> by lazy {
@@ -91,7 +98,14 @@ class PortsNeverCallPortsTest {
     }
 
     private companion object {
-        val PORT = Regex("""^(?:fun\s+)?interface\s+(\w+)""", RegexOption.MULTILINE)
+        /** An interface declaration: its name, and what follows its colon up to the body or the line's end. */
+        val INTERFACE = Regex(
+            """^(?:fun\s+)?interface\s+(\w+)(?:<[^>]*>)?\s*(?::\s*([^{\n]*))?""",
+            RegexOption.MULTILINE,
+        )
+
+        /** A supertype's simple name. */
+        val SUPERTYPE = Regex("""\b[A-Z]\w*""")
 
         /** The production source sets of a Kotlin Multiplatform adapter module — never tests, never the rig set. */
         val PRODUCTION_SET = Regex("""/src/(?:common|jvm|ios|iosArm64|iosSimulatorArm64|apple|native)Main/""")

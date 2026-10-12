@@ -6,11 +6,11 @@ import app.snapsync.ios.upload.applyTransferNetwork
 import app.snapsync.ios.urlsession.SessionCompletion
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.logging.invocation
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.TransferOutcome
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.StartResult
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferOutcome
 import co.touchlab.kermit.Logger
 import platform.Foundation.NSError
 import platform.Foundation.NSMutableURLRequest

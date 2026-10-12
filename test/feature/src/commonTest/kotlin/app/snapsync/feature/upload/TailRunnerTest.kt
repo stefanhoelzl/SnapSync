@@ -2,10 +2,10 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.CycleResult
 import app.snapsync.model.ScheduleResult
-import app.snapsync.model.TransferNetwork
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.wake.Heartbeat

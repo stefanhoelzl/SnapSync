@@ -14,9 +14,9 @@ import app.snapsync.model.AssetRef
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.TransferNetwork
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.TransferNetwork
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME

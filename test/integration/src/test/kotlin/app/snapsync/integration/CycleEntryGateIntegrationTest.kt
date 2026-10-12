@@ -74,7 +74,7 @@ class CycleEntryGateIntegrationTest {
         // new photo, never the one already uploaded.
         membershipUnreadable(false)
         cycle()
-        assertEquals(listOf(primaryKey("B")), jobs().live, "the settled photo was not re-queued")
+        assertEquals(listOf(primaryJob("B")), jobs().live, "the settled photo was not re-queued")
     }
 
     @Test
@@ -126,7 +126,7 @@ class CycleEntryGateIntegrationTest {
 
         cycle()
 
-        assertEquals(listOf(primaryKey("A")), jobs().live)
+        assertEquals(listOf(primaryJob("A")), jobs().live)
     }
 
     @Test
@@ -148,6 +148,6 @@ class CycleEntryGateIntegrationTest {
         membershipUnreadable(false) // the user unlocked
         cycle()
 
-        assertEquals(listOf(primaryKey("A")), jobs().live, "the next cycle resumes")
+        assertEquals(listOf(primaryJob("A")), jobs().live, "the next cycle resumes")
     }
 }

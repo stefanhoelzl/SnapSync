@@ -24,7 +24,7 @@ class UploadCycleIntegrationTest {
         addPhoto("A")
 
         assertEquals("processing", cycle(), "the system is asked to call again while the upload is in flight")
-        assertEquals(listOf(primaryKey("A")), jobs().live, "the new photo's upload is started")
+        assertEquals(listOf(primaryJob("A")), jobs().live, "the new photo's upload is started")
     }
 
     @Test
@@ -63,7 +63,7 @@ class UploadCycleIntegrationTest {
         addPhoto("B")
 
         assertEquals("completed", cycle(), "no usable access: the cycle is withheld, and the system rests")
-        assertTrue(primaryKey("B") !in jobs().live, "nothing created without a grant")
+        assertTrue(primaryJob("B") !in jobs().live, "nothing created without a grant")
         assertTrue(
             "A" in union(),
             "a temporary grant state publishes nothing — never the empty manifest that blanks the union",
@@ -86,7 +86,7 @@ class UploadCycleIntegrationTest {
         permission("GRANTED")
 
         cycle()
-        assertTrue(primaryKey("A") in jobs().live)
+        assertTrue(primaryJob("A") in jobs().live)
     }
 
     /**
@@ -147,14 +147,14 @@ class UploadCycleIntegrationTest {
         cycle()
         assertEquals(1, jobs().created)
 
-        device("jobs/fail", "key" to primaryKey("A"), "error" to "network")
+        device("jobs/fail", "job" to primaryJob("A"), "error" to "network")
         cycle() // the first failure: the single free retry re-points the job
         assertEquals(1, jobs().created, "the first retry creates no new job")
 
-        device("jobs/fail", "key" to primaryKey("A"), "error" to "network")
+        device("jobs/fail", "job" to primaryJob("A"), "error" to "network")
         cycle() // retry spent: re-created in the same cycle
         assertEquals(2, jobs().created, "the spent retry re-creates the job")
-        assertTrue(primaryKey("A") in jobs().live)
+        assertTrue(primaryJob("A") in jobs().live)
     }
 
     // ---- the presence walk ----------------------------------------------------------------------------------------
@@ -203,7 +203,7 @@ class UploadCycleIntegrationTest {
         leave()
         val second = createAndJoin(name = "Trip")
         cycle()
-        assertTrue(primaryKey("A") in jobs().live, "A is re-enqueued for upload")
+        assertTrue(primaryJob("A") in jobs().live, "A is re-enqueued for upload")
         completeJobs()
         cycle()
 

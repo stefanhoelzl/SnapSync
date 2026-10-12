@@ -7,8 +7,9 @@ import app.snapsync.contracts.Landed
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.gallery.PhotoKitResource
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJobState
+import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.UploadJobState
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.HTTPMethod
 import platform.Foundation.NSURLRequest
@@ -25,7 +26,10 @@ import platform.Foundation.allHTTPHeaderFields
  */
 
 /** Stands for a library photo's resource on replay, where no `PHAssetResource` exists. */
-internal object ReplayPhoto
+internal object ReplayPhoto : GalleryResourceHandle
+
+/** Stands, on replay, for a resource the recording called another kind. */
+private object ReplayOther : GalleryResourceHandle
 
 private const val NONE = "-"
 
@@ -44,16 +48,19 @@ private fun resourceKind(resource: Any?): String = when (resource) {
 }
 
 private fun UploadJobFacts.render(): String =
-    "path=${destinationPath.orNone()} ct=${contentTypeHeader.orNone()} state=${state.name} " +
-        "err=${(error as? UploadError.Unknown)?.detail.orNone()} res=${resourceKind(resource)} type=${resourceType.orNone()}"
+    "url=${destinationUrl.orNone()} ct=${contentTypeHeader.orNone()} state=${state.name} " +
+        "err=${error?.detail.orNone()} res=${resourceKind(resource)} type=${resourceType.orNone()}"
 
 private fun factsCall(set: JobSet) = "fetch(${set.name})"
-private fun ackCall(job: UploadJobFacts) = "acknowledge(path=${job.destinationPath.orNone()})"
+private fun ackCall(job: UploadJobFacts) = "acknowledge(url=${job.destinationUrl.orNone()})"
 private fun retryCall(
     job: UploadJobFacts,
     to: NSURLRequest,
-) = "retry(path=${job.destinationPath.orNone()} ${to.render()})"
-private fun createCall(to: NSURLRequest, resource: Any) = "create(${to.render()} resource=${resourceKind(resource)})"
+) = "retry(url=${job.destinationUrl.orNone()} ${to.render()})"
+private fun createCall(
+    to: NSURLRequest,
+    resource: GalleryResourceHandle,
+) = "create(${to.render()} resource=${resourceKind(resource)})"
 private fun landedCall(route: String) = "landed($route)"
 
 /** The answer's description is LAST, so it may hold spaces. */
@@ -77,17 +84,17 @@ private fun List<UploadJobFacts>.render(): String = "n=$size" + joinToString("")
 private fun parseFacts(rendered: String): List<UploadJobFacts> =
     JOB.findAll(rendered).mapIndexed { i, m ->
         val f = m.groupValues[1].split(' ').associate { it.substringBefore('=') to it.substringAfter('=') }
-        val path = f.getValue("path").noneAsNull()
+        val url = f.getValue("url").noneAsNull()
         UploadJobFacts(
-            handle = "job#$i:$path",
-            destinationPath = path,
+            handle = "job#$i:$url",
+            destinationUrl = url,
             contentTypeHeader = f.getValue("ct").noneAsNull(),
             state = UploadJobState.valueOf(f.getValue("state")),
-            error = f.getValue("err").noneAsNull()?.let { UploadError.Unknown(it) },
+            error = f.getValue("err").noneAsNull()?.let { TransferFailure(it) },
             resource = when (f.getValue("res")) {
                 "photo" -> ReplayPhoto
                 NONE -> null
-                else -> "other"
+                else -> ReplayOther
             },
             resourceType = f.getValue("type").noneAsNull(),
         )
@@ -103,7 +110,7 @@ internal class RecordingUploadJobApi(private val real: UploadJobApi, private val
     ) = real.acknowledge(job).also { recorder.record(ackCall(job), it.render()) }
     override fun retry(job: UploadJobFacts, destination: NSURLRequest) =
         real.retry(job, destination).also { recorder.record(retryCall(job, destination), it.render()) }
-    override fun create(destination: NSURLRequest, resource: Any) =
+    override fun create(destination: NSURLRequest, resource: GalleryResourceHandle) =
         real.create(destination, resource).also { recorder.record(createCall(destination, resource), it.render()) }
 }
 
@@ -117,7 +124,7 @@ internal class ReplayingUploadJobApi(private val replayer: Replayer) : UploadJob
     ) = parseChange(replayer.answer(retryCall(job, destination)))
     override fun create(
         destination: NSURLRequest,
-        resource: Any,
+        resource: GalleryResourceHandle,
     ) = parseChange(replayer.answer(createCall(destination, resource)))
 }
 

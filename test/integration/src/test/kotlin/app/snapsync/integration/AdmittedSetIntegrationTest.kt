@@ -2,7 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.model.AssetId
-import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SyncHealth
@@ -53,7 +52,7 @@ class AdmittedSetIntegrationTest {
 
         // ③ the byte upload
         cycle()
-        assertEquals(listOf(primaryKey("IN")), jobs().live, "only the in-window photo's bytes are uploaded")
+        assertEquals(listOf(primaryJob("IN")), jobs().live, "only the in-window photo's bytes are uploaded")
         assertEquals(1, jobs().created)
 
         // ④ the device manifest — the consumer that leaked. A post-ceiling asset listed here enters the event union
@@ -87,7 +86,7 @@ class AdmittedSetIntegrationTest {
         refresh()
         awaitHealth { it is SyncHealth.Syncing }
         cycle()
-        assertEquals(setOf(AssetId("IN"), AssetId("AFTER")), jobs().live.mapTo(mutableSetOf(), ::assetIdFromUploadKey))
+        assertEquals(setOf(AssetId("IN"), AssetId("AFTER")), jobs().live.mapTo(mutableSetOf(), ::assetIdOfJob))
         completeJobs()
         cycle()
         assertEquals(setOf("IN", "AFTER"), manifest(event)?.keys)
@@ -110,7 +109,7 @@ class AdmittedSetIntegrationTest {
         val event = join()
 
         cycle()
-        assertEquals(listOf(primaryKey("CAM")), jobs().live)
+        assertEquals(listOf(primaryJob("CAM")), jobs().live)
         completeJobs()
         cycle()
 

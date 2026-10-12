@@ -1,15 +1,15 @@
 package app.snapsync.services.upload
 
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJobState
+import app.snapsync.model.UploadFailure
+import app.snapsync.ports.UploadJobState
 import app.snapsync.wire.api.Routes
 
 /*
  * The per-job decisions over a platform's upload jobs — what the PhotoKit adapter
  * used to hold beside its vocabulary mappings (`PhotoKitJobMapping.kt`, decision record
  * `changes/archive/2026-08-09-extract-upload-platform-mappings`). They are the services' since phase 11f: a thin
- * `Upload` port reports job facts, and which row a job belongs to, what a terminal job means and which offered retry
+ * job queue reports job facts, and which row a job belongs to, what a terminal job means and which offered retry
  * is a key's are decided once here, for every platform, where `commonTest` reaches them.
  */
 
@@ -21,7 +21,7 @@ sealed interface FetchedJob {
      * job was created, and is the only way back to the row. No key is read out of it: under the v2 byte route its last
      * segment is the resource's ROLE (`changes/retire-legacy-key-fallback`).
      */
-    data class Emit(val destinationPath: String, val state: UploadJobState, val error: UploadError?) : FetchedJob
+    data class Emit(val destinationPath: String, val state: UploadJobState, val error: UploadFailure?) : FetchedJob
 
     /**
      * The job carries no recoverable destination. It is **still acknowledged**: every presented job must be, or the
@@ -31,7 +31,7 @@ sealed interface FetchedJob {
 }
 
 /** Classify one presented job by the facts it carries: a destination path, or none. */
-fun classifyFetchedJob(destinationPath: String?, state: UploadJobState, error: UploadError?): FetchedJob {
+fun classifyFetchedJob(destinationPath: String?, state: UploadJobState, error: UploadFailure?): FetchedJob {
     val path = destinationPath ?: return FetchedJob.AcknowledgeToDrain
     return FetchedJob.Emit(destinationPath = path, state = state, error = error)
 }
@@ -125,7 +125,7 @@ suspend fun <J> retryJobMatching(
 /**
  * Whether [url] can be an upload job's destination: an `http` or `https` URL with a host. `NSURL.URLWithString` is no
  * guard — since iOS 17 it percent-encodes where it used to answer `nil`, so an empty string parses — so the services
- * refuse a destination that is not a URL before any platform sees it (`UploadContract`'s bad-destination clause).
+ * refuse a destination that is not a URL before any platform sees it.
  */
 fun isUploadDestination(url: String): Boolean {
     val scheme = url.substringBefore("://", missingDelimiterValue = "").lowercase()

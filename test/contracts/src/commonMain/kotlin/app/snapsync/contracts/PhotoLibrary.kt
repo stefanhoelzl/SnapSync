@@ -127,13 +127,15 @@ object PhotoLibrary {
             GalleryReaderContract,
             GalleryImportContract,
             // Its clauses seed the photos they upload.
-            UploadContract,
+            OsUploadQueueContract,
             // Its change clause seeds one photo to move the library's token.
             GalleryContract,
             // Its clauses seed the photos they move into a folder album.
             FolderAlbumContract,
             // Appended, so no window above moves.
             LivePhotoImportContract,
+            // Its clauses seed the photos they send as resources.
+            TransferSessionContract,
         )
     }
 

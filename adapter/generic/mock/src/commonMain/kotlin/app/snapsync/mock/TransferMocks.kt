@@ -1,37 +1,39 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AssetId
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.TransferOutcome
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadSourceKind
-import app.snapsync.model.UploadTarget
-import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
+import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.Completion
+import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.Files
-import app.snapsync.ports.Upload
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.OsUploadJob
+import app.snapsync.ports.OsUploadJobHandle
+import app.snapsync.ports.OsUploadQueue
+import app.snapsync.ports.StartResult
+import app.snapsync.ports.Transfer
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.TransferHandle
+import app.snapsync.ports.TransferHandlers
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferOutcome
+import app.snapsync.ports.TransferSession
+import app.snapsync.ports.TransferSource
+import app.snapsync.ports.UploadJobState
+import app.snapsync.ports.UploadTarget
 import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 // The operating system's background transfers (`docs/testing.md`, "Mocks"): what it holds for the app survives the
 // app's process — the upload jobs, the download session's transfers — and the operator plays the network by finishing
-// them. Each is held to the transfer contract its real adapters satisfy (`UploadContract`, `DownloadContract`).
+// them. Each is held to the transfer contract its real adapters satisfy (`OsUploadQueueContract`, `TransferSessionContract`,
+// `DownloadContract`).
 
 /**
  * The network an OS transfer crosses: the request's [url] and [headers], answered with an HTTP status — or `null` when
@@ -41,23 +43,30 @@ fun interface UploadNetwork {
     suspend fun put(url: String, headers: Map<String, String>, bytes: ByteArray): Int?
 }
 
-/** One job the queue was asked to create: the upload key it was tagged with, and the type it declared. */
-class CreatedUpload(val filename: String, val contentType: String) {
-    /** The photo's id, recovered from the key (`<assetId>-<role>.<ext>`). */
-    val assetId: AssetId get() = assetIdFromUploadKey(filename)
-}
+/**
+ * One job the queue was asked to create: the [job] it names — what its destination names, `<assetId>/<role>` — and the
+ * type it declared.
+ */
+class CreatedUpload(val job: String, val contentType: String)
+
+/**
+ * The OS's name for a job made towards [url]: the asset and role its destination names (`<assetId>/<role>`, the byte
+ * route's last two segments) — the request is all a job queue keeps of what the job is for.
+ */
+internal fun jobNameOf(url: String): String = destinationPathOf(url).split('/').takeLast(2).joinToString("/")
 
 /**
  * The PhotoKit tier's upload-job queue: jobs the operating system holds between the app's cycles, presented in its two
  * sets. It decides nothing — which ledger row a job belongs to and what its end means are the upload services'.
  *
  * - `create` enqueues a PENDING job and answers `CREATED`, unless the in-flight cap is reached (`LIMIT_EXCEEDED`), the
- *   create is set to fail, or the source is not this platform's handle (`FAILED`) — the in-memory library's
- *   [InMemoryResource], as a device's is a PhotoKit resource. [acceptsAnyHandle] is the launch-time adapters' queue on a device whose photo
- *   library is REAL: it takes the `PHAssetResource` a real library hands over and moves no bytes of it — a mocked
- *   queue's request carries placeholder bytes to the mocked backend.
+ *   create is set to fail, or the resource is not this platform's handle (`FAILED`) — the in-memory library's
+ *   [InMemoryResource], as a device's is a PhotoKit resource. [acceptsAnyHandle] is the launch-time adapters' queue on
+ *   a device whose photo library is REAL: it takes the resource a real library hands over and moves no bytes of it — a
+ *   mocked queue's request carries placeholder bytes to the mocked backend.
+ * - A job is named by its destination ([jobNameOf]): the OS keeps no tag.
  * - The operator's `completeJob` performs the job's own request over [network]: a `2xx` makes it terminal-succeeded,
- *   any other status fails it with that status, and no answer fails it with [UploadError.Network].
+ *   any other status fails it with that status, and no answer fails it with [TransferFailure("network")].
  * - `failJob` fails a job with a chosen error. A first failure is offered for its single free retry; a failure after
  *   it is presented as terminal and handed back for re-creation.
  * - While [restricted] — the device on mobile data, a hotspot or under Low Data Mode — the OS performs NO job, whatever
@@ -69,9 +78,11 @@ class UploadQueueMock(
     private val acceptsAnyHandle: Boolean = false,
     internal val restricted: () -> Boolean,
 ) {
-    internal class Job(val key: String, val contentType: String, val data: Any, var target: UploadTarget) {
+    internal class Job(val contentType: String, val resource: GalleryResourceHandle, var target: UploadTarget) :
+        OsUploadJobHandle {
+        val name: String get() = jobNameOf(target.url)
         var state: UploadJobState = UploadJobState.PENDING
-        var error: UploadError? = null
+        var failure: TransferFailure? = null
         var retriedOnce: Boolean = false
     }
 
@@ -88,72 +99,61 @@ class UploadQueueMock(
 
     @Volatile internal var failCreate = false
 
-    private val face: Upload = object : Upload {
-        override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
-        override val acceptsFiles: Boolean = false
+    private val face: OsUploadQueue = object : OsUploadQueue {
+        override suspend fun retryOffered(): List<OsUploadJob> = locked {
+            jobs.filter { it.state == UploadJobState.FAILED && !it.retriedOnce }.map { it.view() }
+        }
 
-        /** The queue raises no events: its terminal jobs are presented when asked, as PhotoKit's are. */
-        override fun listen(handlers: UploadHandlers) = Unit
-
-        override suspend fun jobs(set: UploadJobSet): List<UploadJob> = locked {
-            when (set) {
-                UploadJobSet.RETRY_OFFERED -> jobs.filter { it.state == UploadJobState.FAILED && !it.retriedOnce }
-                UploadJobSet.TERMINAL -> jobs.filter {
-                    it.state == UploadJobState.SUCCEEDED || (it.state == UploadJobState.FAILED && it.retriedOnce)
-                }
-                UploadJobSet.IN_FLIGHT -> jobs.filter { it.state == UploadJobState.PENDING }
+        override suspend fun terminals(): List<OsUploadJob> = locked {
+            jobs.filter {
+                it.state == UploadJobState.SUCCEEDED || (it.state == UploadJobState.FAILED && it.retriedOnce)
             }.map { it.view() }
         }
 
-        override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome {
+        override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
             val j = job.handle as? Job ?: return ChangeOutcome.Refused(null, "not this queue's job")
             locked {
                 j.retriedOnce = true
                 j.target = target
                 j.state = UploadJobState.PENDING
-                j.error = null
+                j.failure = null
             }
             return ChangeOutcome.Applied
         }
 
-        override suspend fun acknowledge(job: UploadJob): ChangeOutcome {
-            locked { jobs.remove(job.handle) }
-            return ChangeOutcome.Applied
+        /** Only a job this queue presented is owed an acknowledgement; another is refused, as PhotoKit refuses it. */
+        override suspend fun acknowledge(job: OsUploadJob): ChangeOutcome {
+            val presented = locked { jobs.remove(job.handle) }
+            return if (presented) ChangeOutcome.Applied else ChangeOutcome.Refused(null, "not this queue's job")
         }
 
-        override suspend fun cancel(job: UploadJob): ChangeOutcome {
-            locked { jobs.remove(job.handle) }
-            return ChangeOutcome.Applied
-        }
-
-        override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
-            if (failCreate) return UploadCreateOutcome.FAILED
-            val data = (source as? UploadSource.Resource)?.handle ?: return UploadCreateOutcome.FAILED
-            if (data !is InMemoryResource && !acceptsAnyHandle) return UploadCreateOutcome.FAILED
+        override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome {
+            if (failCreate) return CreateOutcome.FAILED
+            if (resource !is InMemoryResource && !acceptsAnyHandle) return CreateOutcome.FAILED
             val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
                 ?: "application/octet-stream"
             return locked {
-                if (jobs.size >= jobLimit) return@locked UploadCreateOutcome.LIMIT_EXCEEDED
-                jobs.add(Job(tag, contentType, data, target))
-                created.add(CreatedUpload(tag, contentType))
-                UploadCreateOutcome.CREATED
+                if (jobs.size >= jobLimit) return@locked CreateOutcome.LIMIT_EXCEEDED
+                val job = Job(contentType, resource, target)
+                jobs.add(job)
+                created.add(CreatedUpload(job.name, contentType))
+                CreateOutcome.CREATED
             }
         }
     }
 
     /** A process's face — the same queue for every process, as the OS holds one for the app. */
-    fun port(): Upload = face
+    fun port(): OsUploadQueue = face
 
     val operator: UploadQueueOperator = UploadQueueOperator(this)
 
-    private fun Job.view() = UploadJob(
+    private fun Job.view() = OsUploadJob(
         handle = this,
-        tag = key,
-        destinationPath = destinationPathOf(target.url),
+        destinationUrl = target.url,
         contentType = contentType,
         state = state,
-        error = error,
-        source = UploadSource.Resource(data).takeIf { state != UploadJobState.SUCCEEDED },
+        failure = failure,
+        resource = resource.takeIf { state != UploadJobState.SUCCEEDED },
     )
 }
 
@@ -169,19 +169,19 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
         get() = mock.failCreate
         set(value) { mock.failCreate = value }
 
-    /** Every job created, in order (retry chains show as repeated keys). */
+    /** Every job created, in order (retry chains show as repeated names). */
     val created: List<CreatedUpload> get() = mock.locked { mock.created.toList() }
 
-    /** The keys of every live (in-flight or terminal-unacknowledged) job. */
-    fun liveJobKeys(): List<String> = mock.locked { mock.jobs.map { it.key } }
+    /** The names ([jobNameOf]) of every live (in-flight or terminal-unacknowledged) job. */
+    fun liveJobs(): List<String> = mock.locked { mock.jobs.map { it.name } }
 
     /**
      * The OS performs a pending job's request over the network, and the job settles on the answer — unless the device is
      * on a restricted network, where the OS holds every job (see [UploadQueueMock]) and this leaves it pending.
      */
-    suspend fun completeJob(key: String) {
+    suspend fun completeJob(job: String) {
         val (j, target) = mock.locked {
-            mock.jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING }?.let { it to it.target }
+            mock.jobs.firstOrNull { it.name == job && it.state == UploadJobState.PENDING }?.let { it to it.target }
         } ?: return
         if (mock.restricted()) return
         val status = mock.network.put(target.url, target.headers, TRANSFERRED_BYTES)
@@ -192,21 +192,21 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
         when {
             status == null -> {
                 j.state = UploadJobState.FAILED
-                j.error = UploadError.Network
+                j.failure = TransferFailure("network")
             }
             status in SUCCESS -> j.state = UploadJobState.SUCCEEDED
             else -> {
                 j.state = UploadJobState.FAILED
-                j.error = UploadError.Http(status)
+                j.failure = TransferFailure("http:$status")
             }
         }
     }
 
-    /** A pending job fails with a chosen [error], driving the real retry chain next cycle. */
-    fun failJob(key: String, error: UploadError) = mock.locked {
-        val j = mock.jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING } ?: return@locked
+    /** A pending job fails with a chosen [failure], driving the real retry chain next cycle. */
+    fun failJob(job: String, failure: TransferFailure) = mock.locked {
+        val j = mock.jobs.firstOrNull { it.name == job && it.state == UploadJobState.PENDING } ?: return@locked
         j.state = UploadJobState.FAILED
-        j.error = error
+        j.failure = failure
     }
 
     private companion object {
@@ -220,8 +220,8 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
 /**
  * The app uploader's background transfer session, as the operating system holds it — a `URLSession`'s shape: it sends a
  * FILE, holds at most [LIVE_CAP] live transfers (`LIMIT_EXCEEDED` beyond), offers no free retry, and reports each
- * transfer's end the moment it happens through its handlers ([UploadHandlers.onFinished]) rather than presenting it
- * when asked. The transfers are the OS's, so they outlive a process: a relaunched app's handlers hear their ends.
+ * transfer's end the moment it happens through its handlers ([TransferHandlers.onFinished]). The transfers are the
+ * OS's, so they outlive a process: a relaunched app's handlers hear their ends.
  *
  * The operator plays the OS's network ([UploadSessionOperator.complete]): a transfer lands on [network] as the
  * backend's byte route receives it, and its answer is reported to the process that registered last. A transfer whose
@@ -233,7 +233,7 @@ class UploadSessionMock(
     /** Whether the device's network holds a transfer created under this rule. */
     internal val held: (TransferNetwork) -> Boolean,
 ) {
-    internal class Transfer(val tag: String, val target: UploadTarget)
+    internal class Live(val tag: String, val target: UploadTarget) : TransferHandle
 
     // The app creates transfers from its thread while the operator lands them from another; never held across the
     // network or a call into the app's handlers.
@@ -241,64 +241,43 @@ class UploadSessionMock(
 
     internal fun <T> locked(block: () -> T): T = lock.locked(block)
 
-    internal val handlers = HandlerSlot<UploadHandlers>("Upload", BeforeListen.Thrown)
+    internal val handlers = HandlerSlot<TransferHandlers>("TransferSession", BeforeListen.Thrown)
 
     @Volatile internal var handbacks = 0
-    internal val live = mutableListOf<Transfer>()
+    internal val live = mutableListOf<Live>()
     internal val created = mutableListOf<String>()
 
-    fun port(): Upload = object : Upload {
-        override val accepts: UploadSourceKind = UploadSourceKind.FILE
-        override val acceptsFiles: Boolean = true
+    fun port(): TransferSession = object : TransferSession {
+        override val takesResources: Boolean = false
 
-        override fun listen(handlers: UploadHandlers) {
+        override fun listen(handlers: TransferHandlers) {
             this@UploadSessionMock.handlers.set(handlers)
         }
 
-        override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
-            if (source !is UploadSource.File) return UploadCreateOutcome.FAILED
+        override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
+            if (source !is TransferSource.File) return CreateOutcome.FAILED
             return locked {
-                if (live.size >= LIVE_CAP) return@locked UploadCreateOutcome.LIMIT_EXCEEDED
-                live += Transfer(tag, target)
+                if (live.size >= LIVE_CAP) return@locked CreateOutcome.LIMIT_EXCEEDED
+                live += Live(tag, target)
                 created += tag
-                UploadCreateOutcome.CREATED
+                CreateOutcome.CREATED
             }
         }
 
-        /** Only in-flight transfers are known: a terminal one is reported as it ends, and none is offered a retry. */
-        override suspend fun jobs(set: UploadJobSet): List<UploadJob> = when (set) {
-            UploadJobSet.IN_FLIGHT -> locked { live.map { it.view(UploadJobState.PENDING, null) } }
-            UploadJobSet.RETRY_OFFERED, UploadJobSet.TERMINAL -> emptyList()
-        }
-
-        override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome =
-            ChangeOutcome.Refused(null, "a transfer session has no free retry; a failure is re-created")
-
-        /** Nothing to acknowledge: a transfer's end is reported once, as it happens. */
-        override suspend fun acknowledge(job: UploadJob): ChangeOutcome = ChangeOutcome.Applied
+        override suspend fun live(): List<Transfer> =
+            locked { live.map { Transfer(it, it.tag) } }
 
         /** A cancelled transfer ends, and its end is reported like any other — as the platform's delegate does. */
-        override suspend fun cancel(job: UploadJob): ChangeOutcome {
-            val transfer = job.handle as? Transfer ?: return ChangeOutcome.Refused(null, "not this session's transfer")
-            if (locked { live.remove(transfer) }) {
+        override suspend fun cancel(transfer: Transfer) {
+            val live = transfer.handle as? Live ?: return
+            if (locked { this@UploadSessionMock.live.remove(live) }) {
                 handlers.orNull("a cancelled transfer's end", BeforeListen.Dropped)
-                    ?.onFinished(transfer.view(UploadJobState.FAILED, UploadError.Cancelled))
+                    ?.onFinished(live.tag, TransferFailure("cancelled"))
             }
-            return ChangeOutcome.Applied
         }
     }
 
     val operator: UploadSessionOperator = UploadSessionOperator(this)
-
-    internal fun Transfer.view(state: UploadJobState, error: UploadError?) = UploadJob(
-        handle = this,
-        tag = tag,
-        destinationPath = destinationPathOf(target.url),
-        contentType = null,
-        state = state,
-        error = error,
-        source = null,
-    )
 
     internal companion object {
         /** The live transfers a session holds before `create` answers `LIMIT_EXCEEDED` — the iOS adapter's cap. */
@@ -325,13 +304,12 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
         if (mock.held(transfer.target.network)) return
         val status = mock.network.put(transfer.target.url, transfer.target.headers, TRANSFERRED_BYTES)
         mock.locked { mock.live.remove(transfer) }
-        val (state, error) = when {
-            status == null -> UploadJobState.FAILED to UploadError.Network
-            status in 200..299 -> UploadJobState.SUCCEEDED to null
-            else -> UploadJobState.FAILED to UploadError.Http(status)
+        val failure = when {
+            status == null -> TransferFailure("network")
+            status in 200..299 -> null
+            else -> TransferFailure("http:$status")
         }
-        val registered = mock.handlers.require("a transfer's end")
-        with(mock) { registered.onFinished(transfer.view(state, error)) }
+        mock.handlers.require("a transfer's end").onFinished(transfer.tag, failure)
     }
 
     /**

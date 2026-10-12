@@ -9,11 +9,11 @@ import app.snapsync.contracts.DownloadState
 import app.snapsync.contracts.DownloadUnderTest
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.SessionUnderTest
 import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.SharePresenterState
-import app.snapsync.contracts.UploadContract
-import app.snapsync.contracts.UploadState
-import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.TransferSessionContract
+import app.snapsync.contracts.TransferSessionState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
@@ -26,7 +26,7 @@ import kotlin.test.Test
 
 /**
  * What a phone the operating system relaunched in the background delivered, REPLAYED (`docs/architecture.md`): the
- * CURRENT [IosUrlSessionUploadPlatform] against the session's calls and events when `Upload@IOS_DEVICE_APP.rec` was
+ * CURRENT [IosUrlSessionUploadPlatform] against the session's calls and events when `TransferSession@IOS_DEVICE_APP.rec` was
  * recorded across the relaunch, the CURRENT [app.snapsync.download.IosDownload] against `Download@IOS_DEVICE_APP.rec`'s
  * relaunch, and the CURRENT [IosSystemUi] against the share sheet's answer in that same windowless
  * launch (`SharePresenter@IOS_DEVICE_APP.rec`). A `Diverged` means the adapter now asks iOS something else, or in
@@ -34,14 +34,18 @@ import kotlin.test.Test
  */
 class RelaunchReplayContractTest {
 
-    private val upload = object : Binding<UploadState, UploadUnderTest> {
+    private val upload = object : Binding<TransferSessionState, SessionUnderTest> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
-        override val reaches = setOf(UploadState.RELAUNCHED_WITH_EVENTS)
+        override val reaches = setOf(TransferSessionState.RELAUNCHED_WITH_EVENTS)
 
-        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+        override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
             if (state !in reaches) return Entered.Unreachable("this recording holds a relaunch; $state runs live")
-            return replayerFor(RECORDINGS, recordingName(UploadContract.name, host, null), clauseId) { replayer ->
+            return replayerFor(
+                RECORDINGS,
+                recordingName(TransferSessionContract.name, host, null),
+                clauseId,
+            ) { replayer ->
                 val api = ReplayingUploadSessionApi(replayer)
                 relaunchedUpload(
                     api,
@@ -115,7 +119,7 @@ class RelaunchReplayContractTest {
     fun `the recorded relaunch satisfies the Download contract`() = verify(DownloadContract, download)
 
     @Test
-    fun `the recorded relaunch satisfies the Upload contract`() = verify(UploadContract, upload)
+    fun `the recorded relaunch satisfies the TransferSession contract`() = verify(TransferSessionContract, upload)
 
     @Test
     fun `the recorded windowless launch satisfies the SharePresenter contract`() = verify(SharePresenterContract, share)

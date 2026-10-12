@@ -5,9 +5,9 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.UploadContract
-import app.snapsync.contracts.UploadState
-import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.OsUploadQueueContract
+import app.snapsync.contracts.OsUploadQueueState
+import app.snapsync.contracts.QueueUnderTest
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
@@ -17,7 +17,7 @@ import kotlin.test.Test
 /**
  * The upload extension's PhotoKit job queue, REPLAYED (`docs/architecture.md`): the CURRENT
  * [IosPhotoKitUploadPlatform] runs against what iOS answered — and what the upload receiver said landed — when
- * `test/contracts/recordings/Upload@IOS_DEVICE_PHOTOKIT_EXT.rec` was recorded inside the extension on a
+ * `test/contracts/recordings/OsUploadQueue@IOS_DEVICE_PHOTOKIT_EXT.rec` was recorded inside the extension on a
  * device, and the current clauses judge.
  *
  * Each clause's state was prepared across operating-system calls on the device — a job the extension creates is
@@ -27,19 +27,21 @@ import kotlin.test.Test
  */
 class IosPhotoKitUploadReplayContractTest {
 
-    private val name = recordingName(UploadContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT, null)
+    private val name = recordingName(OsUploadQueueContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT, null)
 
-    private val binding = object : Binding<UploadState, UploadUnderTest> {
+    private val binding = object : Binding<OsUploadQueueState, QueueUnderTest> {
         override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
         override val kind = BindingKind.Replay
         override val reaches = setOf(
-            UploadState.PRESENTED_SUCCEEDED,
-            UploadState.PRESENTED_REFUSED_ONCE,
-            UploadState.PRESENTED_RETRY_SPENT,
+            OsUploadQueueState.IDLE,
+            OsUploadQueueState.AT_CAP,
+            OsUploadQueueState.PRESENTED_SUCCEEDED,
+            OsUploadQueueState.PRESENTED_REFUSED_ONCE,
+            OsUploadQueueState.PRESENTED_RETRY_SPENT,
         )
 
-        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
-            if (state !in reaches) return Entered.Unreachable(EXTENSION_ONLY_PRESENTED)
+        override fun create(state: OsUploadQueueState, clauseId: String, log: CallLog): Entered<QueueUnderTest> {
+            if (state !in reaches) return Entered.Unreachable(NOT_RECORDED_IN_THE_EXTENSION)
             return replayerFor(RECORDINGS, name, clauseId, recordedWhere = "inside the extension") { replayer ->
                 // The preparation the device made across operating-system calls, made again here in one go, in order.
                 for (call in 1 until callsFor(state)) prepareCall(
@@ -62,6 +64,6 @@ class IosPhotoKitUploadReplayContractTest {
     }
 
     @Test
-    fun `the recorded extension job queue satisfies the Upload contract`() =
-        verify(UploadContract, binding)
+    fun `the recorded extension job queue satisfies the OsUploadQueue contract`() =
+        verify(OsUploadQueueContract, binding)
 }

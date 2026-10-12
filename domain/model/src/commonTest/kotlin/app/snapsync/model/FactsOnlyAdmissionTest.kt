@@ -58,7 +58,7 @@ class FactsOnlyAdmissionTest {
             RESOURCE_META_IS_EDITED to "false",
             RESOURCE_META_PIXEL_AREA to (width * height).toString(),
         ),
-        data = Unit,
+        data = null,
     )
 
     /** The same asset as the facts-only walk produces it — no resources, so no MIME in reach. */

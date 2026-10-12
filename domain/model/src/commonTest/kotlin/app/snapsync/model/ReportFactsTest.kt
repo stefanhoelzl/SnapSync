@@ -12,7 +12,7 @@ class ReportFactsTest {
             assetId = AssetId(asset),
             contentType = "image/jpeg",
             metadata = emptyMap(),
-            data = Unit,
+            data = null,
         )
 
     @Test

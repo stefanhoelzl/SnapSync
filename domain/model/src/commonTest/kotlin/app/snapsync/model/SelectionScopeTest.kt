@@ -22,7 +22,7 @@ class SelectionScopeTest {
             AssetId(it),
             "image/jpeg",
             mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T00:00:00Z"),
-            Unit,
+            null,
         )
     }
 

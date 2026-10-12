@@ -46,7 +46,7 @@ import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.StagedLiveImport
-import app.snapsync.contracts.UploadContract
+import app.snapsync.contracts.TransferSessionContract
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.simulatorAppContract
@@ -120,7 +120,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(DeviceConditionsContract, SimAppDeviceConditionsBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
-    simulatorAppContract(UploadContract, SimAppUploadBinding(), ::refusal),
+    simulatorAppContract(TransferSessionContract, SimAppSessionBinding(), ::refusal),
     simulatorAppContract(DownloadContract, SimAppDownloadBinding(), ::hostRefusal),
     simulatorAppContract(BackgroundTimeContract, SimAppBackgroundTimeBinding(), ::hostRefusal),
     simulatorAppContract(BuildInfoContract, SimAppBuildInfoBinding(), ::hostRefusal),

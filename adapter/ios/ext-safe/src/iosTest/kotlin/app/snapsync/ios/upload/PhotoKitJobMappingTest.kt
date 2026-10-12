@@ -1,8 +1,8 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJobState
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.UploadJobState
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
@@ -61,11 +61,11 @@ class PhotoKitJobMappingTest {
     }
 
     @Test
-    fun `a destination yields its path whatever its last segment`() {
-        // Under the v2 route the last segment is the ROLE; nothing is read out of it.
+    fun `a destination yields its URL as the job was made with it`() {
+        // The whole URL, query and all: which row it names is the upload services' reading.
         assertEquals(
-            "/api/v2/files/devices/D/ABC-123/primary",
-            photoKitDestinationPath(
+            "https://edge.example/api/v2/files/devices/D/ABC-123/primary?filename=IMG_1.HEIC",
+            photoKitDestinationUrl(
                 request("https://edge.example/api/v2/files/devices/D/ABC-123/primary?filename=IMG_1.HEIC"),
             ),
         )
@@ -73,8 +73,8 @@ class PhotoKitJobMappingTest {
 
     /** THE GUARD (see the class KDoc): if this stops compiling, restore the nullable parameter; never delete it. */
     @Test
-    fun `a job with no destination yields no path`() {
-        assertNull(photoKitDestinationPath(null))
+    fun `a job with no destination yields no URL`() {
+        assertNull(photoKitDestinationUrl(null))
     }
 
     @Test
@@ -100,21 +100,21 @@ class PhotoKitJobMappingTest {
 
     @Test
     fun `no error means the job was created`() {
-        assertEquals(UploadCreateOutcome.CREATED, createResultFor(null))
+        assertEquals(CreateOutcome.CREATED, createResultFor(null))
     }
 
     @Test
     fun `the in-flight job cap is distinguished from an outright failure`() {
-        assertEquals(UploadCreateOutcome.LIMIT_EXCEEDED, createResultFor(PHPhotosErrorLimitExceeded))
-        assertEquals(UploadCreateOutcome.FAILED, createResultFor(PHPhotosErrorInvalidResource))
+        assertEquals(CreateOutcome.LIMIT_EXCEEDED, createResultFor(PHPhotosErrorLimitExceeded))
+        assertEquals(CreateOutcome.FAILED, createResultFor(PHPhotosErrorInvalidResource))
     }
 
     /** The exact string is what the device log and the diagnostic dump carry, so it is pinned. */
     @Test
     fun `an NSError flattens to its domain and code`() {
         assertEquals(
-            UploadError.Unknown("PHPhotosErrorDomain:3307"),
-            photoKitUploadError(nsError("PHPhotosErrorDomain", PHPhotosErrorLimitExceeded)),
+            TransferFailure("PHPhotosErrorDomain:3307"),
+            photoKitUploadFailure(nsError("PHPhotosErrorDomain", PHPhotosErrorLimitExceeded)),
         )
     }
 }

@@ -1,8 +1,8 @@
 package app.snapsync.services.upload
 
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJobState
+import app.snapsync.model.UploadFailure
+import app.snapsync.ports.UploadJobState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,11 +20,11 @@ class UploadJobDecisionsTest {
     @Test
     fun `a job with a destination is emitted with its facts`() {
         val emit = assertIs<FetchedJob.Emit>(
-            classifyFetchedJob("/api/v2/files/devices/D/k/primary", UploadJobState.FAILED, UploadError.Unknown("x:1")),
+            classifyFetchedJob("/api/v2/files/devices/D/k/primary", UploadJobState.FAILED, UploadFailure("x:1")),
         )
         assertEquals("/api/v2/files/devices/D/k/primary", emit.destinationPath)
         assertEquals(UploadJobState.FAILED, emit.state)
-        assertEquals(UploadError.Unknown("x:1"), emit.error)
+        assertEquals(UploadFailure("x:1"), emit.error)
     }
 
     /** A job whose destination cannot be recovered must still be acknowledged, or PhotoKit reports error 50008. */

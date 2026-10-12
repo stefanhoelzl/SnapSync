@@ -130,7 +130,7 @@ class SnapSyncRoot(internal val application: Application) {
         wake = lazy { AndroidWake(application) },
         backgroundTime = lazy { AndroidBackgroundTime(application) },
         // Its transfers hold this launch's background time — the real one, or the mock a rig launch chose.
-        appUpload = lazy {
+        uploadSession = lazy {
             AndroidUpload(application, ports.backgroundTime.value, unrestricted = awaitUnrestrictedNetwork(application))
         },
         download = lazy { AndroidDownload(application) },

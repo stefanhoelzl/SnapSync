@@ -9,12 +9,12 @@ import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.model.PendingDownload
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.TransferOutcome
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.Files
+import app.snapsync.ports.StartResult
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 import kotlinx.coroutines.CoroutineScope

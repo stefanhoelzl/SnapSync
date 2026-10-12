@@ -3,11 +3,12 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.gallery.PhotoKitResource
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJobState
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
+import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.UploadJobState
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -35,14 +36,14 @@ internal enum class JobSet { RETRY, ACKNOWLEDGE }
  */
 internal class UploadJobFacts(
     val handle: Any,
-    /** The destination's path — the ledger's route back to the row — or `null` when the OS answered no destination. */
-    val destinationPath: String?,
+    /** The destination's URL — the ledger's route back to the row — or `null` when the OS answered no destination. */
+    val destinationUrl: String?,
     /** The `Content-Type` the stored destination carries, or `null`. */
     val contentTypeHeader: String?,
     val state: UploadJobState,
-    val error: UploadError?,
+    val error: TransferFailure?,
     /** The job's resource, or `null` when the OS answered none. */
-    val resource: Any?,
+    val resource: GalleryResourceHandle?,
     /** The resource's uniform type identifier, where a resource was answered. */
     val resourceType: String?,
 )
@@ -60,7 +61,7 @@ internal interface UploadJobApi {
     fun fetch(set: JobSet): List<UploadJobFacts>
     fun acknowledge(job: UploadJobFacts): ChangeAnswer
     fun retry(job: UploadJobFacts, destination: NSURLRequest): ChangeAnswer
-    fun create(destination: NSURLRequest, resource: Any): ChangeAnswer
+    fun create(destination: NSURLRequest, resource: GalleryResourceHandle): ChangeAnswer
 }
 
 /** The real PhotoKit calls. */
@@ -82,11 +83,11 @@ internal class SystemUploadJobApi(private val log: Logger) : UploadJobApi {
             val error: NSError? = job.error
             out += UploadJobFacts(
                 handle = job,
-                destinationPath = photoKitDestinationPath(destination),
+                destinationUrl = photoKitDestinationUrl(destination),
                 contentTypeHeader = destination.contentTypeHeader(),
                 state = photoKitJobState(job.state),
-                error = error?.let(::photoKitUploadError),
-                resource = resource,
+                error = error?.let(::photoKitUploadFailure),
+                resource = resource?.let(::PhotoKitResource),
                 resourceType = resource?.uniformTypeIdentifier,
             )
         }
@@ -103,7 +104,7 @@ internal class SystemUploadJobApi(private val log: Logger) : UploadJobApi {
             ?.retryWithDestination(destination)
     }
 
-    override fun create(destination: NSURLRequest, resource: Any): ChangeAnswer {
+    override fun create(destination: NSURLRequest, resource: GalleryResourceHandle): ChangeAnswer {
         val phResource = (resource as? PhotoKitResource)?.resource
             ?: return ChangeAnswer(ok = false, code = null, description = "the resource payload is not a PhotoKit resource")
         return change("createJob") {

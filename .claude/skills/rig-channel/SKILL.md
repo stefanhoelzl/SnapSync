@@ -218,10 +218,10 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   - **`ProcessInfo`** (`…LOCKED.rec`): lock the phone. Needs a passcode with **Require Passcode: Immediately** — with a
     delay iOS keeps the data readable past the ~30 s of background time and the run never sees it sealed (measured).
   - **`BackgroundTime`**: go to the home screen; iOS's expiry comes ~30 s later and is recorded as an event line.
-  - **`Upload` (device app) + `SharePresenter`** — the relaunch, two steps: `?step=arm` prepares a transfer to
+  - **`TransferSession` (device app) + `SharePresenter`** — the relaunch, two steps: `?step=arm` prepares a transfer to
     `https://snapsync.stho.net/contract-relaunch` (a 404 path of our own domain — a transfer whose connection fails is
     retried and never relaunches anything, measured) and EXITS the app; iOS relaunches it in the background (35 s–2 min)
-    and that process records both. Pull `Upload@IOS_DEVICE_APP.rec` and `SharePresenter@IOS_DEVICE_APP.rec` from
+    and that process records both. Pull `TransferSession@IOS_DEVICE_APP.rec` and `SharePresenter@IOS_DEVICE_APP.rec` from
     `Documents/contracts/` (the relaunched app is suspended, so `?step=collect` answers only once it is opened).
   - **`Download` (device app)** — the same two steps for the download session: `?step=arm` prepares a fetch of
     `https://snapsync.stho.net/contract-relaunch-download` in a session of its own and EXITS the app; pull
@@ -234,14 +234,14 @@ git diff test/contracts/recordings/        # review it like code, then commit it
 
 ### Recording INSIDE the upload extension — `?host=IOS_DEVICE_PHOTOKIT_EXT`
 
-The upload-job contract (`Upload`) records in the upload extension, the process production calls
+The upload-job contract (`OsUploadQueue`) records in the upload extension, the process production calls
 PhotoKit's job API from. The rig cannot reach that process, so the app requests the run through the App Group and
 re-registers the extension, which makes the OS invoke it; the extension runs the contract instead of its upload
 cycle and writes the recording back, and the verb answers it:
 
 ```bash
-curl -s --max-time 120 -X POST "$B/contract/Upload?host=IOS_DEVICE_PHOTOKIT_EXT" \
-  > test/contracts/recordings/Upload@IOS_DEVICE_PHOTOKIT_EXT.rec
+curl -s --max-time 120 -X POST "$B/contract/OsUploadQueue?host=IOS_DEVICE_PHOTOKIT_EXT" \
+  > test/contracts/recordings/OsUploadQueue@IOS_DEVICE_PHOTOKIT_EXT.rec
 ```
 
 - **The build must be baked to the loopback upload base** — `snapsync.deployment=local` with
@@ -254,6 +254,10 @@ curl -s --max-time 120 -X POST "$B/contract/Upload?host=IOS_DEVICE_PHOTOKIT_EXT"
   **backs off 6–11 min after a call it killed**, and ignores triggers meanwhile — or the run was taken and killed
   at the ~60 s budget. Wait out a backoff; do not hammer it.
 - The run leaves the extension registered under the loopback base; a normal build's join re-registers it.
+- It records a creation (`IDLE`), the limit (`AT_CAP`: jobs to accepting routes until PhotoKit refuses one, bounded
+  at 500 — the count is logged, and is the one measurement of PhotoKit's in-flight limit) and the presented states.
+  Those jobs upload after the call returns and are left presented; the next real upload cycle acknowledges them as
+  routes no row maps to.
 
 ## `/contract` on the simulator app — the PhotoKit contracts, live
 
@@ -275,7 +279,7 @@ curl -s -X POST localhost:$PORT/contract/AlbumManager     # "# host: IOS_SIM_APP
   simulator when the library's size matters.
 - `SecureStore` and `BackgroundScheduler` are **not** in the simulator's list: they record only on an
   entitled device, and asking for either here answers `409`.
-- **The transfer contracts** (`Upload`, `Download`) run both `URLSession` transports
+- **The transfer contracts** (`TransferSession`, `Download`) run both `URLSession` transports
   against a loopback peer, `scripts/transfer-fixture.py`, whose address the verb takes as `?fixture=`:
   `python3 scripts/transfer-fixture.py --port 8123 --log /tmp/fx.log &` then
   `curl -s -X POST "localhost:$PORT/contract/Download?fixture=http://127.0.0.1:8123"`. Without the
@@ -580,8 +584,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     until an `os/app/onForeground`: `/device/state` and `/user` read the screen and would assemble it.
   - `device/reinstall` (JVM host only) — delete the app and launch it again: files, databases and user defaults gone;
     Keychain, photo library and backend kept.
-- The **operator levers** (on the app host, only for the systems its adapter choice mocks): `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
-  finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
+- The **operator levers** (on the app host, only for the systems its adapter choice mocks): `device/jobs` (live jobs, each `<assetId>/<role>` — what its destination names, the one fact the OS keeps), `device/jobs/complete[?job=]` (the "OS"
+  finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?job=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=&event=]`, `device/backend/offline?on=`, `device/permission?status=`,
   `device/import/fail-next`, `device/databases/locked?on=`, `device/membership/undeletable?on=`,
   `device/downloads/stage[?status=502][&drained=true][&bytes=motion-photo]` (the OS finishes every in-flight

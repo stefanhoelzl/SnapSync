@@ -1,9 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.TransferOutcome
-
 /**
  * **The platform's background downloads**: on iOS a background `URLSession`, which
  * keeps downloading while the app is suspended and relaunches it when a transfer ends. One external system, deciding

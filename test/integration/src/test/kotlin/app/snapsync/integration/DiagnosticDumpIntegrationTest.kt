@@ -77,7 +77,7 @@ class DiagnosticDumpIntegrationTest {
         // The operator plays the OS: one cycle enqueues, the platform completes, the NEXT cycle
         // records COMPLETED — so the dump reads the counts a real device would show mid-flow.
         cycle()
-        completeJobs(primaryKey("CAM"))
+        completeJobs(primaryJob("CAM"))
         cycle()
         appendLog("app", "app: cycle finished\n")
         appendLog("extension", "ext: enumeration 1 seen\n")
@@ -134,7 +134,7 @@ class DiagnosticDumpIntegrationTest {
         createAndJoin()
         addPhoto("CAM")
         cycle()
-        completeJobs(primaryKey("CAM"))
+        completeJobs(primaryJob("CAM"))
         cycle()
         // Whatever the screen shows at the tap — the report's claim is "what the member saw", not a number. An opening
         // refreshes the counts, so the completed upload is on the screen before it is read, and no later refresh can move

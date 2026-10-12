@@ -7,6 +7,7 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.DownloadState
 import app.snapsync.contracts.DownloadUnderTest
+import app.snapsync.contracts.Ended
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
@@ -14,24 +15,23 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.RunParameters
-import app.snapsync.contracts.UploadContract
-import app.snapsync.contracts.UploadState
-import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.SessionUnderTest
+import app.snapsync.contracts.TransferSessionContract
+import app.snapsync.contracts.TransferSessionState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
+import app.snapsync.contracts.uploadClauseKey
 import app.snapsync.download.IosDownload
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
-import app.snapsync.model.Resource
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.TransferHandlers
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferSource
+import app.snapsync.ports.UploadTarget
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -140,77 +140,78 @@ private fun seedOne(contract: String, clauseId: String): PHAssetResource = memSc
         ?: error("the seeded photo has no resource")
 }
 
-class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters {
+class SimAppSessionBinding : Binding<TransferSessionState, SessionUnderTest>, RunParameters {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
 
     // A URLSession uploader takes a file and reports each end as it happens: those states are IDLE as this platform is.
     override val reaches = setOf(
-        UploadState.IDLE,
-        UploadState.AT_CAP,
-        UploadState.TAKES_FILES,
-        UploadState.REPORTS_AS_IT_HAPPENS,
+        TransferSessionState.IDLE,
+        TransferSessionState.AT_CAP,
+        TransferSessionState.TAKES_FILES,
+        TransferSessionState.REPORTS_AS_IT_HAPPENS,
     )
 
     private val fixture = FixtureAddress()
 
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
-    override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+    override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
+        if (state == TransferSessionState.RESTRICTED_NETWORK) return Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
         // A state this host does not present: another platform's fact, or one no binding here enters.
         if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
-        if (state in UploadContract.PRESENTED) return Entered.Unreachable(URL_SESSION_SETTLES_AT_ONCE)
-        if (state == UploadState.RESTRICTED_NETWORK) return Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
         val base = fixture.require()
-        val contract = UploadContract.name
+        val contract = TransferSessionContract.name
         val adapter = IosUrlSessionUploadPlatform(
             log = Logger.withTag("contract"),
             sessionIdentifier = "app.snapsync.contract.upload.$clauseId",
             cap = CAP,
         )
         val platform = adapter.recorded(log)
-        val ended = mutableListOf<UploadJob>()
+        val ended = mutableListOf<Ended>()
         platform.listen(
-            UploadHandlers(onFinished = {
-                ended += it
-            }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}),
+            TransferHandlers(
+                onFinished = { tag, error -> ended += Ended(tag, error) },
+                onBackgroundEvents = { it.complete() },
+                onEventsDrained = {},
+            ),
         )
         val files = scratch("$contract-files", clauseId)
         // The file uploader sends a file: the seeded photo, exported by the photo library as the upload service does.
-        val usable: suspend (String) -> UploadSource = { key ->
+        val usable: suspend (String) -> TransferSource = { key ->
             val resource = seedOne(contract, clauseId)
             val path = "$files/$key"
             val exported = IosGalleryReader().export(PhotoKitResource(resource), path)
             check(exported == WriteOutcome.Ok) { "exporting the seeded photo for $key failed: $exported" }
-            UploadSource.File(path)
+            TransferSource.File(path)
         }
-        if (state == UploadState.AT_CAP) {
+        if (state == TransferSessionState.AT_CAP) {
             runEntry {
                 repeat(CAP) { n ->
-                    val key = UploadContract.key(clauseId, n = n + 1)
-                    val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
+                    val key = uploadClauseKey(clauseId, n = n + 1)
+                    val url = base + TransferSessionContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
                     val created = platform.create(
                         usable(key),
                         UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY),
                         key,
                     )
-                    check(created == UploadCreateOutcome.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
+                    check(created == CreateOutcome.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
                 }
             }
         }
         return Entered.Ready(
-            UploadUnderTest(
-                upload = platform,
+            SessionUnderTest(
+                session = platform,
                 base = base,
                 usable = usable,
-                // A photo-library handle, which this uploader does not take: it sends files.
-                unusable = { UploadSource.Resource(Unit) },
+                // A photo-library resource, which this uploader does not take: it sends files.
+                unusable = { TransferSource.Resource(object : GalleryResourceHandle {}) },
                 ended = { ended.toList() },
                 objects = fixtureObjects(base),
             ),
             // Held transfers end with their clause, not with the fixture's hold timeout — through the bare adapter, since
             // the disposal is inside the clause's window and a cleanup `cancel` is not the clause's.
-            dispose = { runEntry { adapter.jobs(UploadJobSet.IN_FLIGHT).forEach { adapter.cancel(it) } } },
+            dispose = { runEntry { adapter.live().forEach { adapter.cancel(it) } } },
         )
     }
 
@@ -248,10 +249,6 @@ class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunPara
             )
         }
 }
-
-/** Why the URLSession uploader never reaches [UploadContract.PRESENTED]. */
-internal const val URL_SESSION_SETTLES_AT_ONCE =
-    "the URLSession uploader reports a transfer the moment it ends and offers no free retry; nothing is presented later"
 
 /**
  * Why the simulator app never reaches a restricted network: it shares its Mac's network, which

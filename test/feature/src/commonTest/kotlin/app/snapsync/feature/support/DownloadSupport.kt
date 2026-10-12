@@ -20,6 +20,8 @@ import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.Files
+import app.snapsync.ports.StartResult
+import app.snapsync.ports.TransferNetwork
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.staging.StagingService

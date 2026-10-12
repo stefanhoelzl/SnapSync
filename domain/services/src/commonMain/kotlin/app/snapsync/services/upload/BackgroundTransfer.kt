@@ -6,16 +6,15 @@ import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
 
 /**
- * The transfer lifecycle of one background-upload cycle — creating, retrying and settling upload jobs. The
- * production implementation is [UploadTransferService], over the thin `Upload` port that both tiers' platform
- * adapters implement; the cycle holds this seam rather than that service so its own orchestration stays testable
- * against a scripted transfer (`UploadCycle`'s tests). What the cycle reads
- * from the photo library is not this seam's: that is [UploadDiscovery], bound once beside it.
+ * The transfer lifecycle of one background-upload cycle — creating, retrying and settling upload jobs. Two
+ * implementations, one per uploader ([Uploader]): [OsQueueTransfer] over the OS's job queue and [SessionTransfer] over
+ * the app's own session. The cycle holds this seam rather than either so its own orchestration stays testable against
+ * a scripted transfer (`UploadCycle`'s tests). What the cycle reads from the photo library is not this seam's: that is
+ * [UploadDiscovery], bound once beside it.
  *
- * Returned system jobs are surfaced as [PlatformUploadJob]s whose [PlatformUploadJob.key] the
- * platform reads from the job's **destination URL** (its last path segment) — the only field
- * reliably present across the whole job lifecycle (`resource` is nil for succeeded jobs) — so the
- * cycle maps a job back to the ledger without depending on the released resource.
+ * Returned jobs are surfaced as [PlatformUploadJob]s whose [PlatformUploadJob.key] is the ledger row their
+ * **destination URL** names — the only fact reliably present across a job's whole life (`resource` is nil for
+ * succeeded jobs) — so the cycle maps a job back to the ledger without depending on the released resource.
  */
 interface BackgroundTransfer {
 

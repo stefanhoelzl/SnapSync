@@ -3,10 +3,11 @@ package app.snapsync.compose
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.invocation
 import app.snapsync.ports.DownloadHandlers
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.gallery.GalleryDiscovery
-import app.snapsync.services.upload.UploadTransferService
+import app.snapsync.services.upload.SessionTransfer
+import app.snapsync.services.upload.TransferSetup
 import app.snapsync.services.wake.OsCompletions
 import kotlinx.coroutines.launch
 
@@ -23,22 +24,24 @@ class AppEvents internal constructor(private val core: AppCore) {
     val downloadHandlers: DownloadHandlers = downloadHandlersOf(core)
 
     /** The app uploader's session events. */
-    val uploadHandlers: UploadHandlers = uploadHandlersOf(core)
+    val uploadHandlers: TransferHandlers = uploadHandlersOf(core)
 
     /**
-     * The app uploader's transfer service over [AppPorts.appUpload] — what records a transfer's end the moment the
-     * platform reports it ([uploadHandlers]) and cancels the in-flight transfers at a leave.
+     * The app uploader's transfer over [AppPorts.uploadSession] — what records a transfer's end the moment the session
+     * reports it ([uploadHandlers]) and cancels the in-flight transfers at a leave.
      */
-    val uploadTransfer: UploadTransferService by lazy {
-        UploadTransferService(
-            upload = core.ports.appUpload,
-            record = core.services.ledger,
-            resources = GalleryDiscovery(core.ports.gallery),
-            gallery = core.ports.gallery,
-            files = core.process.files,
-            network = core.services.mobileData::transferNetwork,
-            log = core.services.log,
-            entryContext = core.process.entryContext,
+    val uploadTransfer: SessionTransfer by lazy {
+        SessionTransfer(
+            core.ports.uploadSession,
+            TransferSetup(
+                record = core.services.ledger,
+                resources = GalleryDiscovery(core.ports.gallery),
+                gallery = core.ports.gallery,
+                files = core.process.files,
+                network = core.services.mobileData::transferNetwork,
+                log = core.services.log,
+                entryContext = core.process.entryContext,
+            ),
         )
     }
 }
@@ -60,14 +63,14 @@ internal fun downloadHandlersOf(core: AppCore): DownloadHandlers = DownloadHandl
 )
 
 /**
- * What the app's upload port tells [core] — registered by the host zone's `listen`. A transfer's end is recorded
+ * What the app's upload session tells [core] — registered by the host zone's `listen`. A transfer's end is recorded
  * **inline**, by the upload service's guarded write, before the platform's callback returns (the platform tells it
  * once), then the core's tail tops up the freed slot; the background-events one is a transfer wake
  * ([onTransferEvents]).
  */
-internal fun uploadHandlersOf(core: AppCore): UploadHandlers = UploadHandlers(
-    onFinished = { job ->
-        core.events.uploadTransfer.recordFinished(job)
+internal fun uploadHandlersOf(core: AppCore): TransferHandlers = TransferHandlers(
+    onFinished = { tag, failure ->
+        core.events.uploadTransfer.recordFinished(tag, failure)
         core.tail.uploadCompleted()
     },
     onBackgroundEvents = { completion ->

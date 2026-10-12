@@ -7,13 +7,13 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.StartResult
+import app.snapsync.ports.TransferNetwork
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.sharedOver

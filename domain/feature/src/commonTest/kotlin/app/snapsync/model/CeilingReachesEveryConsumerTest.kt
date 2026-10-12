@@ -55,7 +55,7 @@ class CeilingReachesEveryConsumerTest {
             RESOURCE_META_CREATION_DATE to creationDate,
             RESOURCE_META_PIXEL_AREA to "12192768",
         ),
-        data = Unit,
+        data = null,
     )
 
     /** The COMPLETED ledger rows those resources would have produced — what the manifest projects from. */

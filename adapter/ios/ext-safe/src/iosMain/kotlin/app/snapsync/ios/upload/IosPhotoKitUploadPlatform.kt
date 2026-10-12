@@ -1,31 +1,28 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.logging.invocation
-import app.snapsync.model.ChangeOutcome
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadSourceKind
-import app.snapsync.model.UploadTarget
-import app.snapsync.ports.Upload
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.ChangeOutcome
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.OsUploadJob
+import app.snapsync.ports.OsUploadJobHandle
+import app.snapsync.ports.OsUploadQueue
+import app.snapsync.ports.UploadTarget
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSURL
 
 /**
- * The PhotoKit (iOS ≥26.1) [Upload]: the OS-owned upload-job queue the upload extension runs — fetch a set, create,
- * retry, acknowledge. Thin since phase 11f: it presents jobs as facts and performs what it is asked; which ledger row a
- * job belongs to, what a terminal job means and which offered retry is a key's are the upload services'
- * (`UploadTransferService`). A `PHAssetResourceUploadJob` has no public initializer and only ever arrives from a fetch,
- * so every OS effect goes through the [UploadJobApi] seam: the upload extension's contract run records every call and
- * iOS's answer on a device, and every CI build replays that recording against this class. What a replay cannot cover
- * is [SystemUploadJobApi]'s conversion of a real job into facts.
+ * The PhotoKit (iOS ≥26.1) [OsUploadQueue]: the OS-owned upload-job queue the upload extension runs — fetch a set,
+ * create, retry, acknowledge. Thin: it presents jobs as facts and performs what it is asked; which ledger row a job
+ * belongs to, what a terminal job means and which offered retry is a key's are the upload services' (`OsQueueTransfer`).
+ * A `PHAssetResourceUploadJob` has no public initializer and only ever arrives from a fetch, so every OS effect goes
+ * through the [UploadJobApi] seam: the upload extension's contract run records every call and iOS's answer on a device,
+ * and every CI build replays that recording against this class. What a replay cannot cover is [SystemUploadJobApi]'s
+ * conversion of a real job into facts.
  *
- * It raises no events: the OS presents terminal jobs when asked ([jobs]), so [listen] registers nothing that fires.
- * It cancels nothing either — a leave deregisters the extension, which removes every job the record held.
+ * It cancels nothing: a leave deregisters the extension, which removes every job the record held.
  *
  * Measured (SE2, iOS 26.6, 2026-09-22), and asserted by no clause: jobs created under a full grant survive a round
  * trip through `.limited` — a withheld call under the partial grant is shown none of them, and the first call after
@@ -37,69 +34,56 @@ class IosPhotoKitUploadPlatform internal constructor(
     // Every operating-system effect goes through this seam, so the upload extension's contract run can record it and
     // CI can replay it (`docs/architecture.md`). Production never passes one.
     private val api: UploadJobApi,
-) : Upload {
+) : OsUploadQueue {
 
     /** The production adapter, over the real PhotoKit calls. */
     constructor(log: Logger) : this(log, SystemUploadJobApi(log))
 
-    override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
+    override suspend fun retryOffered(): List<OsUploadJob> = fetch(JobSet.RETRY)
 
-    /** PhotoKit sends only the library's own bytes, so an encrypted event's upload is sealed by the edge. */
-    override val acceptsFiles: Boolean = false
+    override suspend fun terminals(): List<OsUploadJob> = fetch(JobSet.ACKNOWLEDGE)
 
-    override fun listen(handlers: UploadHandlers) = Unit
-
-    override suspend fun jobs(set: UploadJobSet): List<UploadJob> =
+    private fun fetch(set: JobSet): List<OsUploadJob> =
         log.invocation("photokit.jobs", params = "set=$set", result = { "${it.size} job(s)" }) {
-            when (set) {
-                UploadJobSet.RETRY_OFFERED -> api.fetch(JobSet.RETRY).map(::jobOf)
-                UploadJobSet.TERMINAL -> api.fetch(JobSet.ACKNOWLEDGE).map(::jobOf)
-                UploadJobSet.IN_FLIGHT -> emptyList()
-            }
+            api.fetch(set).map(::jobOf)
         }
 
-    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
-        log.invocation("photokit.create", params = "tag=$tag", result = { "$it" }) {
-            val resource = (source as? UploadSource.Resource)?.handle ?: run {
-                log.w { "create: PhotoKit uploads a resource, not a file — not creating" }
-                return@invocation UploadCreateOutcome.FAILED
-            }
-            val url = NSURL.URLWithString(target.url) ?: return@invocation UploadCreateOutcome.FAILED
+    override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome =
+        log.invocation("photokit.create", params = "to=${target.url}", result = { "$it" }) {
+            val url = NSURL.URLWithString(target.url) ?: return@invocation CreateOutcome.FAILED
             val answer = api.create(uploadUrlRequest(url, target), resource)
             // A refusal that names no code is still a refusal: it maps to FAILED, never to CREATED.
             createResultFor(if (answer.ok) null else answer.code ?: UNCODED_REFUSAL).also {
-                if (it == UploadCreateOutcome.FAILED) log.w { "create refused for $tag: code=${answer.code} ${answer.description}" }
+                if (it == CreateOutcome.FAILED) log.w { "create refused: code=${answer.code} ${answer.description}" }
             }
         }
 
-    override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome {
-        val facts = job.handle as? UploadJobFacts ?: return ChangeOutcome.Refused(null, "not a PhotoKit job")
+    override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
+        val facts = (job.handle as? PhotoKitJob)?.facts ?: return ChangeOutcome.Refused(null, "not a PhotoKit job")
         val url = NSURL.URLWithString(target.url) ?: return ChangeOutcome.Refused(null, "not a URL")
         return api.retry(facts, uploadUrlRequest(url, target)).toOutcome()
     }
 
-    override suspend fun acknowledge(job: UploadJob): ChangeOutcome {
-        val facts = job.handle as? UploadJobFacts ?: return ChangeOutcome.Refused(null, "not a PhotoKit job")
+    override suspend fun acknowledge(job: OsUploadJob): ChangeOutcome {
+        val facts = (job.handle as? PhotoKitJob)?.facts ?: return ChangeOutcome.Refused(null, "not a PhotoKit job")
         return api.acknowledge(facts).toOutcome()
     }
 
-    /** PhotoKit's jobs are not cancelled one by one: a leave deregisters the extension, removing every job. */
-    override suspend fun cancel(job: UploadJob): ChangeOutcome =
-        ChangeOutcome.Refused(null, "PhotoKit upload jobs are removed by deregistering, not cancelled")
-
-    private fun jobOf(facts: UploadJobFacts) = UploadJob(
-        handle = facts,
-        tag = null,
-        destinationPath = facts.destinationPath,
+    private fun jobOf(facts: UploadJobFacts) = OsUploadJob(
+        handle = PhotoKitJob(facts),
+        destinationUrl = facts.destinationUrl,
         contentType = facts.contentTypeHeader,
         state = facts.state,
-        error = facts.error,
-        source = facts.resource?.let(UploadSource::Resource),
+        failure = facts.error,
+        resource = facts.resource,
     )
 
     private fun ChangeAnswer.toOutcome(): ChangeOutcome =
         if (ok) ChangeOutcome.Applied else ChangeOutcome.Refused(code, description)
 }
+
+/** A presented PhotoKit job, as the port hands it back: the facts it was read as. */
+private class PhotoKitJob(val facts: UploadJobFacts) : OsUploadJobHandle
 
 /** The code a refusal without an `NSError` maps to — never `null`, which [createResultFor] reads as created. */
 private const val UNCODED_REFUSAL = -1L

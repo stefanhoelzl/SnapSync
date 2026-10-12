@@ -4,18 +4,15 @@ package app.snapsync.ios.upload
 
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.logging.invocation
-import app.snapsync.model.ChangeOutcome
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadSourceKind
-import app.snapsync.model.UploadTarget
-import app.snapsync.model.destinationPathOf
-import app.snapsync.ports.Upload
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.ChangeOutcome
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.OsUploadJob
+import app.snapsync.ports.OsUploadJobHandle
+import app.snapsync.ports.OsUploadQueue
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.UploadJobState
+import app.snapsync.ports.UploadTarget
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.sync.Mutex
@@ -30,7 +27,7 @@ import kotlin.reflect.KClass
  * inside PhotoKit and terminates the process — so the substitute is what makes the OS-driven tier runnable
  * here at all.
  */
-actual fun uploadJobQueue(log: Logger): Upload = SimulatorUploadJobQueue(log)
+actual fun uploadJobQueue(log: Logger): OsUploadQueue = SimulatorUploadJobQueue(log)
 
 /**
  * The content type a created job reports when its request declared none — the services' own last resort.
@@ -59,26 +56,25 @@ class FinishedUploadJob(
     /** The platform state, in the port's vocabulary (`PlatformVocabularyPinTest` pins the SDK's set it maps from). */
     val state: UploadJobState,
     /** The error to carry, where the state is not a success. The real queue answered none for a refused upload. */
-    val error: UploadError?,
+    val error: TransferFailure?,
     /**
      * The resource the OS hands back on the job, or `null` when it answers none — as the real queue does for a
      * succeeded job and a retry-spent one, whose live resource the upload services then find by identifier.
      */
-    val resource: Any? = null,
+    val resource: GalleryResourceHandle? = null,
     /** The `Content-Type` the job's destination request carries — the OS keeps the request, header and all. */
     val contentType: String? = null,
 )
 
 /** One job the cycle asked the OS to create during an invocation. */
 class CreatedUploadJob(
-    val key: String,
     val destination: String,
     val headers: Map<String, String>,
     val contentType: String,
     /** True when this job replaces a retry-bucket job rather than being created from discovery. */
     val isRetry: Boolean,
     /** The resource the job uploads — what the OS keeps on the job and answers back with it. */
-    val resource: Any? = null,
+    val resource: GalleryResourceHandle? = null,
 )
 
 /**
@@ -144,12 +140,12 @@ open class SimulatorJobSets {
         destination: String,
     ) = mutex.withLock { finished.removeAll { it.destination == destination } }
 
-    internal suspend fun record(job: CreatedUploadJob): UploadCreateOutcome = mutex.withLock {
+    internal suspend fun record(job: CreatedUploadJob): CreateOutcome = mutex.withLock {
         if (created.size >= limit) {
-            UploadCreateOutcome.LIMIT_EXCEEDED
+            CreateOutcome.LIMIT_EXCEEDED
         } else {
             created += job
-            UploadCreateOutcome.CREATED
+            CreateOutcome.CREATED
         }
     }
 
@@ -161,75 +157,65 @@ open class SimulatorJobSets {
 object SimulatorUploadJobs : SimulatorJobSets()
 
 /**
- * The substituted queue: the `Upload` port over sets whoever plays the OS hands in — presented jobs, the ones created,
- * the in-flight limit. Every decision about a job (its row, its disposition, which offered retry is a key's) is the
- * upload services', exactly as over the real queue.
+ * The substituted queue: the [OsUploadQueue] port over sets whoever plays the OS hands in — presented jobs, the ones
+ * created, the in-flight limit. Every decision about a job (its row, its disposition, which offered retry is a key's) is
+ * the upload services', exactly as over the real queue.
  *
- * It takes a payload of [payloadType] only — the type boundary the real adapter draws at a PhotoKit resource: a payload
- * of any other type is not a job. A contract binding on a host with no photo library passes its own stand-in's type.
+ * It takes a resource of [payloadType] only — the type boundary the real adapter draws at a PhotoKit resource: a
+ * resource of any other type is not a job. A contract binding on a host with no photo library passes its own
+ * stand-in's type.
  */
 internal class SimulatorUploadJobQueue(
     private val log: Logger,
     private val jobs: SimulatorJobSets,
     private val payloadType: KClass<*>,
-) : Upload {
+) : OsUploadQueue {
 
     /** The substitute the app composes: the process-wide sets, and a PhotoKit resource as the only usable payload. */
     constructor(log: Logger) : this(log, SimulatorUploadJobs, PhotoKitResource::class)
 
-    override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
-    override val acceptsFiles: Boolean = false
+    override suspend fun retryOffered(): List<OsUploadJob> = presented(SimulatorJobAction.RETRY)
 
-    override fun listen(handlers: UploadHandlers) = Unit
+    override suspend fun terminals(): List<OsUploadJob> = presented(SimulatorJobAction.ACKNOWLEDGE)
 
-    override suspend fun jobs(set: UploadJobSet): List<UploadJob> =
-        log.invocation("simulated.jobs", params = "set=$set", result = { "${it.size} job(s)" }) {
-            when (set) {
-                UploadJobSet.RETRY_OFFERED -> jobs.inSet(SimulatorJobAction.RETRY).map(::jobOf)
-                UploadJobSet.TERMINAL -> jobs.inSet(SimulatorJobAction.ACKNOWLEDGE).map(::jobOf)
-                UploadJobSet.IN_FLIGHT -> emptyList()
-            }
+    private suspend fun presented(action: SimulatorJobAction): List<OsUploadJob> =
+        log.invocation("simulated.jobs", params = "set=$action", result = { "${it.size} job(s)" }) {
+            jobs.inSet(action).map(::jobOf)
         }
 
-    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
-        log.invocation("simulated.create", params = "tag=$tag", result = { "$it" }) {
-            val resource = (source as? UploadSource.Resource)?.handle
+    override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome =
+        log.invocation("simulated.create", params = "to=${target.url}", result = { "$it" }) {
             if (!payloadType.isInstance(resource)) {
-                log.w { "create: the payload is not a PhotoKit resource — not creating" }
-                return@invocation UploadCreateOutcome.FAILED
+                log.w { "create: the resource is not a PhotoKit resource — not creating" }
+                return@invocation CreateOutcome.FAILED
             }
-            jobs.record(target.asCreatedJob(tag, isRetry = false, resource))
+            jobs.record(target.asCreatedJob(isRetry = false, resource))
                 .also { log.i { "queue: ${jobs.createdCount()} job(s) created this cycle" } }
         }
 
-    override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome {
-        val offered = job.handle as? FinishedUploadJob ?: return ChangeOutcome.Refused(null, "not a presented job")
+    override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
+        val offered = (job.handle as? Presented)?.job ?: return ChangeOutcome.Refused(null, "not a presented job")
         jobs.remove(offered.destination)
-        jobs.record(target.asCreatedJob(key = "", isRetry = true, resource = offered.resource))
+        jobs.record(target.asCreatedJob(isRetry = true, resource = offered.resource))
         return ChangeOutcome.Applied
     }
 
-    override suspend fun acknowledge(job: UploadJob): ChangeOutcome {
-        val presented = job.handle as? FinishedUploadJob ?: return ChangeOutcome.Refused(null, "not a presented job")
+    override suspend fun acknowledge(job: OsUploadJob): ChangeOutcome {
+        val presented = (job.handle as? Presented)?.job ?: return ChangeOutcome.Refused(null, "not a presented job")
         jobs.remove(presented.destination)
         return ChangeOutcome.Applied
     }
 
-    override suspend fun cancel(job: UploadJob): ChangeOutcome =
-        ChangeOutcome.Refused(null, "the upload-job queue's jobs are removed by deregistering, not cancelled")
-
-    private fun jobOf(job: FinishedUploadJob) = UploadJob(
-        handle = job,
-        tag = null,
-        destinationPath = destinationPathOf(job.destination),
+    private fun jobOf(job: FinishedUploadJob) = OsUploadJob(
+        handle = Presented(job),
+        destinationUrl = job.destination,
         contentType = job.contentType,
         state = job.state,
-        error = job.error,
-        source = job.resource?.let(UploadSource::Resource),
+        failure = job.error,
+        resource = job.resource,
     )
 
-    private fun UploadTarget.asCreatedJob(key: String, isRetry: Boolean, resource: Any?) = CreatedUploadJob(
-        key = key,
+    private fun UploadTarget.asCreatedJob(isRetry: Boolean, resource: GalleryResourceHandle?) = CreatedUploadJob(
         destination = url,
         headers = headers,
         contentType = headers.entries
@@ -240,4 +226,7 @@ internal class SimulatorUploadJobQueue(
         isRetry = isRetry,
         resource = resource,
     )
+
+    /** A presented job, as the port hands it back. */
+    private class Presented(val job: FinishedUploadJob) : OsUploadJobHandle
 }

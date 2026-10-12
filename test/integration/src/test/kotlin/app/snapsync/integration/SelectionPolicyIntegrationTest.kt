@@ -2,7 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.model.AssetId
-import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,12 +35,12 @@ class SelectionPolicyIntegrationTest {
         cycle()
 
         // 1. No bytes: only the camera photo got a job.
-        assertEquals(listOf(primaryKey("CAM")), jobs().live)
+        assertEquals(listOf(primaryJob("CAM")), jobs().live)
         assertEquals(1, jobs().created)
         // 2. Not in the manifest → never in the event union, so no other member ever sees it. The manifest lists
         //    what landed once the cycle that records the completion re-projects: complete the admitted job and
         //    invoke again.
-        completeJobs(primaryKey("CAM"))
+        completeJobs(primaryJob("CAM"))
         cycle()
         assertEquals(setOf("CAM"), manifest(event)?.keys, "only the camera photo reaches the device manifest")
         assertEquals(setOf("CAM"), union(event).keys)
@@ -62,9 +61,9 @@ class SelectionPolicyIntegrationTest {
 
         cycle()
 
-        assertEquals(listOf(primaryKey("CAM")), jobs().live)
+        assertEquals(listOf(primaryJob("CAM")), jobs().live)
         assertEquals(1, jobs().created)
-        completeJobs(primaryKey("CAM"))
+        completeJobs(primaryJob("CAM"))
         cycle()
         assertEquals(setOf("CAM"), manifest(event)?.keys)
     }
@@ -91,7 +90,7 @@ class SelectionPolicyIntegrationTest {
 
         cycle()
 
-        assertEquals(setOf(AssetId("CAM"), AssetId("CLIP")), jobs().live.mapTo(mutableSetOf(), ::assetIdFromUploadKey))
+        assertEquals(setOf(AssetId("CAM"), AssetId("CLIP")), jobs().live.mapTo(mutableSetOf(), ::assetIdOfJob))
         assertEquals(2, jobs().created)
     }
 

@@ -2,19 +2,18 @@ package app.snapsync.mock
 
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.ProcessingAnswer
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadTarget
 import app.snapsync.ports.Completion
+import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.LifecycleHandlers
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.PushHandlers
+import app.snapsync.ports.TransferHandlers
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UiHandlers
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.UploadTarget
 import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -130,8 +129,8 @@ class EntryDispatchTest {
         val handed = mutableListOf<Completion>()
         val upload = session.port()
         upload.listen(
-            UploadHandlers(
-                onFinished = { ran += "finished ${it.tag} ${it.state}" },
+            TransferHandlers(
+                onFinished = { tag, error -> ran += "finished $tag ${error ?: "ok"}" },
                 onBackgroundEvents = {
                     ran += "background events"
                     handed += it
@@ -144,13 +143,13 @@ class EntryDispatchTest {
             emptyMap(),
             TransferNetwork.ANY,
         )
-        assertEquals(UploadCreateOutcome.CREATED, upload.create(UploadSource.File("staged/a"), target, "A-primary.jpg"))
+        assertEquals(CreateOutcome.CREATED, upload.create(TransferSource.File("staged/a"), target, "A-primary.jpg"))
 
         session.operator.complete("A-primary.jpg")
         session.operator.handBack(completion)
 
         assertEquals(
-            listOf("finished A-primary.jpg ${UploadJobState.SUCCEEDED}", "background events", "drained"),
+            listOf("finished A-primary.jpg ok", "background events", "drained"),
             ran,
         )
         assertSame(completion, handed.single(), "the relaunch's completion is handed over, not a stand-in")
