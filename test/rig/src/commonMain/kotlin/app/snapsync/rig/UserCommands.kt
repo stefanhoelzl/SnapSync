@@ -228,8 +228,8 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
         "opens the range calendar over a participation surface, a drawing the channel does not need; with " +
         "`onConfirm` and `onDismiss`, it is the gesture path `onRangeEdit` explains.",
     "onRangePreset" to
-        "reached through `setRange?range=eventStart|fromNow`, which names the preset rather than a second command " +
-            "for it.",
+        "reached through `setRange?range=eventStart|fromNow`, which names the preset rather than a second " +
+        "command for it.",
     // ---- what is drawn OVER the layer ------------------------------------------------------
     //
     // Every one of these opens or dismisses a confirmation. None reaches a port, so driving them would
