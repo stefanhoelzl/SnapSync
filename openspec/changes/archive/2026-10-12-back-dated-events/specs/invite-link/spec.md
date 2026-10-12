@@ -149,3 +149,7 @@ again.
 #### Scenario: A phone that lost the event's key offers no invite
 - **WHEN** a member of an encrypted event whose phone lost the event's key opens the joined screen
 - **THEN** it offers neither to share the invite nor to show its QR code
+
+#### Scenario: The invite returns with the key
+- **WHEN** that member opens the event's whole invite and the key is restored
+- **THEN** the joined screen offers to share the invite and to show its QR code again, both carrying the key

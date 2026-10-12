@@ -321,7 +321,7 @@ class JoinGateIntegrationTest {
     @Test
     @Verifies(
         spec = "event-lifetime",
-        requirement = "The app leaves on its own once the event is finished for it",
+        requirement = "The app never leaves an event on its own",
         scenario = "A server error never ends a membership",
     )
     fun a_transient_details_failure_never_tears_the_membership_down() = rigTest {

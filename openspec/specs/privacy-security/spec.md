@@ -32,7 +32,7 @@ event page SHALL show it to the user.
 
 #### Scenario: A copied photo link after the photo is withdrawn
 - **WHEN** someone copies the address of a single photo the member's app was given, and its member then
-  deletes that photo before the event closes
+  deletes that photo, even after the event's range has ended
 - **THEN** opening the copied address no longer serves the photo
 
 #### Scenario: A copied photo link after the event's photos are deleted
@@ -370,18 +370,6 @@ user sends, or, stripped of identifiers, as the recent activity attached to an a
 - **WHEN** a member uses SnapSync for a whole event without a crash, an error or a bug report
 - **THEN** none of the app's activity log leaves the phone
 
-### Requirement: The notification token is used only to deliver new photos
-The token Apple gives the app for waking it SHALL be used only to tell that device that new photos are
-ready in its event, or, once, that its event has closed (capability `event-lifetime`).
-
-#### Scenario: Another member shares a photo
-- **WHEN** another member's photo arrives in the event
-- **THEN** the token is used to wake this device for it, and for nothing else
-
-#### Scenario: The event closes
-- **WHEN** the device's event closes
-- **THEN** the token is used once to wake the device for it
-
 ### Requirement: The Privacy Policy states what leaves the device
 The Privacy Policy published on the site (capability `web-site`) SHALL accurately describe every kind of
 data that leaves a user's phone or browser — the shared photos, the random install identifier, the
@@ -398,3 +386,15 @@ platform's provider. It SHALL be updated in the same release as any change to wh
 #### Scenario: An Android user reads the policy
 - **WHEN** someone who uses SnapSync on Android reads the Privacy Policy
 - **THEN** it names the provider that issues and carries their phone's notification token and describes how their phone's app-integrity check works, as it does for an iPhone
+
+### Requirement: The notification token is used only to announce new photos
+The token Apple gives the app for waking it SHALL be used only to tell that device that new photos are
+ready in its event.
+
+#### Scenario: Another member shares a photo
+- **WHEN** another member's photo arrives in the event
+- **THEN** the token is used to wake this device for it, and for nothing else
+
+#### Scenario: Everyone has finished sharing
+- **WHEN** the last member still sharing to the device's event finishes, and no new photo becomes available
+- **THEN** the token is not used

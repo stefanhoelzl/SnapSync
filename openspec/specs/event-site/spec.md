@@ -169,7 +169,7 @@ offer "Get SnapSync", and offer no download.
 
 #### Scenario: A finished event
 - **WHEN** a visitor opens the invite link of an event whose members all received its photos and whose
-  photos were then deleted, before its 30 days are up
+  photos were then deleted, before the latest date its photos could have stayed available
 - **THEN** the page says the link is invalid or expired and offers no download
 
 ### Requirement: An empty or unreachable event is explained
