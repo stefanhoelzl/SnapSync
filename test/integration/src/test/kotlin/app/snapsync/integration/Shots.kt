@@ -67,8 +67,9 @@ suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
         Shot.CREATE -> Unit
         Shot.JOINING -> {
             takePhotos()
-            val event = registerEvent(Shot.EVENT_NAME, Shot.EVENT_START, Shot.EVENT_END)
-            openLink(inviteLink(event))
+            // The gate a create leaves open on the loaded event: the same screen a scanned QR opens, reached without
+            // the invite — a rig on a device does not hand out an event's key, which only its share link carries.
+            create(Shot.EVENT_NAME, Shot.EVENT_START, Shot.EVENT_END)
         }
         Shot.IN_SYNC -> {
             takePhotos()
