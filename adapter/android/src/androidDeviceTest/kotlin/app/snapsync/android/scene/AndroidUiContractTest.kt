@@ -21,7 +21,6 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -86,7 +85,9 @@ import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
-import app.snapsync.ui.components.resources.share_range_change
+import app.snapsync.ui.components.resources.share_range_custom
+import app.snapsync.ui.components.resources.share_range_event_start
+import app.snapsync.ui.components.resources.share_range_from_now
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.wheel_end_hour
@@ -109,8 +110,6 @@ import app.snapsync.ui.resources.menu_website
 import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.mobile_data_toggle
-import app.snapsync.ui.resources.range_from_now
-import app.snapsync.ui.resources.range_whole_event
 import app.snapsync.ui.resources.receive_toggle
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.report_placeholder
@@ -566,22 +565,18 @@ class AndroidUiContractTest {
         // The gate again: every edit of its form, then a commit that fails and is retried.
         rig.host.onOpenUrl(linkTo(OTHER_ID))
         awaitShown(ready)
-        // The calendar opened and closed unchanged.
-        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        // The calendar opened (Custom) and closed unchanged; the quick choices are chips on the screen.
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).performClick()
         awaitShown { it.joining?.range?.picker != null }
         onAllNodesWithText(str(Res.string.cancel)).onLast().performClick()
         awaitShown { it.joining?.range?.picker == null }
-        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
-        awaitShown { it.joining?.range?.picker != null }
-        onNodeWithText(str(Res.string.range_from_now)).performClick()
+        onNodeWithText(str(ComponentRes.string.share_range_from_now)).performClick()
         awaitShown { it.joining?.range?.preset == RangeChoice.FROM_NOW }
-        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).performClick()
         awaitShown { it.joining?.range?.picker != null }
         onNodeWithText(str(Res.string.save)).performClick()
         awaitShown { it.joining?.range?.preset == RangeChoice.CUSTOM }
-        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
-        awaitShown { it.joining?.range?.picker != null }
-        onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).performClick()
+        onNodeWithText(str(ComponentRes.string.share_range_event_start)).performClick()
         awaitShown { it.joining?.range?.preset == RangeChoice.EVENT_START }
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
         awaitShown { it.joining?.range?.shareOn == false }
