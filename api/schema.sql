@@ -101,7 +101,7 @@ CREATE TABLE resources (
   -- every byte written since this migration, `files/devices/<deviceId>/<key>` for one written before it.
   path         TEXT NOT NULL,
   content_type TEXT NOT NULL,
-  filename     TEXT NOT NULL,
+  filename     TEXT NOT NULL, landed_at TEXT, sha256 TEXT, upload_id TEXT, upload_sha256 TEXT, upload_size INTEGER, upload_part_size INTEGER, tail_key TEXT, tail_start INTEGER, tail_bytes INTEGER, claim TEXT,
   PRIMARY KEY (event_id, device_id, asset_id, role),
   -- A resource lives as long as its membership: completion deletes memberships, a dropped event cascades
   -- into them. NOT `event_assets`: a publish deletes and re-inserts those, and a byte may land first.

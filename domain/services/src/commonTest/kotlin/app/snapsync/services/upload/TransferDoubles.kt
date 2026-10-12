@@ -42,6 +42,8 @@ internal class Record(val rows: MutableMap<String, LedgerEntry> = mutableMapOf()
 
     override suspend fun entryForDestination(destinationPath: String): LedgerEntry? = rows[destinationPath]
 
+    override suspend fun entryForKey(key: String): LedgerEntry? = rows.values.firstOrNull { it.key == key }
+
     override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
         val (at, row) = rows.entries.firstOrNull { it.value.key == key }?.toPair() ?: return false
         if (row.state != LedgerState.REQUESTED) return false

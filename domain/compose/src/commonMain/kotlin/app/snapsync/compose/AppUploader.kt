@@ -58,7 +58,7 @@ internal class AppUploader(private val core: AppCore) {
                 deviceIdentity = app.deviceIdentity,
                 host = build.uploadHost,
                 ledger = app.ledger,
-                uploader = Uploader.Session(ports.uploadSession),
+                uploader = Uploader.Session(ports.uploadSession, core.uploadResuming),
                 gallery = ports.gallery,
                 // The walk memo, which answers an unchanged library, is the app uploader's alone; the extension
                 // walks bare.

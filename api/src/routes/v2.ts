@@ -9,22 +9,35 @@ import {
   eventsCompletedBy,
   gainedStatements,
   isMember,
+  landUploadStatement,
   type ManifestAssetEntry,
+  onlyIfLanded,
   presentMembership,
   presentUploadMembership,
   publishStatements,
   publishUnionChanges,
+  readUploadState,
   recordReceived,
   recordResourceStatement,
   stampLanded,
   uploadMembership,
 } from "../db.ts";
+import type { HonoRequest } from "hono";
 import type { Handlers } from "../gen/wire.ts";
-import { eventBytePath, storageKey } from "../storage.ts";
-import type { Fault } from "../refusal.ts";
+import { deleteObject, eventBytePath, storageKey } from "../storage.ts";
+import { s3Client } from "../s3.ts";
+import { type Fault, refuse } from "../refusal.ts";
 import type { RequestLog } from "../request-log.ts";
 import { APP_VERSION_HEADER } from "../version.ts";
-import { bodyToStore, type Upload, uploadOf } from "./encrypted-upload.ts";
+import { uploadOf } from "./encrypted-upload.ts";
+import {
+  ALREADY_LANDED,
+  type Landing,
+  storeBody,
+  type Target,
+  UPLOAD_OFFSET_HEADER,
+  uploadStatus,
+} from "./resumable-upload.ts";
 import {
   closedRefusal,
   declaredAppVersion,
@@ -38,7 +51,6 @@ import {
   ownDevice,
   recordNotify,
   type RouteDeps,
-  streamPut,
   tryUpstream,
 } from "./support.ts";
 
@@ -58,6 +70,7 @@ export function v2Handlers(
 ): Pick<
   Handlers,
   | "uploadResource"
+  | "uploadState"
   | "uploadResourcePreflight"
   | "uploadResourceEventless"
   | "uploadResourceEventlessPreflight"
@@ -68,6 +81,8 @@ export function v2Handlers(
   | "reportReceived"
 > {
   const { fetchImpl, config, db, now } = deps;
+  const s3 = s3Client(fetchImpl, config, deps.aws);
+  const storeDeps = { fetchImpl, config, db, s3 };
   /**
    * A publish to an event closed before events stopped closing (`PENDING_CLEANUPS.md`): the set it already
    * declared is answered as published and changes nothing, so a device whose publish raced that close is not
@@ -153,14 +168,16 @@ export function v2Handlers(
       /** The event's key id, `null` for a plain event — what may be stored (`bodyToStore`). */
       keyId: string | null;
     },
-    upload: Upload,
+    req: HonoRequest,
     contentType: string,
   ): Promise<StoreOutcome> {
-    const { eventId, deviceId, assetId, role, filename } = r;
+    const { eventId, deviceId, assetId, role } = r;
     const errors: Fault[] = [];
     const path = await eventBytePath(eventId, deviceId, assetId, role);
-    const body = await bodyToStore(upload, r.keyId);
-    await streamPut(fetchImpl, config, route, storageKey(path), contentType, body);
+    const target: Target = { ...r, path, contentType };
+    // Stored as one write, or as parts that resume after a drop (`resumable-upload.ts`).
+    const landing = await storeBody(storeDeps, route, target, req, uploadOf(req));
+    if (landing === ALREADY_LANDED) return { completed: 0, woken: [], errors };
     // NOT best-effort, unlike v1. v1's manifest publish re-creates a missing row on its next cycle, and
     // that repair is what makes swallowing this failure safe there. v2's manifest writes no resource row
     // at all, so nothing would repair it: the bytes would be stored, the backend would not know, the
@@ -184,22 +201,20 @@ export function v2Handlers(
     // `changes/incremental-union`, D4): a gain logged for bytes never recorded would announce what no read
     // can serve, and a record whose gain was lost would leave the asset out of every delta.
     const landedAt = new Date(now()).toISOString();
-    await tryUpstream(
+    const gained = gainedStatements(completed, deviceId, assetId, landedAt);
+    const results = await tryUpstream(
       `${route}: could not record ${path}`,
-      () =>
-        db.batch([
-          recordResourceStatement({
-            eventId,
-            deviceId,
-            assetId,
-            role,
-            path,
-            contentType,
-            filename,
-          }),
-          ...gainedStatements(completed, deviceId, assetId, landedAt),
-        ]),
+      () => db.batch(recordStatements({ ...target, landedAt }, landing, gained)),
     );
+    if (landing.session !== null && results[0].rowsAffected === 0) {
+      await undoLanding(target);
+      refuse(409, "superseded");
+    }
+    for (const key of landing.usedTails) {
+      await deleteObject(fetchImpl, config, storageKey(key)).catch((e) =>
+        errors.push({ tag: "upload-cleanup", detail: `${route}: tail ${key}: ${e}` })
+      );
+    }
     // AFTER the commit, and best-effort: this asset is now servable, so the event's other members are
     // woken to come and fetch it (capability `delivery`). The manifest publish cannot
     // announce this — a declaration and its later completion project identical manifest fields, so the
@@ -223,6 +238,37 @@ export function v2Handlers(
     return { completed: completed.length, woken, errors };
   }
 
+  /**
+   * The record a landing commits: a plain upsert for bytes stored without a session, as always; for a
+   * session, the landing of ITS upload — conditional on its claim, with the union-log rows behind it.
+   */
+  function recordStatements(
+    target: Target & { landedAt: string },
+    landing: Landing,
+    gained: ReturnType<typeof gainedStatements>,
+  ) {
+    if (landing.session === null) return [recordResourceStatement(target), ...gained];
+    return [
+      landUploadStatement(target, landing.session.claim, {
+        ...target,
+        sha256: landing.session.sha256,
+      }),
+      ...gained.map(onlyIfLanded),
+    ];
+  }
+
+  /**
+   * A session's bytes are stored but its row would not take them: a newer request claimed it — which lands
+   * its own copy — or the row is gone, because the member left or the event was deleted meanwhile. Then the
+   * object must not outlive the row (an object no row names would be served by nothing and swept late).
+   */
+  async function undoLanding(target: Target): Promise<void> {
+    const state = await readUploadState(db, target).catch(() => undefined);
+    if (state === null) {
+      await deleteObject(fetchImpl, config, storageKey(target.path)).catch(() => {});
+    }
+  }
+
   // Upload one resource's bytes INTO AN EVENT. Identity comes from the PATH — the same path the download
   // redirect answers GET on, which this PUT shares and the token gate still gates (only the redirect's
   // GET/HEAD is exempt) — and the capture name from a REQUIRED query parameter, which never reaches the
@@ -243,11 +289,48 @@ export function v2Handlers(
       const stored = await storeResource(
         "v2 upload",
         { eventId, deviceId, ...identity, keyId: membership?.keyId ?? null },
-        uploadOf(c.req),
+        c.req,
         c.req.header("content-type") ?? "application/octet-stream",
       );
       recordStore(c.var.log, stored);
       return c.body(null, 201);
+    },
+
+    // Where an upload of one resource stands (`docs/architecture.md`, "Resumable uploads") — asked by a device
+    // before it RETRIES a failed upload, never before a fresh one. Gated like the upload: its own device, a
+    // member still in the event. Answers for the bytes the device names by their SHA-256. Its own path because
+    // GET on the upload's path is the token-free download redirect, and HEAD cannot be used at all: the pull
+    // zone sends a HEAD to the origin as a GET (measured).
+    async uploadState(c, { params }) {
+      const { eventId, assetId, role } = params;
+      const deviceId = ownDevice(c.get("tokenDeviceId"), params.deviceId);
+      c.header("Cache-Control", NO_CACHE);
+      const membership = await tryUpstream(
+        `v2 upload state: membership read failed for ${eventId}/${deviceId}`,
+        () => uploadMembership(db, eventId, deviceId),
+      );
+      if (membership?.state !== "sharing" && membership?.state !== "settled") {
+        return c.text("not a member", 403);
+      }
+      const path = await eventBytePath(eventId, deviceId, assetId, role);
+      const target: Target = {
+        eventId,
+        deviceId,
+        assetId,
+        role,
+        path,
+        contentType: "",
+        filename: "",
+        keyId: membership.keyId,
+      };
+      const status = await tryUpstream(
+        `v2 upload state: read failed for ${path}`,
+        () => uploadStatus(storeDeps, target, params["x-snapsync-sha256"]),
+      );
+      if (status === "landed") return c.body(null, 204);
+      if (status === 0) return c.text("nothing stored", 404);
+      c.header(UPLOAD_OFFSET_HEADER, `${status}`);
+      return c.body(null, 200);
     },
 
     uploadResourcePreflight(c) {
@@ -271,7 +354,7 @@ export function v2Handlers(
       const stored = await storeResource(
         "v2 upload",
         { ...target, deviceId, ...identity },
-        uploadOf(c.req),
+        c.req,
         c.req.header("content-type") ?? "application/octet-stream",
       );
       recordStore(c.var.log, stored);

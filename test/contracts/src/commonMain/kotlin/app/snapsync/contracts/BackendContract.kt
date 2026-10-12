@@ -32,6 +32,9 @@ enum class BackendState {
     /** An event, and a device that joined it and uploaded one resource into it. */
     DEVICE_UPLOADED,
 
+    /** An event, and a device that joined it whose upload of one resource ended short — part of it kept. */
+    DEVICE_UPLOAD_BROKE_OFF,
+
     /** An event that exists, and a build older than the backend's minimum. */
     VERSION_REFUSED,
 
@@ -137,7 +140,7 @@ object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Bac
         val asset = when (state) {
             BackendState.UNION_COMPLETE_ASSET -> COMPLETE
             BackendState.UNION_INCOMPLETE_ASSET -> INCOMPLETE
-            BackendState.DEVICE_UPLOADED -> STORED
+            BackendState.DEVICE_UPLOADED, BackendState.DEVICE_UPLOAD_BROKE_OFF -> STORED
             else -> null
         }
         when (state) {
@@ -162,6 +165,10 @@ object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Bac
                 setup.join(event.eventId, device)
                 setup.upload(event.eventId, device, asset!!, ResourceRole.PRIMARY)
             }
+            BackendState.DEVICE_UPLOAD_BROKE_OFF -> {
+                setup.join(event.eventId, device)
+                setup.uploadPart(event.eventId, device, asset!!, ResourceRole.PRIMARY)
+            }
             else -> Unit
         }
         return Seeded(event.eventId, device, event, identity, asset)
@@ -172,6 +179,7 @@ object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Bac
         changeClauses()
         membershipClauses()
         listingClauses()
+        uploadStateClauses()
         attestClauses()
         completionClauses()
         transportClauses()

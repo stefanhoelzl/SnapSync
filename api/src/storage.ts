@@ -161,6 +161,24 @@ export async function putObject(
 }
 
 /**
+ * GET a storage object's bytes, or `null` when it is absent (`404`). THROWS on any other non-OK status.
+ */
+export async function getObject(
+  fetchImpl: FetchLike,
+  config: Config,
+  key: string,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  const url = `https://${config.host}/${config.zone}/${key}`;
+  const res = await fetchImpl(url, { method: "GET", headers: { AccessKey: config.accessKey } });
+  if (res.status === 404) {
+    await res.body?.cancel();
+    return null;
+  }
+  if (!res.ok) throw new Error(`bunny GET returned ${res.status} for ${key}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+/**
  * DELETE a storage object, idempotently: a `404` (already gone) is success. THROWS on any other non-OK
  * status. Deleting an absent object is a no-op, which keeps deletion cascades safe to re-run.
  *

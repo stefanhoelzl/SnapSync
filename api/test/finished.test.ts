@@ -54,8 +54,8 @@ async function declare(db: Db, d: string, asset: string) {
 
 async function land(db: Db, d: string, asset: string, role: string) {
   await db.execute(
-    `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
-     VALUES (?, ?, ?, ?, 'p', 't', 'f')`,
+    `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename, landed_at)
+     VALUES (?, ?, ?, ?, 'p', 't', 'f', '2026-07-01T00:00:00Z')`,
     [E, d, asset, role],
   );
 }

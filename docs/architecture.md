@@ -1011,7 +1011,8 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; closes nothing and wakes nobody; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), honoured only after `endsAt` and only for a present membership; closes nothing; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to an event closed before open-until dates) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to such an event · `410` completed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/received` `{position}` | the union-log position up to which the device holds every photo of the others (`received_position`, monotonic: a lower one changes nothing); only a present member | `200` · `400 invalid position` · `404` · `409` not a member · `502` |
-| `PUT` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` (the download redirect's path; the PUT is gated) | accepted only from a **present** member (`sharing`/`settled` — an ended event still takes its members' bytes, a completed one has none); streams bytes to `files/<eventId>/<sha256 of event/device/asset/role>` (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed the asset, wakes the event's other members. **An encrypted event takes only encrypted files** (`routes/encrypted-upload.ts`, read in the same statement as the membership): a body whose 9-byte prefix names the event's key id passes untouched; with the iOS extension's `x-snapsync-file-key` + `x-snapsync-file-head` (ONE file's key and opening bytes, never the event key; never logged) the edge seals the plaintext itself, byte for byte as a device would; anything else is refused before a byte is stored. A plain event refuses those headers | `201` · `400` bad role / missing filename / file-key headers on a plain event or malformed, or the body broke off mid-upload (`upload aborted`) · `403` not a present member, or a file head of another key · `422` an encrypted event's body that is not a file of its key · `502` (`OPTIONS` → `204`) |
+| `PUT` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` (the download redirect's path; the PUT is gated) | accepted only from a **present** member (`sharing`/`settled` — an ended event still takes its members' bytes, a completed one has none); stores bytes at `files/<eventId>/<sha256 of event/device/asset/role>` — one write when under one part, S3 multipart parts otherwise ([Resumable uploads](#resumable-uploads)) — then records the `resources` row. With `x-snapsync-sha256` (the file's SHA-256) a dropped upload keeps what arrived, and a **partial PUT** (`Content-Range: bytes X-(N-1)/N`, RFC 9110 §14.5) continues it: a lower `X` discards the overlap, a higher one is `409` + `Upload-Offset`. **A failed record fails the request.** If this completed the asset, wakes the event's other members. **An encrypted event takes only encrypted files** (`routes/encrypted-upload.ts`, read in the same statement as the membership): a body whose 9-byte prefix names the event's key id passes untouched; with the iOS extension's `x-snapsync-file-key` + `x-snapsync-file-head` (ONE file's key and opening bytes, never the event key; never logged) the edge seals the plaintext itself, byte for byte as a device would; anything else is refused before a byte is stored. A plain event refuses those headers | `201` · `400` bad role / missing filename / file-key headers on a plain event or malformed / a malformed `x-snapsync-sha256` or `Content-Range`, a range without the sha256, or the body broke off mid-upload (`upload aborted`) · `403` not a present member, or a file head of another key · `409` + `Upload-Offset` a resume from past what is stored, or one a newer request took over · `422` an encrypted event's body that is not a file of its key · `502` (`OPTIONS` → `204`) |
+| `GET` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>/upload` with `x-snapsync-sha256` | **where an upload stands**, asked before a device retries one ([Resumable uploads](#resumable-uploads)); gated like the PUT; `Cache-Control: no-store, no-cache, max-age=0` | `204` these bytes landed · `200` + `Upload-Offset: X` — send from `X` · `404` nothing stored for these bytes · `400` · `403` not a present member · `502` |
 | `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | the **event-less** upload of builds before `per-event-storage-layout`: the same write, filed under the device's one present membership — and the same encrypted-event rule, so a build that predates encryption cannot put plaintext into one | as above, `409` with no present membership |
 | `GET` | `/events/<eventId>/files/devices/<deviceId>` | what the backend holds for me **in this event**, from the DB — never another event's | `200 [{assetId, role, filename}]` · `502` |
 | `GET` | `/files/devices/<deviceId>` | the event-less listing: the same answer for the device's present membership, `[]` with none | `200 [{assetId, role, filename}]` · `502` |
@@ -1224,6 +1225,8 @@ files/<eventId>/<sha256>                          one object per resource of an 
                                                   (`eventBytePath`), so a re-upload overwrites it and one
                                                   photo in two events has two unrelated names. Deleted as
                                                   one folder by the sweep
+files/<eventId>/<sha256>.tail-<claim>             what a dropped resumable upload received past its last
+                                                  stored part; deleted once used, or with the folder
 files/devices/<deviceId>/<assetId>-<role>.<ext>   bytes written before migration 0010, still served
                                                   through rows that point at them; written no more
                                                   (`changes/per-event-storage-layout`, migration plan)
@@ -1233,6 +1236,51 @@ site/index.html · site/join/index.html · site/_astro/*   the Astro build (mirr
 Keys are percent-encoded per segment, so they stay flat. The storage `host` must be the zone's **main**
 region (read-after-write). Replicas are asynchronous. There is exactly one zone (`snap-sync-dev`),
 shared with real users. **Never add a whole-zone reset.** Clean up targeted only.
+
+Besides objects, the zone holds **open S3 multipart uploads** — the parts of resources still uploading. They
+are not objects: no listing shows them and a folder's recursive DELETE leaves them behind (measured), and
+completing one afterwards puts its object back. So the sweep aborts the open uploads of every event that no
+longer lives (`ListMultipartUploads` on `files/`) before it deletes folders.
+
+### Resumable uploads
+
+On a slow link the pull zone ends a request after 60 s without progress, and every retry used to start
+again from byte 0 (Bugsink SNAPSYNC-54: one video retried seven times, 40 MB sent, nothing kept). The byte
+route now keeps what arrives (`api/src/routes/resumable-upload.ts`, `api/src/s3.ts`):
+
+- **Parts.** The body is cut into parts of `max(5 MiB, size ÷ 40)` (S3's floor; about 40 parts at most,
+  since each part is an edge subrequest), and each full part is stored as an S3 multipart part as soon as it
+  fills, one in flight while the next fills. A body under one part is one plain write. Complete joins them
+  (~2.3 s, measured) and only then is the resource recorded.
+- **The session** lives on the resource's row (migration 0015): `landed_at` (NULL while a first upload is
+  under way — such a row is in no union, listing or completeness check, the `landed()` filter in `db.ts`), the
+  declared SHA-256 and size, the S3 upload id, the part size, the tail, and the **claim** of the request
+  writing it. Only a request that declares its file's SHA-256 (`x-snapsync-sha256`) has one; an older build's
+  or the PhotoKit extension's upload is stored the same way but keeps nothing when it drops.
+- **The tail.** When the client drops, the script keeps running (≥10 s, measured) and writes what it received
+  past the last stored part as `<path>.tail-<claim>`. It counts only while it starts where the stored parts
+  end, so the offset never overstates what is there.
+- **The retry** asks `GET …/upload` first — the device cannot know: after a network cut its own count runs
+  0.7–1.1 MB ahead of what arrived (its socket buffer, at every speed, measured) — and sends the rest as a
+  partial PUT. A newer request for the same bytes claims the row; every later write of the older one is
+  conditional on the claim, so it stops and lands nothing. Bytes whose row is gone when they complete (the
+  member left, the event closed) are deleted again.
+- **The app** (`services/upload`): a platform that uploads from a FILE (the iOS app's URLSession; Android for an
+  encrypted event, sealed into a file) declares each staged file's SHA-256, hashed once as it is staged
+  (`Crypto.sha256`) and kept beside it (`<staged>.sha256`). A FAILED upload keeps both, and the staging sweep
+  spares them while the file's ledger row still needs it. The retry asks `Routes.UploadState`
+  (`UploadStandings`, over the `BackendGateway`) and creates the transfer with `TransferSource.File(path, from)` and `Content-Range`; a fresh
+  upload never asks. Bytes the backend already holds are finished by resending the last one. The platform
+  sends the rest: iOS copies it into a file of its own in Caches (a background session uploads only whole
+  files), Android skips to it. The PhotoKit extension and Android in a plain event send the library's own
+  bytes and restart, as before. ⚠️ A photo edited in place between a failed attempt and its retry resumes the
+  pre-edit bytes (Android, encrypted events only): the kept staged file is not checked against the library.
+- **Why the wire looks like this:** URLSession's own resumable uploads (the IETF resumable-upload draft)
+  need a `104` interim response and `HEAD`, and the pull zone forwards neither — it drops 1xx and sends a
+  HEAD to the origin as a GET (measured, bunny ticket open). So the status read is a GET on its own path
+  (GET on the upload's path is the download redirect), the resume a standard partial PUT, and the answer
+  carries the draft's `Upload-Offset`. An early answer is impossible too: a reply sent before the body ends
+  reaches the client as a `502`, so a `409` comes after the body was read.
 
 ### The encrypted file format
 

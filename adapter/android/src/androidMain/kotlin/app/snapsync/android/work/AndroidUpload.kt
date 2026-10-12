@@ -135,7 +135,7 @@ class AndroidUpload(
         val body = when (source) {
             is TransferSource.Resource -> (source.handle as? MediaStoreResource)?.uri?.let(Body::MediaItem)
             // A file that is not there is no job: refused now, never a transfer that fails later.
-            is TransferSource.File -> File(source.path).takeIf { it.isFile }?.let(Body::LocalFile)
+            is TransferSource.File -> File(source.path).takeIf { it.isFile }?.let { Body.LocalFile(it, source.from) }
         } ?: return CreateOutcome.FAILED.also {
             log.w { "$tag: the source is neither a MediaStore item nor a file here" }
         }
@@ -238,7 +238,9 @@ class AndroidUpload(
                     }
                     opener to length
                 }
-                is Body.LocalFile -> ({ body.file.inputStream() } as () -> InputStream) to body.file.length()
+                // A resumed upload sends the file's rest (`docs/architecture.md`, "Resumable uploads").
+                is Body.LocalFile -> ({ body.file.inputStream().also { it.skipFully(body.from) } } as () -> InputStream) to
+                    body.file.length() - body.from
             }
             val response = client.put(target.url) {
                 // The type rides on the body: Ktor refuses a Content-Type or Content-Length set as a plain header.
@@ -258,10 +260,13 @@ class AndroidUpload(
         }
     }
 
-    /** What a transfer sends: a library item's original, or a file on this device's disk (an encrypted event's). */
+    /**
+     * What a transfer sends: a library item's original, or a file on this device's disk (an encrypted event's) from
+     * byte [LocalFile.from] on.
+     */
     private sealed interface Body {
         class MediaItem(val uri: Uri) : Body
-        class LocalFile(val file: File) : Body
+        class LocalFile(val file: File, val from: Long) : Body
     }
 
     /** The source's bytes as a request body, read as they are sent. */
@@ -292,6 +297,20 @@ class AndroidUpload(
     }
 
     private companion object {
+        /** Skip exactly [count] bytes — `skip` may skip fewer, and an early end must fail the transfer, not shorten it. */
+        fun InputStream.skipFully(count: Long) {
+            var left = count
+            while (left > 0) {
+                val skipped = skip(left)
+                if (skipped <= 0) {
+                    if (read() < 0) throw IOException("the file ended before byte $count")
+                    left--
+                } else {
+                    left -= skipped
+                }
+            }
+        }
+
         const val JOURNAL = "upload_journal"
         const val MAX_LIVE = 1
         const val CHUNK = 64 * 1024

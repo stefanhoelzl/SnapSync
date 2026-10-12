@@ -42,6 +42,7 @@ class AppEvents internal constructor(private val core: AppCore) {
                 log = core.services.log,
                 entryContext = core.process.entryContext,
             ),
+            core.uploadResuming,
         )
     }
 }

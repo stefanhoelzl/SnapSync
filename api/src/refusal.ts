@@ -15,18 +15,22 @@ export type RefusalOptions = {
   fault?: Fault;
   /** Facts to record (`refused=`, `rejected=`, `aborted=`). */
   fields?: Record<string, FieldValue>;
+  /** Response headers the refusal carries — the byte route's `Upload-Offset`. */
+  headers?: Record<string, string>;
 };
 
 export class Refusal extends HTTPException {
   readonly body: string | object;
   readonly fault?: Fault;
   readonly fields: Record<string, FieldValue>;
+  readonly headers: Record<string, string>;
 
   constructor(status: ContentfulStatusCode, body: string | object, options: RefusalOptions = {}) {
     super(status, { message: typeof body === "string" ? body : JSON.stringify(body) });
     this.body = body;
     this.fault = options.fault;
     this.fields = options.fields ?? {};
+    this.headers = options.headers ?? {};
   }
 }
 

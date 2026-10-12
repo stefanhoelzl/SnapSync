@@ -33,4 +33,10 @@ interface Crypto : Port {
      * not authenticate — a wrong key, a wrong nonce, any changed byte, or fewer bytes than a tag.
      */
     fun aesGcmOpen(key: AesKey, nonce: GcmNonce, sealed: ByteArray): ByteArray?
+
+    /**
+     * SHA-256 of [chunks] concatenated, in order — 32 bytes. A sequence, so a file is hashed as it is read rather than
+     * held whole: what a resumable upload declares its bytes by (`docs/architecture.md`, "Resumable uploads").
+     */
+    fun sha256(chunks: Sequence<ByteArray>): ByteArray
 }

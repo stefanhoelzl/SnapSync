@@ -107,6 +107,7 @@ import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.upload.OsDrivenRegistration
+import app.snapsync.services.upload.Resuming
 import app.snapsync.services.version.AppVersionGate
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
@@ -285,6 +286,13 @@ class AppCore internal constructor(
      * through [BackendServices.manifest] like every other caller.
      */
     val backend: BackendServices by lazy { backendServicesFor(services, attestation, exchange) }
+
+    /**
+     * What makes the app's file uploads resume where a failed attempt stopped (`docs/architecture.md`, "Resumable
+     * uploads") — shared by the cycle that starts them and the transfer that records their end, which must agree on
+     * keeping a failed upload's staged file.
+     */
+    internal val uploadResuming: Resuming by lazy { uploadResumingFor(services, backend, process.crypto) }
 
     // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read,
     // counted by the status source over the gallery's admitted set. Read-only;

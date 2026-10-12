@@ -113,10 +113,11 @@ private fun fixtureObjects(base: String) = FixtureObjects { path ->
     } ?: return@FixtureObjects null
     if (data.length == 0UL) return@FixtureObjects null
     val json = NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString() ?: return@FixtureObjects null
-    Landed(CONTENT_TYPE.find(json)?.groupValues?.get(1))
+    Landed(CONTENT_TYPE.find(json)?.groupValues?.get(1), LENGTH.find(json)?.groupValues?.get(1)?.toLongOrNull())
 }
 
 private val CONTENT_TYPE = Regex(""""contentType":\s*"([^"]*)"""")
+private val LENGTH = Regex(""""length":\s*(\d+)""")
 
 /** One ordinary photo captured in [clauseId]'s window, as the `PHAssetResource` the upload tier sends. */
 private fun seedOne(contract: String, clauseId: String): PHAssetResource = memScoped {

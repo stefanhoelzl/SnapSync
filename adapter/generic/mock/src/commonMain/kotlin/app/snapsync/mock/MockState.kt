@@ -475,7 +475,13 @@ private class MembershipDto(
 private class CountDto(val event: String, val device: String, val count: Int)
 
 @Serializable
-private class StoredFileDto(val asset: String, val role: String, val filename: String)
+private class StoredFileDto(
+    val asset: String,
+    val role: String,
+    val filename: String,
+    /** The SHA-256 its bytes were declared with; absent for an upload that declared none, or a state saved before. */
+    val sha256: String? = null,
+)
 
 /** The backend's operator-set levers and counters. */
 @Serializable
@@ -530,6 +536,7 @@ private class BackendDto(
             state.storedFiles[event to key.substringAfter('/')] = files.mapTo(mutableSetOf()) {
                 DeviceFile(AssetId(it.asset), ResourceRole.entries.first { role -> role.wire == it.role }, it.filename)
             }
+            files.forEach { file -> file.sha256?.let { state.landedSha256["$key/${file.asset}/${file.role}"] = it } }
         }
         levers.into(state)
         events.forEach { (id, e) ->
@@ -569,7 +576,10 @@ private class BackendDto(
     companion object {
         fun of(state: BackendState) = BackendDto(
             storedFiles = state.storedFiles.entries.associate { (key, files) ->
-                "${key.first}/${key.second}" to files.map { StoredFileDto(it.assetId.value, it.role.wire, it.filename) }
+                "${key.first}/${key.second}" to files.map {
+                    val sha256 = state.landedSha256["${key.first}/${key.second}/${it.assetId.value}/${it.role.wire}"]
+                    StoredFileDto(it.assetId.value, it.role.wire, it.filename, sha256)
+                }
             },
             events = state.events.mapValues { (_, e) ->
                 EventDto(

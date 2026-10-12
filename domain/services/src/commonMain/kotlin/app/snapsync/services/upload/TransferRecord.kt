@@ -36,6 +36,12 @@ interface TransferRecord {
     suspend fun entryForDestination(destinationPath: String): LedgerEntry?
 
     /**
+     * The row of [key], or null when none records it — what tells a staged file a failed upload kept for its resume
+     * (its row still needs the upload) from one nothing will send again.
+     */
+    suspend fun entryForKey(key: String): LedgerEntry?
+
+    /**
      * Record how one upload terminated — [outcome]'s state becomes the row's (`COMPLETED` for a success; a
      * failure returns the row to `DISCOVERED`) — but **only while that row is still `REQUESTED`**; answers
      * whether it applied. [TerminalOutcome] fixes that set, so a callback can never claim a job exists

@@ -93,7 +93,7 @@ class IosUrlSessionUploadPlatform internal constructor(
 
     override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome =
         log.invocation("urlSession.create", params = "tag=$tag", result = { "$it" }) {
-            val file = (source as? TransferSource.File)?.path ?: run {
+            val whole = source as? TransferSource.File ?: run {
                 log.w { "create: this uploader sends a file, not a resource handle — not creating" }
                 return@invocation CreateOutcome.FAILED
             }
@@ -101,10 +101,20 @@ class IosUrlSessionUploadPlatform internal constructor(
             // and they outlive us, so this is the only count that binds across a relaunch.
             if (session.tasks().size >= cap) return@invocation CreateOutcome.LIMIT_EXCEEDED
             val url = NSURL.URLWithString(target.url) ?: return@invocation CreateOutcome.FAILED
+            // A resumed upload sends the file's rest, which a background session can only send as a file of its own.
+            val file = if (whole.from <= 0) {
+                whole.path
+            } else {
+                UploadSlices.cut(whole.path, whole.from, tag) ?: run {
+                    log.w { "create: the rest of $tag from ${whole.from} could not be copied out — not creating" }
+                    return@invocation CreateOutcome.FAILED
+                }
+            }
             // Tagged with the ledger key — the only field present across the lifecycle. A file that cannot be read is no
             // transfer: refused now, never one that fails later.
             if (!session.upload(uploadUrlRequest(url, target), file, tag)) {
                 log.w { "create: $file cannot be read — not creating" }
+                if (whole.from > 0) UploadSlices.release(tag)
                 return@invocation CreateOutcome.FAILED
             }
             CreateOutcome.CREATED
@@ -122,6 +132,7 @@ class IosUrlSessionUploadPlatform internal constructor(
      * task with no description maps to no ledger key and is reported, never dropped in silence.
      */
     private fun finished(task: TransferTask, statusCode: Long, error: NSError?) {
+        task.tag?.let(UploadSlices::release)
         when (val outcome = classifyUrlSessionCompletion(task.tag, statusCode, error)) {
             TaskCompletion.NoLedgerKey -> log.w { "upload task carried no description — nothing to record" }
             is TaskCompletion.Record -> {

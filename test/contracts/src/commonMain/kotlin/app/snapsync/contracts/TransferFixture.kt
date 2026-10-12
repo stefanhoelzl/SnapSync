@@ -104,8 +104,11 @@ object TransferFixture {
     private val REDIRECT = Regex("""r(3\d{2})-(.+)""")
 }
 
-/** What a fixture received at one route: an object a `PUT` landed. Presence and type — the state reached. */
-data class Landed(val contentType: String?)
+/**
+ * What a fixture received at one route: an object a `PUT` landed. Presence and type — the state reached — and, where the
+ * fixture reports it, its [length] in bytes (`null` where a binding cannot tell).
+ */
+data class Landed(val contentType: String?, val length: Long? = null)
 
 /** A clause's read of what landed on the far side of its transfers — an observation handle over the fixture. */
 fun interface FixtureObjects {

@@ -278,6 +278,27 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             awaitWithin { subject.objects.landed(route) != null }
         }
 
+        // A resumed upload sends a file's rest (`docs/architecture.md`, "Resumable uploads"): the same file, sent whole
+        // and from a byte on, lands exactly that many bytes fewer — however the platform sends part of a file.
+        clause(
+            "A_FILE_SENT_FROM_A_BYTE_ON_LANDS_ITS_REST",
+            TransferSessionState.TAKES_FILES,
+            covers = created(CreateOutcome.CREATED),
+        ) { subject ->
+            val id = "A_FILE_SENT_FROM_A_BYTE_ON_LANDS_ITS_REST"
+            subject.landsTheRest(id, assertIs<TransferSource.File>(subject.usable(key(id)), "what it takes is a file"))
+        }
+
+        clause(
+            "A_SEALED_FILE_SENT_FROM_A_BYTE_ON_LANDS_ITS_REST",
+            TransferSessionState.TAKES_RESOURCES_AND_FILES,
+            covers = created(CreateOutcome.CREATED),
+        ) { subject ->
+            val id = "A_SEALED_FILE_SENT_FROM_A_BYTE_ON_LANDS_ITS_REST"
+            val file = assertNotNull(subject.fileSource, "a binding that reaches this state can make a file source")
+            subject.landsTheRest(id, assertIs<TransferSource.File>(file(key(id))))
+        }
+
         relaunchHandedOverThenDrained(
             TransferSessionState.RELAUNCHED_WITH_EVENTS,
             covers = cells {
@@ -350,6 +371,22 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             assertTrue(subject.ended().none { it.tag == key(id, n = 2) }, "a transfer never made has no end to tell")
         }
     }
+}
+
+/** [whole] sent whole, then from its middle byte on: the second lands exactly the rest. */
+private suspend fun SessionUnderTest.landsTheRest(id: String, whole: TransferSource.File) {
+    val wholeRoute = TransferSessionContract.path(id, UPLOAD_ACCEPT)
+    val restRoute = TransferSessionContract.path(id, UPLOAD_ACCEPT, n = 2)
+    assertEquals(CreateOutcome.CREATED, session.create(whole, target(wholeRoute), uploadClauseKey(id)))
+    awaitWithin { objects.landed(wholeRoute) != null }
+    val size = assertNotNull(objects.landed(wholeRoute)?.length, "the fixture reports the length")
+    // From the middle, whatever the platform's fixture photo weighs: a sealed one on the emulator is under 4 KB.
+    val from = size / 2
+    assertTrue(from > 0, "the photo is larger than one byte")
+    val rest = TransferSource.File(whole.path, from = from)
+    assertEquals(CreateOutcome.CREATED, session.create(rest, target(restRoute), uploadClauseKey(id, 2)))
+    awaitWithin { objects.landed(restRoute) != null }
+    assertEquals(size - from, objects.landed(restRoute)?.length, "only the rest was sent")
 }
 
 /** The session as the shared hold clause drives it: a transfer's end is its told success and its bytes landed. */

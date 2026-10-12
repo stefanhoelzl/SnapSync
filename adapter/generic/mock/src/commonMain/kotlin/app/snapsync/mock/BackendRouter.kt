@@ -140,6 +140,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         Routes.DeviceFiles.ID -> listing(call)
         Routes.PutDevice.ID -> putDevice(call)
         Routes.UploadResource.ID, Routes.UploadResourceEventless.ID -> bytes(call)
+        Routes.UploadState.ID -> uploadState(call)
         else -> text(NOT_FOUND, "not found")
     }
 
@@ -313,13 +314,41 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         return empty(CREATED)
     }
 
-    /** A byte upload, answered as [BackendState.receive] answers the OS transfer that carries one. */
-    private fun bytes(call: Call): HttpResult = when (val status = state.receive(call.url, call.headers)) {
-        CREATED -> empty(CREATED)
-        BAD_REQUEST -> text(BAD_REQUEST, "invalid upload")
-        FORBIDDEN -> text(FORBIDDEN, "not a member")
-        CONFLICT -> text(CONFLICT, "no event")
-        else -> text(status, "offline")
+    /**
+     * A byte upload, answered as [BackendState.receive] answers the OS transfer that carries one — but a body that ends
+     * short of the range it declared keeps what arrived, as the real byte route does (`docs/architecture.md`,
+     * "Resumable uploads").
+     */
+    private fun bytes(call: Call): HttpResult {
+        val sha256 = call.header(Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256)
+        val total = call.header(Routes.UploadResource.HEADER_CONTENT_RANGE)?.substringAfterLast('/')?.toLongOrNull()
+        val received = call.bodyLength
+        if (sha256 != null && total != null && received < total && call.route.id == Routes.UploadResource.ID) {
+            if (!state.mayUpload(call.param("eventId"), call.param("deviceId"))) return text(FORBIDDEN, "not a member")
+            state.partial[call.resourceKey] = sha256 to received
+            return text(BAD_REQUEST, "body shorter than declared")
+        }
+        return when (val status = state.receive(call.url, call.headers)) {
+            CREATED -> empty(CREATED)
+            BAD_REQUEST -> text(BAD_REQUEST, "invalid upload")
+            FORBIDDEN -> text(FORBIDDEN, "not a member")
+            CONFLICT -> text(CONFLICT, "no event")
+            else -> text(status, "offline")
+        }
+    }
+
+    /** Where an upload of these bytes stands: landed, partly stored, or nothing stored for them. */
+    private fun uploadState(call: Call): HttpResult {
+        if (!state.mayUpload(call.param("eventId"), call.param("deviceId"))) return text(FORBIDDEN, "not a member")
+        val sha256 = call.header(Routes.UploadState.HEADER_X_SNAPSYNC_SHA256)
+        val key = call.resourceKey
+        val partial = state.partial[key]
+        return when {
+            sha256 != null && state.landedSha256[key] == sha256 -> empty(NO_CONTENT)
+            sha256 != null && partial?.first == sha256 ->
+                HttpResult.Response(OK, mapOf(UPLOAD_OFFSET to "${partial.second}"), "")
+            else -> text(NOT_FOUND, "nothing stored")
+        }
     }
 
     private fun BackendState.Event.onWire(eventId: String): Event = Event(
@@ -401,6 +430,12 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         /** The device a minted token was minted for — it rides inside the token, as on the real backend. */
         val tokenDevice: String? get() = token?.substringBefore('.')
 
+        /** How many bytes the request's body carries. */
+        /** The resource a byte route names: event, device, asset and role. */
+        val resourceKey: String get() = "${param("eventId")}/${param("deviceId")}/${param("assetId")}/${param("role")}"
+
+        val bodyLength: Long get() = body?.encodeToByteArray()?.size?.toLong() ?: 0
+
         fun <T> decode(strategy: DeserializationStrategy<T>): T? =
             body?.let { runCatchingCancellable { WireJson.decodeFromString(strategy, it) }.getOrNull() }
 
@@ -431,6 +466,8 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         const val BAD_REQUEST = 400
         const val UNAUTHORIZED = 401
         const val FORBIDDEN = 403
+        const val NO_CONTENT = 204
+        const val UPLOAD_OFFSET = "Upload-Offset"
         const val NOT_FOUND = 404
         const val CONFLICT = 409
         const val GONE = 410
@@ -517,6 +554,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
             Route(Routes.DeviceFiles.ID, Routes.DeviceFiles.METHOD, Routes.DeviceFiles.TEMPLATE, Access.GATED),
             Route(Routes.PutDevice.ID, Routes.PutDevice.METHOD, Routes.PutDevice.TEMPLATE, Access.GATED),
             Route(Routes.UploadResource.ID, Routes.UploadResource.METHOD, Routes.UploadResource.TEMPLATE, Access.GATED),
+            Route(Routes.UploadState.ID, Routes.UploadState.METHOD, Routes.UploadState.TEMPLATE, Access.GATED),
             Route(
                 Routes.UploadResourceEventless.ID,
                 Routes.UploadResourceEventless.METHOD,

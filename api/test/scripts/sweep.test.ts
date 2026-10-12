@@ -110,6 +110,10 @@ function fake(initial: Record<string, { lc?: string; len?: number }>) {
     return found;
   };
   const fetchImpl: FetchLike = (url, init) => {
+    // The S3 ListMultipartUploads the sweep asks first: no upload is open in these tests.
+    if (url.includes("?uploads")) {
+      return Promise.resolve(new Response("<ListMultipartUploadsResult/>", { status: 200 }));
+    }
     const key = url.split(`/${ZONE}/`)[1] ?? "";
     const method = init.method ?? "GET";
     if (method === "GET" && key.endsWith("/")) return Promise.resolve(list(key));
@@ -174,8 +178,8 @@ async function member(
   // membership's state follows a publish).
   for (const id of assetIds) {
     await d.execute(
-      `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
-       VALUES (?, ?, ?, 'primary', ?, 'image/heic', ?)`,
+      `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename, landed_at)
+       VALUES (?, ?, ?, 'primary', ?, 'image/heic', ?, '2026-07-01T00:00:00.000Z')`,
       [eventId, deviceId, id, paths.get(`${id} primary`), `${id}.heic`],
     );
   }

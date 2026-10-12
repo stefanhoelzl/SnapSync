@@ -60,6 +60,8 @@ class LedgerService(
         return queries.get(eventId, key, ::toEntry).executeAsOneOrNull()
     }
 
+    override suspend fun entryForKey(key: String): LedgerEntry? = get(key)
+
     override suspend fun entryForDestination(destinationPath: String): LedgerEntry? {
         val eventId = event() ?: return null
         return queries.selectByDestinationPath(eventId, destinationPath, ::toEntry).executeAsOneOrNull()
