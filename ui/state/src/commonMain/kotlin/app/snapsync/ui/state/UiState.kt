@@ -443,18 +443,12 @@ sealed interface JoinPhase {
          * - [Committing] — the confirm was taken; enroll + provision are in flight.
          * - [CommitFailed] — the commit failed for a reason that may not hold next time (the network,
          *   the backend, the moment), or a switch's join failed after leaving; a Retry re-runs the join.
-         * - [EventFull] — the event is at capacity. A SEPARATE step from
-         *   [CommitFailed], and the difference is the whole reason it exists: capacity does not heal, so
-         *   this step offers **no Retry**. It used to be collapsed into [CommitFailed], which pinned a
-         *   Retry button on a wall — the member could press it forever, and nothing on the screen said
-         *   what the wall was. Cancel is the only action, and it is a real one: it discards the pending
-         *   join and returns to the front door.
-         * - [DeviceRefused] — the service refused this phone as not genuine, and [refusal] says why. Unlike
-         *   [EventFull] it keeps the Retry: a Retry tries to verify the phone again first, and a refusal the service
+         * - [DeviceRefused] — the service refused this phone as not genuine, and [refusal] says why. It
+         *   keeps the Retry: a Retry tries to verify the phone again first, and a refusal the service
          *   stops making heals there. It is never shown as the generic [CommitFailed].
          */
         @Serializable
-        enum class Step { Ready, Committing, CommitFailed, EventFull, DeviceRefused }
+        enum class Step { Ready, Committing, CommitFailed, DeviceRefused }
     }
 }
 

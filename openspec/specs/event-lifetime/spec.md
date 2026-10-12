@@ -9,7 +9,7 @@ receiving and renaming keep working until the photos are deleted, so a guest who
 contributes. The photos are deleted soon after everyone still in the event has shared and received everything once
 the open-until date has passed, a few days after the last activity at the latest, and never later than 30 days after
 the open-until date — the retention promise every member relies on. The app never leaves an event on its own; a
-deleted event is shown as over. Only a limited number of devices can ever take part, and leaving frees no place.
+deleted event is shown as over.
 Decision record: changes/back-dated-events
 
 ## Requirements
@@ -35,27 +35,6 @@ as long as the host chose").
 #### Scenario: A rename after the end
 - **WHEN** a member renames an event days after its range ended, while its photos have not been deleted
 - **THEN** the new name shows for every member
-
-### Requirement: A limited number of devices ever take part, and leaving frees no place
-
-An event SHALL admit a limited number of distinct devices over its whole life, set by the service when the
-event is created and counting devices that have left. Until the event's photos are deleted, a device that
-left SHALL always be able to rejoin in its own place. A new device SHALL be refused once the limit has been
-reached, even if some have left (what the joining guest is told: capability `join-event`). The limit SHALL
-hold exactly, even when several devices join at the same moment.
-
-#### Scenario: Leaving does not make room
-- **WHEN** an event has reached its device limit and one device leaves
-- **THEN** a new device is still refused
-
-#### Scenario: A returning device rejoins
-- **WHEN** a device that left a full event scans its invite again before the event's photos have been
-  deleted
-- **THEN** it rejoins
-
-#### Scenario: Simultaneous joins
-- **WHEN** three places remain and five new devices join at the same moment
-- **THEN** exactly three are admitted
 
 ### Requirement: A member who leaves keeps contributing what they shared
 
@@ -222,8 +201,8 @@ photos may live. Every doubt SHALL resolve toward the event still running.
 ### Requirement: Only the name changes after creation, until the photos are deleted
 
 After an event is created, its name SHALL be the only thing about the event anyone can change (capability
-`manage-membership`), and only until its photos are deleted. Its date range, its open-until date, its
-lifetime and its device limit SHALL stay exactly as created.
+`manage-membership`), and only until its photos are deleted. Its date range, its open-until date and its
+lifetime SHALL stay exactly as created.
 
 #### Scenario: Widening the range is impossible
 - **WHEN** someone holding the invite tries to change an event's date range after creation

@@ -71,7 +71,7 @@
 //   row PROVED (`attest_platform`), an App Attest assertion or an Android signature.
 //
 //   POST /api/v2/events
-//     → mints an event: INSERTs the `events` row, stamping `capacity` and the `lifetimeSeconds` DURATION
+//     → mints an event: INSERTs the `events` row, stamping the `capacity` placeholder and the `lifetimeSeconds` DURATION
 //       and validating the creator's `endsAt` against the configured window maximum (capability
 //       `event-lifetime`); returns {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
 //   GET /api/v2/events/:eventId
@@ -89,7 +89,7 @@
 //       creates the row), and re-sends the registration when the new credential arrives. A 201 here would
 //       be a silent absence — the device would believe it is reachable while no push could reach it.
 //   PUT /api/v2/events/:eventId/devices/:deviceId · PUT …/manifest · the byte PUTs · the device listings
-//     → `routes/v2.ts`: enrolment (gated on capacity), the ordered manifest publish, the byte uploads and the
+//     → `routes/v2.ts`: enrolment (any device, while the event is open), the ordered manifest publish, the byte uploads and the
 //       per-device listings — each explained where it is defined, and tabled in `docs/architecture.md`.
 //   DELETE /api/v2/events/:eventId/devices/:deviceId
 //     → LEAVE (capability `manage-membership`): the membership becomes `done` or `left` (`?received=true`

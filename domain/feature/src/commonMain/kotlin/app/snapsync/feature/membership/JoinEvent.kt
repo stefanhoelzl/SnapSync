@@ -20,25 +20,24 @@ import co.touchlab.kermit.Logger
  * - [Committed]: enrolled and provisioned — the device is now joined.
  * - [AlreadyJoined]: the target is the currently-configured event — a no-op that does **not** re-enroll
  *   (protects a real asset manifest from the empty-manifest clobber; see the join-event spec).
- * - [EventFull]: the event already holds its maximum number of devices — a refusal the USER can act on,
- *   kept apart from [EnrollFailed] because the two have different remedies and a screen must be able to
- *   say which (`docs/architecture.md`, "Absence is never silent"). Nothing is persisted either way.
+ * - [EventClosed]: the event has closed and admits nobody — a refusal the USER can act on, kept apart from
+ *   [EnrollFailed] because the two have different remedies and a screen must be able to say which
+ *   (`docs/architecture.md`, "Absence is never silent"). Nothing is persisted either way.
  * - [Unverified]: the service did not accept this phone's credential — the attestation's refusal says why.
  * - [EnrollFailed]: the join request failed or the event is gone — nothing persisted, no producer enabled.
  */
-enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EventClosed, Unverified, EnrollFailed, WrongLink }
+enum class JoinOutcome { Committed, AlreadyJoined, EventClosed, Unverified, EnrollFailed, WrongLink }
 
 /**
  * What the join surface should show for this outcome.
  *
- * A pure mapping, here rather than in `compose/`, because deciding that capacity and a transient
+ * A pure mapping, here rather than in `compose/`, because deciding that a closed event and a transient
  * failure reach DIFFERENT screens — one offering a Retry, one deliberately not — is a rule, and a rule
  * in the wiring is a rule no test can reach. `AlreadyJoined` folds into [JoinCommit.Committed]: a
  * member who is already in the event is in the event, and re-confirming is a no-op, not a failure.
  */
 fun JoinOutcome.toCommit(): JoinCommit = when (this) {
     JoinOutcome.Committed, JoinOutcome.AlreadyJoined -> JoinCommit.Committed
-    JoinOutcome.EventFull -> JoinCommit.Full
     JoinOutcome.EventClosed -> JoinCommit.Closed
     JoinOutcome.Unverified -> JoinCommit.Unverified
     JoinOutcome.EnrollFailed -> JoinCommit.Failed
@@ -114,7 +113,6 @@ class JoinEvent(
         if (!keys.opens(choice.linkKey, choice.eventKeyId)) return JoinOutcome.WrongLink
         when (enroller.enroll(eventId, identity.deviceId())) {
             JoinResult.JOINED -> Unit
-            JoinResult.EVENT_FULL -> return JoinOutcome.EventFull
             JoinResult.EVENT_CLOSED -> return JoinOutcome.EventClosed
             JoinResult.UNVERIFIED -> return JoinOutcome.Unverified
             JoinResult.EVENT_NOT_FOUND, JoinResult.FAILED -> return JoinOutcome.EnrollFailed

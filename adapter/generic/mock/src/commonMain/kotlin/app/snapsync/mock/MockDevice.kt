@@ -36,7 +36,6 @@ open class MockDevice(
 
     /** The backend, judging an open-until date by the time this device plays — as a backend shares the wall clock. */
     val backend = BackendMock(
-        BackendMock.DEFAULT_CAPACITY,
         Instant.parse(BackendMock.DEFAULT_CREATED_AT),
         now = { clock.now },
     )

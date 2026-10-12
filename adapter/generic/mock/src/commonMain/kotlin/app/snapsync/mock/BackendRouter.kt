@@ -204,8 +204,18 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         val members = state.members(eventId)
         val e = event.onWire(eventId)
         val details = EventDetails(
-            e.eventId, e.name, e.createdAt, e.startsAt, e.endsAt, e.openUntil, e.capacity, e.deletesAt, e.closedAt,
-            e.completedAt, e.keyId, MemberCounts(members.active, members.settled, members.waitingFor),
+            eventId = e.eventId,
+            name = e.name,
+            createdAt = e.createdAt,
+            startsAt = e.startsAt,
+            endsAt = e.endsAt,
+            openUntil = e.openUntil,
+            capacity = e.capacity,
+            deletesAt = e.deletesAt,
+            closedAt = e.closedAt,
+            completedAt = e.completedAt,
+            keyId = e.keyId,
+            members = MemberCounts(members.active, members.settled, members.waitingFor),
         )
         return json(OK, EventDetails.serializer(), details)
     }
@@ -223,7 +233,6 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
 
     private fun join(call: Call): HttpResult = when (state.join(call.param("eventId"), call.param("deviceId"))) {
         BackendState.JoinOutcome.NO_SUCH_EVENT -> eventNotFound()
-        BackendState.JoinOutcome.FULL -> text(CONFLICT, "event full")
         BackendState.JoinOutcome.CLOSED -> closed()
         BackendState.JoinOutcome.ENROLLED -> empty(OK)
     }
@@ -320,7 +329,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         startsAt = startsAt.toString(),
         endsAt = endsAt.toString(),
         openUntil = openUntil.toString(),
-        capacity = state.capacity,
+        capacity = BackendMock.CAPACITY_PLACEHOLDER,
         // The lifetime is 30 days from the later of the creation and the open-until date.
         deletesAt = (maxOf(createdAt, openUntil) + WINDOW_DAYS.days).toString(),
         // For builds that predate open-until dates, derived as the real route derives it. The mock stamps no

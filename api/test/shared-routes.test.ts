@@ -8,6 +8,7 @@
 
 import { assert, assertEquals } from "@std/assert";
 import type { Db } from "../src/db.ts";
+import { CAPACITY_PLACEHOLDER } from "../src/config.ts";
 import {
   as,
   CONFIG,
@@ -67,7 +68,8 @@ Deno.test("POST /events → 201 with the event, and one row written", async () =
   assertEquals(body.completedAt, null);
   assertEquals(body.name, "Party");
   assertEquals(body.startsAt, STARTS_AT);
-  assertEquals(body.capacity, 10);
+  // A placeholder released apps require; it limits nothing (decision record `changes/remove-event-device-cap`, D4).
+  assertEquals(body.capacity, CAPACITY_PLACEHOLDER);
   const stored = await rows(db, `SELECT * FROM events`);
   assertEquals(stored.length, 1);
   assertEquals(stored[0].id, body.eventId);
@@ -86,7 +88,7 @@ Deno.test("POST /events → the client cannot supply the id; the server mints it
   );
   const body = await res.json() as Record<string, unknown>;
   assert(body.eventId !== E);
-  assertEquals(body.capacity, 10);
+  assertEquals(body.capacity, CAPACITY_PLACEHOLDER);
   db.close();
 });
 
@@ -197,6 +199,8 @@ Deno.test("GET /events/:id → 200 with the stored fields and the derived delete
   assertEquals(body.openUntil, ENDS_AT);
   assertEquals(body.deletesAt, "2026-08-26T18:00:00Z"); // max(createdAt, openUntil) + 30d
   assert(!("lifetimeSeconds" in body)); // the duration is internal; the instant is the wire fact
+  // The row was stamped 10 before the device limit was removed; the wire says the placeholder regardless.
+  assertEquals(body.capacity, CAPACITY_PLACEHOLDER);
   db.close();
 });
 

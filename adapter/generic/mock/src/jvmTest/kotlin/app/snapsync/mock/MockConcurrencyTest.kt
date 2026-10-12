@@ -48,7 +48,6 @@ class MockConcurrencyTest {
         val device = MockDevice()
         val backend = device.backend
         val port = Wire(backend.port())
-        backend.operator.capacity = Int.MAX_VALUE
         val event = runBlocking {
             val created = port.send(Routes.CreateEvent.request(EventCreate("E", "2026-06-01T00:00:00Z")))
             (created as CreateEventReply.Created).event.eventId

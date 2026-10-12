@@ -45,7 +45,6 @@ import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.event_closed_body
 import app.snapsync.ui.resources.event_closed_title
-import app.snapsync.ui.resources.event_full_title
 import app.snapsync.ui.resources.event_not_found_body
 import app.snapsync.ui.resources.event_not_found_title
 import app.snapsync.ui.resources.join_access_dismiss
@@ -355,26 +354,6 @@ class JoinScreenTest {
         onNodeWithText(str(Res.string.join_failed_title)).assertExists()
         onNodeWithText(str(Res.string.retry)).performClick()
         assertEquals(1, retried)
-    }
-
-    @Test
-    fun `the full-event step names the wall and offers NO retry`() = runComposeUiTest {
-        // The whole reason this step exists separately from CommitFailed. Capacity does not heal, so a
-        // Retry here would fail identically every time — the member would press it forever with nothing
-        // saying what the wall was (capability `join-event`).
-        var retried = 0
-        setScreen {
-            TestStatusScreen(
-                joining(
-                    JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.EventFull),
-                ),
-                actions = testActions(join = testJoinGateActions(onRetryJoin = { retried++ })),
-            )
-        }
-        onNodeWithText(str(Res.string.event_full_title)).assertExists()
-        onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.cancel)).assertExists()
-        assertEquals(0, retried)
     }
 
     // ---- the two participation switches (capability `join-event`) --------------------------------------

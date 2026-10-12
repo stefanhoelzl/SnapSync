@@ -18,7 +18,7 @@ import app.snapsync.wire.models.Received
  * Create or reactivate this device's membership in an event.
  *
  * Carries **no body**. Joining and contributing are separate requests on the device API: this one owns membership
- * and is the only request that decides capacity, while [ManifestPublisher] owns what the device shares. The split is
+ * and is the only request that decides admission, while [ManifestPublisher] owns what the device shares. The split is
  * what removes the register-only empty manifest — a second writer of the manifest whose only job was to make
  * membership exist, and which blanked a rejoining device's contribution until the next cycle republished it.
  */
@@ -69,15 +69,15 @@ fun interface ReceivedReporter {
 
 /**
  * [EventJoin] over the backend. The refusals are mapped rather than flattened, because the caller can act on the
- * difference: [JoinEventReply.Full] is the event at capacity — a sentence the join surface can show — while
- * [EventNotFound] means the event is gone and anything else is a failure a retry may heal.
+ * difference: [Closed] is an event that admits nobody any more — a sentence the join surface can show — while
+ * [EventNotFound] means the event is gone and anything else is a failure a retry may heal. An open event admits any
+ * number of devices, so there is no "full" (decision record `changes/remove-event-device-cap`).
  */
 class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
 
     override suspend fun join(eventId: String, deviceId: String): JoinResult =
         when (gateway.send(Routes.JoinEvent.request(eventId, deviceId), obtainFirst = true)) {
             JoinEventReply.Joined -> JoinResult.JOINED
-            JoinEventReply.Full -> JoinResult.EVENT_FULL
             // A completed event — or one closed before events stopped closing — admits nobody.
             is Closed -> JoinResult.EVENT_CLOSED
             EventNotFound -> JoinResult.EVENT_NOT_FOUND

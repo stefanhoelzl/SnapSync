@@ -48,7 +48,6 @@ export const CONFIG = {
   attestAppId: "E9Z8BADH58.app.snapsync",
   linkDomain: "snapsync.stho.net",
   appStoreUrl: "https://apps.apple.com/app/id6781692480",
-  eventCapacity: 10,
   eventWindowMaxSeconds: 30 * 24 * 60 * 60,
   eventLifetimeSeconds: 30 * 24 * 60 * 60,
   minAppVersion: "0.1",

@@ -60,7 +60,7 @@ context: |
   - over time and without the app open: photos shared in the background, an event
     deleted at the end of its lifetime, a late guest still able to join;
   - under adverse conditions: offline, the app killed, access revoked or narrowed to a
-    selection, a device locked, an outdated app, the event full or gone;
+    selection, a device locked, an outdated app, the event closed or gone;
   - as promises they rely on but cannot inspect: privacy (what leaves the device, and
     when), security (who can read or write an event's photos), retention (when an event
     and its photos are deleted), and sharing guarantees (what is and is not shared, that
@@ -134,8 +134,7 @@ context: |
   photo is shared".
 
   Named future directions (not commitments; do not build for them, but do not
-  deepen assumptions against them without naming it in the change): paid events (small events stay free; creation is the payment gate's attach
-  point, capacity/duration the tier boundary); concurrent multi-event
+  deepen assumptions against them without naming it in the change): concurrent multi-event
   membership (single active membership is the CURRENT contract — switch =
   leave-then-join. Ledger rows and download plans name their event, and every
   read is scoped to the joined one (event-scoped-local-state); bytes are stored per

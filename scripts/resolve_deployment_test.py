@@ -40,7 +40,6 @@ SECRETS = {
     "fcmServiceAccountKey": {"env": "TEST_FCM_KEY"},
 }
 POLICY = {
-    "eventCapacity": 3,
     "eventWindowMaxSeconds": 60,
     "eventLifetimeSeconds": 60,
     "attestTokenTtlSeconds": 60,
@@ -162,7 +161,7 @@ class ValidationTest(unittest.TestCase):
             "extends": ["components/apple.json", "components/android.json", "components/storage.json"],
             "domain": "x.invalid", **SECRETS,
         })
-        with self.assertRaisesRegex(rd.ResolveError, "eventCapacity"):
+        with self.assertRaisesRegex(rd.ResolveError, "eventWindowMaxSeconds"):
             t.resolve()
 
     def test_unknown_storage_kind_names_the_sealed_set(self):

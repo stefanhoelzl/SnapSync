@@ -622,10 +622,9 @@ build the same classes over caller-held cells.
   so the mock keeps none), the union spans departed members, nothing closes an event (an event is open until its
   open-until date and its photos stay until the operator plays the sweep's completion; `closedAt` is derived for
   builds that predate open-until dates, judged by the mock's clock — a device's mocks pass the time they play), a
-  member's received position only ever rises, capacity counts every device ever
-  enrolled, a rejoin clears the stored manifest version, a strictly older manifest is answered and changes nothing,
+  member's received position only ever rises, an event admits any number of devices, a rejoin clears the stored manifest version, a strictly older manifest is answered and changes nothing,
   names are 1–100 characters, and a write that makes something newly servable records a silent push to every other
-  active member holding a token (`pushesSent`, the APNs mock). An OS upload reaches the mock through
+  active member holding a token, a random 40 of them past that bound (`pushesSent`, the APNs mock). An OS upload reaches the mock through
   `BackendOperator.receive`, the byte route, which the upload-job queue mock's network is by default; a request to
   the byte route over the port is answered the same.
 - **The transfer mocks are the transfer contracts' `Fake` bindings** (`TransferContractBindingsTest`, beside them). A

@@ -122,8 +122,6 @@ export type Config = {
   linkDomain: string;
   /** Where `GET /join` redirects someone who opened an event link without the app. */
   appStoreUrl: string;
-  /** Maximum devices ever enrolled per event (capability `event-lifetime`). */
-  eventCapacity: number;
   /** Largest permitted `endsAt - startsAt`, in seconds; also the absent-`endsAt` fallback. */
   eventWindowMaxSeconds: number;
   /** Event lifetime in seconds — stamped onto the marker, measured from `max(createdAt, startsAt)`. */
@@ -173,6 +171,16 @@ export type Config = {
  * asserts the relation rather than trusting it.
  */
 export const MIN_APP_VERSION = "0.4";
+
+/**
+ * What an event's `capacity` says, on the wire and in its `events` row: a PLACEHOLDER with no meaning (decision
+ * record `changes/remove-event-device-cap`, D4). An event admits any number of devices, and nothing reads this.
+ *
+ * It is still sent because released apps decode `Event.capacity` as a required field, and still stamped because
+ * the column is `NOT NULL` and a rollback to the previous bundle reads it in its join. LARGE rather than 0, so
+ * that previous bundle's capacity gate admits on every event created meanwhile. Both go per `PENDING_CLEANUPS.md`.
+ */
+export const CAPACITY_PLACEHOLDER = 1_000_000;
 
 /** The commit this bundle was built from, served by `GET /health` so a deploy probe can identify it. */
 export const BUILD_SHA: string = deployment.sha;
@@ -261,7 +269,6 @@ export function deploymentFields(
   | "attestTokenTtlSeconds"
   | "linkDomain"
   | "appStoreUrl"
-  | "eventCapacity"
   | "eventWindowMaxSeconds"
   | "eventLifetimeSeconds"
   | "minAppVersion"
@@ -279,7 +286,6 @@ export function deploymentFields(
     attestTokenTtlSeconds: d.attestTokenTtlSeconds,
     linkDomain: d.domain,
     appStoreUrl: d.appStoreUrl,
-    eventCapacity: d.eventCapacity,
     eventWindowMaxSeconds: d.eventWindowMaxSeconds,
     eventLifetimeSeconds: d.eventLifetimeSeconds,
     // The local rig serves the same gate as production, so it takes the SHIPPED minimum rather than a

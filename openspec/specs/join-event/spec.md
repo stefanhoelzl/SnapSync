@@ -238,15 +238,6 @@ be in no event.
 - **WHEN** a refused guest taps Retry after the service has stopped refusing their phone
 - **THEN** the guest joins with the choices they made, as any guest does
 
-### Requirement: A full event is reported as full
-The join screen SHALL say that the event is full when it already holds its maximum number of devices
-(capability `event-lifetime`), and offer only Cancel, never a Retry and never a generic failure. A
-missing event or a lost connection SHALL NOT be reported as full.
-
-#### Scenario: The eleventh device is turned away clearly
-- **WHEN** a guest taps Join on an event that already holds its maximum number of devices
-- **THEN** the screen says the event is full and there is no room to join, and offers only Cancel
-
 ### Requirement: An event whose photos were deleted cannot be joined
 The join screen SHALL say, when the invite's event has finished and its photos were deleted (capability
 `event-lifetime`), that the event can no longer be joined, and offer only Cancel, never Join or Retry. A device

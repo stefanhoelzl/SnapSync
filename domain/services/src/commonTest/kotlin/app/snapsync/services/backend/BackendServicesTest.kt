@@ -222,9 +222,8 @@ class BackendServicesTest {
     // ── membership ─────────────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun a_full_event_and_a_gone_one_are_their_own_answers_and_everything_else_failed() = runTest {
+    fun a_closed_event_and_a_gone_one_are_their_own_answers_and_everything_else_failed() = runTest {
         assertEquals(JoinResult.JOINED, servicesAnswering(ok()).join.join("E", "D"))
-        assertEquals(JoinResult.EVENT_FULL, servicesAnswering(text(409, "event full")).join.join("E", "D"))
         assertEquals(JoinResult.EVENT_NOT_FOUND, servicesAnswering(text(404, "event not found")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(text(502, "upstream")).join.join("E", "D"))
         assertEquals(JoinResult.FAILED, servicesAnswering(offline).join.join("E", "D"))

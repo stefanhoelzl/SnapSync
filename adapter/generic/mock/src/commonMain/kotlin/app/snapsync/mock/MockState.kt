@@ -480,7 +480,6 @@ private class StoredFileDto(val asset: String, val role: String, val filename: S
 /** The backend's operator-set levers and counters. */
 @Serializable
 private class BackendLeversDto(
-    val capacity: Int,
     val offline: Boolean,
     val failDeviceListing: Boolean,
     val failUnion: Boolean = false,
@@ -492,7 +491,6 @@ private class BackendLeversDto(
     val fallbackBearer: Boolean = true,
 ) {
     fun into(state: BackendState) {
-        state.capacity = capacity
         state.offline = offline
         state.failDeviceListing = failDeviceListing
         state.failUnion = failUnion
@@ -616,7 +614,6 @@ private class BackendDto(
             challenges = state.challenges.toList(),
             minted = state.minted.toList(),
             levers = BackendLeversDto(
-                capacity = state.capacity,
                 offline = state.offline,
                 failDeviceListing = state.failDeviceListing,
                 failUnion = state.failUnion,

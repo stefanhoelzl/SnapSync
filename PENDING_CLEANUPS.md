@@ -301,6 +301,39 @@ also carries the stamp, and keeps it).
   the api entry above.
 - **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
 
+## Once `MIN_APP_VERSION` ≥ the first release built from `remove-event-device-cap`
+
+**Unlock condition:** that release is live in both stores, and the sweep's version table shows no kept device
+below it. Older builds decode `Event.capacity` as a required field; that release and later ones generate it optional.
+
+### The event's `capacity` on the wire (api + app)
+- **What:** every event body still carries `capacity`, as `CAPACITY_PLACEHOLDER` (`api/src/config.ts`). It
+  carries no meaning, because an event admits any number of devices.
+  - `api/openapi.yaml`, `Event`: `capacity` in `properties` (already not `required`).
+  - `api/src/routes/support.ts`, `publicEvent`: overrides the row's value with the placeholder.
+  - `adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/BackendRouter.kt`, `onWire`:
+    `BackendMock.CAPACITY_PLACEHOLDER`.
+- **Why:** builds before that release generate `Event.capacity` as a non-null property, so a body without it
+  fails to decode on create and lookup. From that release on it is nullable and nothing reads it. Record:
+  `openspec/changes/archive/2026-10-12-remove-event-device-cap` (design D4).
+- **Remove:** drop `capacity` from `Event`'s `properties` in `openapi.yaml` and its override from `publicEvent`,
+  and drop the mock's `CAPACITY_PLACEHOLDER` and its `onWire` field. `api/test/shared-routes.test.ts`
+  re-expresses its key list and its two placeholder assertions. Then ship the column's removal below.
+
+### The `events.capacity` column (api, its own deploy)
+- **What:** `events.capacity` (`NOT NULL`) is still written on create, with `CAPACITY_PLACEHOLDER`, and read by
+  nothing.
+  - `api/src/db.ts`: `EventRow.capacity`, `readEvent`, `insertEvent`.
+- **Why:** a failed deploy republishes the previous bundle, and that bundle's join reads the column and its
+  create writes it. The large placeholder keeps that bundle's capacity gate admitting on events created
+  since. Dropping the column in the same deploy that stopped reading it would break join and create on a
+  rollback.
+- **Unlock:** the wire entry above has shipped, so no rollback candidate reads the column.
+- **Remove:** a migration dropping `events.capacity` (one migration per deploy; `docs/deployment.md`, "Schema
+  migrations"). Remove `capacity` and `CAPACITY_PLACEHOLDER` from `db.ts`, `config.ts` and `shared.ts`. Drop
+  `capacity` from the test fixtures that stamp it (`api/test/support/harness.ts` `EVENT`, and every
+  `INSERT INTO events` naming it). Regenerate `schema.sql`. Update `docs/architecture.md`'s events table.
+
 ## One-off ops
 
 ### Bytes still in the old storage layout (api)

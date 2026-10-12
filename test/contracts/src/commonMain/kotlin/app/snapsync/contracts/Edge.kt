@@ -156,9 +156,6 @@ interface BackendSetup {
     suspend fun createEvent(name: String, ended: Boolean = false): CreatedEvent
     suspend fun join(eventId: String, deviceId: String)
 
-    /** Joins fresh devices until the backend answers `409` — capacity without restating the backend's configured one. */
-    suspend fun fillToCapacity(eventId: String)
-
     /** Publish [deviceId]'s manifest — declaring its share settled when [final]. */
     suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean = false)
 
@@ -194,21 +191,6 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
     override suspend fun join(eventId: String, deviceId: String) {
         val reply = send(Routes.JoinEvent.request(eventId, deviceId))
         if (reply != JoinEventReply.Joined) refused("join $deviceId", reply)
-    }
-
-    /**
-     * Joins fresh devices until the backend answers full — how a binding fills an event to capacity without restating
-     * the backend's configured capacity here, where it would drift from the deployment it came from.
-     */
-    override suspend fun fillToCapacity(eventId: String) {
-        repeat(MAX_CAPACITY_PROBE) {
-            when (val reply = send(Routes.JoinEvent.request(eventId, freshId()))) {
-                JoinEventReply.Full -> return
-                JoinEventReply.Joined -> Unit
-                else -> refused("fill to capacity", reply)
-            }
-        }
-        error("setup step 'fill to capacity': still admitting after $MAX_CAPACITY_PROBE joins")
     }
 
     override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean) {
@@ -252,7 +234,6 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
     }
 
     private companion object {
-        const val MAX_CAPACITY_PROBE = 200
         val SUCCESS = 200..299
 
         /** A body for a route that stores whatever it is sent: setup never reads the bytes back. */

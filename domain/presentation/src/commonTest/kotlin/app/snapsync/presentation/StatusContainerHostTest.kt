@@ -1290,42 +1290,6 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `a full event lands on its own step rather than the retryable one`() = runTest {
-        // Capacity does not heal, and the two failures reach DIFFERENT screens because of it: the
-        // retryable one pins a Retry, this one offers only Cancel (capability `join-event`). Collapsed
-        // into one step, a member at a full event could press Retry forever with nothing saying why.
-        host(
-            FakeSyncStatusSource(SyncStatus.Loading),
-            backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
-            configFake = FakeConfig(null),
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _ -> JoinCommit.Full },
-        ).testWithInternalState(this) {
-            runOnCreate()
-            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(
-                awaitShown(),
-                EVENT_ID,
-                phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT),
-            )
-            containerHost.confirmJoinAs()
-            assertJoining(
-                awaitShown(),
-                EVENT_ID,
-                phaseAt(
-                    JoinPhase.Detailed.Step.EventFull,
-                    "Anna's Birthday",
-                    EventStart(CUTOFF.at),
-                    ENDS_AT,
-                    DELETES_AT,
-                ),
-            )
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
     fun `a failed enrollment leaves a retryable commit-failed state and does not join`() = runTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),

@@ -59,7 +59,6 @@ Deno.test("readConfig: the secrets → Config, with every non-secret from the re
     appStoreUrl: D.appStoreUrl,
     // The event limits (capability `event-lifetime`) — the MINT-TIME source only; enforcement reads the
     // fields POST /events stamps onto each marker, so these values never reach an existing event.
-    eventCapacity: D.eventCapacity,
     eventWindowMaxSeconds: D.eventWindowMaxSeconds,
     eventLifetimeSeconds: D.eventLifetimeSeconds,
     // Deployment-resolved like every other non-secret, and OFF unless a deploy deliberately
@@ -207,7 +206,6 @@ Deno.test("readConfig: a platform variable NEVER overrides a resolved value", ()
   assertEquals(config.apnsKeyId, D.apnsKeyId);
   assertEquals(config.apnsTeamId, D.teamId);
   assertEquals(config.apnsTopic, D.bundleId);
-  assertEquals(config.eventCapacity, D.eventCapacity);
   assertEquals(config.eventWindowMaxSeconds, 30 * 24 * 60 * 60);
   assertEquals(config.eventLifetimeSeconds, 30 * 24 * 60 * 60);
 });
