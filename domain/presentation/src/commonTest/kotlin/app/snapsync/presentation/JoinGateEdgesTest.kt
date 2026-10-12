@@ -347,6 +347,19 @@ class JoinGateEdgesTest {
         assertEquals(RenameStatus.Idle, world.rename.value)
     }
 
+    @Test
+    fun `a back-dated event's open-until date rides from the loaded details into the commit`() = runTest {
+        // Without it the joined screen would say until when others can join only after the next refresh.
+        val openUntil = eventEnd("2026-07-16T12:00:00Z")
+        val world = World().apply { load = { FOUND.copy(openUntil = openUntil) } }
+        val host = host(world, backgroundScope)
+        settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
+
+        settle(host.onConfirmJoin())
+
+        assertEquals(openUntil, world.commits.single().openUntil)
+    }
+
     // ---- a details load that does not finish normally --------------------------------------------
 
     @Test

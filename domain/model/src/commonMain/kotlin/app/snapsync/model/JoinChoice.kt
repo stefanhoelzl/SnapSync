@@ -22,4 +22,6 @@ data class JoinChoice(
     val linkKey: String? = null,
     /** The loaded event's key id, `null` for a plain event — what [linkKey] must name. */
     val eventKeyId: String? = null,
+    /** The day guests may join until, as the loaded details served it; `null` when not served. */
+    val openUntil: EventEnd? = null,
 )
