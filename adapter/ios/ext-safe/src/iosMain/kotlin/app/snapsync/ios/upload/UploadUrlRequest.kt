@@ -1,7 +1,7 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadTarget
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.UploadTarget
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSMutableURLRequest

@@ -4,8 +4,8 @@ import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.InAppContract
+import app.snapsync.contracts.OsUploadQueueContract
 import app.snapsync.contracts.Recording
-import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.runEntry
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.RegistrationOutcome
@@ -36,8 +36,8 @@ fun extensionContractEntries(
     membershipRefusal: () -> String?,
     registry: () -> ExtensionRegistry,
 ): List<InAppContract> = listOf(
-    InAppContract(UploadContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT) {
-        runInExtension(UploadContract.name, membershipRefusal, registry)
+    InAppContract(OsUploadQueueContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT) {
+        runInExtension(OsUploadQueueContract.name, membershipRefusal, registry)
     },
 )
 

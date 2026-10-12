@@ -95,7 +95,7 @@ class JvmApp<D>(
             wake = lazyOf(ports.systems.wake),
             extensionRegistry = lazyOf(ports.systems.extensionRegistry),
             gallery = lazyOf(ports.systems.gallery),
-            appUpload = lazyOf(ports.systems.appUpload),
+            uploadSession = lazyOf(ports.systems.uploadSession),
             download = lazyOf(ports.systems.download),
             systemUi = lazyOf(ports.systems.systemUi),
             lifecycle = lazyOf(ports.entries.lifecycle),
@@ -117,7 +117,7 @@ class JvmApp<D>(
             secureStore = lazyOf(ports.device.secureStore),
             platformDeviceId = lazyOf(NoPlatformDeviceId()),
             galleryReader = lazyOf(ports.systems.cycleGallery),
-            cycleUpload = lazyOf(ports.systems.cycleUpload),
+            uploadQueue = lazyOf(ports.systems.uploadQueue),
             http = lazyOf(ports.systems.http),
         )
 

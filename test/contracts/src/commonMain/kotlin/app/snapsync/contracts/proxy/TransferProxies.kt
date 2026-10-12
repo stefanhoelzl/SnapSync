@@ -1,11 +1,6 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadTarget
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
@@ -15,8 +10,15 @@ import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.ExtensionRegistry
-import app.snapsync.ports.Upload
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.OsUploadJob
+import app.snapsync.ports.OsUploadQueue
+import app.snapsync.ports.Transfer
+import app.snapsync.ports.TransferHandlers
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferSession
+import app.snapsync.ports.TransferSource
+import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 
@@ -85,28 +87,43 @@ internal class DownloadProxy(private val inner: Download, log: CallLog) : Downlo
     )
 }
 
-/** [Upload] as its clause's [CallLog] sees it. */
-fun Upload.recorded(log: CallLog): Upload = UploadProxy(this, log)
+/** [OsUploadQueue] as its clause's [CallLog] sees it. */
+fun OsUploadQueue.recorded(log: CallLog): OsUploadQueue = OsUploadQueueProxy(this, log)
 
-internal class UploadProxy(private val inner: Upload, log: CallLog) : Upload {
-    private val r = log.recorder("Upload")
+internal class OsUploadQueueProxy(private val inner: OsUploadQueue, log: CallLog) : OsUploadQueue {
+    private val r = log.recorder("OsUploadQueue")
 
-    override val accepts get() = r.answer("accepts", inner.accepts)
-    override val acceptsFiles get() = r.answer("acceptsFiles", inner.acceptsFiles)
-    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String) =
+    override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget) =
+        r.answer("create", inner.create(resource, target))
+    override suspend fun retryOffered() = r.returns("retryOffered", inner.retryOffered())
+    override suspend fun terminals() = r.returns("terminals", inner.terminals())
+    override suspend fun retry(job: OsUploadJob, target: UploadTarget) = r.answer("retry", inner.retry(job, target))
+    override suspend fun acknowledge(job: OsUploadJob) = r.answer("acknowledge", inner.acknowledge(job))
+}
+
+/** [TransferSession] as its clause's [CallLog] sees it. */
+fun TransferSession.recorded(log: CallLog): TransferSession = TransferSessionProxy(this, log)
+
+internal class TransferSessionProxy(private val inner: TransferSession, log: CallLog) : TransferSession {
+    private val r = log.recorder("TransferSession")
+
+    override val takesResources get() = r.answer("takesResources", inner.takesResources)
+    override suspend fun create(source: TransferSource, target: UploadTarget, tag: String) =
         r.answer("create", inner.create(source, target, tag))
-    override suspend fun jobs(set: UploadJobSet) = r.returns("jobs", inner.jobs(set))
-    override suspend fun retry(job: UploadJob, target: UploadTarget) = r.answer("retry", inner.retry(job, target))
-    override suspend fun acknowledge(job: UploadJob) = r.answer("acknowledge", inner.acknowledge(job))
-    override suspend fun cancel(job: UploadJob) = r.answer("cancel", inner.cancel(job))
+    override suspend fun live() = r.returns("live", inner.live())
+    override suspend fun cancel(transfer: Transfer) = r.returns("cancel", inner.cancel(transfer))
 
-    override fun listen(handlers: UploadHandlers) = r.returns(
+    override fun listen(handlers: TransferHandlers) = r.returns(
         "listen",
         inner.listen(
-            UploadHandlers(
-                onFinished = { job ->
-                    r.called("handlers.onFinished", Recorder.arg(job, "UploadJob"))
-                    handlers.onFinished(job)
+            TransferHandlers(
+                onFinished = { tag, failure ->
+                    r.called(
+                        "handlers.onFinished",
+                        Recorder.arg(tag, "String"),
+                        Recorder.arg(failure, "TransferFailure"),
+                    )
+                    handlers.onFinished(tag, failure)
                 },
                 onBackgroundEvents = { completion ->
                     r.called("handlers.onBackgroundEvents", Recorder.arg(completion, "Completion"))

@@ -38,7 +38,7 @@ class SelectionPolicyTest {
                 RESOURCE_META_IS_EDITED to adjusted.toString(),
                 RESOURCE_META_PIXEL_AREA to (width * height).toString(),
             ),
-            data = Unit,
+            data = null,
         ),
     )
 
@@ -192,7 +192,7 @@ class SelectionPolicyTest {
                 assetId = AssetId("A"),
                 contentType = "public.heic",
                 metadata = mapOf(RESOURCE_META_CREATION_DATE to "2026-07-01T00:00:00Z"),
-                data = Unit,
+                data = null,
             ),
         )
         assertTrue(excluded(bare).isEmpty(), "absent facts admit — a fake or a legacy row must not vanish")
@@ -210,8 +210,8 @@ class SelectionPolicyTest {
             RESOURCE_META_PIXEL_AREA to "12192768",
         )
         val both = listOf(
-            Resource("A-primary.heic", AssetId("A"), "public.heic", metadata = meta, data = Unit),
-            Resource("A-live.mov", AssetId("A"), "com.apple.quicktime-movie", metadata = meta, data = Unit),
+            Resource("A-primary.heic", AssetId("A"), "public.heic", metadata = meta, data = null),
+            Resource("A-live.mov", AssetId("A"), "com.apple.quicktime-movie", metadata = meta, data = null),
         )
         assertEquals(setOf("A"), excluded(both), "the asset is excluded, so both of its resources go")
     }
@@ -228,7 +228,7 @@ class SelectionPolicyTest {
         val undated = AssetFacts(AssetId("U"), creationDate = null)
         assertFalse(SelectionRule.CaptureAfter(captureCutoff("2026-01-01T00:00:00Z")).admits(undated))
         assertFalse(SelectionRule.CaptureBefore(captureCeiling("2026-12-31T00:00:00Z")).admits(undated))
-        val resource = Resource("U-primary.jpg", AssetId("U"), "image/jpeg", emptyMap(), Unit)
+        val resource = Resource("U-primary.jpg", AssetId("U"), "image/jpeg", emptyMap(), null)
         assertEquals(null, factsFromResources(listOf(resource)).single().creationDate)
     }
 }

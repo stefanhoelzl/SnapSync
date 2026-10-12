@@ -6,12 +6,11 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.model.FileArea
 import app.snapsync.model.SecureSlot
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadTarget
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.UploadTarget
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.EventCreate
@@ -102,7 +101,7 @@ class MockConcurrencyTest {
     }
 
     @Test
-    fun upload_queue_read_while_the_app_creates_and_cancels() {
+    fun upload_queue_read_while_the_app_creates_and_acknowledges() {
         val device = MockDevice()
         val queue = device.uploadQueue
         val port = queue.port()
@@ -111,15 +110,17 @@ class MockConcurrencyTest {
                 write = { round ->
                     runBlocking {
                         port.create(
-                            UploadSource.Resource(InMemoryResource(PlatformAssetId("photo"))),
-                            UploadTarget("https://in-memory/$round", emptyMap(), TransferNetwork.ANY),
-                            "k$round",
+                            InMemoryResource(PlatformAssetId("photo")),
+                            UploadTarget("https://in-memory/$round/primary", emptyMap(), TransferNetwork.ANY),
                         )
-                        if (round % BATCH == BATCH - 1) port.jobs(UploadJobSet.IN_FLIGHT).forEach { port.cancel(it) }
+                        if (round % BATCH == BATCH - 1) {
+                            queue.operator.liveJobs().forEach { queue.operator.failJob(it, TransferFailure("network")) }
+                            port.retryOffered().forEach { port.acknowledge(it) }
+                        }
                     }
                 },
                 read = {
-                    queue.operator.liveJobKeys().whole()
+                    queue.operator.liveJobs().whole()
                     queue.operator.created.whole()
                     MockState.encode(device, MockedSystem.UPLOAD_QUEUE)
                 },

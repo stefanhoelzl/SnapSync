@@ -66,7 +66,7 @@ class LedgerWriterTest {
         // exactly when the platform hands its job back.
         writer.recordRequested(resource("cloud-1-ios.photo.heic", "cloud-1"), destinationPath = "/d")
 
-        writer.recordFailed(Resource("cloud-1-ios.photo.heic", AssetId("cloud-1"), "image/heic", emptyMap(), Unit))
+        writer.recordFailed(Resource("cloud-1-ios.photo.heic", AssetId("cloud-1"), "image/heic", emptyMap(), null))
 
         val row = writer.entry("cloud-1-ios.photo.heic")!!
         assertEquals(LedgerState.DISCOVERED, row.state)
@@ -124,5 +124,5 @@ private fun resource(key: String, assetId: String) = Resource(
         RESOURCE_META_MIME to "image/heic",
         RESOURCE_META_ORIGINAL_FILENAME to "IMG_0001.HEIC",
     ),
-    data = Unit,
+    data = null,
 )

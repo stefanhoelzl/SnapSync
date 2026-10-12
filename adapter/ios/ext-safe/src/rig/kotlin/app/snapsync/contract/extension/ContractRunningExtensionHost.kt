@@ -3,7 +3,7 @@
 package app.snapsync.contract.extension
 
 import app.snapsync.contracts.CONTRACT_REFUSED
-import app.snapsync.contracts.UploadContract
+import app.snapsync.contracts.OsUploadQueueContract
 import app.snapsync.ios.upload.Step
 import app.snapsync.ios.upload.callsFor
 import app.snapsync.ios.upload.extensionTransferClauses
@@ -97,7 +97,7 @@ const val RUN_TAPE_FILE: String = "contract-run-tape"
  * `<Contract> <CLAUSE_ID>`.
  */
 fun extensionRunPlan(): List<Pair<String, Int>> =
-    extensionTransferClauses().map { id -> id to callsFor(UploadContract.clauses.first { it.id == id }.state) }
+    extensionTransferClauses().map { id -> id to callsFor(OsUploadQueueContract.clauses.first { it.id == id }.state) }
 
 /**
  * The extension's entry port with one difference: when the app's rig has requested a contract run, an invocation
@@ -124,7 +124,7 @@ class ContractRunningExtensionHost(private val inner: ExtensionHost) : Extension
         val call = contractRunFile(RUN_CALL_FILE)?.let(::readContractRunFile)?.trim()?.toIntOrNull() ?: 1
         val tape = contractRunFile(RUN_TAPE_FILE)?.let(::readContractRunFile)
         log.i { "[contract] $request: call $call, in place of the upload cycle" }
-        val step = if (request.substringBefore(' ') == UploadContract.name) {
+        val step = if (request.substringBefore(' ') == OsUploadQueueContract.name) {
             transferRunStep(request.substringAfter(' '), call, tape)
         } else {
             Step.Done(

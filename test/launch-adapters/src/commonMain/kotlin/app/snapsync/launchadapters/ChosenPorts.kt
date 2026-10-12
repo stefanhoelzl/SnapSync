@@ -42,7 +42,7 @@ fun chosenAppPorts(real: AppDevicePorts, choice: AdapterChoice, device: MockDevi
             real.extensionRegistry,
         ) { device.extensionRegistry.port() },
         gallery = pick(MockedSystem.LIBRARY, real.gallery) { device.library.port() },
-        appUpload = pick(MockedSystem.UPLOAD_SESSION, real.appUpload) { device.uploadSession.port() },
+        uploadSession = pick(MockedSystem.UPLOAD_SESSION, real.uploadSession) { device.uploadSession.port() },
         download = pick(MockedSystem.DOWNLOADS, real.download) { device.downloads.port() },
         systemUi = pick(MockedSystem.SYSTEM_UI, real.systemUi) { device.systemUi.port() },
         lifecycle = pick(MockedSystem.LIFECYCLE, real.lifecycle) { device.lifecycle.port() },
@@ -74,7 +74,7 @@ fun chosenExtensionPorts(real: ExtensionDevicePorts, choice: AdapterChoice, devi
         secureStore = pick(MockedSystem.KEYCHAIN, real.secureStore) { device.keychain.port() },
         platformDeviceId = real.platformDeviceId,
         galleryReader = pick(MockedSystem.LIBRARY, real.galleryReader) { device.library.port() },
-        cycleUpload = pick(MockedSystem.UPLOAD_QUEUE, real.cycleUpload) { device.uploadQueue.port() },
+        uploadQueue = pick(MockedSystem.UPLOAD_QUEUE, real.uploadQueue) { device.uploadQueue.port() },
         http = pick(MockedSystem.BACKEND, real.http) { device.backend.port(device.declaredVersion) },
     )
 }

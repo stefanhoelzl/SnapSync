@@ -8,7 +8,7 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.SyncDecision
 import app.snapsync.model.SyncEvent
-import app.snapsync.model.UploadError
+import app.snapsync.model.UploadFailure
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.destinationPathOf
 import app.snapsync.model.toLedgerRow
@@ -39,7 +39,7 @@ class SyncEngineTest {
         assetId = AssetId(assetId),
         contentType = "image/heic",
         metadata = mapOf("asset-id" to "cloud-1", "created" to "2026-06-12T10:00:00Z"),
-        data = byteArrayOf(1, 2, 3),
+        data = null,
     )
 
     /**
@@ -147,7 +147,7 @@ class SyncEngineTest {
     @Test
     fun `failed entry re-uploads on resubmission`() = runTest {
         val work = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource())))
-        engine.handle(SyncEvent.UploadFailed(work.request, UploadError.Network)) // ledger back to DISCOVERED
+        engine.handle(SyncEvent.UploadFailed(work.request, UploadFailure("network"))) // ledger back to DISCOVERED
         assertEquals(LedgerState.DISCOVERED, ledger.entry(resource().filename)?.state)
 
         val decision = engine.handle(SyncEvent.ResourceChanged(resource()))
@@ -160,7 +160,7 @@ class SyncEngineTest {
         val resource = resource()
         val failed = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource))).request
 
-        val decision = engine.handle(SyncEvent.UploadFailed(failed, UploadError.Http(403)))
+        val decision = engine.handle(SyncEvent.UploadFailed(failed, UploadFailure("http:403")))
 
         val retry = assertIs<SyncDecision.Retry>(decision)
         assertNotSame(failed, retry.request)
@@ -186,10 +186,10 @@ class SyncEngineTest {
     @Test
     fun `every error kind retries`() = runTest {
         val errors = listOf(
-            UploadError.Network,
-            UploadError.Http(500),
-            UploadError.Cancelled,
-            UploadError.Unknown("boom"),
+            UploadFailure("network"),
+            UploadFailure("http:500"),
+            UploadFailure("cancelled"),
+            UploadFailure("boom"),
         )
         var request = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource()))).request
 
@@ -206,7 +206,7 @@ class SyncEngineTest {
         val request = completeUpload(resource)
         val before = ledger.entry(resource.filename)
 
-        val decision = engine.handle(SyncEvent.UploadFailed(request, UploadError.Network))
+        val decision = engine.handle(SyncEvent.UploadFailed(request, UploadFailure("network")))
 
         // The engine's answer does not depend on the ledger's guard; the record is simply declined.
         assertIs<SyncDecision.Retry>(decision)
@@ -245,13 +245,13 @@ class SyncEngineTest {
         val job0 = assertIs<SyncDecision.Upload>(engine.handle(SyncEvent.ResourceChanged(resource))).request
         engine.handle(SyncEvent.UploadStarted(job0))
         val job1 = assertIs<SyncDecision.Retry>(
-            engine.handle(SyncEvent.UploadFailed(job0, UploadError.Network)),
+            engine.handle(SyncEvent.UploadFailed(job0, UploadFailure("network"))),
         ).request
         engine.handle(SyncEvent.UploadStarted(job1))
         val history = listOf<SyncEvent>(
             SyncEvent.ResourceChanged(resource),
             SyncEvent.UploadStarted(job0),
-            SyncEvent.UploadFailed(job0, UploadError.Network),
+            SyncEvent.UploadFailed(job0, UploadFailure("network")),
             SyncEvent.UploadStarted(job1),
         )
         val settled = ledger.entry(resource.filename)

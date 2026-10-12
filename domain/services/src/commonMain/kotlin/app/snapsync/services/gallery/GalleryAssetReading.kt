@@ -3,6 +3,7 @@ package app.snapsync.services.gallery
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.ImportResult
+import app.snapsync.model.LibraryResource
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_IS_EDITED
 import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
@@ -16,6 +17,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.ResourceKind
 
@@ -53,7 +55,7 @@ fun resourcesFrom(assets: List<GalleryAssetResources>): List<Resource> = assets.
                 RESOURCE_META_IS_EDITED to facts.isEdited.toString(),
                 RESOURCE_META_PIXEL_AREA to facts.pixelArea?.toString().orEmpty(),
             ),
-            data = resource.handle,
+            data = GalleryResourceRef(resource.handle),
         )
     }
 }
@@ -69,3 +71,9 @@ fun ImportOutcome.importResult(): ImportResult = when (this) {
     is ImportOutcome.Imported -> ImportResult.Imported(created.assetId())
     is ImportOutcome.Failed -> ImportResult.Failed(message, consumedResources, placeholder?.assetId())
 }
+
+/** The library's own resource as the app carries it ([LibraryResource]): the gallery port's [handle], held opaquely. */
+data class GalleryResourceRef(val handle: GalleryResourceHandle) : LibraryResource
+
+/** The gallery port's handle of [this] resource, or `null` for one the library did not read. */
+fun LibraryResource?.galleryHandle(): GalleryResourceHandle? = (this as? GalleryResourceRef)?.handle

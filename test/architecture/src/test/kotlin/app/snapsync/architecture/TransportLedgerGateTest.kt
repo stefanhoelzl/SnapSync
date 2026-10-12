@@ -7,8 +7,8 @@ import kotlin.test.assertTrue
  * **No transport adapter holds the ledger store** (`docs/architecture.md`, "The transport-ledger
  * gate"; law: `photo-sharing`, "Reader and writer capability split").
  *
- * A transport — an implementation of `BackgroundTransfer`, or the target-bound `uploadJobQueue` factory that
- * picks one — is handed the narrow `TransferRecord`: the one guarded terminal write and the one destination
+ * A transport — an implementation of an upload port (`OsUploadQueue`, `TransferSession`), or the target-bound
+ * `uploadJobQueue` factory that picks one — holds no ledger at all; the upload services are handed the narrow `TransferRecord`: the one guarded terminal write and the one destination
  * lookup. Every other ledger read and write, including the decision which in-flight rows a transport has lost,
  * is the cycle's.
  *
@@ -26,10 +26,11 @@ import kotlin.test.assertTrue
 class TransportLedgerGateTest {
 
     /** A class implementing the seam, or the factory that binds one. */
-    private val transportDeclaration = Regex("""\)\s*:\s*Upload\s*\{|\bfun\s+uploadJobQueue\s*\(""")
+    private val transportDeclaration =
+        Regex("""\)\s*:\s*(?:OsUploadQueue|TransferSession)\s*\{|\bfun\s+uploadJobQueue\s*\(""")
 
     /**
-     * The ledger, in either width: since the transfer re-cut (11f) a transport is a thin `Upload` port and records
+     * The ledger, in either width: since the transfer re-cut (11f) a transport is a thin upload port and records
      * nothing — the upload services hold the narrow `TransferRecord` and write through it.
      */
     private val ledgerStore = Regex("""\b(?:LedgerStore|TransferRecord)\b""")
@@ -57,7 +58,7 @@ class TransportLedgerGateTest {
         assertTrue(
             offenders.isEmpty(),
             "these transport adapters reference the ledger:\n  ${offenders.joinToString("\n  ")}\n" +
-                "A transport is a thin Upload port and records nothing: the upload services hold the TransferRecord " +
+                "A transport is a thin upload port and records nothing: the upload services hold the TransferRecord " +
                 "and write through it (phase 11f). See `photo-sharing`, \"Reader and writer capability split\".",
         )
     }
@@ -69,7 +70,7 @@ class TransportLedgerGateTest {
     @Test
     fun `the known transports are recognised`() {
         val paths = transports().map { it.path }
-        for (known in listOf("/IosUrlSessionUploadPlatform.kt", "/IosPhotoKitUploadPlatform.kt")) {
+        for (known in listOf("/IosUrlSessionUploadPlatform.kt", "/IosPhotoKitUploadPlatform.kt", "/AndroidUpload.kt")) {
             assertTrue(
                 paths.any { it.endsWith(known) },
                 "$known is no longer recognised as a transport by this gate's scan; scope was:\n  " +

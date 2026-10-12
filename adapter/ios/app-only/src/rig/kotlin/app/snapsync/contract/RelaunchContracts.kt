@@ -9,6 +9,7 @@ import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Clause
 import app.snapsync.contracts.Contract
 import app.snapsync.contracts.Divergence
+import app.snapsync.contracts.Ended
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Host
@@ -16,11 +17,11 @@ import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Relaunch
 import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.SessionUnderTest
 import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.SharePresenterState
-import app.snapsync.contracts.UploadContract
-import app.snapsync.contracts.UploadState
-import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.TransferSessionContract
+import app.snapsync.contracts.TransferSessionState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
@@ -36,11 +37,10 @@ import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.logging.documentsDirectory
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadSource
 import app.snapsync.ports.Completion
 import app.snapsync.ports.SystemUi
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.TransferHandlers
+import app.snapsync.ports.TransferSource
 import app.snapsync.systemui.IosSystemUi
 import app.snapsync.systemui.ShareSheetApi
 import app.snapsync.systemui.SystemShareSheetApi
@@ -119,23 +119,18 @@ private const val DRAINED = "didFinishEvents()"
 
 private fun handleEvents(identifier: String) = "handleEvents(id=$identifier)"
 
-private fun TransferTask.render() = "tag=$tag path=$path"
+private fun TransferTask.render() = "tag=$tag"
 
 private fun completed(task: TransferTask, status: Long, error: NSError?) =
     "didComplete(${task.render()} status=$status error=${error?.let { "${it.domain}/${it.code}" } ?: "none"})"
 
 private fun String.field(key: String) = substringAfter("$key=").substringBefore(' ').removeSuffix(")")
 
-private class ReplayedTask(override val tag: String?, override val path: String?) : TransferTask {
+private class ReplayedTask(override val tag: String?) : TransferTask {
     override fun cancel() = Unit
 }
 
-private fun String.parseTask() = ReplayedTask(
-    field("tag").takeIf {
-        it != "null"
-    },
-    field("path").takeIf { it != "null" },
-)
+private fun String.parseTask() = ReplayedTask(field("tag").takeIf { it != "null" })
 
 private fun String.parseError(): NSError? = field("error").takeIf { it != "none" }?.let { text ->
     NSError.errorWithDomain(text.substringBeforeLast('/'), text.substringAfterLast('/').toLong(), null)
@@ -238,25 +233,25 @@ internal fun relaunchedUpload(
     log: CallLog,
     beforeDeliver: () -> Unit = {},
     afterDispose: () -> Unit = {},
-): Entered<UploadUnderTest> {
+): Entered<SessionUnderTest> {
     val bare = IosUrlSessionUploadPlatform(Logger.withTag("contract"), CONTRACT_SESSION, cap = 4, api = api)
     val platform = bare.recorded(log)
-    val ended = AtomicReference<List<UploadJob>>(emptyList())
+    val ended = AtomicReference<List<Ended>>(emptyList())
     val handedOver = AtomicReference<List<Completion>>(emptyList())
     val drains = AtomicInt(0)
     platform.listen(
-        UploadHandlers(
-            onFinished = { job -> ended.append(job) },
+        TransferHandlers(
+            onFinished = { tag, error -> ended.append(Ended(tag, error)) },
             onBackgroundEvents = { completion -> handedOver.append(completion) },
             onEventsDrained = { drains.incrementAndFetch() },
         ),
     )
     return Entered.Ready(
-        UploadUnderTest(
-            upload = platform,
+        SessionUnderTest(
+            session = platform,
             base = RELAUNCH_TARGET.substringBefore("/contract"),
             usable = { error("the relaunched state creates nothing") },
-            unusable = { UploadSource.Resource(Unit) },
+            unusable = { TransferSource.File("/nonexistent") },
             ended = { ended.load() },
             objects = FixtureObjects { null },
             relaunch = Relaunch(
@@ -284,12 +279,12 @@ private fun <T> AtomicReference<List<T>>.append(item: T) {
 internal class DeviceRelaunchedUploadBinding(
     private val recorder: Recorder,
     private val handler: () -> Unit,
-) : Binding<UploadState, UploadUnderTest> {
+) : Binding<TransferSessionState, SessionUnderTest> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(UploadState.RELAUNCHED_WITH_EVENTS)
+    override val reaches = setOf(TransferSessionState.RELAUNCHED_WITH_EVENTS)
 
-    override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+    override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
         if (state !in reaches) {
             return Entered.Unreachable(
                 "this run records a relaunch; $state runs live on the simulator app",
@@ -359,15 +354,15 @@ internal fun keptPath(contract: String) =
 internal fun onSimulator() = NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null
 
 /**
- * `POST /contract/Upload` on the device app: `?step=arm` prepares the relaunch and exits the app; `?step=collect`
+ * `POST /contract/TransferSession` on the device app: `?step=arm` prepares the relaunch and exits the app; `?step=collect`
  * answers what the relaunched process recorded. `POST /contract/SharePresenter` collects the share sheet's, which the
  * same relaunch records.
  */
 internal fun relaunchContracts(): List<InAppContract> = listOf(
-    InAppContract(UploadContract.name, Host.IOS_DEVICE_APP) { params ->
+    InAppContract(TransferSessionContract.name, Host.IOS_DEVICE_APP) { params ->
         when (params["step"]) {
             "arm" -> armRelaunch()
-            "collect" -> collect(UploadContract.name)
+            "collect" -> collect(TransferSessionContract.name)
             else ->
                 CONTRACT_REFUSED +
                     "the relaunch is recorded in two steps: ?step=arm (the app exits; iOS relaunches it in the background " +
@@ -384,7 +379,7 @@ internal fun keptRecording(contract: String): String? =
 internal fun collect(contract: String): String {
     val text = keptRecording(contract)
     return text ?: (
-        CONTRACT_REFUSED + "no relaunch has recorded $contract yet: POST /contract/Upload?step=arm, wait for iOS to " +
+        CONTRACT_REFUSED + "no relaunch has recorded $contract yet: POST /contract/TransferSession?step=arm, wait for iOS to " +
             "relaunch the app in the background, then open it and collect.\n"
         )
 }
@@ -405,7 +400,7 @@ private fun armRelaunch(): String {
         attributes = null,
         error = null,
     )
-    listOf(UploadContract.name, SharePresenterContract.name).forEach { contract ->
+    listOf(TransferSessionContract.name, SharePresenterContract.name).forEach { contract ->
         keptPath(contract)?.let { NSFileManager.defaultManager.removeItemAtPath(it, error = null) }
     }
     val body = "$dir/relaunch.bin"
@@ -422,7 +417,7 @@ private fun armRelaunch(): String {
     dispatch_semaphore_wait(cleared, dispatch_time(DISPATCH_TIME_NOW, (5 * NSEC_PER_SEC.toLong())))
     val request = NSMutableURLRequest(NSURL(string = RELAUNCH_TARGET)).apply { setHTTPMethod("PUT") }
     val task = session.uploadTaskWithRequest(request, fromFile = NSURL.fileURLWithPath(body))
-    task.taskDescription = UploadContract.relaunchedTag(RELAUNCH_CLAUSE)
+    task.taskDescription = TransferSessionContract.relaunchedTag(RELAUNCH_CLAUSE)
     task.earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(BEGIN_AFTER_SECONDS)
     task.resume()
     // The daemon has the transfer once the session lists it; only then may the process go.
@@ -441,7 +436,7 @@ private fun armRelaunch(): String {
     return CONTRACT_REFUSED +
         "armed (not a recording): the app exits now; iOS starts the transfer in ${BEGIN_AFTER_SECONDS.toInt()} s, the " +
         "server answers 404, and iOS relaunches the app in the background to deliver that. Open the app after a minute, then " +
-        "POST /contract/Upload?step=collect and /contract/SharePresenter.\n"
+        "POST /contract/TransferSession?step=collect and /contract/SharePresenter.\n"
 }
 
 /**
@@ -457,19 +452,22 @@ internal fun claimContractSession() = BackgroundSessions.claim(CONTRACT_SESSION)
 /** Process two: the relaunched app records the clause, then the share sheet with no window, keeping both. */
 private fun runRelaunched(handler: () -> Unit) {
     val recorder = Recorder()
-    val results = run(single(UploadContract, RELAUNCH_CLAUSE), DeviceRelaunchedUploadBinding(recorder, handler))
+    val results = run(
+        single(TransferSessionContract, RELAUNCH_CLAUSE),
+        DeviceRelaunchedUploadBinding(recorder, handler),
+    )
     val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
     val header = listOf(
-        "contract" to UploadContract.name,
+        "contract" to TransferSessionContract.name,
         "host" to Host.IOS_DEVICE_APP.name,
-        "file" to recordingName(UploadContract.name, Host.IOS_DEVICE_APP, null) + ".rec",
+        "file" to recordingName(TransferSessionContract.name, Host.IOS_DEVICE_APP, null) + ".rec",
         "device" to env.deviceModel,
         "os" to env.osVersion,
         "build" to env.buildNumber,
         "kotlin" to KotlinVersion.CURRENT.toString(),
         "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
     ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
-    keepRecording(UploadContract.name, null, null, recorder.recording(header).render())
+    keepRecording(TransferSessionContract.name, null, null, recorder.recording(header).render())
     recordAppOnDevice(SharePresenterContract, null) { DeviceNoWindowShareBinding(it) }
 }
 

@@ -35,7 +35,7 @@ class SelectionIsTheWalkIntegrationTest {
 
         // Four jobs in flight under the full grant.
         cycle()
-        assertEquals(all.map(::primaryKey).toSet(), jobs().live.toSet(), "all four in flight")
+        assertEquals(all.map(::primaryJob).toSet(), jobs().live.toSet(), "all four in flight")
 
         // The network returns: every object lands, and no acknowledgement ever reaches the app.
         for (id in all) device("backend/deposit", "asset" to id)

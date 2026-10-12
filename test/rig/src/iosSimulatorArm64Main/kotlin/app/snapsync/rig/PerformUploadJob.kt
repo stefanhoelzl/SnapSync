@@ -2,11 +2,8 @@
 
 package app.snapsync.rig
 
-import app.snapsync.gallery.photoKitResourceKind
-import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.model.roleFromUploadKey
-import app.snapsync.services.gallery.platformId
-import app.snapsync.services.gallery.role
+import app.snapsync.gallery.PhotoKitResource
+import app.snapsync.ios.upload.SimulatorUploadJobs
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -21,10 +18,10 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
 import platform.Foundation.NSURLSessionConfiguration
+import platform.Foundation.NSUUID
 import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
 import platform.Foundation.uploadTaskWithRequest
-import platform.Photos.PHAsset
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceManager
 import kotlin.coroutines.resume
@@ -53,9 +50,7 @@ private val json = Json {
 
 @Serializable
 private class PerformRequest(
-    /** The ledger key, exactly as `created[].key` reported it. */
-    val key: String,
-    /** The destination URL, verbatim from `created[].destination`. */
+    /** The destination URL, verbatim from `created[].destination` — the one fact the OS keeps for a job. */
     val destination: String,
     /** The headers, verbatim from `created[].headers`. */
     val headers: Map<String, String> = emptyMap(),
@@ -72,28 +67,28 @@ fun performUploadJobCommand(log: Logger = Logger.withTag("rig")): RigCommand = R
     val request = runCatching { body?.let { json.decodeFromString<PerformRequest>(it) } }
         .getOrNull()
         ?: return@RigCommand CommandResult.badRequest(
-            "a JSON body is required: {\\\"key\\\":\\\"…\\\",\\\"destination\\\":\\\"…\\\",\\\"headers\\\":{…}} " +
+            "a JSON body is required: {\\\"destination\\\":\\\"…\\\",\\\"headers\\\":{…}} " +
                 "— take them verbatim from the created[] entry this job came from",
         )
 
     // A forged failure moves no bytes at all. Deliberately not "PUT and then lie about the result": the
     // point of forging is to reach the engine's retry chain without a backend that has to misbehave.
     params["fail"]?.let { reason ->
-        log.i { "perform ${request.key}: forced failure ($reason) — no request was sent" }
+        log.i { "perform ${request.destination}: forced failure ($reason) — no request was sent" }
         return@RigCommand CommandResult.ok(
-            """{"key":${quote(request.key)},"performed":false,"forcedFailure":${quote(reason)},""" +
+            """{"destination":${quote(request.destination)},"performed":false,"forcedFailure":${quote(reason)},""" +
                 """"note":"no HTTP request was sent; present this job back as failed to drive the retry chain"}""",
         )
     }
 
-    val resource = resourceForKey(request.key)
+    val resource = resourceOf(request.destination)
         ?: return@RigCommand CommandResult.badRequest(
-            "no live PHAssetResource for key '${request.key}' — the asset or its resource is gone, so the " +
-                "OS could not have uploaded it either",
+            "no job this cycle created was made towards '${request.destination}' with a PhotoKit resource — the OS " +
+                "uploads only a job it holds, and the substitute holds this cycle's",
         )
-    val staged = stageResource(resource, request.key)
+    val staged = stageResource(resource)
         ?: return@RigCommand CommandResult.badRequest(
-            "could not read the bytes of '${request.key}' from PhotoKit",
+            "could not read the bytes for '${request.destination}' from PhotoKit",
         )
     val outcome = put(request, staged, log)
     NSFileManager.defaultManager.removeItemAtURL(staged, error = null)
@@ -114,7 +109,7 @@ fun performUploadJobCommand(log: Logger = Logger.withTag("rig")): RigCommand = R
  */
 private suspend fun put(request: PerformRequest, file: NSURL, log: Logger): String {
     val url = NSURL.URLWithString(request.destination)
-        ?: return """{"key":${quote(request.key)},"performed":false,""" +
+        ?: return """{"destination":${quote(request.destination)},"performed":false,""" +
             """"error":"the destination is not a URL this platform accepts"}"""
     val http = NSMutableURLRequest.requestWithURL(url)
     http.setHTTPMethod("PUT")
@@ -129,9 +124,8 @@ private suspend fun put(request: PerformRequest, file: NSURL, log: Logger): Stri
     }
     val (response, error) = result
     val status = response?.statusCode?.toInt()
-    log.i { "perform ${request.key}: status=${status ?: "none"} error=${error?.localizedDescription ?: "none"}" }
-    return """{"key":${quote(request.key)},"performed":true,"status":${status ?: "null"},""" +
-        """"destination":${quote(request.destination)},""" +
+    log.i { "perform ${request.destination}: status=${status ?: "none"} error=${error?.localizedDescription ?: "none"}" }
+    return """{"destination":${quote(request.destination)},"performed":true,"status":${status ?: "null"},""" +
         """"error":${error?.localizedDescription?.let(::quote) ?: "null"},""" +
         """"succeeded":${status != null && status in 200..299}}"""
 }
@@ -144,9 +138,9 @@ private suspend fun put(request: PerformRequest, file: NSURL, log: Logger): Stri
  * *adapter* is deliberately not reused — that class IS the app-driven tier's mechanism, and routing the
  * OS-driven tier's test transport through it would launder the thing under test through its alternative.
  */
-private suspend fun stageResource(resource: PHAssetResource, key: String): NSURL? {
+private suspend fun stageResource(resource: PHAssetResource): NSURL? {
     val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
-    val file = dir.URLByAppendingPathComponent("rig-perform-$key") ?: return null
+    val file = dir.URLByAppendingPathComponent("rig-perform-${NSUUID().UUIDString}") ?: return null
     NSFileManager.defaultManager.removeItemAtURL(file, error = null)
     val error: NSError? = suspendCancellableCoroutine { cont ->
         PHAssetResourceManager.defaultManager().writeDataForAssetResource(
@@ -159,18 +153,12 @@ private suspend fun stageResource(resource: PHAssetResource, key: String): NSURL
 }
 
 /**
- * Recover the live `PHAssetResource` a ledger key names — the same recovery the substituted queue does, and
- * for the same reason: a job reaches this verb as a plain key, because that is all the caller holds.
+ * The resource the job made towards [destination] sends — the one the OS holds on a job, as the substitute holds this
+ * cycle's: the latest job made or re-pointed there.
  */
-private fun resourceForKey(key: String): PHAssetResource? {
-    val localId = assetIdFromUploadKey(key).platformId().value
-    val role = roleFromUploadKey(key)
-    val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(localId), null).firstObject() as? PHAsset
-        ?: return null
-    return PHAssetResource.assetResourcesForAsset(asset)
-        .filterIsInstance<PHAssetResource>()
-        .firstOrNull { photoKitResourceKind(it.type)?.role() == role }
-}
+private suspend fun resourceOf(destination: String): PHAssetResource? =
+    (SimulatorUploadJobs.createdThisCycle().lastOrNull { it.destination == destination }?.resource as? PhotoKitResource)
+        ?.resource
 
 private fun quote(value: String): String =
     "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""

@@ -22,7 +22,7 @@ class BackendUploadRequestsTest {
         assetId = AssetId("asset-1"),
         contentType = contentType,
         metadata = mapOf("ignored" to "value"),
-        data = ByteArray(0),
+        data = null,
     )
 
     private fun provider(
@@ -46,7 +46,7 @@ class BackendUploadRequestsTest {
                 assetId = AssetId("ABC123_DEF"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "IMG_0001.JPG"),
-                data = ByteArray(0),
+                data = null,
             ),
         )
         assertEquals(
@@ -66,7 +66,7 @@ class BackendUploadRequestsTest {
                 assetId = AssetId("a"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "a b/ä.jpg"),
-                data = ByteArray(0),
+                data = null,
             ),
         )
         assertTrue(
@@ -86,11 +86,11 @@ class BackendUploadRequestsTest {
                 assetId = AssetId("K"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "IMG_9.JPG"),
-                data = ByteArray(0),
+                data = null,
             ),
         )
         val rebuilt = provider().provide(
-            Resource("K-primary.jpg", AssetId("K"), "image/jpeg", emptyMap(), ByteArray(0)),
+            Resource("K-primary.jpg", AssetId("K"), "image/jpeg", emptyMap(), null),
         )
         // Same identity, so the endpoint composes the same object name; only the recorded capture
         // metadata differs.
@@ -120,7 +120,7 @@ class BackendUploadRequestsTest {
                 assetId = AssetId("K"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to " "),
-                data = ByteArray(0),
+                data = null,
             ),
         )
         assertTrue(req.url.endsWith("?filename=K-primary.jpg"), "was ${req.url}")
@@ -154,7 +154,7 @@ class BackendUploadRequestsTest {
                 assetId = AssetId("asset-1"),
                 contentType = "public.jpeg",
                 metadata = mapOf(RESOURCE_META_MIME to "image/jpeg"),
-                data = ByteArray(0),
+                data = null,
             ),
         )
         assertEquals("image/jpeg", req.headers["Content-Type"])
@@ -169,7 +169,7 @@ class BackendUploadRequestsTest {
         assertEquals("image/heic", rebuilt.headers["Content-Type"])
 
         val blank = provider().provide(
-            Resource("x.jpg", AssetId("asset-1"), "image/heic", mapOf(RESOURCE_META_MIME to "  "), ByteArray(0)),
+            Resource("x.jpg", AssetId("asset-1"), "image/heic", mapOf(RESOURCE_META_MIME to "  "), null),
         )
         assertEquals("image/heic", blank.headers["Content-Type"])
     }

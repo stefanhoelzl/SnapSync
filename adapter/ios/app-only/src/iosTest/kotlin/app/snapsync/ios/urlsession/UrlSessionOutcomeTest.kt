@@ -1,6 +1,6 @@
 package app.snapsync.ios.urlsession
 
-import app.snapsync.model.UploadError
+import app.snapsync.ports.TransferFailure
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURLErrorDomain
@@ -32,7 +32,7 @@ class UrlSessionOutcomeTest {
         val outcome = classifyUrlSessionCompletion("k-primary.heic", statusCode = 200L, error = null)
         val record = assertIs<TaskCompletion.Record>(outcome)
         assertEquals("k-primary.heic", record.key)
-        assertTrue(record.success)
+        assertTrue(record.error == null)
         assertEquals(null, record.error)
     }
 
@@ -45,8 +45,8 @@ class UrlSessionOutcomeTest {
     fun `a rejected upload with no transport error is a failure carrying its status`() {
         val outcome = classifyUrlSessionCompletion("k-primary.heic", statusCode = 403L, error = null)
         val record = assertIs<TaskCompletion.Record>(outcome)
-        assertTrue(!record.success)
-        assertEquals(UploadError.Unknown("http:403"), record.error)
+        assertTrue(record.error != null)
+        assertEquals(TransferFailure("http:403"), record.error)
     }
 
     @Test
@@ -59,16 +59,16 @@ class UrlSessionOutcomeTest {
             error = nsError(domain, NSURLErrorTimedOut),
         )
         val record = assertIs<TaskCompletion.Record>(outcome)
-        assertTrue(!record.success)
-        assertEquals(UploadError.Unknown("$domain:$NSURLErrorTimedOut"), record.error)
+        assertTrue(record.error != null)
+        assertEquals(TransferFailure("$domain:$NSURLErrorTimedOut"), record.error)
     }
 
     @Test
     fun `no response at all is not a success`() {
         val outcome = classifyUrlSessionCompletion("k-primary.heic", statusCode = 0L, error = null)
         val record = assertIs<TaskCompletion.Record>(outcome)
-        assertTrue(!record.success)
-        assertEquals(UploadError.Unknown("http:0"), record.error)
+        assertTrue(record.error != null)
+        assertEquals(TransferFailure("no response"), record.error)
     }
 
     @Test

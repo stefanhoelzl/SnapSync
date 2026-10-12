@@ -10,16 +10,15 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.SecureSlots
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadTarget
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.UploadTarget
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.GetEventReply
@@ -145,7 +144,7 @@ class MockStateTest {
             mapOf(WakeId.Heartbeat to WakeTrigger.After(1.hours, network = WakeNetwork.ANY)),
             copy.wakes.operator.pendingWakes,
         )
-        assertEquals(listOf("A1-primary.jpg"), copy.uploadQueue.operator.liveJobKeys())
+        assertEquals(listOf("A1/primary"), copy.uploadQueue.operator.liveJobs())
         assertEquals(1, copy.uploadQueue.operator.created.size)
         assertEquals(true, copy.extensionRegistry.operator.registered)
         assertEquals(Availability.UNAVAILABLE, copy.processInfo.operator.protectedData)
@@ -220,15 +219,14 @@ class MockStateTest {
         device.wakes.port().schedule(WakeId.Heartbeat, WakeTrigger.After(1.hours, network = WakeNetwork.ANY))
         device.extensionRegistry.port().setEnabled(true)
         device.uploadQueue.port().create(
-            UploadSource.Resource(InMemoryResource(PlatformAssetId("photo"))),
+            InMemoryResource(PlatformAssetId("photo")),
             UploadTarget(
                 "https://x/api/v2/files/devices/$DEVICE/A1/primary?filename=A1-primary.jpg",
                 mapOf("Content-Type" to "image/jpeg"),
                 TransferNetwork.UNRESTRICTED_ONLY,
             ),
-            "A1-primary.jpg",
         )
-        device.uploadQueue.operator.failJob("A1-primary.jpg", UploadError.Http(503))
+        device.uploadQueue.operator.failJob("A1/primary", TransferFailure("http:503"))
         device.uploadSession.handbacks = 2
         device.downloads.port().start(
             "https://in-memory.backend/api/v2/events/E/files/devices/D2/F1/primary",

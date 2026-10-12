@@ -1,7 +1,7 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadTarget
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.UploadTarget
 import platform.Foundation.NSURL
 import kotlin.test.Test
 import kotlin.test.assertEquals

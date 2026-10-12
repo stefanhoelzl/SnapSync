@@ -3,7 +3,7 @@ package app.snapsync.ios.urlsession
 import app.snapsync.download.DOWNLOAD_SESSION_ID
 import app.snapsync.download.IosDownload
 import app.snapsync.ports.DownloadHandlers
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.TransferHandlers
 import co.touchlab.kermit.Logger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,7 +21,11 @@ class BackgroundSessionsTest {
         val handedTo = mutableListOf<String>()
         val upload = IosUrlSessionUploadPlatform(Logger.withTag("test"), "app.snapsync.test.upload")
         upload.listen(
-            UploadHandlers(onFinished = {}, onBackgroundEvents = { handedTo += "upload" }, onEventsDrained = {}),
+            TransferHandlers(
+                onFinished = { _, _ -> },
+                onBackgroundEvents = { handedTo += "upload" },
+                onEventsDrained = {},
+            ),
         )
         val download = IosDownload(Logger.withTag("test"))
         download.listen(

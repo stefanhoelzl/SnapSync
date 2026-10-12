@@ -129,7 +129,7 @@ class MarkedPhotoLookupTest {
             AssetId("L-X"),
             "image/heic",
             mapOf(RESOURCE_META_CREATION_DATE to "2026-06-05T12:00:00Z"),
-            Unit,
+            null,
         )
         val found = MarkedPhotoLookup(gallery) { SelectionScope.Scoped(resourcesFrom(library) + nameless) }
             .markedIn(start, end, known = setOf(AssetId("L-A")))

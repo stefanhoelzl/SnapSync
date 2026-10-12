@@ -17,10 +17,6 @@ import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.UploadTarget
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -33,6 +29,10 @@ import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.UploadJobState
+import app.snapsync.ports.UploadTarget
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -387,37 +387,15 @@ private class CrashDto(
 private class CrashDumpsDto(val dumps: List<CrashDto>)
 
 @Serializable
-private class ErrorDto(val kind: String, val status: Int? = null, val detail: String? = null) {
-    fun error(): UploadError = when (kind) {
-        HTTP -> UploadError.Http(status ?: 0)
-        CANCELLED -> UploadError.Cancelled
-        UNKNOWN -> UploadError.Unknown(detail.orEmpty())
-        else -> UploadError.Network
-    }
-
-    companion object {
-        private const val NETWORK = "network"
-        private const val HTTP = "http"
-        private const val CANCELLED = "cancelled"
-        private const val UNKNOWN = "unknown"
-
-        fun of(error: UploadError): ErrorDto = when (error) {
-            UploadError.Network -> ErrorDto(NETWORK)
-            is UploadError.Http -> ErrorDto(HTTP, status = error.status)
-            UploadError.Cancelled -> ErrorDto(CANCELLED)
-            is UploadError.Unknown -> ErrorDto(UNKNOWN, detail = error.detail)
-        }
-    }
-}
-
-@Serializable
 private class JobDto(
-    val key: String,
+    /** The id of the library asset the job sends — the in-memory library's handle; `""` for another library's. */
+    val asset: String,
     val contentType: String,
     val url: String,
     val headers: Map<String, String>,
     val state: String,
-    val error: ErrorDto?,
+    /** What the platform said of the job's failure, `null` while it has none. */
+    val failure: String?,
     val retriedOnce: Boolean,
     /** The rule the job was created under; a state saved before rules existed reads as any network. */
     val network: String = TransferNetwork.ANY.name,
@@ -431,17 +409,16 @@ private class QueueDto(
     val failCreate: Boolean,
 ) {
     fun into(queue: UploadQueueMock) {
-        // A job's payload is the platform resource the process that created it held; what the queue keeps across the
-        // process is the request. A restored job carries a placeholder of the in-memory library's handle.
+        // A job's payload is the library resource the process that created it held: restored as the in-memory library's
+        // handle of the same asset.
         jobs.forEach {
             queue.jobs += UploadQueueMock.Job(
-                it.key,
                 it.contentType,
-                InMemoryResource(PlatformAssetId(it.key)),
+                InMemoryResource(PlatformAssetId(it.asset)),
                 UploadTarget(it.url, it.headers, TransferNetwork.valueOf(it.network)),
             ).apply {
                 state = UploadJobState.valueOf(it.state)
-                error = it.error?.error()
+                failure = it.failure?.let(::TransferFailure)
                 retriedOnce = it.retriedOnce
             }
         }
@@ -454,17 +431,17 @@ private class QueueDto(
         fun of(queue: UploadQueueMock) = QueueDto(
             jobs = queue.jobs.map {
                 JobDto(
-                    it.key,
+                    (it.resource as? InMemoryResource)?.asset?.value.orEmpty(),
                     it.contentType,
                     it.target.url,
                     it.target.headers,
                     it.state.name,
-                    it.error?.let(ErrorDto::of),
+                    it.failure?.detail,
                     it.retriedOnce,
                     it.target.network.name,
                 )
             },
-            created = queue.created.map { it.filename to it.contentType },
+            created = queue.created.map { it.job to it.contentType },
             jobLimit = queue.jobLimit,
             failCreate = queue.failCreate,
         )

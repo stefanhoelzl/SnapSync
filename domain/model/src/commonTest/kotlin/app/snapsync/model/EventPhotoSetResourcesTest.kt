@@ -58,7 +58,7 @@ class EventPhotoSetResourcesTest {
             RESOURCE_META_IS_EDITED to "false",
             RESOURCE_META_PIXEL_AREA to (width * height).toString(),
         ),
-        data = Unit,
+        data = null,
     )
 
     private fun facts(

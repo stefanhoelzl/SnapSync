@@ -8,8 +8,8 @@ package app.snapsync.model
  * [key] is recovered from the job's own destination URL (the only field reliably present across the whole
  * lifecycle — `resource` is nil for succeeded jobs). [contentType] is the type the request was created
  * with; reporting a placeholder here is not inert, because the cycle rebuilds a retried job's `Resource`
- * from the key alone and the object would be mistyped for the rest of its life. [data] is the opaque
- * `PHAssetResource`, present because a job only appears here when it can still be re-created. [error] is
+ * from the key alone and the object would be mistyped for the rest of its life. [data] is the library's own
+ * resource ([LibraryResource]), present when the job can still be re-created. [error] is
  * what the platform said went wrong — carried for the engine's failure line, which is the only record of
  * why a key is being retried.
  *
@@ -19,6 +19,6 @@ package app.snapsync.model
 class PlatformUploadJob(
     val key: String,
     val contentType: String,
-    val error: UploadError?,
-    val data: Any?,
+    val error: UploadFailure?,
+    val data: LibraryResource?,
 )

@@ -272,7 +272,7 @@ class WalkMemoTest {
                 assetId = AssetId(assetId),
                 contentType = "image/jpeg",
                 metadata = emptyMap(),
-                data = Unit,
+                data = null,
             )
 
         suspend fun policy(cutoff: String) = SelectionPolicy(

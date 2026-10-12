@@ -106,7 +106,7 @@ class UploadCycleTailUnitsTest {
         assetId = AssetId(name),
         contentType = "image/jpeg",
         metadata = mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T10:00:00Z"),
-        data = Unit,
+        data = null,
     )
 
     private val never: () -> Boolean = { false }

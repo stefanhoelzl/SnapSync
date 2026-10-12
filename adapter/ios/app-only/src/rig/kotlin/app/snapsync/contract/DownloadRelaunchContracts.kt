@@ -28,7 +28,7 @@ import app.snapsync.download.SystemDownloadSessionApi
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.logging.deviceDiagnosticEnvironment
-import app.snapsync.model.TransferOutcome
+import app.snapsync.ports.TransferOutcome
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSData

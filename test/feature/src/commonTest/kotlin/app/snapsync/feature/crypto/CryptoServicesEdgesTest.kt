@@ -43,7 +43,7 @@ import kotlin.test.assertTrue
 class CryptoServicesEdgesTest {
 
     private val crypto = fakeCrypto()
-    private val resource = Resource("ASSET1-primary.heic", AssetId("ASSET1"), "public.heic", emptyMap(), Unit)
+    private val resource = Resource("ASSET1-primary.heic", AssetId("ASSET1"), "public.heic", emptyMap(), null)
     private val ref = AssetRef(DEVICE, AssetId("ASSET1"))
 
     private fun config(keyId: String?) = EventConfig(

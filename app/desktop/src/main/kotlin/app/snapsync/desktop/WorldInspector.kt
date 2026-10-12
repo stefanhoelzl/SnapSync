@@ -30,8 +30,16 @@ import androidx.compose.ui.unit.dp
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SecureSlots
-import app.snapsync.model.UploadError
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.TransferFailure
+
+/** The failures a live job can be given, by the label its button shows. */
+private val JOB_FAILURES = listOf(
+    "Net" to TransferFailure("network"),
+    "Http" to TransferFailure("http:500"),
+    "Cxl" to TransferFailure("cancelled"),
+    "Unk" to TransferFailure("forced"),
+)
 
 /**
  * The world-inspector control panel (`docs/testing.md`): raw Material 3, **never** App*
@@ -166,14 +174,9 @@ fun WorldInspector(
                     Text(job.key + "  ·  attempt ${job.attempts}", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Button(onClick = { controller.completeJob(job.key) }) { Text("✓") }
-                        OutlinedButton(onClick = { controller.failJob(job.key, UploadError.Network) }) { Text("Net") }
-                        OutlinedButton(
-                            onClick = { controller.failJob(job.key, UploadError.Http(500)) },
-                        ) { Text("Http") }
-                        OutlinedButton(onClick = { controller.failJob(job.key, UploadError.Cancelled) }) { Text("Cxl") }
-                        OutlinedButton(
-                            onClick = { controller.failJob(job.key, UploadError.Unknown("forced")) },
-                        ) { Text("Unk") }
+                        JOB_FAILURES.forEach { (label, error) ->
+                            OutlinedButton(onClick = { controller.failJob(job.key, error) }) { Text(label) }
+                        }
                     }
                 }
                 AppUploads(controller, snap)

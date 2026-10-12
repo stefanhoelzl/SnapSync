@@ -4,8 +4,8 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SecureSlots
-import app.snapsync.model.TransferNetwork
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.TransferNetwork
 
 /**
  * **The device as mocks** (`docs/testing.md`, "Mocks"): one mock per external system, each holding what that system

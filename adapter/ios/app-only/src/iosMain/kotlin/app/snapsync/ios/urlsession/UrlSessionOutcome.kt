@@ -1,6 +1,6 @@
 package app.snapsync.ios.urlsession
 
-import app.snapsync.model.UploadError
+import app.snapsync.ports.TransferFailure
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 
@@ -25,8 +25,8 @@ import platform.Foundation.NSError
 /** What a delivered `URLSession` task completion reports. */
 sealed interface TaskCompletion {
 
-    /** The task carried its ledger key and reached a terminal outcome. */
-    data class Record(val key: String, val success: Boolean, val error: UploadError?) : TaskCompletion
+    /** The task carried its ledger key and reached a terminal outcome: a success when [error] is `null`. */
+    data class Record(val key: String, val error: TransferFailure?) : TaskCompletion
 
     /**
      * The task carried no `taskDescription`, so it maps to no ledger key and nothing can be recorded.
@@ -52,18 +52,17 @@ fun classifyUrlSessionCompletion(
 ): TaskCompletion {
     val key = taskDescription ?: return TaskCompletion.NoLedgerKey
     val success = error == null && statusCode in 200L..299L
-    return TaskCompletion.Record(
-        key = key,
-        success = success,
-        error = if (success) null else urlSessionUploadError(statusCode, error),
-    )
+    return TaskCompletion.Record(key = key, error = if (success) null else urlSessionUploadFailure(statusCode, error))
 }
 
 /**
- * The failure detail for a non-successful task: the transport error when there was one, otherwise the
- * HTTP status. Flattened to [UploadError.Unknown] for the same reason as the PhotoKit tier's mapping —
- * v1 retries forever and nothing branches on the variant (see `UploadError`'s KDoc).
+ * What a non-successful task's failure says: the transport error when there was one (its domain and code, nothing
+ * more), otherwise the status the server answered (`http:<status>`). A status of `0` is no answer at all, which no
+ * server gave. The exact text is what the device log and the diagnostic dump carry, so it is pinned by test.
  */
 @OptIn(ExperimentalForeignApi::class)
-fun urlSessionUploadError(statusCode: Long, error: NSError?): UploadError =
-    UploadError.Unknown(error?.let { "${it.domain}:${it.code}" } ?: "http:$statusCode")
+fun urlSessionUploadFailure(statusCode: Long, error: NSError?): TransferFailure = when {
+    error != null -> TransferFailure("${error.domain}:${error.code}")
+    statusCode > 0L -> TransferFailure("http:${statusCode.toInt()}")
+    else -> TransferFailure("no response")
+}

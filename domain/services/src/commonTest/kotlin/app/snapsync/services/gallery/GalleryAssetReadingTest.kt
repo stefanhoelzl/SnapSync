@@ -52,7 +52,7 @@ class GalleryAssetReadingTest {
         assertEquals(listOf("L-primary.heic", "L-live.mov", "U-primary.jpg"), resources.map { it.filename })
         assertEquals("2026-06-01T10:00:00Z", resources[0].metadata[RESOURCE_META_CREATION_DATE])
         assertEquals("", resources[2].metadata[RESOURCE_META_PIXEL_AREA], "an unknown area is carried as unknown")
-        assertSame(TestHandle, resources[1].data)
+        assertSame(TestHandle, resources[1].data.galleryHandle())
     }
 
     @Test

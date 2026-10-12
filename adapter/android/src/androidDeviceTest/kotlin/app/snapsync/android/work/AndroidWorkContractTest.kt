@@ -16,6 +16,7 @@ import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
+import app.snapsync.contracts.Ended
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
@@ -23,29 +24,27 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.ScheduledWakes
-import app.snapsync.contracts.UploadContract
-import app.snapsync.contracts.UploadState
-import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.SessionUnderTest
+import app.snapsync.contracts.TransferSessionContract
+import app.snapsync.contracts.TransferSessionState
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeOs
 import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
+import app.snapsync.contracts.uploadClauseKey
 import app.snapsync.contracts.verify
 import app.snapsync.model.ScheduleResult
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadTarget
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
+import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.PlatformAssetId
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.TransferHandlers
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.TransferSource
+import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WakeHandlers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -63,7 +62,6 @@ import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
@@ -148,27 +146,24 @@ class AndroidWorkContractTest {
         return holds.filter { it.state == WorkInfo.State.RUNNING }.map { it.id }
     }
 
-    private val upload = object : Binding<UploadState, UploadUnderTest> {
+    private val upload = object : Binding<TransferSessionState, SessionUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val reaches = setOf(
-            UploadState.IDLE,
-            UploadState.AT_CAP,
-            UploadState.RESTRICTED_NETWORK,
-            UploadState.TAKES_RESOURCES_AND_FILES,
-            UploadState.REPORTS_AS_IT_HAPPENS,
+            TransferSessionState.IDLE,
+            TransferSessionState.AT_CAP,
+            TransferSessionState.RESTRICTED_NETWORK,
+            TransferSessionState.TAKES_RESOURCES_AND_FILES,
+            TransferSessionState.REPORTS_AS_IT_HAPPENS,
         )
 
-        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
-            if (state in UploadContract.PRESENTED) {
-                return Entered.Unreachable("Android reports every transfer's end as it happens; nothing is presented")
-            }
+        override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
             if (state !in reaches) return Entered.Unreachable("Android takes the library's own items, and files too")
             val base = fixture()
             // The fixture is the host's, reached over the emulator's Wi-Fi: metering the Wi-Fi meters the transfer.
-            if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.enter()
+            if (state == TransferSessionState.RESTRICTED_NETWORK) MeteredWifi.enter()
             val seeded = mutableSetOf<PlatformAssetId>()
-            val ended = Collections.synchronizedList(mutableListOf<UploadJob>())
+            val ended = Collections.synchronizedList(mutableListOf<Ended>())
             val bare = AndroidUpload(
                 context,
                 AndroidBackgroundTime(context),
@@ -178,14 +173,16 @@ class AndroidWorkContractTest {
             )
             val adapter = bare.recorded(log)
             adapter.listen(
-                UploadHandlers(onFinished = {
-                    ended += it
-                }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}),
+                TransferHandlers(
+                    onFinished = { tag, error -> ended += Ended(tag, error) },
+                    onBackgroundEvents = { it.complete() },
+                    onEventsDrained = {},
+                ),
             )
-            val usable: suspend (String) -> UploadSource = { _ ->
+            val usable: suspend (String) -> TransferSource = { _ ->
                 val id = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-01T12:00:00Z", count = 1).single()
                 seeded += id
-                UploadSource.Resource(
+                TransferSource.Resource(
                     MediaStoreResource(
                         ContentUris.withAppendedId(
                             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
@@ -194,39 +191,39 @@ class AndroidWorkContractTest {
                     ),
                 )
             }
-            if (state == UploadState.AT_CAP) {
+            if (state == TransferSessionState.AT_CAP) {
                 runEntry {
                     repeat(CAP) { n ->
-                        val key = UploadContract.key(clauseId, n = n + 1)
-                        val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
+                        val key = uploadClauseKey(clauseId, n = n + 1)
+                        val url = base + TransferSessionContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
                         val target = UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY)
                         val created = adapter.create(usable(key), target, key)
                         check(
-                            created == UploadCreateOutcome.CREATED,
+                            created == CreateOutcome.CREATED,
                         ) { "filling the cap: transfer ${n + 1} was $created" }
                     }
                 }
             }
             return Entered.Ready(
-                UploadUnderTest(
-                    upload = adapter,
+                SessionUnderTest(
+                    session = adapter,
                     base = base,
                     usable = usable,
-                    unusable = { UploadSource.File("/nonexistent/$it") },
+                    unusable = { TransferSource.File("/nonexistent/$it") },
                     ended = { synchronized(ended) { ended.toList() } },
                     objects = landedAt(base),
                     liftRestriction = { MeteredWifi.lift() },
                     fileSource = { key ->
-                        UploadSource.File(
+                        TransferSource.File(
                             File(context.cacheDir, key).apply { writeBytes(PhotoLibrary.jpeg) }.absolutePath,
                         )
                     },
                 ),
             ) {
                 // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.
-                runEntry { bare.jobs(UploadJobSet.IN_FLIGHT).forEach { bare.cancel(it) } }
+                runEntry { bare.live().forEach { bare.cancel(it) } }
                 MediaStoreSeeder.delete(seeded)
-                if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.lift()
+                if (state == TransferSessionState.RESTRICTED_NETWORK) MeteredWifi.lift()
             }
         }
     }
@@ -238,7 +235,7 @@ class AndroidWorkContractTest {
     fun `expedited work satisfies the BackgroundTime contract`() = verify(BackgroundTimeContract, backgroundTime)
 
     @Test
-    fun `in-process transfers satisfy the Upload contract`() = verify(UploadContract, upload)
+    fun `in-process transfers satisfy the TransferSession contract`() = verify(TransferSessionContract, upload)
 
     @Test
     fun `a library change wakes the app`() {
@@ -340,27 +337,29 @@ class AndroidWorkContractTest {
             journalName = journal,
             unrestricted = awaitUnrestrictedNetwork(context),
         )
-        first.listen(UploadHandlers(onFinished = {}, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
+        first.listen(
+            TransferHandlers(onFinished = { _, _ -> }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}),
+        )
         val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-03T12:00:00Z", count = 1)
-        val key = UploadContract.key("RELAUNCH")
+        val key = uploadClauseKey("RELAUNCH")
         try {
             runBlocking {
                 val uri = ContentUris.withAppendedId(
                     MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
                     seeded.single().value.toLong(),
                 )
-                val url = base + UploadContract.path("RELAUNCH", FixtureAnswer.Hold)
+                val url = base + TransferSessionContract.path("RELAUNCH", FixtureAnswer.Hold)
                 assertEquals(
-                    UploadCreateOutcome.CREATED,
+                    CreateOutcome.CREATED,
                     first.create(
-                        UploadSource.Resource(MediaStoreResource(uri)),
+                        TransferSource.Resource(MediaStoreResource(uri)),
                         UploadTarget(url, emptyMap(), TransferNetwork.ANY),
                         key,
                     ),
                 )
             }
             // The next process: a fresh adapter over the same journal, knowing nothing live.
-            val reported = mutableListOf<UploadJob>()
+            val reported = mutableListOf<Ended>()
             AndroidUpload(
                 context,
                 AndroidBackgroundTime(context),
@@ -368,19 +367,19 @@ class AndroidWorkContractTest {
                 unrestricted = awaitUnrestrictedNetwork(context),
             )
                 .listen(
-                    UploadHandlers(
-                        onFinished = { reported += it },
+                    TransferHandlers(
+                        onFinished = { tag, error -> reported += Ended(tag, error) },
                         onBackgroundEvents = { it.complete() },
                         onEventsDrained = {},
                     ),
                 )
-            val job = assertNotNull(
+            val ended = assertNotNull(
                 reported.singleOrNull { it.tag == key },
                 "the orphaned transfer is reported: $reported",
             )
-            assertTrue(job.state == UploadJobState.FAILED, "as a failure, so its row is retried")
+            assertNotNull(ended.failure, "as a failure, so its row is retried")
         } finally {
-            runBlocking { first.jobs(UploadJobSet.IN_FLIGHT).forEach { first.cancel(it) } }
+            runBlocking { first.live().forEach { first.cancel(it) } }
             MediaStoreSeeder.delete(seeded)
             context.deleteSharedPreferences(journal)
         }

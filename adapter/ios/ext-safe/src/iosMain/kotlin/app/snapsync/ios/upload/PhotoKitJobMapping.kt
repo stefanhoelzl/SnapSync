@@ -1,8 +1,8 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJobState
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.UploadJobState
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURLRequest
@@ -16,7 +16,7 @@ import platform.Photos.PHAssetResourceUploadJobStateSucceeded
 import platform.Photos.PHPhotosErrorLimitExceeded
 
 /**
- * The PhotoKit upload-job **vocabulary mappings** — Apple's job states, error domain and limit code into the `Upload`
+ * The PhotoKit upload-job **vocabulary mappings** — Apple's job states, error domain and limit code into the `OsUploadQueue`
  * port's neutral vocabulary. What a job then MEANS for the ledger (its row, its terminal disposition, its offered
  * retry) moved to the upload services in phase 11f (`services/upload/UploadJobDecisions.kt`); what stays is exactly
  * what an adapter may hold: technology vocabulary, beside the SDK constants it names, so a value moving under us is a
@@ -52,11 +52,11 @@ fun photoKitJobState(state: PHAssetResourceUploadJobState): UploadJobState = whe
 }
 
 /**
- * The path of the URL a job's stored destination names — what the upload services resolve its ledger row by — or null
- * when the OS answered no destination. [destination] is nullable on purpose (see this file's KDoc).
+ * The URL a job's stored destination names — what the upload services resolve its ledger row by — or null when the OS
+ * answered no destination. [destination] is nullable on purpose (see this file's KDoc).
  */
 @OptIn(ExperimentalForeignApi::class)
-fun photoKitDestinationPath(destination: NSURLRequest?): String? = destination?.URL?.path
+fun photoKitDestinationUrl(destination: NSURLRequest?): String? = destination?.URL?.absoluteString
 
 /**
  * The `Content-Type` a stored destination carries, or null when it carries none — the type the job was created with.
@@ -79,16 +79,16 @@ fun NSURLRequest?.contentTypeHeader(): String? {
  * `PHPhotosErrorLimitExceeded` is the system's in-flight job cap — the services defer the remainder. Any other error
  * means the job was **not** created.
  */
-fun createResultFor(errorCode: Long?): UploadCreateOutcome = when (errorCode) {
-    null -> UploadCreateOutcome.CREATED
-    PHPhotosErrorLimitExceeded -> UploadCreateOutcome.LIMIT_EXCEEDED
-    else -> UploadCreateOutcome.FAILED
+fun createResultFor(errorCode: Long?): CreateOutcome = when (errorCode) {
+    null -> CreateOutcome.CREATED
+    PHPhotosErrorLimitExceeded -> CreateOutcome.LIMIT_EXCEEDED
+    else -> CreateOutcome.FAILED
 }
 
 /**
- * `NSError` → [UploadError]. Deliberately flattened to [UploadError.Unknown]: nothing branches on the variant, and the
- * exact `"domain:code"` string is what the device logs and diagnostic dumps carry, so it is pinned by test.
+ * `NSError` → [TransferFailure]: its `"domain:code"`, nothing more — the exact text the device logs and diagnostic
+ * dumps carry, so it is pinned by test.
  */
 @OptIn(ExperimentalForeignApi::class)
-fun photoKitUploadError(error: NSError): UploadError =
-    UploadError.Unknown("${error.domain}:${error.code}")
+fun photoKitUploadFailure(error: NSError): TransferFailure =
+    TransferFailure("${error.domain}:${error.code}")

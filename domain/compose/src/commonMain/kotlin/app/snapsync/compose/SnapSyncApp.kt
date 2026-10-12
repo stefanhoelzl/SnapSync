@@ -81,8 +81,8 @@ import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SystemUi
+import app.snapsync.ports.TransferSession
 import app.snapsync.ports.Ui
-import app.snapsync.ports.Upload
 import app.snapsync.ports.Wake
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendServices
@@ -163,11 +163,11 @@ class AppPorts(
     /** The platform's device-integrity service (App Attest on iOS) — what the attestation service proves with. */
     val integrity: DeviceIntegrity,
     /**
-     * The app's own uploader transport (a background `URLSession` on iOS) — what the app uploader's cycle creates jobs
-     * on, and an event port: the host zone registers this core's [AppEvents.uploadHandlers] on it as the graph is
-     * composed, so a relaunch that hands back finished uploads records them.
+     * The app's own uploader session (a background `URLSession` on iOS, Android's uploads) — what the app uploader's
+     * cycle starts its transfers on, and an event port: the host zone registers this core's [AppEvents.uploadHandlers]
+     * on it as the graph is composed, so a relaunch that hands back finished uploads records them.
      */
-    val appUpload: Upload,
+    val uploadSession: TransferSession,
     /** The process's background time (`docs/architecture.md`, "Background time is an outbound port named for
      *  the need"): what a push or a transfer wake holds across its own work and its tail, and the only "time is up"
      *  those wakes get. */
@@ -234,8 +234,8 @@ class AppCore internal constructor(
     internal val log get() = services.log
 
     /**
-     * The app's uploader — the app-driven tier on every OS version, over the app's own
-     * [AppPorts.appUpload]. Always the real one: a composition whose transport is mocked is driven at that transport.
+     * The app's uploader — the app-driven tier on every OS version, over the app's own [AppPorts.uploadSession]. Always
+     * the real one: a composition whose transport is mocked is driven at that transport.
      */
     internal val appUploader: AppUploader by lazy { AppUploader(this) }
 

@@ -19,14 +19,15 @@ import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
+import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SystemUi
+import app.snapsync.ports.TransferSession
 import app.snapsync.ports.Ui
-import app.snapsync.ports.Upload
 import app.snapsync.ports.Wake
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
@@ -65,7 +66,7 @@ class AppDevicePorts(
     /** The app's photo library: its reads, its writes, its selection observer and its imports. */
     val gallery: Lazy<Gallery>,
     /** The app uploader's background transfer session. */
-    val appUpload: Lazy<Upload>,
+    val uploadSession: Lazy<TransferSession>,
     val download: Lazy<Download>,
     val systemUi: Lazy<SystemUi>,
     val lifecycle: Lazy<Lifecycle>,
@@ -100,7 +101,7 @@ class AppDevicePorts(
         http = http.value,
         integrity = integrity.value,
         // The app's uploader transport (a background `URLSession` on iOS; Android's only uploader).
-        appUpload = appUpload.value,
+        uploadSession = uploadSession.value,
         // The upload extension's registration record, on every platform: where it cannot exist (below iOS 26.1, and
         // on Android) the adapter answers `Unsupported` itself, so no root holds an `if` around it.
         extensionRegistry = extensionRegistry.value,
@@ -140,8 +141,8 @@ class ExtensionDevicePorts(
     val platformDeviceId: Lazy<PlatformDeviceId>,
     /** The upload extension's photo library: reads and album adds only. */
     val galleryReader: Lazy<GalleryReader>,
-    /** The upload-job queue the upload cycle creates its jobs on. */
-    val cycleUpload: Lazy<Upload>,
+    /** The OS's upload-job queue the upload cycle creates its jobs on. */
+    val uploadQueue: Lazy<OsUploadQueue>,
     val http: Lazy<HttpTransport>,
 ) {
     /**
@@ -157,7 +158,7 @@ class ExtensionDevicePorts(
         secureStore = secureStore.value,
         platformDeviceId = platformDeviceId.value,
         gallery = galleryReader.value,
-        upload = cycleUpload.value,
+        uploadQueue = uploadQueue.value,
         http = http.value,
         host = host,
     )

@@ -19,13 +19,14 @@ import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.LogSink
 import app.snapsync.ports.NetworkMonitor
+import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SystemUi
+import app.snapsync.ports.TransferSession
 import app.snapsync.ports.Ui
-import app.snapsync.ports.Upload
 import app.snapsync.ports.Wake
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
@@ -95,9 +96,9 @@ class JvmSystems(
     /** The upload cycle's own face of the library — the extension's reads. */
     val cycleGallery: Gallery,
     /** The app uploader's transfer session. */
-    val appUpload: Upload,
+    val uploadSession: TransferSession,
     /** The OS-driven tier's upload-job queue, which the upload cycle creates its jobs on. */
-    val cycleUpload: Upload,
+    val uploadQueue: OsUploadQueue,
     val download: Download,
     val systemUi: SystemUi,
 )

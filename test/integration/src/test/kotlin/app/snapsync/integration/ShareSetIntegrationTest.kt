@@ -126,7 +126,7 @@ class ShareSetIntegrationTest {
 
         val after = jobs()
         assertEquals(1, after.created, "a re-scan loads nothing, so the in-flight work is not requested again: $after")
-        assertEquals(listOf(primaryKey("A")), after.live)
+        assertEquals(listOf(primaryJob("A")), after.live)
         assertTrue(objects().isEmpty(), "nothing re-uploaded")
         assertEquals(event, state().ready.eventId)
     }
@@ -154,7 +154,7 @@ class ShareSetIntegrationTest {
         cycle()
         // The ledger started empty rather than stale — and the cost of the failed load: the photo is uploaded
         // again, idempotently.
-        assertTrue(primaryKey("A") in jobs().live, "the photo is requested again")
+        assertTrue(primaryJob("A") in jobs().live, "the photo is requested again")
         assertEquals(jobsBefore + 1, jobs().created)
     }
 }

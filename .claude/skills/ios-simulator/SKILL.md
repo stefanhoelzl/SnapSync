@@ -47,12 +47,13 @@ State these before writing a scenario against this host, or you will write one t
   # one cycle: hand in what the OS "finished", get back what the cycle created
   curl -sS -X POST "http://127.0.0.1:$PORT/os/photokit-ext/processRawValue" \
        -d '{"finished":[],"jobLimit":100}'
-  # → {"processRawValue":1,"result":"processing","queue":"simulated","created":[{"key":"…-primary.png",
+  # → {"processRawValue":1,"result":"processing","queue":"simulated","created":[{
   #    "destination":"http://127.0.0.1:8080/api/v2/files/devices/<dev>/<assetId>/<role>?filename=…","headers":{…}}]}
 
-  # move one job's bytes for real (or ?fail=network to forge a failure and drive the retry chain)
+  # move one job's bytes for real (or ?fail=network to forge a failure and drive the retry chain) — a job is
+  # known by its destination, the one fact the OS keeps; perform sends the resource this cycle's job holds
   curl -sS -X POST "http://127.0.0.1:$PORT/device/upload-jobs/perform" \
-       -d '{"key":"…","destination":"…","headers":{…}}'
+       -d '{"destination":"…","headers":{…}}'
 
   # present it back as finished, and the next cycle records it
   curl -sS -X POST "http://127.0.0.1:$PORT/os/photokit-ext/processRawValue" \

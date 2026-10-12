@@ -25,8 +25,6 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
-import app.snapsync.model.TransferOutcome
-import app.snapsync.model.UploadError
 import app.snapsync.model.WakeId
 import app.snapsync.model.noContribution
 import app.snapsync.model.runCatchingCancellable
@@ -36,6 +34,8 @@ import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
@@ -215,9 +215,9 @@ class WorldInspectorController(
 
     // ---- upload jobs -----------------------------------------------------------------------------
 
-    fun completeJob(key: String) = launchMutation { mocks.uploadQueue.operator.completeJob(key) }
+    fun completeJob(job: String) = launchMutation { mocks.uploadQueue.operator.completeJob(job) }
 
-    fun failJob(key: String, error: UploadError) = launchMutation { mocks.uploadQueue.operator.failJob(key, error) }
+    fun failJob(job: String, error: TransferFailure) = launchMutation { mocks.uploadQueue.operator.failJob(job, error) }
 
     /** The OS lands one of the app uploader's transfers — its end reported to the app as it happens. */
     fun completeAppUpload(key: String) = launchMutation { mocks.uploadSession.operator.complete(key) }
@@ -465,7 +465,7 @@ class WorldInspectorController(
             )
         }
         val queue = mocks.uploadQueue.operator
-        val jobs = queue.liveJobKeys().map { key -> JobRow(key, attempts = queue.created.count { it.filename == key }) }
+        val jobs = queue.liveJobs().map { job -> JobRow(job, attempts = queue.created.count { it.job == job }) }
         val session = mocks.uploadSession.operator
         val appUploads = session.liveKeys().map { key -> JobRow(key, attempts = session.created.count { it == key }) }
         val downloads = mocks.downloads.operator.inFlight().map {

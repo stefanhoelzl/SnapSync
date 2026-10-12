@@ -10,23 +10,23 @@ import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
+import app.snapsync.contracts.OsUploadQueueContract
+import app.snapsync.contracts.OsUploadQueueState
+import app.snapsync.contracts.QueueUnderTest
 import app.snapsync.contracts.TransferFixture
-import app.snapsync.contracts.UploadContract
-import app.snapsync.contracts.UploadState
-import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.UPLOAD_CONTENT_TYPE
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
-import app.snapsync.model.ChangeOutcome
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadTarget
 import app.snapsync.model.destinationPathOf
-import app.snapsync.ports.Upload
+import app.snapsync.ports.ChangeOutcome
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.OsUploadJob
+import app.snapsync.ports.OsUploadQueue
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.UploadJobState
+import app.snapsync.ports.UploadTarget
 import co.touchlab.kermit.Logger
 import kotlin.test.Test
 
@@ -43,53 +43,48 @@ import kotlin.test.Test
 class SimulatorUploadJobQueueContractTest {
 
     /** A resource on a host with no photo library: the substitute's payload check accepts this and nothing else. */
-    private object StandInPhoto
+    private object StandInPhoto : GalleryResourceHandle
 
-    private val binding = object : Binding<UploadState, UploadUnderTest> {
+    /** A resource of any other type, which the substitute refuses as the real queue refuses a non-PhotoKit one. */
+    private object NotAPhoto : GalleryResourceHandle
+
+    private val binding = object : Binding<OsUploadQueueState, QueueUnderTest> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Fake
         override val reaches = setOf(
-            UploadState.IDLE,
-            UploadState.AT_CAP,
-            UploadState.PRESENTED_SUCCEEDED,
-            UploadState.PRESENTED_REFUSED_ONCE,
-            UploadState.PRESENTED_RETRY_SPENT,
+            OsUploadQueueState.IDLE,
+            OsUploadQueueState.AT_CAP,
+            OsUploadQueueState.PRESENTED_SUCCEEDED,
+            OsUploadQueueState.PRESENTED_REFUSED_ONCE,
+            OsUploadQueueState.PRESENTED_RETRY_SPENT,
+            OsUploadQueueState.ANY,
         )
 
-        override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+        override fun create(state: OsUploadQueueState, clauseId: String, log: CallLog): Entered<QueueUnderTest> {
             // A state this host does not present: another platform's fact, or one no binding here enters.
             if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
-            if (state == UploadState.RESTRICTED_NETWORK) {
-                return Entered.Unreachable(
-                    "a restricted network needs a phone off unrestricted Wi-Fi; a simulator shares its Mac's network (capability `mobile-data`)",
-                )
-            }
             val jobs = SimulatorJobSets()
             val queue = SimulatorUploadJobQueue(Logger.withTag("contract"), jobs, payloadType = StandInPhoto::class)
             val os = PlayedOs(queue, jobs)
-            if (state == UploadState.AT_CAP) {
+            if (state == OsUploadQueueState.AT_CAP) {
                 runEntry {
                     jobs.beginCycle(emptyList(), jobLimit = CAP)
                     repeat(CAP) { n ->
-                        val url = BASE + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                        val created = os.create(
-                            UploadSource.Resource(StandInPhoto),
-                            UploadTarget(url, emptyMap(), TransferNetwork.ANY),
-                            UploadContract.key(clauseId, n + 1),
+                        val url = BASE + OsUploadQueueContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
+                        check(
+                            os.create(StandInPhoto, UploadTarget(url, emptyMap(), TransferNetwork.ANY)) == CreateOutcome.CREATED,
                         )
-                        check(created == UploadCreateOutcome.CREATED)
                     }
                 }
             }
-            if (state in UploadContract.PRESENTED) runEntry { presentPrepared(state, clauseId, jobs, os) }
+            if (state in OsUploadQueueContract.PRESENTED) runEntry { presentPrepared(state, clauseId, jobs, os) }
             return Entered.Ready(
-                UploadUnderTest(
+                QueueUnderTest(
                     // The played OS is the system behind the queue; the clause sees the queue through its proxy.
-                    upload = os.recorded(log),
+                    queue = os.recorded(log),
                     base = BASE,
-                    usable = { UploadSource.Resource(StandInPhoto) },
-                    unusable = { UploadSource.Resource("not a photo") },
-                    ended = { emptyList<UploadJob>() },
+                    usable = { StandInPhoto },
+                    unusable = { NotAPhoto },
                     objects = os.objects,
                 ),
             )
@@ -97,60 +92,53 @@ class SimulatorUploadJobQueueContractTest {
     }
 
     /** Enters a presented state as the OS leaves it: the clause's transfer already settled. */
-    private suspend fun presentPrepared(state: UploadState, clauseId: String, jobs: SimulatorJobSets, os: PlayedOs) {
+    private suspend fun presentPrepared(
+        state: OsUploadQueueState,
+        clauseId: String,
+        jobs: SimulatorJobSets,
+        os: PlayedOs,
+    ) {
         val target = UploadTarget(
-            BASE + UploadContract.preparedRoute(clauseId, state),
-            mapOf("Content-Type" to UploadContract.CONTENT_TYPE),
+            BASE + OsUploadQueueContract.preparedRoute(clauseId, state),
+            mapOf("Content-Type" to UPLOAD_CONTENT_TYPE),
             TransferNetwork.ANY,
         )
-        check(
-            os.create(UploadSource.Resource(StandInPhoto), target, UploadContract.key(clauseId)) == UploadCreateOutcome.CREATED,
-        )
-        if (state == UploadState.PRESENTED_RETRY_SPENT) {
-            val offered = os.jobs(
-                UploadJobSet.RETRY_OFFERED,
-            ).first { it.destinationPath == destinationPathOf(target.url) }
+        check(os.create(StandInPhoto, target) == CreateOutcome.CREATED)
+        if (state == OsUploadQueueState.PRESENTED_RETRY_SPENT) {
+            val offered = os.retryOffered().first { it.destinationUrl?.let(::destinationPathOf) == destinationPathOf(target.url) }
             os.retry(offered, target)
         }
         check(jobs.createdThisCycle().isNotEmpty())
     }
 
     @Test
-    fun `the simulator upload-job substitute satisfies the Upload contract`() = verify(UploadContract, binding)
+    fun `the simulator upload-job substitute satisfies the OsUploadQueue contract`() =
+        verify(OsUploadQueueContract, binding)
 
     /**
      * The OS, played in memory: [queue] is the substitute under contract, and every job it creates or re-points is
      * settled at once, as its fixture route answers, into [jobs] — the sets the substitute reads.
      */
-    private class PlayedOs(private val queue: Upload, private val jobs: SimulatorJobSets) : Upload by queue {
+    private class PlayedOs(
+        private val queue: OsUploadQueue,
+        private val jobs: SimulatorJobSets,
+    ) : OsUploadQueue by queue {
         private val landed = mutableMapOf<String, Landed>()
         val objects = FixtureObjects { path -> landed[path] }
 
-        override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
-            queue.create(source, target, tag).also {
-                if (it == UploadCreateOutcome.CREATED) {
-                    settle(
-                        target,
-                        (source as? UploadSource.Resource)?.handle,
-                        retried = false,
-                    )
-                }
+        override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome =
+            queue.create(resource, target).also {
+                if (it == CreateOutcome.CREATED) settle(target, resource, retried = false)
             }
 
-        override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome {
+        override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
             val before = jobs.createdThisCycle().size
             return queue.retry(job, target).also {
-                if (jobs.createdThisCycle().size > before) {
-                    settle(
-                        target,
-                        (job.source as? UploadSource.Resource)?.handle,
-                        retried = true,
-                    )
-                }
+                if (jobs.createdThisCycle().size > before) settle(target, job.resource, retried = true)
             }
         }
 
-        private suspend fun settle(target: UploadTarget, resource: Any?, retried: Boolean) {
+        private suspend fun settle(target: UploadTarget, resource: GalleryResourceHandle?, retried: Boolean) {
             val path = destinationPathOf(target.url).removePrefix(BASE_PATH)
             val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value
             when (val answer = TransferFixture.answerOf(path)) {

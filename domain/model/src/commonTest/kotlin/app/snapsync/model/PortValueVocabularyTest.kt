@@ -44,17 +44,6 @@ class PortValueVocabularyTest {
     }
 
     @Test
-    fun `a change was applied or refused with the platform's code`() {
-        assertEveryCaseDistinct(listOf(ChangeOutcome.Applied, ChangeOutcome.Refused(3311, "denied"))) {
-            when (it) {
-                ChangeOutcome.Applied -> "Applied"
-                is ChangeOutcome.Refused -> "Refused"
-            }
-        }
-        assertValueEquality({ ChangeOutcome.Refused(3311, "denied") }, ChangeOutcome.Refused(null, "denied"))
-    }
-
-    @Test
     fun `a wake was scheduled refused with a detail or is unsupported`() {
         assertEveryCaseDistinct(
             listOf(ScheduleResult.Scheduled, ScheduleResult.Refused("too many"), ScheduleResult.Unsupported),

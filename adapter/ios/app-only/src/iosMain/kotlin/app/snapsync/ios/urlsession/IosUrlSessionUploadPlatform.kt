@@ -4,17 +4,12 @@ package app.snapsync.ios.urlsession
 
 import app.snapsync.ios.upload.uploadUrlRequest
 import app.snapsync.logging.invocation
-import app.snapsync.model.ChangeOutcome
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadJobState
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadSourceKind
-import app.snapsync.model.UploadTarget
-import app.snapsync.ports.Upload
-import app.snapsync.ports.UploadHandlers
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.Transfer
+import app.snapsync.ports.TransferHandlers
+import app.snapsync.ports.TransferSession
+import app.snapsync.ports.TransferSource
+import app.snapsync.ports.UploadTarget
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
@@ -23,15 +18,14 @@ import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
- * The app's uploader (every iOS version): the [Upload] port over a **background `URLSession`** — the OS-owned durable
+ * The app's uploader (every iOS version): the [TransferSession] port over a **background `URLSession`** — the OS-owned durable
  * queue the PhotoKit tier gets for free, reimplemented in the app process. (The session's binding is fixed per
  * compilation target; see [transferSessionConfiguration].)
  *
- * Thin since phase 11f. It uploads from a **file** ([accepts] is [UploadSourceKind.FILE]): the upload services export
- * the resource with the photo library's `export`, hand the file here, and delete it when the transfer ends. It reports
- * a transfer's end the moment iOS delivers it, through [UploadHandlers.onFinished], whose handler records it inline;
- * the in-flight limit is its own ([cap] live tasks), answered [UploadCreateOutcome.LIMIT_EXCEEDED]; it offers no free
- * retry and holds nothing to acknowledge.
+ * Thin. It uploads from a **file** ([takesResources] is false): the upload services export the resource with the photo
+ * library's `export`, hand the file here, and delete it when the transfer ends. It reports a transfer's end the moment
+ * iOS delivers it, through [TransferHandlers.onFinished], whose handler records it inline; the in-flight limit is its
+ * own ([cap] live tasks), answered [CreateOutcome.LIMIT_EXCEEDED].
  *
  * Correctness is **at-least-once**: keys are deterministic and the edge PUT is idempotent, so a re-send overwrites the
  * same object. The ledger is the only durable state; the `URLSession` task list is a transient executor, tagged with
@@ -39,7 +33,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * [UploadSessionApi] — the operating-system boundary, which a phone's relaunch is recorded at and replayed through.
  *
  * **What is tested and what is not.** How a delivered completion reads as a job state lives in `UrlSessionOutcome.kt`
- * and is exercised by `UrlSessionOutcomeTest`; the port's promises by `UploadContract`, live on the simulator app.
+ * and is exercised by `UrlSessionOutcomeTest`; the port's promises by `TransferSessionContract`, live on the simulator
+ * app.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosUrlSessionUploadPlatform internal constructor(
@@ -48,17 +43,16 @@ class IosUrlSessionUploadPlatform internal constructor(
     private val cap: Int,
     // The operating-system boundary; production always passes the real one.
     private val api: UploadSessionApi,
-) : Upload {
+) : TransferSession {
 
     constructor(log: Logger, sessionIdentifier: String, cap: Int = 4) :
         this(log, sessionIdentifier, cap, SystemUploadSessionApi(Logger.withTag("urlSessionUpload")))
 
-    override val accepts: UploadSourceKind = UploadSourceKind.FILE
-    override val acceptsFiles: Boolean = true
+    override val takesResources: Boolean = false
 
-    private val handlers = AtomicReference<UploadHandlers?>(null)
+    private val handlers = AtomicReference<TransferHandlers?>(null)
 
-    override fun listen(handlers: UploadHandlers) {
+    override fun listen(handlers: TransferHandlers) {
         this.handlers.store(handlers)
     }
 
@@ -97,37 +91,25 @@ class IosUrlSessionUploadPlatform internal constructor(
         Unit
     }
 
-    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
+    override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome =
         log.invocation("urlSession.create", params = "tag=$tag", result = { "$it" }) {
-            val file = (source as? UploadSource.File)?.path ?: run {
+            val file = (source as? TransferSource.File)?.path ?: run {
                 log.w { "create: this uploader sends a file, not a resource handle — not creating" }
-                return@invocation UploadCreateOutcome.FAILED
+                return@invocation CreateOutcome.FAILED
             }
             // The cap is measured against the SESSION's live tasks, not an in-process count — the OS owns the transfers
             // and they outlive us, so this is the only count that binds across a relaunch.
-            if (liveTasks().size >= cap) return@invocation UploadCreateOutcome.LIMIT_EXCEEDED
-            val url = NSURL.URLWithString(target.url) ?: return@invocation UploadCreateOutcome.FAILED
+            if (session.tasks().size >= cap) return@invocation CreateOutcome.LIMIT_EXCEEDED
+            val url = NSURL.URLWithString(target.url) ?: return@invocation CreateOutcome.FAILED
             // Tagged with the ledger key — the only field present across the lifecycle.
             session.upload(uploadUrlRequest(url, target), file, tag)
-            UploadCreateOutcome.CREATED
+            CreateOutcome.CREATED
         }
 
-    /** Only in-flight transfers are known here: a terminal one is reported as it ends, and none is offered a retry. */
-    override suspend fun jobs(set: UploadJobSet): List<UploadJob> = when (set) {
-        UploadJobSet.IN_FLIGHT -> liveTasks().map { task -> jobOf(task, UploadJobState.PENDING, NO_ERROR) }
-        UploadJobSet.RETRY_OFFERED, UploadJobSet.TERMINAL -> emptyList()
-    }
+    override suspend fun live(): List<Transfer> = session.tasks().map { Transfer(it, it.tag) }
 
-    override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome =
-        ChangeOutcome.Refused(null, "a URLSession upload has no free retry; a failure is re-created")
-
-    /** Nothing to acknowledge: a transfer's end is reported once, as it happens. */
-    override suspend fun acknowledge(job: UploadJob): ChangeOutcome = ChangeOutcome.Applied
-
-    override suspend fun cancel(job: UploadJob): ChangeOutcome {
-        val task = job.handle as? TransferTask ?: return ChangeOutcome.Refused(null, "not a URLSession task")
-        task.cancel()
-        return ChangeOutcome.Applied
+    override suspend fun cancel(transfer: Transfer) {
+        (transfer.handle as? TransferTask)?.cancel()
     }
 
     /**
@@ -139,29 +121,13 @@ class IosUrlSessionUploadPlatform internal constructor(
         when (val outcome = classifyUrlSessionCompletion(task.tag, statusCode, error)) {
             TaskCompletion.NoLedgerKey -> log.w { "upload task carried no description — nothing to record" }
             is TaskCompletion.Record -> {
-                val state = if (outcome.success) UploadJobState.SUCCEEDED else UploadJobState.FAILED
                 val registered = handlers.load()
                 if (registered == null) {
                     log.e { "upload ${outcome.key} ended before the composition listened — its outcome is not recorded" }
                 } else {
-                    registered.onFinished(jobOf(task, state, outcome.error))
+                    registered.onFinished(outcome.key, outcome.error)
                 }
             }
         }
     }
-
-    private fun jobOf(task: TransferTask, state: UploadJobState, error: UploadError?) = UploadJob(
-        handle = task,
-        tag = task.tag,
-        destinationPath = task.path,
-        contentType = null,
-        state = state,
-        error = error,
-        source = null,
-    )
-
-    private suspend fun liveTasks(): List<TransferTask> = session.tasks()
 }
-
-/** An in-flight task has no error yet. */
-private val NO_ERROR: UploadError? = null

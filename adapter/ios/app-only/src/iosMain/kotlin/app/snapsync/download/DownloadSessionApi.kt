@@ -5,9 +5,9 @@ import app.snapsync.ios.urlsession.MainThreadRelease
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry
-import app.snapsync.model.TransferOutcome
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
+import app.snapsync.ports.TransferOutcome
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi

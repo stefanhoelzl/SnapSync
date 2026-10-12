@@ -14,26 +14,27 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
+import app.snapsync.contracts.OsUploadQueueContract
+import app.snapsync.contracts.OsUploadQueueState
+import app.snapsync.contracts.QueueUnderTest
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Recording
-import app.snapsync.contracts.UploadContract
-import app.snapsync.contracts.UploadState
-import app.snapsync.contracts.UploadUnderTest
+import app.snapsync.contracts.UPLOAD_ACCEPT
+import app.snapsync.contracts.UPLOAD_CONTENT_TYPE
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.contracts.runEntry
+import app.snapsync.contracts.uploadTarget
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.deviceDiagnosticEnvironment
-import app.snapsync.model.TransferNetwork
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadJob
-import app.snapsync.model.UploadJobSet
-import app.snapsync.model.UploadSource
-import app.snapsync.model.UploadTarget
 import app.snapsync.model.destinationPathOf
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.UploadTarget
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
@@ -45,7 +46,7 @@ import platform.Photos.PHAssetResource
 import platform.Photos.PHFetchOptions
 
 /*
- * `UploadContract`'s PhotoKit bindings (`docs/architecture.md`): the real `IosPhotoKitUploadPlatform` recorded INSIDE
+ * `OsUploadQueueContract`'s PhotoKit bindings (`docs/architecture.md`): the real `IosPhotoKitUploadPlatform` recorded INSIDE
  * the upload extension on a device — the process production calls the job API from — and replayed on every CI build on
  * the simulator's test executable.
  *
@@ -68,23 +69,34 @@ import platform.Photos.PHFetchOptions
  */
 internal const val CONTRACT_UPLOAD_BASE: String = "http://127.0.0.1:18099/api/v2"
 
-internal const val EXTENSION_ONLY_PRESENTED =
-    "inside the upload extension a job is uploaded only after the process() call that created it returns, so a " +
-        "clause that creates a transfer and awaits it cannot pass within one call; the extension records the " +
-        "PRESENTED states, prepared across calls, and the simulator app's URLSession binding covers these"
+/**
+ * The states the extension records: a creation, at and below the limit, in one call each, and the PRESENTED states,
+ * prepared across calls. [OsUploadQueueState.ANY] asks the system nothing and runs in the simulator's test executable.
+ */
+internal val EXTENSION_RECORDED: Set<OsUploadQueueState> =
+    OsUploadQueueContract.PRESENTED + OsUploadQueueState.IDLE + OsUploadQueueState.AT_CAP
+
+internal const val NOT_RECORDED_IN_THE_EXTENSION =
+    "a queue that asks the system nothing runs in the simulator's test executable, not inside the extension"
+
+/**
+ * How many jobs entering [OsUploadQueueState.AT_CAP] makes before giving up on PhotoKit refusing one: its limit is
+ * declared nowhere, and found here by reaching it.
+ */
+private const val CAP_SEARCH_BOUND = 500
 
 /** The operating-system calls a presented state takes: its preparation calls, then the clause's own. */
-internal fun callsFor(state: UploadState): Int = when (state) {
-    UploadState.PRESENTED_SUCCEEDED, UploadState.PRESENTED_REFUSED_ONCE -> 2
-    UploadState.PRESENTED_RETRY_SPENT -> 3
+internal fun callsFor(state: OsUploadQueueState): Int = when (state) {
+    OsUploadQueueState.PRESENTED_SUCCEEDED, OsUploadQueueState.PRESENTED_REFUSED_ONCE -> 2
+    OsUploadQueueState.PRESENTED_RETRY_SPENT -> 3
     else -> 1
 }
 
 /** The target a presented state's prepared transfer is created (and retried) with. */
-private fun preparedTarget(clauseId: String, state: UploadState) =
+private fun preparedTarget(clauseId: String, state: OsUploadQueueState) =
     UploadTarget(
-        CONTRACT_UPLOAD_BASE + UploadContract.preparedRoute(clauseId, state),
-        mapOf("Content-Type" to UploadContract.CONTENT_TYPE),
+        CONTRACT_UPLOAD_BASE + OsUploadQueueContract.preparedRoute(clauseId, state),
+        mapOf("Content-Type" to UPLOAD_CONTENT_TYPE),
         TransferNetwork.ANY,
     )
 
@@ -92,50 +104,79 @@ private fun preparedTarget(clauseId: String, state: UploadState) =
  * Preparation call [call] (1-based, below [callsFor]) of [state]'s transfer, over [api]: call 1 creates it; call 2 of a
  * retry-spent state re-points its free retry to the identical destination, as production does.
  */
-internal fun prepareCall(state: UploadState, clauseId: String, call: Int, api: UploadJobApi, photo: Any) = runEntry {
-    val upload = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api)
+internal fun prepareCall(
+    state: OsUploadQueueState,
+    clauseId: String,
+    call: Int,
+    api: UploadJobApi,
+    photo: GalleryResourceHandle,
+) = runEntry {
+    val queue = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api)
     val target = preparedTarget(clauseId, state)
     when (call) {
-        1 -> check(
-            upload.create(UploadSource.Resource(photo), target, UploadContract.key(clauseId)) == UploadCreateOutcome.CREATED,
-        ) {
+        1 -> check(queue.create(photo, target) == CreateOutcome.CREATED) {
             "preparing $clauseId: the transfer was not created"
         }
         else -> {
             val destination = destinationPathOf(target.url)
             val offered =
                 checkNotNull(
-                    upload.jobs(UploadJobSet.RETRY_OFFERED).firstOrNull { it.destinationPath == destination },
+                    queue.retryOffered().firstOrNull { it.destinationUrl?.let(::destinationPathOf) == destination },
                 ) {
                     "preparing $clauseId: the refused transfer was not offered for its free retry"
                 }
-            upload.retry(offered, target)
+            queue.retry(offered, target)
         }
     }
 }
 
 /** The subject for [state]'s clause: the queue over [api], handed to the clause through its recording proxy over [log]. */
 internal fun photoKitUploadInState(
-    state: UploadState,
+    state: OsUploadQueueState,
     api: UploadJobApi,
     objects: FixtureObjects,
-    photo: Any,
+    photo: GalleryResourceHandle,
     log: CallLog,
     afterDispose: () -> Unit = {},
-): Entered<UploadUnderTest> {
-    if (state !in UploadContract.PRESENTED) return Entered.Unreachable(EXTENSION_ONLY_PRESENTED)
+): Entered<QueueUnderTest> {
+    if (state !in EXTENSION_RECORDED) return Entered.Unreachable(NOT_RECORDED_IN_THE_EXTENSION)
+    if (state == OsUploadQueueState.AT_CAP) {
+        val made = fillToTheLimit(IosPhotoKitUploadPlatform(Logger.withTag("contract"), api), photo)
+            ?: return Entered.Unreachable("PhotoKit made $CAP_SEARCH_BOUND jobs without refusing one: no limit reached")
+        Logger.withTag("contract").i { "PhotoKit's in-flight limit reached after $made job(s)" }
+    }
     return Entered.Ready(
-        UploadUnderTest(
-            upload = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api).recorded(log),
+        QueueUnderTest(
+            queue = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api).recorded(log),
             base = CONTRACT_UPLOAD_BASE,
-            usable = { UploadSource.Resource(photo) },
-            // A file, which the PhotoKit queue does not take: it uploads a library resource.
-            unusable = { key -> UploadSource.File("/not/a/photo/$key") },
-            ended = { emptyList<UploadJob>() },
+            usable = { photo },
+            // Not a PhotoKit resource, which is all the PhotoKit queue takes.
+            unusable = { object : GalleryResourceHandle {} },
             objects = objects,
         ),
         dispose = afterDispose,
     )
+}
+
+/**
+ * Make jobs of [photo] to accepting routes until PhotoKit refuses one for its limit; answers how many it made, or
+ * `null` when it never refused within [CAP_SEARCH_BOUND]. The jobs upload once the call returns, and the next upload
+ * cycle acknowledges them as routes no row maps to.
+ */
+private fun fillToTheLimit(queue: IosPhotoKitUploadPlatform, photo: GalleryResourceHandle): Int? {
+    var made = 0
+    var refused = false
+    runEntry {
+        while (!refused && made < CAP_SEARCH_BOUND) {
+            val route = OsUploadQueueContract.path("AT_CAP_DEFERS", UPLOAD_ACCEPT, n = made + 1)
+            when (queue.create(photo, uploadTarget(CONTRACT_UPLOAD_BASE, route))) {
+                CreateOutcome.CREATED -> made++
+                CreateOutcome.LIMIT_EXCEEDED -> refused = true
+                CreateOutcome.FAILED -> error("filling PhotoKit's limit: job ${made + 1} was refused outright")
+            }
+        }
+    }
+    return made.takeIf { refused }
 }
 
 /** The newest photo in the library, as the resource an upload job sends — reused, so a run seeds nothing. */
@@ -153,13 +194,20 @@ internal fun newestPhotoResource(): PHAssetResource {
  * The real PhotoKit queue inside the upload extension on a device, for the clause's LAST call: its preparation calls
  * were recorded by earlier calls, so the block is resumed, not opened. Replayed by `IosPhotoKitUploadReplayContractTest`.
  */
-internal class ExtensionPhotoKitUploadBinding(private val recorder: Recorder) : Binding<UploadState, UploadUnderTest> {
+internal class ExtensionPhotoKitUploadBinding(
+    private val recorder: Recorder,
+) : Binding<OsUploadQueueState, QueueUnderTest> {
     override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
     override val kind = BindingKind.Live
-    override val reaches =
-        setOf(UploadState.PRESENTED_SUCCEEDED, UploadState.PRESENTED_REFUSED_ONCE, UploadState.PRESENTED_RETRY_SPENT)
+    override val reaches = setOf(
+            OsUploadQueueState.IDLE,
+            OsUploadQueueState.AT_CAP,
+            OsUploadQueueState.PRESENTED_SUCCEEDED,
+            OsUploadQueueState.PRESENTED_REFUSED_ONCE,
+            OsUploadQueueState.PRESENTED_RETRY_SPENT,
+        )
 
-    override fun create(state: UploadState, clauseId: String, log: CallLog): Entered<UploadUnderTest> {
+    override fun create(state: OsUploadQueueState, clauseId: String, log: CallLog): Entered<QueueUnderTest> {
         // A state this host does not present: another platform's fact, or one no binding here enters.
         if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
         recorder.resume(clauseId)
@@ -189,9 +237,11 @@ internal sealed interface Step {
  * other than [CONTRACT_UPLOAD_BASE], or for a clause the extension does not record.
  */
 internal fun transferRunStep(clauseId: String, call: Int, tape: String?): Step {
-    val clause = UploadContract.clauses.firstOrNull { it.id == clauseId && it.state in UploadContract.PRESENTED }
+    val clause = OsUploadQueueContract.clauses.firstOrNull {
+        it.id == clauseId && it.state in EXTENSION_RECORDED
+    }
     val refused = when {
-        clause == null -> "no presented-state clause $clauseId in ${UploadContract.name}"
+        clause == null -> "no presented-state clause $clauseId in ${OsUploadQueueContract.name}"
         currentPhotoPermission() != LibraryGrant.GRANTED ->
             "the upload-job contract records under a full photo grant; this process holds ${currentPhotoPermission()}"
         bakedUploadBase() != CONTRACT_UPLOAD_BASE ->
@@ -203,15 +253,15 @@ internal fun transferRunStep(clauseId: String, call: Int, tape: String?): Step {
     if (call < callsFor(clause.state)) {
         if (call == 1) recorder.open(clauseId) else recorder.resume(clauseId)
         val api = RecordingUploadJobApi(SystemUploadJobApi(Logger.withTag("contract")), recorder)
-        prepareCall(clause.state, clauseId, call, api, newestPhotoResource())
+        prepareCall(clause.state, clauseId, call, api, PhotoKitResource(newestPhotoResource()))
         return Step.Continue(recorder.recording(emptyList()).render())
     }
     val results = run(single(clause), ExtensionPhotoKitUploadBinding(recorder))
     val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
     val header = listOf(
-        "contract" to UploadContract.name,
+        "contract" to OsUploadQueueContract.name,
         "host" to Host.IOS_DEVICE_PHOTOKIT_EXT.name,
-        "file" to "${UploadContract.name}@${Host.IOS_DEVICE_PHOTOKIT_EXT.name}.rec",
+        "file" to "${OsUploadQueueContract.name}@${Host.IOS_DEVICE_PHOTOKIT_EXT.name}.rec",
         "device" to env.deviceModel,
         "os" to env.osVersion,
         "build" to env.buildNumber,
@@ -222,11 +272,11 @@ internal fun transferRunStep(clauseId: String, call: Int, tape: String?): Step {
 }
 
 /** The contract reduced to [clause] — a staged run records one clause, alone in the OS queue. */
-private fun single(clause: Clause<UploadState, UploadUnderTest>) =
-    object : Contract<UploadState, UploadUnderTest>(UploadContract.name) {
+private fun single(clause: Clause<OsUploadQueueState, QueueUnderTest>) =
+    object : Contract<OsUploadQueueState, QueueUnderTest>(OsUploadQueueContract.name) {
         override val clauses = listOf(clause)
     }
 
 /** The clauses the extension records, one run each: every presented-state clause. */
 internal fun extensionTransferClauses(): List<String> =
-    UploadContract.clauses.filter { it.state in UploadContract.PRESENTED }.map { it.id }
+    OsUploadQueueContract.clauses.filter { it.state in EXTENSION_RECORDED }.map { it.id }

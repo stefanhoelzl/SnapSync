@@ -6,10 +6,11 @@ import app.snapsync.model.CycleResult
 import app.snapsync.model.invocation
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.gallery.GalleryDiscovery
+import app.snapsync.services.upload.Uploader
 
 /**
  * **The app's uploader**: the app-driven tier on every iOS version — the core tail's
- * units ② and ③ over the shared upload cycle, which `uploadCore` assembles over the app's own [AppPorts.appUpload]
+ * units ② and ③ over the shared upload cycle, which `uploadCore` assembles over the app's own [AppPorts.uploadSession]
  * (a background `URLSession` on iOS). On iOS ≥26.1 under a full grant it runs **beside** the extension, both writing
  * the one App-Group ledger — every write a guarded single transaction, and an overlap a duplicate upload of the same
  * object, never a loss (decision record `changes/both-uploaders-active`).
@@ -57,7 +58,7 @@ internal class AppUploader(private val core: AppCore) {
                 deviceIdentity = app.deviceIdentity,
                 host = build.uploadHost,
                 ledger = app.ledger,
-                upload = ports.appUpload,
+                uploader = Uploader.Session(ports.uploadSession),
                 gallery = ports.gallery,
                 // The walk memo, which answers an unchanged library, is the app uploader's alone; the extension
                 // walks bare.

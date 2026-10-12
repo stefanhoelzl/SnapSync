@@ -3,6 +3,7 @@ package app.snapsync.ios.urlsession
 import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry
 import app.snapsync.objc.objcBoundary
+import app.snapsync.ports.TransferHandle
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -51,12 +52,9 @@ internal interface UploadSession {
 }
 
 /** One of the session's transfers, as far as the uploader reads it. */
-internal interface TransferTask {
+internal interface TransferTask : TransferHandle {
     /** The ledger key it was created with — the one field present across its lifecycle. */
     val tag: String?
-
-    /** The path it was sent to. */
-    val path: String?
 
     fun cancel()
 }
@@ -97,7 +95,6 @@ private class SystemUploadSession(private val session: NSURLSession, private val
 
 private class SystemTransferTask(private val task: NSURLSessionTask) : TransferTask {
     override val tag: String? get() = task.taskDescription
-    override val path: String? get() = task.originalRequest?.URL?.path
 
     override fun cancel() = task.cancel()
 }

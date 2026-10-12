@@ -19,8 +19,8 @@ import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.StartResult
-import app.snapsync.model.TransferNetwork
+import app.snapsync.ports.StartResult
+import app.snapsync.ports.TransferNetwork
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout

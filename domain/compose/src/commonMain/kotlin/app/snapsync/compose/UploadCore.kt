@@ -13,7 +13,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.Upload
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendUploadRequests
 import app.snapsync.services.backend.ManifestPublisher
@@ -30,7 +29,8 @@ import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.settings.MobileDataSetting
-import app.snapsync.services.upload.UploadTransferService
+import app.snapsync.services.upload.TransferSetup
+import app.snapsync.services.upload.Uploader
 import co.touchlab.kermit.Logger
 
 /**
@@ -84,11 +84,11 @@ internal class UploadServices(
     val host: String,
     val ledger: LedgerService,
     /**
-     * This tier's uploader (`docs/architecture.md`, "Background execution"): the PhotoKit upload-job queue in the
-     * extension, the background `URLSession` in the app. What its jobs mean for the ledger is the upload service's,
-     * composed over it here.
+     * This tier's uploader (`docs/architecture.md`, "Background execution"): the OS's upload-job queue in the
+     * extension, the app's own session in the app. What its jobs mean for the ledger is the upload services', composed
+     * over it here.
      */
-    val upload: Upload,
+    val uploader: Uploader,
     /** The photo library — what exports a resource to a file for an uploader that sends files. */
     val gallery: GalleryReader,
     /**
@@ -164,21 +164,22 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
     // The read-discipline gate: the ONE shared assembly wraps the library reads, so every
     // tier and the world get the same walk-vs-snapshot decision — the cycle's, and the transfer's live-resource lookup.
     val library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope)
-    val transfer = UploadTransferService(
-        upload = ports.upload,
-        record = ports.ledger,
-        resources = library,
-        gallery = ports.gallery,
-        files = process.files,
-        network = ports.mobileData::transferNetwork,
-        sealing = UploadSealing(
-            ports.eventKeys,
-            FileCipher(process.crypto, process.files),
-            ports.config,
-            ports.deviceIdentity,
+    val transfer = ports.uploader.transferFor(
+        TransferSetup(
+            record = ports.ledger,
+            resources = library,
+            gallery = ports.gallery,
+            files = process.files,
+            network = ports.mobileData::transferNetwork,
+            sealing = UploadSealing(
+                ports.eventKeys,
+                FileCipher(process.crypto, process.files),
+                ports.config,
+                ports.deviceIdentity,
+            ),
+            log = ports.log,
+            entryContext = process.entryContext,
         ),
-        log = ports.log,
-        entryContext = process.entryContext,
     )
     // Constructed lazily so the device id resolves on first in-cycle use — after the gate's probe
     // has succeeded — never at composition time, where a locked device would throw out of assembly.

@@ -144,3 +144,12 @@ val RigState.health: SyncHealth? get() = joined?.health
 /** The primary upload key of an own photo [assetId] with the default capture name — what the backend lists. */
 fun primaryKey(assetId: String, filename: String = "IMG.JPG"): String =
     app.snapsync.model.uploadKey(AssetId(assetId), app.snapsync.model.ResourceRole.PRIMARY, filename)
+
+/**
+ * The OS's upload job for an own photo [assetId]'s primary: named by its destination's last two segments, as the OS
+ * keeps nothing else of what a job is for.
+ */
+fun primaryJob(assetId: String): String = "$assetId/primary"
+
+/** The photo an OS upload job ([primaryJob]) sends. */
+fun assetIdOfJob(job: String): AssetId = AssetId(job.substringBefore('/'))

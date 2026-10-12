@@ -1,9 +1,9 @@
 package app.snapsync.services.settings
 
 import app.snapsync.model.PrefRead
-import app.snapsync.model.TransferNetwork
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.TransferNetwork
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

@@ -5,9 +5,8 @@ import app.snapsync.ios.upload.CreatedUploadJob
 import app.snapsync.ios.upload.FinishedUploadJob
 import app.snapsync.ios.upload.SimulatorJobAction
 import app.snapsync.ios.upload.SimulatorUploadJobs
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJobState
-import kotlinx.serialization.SerialName
+import app.snapsync.ports.TransferFailure
+import app.snapsync.ports.UploadJobState
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -45,19 +44,15 @@ private val json = Json {
 private class FinishedJobRequest(
     /**
      * The destination URL the job was created (or re-pointed) with — a `created[].destination` from an earlier
-     * cycle's answer. The substitute resolves the ledger row by it, as the real adapter does.
+     * cycle's answer — the one fact the OS keeps for a job, which the upload services resolve its ledger row by.
      */
     val destination: String,
     /** `retry` or `acknowledge`. */
     val action: String,
     /** `succeeded` · `failed` · `cancelled` · `pending` · `registered`. */
     val state: String,
-    /** `network` · `cancelled` · `http` · `unknown`; absent for a success. */
+    /** What the OS says of the job's failure — `network`, `http:503`, anything; absent for a success or none said. */
     val error: String? = null,
-    /** The status for `error=http`. */
-    @SerialName("httpStatus") val httpStatus: Int? = null,
-    /** The detail for `error=unknown`. */
-    val detail: String? = null,
     /** The job's `Content-Type` — `created[].contentType` — as the OS keeps it on the job's request. */
     val contentType: String? = null,
 )
@@ -82,7 +77,7 @@ internal actual suspend fun beginUploadJobCycle(body: String?): String? {
             return """{"refused":"could not read the job sets","detail":"${failure.message}",""" +
                 """"shape":"{\\"finished\\":[{\\"destination\\":\\"…\\",\\"action\\":\\"retry|acknowledge\\",""" +
                 """\\"state\\":\\"succeeded|failed|cancelled|pending|registered\\",""" +
-                """\\"error\\":\\"network|cancelled|http|unknown\\"}],\\"jobLimit\\":N}"}""" + "\n"
+                """\\"error\\":\\"…\\"}],\\"jobLimit\\":N}"}""" + "\n"
         }
     val finished = mutableListOf<FinishedUploadJob>()
     for (job in request.finished) {
@@ -90,13 +85,12 @@ internal actual suspend fun beginUploadJobCycle(body: String?): String? {
             ?: return refusal("action", job.action, SimulatorJobAction.entries.map { it.name })
         val state = UploadJobState.entries.firstOrNull { it.name.equals(job.state, ignoreCase = true) }
             ?: return refusal("state", job.state, UploadJobState.entries.map { it.name })
-        val error = uploadError(job) ?: if (job.error == null) {
-            null
-        } else {
-            return refusal("error", job.error, listOf("network", "cancelled", "http", "unknown"))
-        }
         finished += FinishedUploadJob(
-            destination = job.destination, action = action, state = state, error = error, contentType = job.contentType,
+            destination = job.destination,
+            action = action,
+            state = state,
+            error = job.error?.let(::TransferFailure),
+            contentType = job.contentType,
         )
     }
     SimulatorUploadJobs.beginCycle(finished, jobLimit = request.jobLimit ?: Int.MAX_VALUE)
@@ -110,14 +104,6 @@ internal actual suspend fun beginUploadJobCycle(body: String?): String? {
  */
 private fun refusal(field: String, was: String, accepted: List<String>): String =
     """{"refused":"$field must be one of ${accepted.joinToString("|") { it.lowercase() }}, was '$was'"}""" + "\n"
-
-private fun uploadError(job: FinishedJobRequest): UploadError? = when (job.error?.lowercase()) {
-    "network" -> UploadError.Network
-    "cancelled" -> UploadError.Cancelled
-    "http" -> UploadError.Http(job.httpStatus ?: 500)
-    "unknown" -> UploadError.Unknown(job.detail ?: "stated by the control channel")
-    else -> null
-}
 
 /**
  * The jobs this cycle created, **with their destination URL and headers verbatim**.
@@ -135,7 +121,7 @@ internal actual suspend fun endUploadJobCycle(raw: Int): String {
 }
 
 private fun CreatedUploadJob.render(): String =
-    """{"key":${quote(key)},"destination":${quote(destination)},"contentType":${quote(contentType)},""" +
+    """{"destination":${quote(destination)},"contentType":${quote(contentType)},""" +
         """"isRetry":$isRetry,"headers":{${headers.entries.joinToString(",") {
             "${quote(it.key)}:${quote(it.value)}"
         }}}}"""

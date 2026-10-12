@@ -1,6 +1,6 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.ports.Upload
+import app.snapsync.ports.OsUploadQueue
 import co.touchlab.kermit.Logger
 
 /**
@@ -9,4 +9,4 @@ import co.touchlab.kermit.Logger
  * Every shipped binary — TestFlight, App Store, and every sideloaded dev build — compiles this actual and
  * only this one. The simulator substitute is not merely unused here; it is absent from the binary.
  */
-actual fun uploadJobQueue(log: Logger): Upload = IosPhotoKitUploadPlatform(log)
+actual fun uploadJobQueue(log: Logger): OsUploadQueue = IosPhotoKitUploadPlatform(log)

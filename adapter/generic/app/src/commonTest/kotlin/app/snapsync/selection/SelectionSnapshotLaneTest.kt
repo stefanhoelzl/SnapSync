@@ -87,14 +87,14 @@ class SelectionSnapshotLaneTest {
                     assetId = AssetId(it),
                     contentType = "image/heic",
                     metadata = emptyMap(),
-                    data = it,
+                    data = null,
                 )
             }
 
         fun change(id: String) = checkNotNull(onChange) { "not observing" }(id)
     }
 
-    private fun List<Resource>.ids() = map { it.data as String }
+    private fun List<Resource>.ids() = map { it.assetId.value }
 
     @Test
     fun rapid_changes_from_many_threads_emit_in_the_order_they_were_applied() = runTest {

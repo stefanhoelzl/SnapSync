@@ -94,7 +94,7 @@ object UploadExtensionRoot {
         // does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills the process. This
         // root is unchanged either way: it names the need, and the target answers it.
 
-        cycleUpload = lazy { uploadJobQueue(log) },
+        uploadQueue = lazy { uploadJobQueue(log) },
         // The same transport the app runs, over this process's own Darwin client.
         http = lazy { KtorHttpTransport(darwinHttpClient()) },
     )

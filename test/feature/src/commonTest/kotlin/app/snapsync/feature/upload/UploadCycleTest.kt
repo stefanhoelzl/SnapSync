@@ -10,6 +10,7 @@ import app.snapsync.model.Candidate
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.model.LibraryResource
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_IS_EDITED
@@ -25,7 +26,7 @@ import app.snapsync.model.SelectionRule
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadError
+import app.snapsync.model.UploadFailure
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
 import app.snapsync.model.candidatesFromResources
@@ -212,12 +213,12 @@ class UploadCycleTest {
             assetId = AssetId(assetId),
             contentType = "image/jpeg",
             metadata = mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE),
-            data = Unit,
+            data = Held,
         )
 
     /** A retry-spent failure — the only kind of job that still crosses the seam. */
-    private fun platformJob(key: String, error: UploadError? = null) =
-        PlatformUploadJob(key = key, contentType = "image/jpeg", error = error, data = Unit)
+    private fun platformJob(key: String, error: UploadFailure? = null) =
+        PlatformUploadJob(key = key, contentType = "image/jpeg", error = error, data = Held)
 
     /**
      * Seed a `COMPLETED` row — "these bytes are already stored". No production writer records that state
@@ -378,7 +379,7 @@ class UploadCycleTest {
         val platform = FakePlatform(
             discovered = listOf(resource("A-primary.heic")),
             succeeded = listOf("done-primary.heic"),
-            ackJobs = listOf(platformJob("spent-primary.heic", UploadError.Network)),
+            ackJobs = listOf(platformJob("spent-primary.heic", UploadFailure("network"))),
             ledger = backend,
         )
 
@@ -751,7 +752,7 @@ class UploadCycleTest {
     fun first_failure_retries_with_a_fresh_url_and_records_requested() = runTest {
         val backend = TestLedger().service
         LedgerWriter(backend).recordRequested(resource("a", "a"))
-        val job = platformJob("a", UploadError.Network)
+        val job = platformJob("a", UploadFailure("network"))
         val platform = FakePlatform(retryJobs = listOf(job))
 
         cycleOver(backend, platform).run()
@@ -770,7 +771,7 @@ class UploadCycleTest {
         // both records it makes are declined by the ledger's guard.
         val backend = TestLedger().service
         backend.resetTo(LEDGER_EVENT, listOf(LedgerEntry("a", AssetId("a"), LedgerState.COMPLETED)))
-        val job = platformJob("a", UploadError.Network)
+        val job = platformJob("a", UploadFailure("network"))
         val platform = FakePlatform(retryJobs = listOf(job))
 
         cycleOver(backend, platform).run()
@@ -784,7 +785,7 @@ class UploadCycleTest {
     fun retry_spent_failure_re_creates_from_the_job_resource_and_is_acknowledged() = runTest {
         val backend = TestLedger().service
         LedgerWriter(backend).recordRequested(resource("a", "a"))
-        val job = platformJob("a", UploadError.Network)
+        val job = platformJob("a", UploadFailure("network"))
         val platform = FakePlatform(ackJobs = listOf(job))
 
         val result = cycleOver(backend, platform).run()
@@ -801,7 +802,7 @@ class UploadCycleTest {
         LedgerWriter(backend).recordRequested(resource("b", "b"))
         val platform = FakePlatform(
             discovered = listOf(resource("a", "a"), resource("b", "b")),
-            ackJobs = listOf(platformJob("a", UploadError.Network), platformJob("b", UploadError.Network)),
+            ackJobs = listOf(platformJob("a", UploadFailure("network")), platformJob("b", UploadFailure("network"))),
             ledger = backend,
             limitAfter = 1,
         )
@@ -817,7 +818,8 @@ class UploadCycleTest {
     fun a_retry_spent_failure_without_its_resource_is_not_re_created() = runTest {
         val backend = TestLedger().service
         LedgerWriter(backend).recordRequested(resource("a", "a"))
-        val job = PlatformUploadJob(key = "a", contentType = "image/jpeg", error = UploadError.Network, data = null)
+        val job =
+            PlatformUploadJob(key = "a", contentType = "image/jpeg", error = UploadFailure("network"), data = null)
         // The platform is full, so the enqueue pass cannot re-create it from the ledger either.
         val platform =
             FakePlatform(
@@ -842,7 +844,7 @@ class UploadCycleTest {
         // Two uploaders can overlap: the other one's completion may have settled the row first.
         val backend = TestLedger().service
         backend.completed(resource("a", "a"))
-        val platform = FakePlatform(ackJobs = listOf(platformJob("a", UploadError.Network)), ledger = backend)
+        val platform = FakePlatform(ackJobs = listOf(platformJob("a", UploadFailure("network"))), ledger = backend)
 
         cycleOver(backend, platform).run()
         cycle(backend, platform, readGate = { CycleGate.Withheld(UploadConfig(TEST_HOST, TEST_EVENT)) }).run()
@@ -872,7 +874,7 @@ class UploadCycleTest {
     fun already_completed_re_handed_job_is_a_noop_acknowledge() = runTest {
         val backend = TestLedger().service
         backend.completed(resource("a", "a"))
-        val job = platformJob("a", UploadError.Network)
+        val job = platformJob("a", UploadFailure("network"))
         val platform = FakePlatform(ackJobs = listOf(job), ledger = backend)
 
         cycleOver(backend, platform).run()
@@ -1175,7 +1177,7 @@ class UploadCycleTest {
         // bare: never admitted, never deleted, pending forever.
         val backend = TestLedger().service
         val platform =
-            FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)), ledger = backend)
+            FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadFailure("network"))), ledger = backend)
 
         cycle(backend, platform, readGate = { CycleGate.Withheld(UploadConfig(TEST_HOST, TEST_EVENT)) }).run()
 
@@ -1188,7 +1190,7 @@ class UploadCycleTest {
     fun a_retry_spent_failure_for_a_deleted_row_is_not_re_created() = runTest {
         val backend = TestLedger().service
         val platform =
-            FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)), ledger = backend)
+            FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadFailure("network"))), ledger = backend)
 
         cycleOver(backend, platform).run()
 
@@ -1199,7 +1201,7 @@ class UploadCycleTest {
     @Test
     fun a_first_failure_for_a_deleted_row_is_not_retried() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(retryJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)))
+        val platform = FakePlatform(retryJobs = listOf(platformJob("gone-primary.heic", UploadFailure("network"))))
 
         cycleOver(backend, platform).run()
 
@@ -1211,7 +1213,7 @@ class UploadCycleTest {
     fun a_first_failure_for_a_present_row_is_still_retried() = runTest {
         val backend = TestLedger().service
         backend.inFlight("here-primary.heic", assetId = "here")
-        val platform = FakePlatform(retryJobs = listOf(platformJob("here-primary.heic", UploadError.Network)))
+        val platform = FakePlatform(retryJobs = listOf(platformJob("here-primary.heic", UploadFailure("network"))))
 
         cycleOver(backend, platform).run()
 
@@ -1352,7 +1354,7 @@ class UploadCycleTest {
     fun cap_during_re_create_still_walks_publishes_and_returns_processing() = runTest {
         val backend = TestLedger().service
         LedgerWriter(backend).recordRequested(resource("a", "a"))
-        val job = platformJob("a", UploadError.Network)
+        val job = platformJob("a", UploadFailure("network"))
         // The asset is still in the library: this is about the cap, not about a departed photo, whose row
         // would be deleted when its key failed to resolve.
         val platform = FakePlatform(discovered = listOf(resource("a", "a")), ackJobs = listOf(job), limitAfter = 0)
@@ -1519,7 +1521,7 @@ class UploadCycleTest {
         backend.completed(resource("a-primary.jpg", "a"))
         // A FAILED job whose key is already COMPLETED → the re-ack arm: skipped as settled.
         val platform = FakePlatform(
-            ackJobs = listOf(platformJob("a-primary.jpg", UploadError.Network)),
+            ackJobs = listOf(platformJob("a-primary.jpg", UploadFailure("network"))),
         )
         val order = mutableListOf<String>()
 
@@ -1538,7 +1540,7 @@ class UploadCycleTest {
             assetId = AssetId(assetId),
             contentType = "image/jpeg",
             metadata = mapOf(RESOURCE_META_CREATION_DATE to creationDate),
-            data = Unit,
+            data = Held,
         )
 
     private suspend fun cycleWithCutoff(
@@ -1648,7 +1650,7 @@ class UploadCycleTest {
             RESOURCE_META_IS_EDITED to adjusted.toString(),
             RESOURCE_META_PIXEL_AREA to (width * height).toString(),
         ),
-        data = Unit,
+        data = Held,
     )
 
     /**
@@ -2258,7 +2260,7 @@ class UploadCycleTest {
         val backend = TestLedger().service
         LedgerWriter(backend).recordRequested(datedResource("old-primary.heic", "2025-06-01T10:00:00Z", "old"))
         val platform = FakePlatform(
-            ackJobs = listOf(platformJob("old-primary.heic", UploadError.Network)),
+            ackJobs = listOf(platformJob("old-primary.heic", UploadFailure("network"))),
             ledger = backend,
             limitAfter = 0,
         )
@@ -2345,7 +2347,7 @@ class UploadCycleTest {
         library.forEach { LedgerWriter(backend).recordRequested(it) }
         val platform = FakePlatform(
             discovered = library,
-            ackJobs = library.map { platformJob(it.filename, UploadError.Network) },
+            ackJobs = library.map { platformJob(it.filename, UploadFailure("network")) },
             ledger = backend,
             limitAfter = 1,
         )
@@ -2366,7 +2368,7 @@ class UploadCycleTest {
         LedgerWriter(backend).recordRequested(resource("a"))
         val platform = FakePlatform(
             discovered = listOf(resource("a")),
-            ackJobs = listOf(platformJob("a", UploadError.Network)),
+            ackJobs = listOf(platformJob("a", UploadFailure("network"))),
             ledger = backend,
             failCreate = true,
         )
@@ -2377,4 +2379,7 @@ class UploadCycleTest {
         assertTrue(platform.created.isEmpty())
         assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "write-after-act: no REQUESTED without a job")
     }
+
+    /** The library's own resource a read photo carries — opaque here, as it is to the cycle. */
+    private object Held : LibraryResource
 }

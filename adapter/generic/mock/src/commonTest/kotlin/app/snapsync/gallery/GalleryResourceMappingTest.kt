@@ -24,6 +24,7 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.gallery.GalleryCandidateSource
+import app.snapsync.services.gallery.galleryHandle
 import app.snapsync.services.gallery.resourcesFrom
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -138,7 +139,7 @@ class GalleryResourceMappingTest {
     @Test
     fun the_platform_handle_rides_into_resource_data_uninterpreted() {
         val resources = resourcesFrom(listOf(LibraryAssets.photo("A")))
-        assertEquals(InMemoryResource(PlatformAssetId("A")), resources.single().data)
+        assertEquals(InMemoryResource(PlatformAssetId("A")), resources.single().data.galleryHandle())
     }
 
     @Test

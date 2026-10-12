@@ -251,7 +251,7 @@ object SnapSyncRoot {
         wake = lazy { wakeAdapter },
         extensionRegistry = lazy { extensionRegistry },
         gallery = lazy { gallery },
-        appUpload = lazy { uploadAdapter },
+        uploadSession = lazy { uploadAdapter },
         download = lazy { downloadAdapter },
         // The platform's own UI — the share sheet, the store link, the Settings page (:adapter:ios:app-only).
         systemUi = lazy { IosSystemUi() },

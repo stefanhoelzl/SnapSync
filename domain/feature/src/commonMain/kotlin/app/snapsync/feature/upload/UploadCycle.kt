@@ -11,7 +11,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SyncDecision
 import app.snapsync.model.SyncEvent
 import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadError
+import app.snapsync.model.UploadFailure
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.assetIdFromUploadKey
@@ -767,7 +767,7 @@ class UploadCycle(
      */
     private suspend fun adjudicateFailure(engine: SyncEngine, job: PlatformUploadJob): SyncDecision.Retry {
         val failed = reconstruct(job)
-        val error = job.error ?: UploadError.Unknown("unspecified")
+        val error = job.error ?: UploadFailure("unspecified")
         return engine.handle(SyncEvent.UploadFailed(failed, error))
     }
 
@@ -786,7 +786,7 @@ class UploadCycle(
             assetId = assetIdFromUploadKey(job.key),
             contentType = job.contentType,
             metadata = emptyMap(),
-            data = job.data ?: Unit, // engine [Resource.data] is non-null; payload unused for completion
+            data = job.data,
         )
         return UploadRequest(url = "", headers = emptyMap(), resource = resource)
     }

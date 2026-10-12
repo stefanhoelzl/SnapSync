@@ -7,13 +7,13 @@ import app.snapsync.model.CycleResult
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.TransferNetwork
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
+import app.snapsync.ports.TransferNetwork
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.wake.Heartbeat
 import app.snapsync.services.wake.WakeHold
