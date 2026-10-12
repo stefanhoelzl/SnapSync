@@ -54,13 +54,13 @@ import app.snapsync.device.IosDeviceConditions
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.DeviceConditions
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId

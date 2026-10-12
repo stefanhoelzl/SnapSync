@@ -33,10 +33,10 @@ import co.touchlab.kermit.Logger
 class AlbumCoordinator(
     private val manager: GalleryAlbums,
     private val store: AlbumMapService,
-    /** How the library holds an album — the gallery's own answer, fixed for the composition's life. */
-    private val kind: AlbumKind = AlbumKind.COLLECTION,
     private val log: Logger = Logger.withTag("AlbumCoordinator"),
 ) {
+    /** How the library holds an album — the gallery's own answer, fixed for the composition's life. */
+    private val kind: AlbumKind get() = manager.kind
 
     /**
      * Ensure [eventId]'s album exists and return its `localIdentifier` (or `null` on a creation failure

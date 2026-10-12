@@ -1,14 +1,15 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumRecord
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import kotlin.test.assertEquals
@@ -86,7 +87,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
 
     /** An album identifier no library holds. */
     private fun absentAlbumId(clauseId: String) =
-        "00000000-0000-4000-8000-${clauseId.length.toString().padStart(12, '0')}/L0/040"
+        PlatformAlbumId("00000000-0000-4000-8000-${clauseId.length.toString().padStart(12, '0')}/L0/040")
 
     override val clauses = clauses {
 
@@ -185,11 +186,15 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             "A_COLLECTION_LIBRARY_DECLARES_IT",
             GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
             covers = cells {
-                on<GalleryReader>().answers(GalleryReader::albumKind).with(AlbumKind.COLLECTION)
+                on<GalleryReader>().answers(GalleryReader::albumKind).with(LibraryAlbumKind.COLLECTION)
             },
         ) { seeded ->
             // What the core places in an album follows the kind: a collection library also takes the member's own photos.
-            assertEquals(AlbumKind.COLLECTION, seeded.port.albumKind, "a library whose albums are collections says so")
+            assertEquals(
+                LibraryAlbumKind.COLLECTION,
+                seeded.port.albumKind,
+                "a library whose albums are collections says so",
+            )
         }
 
         clause(
@@ -299,9 +304,9 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         ) { seeded ->
             val title = title("A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED")
             val id = assertNotNull(seeded.port.createAlbum(title))
-            val byId = assertIs<GalleryRead.Read<List<AlbumRecord>>>(seeded.port.albumsById(setOf(id)))
+            val byId = assertIs<GalleryRead.Read<List<GalleryAlbum>>>(seeded.port.albumsById(setOf(id)))
             assertEquals(listOf(id), byId.value.map { it.id })
-            val listed = assertIs<GalleryRead.Read<List<AlbumRecord>>>(seeded.port.albums())
+            val listed = assertIs<GalleryRead.Read<List<GalleryAlbum>>>(seeded.port.albums())
             assertTrue(listed.value.any { it.id == id && it.title == title }, "the album is listed under its title")
         }
 
@@ -407,7 +412,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             },
         ) { seeded ->
             val clauseId = "A_FOLDER_IS_A_LISTED_ALBUM_OF_ITS_ASSETS"
-            val listed = assertIs<GalleryRead.Read<List<AlbumRecord>>>(seeded.port.albums())
+            val listed = assertIs<GalleryRead.Read<List<GalleryAlbum>>>(seeded.port.albums())
             val album = assertNotNull(
                 listed.value.singleOrNull { it.title == title(clauseId) },
                 "the folder is listed once, under its own name: ${listed.value.map { it.title }}",

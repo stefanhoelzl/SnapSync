@@ -1,19 +1,19 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.LibraryAlbumKind
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -38,12 +38,12 @@ enum class FolderAlbumState {
 class FolderAlbums(
     val gallery: Gallery,
     val seeded: Set<PlatformAssetId>,
-    val ownFolder: AlbumId,
+    val ownFolder: PlatformAlbumId,
     val stage: () -> List<StagedResource>,
 )
 
 /**
- * What a [AlbumKind.FOLDER] gallery promises about the event album (decision record
+ * What a [LibraryAlbumKind.FOLDER] gallery promises about the event album (decision record
  * `changes/archive/2026-09-30-android-event-album` D2, D3, D6, D8) — this list IS the specification of those
  * obligations. The core
  * builds on each: an empty album that resolved would never read as deleted; a move that minted a new id would let echo
@@ -64,10 +64,14 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             "A_FOLDER_LIBRARY_DECLARES_IT",
             FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED,
             covers = cells {
-                on<GalleryReader>().answers(GalleryReader::albumKind).with(AlbumKind.FOLDER)
+                on<GalleryReader>().answers(GalleryReader::albumKind).with(LibraryAlbumKind.FOLDER)
             },
         ) { subject ->
-            assertEquals(AlbumKind.FOLDER, subject.gallery.albumKind, "a library whose albums are folders says so")
+            assertEquals(
+                LibraryAlbumKind.FOLDER,
+                subject.gallery.albumKind,
+                "a library whose albums are folders says so",
+            )
         }
 
         clause(
@@ -107,7 +111,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
                 subject.gallery.addToAlbum(album, subject.seeded),
                 "an empty album takes photos",
             )
-            val byId = assertIs<GalleryRead.Read<List<AlbumRecord>>>(subject.gallery.albumsById(setOf(album)))
+            val byId = assertIs<GalleryRead.Read<List<GalleryAlbum>>>(subject.gallery.albumsById(setOf(album)))
             assertEquals(listOf(album), byId.value.map { it.id })
             assertEquals(GalleryRead.Read(subject.seeded), subject.gallery.albumMembers(album, start(clauseId)))
         }
@@ -163,7 +167,7 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
             val ref = AssetRef(sourceDeviceId = "contract-device", sourceAssetId = AssetId(clauseId))
             val window = PhotoLibrary.window(name, clauseId)
-            val result = subject.gallery.import(ImportRequest(ref, subject.stage(), window.seedDate, album))
+            val result = subject.gallery.import(ImportRequest(ref, subject.stage(), window.seedDate, album.value))
             val id = assertIs<ImportOutcome.Imported>(result, "an ordinary photo imports").created
             val members = assertIs<GalleryRead.Read<Set<PlatformAssetId>>>(subject.gallery.albumMembers(album, null))
             assertEquals(setOf(id), members.value, "the received photo is in the album the moment it exists")

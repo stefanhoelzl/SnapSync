@@ -72,7 +72,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Found` | `:domain:services` | `:domain:services` Failed, Missing, OldSchema, Open | no |
 | `Gallery` | `:domain:ports` | `:adapter:android` AndroidGallery; `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery; `:test:contracts` GalleryProxy | yes |
 | `GalleryImport` | `:domain:ports` | `:adapter:generic:mock` NoImports; `:test:contracts` GalleryImportProxy, GalleryProxy; `:test:feature` FakeImporter, NoopImporter | yes |
-| `GalleryRead` | `:domain:model` | `:domain:model` NotReadable, Read | no |
+| `GalleryRead` | `:domain:ports` | `:domain:ports` NotReadable, Read | no |
 | `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Recording, RecordingAlbums; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:compose` FullGrant; `:domain:services` GrantOnlyReader, Library, RecordingLibrary, ScriptedGallery; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:feature` FakeAlbumManager, RecordingAlbumManager | yes |
 | `GalleryResourceHandle` | `:domain:ports` | `:adapter:android` MediaStoreResource; `:adapter:generic:mock` InMemoryResource; `:adapter:ios:ext-safe` PhotoKitResource; `:domain:services` KeyHandle, TestHandle; `:test:feature` TestPhoto | yes |
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |

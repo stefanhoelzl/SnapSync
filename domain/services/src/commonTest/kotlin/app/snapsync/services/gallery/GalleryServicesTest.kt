@@ -1,12 +1,8 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.CandidateRead
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
@@ -14,10 +10,14 @@ import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesOf
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -38,13 +38,13 @@ class GalleryServicesTest {
         var access: LibraryGrant = LibraryGrant.GRANTED,
         var readable: Boolean = true,
         var assets: List<GalleryAssetResources> = emptyList(),
-        var albums: List<AlbumRecord> = emptyList(),
-        var members: Map<AlbumId, Set<PlatformAssetId>> = emptyMap(),
-        var created: AlbumId? = "album-new",
+        var albums: List<GalleryAlbum> = emptyList(),
+        var members: Map<String, Set<PlatformAssetId>> = emptyMap(),
+        var created: String? = "album-new",
         var addOutcome: WriteOutcome = WriteOutcome.Ok,
     ) : GalleryReader {
         val calls = mutableListOf<String>()
-        val adds = mutableListOf<Pair<AlbumId, Set<PlatformAssetId>>>()
+        val adds = mutableListOf<Pair<String, Set<PlatformAssetId>>>()
 
         private fun <T> read(name: String, value: () -> T): GalleryRead<T> {
             calls += name
@@ -58,13 +58,16 @@ class GalleryServicesTest {
         override suspend fun resources(ids: Set<PlatformAssetId>) =
             read("resources(${ids.map { it.value }})") { assets.filter { it.asset.id in ids } }
         override suspend fun albums() = read("albums") { albums }
-        override suspend fun albumsById(ids: Set<AlbumId>) = read("albumsById") { albums.filter { it.id in ids } }
-        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) =
-            read("albumMembers($album)") { members[album].orEmpty() }
-        override val albumKind: AlbumKind = AlbumKind.COLLECTION
-        override suspend fun createAlbum(title: String): AlbumId? = created.also { calls += "createAlbum($title)" }
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
-            adds += album to assets
+        override suspend fun albumsById(
+            ids: Set<PlatformAlbumId>,
+        ) = read("albumsById") { albums.filter { it.id in ids } }
+        override suspend fun albumMembers(album: PlatformAlbumId, createdFrom: Instant?) =
+            read("albumMembers(${album.value})") { members[album.value].orEmpty() }
+        override val albumKind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION
+        override suspend fun createAlbum(title: String): PlatformAlbumId? =
+            created?.let(::PlatformAlbumId).also { calls += "createAlbum($title)" }
+        override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
+            adds += album.value to assets
             return addOutcome
         }
 
@@ -219,9 +222,10 @@ class GalleryServicesTest {
 
     @Test
     fun `an album is created resolves while it exists and not when unreadable`() = runTest {
-        val gallery = ScriptedGallery(albums = listOf(AlbumRecord("album-1", "Trip")))
+        val gallery = ScriptedGallery(albums = listOf(GalleryAlbum(PlatformAlbumId("album-1"), "Trip")))
         val albums = GalleryAlbums(gallery)
         assertEquals("album-new", albums.ensureCreated("Trip"))
+        assertEquals(null, GalleryAlbums(ScriptedGallery(created = null)).ensureCreated("Trip"), "a refused creation")
         assertTrue(albums.exists("album-1"))
         assertFalse(albums.exists("album-2"))
         gallery.readable = false
@@ -250,9 +254,9 @@ class GalleryServicesTest {
     fun `the denylist reads only the calibration’s albums matched trimmed and ignoring case`() = runTest {
         val gallery = ScriptedGallery(
             albums = listOf(
-                AlbumRecord("wa", "  whatsapp "),
-                AlbumRecord("tg", "TELEGRAM"),
-                AlbumRecord("trip", "Signal Hill Hike"),
+                GalleryAlbum(PlatformAlbumId("wa"), "  whatsapp "),
+                GalleryAlbum(PlatformAlbumId("tg"), "TELEGRAM"),
+                GalleryAlbum(PlatformAlbumId("trip"), "Signal Hill Hike"),
             ),
             members = mapOf(
                 "wa" to setOf(PlatformAssetId("A")),
@@ -279,10 +283,10 @@ class GalleryServicesTest {
             GalleryAlbums(ScriptedGallery(readable = false)).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff),
         )
         val membersUnreadable = object : GalleryReader by ScriptedGallery(
-            albums = listOf(AlbumRecord("wa", "WhatsApp")),
+            albums = listOf(GalleryAlbum(PlatformAlbumId("wa"), "WhatsApp")),
         ) {
             override suspend fun albumMembers(
-                album: AlbumId,
+                album: PlatformAlbumId,
                 createdFrom: Instant?,
             ): GalleryRead<Set<PlatformAssetId>> =
                 GalleryRead.NotReadable

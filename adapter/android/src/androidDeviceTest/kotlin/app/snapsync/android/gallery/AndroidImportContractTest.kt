@@ -28,7 +28,6 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
@@ -37,6 +36,7 @@ import app.snapsync.motionphoto.jpegXmp
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.motionphoto.motionPhotoStill
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
@@ -302,7 +302,7 @@ class AndroidImportContractTest {
 
     @Test
     fun `a received photo imported into an event album lands only in its folder — once`(): Unit = runBlocking {
-        val album = checkNotNull(gallery.createAlbum("import-contract-${System.nanoTime()}"))
+        val album = checkNotNull(gallery.createAlbum("import-contract-${System.nanoTime()}")).value
         albums += album
         val ref = ref("into-album")
         val result = gallery.import(
@@ -320,7 +320,7 @@ class AndroidImportContractTest {
 
     @Test
     fun `what a killed import into an album leaves is cleaned at the next import`(): Unit = runBlocking {
-        val album = checkNotNull(gallery.createAlbum("import-contract-${System.nanoTime()}"))
+        val album = checkNotNull(gallery.createAlbum("import-contract-${System.nanoTime()}")).value
         albums += album
         insertPending("killed-album.jpg", folder = album)
         gallery.import(

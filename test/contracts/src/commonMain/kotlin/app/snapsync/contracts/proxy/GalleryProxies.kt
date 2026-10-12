@@ -1,7 +1,6 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
-import app.snapsync.model.AlbumId
 import app.snapsync.model.ImportRequest
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
@@ -12,6 +11,7 @@ import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.SelectionSnapshot
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
@@ -30,12 +30,12 @@ internal class GalleryReaderProxy(private val inner: GalleryReader, log: CallLog
     override suspend fun assetsById(ids: Set<PlatformAssetId>) = r.answer("assetsById", inner.assetsById(ids))
     override suspend fun resources(ids: Set<PlatformAssetId>) = r.answer("resources", inner.resources(ids))
     override suspend fun albums() = r.answer("albums", inner.albums())
-    override suspend fun albumsById(ids: Set<AlbumId>) = r.answer("albumsById", inner.albumsById(ids))
-    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) =
+    override suspend fun albumsById(ids: Set<PlatformAlbumId>) = r.answer("albumsById", inner.albumsById(ids))
+    override suspend fun albumMembers(album: PlatformAlbumId, createdFrom: Instant?) =
         r.answer("albumMembers", inner.albumMembers(album, createdFrom))
     override val albumKind get() = r.answer("albumKind", inner.albumKind)
     override suspend fun createAlbum(title: String) = r.returns("createAlbum", inner.createAlbum(title))
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>) =
+    override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>) =
         r.answer("addToAlbum", inner.addToAlbum(album, assets))
     override suspend fun export(
         resource: GalleryResourceHandle,

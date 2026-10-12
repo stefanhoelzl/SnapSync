@@ -1,10 +1,6 @@
 package app.snapsync.ports
 
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetRef
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.WriteOutcome
 import kotlinx.coroutines.flow.StateFlow
@@ -60,39 +56,39 @@ interface GalleryReader : Port {
      * Every user-created album (never a system smart album, whose titles are localized). On Android an album is a
      * folder of the default gallery, titled by the folder's own name.
      */
-    suspend fun albums(): GalleryRead<List<AlbumRecord>>
+    suspend fun albums(): GalleryRead<List<GalleryAlbum>>
 
     /** The albums among [ids] that still resolve (the member may have deleted one). */
-    suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>>
+    suspend fun albumsById(ids: Set<PlatformAlbumId>): GalleryRead<List<GalleryAlbum>>
 
     /**
      * The assets in [album] captured at or after [createdFrom], or every member when it is null — a hint as
      * [AssetFilter]'s bounds are: an earlier member may come back, a later one never stays out. An unresolvable album
      * has no members.
      */
-    suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>>
+    suspend fun albumMembers(album: PlatformAlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>>
 
     /**
-     * How this library holds an album: a [AlbumKind.COLLECTION] an asset is added to, or the [AlbumKind.FOLDER] a
-     * file lives in. A fact of the platform, fixed for the adapter's life.
+     * How this library holds an album: a [LibraryAlbumKind.COLLECTION] an asset is added to, or the
+     * [LibraryAlbumKind.FOLDER] a file lives in. A fact of the platform, fixed for the adapter's life.
      */
-    val albumKind: AlbumKind
+    val albumKind: LibraryAlbumKind
 
     /**
      * Create an album titled [title] and return its id, or `null` when the platform refused — whatever the
-     * cause. Only the app creates albums (`AlbumCoordinator`). A [AlbumKind.FOLDER] album is a folder of its own:
-     * two albums of one title are two folders, and one does not [albumsById]-resolve until it holds a photo.
+     * cause. Only the app creates albums (`AlbumCoordinator`). A [LibraryAlbumKind.FOLDER] album is a folder of its
+     * own: two albums of one title are two folders, and one does not [albumsById]-resolve until it holds a photo.
      */
-    suspend fun createAlbum(title: String): AlbumId?
+    suspend fun createAlbum(title: String): PlatformAlbumId?
 
     /**
      * File [assets] into [album]. An id the library no longer holds is skipped, and adding an asset already in
-     * the album is a no-op. Under [AlbumKind.COLLECTION] an album that no longer resolves is [WriteOutcome.Failed].
-     * Under [AlbumKind.FOLDER] filing MOVES the file into the album's folder, keeping its id, and an album this
-     * library created takes photos while still empty; an asset the platform will not let this app move (one it did
-     * not save itself) is skipped, never asked about.
+     * the album is a no-op. Under [LibraryAlbumKind.COLLECTION] an album that no longer resolves is
+     * [WriteOutcome.Failed]. Under [LibraryAlbumKind.FOLDER] filing MOVES the file into the album's folder, keeping its
+     * id, and an album this library created takes photos while still empty; an asset the platform will not let this
+     * app move (one it did not save itself) is skipped, never asked about.
      */
-    suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome
+    suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>): WriteOutcome
 
     /**
      * Write [resource]'s bytes to the platform file [to] (a `Files.locate` answer), replacing whatever it held — for an

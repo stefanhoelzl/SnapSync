@@ -1,11 +1,11 @@
 package app.snapsync.mock
 
 import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.SelectionSnapshot
@@ -131,12 +131,12 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         state.locked { state.addedLog.filter { it.first == albumId }.flatMap { it.second } }
 
     /**
-     * The photos in the app's album [albumId]: under [AlbumKind.COLLECTION] every asset it was asked to add, in order
-     * ([assetsIn]); under [AlbumKind.FOLDER] the photos its folder holds now.
+     * The photos in the app's album [albumId]: under [LibraryAlbumKind.COLLECTION] every asset it was asked to add, in order
+     * ([assetsIn]); under [LibraryAlbumKind.FOLDER] the photos its folder holds now.
      */
     fun contentsOf(albumId: String): List<PlatformAssetId> = when (state.albumKind) {
-        AlbumKind.COLLECTION -> assetsIn(albumId)
-        AlbumKind.FOLDER -> {
+        LibraryAlbumKind.COLLECTION -> assetsIn(albumId)
+        LibraryAlbumKind.FOLDER -> {
             val held = state.library.value.mapTo(mutableSetOf()) { it.id }
             state.locked {
                 state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
@@ -151,13 +151,13 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     }
 
     /**
-     * The person deletes an album the app made: it no longer resolves. Under [AlbumKind.FOLDER] the folder goes with
+     * The person deletes an album the app made: it no longer resolves. Under [LibraryAlbumKind.FOLDER] the folder goes with
      * its photos, as a gallery app's folder delete does.
      */
     fun delete(albumId: String) {
         when (state.albumKind) {
-            AlbumKind.COLLECTION -> state.locked { state.deletedAlbums += albumId }
-            AlbumKind.FOLDER -> state.locked {
+            LibraryAlbumKind.COLLECTION -> state.locked { state.deletedAlbums += albumId }
+            LibraryAlbumKind.FOLDER -> state.locked {
                 val inside = state.folderOf.filterValues { it == albumId }.keys.toSet()
                 state.folderOf.keys.removeAll(inside)
                 state.library.update { library -> library.filterNot { it.id in inside } }
@@ -166,11 +166,11 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     }
 
     /**
-     * The person renames a [AlbumKind.FOLDER] album the app made in a gallery app: its photos move to a folder of the new
+     * The person renames a [LibraryAlbumKind.FOLDER] album the app made in a gallery app: its photos move to a folder of the new
      * name, still inside the SnapSync folder, and the album the app knows is left empty.
      */
     fun rename(albumId: String, newTitle: String) {
-        check(state.albumKind == AlbumKind.FOLDER) { "a collection album's title is not where its photos live" }
+        check(state.albumKind == LibraryAlbumKind.FOLDER) { "a collection album's title is not where its photos live" }
         state.locked {
             val renamed = "renamed-${state.albumCounter++}"
             state.created[renamed] = LibraryState.Album(newTitle)
@@ -178,7 +178,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         }
     }
 
-    /** The album folder [assetId] lives in under [AlbumKind.FOLDER], or `null` — the camera folder. */
+    /** The album folder [assetId] lives in under [LibraryAlbumKind.FOLDER], or `null` — the camera folder. */
     fun folderOf(assetId: PlatformAssetId): String? = state.locked { state.folderOf[assetId] }
 
     /** Every add waits until [releaseAdds]. Holding again while held changes nothing. */
@@ -201,10 +201,10 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     // ---- the platform -----------------------------------------------------------------------------
 
     /**
-     * How this library holds an album: an iPhone's [AlbumKind.COLLECTION] (the default) or an Android phone's
-     * [AlbumKind.FOLDER]. Set before composing to play an Android library.
+     * How this library holds an album: an iPhone's [LibraryAlbumKind.COLLECTION] (the default) or an Android phone's
+     * [LibraryAlbumKind.FOLDER]. Set before composing to play an Android library.
      */
-    var albumKind: AlbumKind by state::albumKind
+    var albumKind: LibraryAlbumKind by state::albumKind
 }
 
 /**
@@ -256,9 +256,9 @@ internal class LibraryState(
 
     @Volatile var byIdReadable = true
 
-    @Volatile var albumKind = AlbumKind.COLLECTION
+    @Volatile var albumKind = LibraryAlbumKind.COLLECTION
 
-    /** Under [AlbumKind.FOLDER], the app's album folder each photo in one lives in; a photo in none is in the camera folder. */
+    /** Under [LibraryAlbumKind.FOLDER], the app's album folder each photo in one lives in; a photo in none is in the camera folder. */
     val folderOf = mutableMapOf<PlatformAssetId, AlbumId>()
 
     /** What this library imported — the photos the app saved itself, which it may move. */

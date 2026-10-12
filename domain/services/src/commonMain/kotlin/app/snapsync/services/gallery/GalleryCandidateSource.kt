@@ -1,11 +1,11 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.model.CandidateRead
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.ResourceBatch
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromFacts
 import app.snapsync.model.grantsPhotoAccess
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 
 /**

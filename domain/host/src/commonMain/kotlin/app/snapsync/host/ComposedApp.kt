@@ -121,7 +121,7 @@ fun snapSyncHost(
             // Which build this is — the app menu's footer.
             build = process.buildLabel,
             // How this phone holds an event album — the photo library's own answer.
-            albumKind = ports.gallery.albumKind,
+            albumKind = core.albumKind,
             diagnostics = StatusDiagnostics(
                 log = { message -> log.i { message } },
                 // `Error`: the threshold at which a Kermit line becomes a crash-reporting event rather than a

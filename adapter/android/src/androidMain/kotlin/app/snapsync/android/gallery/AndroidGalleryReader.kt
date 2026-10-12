@@ -8,21 +8,21 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.AlbumRecord
 import app.snapsync.model.EntryScope
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import co.touchlab.kermit.Logger
@@ -45,9 +45,9 @@ import kotlin.time.Instant
  * - **Android does not say** that a photo is a screenshot, a screen recording, or edited: those facts read `false`
  *   (the screenshot and screen-recording folders are excluded as albums instead).
  *
- * **Its albums are folders** ([albumKind] is [AlbumKind.FOLDER]; `changes/archive/2026-09-30-android-event-album`
+ * **Its albums are folders** ([albumKind] is [LibraryAlbumKind.FOLDER]; `changes/archive/2026-09-30-android-event-album`
  * D2, D3, D6): a file lives in one folder, so the event album is a folder of its own, `DCIM/SnapSync/<name>/`, and its
- * [AlbumId] is that path. [createAlbum] picks a free one — numbered when another event, or a folder emptied earlier,
+ * [PlatformAlbumId] is that path. [createAlbum] picks a free one — numbered when another event, or a folder emptied earlier,
  * holds the name — and creates the directory, so two events never share one. An album resolves ([albumsById]) only
  * while its folder holds an item: an empty folder is no album in any gallery app. [addToAlbum] MOVES a row, keeping its
  * `_ID` (measured, API 30 and 36); the platform lets the app move only the rows it saved itself, and any other is
@@ -85,10 +85,10 @@ open class AndroidGalleryReader(
         readable { itemsById(ids).map { it.withResources() } }
 
     /** The folders the denylist matches — every folder of the default gallery, the event albums' included. */
-    override suspend fun albums(): GalleryRead<List<AlbumRecord>> = readable { buckets(Query()) }
+    override suspend fun albums(): GalleryRead<List<GalleryAlbum>> = readable { buckets(Query()) }
 
-    override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = readable {
-        val (folders, others) = ids.partition { DefaultGallery.isAlbumFolder(it) }
+    override suspend fun albumsById(ids: Set<PlatformAlbumId>): GalleryRead<List<GalleryAlbum>> = readable {
+        val (folders, others) = ids.map { it.value }.partition { DefaultGallery.isAlbumFolder(it) }
         val wanted = others.mapNotNull { it.toLongOrNull() }
         val buckets = if (wanted.isEmpty()) {
             emptyList()
@@ -97,10 +97,15 @@ open class AndroidGalleryReader(
                 Query("bucket_id IN (${wanted.joinToString(",")})"),
             )
         }
-        buckets + folders.filter { folder -> items(inFolder(folder)).isNotEmpty() }.map { AlbumRecord(it, folderName(it)) }
+        buckets + folders.filter { folder -> items(inFolder(folder)).isNotEmpty() }.map {
+            GalleryAlbum(PlatformAlbumId(it), folderName(it))
+        }
     }
 
-    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> = readable {
+    override suspend fun albumMembers(album: PlatformAlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> =
+        membersOf(album.value, createdFrom)
+
+    private suspend fun membersOf(album: String, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> = readable {
         val floor = createdFrom?.toEpochMilliseconds()
         val where = if (DefaultGallery.isAlbumFolder(album)) {
             inFolder(album)
@@ -113,18 +118,18 @@ open class AndroidGalleryReader(
         ).mapTo(mutableSetOf()) { it.assetId }
     }
 
-    override val albumKind: AlbumKind = AlbumKind.FOLDER
+    override val albumKind: LibraryAlbumKind = LibraryAlbumKind.FOLDER
 
-    override suspend fun createAlbum(title: String): AlbumId? = withContext(Dispatchers.IO) {
+    override suspend fun createAlbum(title: String): PlatformAlbumId? = withContext(Dispatchers.IO) {
         log.invocation(
             EntryScope.None,
             "gallery.createAlbum",
             params = "title=$title",
             result = { "$it" },
-        ) { newAlbum(title) }
+        ) { PlatformAlbumId(newAlbum(title)) }
     }
 
-    private fun newAlbum(title: String): AlbumId {
+    private fun newAlbum(title: String): String {
         val name = folderNameFor(title)
         val path = generateSequence(1) { it + 1 }
             .map { n -> "${DefaultGallery.ALBUM_ROOT}${if (n == 1) name else "$name ($n)"}/" }
@@ -139,7 +144,10 @@ open class AndroidGalleryReader(
         return path
     }
 
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome = withContext(
+    override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>): WriteOutcome =
+        moveInto(album.value, assets)
+
+    private suspend fun moveInto(album: String, assets: Set<PlatformAssetId>): WriteOutcome = withContext(
         Dispatchers.IO,
     ) {
         if (!DefaultGallery.isAlbumFolder(
@@ -226,10 +234,17 @@ open class AndroidGalleryReader(
             items(Query("_id IN (${chunk.joinToString(",")})"))
         }
 
-    private fun buckets(narrowing: Query): List<AlbumRecord> =
+    private fun buckets(narrowing: Query): List<GalleryAlbum> =
         items(
             narrowing,
-        ).mapNotNull { item -> item.bucketId?.let { AlbumRecord(it.toString(), item.bucketName.orEmpty()) } }
+        ).mapNotNull { item ->
+            item.bucketId?.let {
+                GalleryAlbum(
+                    PlatformAlbumId(it.toString()),
+                    item.bucketName.orEmpty(),
+                )
+            }
+        }
             .distinctBy { it.id }
 
     private fun query(collection: Uri, narrowing: Query): List<MediaItem> {

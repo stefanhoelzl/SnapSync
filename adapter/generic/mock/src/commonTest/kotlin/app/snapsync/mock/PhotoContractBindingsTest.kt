@@ -26,12 +26,13 @@ import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.AlbumKind
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -154,7 +155,7 @@ class PhotoContractBindingsTest {
         override fun create(state: FolderAlbumState, clauseId: String, log: CallLog): Entered<FolderAlbums> {
             val library = seededLibrary(FolderAlbumContract.name, clauseId)
             val mock = PhotoLibraryMock().apply {
-                operator.albumKind = AlbumKind.FOLDER
+                operator.albumKind = LibraryAlbumKind.FOLDER
                 operator.set(library.value)
             }
             val seeded = library.value.mapTo(linkedSetOf()) { it.id }
@@ -173,7 +174,9 @@ class PhotoContractBindingsTest {
                 )
             }
             // A photo in no album folder is in the camera folder ([PhotoLibraryMock.folderOf]).
-            return Entered.Ready(FolderAlbums(gallery, seeded, ownFolder = "DCIM/Camera/", stage = staged))
+            return Entered.Ready(
+                FolderAlbums(gallery, seeded, ownFolder = PlatformAlbumId("DCIM/Camera/"), stage = staged),
+            )
         }
     }
 

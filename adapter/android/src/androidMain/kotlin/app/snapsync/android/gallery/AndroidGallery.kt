@@ -8,12 +8,12 @@ import android.os.Looper
 import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant

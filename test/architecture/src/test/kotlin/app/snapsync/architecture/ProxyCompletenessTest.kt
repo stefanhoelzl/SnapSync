@@ -184,7 +184,7 @@ class ProxyCompletenessTest {
                     runTest { (call() as Flow<*>).first() }
                 }
                 else -> {
-                    answers[javaName(member)] = { valueOf(type, variant) }
+                    answers[javaName(member)] = { valueOf(type, variant, proxied = true) }
                     call()
                 }
             }
@@ -221,7 +221,7 @@ class ProxyCompletenessTest {
                 invokeFunction(action!!, member.parameters.first { it.name == p.param }.type, p.args!!)
             } else {
                 val type = member.returnType
-                handleAnswers[javaName(member)] = { valueOf(type, p.variant!!) }
+                handleAnswers[javaName(member)] = { valueOf(type, p.variant!!, proxied = true) }
                 callMember(wrapped, member)
             }
         }
@@ -409,7 +409,7 @@ class ProxyCompletenessTest {
                             } ?: emptyArray(),
                         )
                     } else {
-                        returns[method.name]?.let(::dummy) ?: Unit
+                        returns[method.name]?.let(::returned) ?: Unit
                     }
                 },
             )
@@ -421,11 +421,12 @@ class ProxyCompletenessTest {
             else -> "double"
         }
 
-        /** The value of [type] whose variant renders as [variant]. */
-        fun valueOf(type: KType, variant: String): Any? {
+        /** The value of [type] whose variant renders as [variant] — as a JDK proxy answers it when [proxied]. */
+        fun valueOf(type: KType, variant: String, proxied: Boolean = false): Any? {
             val k = type.classifier as? KClass<*>
             return when {
                 variant == "null" -> null
+                proxied && k != null && k.isValue -> returned(type)
                 variant == "true" || variant == "false" -> variant.toBoolean()
                 k != null && k.java.isEnum -> k.java.enumConstants.first { "${k.simpleName}.${(it as Enum<*>).name}" == variant }
                 k != null && k.isSealed -> PortGrid.leaves(
@@ -461,6 +462,15 @@ class ProxyCompletenessTest {
                 }
                 else -> instance(k)
             }
+        }
+
+        /**
+         * [dummy] as a JDK proxy returns it: a value class crosses the proxy's erased signature as its one field (a
+         * nullable value class over a reference included), so the caller unboxes nothing.
+         */
+        fun returned(type: KType): Any? {
+            val k = PortGrid.bindingFor(type).classifier as? KClass<*>
+            return if (k != null && k.isValue) dummy(k.primaryConstructor!!.parameters.single().type) else dummy(type)
         }
 
         fun instance(k: KClass<*>): Any = k.objectInstance ?: allocate(k.java)

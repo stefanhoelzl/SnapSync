@@ -13,11 +13,11 @@ import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EntryScope
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryRead
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PlannedAsset
@@ -28,8 +28,12 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.selectionPolicyFor
+import app.snapsync.ports.GalleryAlbum
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
@@ -60,6 +64,8 @@ class AlbumGatherTest {
         private val failingCall: Int? = null,
         /** Whether an album may be created — only the grant's ensure ([AlbumGather.onAccessChanged]) creates one. */
         private val creates: Boolean = false,
+        /** How the library holds an album: the one the coordinator reads through [GalleryAlbums]. */
+        override val albumKind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION,
     ) : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
         val calls = mutableListOf<List<PlatformAssetId>>()
         val created = mutableListOf<String>()
@@ -67,14 +73,14 @@ class AlbumGatherTest {
         /** When set, every add waits for it — a gather holding its lock. */
         var gate: CompletableDeferred<Unit>? = null
         val added: Set<AssetId> get() = calls.flatten().mapTo(mutableSetOf()) { it.assetId() }
-        override suspend fun createAlbum(title: String): AlbumId? {
+        override suspend fun createAlbum(title: String): PlatformAlbumId? {
             check(creates) { "the gather never creates an album" }
             created += title
-            return "CREATED-$title"
+            return PlatformAlbumId("CREATED-$title")
         }
-        override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
-            GalleryRead.Read(ids.map { AlbumRecord(it, "Trip") })
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
+        override suspend fun albumsById(ids: Set<PlatformAlbumId>): GalleryRead<List<GalleryAlbum>> =
+            GalleryRead.Read(ids.map { GalleryAlbum(it, "Trip") })
+        override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
             gate?.await()
             calls += assets.toList()
             if (calls.size == failingCall) error("boom")
@@ -101,7 +107,6 @@ class AlbumGatherTest {
         val manager: RecordingAlbumManager,
         granted: Boolean,
         scope: CoroutineScope,
-        kind: AlbumKind = AlbumKind.COLLECTION,
     ) {
         val config: ConfigService = configService(cfg)
         private val databases = inMemoryDatabases()
@@ -121,11 +126,7 @@ class AlbumGatherTest {
             },
             downloads = downloads,
             photoAccess = galleryAccess(grant),
-            coordinator = AlbumCoordinator(
-                GalleryAlbums(manager),
-                albums,
-                kind = kind,
-            ),
+            coordinator = AlbumCoordinator(GalleryAlbums(manager), albums),
             scope = scope,
             entryContext = EntryScope.None,
             batchSize = 2,
@@ -154,9 +155,9 @@ class AlbumGatherTest {
         cfg: EventConfig? = config(),
         failingCall: Int? = null,
         granted: Boolean = true,
-        kind: AlbumKind = AlbumKind.COLLECTION,
+        kind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION,
         creates: Boolean = false,
-    ) = Rig(cfg, RecordingAlbumManager(failingCall, creates), granted, this, kind)
+    ) = Rig(cfg, RecordingAlbumManager(failingCall, creates, kind), granted, this)
 
     @Test
     fun `a photo carried over from an earlier event is gathered when this window admits it`() = runTest {
@@ -203,7 +204,7 @@ class AlbumGatherTest {
         // `changes/archive/2026-09-30-android-event-album` D5: on Android the album is the folder received photos
         // live in, and gathering
         // moves them there; an own photo is the camera's file, never the app's to move.
-        val r = rig(kind = AlbumKind.FOLDER)
+        val r = rig(kind = LibraryAlbumKind.FOLDER)
         r.own("OWN", "2026-09-10T00:00:00Z")
         r.imported("PEER", "IN_UNION", "LOCAL-IN")
         r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER", eventId = "E1")
