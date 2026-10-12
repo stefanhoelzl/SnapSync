@@ -12,9 +12,11 @@ import platform.Foundation.NSUserDefaults
  * unlock with no accessibility class to get wrong.
  *
  * `UserDefaults` reports no failure on a read or a write: a missing key is `nil`, and a write is accepted into the
- * suite's in-memory copy and persisted by the OS. So this adapter answers [PrefRead.Unavailable] for a suite it could
- * not open and for a value of a kind it never writes, and [WriteOutcome.Failed] only for the suite — it has nothing
- * else to report, and says so here rather than inventing a failure it cannot observe.
+ * suite's in-memory copy and persisted by the OS. So this adapter answers [PrefRead.Unavailable] only for a value of a
+ * kind it never writes, and [set]/[remove] always answer [WriteOutcome.Ok] — it has nothing else to report, and says
+ * so here rather than inventing a failure it cannot observe. Opening the suite cannot fail either:
+ * `initWithSuiteName:` answers nil only for a reserved name (the app's own bundle identifier, `NSGlobalDomain`), and
+ * Kotlin/Native's constructor throws then rather than answering null.
  *
  * [suiteName] is the App Group in production; a test passes a suite of its own.
  */
@@ -23,29 +25,24 @@ class IosPreferences(suiteName: String) : Preferences {
     /** Production: the App Group's suite (a secondary constructor, not a default — `docs/architecture.md`). */
     constructor() : this(LEDGER_APP_GROUP)
 
-    private val defaults: NSUserDefaults? = NSUserDefaults(suiteName = suiteName)
-    private val unavailable = "UserDefaults suite '$suiteName' could not be opened"
+    private val defaults = NSUserDefaults(suiteName = suiteName)
 
-    override fun get(key: String): PrefRead {
-        val suite = defaults ?: return PrefRead.Unavailable(unavailable)
+    override fun get(key: String): PrefRead =
         // `objectForKey`, never `stringForKey`, which answers a number as its text: a value of a kind never written here
         // is unreadable, and never absent.
-        return when (val held = suite.objectForKey(key)) {
+        when (val held = defaults.objectForKey(key)) {
             null -> PrefRead.Absent
             is String -> PrefRead.Value(held)
             else -> PrefRead.Unavailable("'$key' holds a ${held::class.simpleName}, not a string")
         }
-    }
 
     override fun set(key: String, value: String): WriteOutcome {
-        val suite = defaults ?: return WriteOutcome.Failed(unavailable)
-        suite.setObject(value, forKey = key)
+        defaults.setObject(value, forKey = key)
         return WriteOutcome.Ok
     }
 
     override fun remove(key: String): WriteOutcome {
-        val suite = defaults ?: return WriteOutcome.Failed(unavailable)
-        suite.removeObjectForKey(key)
+        defaults.removeObjectForKey(key)
         return WriteOutcome.Ok
     }
 }
