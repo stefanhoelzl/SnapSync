@@ -146,32 +146,9 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             awaitWithin { subject.objects.landed(route) != null && subject.endsOf(key(id)).any { it } }
         }
 
-        clause(
-            "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE",
-            TransferSessionState.RESTRICTED_NETWORK,
-            landed,
-        ) {
+        heldUntilUnrestricted(TransferSessionState.RESTRICTED_NETWORK, landed, route = { id -> path(id, UPLOAD_ACCEPT) }) {
                 subject ->
-            val id = "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE"
-            val lift = assertNotNull(subject.liftRestriction, "a binding that reaches a restricted network can lift it")
-            val route = path(id, UPLOAD_ACCEPT)
-            assertEquals(
-                CreateOutcome.CREATED,
-                subject.session.create(
-                    subject.usable(key(id)),
-                    subject.target(route, TransferNetwork.UNRESTRICTED_ONLY),
-                    key(id),
-                ),
-                "a held transfer is still a transfer: the session keeps it until the network allows it",
-            )
-            heldSettle()
-            assertNull(
-                subject.objects.landed(route),
-                "a transfer held to unrestricted networks sends nothing on a restricted one",
-            )
-            assertTrue(subject.endsOf(key(id)).isEmpty(), "and it has not ended")
-            lift()
-            awaitWithin { subject.objects.landed(route) != null && subject.endsOf(key(id)).any { it } }
+            heldSession(subject)
         }
 
         clause("CREATE_KEEPS_CONTENT_TYPE", TransferSessionState.IDLE, created(CreateOutcome.CREATED)) { subject ->
@@ -273,8 +250,7 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             awaitWithin { subject.objects.landed(route) != null }
         }
 
-        clause(
-            "RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED",
+        relaunchHandedOverThenDrained(
             TransferSessionState.RELAUNCHED_WITH_EVENTS,
             covers = cells {
                 on<TransferSession> {
@@ -284,21 +260,8 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
                     handle<Completion>().answers(Completion::complete).returns()
                 }
             },
-        ) { subject ->
-            val id = "RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED"
-            val relaunch = assertNotNull(subject.relaunch, "a binding that reaches this state holds the relaunch")
-            relaunch.deliver()
-            awaitWithin { relaunch.drains() > 0 }
-            val completion = assertNotNull(
-                relaunch.handedOver().singleOrNull(),
-                "the relaunch's completion is handed over once: ${relaunch.handedOver().size}",
-            )
-            val ended = subject.ended().filter { it.tag == relaunchedTag(id) }
-            assertEquals(1, ended.size, "the transfer that ended while the app was gone is told once, before the drain")
-            assertNotNull(ended.single().failure, "a transfer the server refused is not a success")
-            completion.complete()
-            completion.complete()
-        }
+            tag = relaunchedTag("RELAUNCHED_EVENTS_ARE_HANDED_OVER_THEN_DRAINED"),
+        ) { subject -> relaunchedSession(subject) }
 
         clause(
             "REPORTS_AS_IT_HAPPENS_AN_END_REACHES_THE_HANDLER",
@@ -358,5 +321,35 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             transferSettle()
             assertTrue(subject.ended().none { it.tag == key(id, n = 2) }, "a transfer never made has no end to tell")
         }
+    }
+}
+
+/** The session as the shared hold clause drives it: a transfer's end is its told success and its bytes landed. */
+private fun heldSession(subject: SessionUnderTest): HeldSession {
+    val routes = mutableMapOf<String, String>()
+    return object : HeldSession {
+        override suspend fun start(route: String, tag: String, network: TransferNetwork): Boolean {
+            routes[tag] = route
+            return subject.session.create(subject.usable(tag), subject.target(route, network), tag) == CreateOutcome.CREATED
+        }
+
+        override suspend fun endOf(tag: String): Boolean? {
+            val ends = subject.endsOf(tag).ifEmpty { return null }
+            return ends.any { it } && routes[tag]?.let { subject.objects.landed(it) } != null
+        }
+
+        override val liftRestriction = subject.liftRestriction
+    }
+}
+
+/** The session the OS relaunched the app for: the binding holds what the port handed over until the clause releases. */
+private fun relaunchedSession(subject: SessionUnderTest): RelaunchedSession {
+    val relaunch = assertNotNull(subject.relaunch, "a binding that reaches this state holds the relaunch")
+    return object : RelaunchedSession {
+        override fun deliver() = relaunch.deliver()
+        override fun handedOver() = relaunch.handedOver().size
+        override fun drains() = relaunch.drains()
+        override fun toldTimes(tag: String) = subject.ended().count { it.tag == tag }
+        override fun release() = relaunch.handedOver().forEach { it.complete() }
     }
 }
