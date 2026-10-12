@@ -27,13 +27,13 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.AssetId
-import app.snapsync.model.RawAsset
-import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.ResourceKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
@@ -43,14 +43,14 @@ import kotlin.test.Test
 class PhotoContractBindingsTest {
 
     /** A library cell holding [SEED_COUNT] ordinary photos in [clauseId]'s window of [contract]. */
-    private fun seededLibrary(contract: String, clauseId: String): MutableStateFlow<List<RawAsset>> {
+    private fun seededLibrary(contract: String, clauseId: String): MutableStateFlow<List<GalleryAssetResources>> {
         val date = PhotoLibrary.window(contract, clauseId).seedDate
         return MutableStateFlow(
             (1..SEED_COUNT).map { n ->
-                RawAsset(
-                    assetId = AssetId("contract-$clauseId-$n"),
-                    creationDate = date,
-                    rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_000$n.JPG", Unit)),
+                LibraryAssets.photo(
+                    "contract-$clauseId-$n",
+                    date,
+                    resources = listOf(LibraryAssets.primaryResource("IMG_000$n.JPG")),
                 )
             },
         )
@@ -88,7 +88,7 @@ class PhotoContractBindingsTest {
                 )
             }
             val gallery = inMemoryGallery(library, access(state != GalleryReaderState.NO_GRANT)).recorded(log)
-            return Entered.Ready(SeededLibrary(gallery, library.value.mapTo(linkedSetOf()) { it.assetId }))
+            return Entered.Ready(SeededLibrary(gallery, library.value.mapTo(linkedSetOf()) { it.id }))
         }
     }
 
@@ -117,18 +117,18 @@ class PhotoContractBindingsTest {
             if (state == GalleryImportState.GRANTED_INVALID_STAGED) {
                 return Entered.Unreachable("an in-memory library holds no bytes, so it cannot find one undecodable")
             }
-            val library = MutableStateFlow<List<RawAsset>>(emptyList())
+            val library = MutableStateFlow<List<GalleryAssetResources>>(emptyList())
             val deliveries = ImportDeliveries()
             val importer = inMemoryGallery(library).recorded(log).apply { listen(deliveries.handlers) }
             val observed = object : ImportedLibrary {
-                override suspend fun captureDate(id: AssetId): String? =
-                    library.value.firstOrNull { it.facts.assetId == id }?.creationDate
+                override suspend fun captureDate(id: PlatformAssetId): String? =
+                    library.value.firstOrNull { it.id == id }?.asset?.created?.toString()
 
                 override val deliveries = deliveries
 
-                override suspend fun primaryFilename(id: AssetId): String? =
-                    library.value.firstOrNull { it.facts.assetId == id }
-                        ?.rawResources?.firstOrNull { it.role == ResourceRole.PRIMARY }?.originalFilename
+                override suspend fun primaryFilename(id: PlatformAssetId): String? =
+                    library.value.firstOrNull { it.id == id }
+                        ?.resources?.firstOrNull { it.kind == ResourceKind.PHOTO }?.originalFilename
             }
             val staged = {
                 listOf(
@@ -157,7 +157,7 @@ class PhotoContractBindingsTest {
                 operator.albumKind = AlbumKind.FOLDER
                 operator.set(library.value)
             }
-            val seeded = library.value.mapTo(linkedSetOf()) { it.assetId }
+            val seeded = library.value.mapTo(linkedSetOf()) { it.id }
             // The seeded photos are this app's own saves, as the emulator binding's are: the ones it may move.
             mock.state.ownImports += seeded
             val gallery = mock.port().recorded(log).apply { listen(ImportDeliveries().handlers) }
@@ -185,10 +185,10 @@ class PhotoContractBindingsTest {
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
             if (state !in reaches) return Entered.Unreachable("the double plays the full grant here")
             val library = seededLibrary(GalleryContract.name, clauseId)
-            val added = RawAsset(
-                assetId = AssetId("contract-$clauseId-change"),
-                creationDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate,
-                rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_0009.JPG", Unit)),
+            val added = LibraryAssets.photo(
+                "contract-$clauseId-change",
+                PhotoLibrary.window(GalleryContract.name, clauseId).seedDate,
+                resources = listOf(LibraryAssets.primaryResource("IMG_0009.JPG")),
             )
             return Entered.Ready(
                 GalleryChange(

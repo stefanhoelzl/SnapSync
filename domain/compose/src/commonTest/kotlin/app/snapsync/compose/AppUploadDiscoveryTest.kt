@@ -3,19 +3,20 @@ package app.snapsync.compose
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
-import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryRead
-import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.noContribution
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAsset
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.gallery.WalkMemoUse
@@ -66,16 +67,18 @@ class AppUploadDiscoveryTest {
     /** A library under a full grant whose reads the binding never makes: it asks only the grant. */
     private object FullGrant : GalleryReader {
         override fun access() = LibraryGrant.GRANTED
-        override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> = error("not used")
-        override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = error("not used")
-        override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = error("not used")
+        override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> = error("not used")
+        override suspend fun assetsById(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAsset>> = error("not used")
+        override suspend fun resources(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAssetResources>> = error(
+            "not used",
+        )
         override suspend fun albums(): GalleryRead<List<AlbumRecord>> = error("not used")
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = error("not used")
-        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> =
+        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> =
             error("not used")
         override val albumKind = AlbumKind.COLLECTION
         override suspend fun createAlbum(title: String): AlbumId? = error("not used")
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = error("not used")
-        override suspend fun export(resource: Resource, to: String): WriteOutcome = error("not used")
+        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome = error("not used")
+        override suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome = error("not used")
     }
 }

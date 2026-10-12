@@ -3,11 +3,8 @@ package app.snapsync.services.gallery
 import app.snapsync.model.AssetId
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.RawAsset
-import app.snapsync.model.RawResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.SelectionSnapshot
+import app.snapsync.ports.SelectionSnapshot
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.launch
@@ -29,11 +26,7 @@ import kotlin.test.assertTrue
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) // runCurrent
 class LatestSelectionTest {
 
-    private fun photo(id: String) = RawAsset(
-        assetId = AssetId(id),
-        creationDate = "2026-06-01T10:00:00Z",
-        rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG.JPG", Unit)),
-    )
+    private fun photo(id: String) = platformPhoto(id)
 
     @Test
     fun `an unread selection is unread under a partial grant and irrelevant under any other`() {

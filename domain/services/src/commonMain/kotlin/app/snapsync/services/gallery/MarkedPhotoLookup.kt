@@ -83,19 +83,19 @@ class MarkedPhotoLookup(
     private suspend fun fromLibrary(window: SelectionPolicy, filter: AssetFilter, known: Set<AssetId>): Map<String, AssetId>? {
         // The whole library (event albums' folders included, as every read now reads them).
         val facts = when (val read = gallery.assets(filter)) {
-            is GalleryRead.Read -> read.value
+            is GalleryRead.Read -> read.value.map { it.facts() }
             GalleryRead.NotReadable -> return null
         }
         // The reader may return more than the policy (it narrows only what the platform can express); the policy decides.
         val ids = facts.filter { it.assetId !in known && window.admits(it) }.mapTo(mutableSetOf()) { it.assetId }
         if (ids.isEmpty()) return emptyMap()
-        val assets = when (val read = gallery.resources(ids)) {
+        val assets = when (val read = gallery.resources(ids.mapTo(linkedSetOf()) { it.platformId() })) {
             is GalleryRead.Read -> read.value
             GalleryRead.NotReadable -> return emptyMap()
         }
         return assets.mapNotNull { asset ->
-            val primary = asset.rawResources.firstOrNull { it.role == ResourceRole.PRIMARY } ?: return@mapNotNull null
-            ReceivedPhotoName.tokenOf(primary.originalFilename)?.let { it to asset.assetId }
+            val primary = asset.resources.firstOrNull { it.kind.role() == ResourceRole.PRIMARY } ?: return@mapNotNull null
+            ReceivedPhotoName.tokenOf(primary.originalFilename)?.let { it to asset.asset.id.assetId() }
         }.toMap()
     }
 

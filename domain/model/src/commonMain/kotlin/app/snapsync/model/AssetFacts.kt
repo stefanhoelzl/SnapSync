@@ -17,9 +17,9 @@ package app.snapsync.model
  * "the admitted set" from one policy. The animated-image rule was exactly that fact, and it was removed for exactly
  * that reason.
  *
- * **The defaults describe an ordinary camera photo, deliberately** — the same reasoning `RawAsset`
- * carried. Every default lands on the *admitted* side of every rule, so a facts value assembled from
- * partial information admits on doubt rather than silently deleting a real photo. In particular
+ * **The defaults describe an ordinary camera photo, deliberately.** Every default lands on the *admitted* side of
+ * every rule, so a facts value assembled from partial information admits on doubt rather than silently deleting a
+ * real photo. In particular
  * [pixelArea] is `null` (unknown), never `0`: a zero area is *below* every floor, so defaulting to it
  * would exclude every asset whose dimensions were not carried.
  */
@@ -27,9 +27,9 @@ class AssetFacts(
     /**
      * The asset's canonical identity. Two selection rules match it against id sets produced by other code
      * paths — [SelectionRule.NotEcho] against the download importer's `createdLocalId`, and
-     * [SelectionRule.NotInDenylistedAlbum] against the album listing. Every one of those ids is an
-     * [AssetId], minted by the one platform mapping, so a producer that forgot to convert (the bug that once
-     * made both rules admit everything on device) no longer compiles.
+     * [SelectionRule.NotInDenylistedAlbum] against the album listing. Every one of those ids is an [AssetId],
+     * minted by the one encoding of the platform's id, so a producer that forgot to convert (the bug that once made
+     * both rules admit everything on device) no longer compiles.
      */
     val assetId: AssetId,
     val creationDate: CaptureDate,

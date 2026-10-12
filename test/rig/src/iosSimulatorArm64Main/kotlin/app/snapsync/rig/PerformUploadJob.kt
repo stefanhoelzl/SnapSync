@@ -2,10 +2,11 @@
 
 package app.snapsync.rig
 
-import app.snapsync.gallery.PhotoKitAssetIds
-import app.snapsync.gallery.photoKitResourceRole
+import app.snapsync.gallery.photoKitResourceKind
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.roleFromUploadKey
+import app.snapsync.services.gallery.platformId
+import app.snapsync.services.gallery.role
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -162,13 +163,13 @@ private suspend fun stageResource(resource: PHAssetResource, key: String): NSURL
  * for the same reason: a job reaches this verb as a plain key, because that is all the caller holds.
  */
 private fun resourceForKey(key: String): PHAssetResource? {
-    val localId = PhotoKitAssetIds.localIdentifierOf(assetIdFromUploadKey(key))
+    val localId = assetIdFromUploadKey(key).platformId().value
     val role = roleFromUploadKey(key)
     val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(localId), null).firstObject() as? PHAsset
         ?: return null
     return PHAssetResource.assetResourcesForAsset(asset)
         .filterIsInstance<PHAssetResource>()
-        .firstOrNull { photoKitResourceRole(it.type) == role }
+        .firstOrNull { photoKitResourceKind(it.type)?.role() == role }
 }
 
 private fun quote(value: String): String =

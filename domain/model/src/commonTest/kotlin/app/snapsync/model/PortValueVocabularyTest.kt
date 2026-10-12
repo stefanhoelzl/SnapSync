@@ -101,14 +101,12 @@ class PortValueVocabularyTest {
     }
 
     /**
-     * Holding the value IS the whole contract of these two: each is the platform's payload handed through untouched
-     * (an APNs/FCM dictionary, a selection's assets), read by the core and never compared.
+     * Holding the value IS the whole contract: the platform's payload (an APNs/FCM dictionary) handed through
+     * untouched, read by the core and never compared.
      */
     @Test
-    fun `a push message and a selection snapshot hand their payload through untouched`() {
+    fun `a push message hands its payload through untouched`() {
         val payload = mapOf<Any?, Any?>("seq" to 3)
         assertSame(payload, PushMessage(payload).payload)
-        val assets = emptyList<RawAsset>()
-        assertSame(assets, SelectionSnapshot(assets).assets)
     }
 }

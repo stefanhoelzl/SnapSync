@@ -74,11 +74,13 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `GalleryImport` | `:domain:ports` | `:adapter:generic:mock` NoImports; `:test:contracts` GalleryImportProxy, GalleryProxy; `:test:feature` FakeImporter, NoopImporter | yes |
 | `GalleryRead` | `:domain:model` | `:domain:model` NotReadable, Read | no |
 | `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Recording, RecordingAlbums; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:compose` FullGrant; `:domain:services` GrantOnlyReader, Library, RecordingLibrary, ScriptedGallery; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:feature` FakeAlbumManager, RecordingAlbumManager | yes |
+| `GalleryResourceHandle` | `:domain:ports` | `:adapter:android` MediaStoreResource; `:adapter:generic:mock` InMemoryResource; `:adapter:ios:ext-safe` PhotoKitResource; `:domain:services` KeyHandle, TestHandle; `:test:feature` TestPhoto | yes |
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
 | `HeadRead` | `:domain:model` | `:domain:model` Read, Refused | no |
 | `Hmac` | `:domain:model` | `:domain:model` Recording | no |
 | `HttpResult` | `:domain:model` | `:domain:model` Response, Unreachable | no |
 | `HttpTransport` | `:domain:ports` | `:adapter:generic:app` KtorHttpTransport; `:adapter:generic:mock` BackendRouter, FakeClient; `:domain:services` ScriptedTransport; `:test:architecture` Probe; `:test:contracts` HttpTransportProxy | yes |
+| `ImportOutcome` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
 | `ImportResult` | `:domain:model` | `:domain:model` Failed, Imported | no |
 | `ImportedAssetPresence` | `:domain:services` | `:adapter:generic:mock` UnknownPresence; `:domain:services` GalleryAssetPresence, PermissionAwareAssetPresence, RecordingLibrary; `:test:feature` CountingPresence, InMemoryAssetPresence | yes |
 | `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |

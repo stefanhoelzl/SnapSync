@@ -24,9 +24,9 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.UploadError
 import app.snapsync.model.encodeToJson
-import app.snapsync.model.resourcesFrom
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
@@ -35,6 +35,9 @@ import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.ledger.LEDGER_DB_NAME
+import app.snapsync.services.gallery.assetId
+import app.snapsync.services.gallery.resourcesFrom
+import app.snapsync.services.gallery.role
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
@@ -540,8 +543,8 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
                 return@RigCommand CommandResult.refused("no selection observer is open — the host was never assembled, so nothing would hear it")
             }
             val assets = params["assets"]?.split(',')?.filter { it.isNotBlank() }.orEmpty()
-            val wanted = assets.mapTo(mutableSetOf(), ::AssetId)
-            library.changeSelection(library.current().filter { it.assetId in wanted })
+            val wanted = assets.mapTo(mutableSetOf(), ::PlatformAssetId)
+            library.changeSelection(library.current().filter { it.asset.id in wanted })
             CommandResult.ok(buildJsonObject { putJsonArray("selected") { assets.forEach { add(JsonPrimitive(it)) } } }.toString())
         },
     ),
@@ -577,7 +580,7 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
         MockedSystem.LIBRARY,
         RigCommand { params, _ ->
             val id = params["id"] ?: return@RigCommand CommandResult.badRequest("id is required")
-            device.library.operator.remove(AssetId(id))
+            device.library.operator.remove(PlatformAssetId(id))
             CommandResult.ok(buildJsonObject { put("removed", id) }.toString())
         },
     ),
@@ -848,7 +851,7 @@ fun MockWorld.mockGalleryReader(): suspend (
         ),
         grant = { library.operator.access.name },
         census = {
-            val facts = library.operator.current().map { it.facts }
+            val facts = library.operator.current().map { it.asset }
             CensusView(
                 total = facts.size.toLong(),
                 screenshots = facts.count { it.isScreenshot }.toLong(),
@@ -914,16 +917,12 @@ private suspend fun MockWorld.addForeignDevice(
 
 /** Bytes of an own photo's resources land on the backend, and no acknowledgement reaches the app. */
 private suspend fun MockWorld.landBytesWithoutAck(assetId: String) {
-    val asset = device.library.operator.current().single { it.assetId == AssetId(assetId) }
-    asset.rawResources.forEach { raw ->
-        // Only a resource with an upload role is ever sent.
-        val role = raw.role ?: return@forEach
-        val key = uploadKey(asset.assetId, role, raw.originalFilename)
-        reach!!.upload(
-            ownDeviceId(),
-            asset.assetId,
-            ManifestResource(role, raw.mimeContentType, key, raw.originalFilename),
-        )
+    val asset = device.library.operator.current().single { it.asset.id == PlatformAssetId(assetId) }
+    val id = asset.asset.id.assetId()
+    for (resource in asset.resources) {
+        val role = resource.kind.role()
+        val key = uploadKey(id, role, resource.originalFilename)
+        reach!!.upload(ownDeviceId(), id, ManifestResource(role, resource.contentType, key, resource.originalFilename))
     }
 }
 

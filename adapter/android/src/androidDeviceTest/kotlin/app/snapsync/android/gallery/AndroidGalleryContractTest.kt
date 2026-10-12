@@ -28,12 +28,12 @@ import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.AssetId
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -69,7 +69,7 @@ class AndroidGalleryContractTest {
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
             val date = PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate
-            val ids: Set<AssetId> = when (state) {
+            val ids: Set<PlatformAssetId> = when (state) {
                 GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES ->
                     return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
                 GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED ->
@@ -113,7 +113,7 @@ class AndroidGalleryContractTest {
             }
             MediaStoreSeeder.grantFull()
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            val created = mutableSetOf<AssetId>()
+            val created = mutableSetOf<PlatformAssetId>()
             val date = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate
             val subject = GalleryChange(AndroidGallery(context, permission(), scope).recorded(log)) {
                 created += MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, date, count = 1)
@@ -134,7 +134,7 @@ class AndroidGalleryContractTest {
         override fun create(state: FolderAlbumState, clauseId: String, log: CallLog): Entered<FolderAlbums> {
             MediaStoreSeeder.grantFull()
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            val imported = mutableSetOf<AssetId>()
+            val imported = mutableSetOf<PlatformAssetId>()
             val gallery = AndroidGallery(context, permission(), scope).recorded(log).apply {
                 listen(
                     GalleryHandlers(

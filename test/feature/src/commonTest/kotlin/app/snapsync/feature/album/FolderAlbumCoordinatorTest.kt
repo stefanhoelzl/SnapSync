@@ -1,6 +1,7 @@
 package app.snapsync.feature.album
 
 import app.snapsync.feature.support.testShared
+import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
@@ -8,9 +9,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
-import app.snapsync.model.RawAsset
-import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.model.captureCeiling
@@ -19,8 +17,11 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.assetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -59,12 +60,12 @@ class FolderAlbumCoordinatorTest {
     private val coordinator = AlbumCoordinator(GalleryAlbums(gallery), store, kind = AlbumKind.FOLDER)
 
     /** A received photo, imported the way the download controller imports it: into [album], then settled. */
-    private suspend fun receive(name: String, album: AlbumId?): AssetId {
+    private suspend fun receive(name: String, album: AlbumId?): PlatformAssetId {
         val staged = StagedResource("k-$name", ResourceRole.PRIMARY.wire, "image/jpeg", "$name.JPG", "staged:/$name")
         val result = gallery.import(
             ImportRequest(AssetRef("other", AssetId(name)), listOf(staged), "2026-09-30T10:00:00Z", album),
         )
-        val id = assertIs<ImportResult.Imported>(result).createdLocalId
+        val id = assertIs<ImportOutcome.Imported>(result).created
         album?.let { coordinator.onImportedInto(event, it) }
         return id
     }
@@ -124,18 +125,18 @@ class FolderAlbumCoordinatorTest {
     @Test
     fun `own photos are never placed — and received ones are moved in`() = runTest {
         val album = assertNotNull(ensure())
-        val own = AssetId("camera-1")
+        val own = PlatformAssetId("camera-1")
         library.operator.add(
-            RawAsset(
-                own,
+            LibraryAssets.photo(
+                own.value,
                 "2026-09-30T10:00:00Z",
-                listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_1.JPG", Unit)),
+                resources = listOf(LibraryAssets.primaryResource("IMG_1.JPG")),
             ),
         )
         val received = receive("R1", album = null)
 
-        coordinator.place(event, listOf(own))
-        coordinator.placeReceived(event, listOf(received))
+        coordinator.place(event, listOf(own.assetId()))
+        coordinator.placeReceived(event, listOf(received.assetId()))
 
         assertNull(library.operator.folderOf(own), "the member's own photo stays in the camera folder")
         assertEquals(album, library.operator.folderOf(received), "the received photo moved into the album")
@@ -161,7 +162,7 @@ class FolderAlbumCoordinatorTest {
 
     @Test
     fun `filing nothing or filing with no album yet fills nothing`() = runTest {
-        coordinator.placeReceived(event, listOf(receive("R1", album = null)))
+        coordinator.placeReceived(event, listOf(receive("R1", album = null).assetId()))
         assertFalse(store.filled(event), "no album was ever created")
 
         assertNotNull(ensure())

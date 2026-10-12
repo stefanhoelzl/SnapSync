@@ -11,6 +11,7 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
+import app.snapsync.mock.id
 import app.snapsync.model.AssetId
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.DeviceManifest
@@ -20,7 +21,6 @@ import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.RawAsset
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.StoreKind
@@ -33,9 +33,14 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.ExpiringCompletion
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
+import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
+import app.snapsync.services.gallery.assetId
+import app.snapsync.services.gallery.role
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
@@ -178,7 +183,7 @@ class WorldInspectorController(
 
     fun addAsset() = addOwn(LibraryAssets.photo("own-${ownAssetSeq++}"))
 
-    fun removeAsset(assetId: String) = launchMutation { mocks.library.operator.remove(AssetId(assetId)) }
+    fun removeAsset(assetId: String) = launchMutation { mocks.library.operator.remove(PlatformAssetId(assetId)) }
 
     // Selection policy: an asset the policy decides on — most it EXCLUDES, so the operator
     // can watch it land in the gallery and then *not* upload and *not* enter the union, and see that N does not inflate.
@@ -191,10 +196,10 @@ class WorldInspectorController(
         mocks.library.operator.placeIn("WhatsApp", id)
     }
 
-    private fun addOwn(asset: RawAsset) = launchMutation { addToLibrary(asset) }
+    private fun addOwn(asset: GalleryAssetResources) = launchMutation { addToLibrary(asset) }
 
-    private fun addToLibrary(asset: RawAsset) {
-        ownAssetIds += asset.assetId.value
+    private fun addToLibrary(asset: GalleryAssetResources) {
+        ownAssetIds += asset.id.value
         mocks.library.operator.add(asset)
     }
 
@@ -293,9 +298,13 @@ class WorldInspectorController(
     fun presetReprovisionDedup() = installFresh("re-provision (dedup)") {
         val photo = LibraryAssets.photo("own-a1")
         addToLibrary(photo)
-        photo.rawResources.forEach { raw ->
-            val role = raw.role ?: return@forEach
-            mocks.backend.operator.deposit(mocks.ownDeviceId, photo.assetId, role, raw.originalFilename)
+        photo.resources.forEach { resource ->
+            mocks.backend.operator.deposit(
+                mocks.ownDeviceId,
+                photo.id.assetId(),
+                resource.kind.role(),
+                resource.originalFilename,
+            )
         }
         joinNewEvent()
     }
@@ -443,9 +452,9 @@ class WorldInspectorController(
         val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted
         val galleryRows = library.current().map {
             GalleryRow(
-                it.assetId.value,
-                imported = it.assetId.value !in ownAssetIds,
-                policyExcluded = it.assetId in policyExcluded,
+                it.id.value,
+                imported = it.id.value !in ownAssetIds,
+                policyExcluded = it.id.assetId() in policyExcluded,
             )
         }
         val backend = (listOf(mocks.ownDeviceId) + injectedDeviceIds).map { id ->
@@ -550,7 +559,7 @@ private const val ENUMERATION = "enumeration"
 val HOLDS: List<String> = BackendCall.entries.map { it.key } + ENUMERATION
 
 /** The assets the selection policy decides on, as the inspector adds them. */
-enum class PolicyAsset(val label: String, val prefix: String, val build: (String) -> RawAsset) {
+enum class PolicyAsset(val label: String, val prefix: String, val build: (String) -> GalleryAssetResources) {
     SCREENSHOT("+ Screenshot", "shot", { LibraryAssets.screenshot(it) }),
     SCREEN_RECORDING("+ Screen rec", "rec", { LibraryAssets.screenRecording(it) }),
     GIF("+ GIF", "gif", { LibraryAssets.gif(it) }),

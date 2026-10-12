@@ -1,17 +1,16 @@
 package app.snapsync.download
 
 import app.snapsync.gallery.Iso8601
-import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.ios.qos.qosLabel
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.PlatformAssetId
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -60,7 +59,7 @@ internal class IosPhotoLibraryImporter(
 
     private val livePhotos = LivePhotoFromMotionPhoto(log)
 
-    suspend fun import(request: ImportRequest, handlers: GalleryHandlers): ImportResult {
+    suspend fun import(request: ImportRequest, handlers: GalleryHandlers): ImportOutcome {
         val ref = request.ref
         // A received Android motion photo becomes a Live Photo (decision record
         // `changes/archive/2026-10-01-live-motion-unification` D4/D5): its still and video are built beside the staged original, never
@@ -70,8 +69,8 @@ internal class IosPhotoLibraryImporter(
         livePhotoOf(request)?.let { pair ->
             try {
                 val paired = commit(request, pair.resources, handlers)
-                if (paired is ImportResult.Imported) return paired
-                val reason = (paired as ImportResult.Failed).message
+                if (paired is ImportOutcome.Imported) return paired
+                val reason = (paired as ImportOutcome.Failed).message
                 log.w { "${ref.sourceAssetId}: Photos refused the Live Photo ($reason) — imported as its still" }
             } finally {
                 pair.delete()
@@ -87,7 +86,7 @@ internal class IosPhotoLibraryImporter(
             }
         }
         if (typed.isEmpty()) {
-            return ImportResult.Failed("no importable resources for ${ref.sourceAssetId}")
+            return ImportOutcome.Failed("no importable resources for ${ref.sourceAssetId}")
                 .also { handlers.onImportSettled(ref, it) }
         }
         return commit(request, typed, handlers)
@@ -109,7 +108,7 @@ internal class IosPhotoLibraryImporter(
         request: ImportRequest,
         typed: List<Triple<Long, String, String>>,
         handlers: GalleryHandlers,
-    ): ImportResult {
+    ): ImportOutcome {
         val ref = request.ref
         val creationDate = request.creationDate
         val album = request.album
@@ -170,7 +169,7 @@ internal class IosPhotoLibraryImporter(
                         objcBoundary(
                             log,
                             "import.settle",
-                            ImportResult.Failed(
+                            ImportOutcome.Failed(
                                 "the import's completion threw (logged above)",
                                 consumedResources = success,
                             ),
@@ -211,7 +210,7 @@ internal class IosPhotoLibraryImporter(
 
     /** What the change block learned about the asset it asked for, read by the completion. */
     private class CreatedAsset {
-        var localId: AssetId? = null
+        var localId: PlatformAssetId? = null
     }
 
     /** The change block's body: request the asset, write its marker, and file it in the event album. */
@@ -275,12 +274,8 @@ internal class IosPhotoLibraryImporter(
         // INSIDE the block: capture + record the suppression handle before the commit is
         // observable, so the upload extension never re-uploads this asset.
         val placeholder = request.placeholderForCreatedAsset
-        val raw = placeholder?.localIdentifier
-        // The SAME mapping the gallery reader mints ids with, or the discovered asset never meets this
-        // createdLocalId and the echo re-uploads. A placeholder with no canonical id records no marker;
-        // the error line is what says so.
-        val id = raw?.let(PhotoKitAssetIds::assetIdOf)
-        if (raw != null && id == null) log.e { "import: placeholder '$raw' has no canonical id — no suppression marker" }
+        // The SAME id the gallery reader hands out, or the discovered asset never meets this marker and re-uploads.
+        val id = placeholder?.localIdentifier?.let(::PlatformAssetId)
         if (id != null) {
             created.localId = id
             // The marker, synchronously, on this thread — before the commit is observable. A row pruned out
@@ -304,7 +299,7 @@ internal class IosPhotoLibraryImporter(
         success: Boolean,
         error: NSError?,
         created: CreatedAsset,
-    ): ImportResult {
+    ): ImportOutcome {
         // The commit's own verdict, logged before it is interpreted: a failed commit and a missing placeholder both
         // reduce to one `Failed`, and only this line tells them apart after the fact.
         val id = created.localId
@@ -319,12 +314,12 @@ internal class IosPhotoLibraryImporter(
             // identifier, purely to log its stored creation date — costing ~35 ms of synchronous library work
             // per import for a diagnostic line no decision reads. The commit verdict above still names the
             // created identifier, which is what that line carried besides the date.
-            ImportResult.Imported(id)
+            ImportOutcome.Imported(id)
         } else {
             // THE MIRROR of the in-block write: the library has stated that this
             // change failed, so the marker points at an asset that does not exist. The failure carries it, and the
             // settle clears it — or the row is skipped as "already created" on every future pass.
-            ImportResult.Failed(
+            ImportOutcome.Failed(
                 message = error?.localizedDescription ?: "performChanges failed / no placeholder",
                 consumedResources = consumedResources(error),
                 placeholder = id,

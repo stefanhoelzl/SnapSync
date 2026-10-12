@@ -11,13 +11,13 @@ import app.snapsync.model.BeforeListen
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
-import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.SelectionSnapshot
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,7 +64,7 @@ class AndroidGallery(
         scope.launch {
             reads.receiveAsFlow().collect {
                 if (observer == null) return@collect
-                val snapshot = readable { items(Query()).map { it.rawAsset() } }
+                val snapshot = readable { items(Query()).map { it.withResources() } }
                 if (snapshot is GalleryRead.Read) read.value = SelectionSnapshot(snapshot.value)
             }
         }
@@ -82,9 +82,9 @@ class AndroidGallery(
 
     override suspend fun widenSelection(): LibraryGrant = permission.widenSelection()
 
-    override suspend fun import(request: ImportRequest): ImportResult {
+    override suspend fun import(request: ImportRequest): ImportOutcome {
         val handlers = handlers.orNull("the import of ${request.ref.sourceAssetId}")
-            ?: return ImportResult.Failed("no import handlers registered")
+            ?: return ImportOutcome.Failed("no import handlers registered")
         val result = withContext(Dispatchers.IO) {
             importer.import(request) { id -> handlers.onImportPlaceholder(request.ref, id) }
         }

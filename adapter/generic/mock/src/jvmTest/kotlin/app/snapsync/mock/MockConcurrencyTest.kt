@@ -11,6 +11,7 @@ import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadTarget
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.EventCreate
@@ -110,7 +111,7 @@ class MockConcurrencyTest {
                 write = { round ->
                     runBlocking {
                         port.create(
-                            UploadSource.Resource(Unit),
+                            UploadSource.Resource(InMemoryResource(PlatformAssetId("photo"))),
                             UploadTarget("https://in-memory/$round", emptyMap(), TransferNetwork.ANY),
                             "k$round",
                         )

@@ -27,5 +27,5 @@ class GalleryImporter(private val gallery: GalleryImport, private val staging: S
             creationDate = request.creationDate,
             album = request.album,
         ),
-    )
+    ).importResult()
 }

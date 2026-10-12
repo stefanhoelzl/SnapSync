@@ -21,6 +21,7 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.download.IosDownload
 import app.snapsync.gallery.IosGalleryReader
+import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.model.Resource
 import app.snapsync.model.TransferNetwork
@@ -30,7 +31,6 @@ import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ports.UploadHandlers
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -180,10 +180,7 @@ class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters
         val usable: suspend (String) -> UploadSource = { key ->
             val resource = seedOne(contract, clauseId)
             val path = "$files/$key"
-            val exported = IosGalleryReader().export(
-                Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), resource),
-                path,
-            )
+            val exported = IosGalleryReader().export(PhotoKitResource(resource), path)
             check(exported == WriteOutcome.Ok) { "exporting the seeded photo for $key failed: $exported" }
             UploadSource.File(path)
         }

@@ -4,7 +4,6 @@ import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
@@ -13,6 +12,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.databases.sharedOver
 import app.snapsync.services.gallery.GalleryAlbums
@@ -216,6 +216,6 @@ class ProvisionTest {
         }
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
             GalleryRead.Read(ids.map { AlbumRecord(it, "album") })
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = WriteOutcome.Ok
+        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome = WriteOutcome.Ok
     }
 }

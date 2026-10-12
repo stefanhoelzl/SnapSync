@@ -1,10 +1,10 @@
 package app.snapsync.permission
 
-import app.snapsync.gallery.photoKitRawAssets
+import app.snapsync.gallery.photoKitAssetResources
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.model.ConfinedTo
-import app.snapsync.model.SelectionSnapshot
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.SelectionSnapshot
 import app.snapsync.selection.SelectionPlatform
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSSortDescriptor
@@ -37,7 +37,7 @@ import platform.Photos.PHFetchResult
  * 26.6.2 (11 reads, 4 launch-and-kill cycles, n = 1). No clause can observe a system alert. See
  * changes/archive/2026-09-21-correct-limited-access-alert-rule.
  *
- * The per-asset resource mapping is the shared ext-safe one ([photoKitRawAssets], also behind
+ * The per-asset resource mapping is the shared ext-safe one ([photoKitAssetResources], also behind
  * `IosGalleryReader.resources`), unbounded by any policy: the policy filters downstream, in one place. Its
  * cost is one platform round-trip per **selected** asset — selections are hand-picked and small.
  *
@@ -86,5 +86,5 @@ internal class PhotoKitSelection : SelectionPlatform<PHFetchResult, PHChange, Se
     // fetch, which the read discipline forbids. The selection is hand-picked and small, so eagerness costs little.
     // On the PhotoKit read lane, at its pinned QoS, like every other resource read (see `IosGalleryReader`).
     override suspend fun snapshot(of: PHFetchResult): SelectionSnapshot =
-        withContext(photoKitReadLane) { SelectionSnapshot(photoKitRawAssets(of)) }
+        withContext(photoKitReadLane) { SelectionSnapshot(photoKitAssetResources(of)) }
 }

@@ -3,12 +3,13 @@ package app.snapsync.contracts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.PlatformAssetId
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -37,8 +38,8 @@ enum class MarkerState { NONE, RECORDED, CONFIRMED, CLEARED }
  * does.
  */
 class ImportDeliveries {
-    private val placeholders = mutableMapOf<AssetRef, AssetId>()
-    private val settles = mutableMapOf<AssetRef, ImportResult>()
+    private val placeholders = mutableMapOf<AssetRef, PlatformAssetId>()
+    private val settles = mutableMapOf<AssetRef, ImportOutcome>()
 
     val handlers = GalleryHandlers(
         onImportPlaceholder = { ref, id -> placeholders[ref] = id },
@@ -46,15 +47,15 @@ class ImportDeliveries {
     )
 
     /** The asset the last placeholder for [ref] named, or `null` if none was delivered. */
-    fun placeholder(ref: AssetRef): AssetId? = placeholders[ref]
+    fun placeholder(ref: AssetRef): PlatformAssetId? = placeholders[ref]
 
     /** The outcome the settle for [ref] carried, or `null` if none was delivered. */
-    fun settled(ref: AssetRef): ImportResult? = settles[ref]
+    fun settled(ref: AssetRef): ImportOutcome? = settles[ref]
 
     /** Where [ref]'s marker stands after these deliveries. */
     fun marker(ref: AssetRef): MarkerState = when (settled(ref)) {
-        is ImportResult.Imported -> MarkerState.CONFIRMED
-        is ImportResult.Failed -> if (placeholder(ref) != null) MarkerState.CLEARED else MarkerState.NONE
+        is ImportOutcome.Imported -> MarkerState.CONFIRMED
+        is ImportOutcome.Failed -> if (placeholder(ref) != null) MarkerState.CLEARED else MarkerState.NONE
         null -> if (placeholder(ref) != null) MarkerState.RECORDED else MarkerState.NONE
     }
 }
@@ -66,7 +67,7 @@ class ImportDeliveries {
  */
 interface ImportedLibrary {
     /** The capture date of the asset with [id], as an ISO-8601 instant, or `null` if none exists. */
-    suspend fun captureDate(id: AssetId): String?
+    suspend fun captureDate(id: PlatformAssetId): String?
 
     /** What the gallery delivered to the import handlers the binding registered. */
     val deliveries: ImportDeliveries
@@ -78,7 +79,7 @@ interface ImportedLibrary {
      * The filename the library reports for the PRIMARY resource of the asset with [id] — what a later install reads
      * back to recognise the photo as received — or `null` if none exists.
      */
-    suspend fun primaryFilename(id: AssetId): String?
+    suspend fun primaryFilename(id: PlatformAssetId): String?
 }
 
 /**
@@ -111,10 +112,10 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             "IMPORT_LANDS_AT_ITS_CAPTURE_DATE",
             GalleryImportState.GRANTED_VALID_STAGED,
             covers = cells {
-                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Imported::class)
                 on<Gallery> {
-                    calls(GalleryHandlers::onImportPlaceholder, AssetRef::class, AssetId::class)
-                    calls(GalleryHandlers::onImportSettled, AssetRef::class, ImportResult.Imported::class)
+                    calls(GalleryHandlers::onImportPlaceholder, AssetRef::class, PlatformAssetId::class)
+                    calls(GalleryHandlers::onImportSettled, AssetRef::class, ImportOutcome.Imported::class)
                 }
             },
         ) { subject ->
@@ -123,7 +124,7 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             val result = subject.importer.import(
                 ImportRequest(ref(clauseId), subject.stage(), window.seedDate, album = null),
             )
-            val id = assertIs<ImportResult.Imported>(result, "an ordinary photo imports").createdLocalId
+            val id = assertIs<ImportOutcome.Imported>(result, "an ordinary photo imports").created
             assertEquals(
                 window.seedDate,
                 subject.library.captureDate(id),
@@ -139,13 +140,13 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             "AN_IMPORT_CARRIES_ITS_REFS_MARK",
             GalleryImportState.GRANTED_VALID_STAGED,
             covers = cells {
-                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Imported::class)
             },
         ) { subject ->
             val clauseId = "AN_IMPORT_CARRIES_ITS_REFS_MARK"
             val date = PhotoLibrary.window(name, clauseId).seedDate
             val result = subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null))
-            val id = assertIs<ImportResult.Imported>(result, "an ordinary photo imports").createdLocalId
+            val id = assertIs<ImportOutcome.Imported>(result, "an ordinary photo imports").created
             val filename = subject.library.primaryFilename(id)
             assertEquals(
                 ReceivedPhotoName.token(ref(clauseId)),
@@ -159,40 +160,40 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             "A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET",
             GalleryImportState.GRANTED_VALID_STAGED,
             covers = cells {
-                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Imported::class)
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Imported::class)
             },
         ) { subject ->
             val clauseId = "A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET"
             val date = PhotoLibrary.window(name, clauseId).seedDate
             val first =
-                assertIs<ImportResult.Imported>(
+                assertIs<ImportOutcome.Imported>(
                     subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)),
                 )
             val second =
-                assertIs<ImportResult.Imported>(
+                assertIs<ImportOutcome.Imported>(
                     subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)),
                 )
             assertNotEquals(
-                first.createdLocalId,
-                second.createdLocalId,
+                first.created,
+                second.created,
                 "every creation is a new asset with a new identifier, which is why the caller must never repeat one",
             )
-            assertEquals(date, subject.library.captureDate(first.createdLocalId))
-            assertEquals(date, subject.library.captureDate(second.createdLocalId))
+            assertEquals(date, subject.library.captureDate(first.created))
+            assertEquals(date, subject.library.captureDate(second.created))
         }
 
         clause(
             "AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED",
             GalleryImportState.GRANTED_INVALID_STAGED,
             covers = cells {
-                on<GalleryImport>().answers(GalleryImport::import).with(ImportResult.Failed::class)
-                on<Gallery>().calls(GalleryHandlers::onImportSettled, AssetRef::class, ImportResult.Failed::class)
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Failed::class)
+                on<Gallery>().calls(GalleryHandlers::onImportSettled, AssetRef::class, ImportOutcome.Failed::class)
             },
         ) { subject ->
             val clauseId = "AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED"
             val date = PhotoLibrary.window(name, clauseId).seedDate
             val failed =
-                assertIs<ImportResult.Failed>(
+                assertIs<ImportOutcome.Failed>(
                     subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null)),
                 )
             assertTrue(

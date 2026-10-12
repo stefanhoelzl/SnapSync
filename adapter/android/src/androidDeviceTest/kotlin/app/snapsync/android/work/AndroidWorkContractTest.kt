@@ -5,6 +5,7 @@ import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import app.snapsync.android.gallery.MediaStoreResource
 import app.snapsync.android.gallery.MediaStoreSeeder
 import app.snapsync.android.network.MeteredWifi
 import app.snapsync.android.network.awaitUnrestrictedNetwork
@@ -31,7 +32,6 @@ import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
-import app.snapsync.model.AssetId
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
@@ -44,6 +44,7 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.UploadHandlers
 import app.snapsync.ports.WakeHandlers
 import kotlinx.coroutines.CompletableDeferred
@@ -97,7 +98,7 @@ class AndroidWorkContractTest {
             val adapter = bare.recorded(log)
             WakeId.entries.forEach(bare::cancel)
             val name = AndroidWake.nameOf(WakeId.Heartbeat)
-            val seeded = mutableSetOf<AssetId>()
+            val seeded = mutableSetOf<PlatformAssetId>()
             // A new photo in the default gallery changes the library; the job scheduler's timeout is the system's end.
             // WorkManager runs a due worker in this process rather than through the job scheduler, so the system's end of
             // a running wake that reaches it is a lost constraint: the heartbeat needs a network, and airplane mode takes
@@ -166,7 +167,7 @@ class AndroidWorkContractTest {
             val base = fixture()
             // The fixture is the host's, reached over the emulator's Wi-Fi: metering the Wi-Fi meters the transfer.
             if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.enter()
-            val seeded = mutableSetOf<AssetId>()
+            val seeded = mutableSetOf<PlatformAssetId>()
             val ended = Collections.synchronizedList(mutableListOf<UploadJob>())
             val bare = AndroidUpload(
                 context,
@@ -185,9 +186,11 @@ class AndroidWorkContractTest {
                 val id = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-01T12:00:00Z", count = 1).single()
                 seeded += id
                 UploadSource.Resource(
-                    ContentUris.withAppendedId(
-                        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
-                        id.value.toLong(),
+                    MediaStoreResource(
+                        ContentUris.withAppendedId(
+                            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                            id.value.toLong(),
+                        ),
                     ),
                 )
             }
@@ -349,7 +352,11 @@ class AndroidWorkContractTest {
                 val url = base + UploadContract.path("RELAUNCH", FixtureAnswer.Hold)
                 assertEquals(
                     UploadCreateOutcome.CREATED,
-                    first.create(UploadSource.Resource(uri), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key),
+                    first.create(
+                        UploadSource.Resource(MediaStoreResource(uri)),
+                        UploadTarget(url, emptyMap(), TransferNetwork.ANY),
+                        key,
+                    ),
                 )
             }
             // The next process: a fresh adapter over the same journal, knowing nothing live.

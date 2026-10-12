@@ -45,7 +45,7 @@ class GalleryAlbums(
      */
     suspend fun add(albumLocalId: String, assetIds: List<AssetId>): Boolean {
         if (assetIds.isEmpty()) return false
-        val outcome = gallery.addToAlbum(albumLocalId, assetIds.toSet())
+        val outcome = gallery.addToAlbum(albumLocalId, assetIds.mapTo(linkedSetOf()) { it.platformId() })
         if (outcome != WriteOutcome.Ok) log.w { "add to album $albumLocalId: $outcome (${assetIds.size} asset(s))" }
         return outcome == WriteOutcome.Ok
     }
@@ -62,7 +62,7 @@ class GalleryAlbums(
         return albums.filter { calibration.isDenylistedAlbum(it.title) }.flatMapTo(mutableSetOf()) { album ->
             val members = (gallery.albumMembers(album.id, since.at.instant()) as? GalleryRead.Read)?.value.orEmpty()
             log.i { "denylisted album '${album.title}': ${members.size} member(s) in scope" }
-            members
+            members.map { it.assetId() }
         }
     }
 }

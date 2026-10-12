@@ -2,11 +2,9 @@
 
 package app.snapsync.mock
 
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.Crumb
@@ -15,8 +13,6 @@ import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.FileArea
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
-import app.snapsync.model.RawAsset
-import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureSlots
@@ -32,7 +28,12 @@ import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
+import app.snapsync.ports.GalleryAsset
+import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.ResourceKind
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -432,10 +433,13 @@ private class QueueDto(
 ) {
     fun into(queue: UploadQueueMock) {
         // A job's payload is the platform resource the process that created it held; what the queue keeps across the
-        // process is the request. A restored job carries this platform's placeholder handle.
+        // process is the request. A restored job carries a placeholder of the in-memory library's handle.
         jobs.forEach {
             queue.jobs += UploadQueueMock.Job(
-                it.key, it.contentType, Unit, UploadTarget(it.url, it.headers, TransferNetwork.valueOf(it.network)),
+                it.key,
+                it.contentType,
+                InMemoryResource(PlatformAssetId(it.key)),
+                UploadTarget(it.url, it.headers, TransferNetwork.valueOf(it.network)),
             ).apply {
                 state = UploadJobState.valueOf(it.state)
                 error = it.error?.error()
@@ -646,54 +650,50 @@ private class UnionChangeDto(
 private class UnionFetchDto(val device: String?, val trigger: String?, val from: Long?, val to: Long, val served: Int)
 
 @Serializable
-private class ResourceDto(val role: String?, val contentType: String, val filename: String)
+private class ResourceDto(val kind: String, val contentType: String, val filename: String)
 
 @Serializable
 private class AssetDto(
     val id: String,
-    val creationDate: String,
+    val created: String?,
     val resources: List<ResourceDto>,
-    val captureDate: String,
     val isScreenshot: Boolean,
     val isScreenRecording: Boolean,
     val isVideo: Boolean,
     val isEdited: Boolean,
     val pixelArea: Long?,
 ) {
-    /** The photo as the library holds it — its resources carrying this platform's placeholder handle. */
-    fun asset() = RawAsset(
-        assetId = AssetId(id),
-        creationDate = creationDate,
-        rawResources = resources.map { r ->
-            RawResource(
-                r.role?.let { w -> ResourceRole.entries.first { it.wire == w } },
-                r.contentType,
-                r.filename,
-                Unit,
+    /** The photo as the library holds it — its resources under the in-memory library's handle. */
+    fun asset() = GalleryAssetResources(
+        GalleryAsset(
+            id = PlatformAssetId(id),
+            created = created?.let(Instant::parse),
+            isScreenshot = isScreenshot,
+            isScreenRecording = isScreenRecording,
+            isVideo = isVideo,
+            isEdited = isEdited,
+            pixelArea = pixelArea,
+        ),
+        resources.map {
+            GalleryResource(
+                ResourceKind.valueOf(it.kind),
+                it.contentType,
+                it.filename,
+                InMemoryResource(PlatformAssetId(id)),
             )
         },
-        facts = AssetFacts(
-            AssetId(id),
-            CaptureDate(captureDate),
-            isScreenshot,
-            isScreenRecording,
-            isVideo,
-            isEdited,
-            pixelArea,
-        ),
     )
 
     companion object {
-        fun of(asset: RawAsset) = AssetDto(
-            id = asset.assetId.value,
-            creationDate = asset.creationDate,
-            resources = asset.rawResources.map { ResourceDto(it.role?.wire, it.mimeContentType, it.originalFilename) },
-            captureDate = asset.facts.creationDate.iso,
-            isScreenshot = asset.facts.isScreenshot,
-            isScreenRecording = asset.facts.isScreenRecording,
-            isVideo = asset.facts.isVideo,
-            isEdited = asset.facts.isEdited,
-            pixelArea = asset.facts.pixelArea,
+        fun of(asset: GalleryAssetResources) = AssetDto(
+            id = asset.id.value,
+            created = asset.asset.created?.toString(),
+            resources = asset.resources.map { ResourceDto(it.kind.name, it.contentType, it.originalFilename) },
+            isScreenshot = asset.asset.isScreenshot,
+            isScreenRecording = asset.asset.isScreenRecording,
+            isVideo = asset.asset.isVideo,
+            isEdited = asset.asset.isEdited,
+            pixelArea = asset.asset.pixelArea,
         )
     }
 }
@@ -728,15 +728,15 @@ private class LibraryDto(
         state.library.value = library.map { it.asset() }
         state.access.value = LibraryGrant.valueOf(access)
         state.answer = LibraryGrant.valueOf(answer)
-        state.writableAlbums?.value = userAlbums.mapValues { (_, ids) -> ids.mapTo(mutableSetOf(), ::AssetId) }
+        state.writableAlbums?.value = userAlbums.mapValues { (_, ids) -> ids.mapTo(mutableSetOf(), ::PlatformAssetId) }
         state.selection.value = selection?.map { it.asset() }
         attempts.forEach { (ref, n) -> state.attempts[ref.ref()] = n }
         state.albumCounter = albumCounter
         created.forEach { (id, album) ->
-            state.created[id] = LibraryState.Album(album.first, album.second.mapTo(mutableSetOf(), ::AssetId))
+            state.created[id] = LibraryState.Album(album.first, album.second.mapTo(mutableSetOf(), ::PlatformAssetId))
         }
         state.createdLog.addAll(createdLog)
-        addedLog.forEach { (album, ids) -> state.addedLog += album to ids.map(::AssetId) }
+        addedLog.forEach { (album, ids) -> state.addedLog += album to ids.map(::PlatformAssetId) }
         state.deletedAlbums.addAll(deletedAlbums)
         state.failNextEnumeration = failNextEnumeration
         state.byIdReadable = byIdReadable

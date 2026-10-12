@@ -15,20 +15,20 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.RawAsset
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.deletesAt
-import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.MarkedPhotoLookup
+import app.snapsync.services.gallery.resourcesFrom
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -68,7 +68,7 @@ class ReceivedPhotoAdoptionTest {
     }
 
     /** A photo an earlier install received for [ref]: named with its mark. */
-    private fun received(localId: String, ref: AssetRef): RawAsset =
+    private fun received(localId: String, ref: AssetRef): GalleryAssetResources =
         LibraryAssets.photo(
             localId,
             creationDate = date,
@@ -77,7 +77,7 @@ class ReceivedPhotoAdoptionTest {
 
     private class World(
         union: Result<List<UnionAsset>>,
-        library: List<RawAsset>,
+        library: List<GalleryAssetResources>,
         val grant: MutableStateFlow<LibraryGrant> = MutableStateFlow(LibraryGrant.GRANTED),
     ) {
         val store = DownloadService(inMemoryDatabases())

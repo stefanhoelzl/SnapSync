@@ -19,8 +19,8 @@ enum class ResourceRole(val wire: String) {
     LIVE("live"),
 }
 
-// The mapping from a platform resource-type value to [ResourceRole] lives with the platform, in
-// `:adapter:ios:ext-safe`'s `PhotoKitResourceRole.kt`. It used to sit here as a `when` over the raw
+// A platform resource-type value is read by the platform, in `:adapter:ios:ext-safe`'s
+// `PhotoKitResourceKind.kt`, and what each kind is to the upload is the gallery services'. It used to sit here as a `when` over the raw
 // `PHAssetResourceType` integers — an ABI table written in bare literals, which no import- or
 // token-based gate can see and which a second platform's integers would silently collide with. The
 // adapter now reports the role itself, which is the platform-independent fact (spec
@@ -55,10 +55,10 @@ const val RESOURCE_META_MIME: String = "mimeContentType"
 /**
  * The **neutral origin facts**, stashed alongside the manifest
  * detail so the one admission can decide in `commonMain` on a `Resource` — which is all the upload cycle
- * ever sees (the `RawAsset` is consumed by [resourcesFrom] before the cycle is reached).
+ * ever sees (the gallery services build each one from the platform's asset before the cycle is reached).
  *
  * They are **platform-neutral by construction**: the iOS adapter interprets `PHAssetMediaSubtype` /
- * `PHAssetMediaType` / the pixel dimensions into these, so no PhotoKit value reaches `model/`
+ * `PHAssetMediaType` / the pixel dimensions into the gallery port's asset, so no PhotoKit value reaches `model/`
  * (the `:test:architecture` PhotoKit-ABI guard enforces it).
  *
  * The device-manifest producer reads only the three keys above by name, so these entries are inert to it.

@@ -2,11 +2,9 @@ package app.snapsync.contracts
 
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.model.AlbumId
-import app.snapsync.model.AssetId
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.HttpResult
-import app.snapsync.model.Resource
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreUnavailable
@@ -18,8 +16,10 @@ import app.snapsync.ports.AttestStore
 import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
@@ -183,13 +183,13 @@ private object UnusedAttestStore : AttestStore {
 private object UnusedReader : GalleryReader {
     override fun access() = error("unused")
     override suspend fun assets(filter: AssetFilter) = error("unused")
-    override suspend fun assetsById(ids: Set<AssetId>) = error("unused")
-    override suspend fun resources(ids: Set<AssetId>) = error("unused")
+    override suspend fun assetsById(ids: Set<PlatformAssetId>) = error("unused")
+    override suspend fun resources(ids: Set<PlatformAssetId>) = error("unused")
     override suspend fun albums() = error("unused")
     override suspend fun albumsById(ids: Set<AlbumId>) = error("unused")
     override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) = error("unused")
     override val albumKind get() = error("unused")
     override suspend fun createAlbum(title: String) = error("unused")
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>) = error("unused")
-    override suspend fun export(resource: Resource, to: String) = error("unused")
+    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>) = error("unused")
+    override suspend fun export(resource: GalleryResourceHandle, to: String) = error("unused")
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.AssetFileDescriptor
 import android.net.Uri
 import app.snapsync.android.gallery.MediaOriginals
+import app.snapsync.android.gallery.MediaStoreResource
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.EntryScope
@@ -139,7 +140,7 @@ class AndroidUpload(
 
     private fun start(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
         val body = when (source) {
-            is UploadSource.Resource -> (source.handle as? Uri)?.let(Body::MediaItem)
+            is UploadSource.Resource -> (source.handle as? MediaStoreResource)?.uri?.let(Body::MediaItem)
             // A file that is not there is no job: refused now, never a transfer that fails later.
             is UploadSource.File -> File(source.path).takeIf { it.isFile }?.let(Body::LocalFile)
         } ?: return UploadCreateOutcome.FAILED.also {

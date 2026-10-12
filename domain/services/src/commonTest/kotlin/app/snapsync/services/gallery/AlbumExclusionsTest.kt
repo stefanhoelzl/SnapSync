@@ -3,19 +3,20 @@ package app.snapsync.services.gallery
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
-import app.snapsync.model.RawAsset
-import app.snapsync.model.Resource
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAsset
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -40,19 +41,21 @@ class AlbumExclusionsTest {
      * product calibration answers exactly [members].
      */
     private class RecordingLibrary(
-        private val members: Set<AssetId> = setOf(AssetId("wa-1"), AssetId("wa-2")),
+        private val members: Set<PlatformAssetId> = setOf(PlatformAssetId("wa-1"), PlatformAssetId("wa-2")),
         private val failure: Throwable? = null,
     ) : GalleryReader {
         var lookups = 0
         override fun access(): LibraryGrant = LibraryGrant.GRANTED
-        override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> = error("not used")
-        override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = error("not used")
-        override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = error("not used")
+        override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> = error("not used")
+        override suspend fun assetsById(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAsset>> = error("not used")
+        override suspend fun resources(
+            ids: Set<PlatformAssetId>,
+        ): GalleryRead<List<GalleryAssetResources>> = error("not used")
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = error("not used")
         override val albumKind: AlbumKind = AlbumKind.COLLECTION
         override suspend fun createAlbum(title: String): AlbumId? = error("not used")
-        override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = error("not used")
-        override suspend fun export(resource: Resource, to: String): WriteOutcome = error("not used")
+        override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome = error("not used")
+        override suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome = error("not used")
         override suspend fun albums(): GalleryRead<List<AlbumRecord>> {
             lookups++
             failure?.let { throw it }
@@ -63,8 +66,8 @@ class AlbumExclusionsTest {
                 ),
             )
         }
-        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> =
-            GalleryRead.Read(if (album == DENYLISTED) members else setOf(AssetId("own-1")))
+        override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> =
+            GalleryRead.Read(if (album == DENYLISTED) members else setOf(PlatformAssetId("own-1")))
 
         private companion object {
             const val DENYLISTED = "album-denylisted"
@@ -72,8 +75,7 @@ class AlbumExclusionsTest {
         }
     }
 
-    private fun library(members: Set<AssetId> = setOf(AssetId("wa-1"), AssetId("wa-2")), failure: Throwable? = null) =
-        RecordingLibrary(members, failure)
+    private fun library(failure: Throwable? = null) = RecordingLibrary(failure = failure)
 
     private suspend fun denylistedAlbumMembers(
         library: RecordingLibrary,

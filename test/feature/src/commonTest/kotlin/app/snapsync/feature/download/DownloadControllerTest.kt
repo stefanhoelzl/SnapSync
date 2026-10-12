@@ -19,7 +19,6 @@ import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
@@ -32,6 +31,8 @@ import app.snapsync.model.eventEnd
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
@@ -136,7 +137,7 @@ class DownloadControllerTest {
         /** The event album each import was asked to file into, in order. */
         val albums = mutableListOf<AlbumId?>()
 
-        override suspend fun import(request: ImportRequest): ImportResult {
+        override suspend fun import(request: ImportRequest): ImportOutcome {
             val ref = request.ref
             attempted += ref
             albums += request.album
@@ -150,9 +151,9 @@ class DownloadControllerTest {
                 hanging.complete(ref)
                 never.await() // no deadline anywhere: this is what a stalled library looks like
             }
-            if (failNext) return ImportResult.Failed("forced", consumedResources = failConsumingResources)
+            if (failNext) return ImportOutcome.Failed("forced", consumedResources = failConsumingResources)
             imported += ref
-            return ImportResult.Imported(AssetId("LOCAL-${ref.sourceAssetId}_L0_001"))
+            return ImportOutcome.Imported(PlatformAssetId("LOCAL-${ref.sourceAssetId}/L0/001"))
         }
     }
 

@@ -4,31 +4,18 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSISO8601DateFormatter
 
 /**
- * The process's ISO-8601 formatters, built **once** and shared by every PhotoKit-facing adapter.
+ * The process's ISO-8601 formatter, built **once**: constructing an `NSISO8601DateFormatter` is not cheap (measured on
+ * an SE2, 2026-09: per-call construction was most of a walk's CPU), and it is documented thread-safe, so one instance
+ * serves every caller. Nothing outside this object can reach a setter.
  *
- * **Why shared.** Constructing an `NSISO8601DateFormatter` is not cheap, and the walk used to construct one
- * per asset to stamp its `creationDate`: measured on an SE2 (2026-09), that construction was 65–77 % of the
- * candidate loop, and reusing one instance made the loop 3.4× faster. It matters most in a background wake,
- * where the kernel's `darwinbg` clamp multiplies every CPU-bound millisecond (the same 754-candidate walk took
- * 107 ms in the foreground and 981 ms clamped).
- *
- * **Why sharing is safe.** `NSISO8601DateFormatter` is documented thread-safe, so one instance may serve the
- * walk, the resolve, the importer and the album lookup concurrently. Neither instance is ever mutated after
- * it is built here — nothing outside this object can reach a setter.
- *
- * **Why the output is byte-identical.** [internetDateTime] is a **default-constructed** formatter, exactly what
- * every call site constructed before: `formatOptions` = `NSISO8601DateFormatWithInternetDateTime` and the GMT
- * time zone, both Foundation's defaults. `Iso8601Test` pins it against a freshly built formatter, so a drift fails
- * the simulator suite rather than reaching a capture date on the wire.
+ * [internetDateTime] is a **default-constructed** formatter — `formatOptions` =
+ * `NSISO8601DateFormatWithInternetDateTime`, the GMT time zone — which `Iso8601Test` pins.
  */
 object Iso8601 {
 
     /** The default formatter (`…T…Z`, second precision, GMT) — what `NSISO8601DateFormatter()` builds. */
     val internetDateTime: NSISO8601DateFormatter = NSISO8601DateFormatter()
 
-    /** [date] as the default ISO-8601 string — the capture-date stamp every candidate and resource carries. */
-    fun format(date: NSDate): String = internetDateTime.stringFromDate(date)
-
-    /** Parse the default (second-precision) shape only; `null` for anything else, as before. */
+    /** Parse the default (second-precision) shape only; `null` for anything else. */
     fun parse(iso: String): NSDate? = internetDateTime.dateFromString(iso)
 }

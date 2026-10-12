@@ -2,18 +2,18 @@ package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
 import app.snapsync.model.AlbumId
-import app.snapsync.model.AssetId
 import app.snapsync.model.ImportRequest
-import app.snapsync.model.Resource
-import app.snapsync.model.SelectionSnapshot
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.SelectionSnapshot
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
@@ -27,17 +27,20 @@ internal class GalleryReaderProxy(private val inner: GalleryReader, log: CallLog
 
     override fun access() = r.answer("access", inner.access())
     override suspend fun assets(filter: AssetFilter) = r.answer("assets", inner.assets(filter))
-    override suspend fun assetsById(ids: Set<AssetId>) = r.answer("assetsById", inner.assetsById(ids))
-    override suspend fun resources(ids: Set<AssetId>) = r.answer("resources", inner.resources(ids))
+    override suspend fun assetsById(ids: Set<PlatformAssetId>) = r.answer("assetsById", inner.assetsById(ids))
+    override suspend fun resources(ids: Set<PlatformAssetId>) = r.answer("resources", inner.resources(ids))
     override suspend fun albums() = r.answer("albums", inner.albums())
     override suspend fun albumsById(ids: Set<AlbumId>) = r.answer("albumsById", inner.albumsById(ids))
     override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?) =
         r.answer("albumMembers", inner.albumMembers(album, createdFrom))
     override val albumKind get() = r.answer("albumKind", inner.albumKind)
     override suspend fun createAlbum(title: String) = r.returns("createAlbum", inner.createAlbum(title))
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>) =
+    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>) =
         r.answer("addToAlbum", inner.addToAlbum(album, assets))
-    override suspend fun export(resource: Resource, to: String) = r.answer("export", inner.export(resource, to))
+    override suspend fun export(
+        resource: GalleryResourceHandle,
+        to: String,
+    ) = r.answer("export", inner.export(resource, to))
 }
 
 /** [LibraryChangeTokenRead] as its clause's [CallLog] sees it. */
@@ -84,7 +87,11 @@ internal class GalleryProxy(private val inner: Gallery, log: CallLog) :
         inner.listen(
             GalleryHandlers(
                 onImportPlaceholder = { ref, id ->
-                    r.called("handlers.onImportPlaceholder", Recorder.arg(ref, "AssetRef"), Recorder.arg(id, "AssetId"))
+                    r.called(
+                        "handlers.onImportPlaceholder",
+                        Recorder.arg(ref, "AssetRef"),
+                        Recorder.arg(id, "PlatformAssetId"),
+                    )
                     handlers.onImportPlaceholder(ref, id)
                 },
                 onImportSettled = { ref, result ->

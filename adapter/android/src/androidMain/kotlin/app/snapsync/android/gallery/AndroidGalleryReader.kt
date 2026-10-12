@@ -11,21 +11,20 @@ import android.provider.MediaStore
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
-import app.snapsync.model.AssetFacts
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.EntryScope
 import app.snapsync.model.GalleryRead
-import app.snapsync.model.RawAsset
-import app.snapsync.model.RawResource
-import app.snapsync.model.Resource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAsset
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.GalleryResource
+import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.ResourceKind
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -70,20 +69,20 @@ open class AndroidGalleryReader(
     override fun access(): LibraryGrant = access.invoke()
 
     /** Narrowed by [filter]'s capture range, to the second the platform reports dates in. */
-    override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> =
+    override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> =
         log.invocation(
             EntryScope.None,
             "gallery.assets",
             result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" },
         ) {
-            readable { items(narrowingFor(filter)).map { it.facts() } }
+            readable { items(narrowingFor(filter)).map { it.asset() } }
         }
 
-    override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
-        readable { itemsById(ids).map { it.facts() } }
+    override suspend fun assetsById(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAsset>> =
+        readable { itemsById(ids).map { it.asset() } }
 
-    override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> =
-        readable { itemsById(ids).map { it.rawAsset() } }
+    override suspend fun resources(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAssetResources>> =
+        readable { itemsById(ids).map { it.withResources() } }
 
     /** The folders the denylist matches — every folder of the default gallery, the event albums' included. */
     override suspend fun albums(): GalleryRead<List<AlbumRecord>> = readable { buckets(Query()) }
@@ -101,7 +100,7 @@ open class AndroidGalleryReader(
         buckets + folders.filter { folder -> items(inFolder(folder)).isNotEmpty() }.map { AlbumRecord(it, folderName(it)) }
     }
 
-    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<AssetId>> = readable {
+    override suspend fun albumMembers(album: AlbumId, createdFrom: Instant?): GalleryRead<Set<PlatformAssetId>> = readable {
         val floor = createdFrom?.toEpochMilliseconds()
         val where = if (DefaultGallery.isAlbumFolder(album)) {
             inFolder(album)
@@ -140,7 +139,9 @@ open class AndroidGalleryReader(
         return path
     }
 
-    override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = withContext(Dispatchers.IO) {
+    override suspend fun addToAlbum(album: AlbumId, assets: Set<PlatformAssetId>): WriteOutcome = withContext(
+        Dispatchers.IO,
+    ) {
         if (!DefaultGallery.isAlbumFolder(
                 album,
             )
@@ -164,9 +165,12 @@ open class AndroidGalleryReader(
     }
 
     /** Copy the item's original bytes — location included where the grant allows — into the file [to]. */
-    override suspend fun export(resource: Resource, to: String): WriteOutcome = withContext(Dispatchers.IO) {
-        val uri = resource.data as? Uri
-            ?: return@withContext WriteOutcome.Failed("${resource.filename}: the payload is not a content URI")
+    override suspend fun export(
+        resource: GalleryResourceHandle,
+        to: String,
+    ): WriteOutcome = withContext(Dispatchers.IO) {
+        val uri = (resource as? MediaStoreResource)?.uri
+            ?: return@withContext WriteOutcome.Failed("$resource is not a media-store resource")
         val target = File(to)
         runCatchingCancellable {
             target.delete()
@@ -177,7 +181,7 @@ open class AndroidGalleryReader(
             onSuccess = { WriteOutcome.Ok },
             onFailure = {
                 target.delete()
-                WriteOutcome.Failed("${resource.filename}: ${it::class.simpleName}: ${it.message}")
+                WriteOutcome.Failed("$uri: ${it::class.simpleName}: ${it.message}")
             },
         )
     }
@@ -217,7 +221,7 @@ open class AndroidGalleryReader(
     private fun directoryOf(path: String): File =
         File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).parentFile, path)
 
-    private fun itemsById(ids: Set<AssetId>): List<MediaItem> =
+    private fun itemsById(ids: Set<PlatformAssetId>): List<MediaItem> =
         ids.mapNotNull { it.value.toLongOrNull() }.chunked(MAX_IDS_PER_QUERY).flatMap { chunk ->
             items(Query("_id IN (${chunk.joinToString(",")})"))
         }
@@ -288,13 +292,9 @@ open class AndroidGalleryReader(
         /** SQLite's bound-parameter ceiling is far higher; ids are inlined, so this bounds the statement's length. */
         private const val MAX_IDS_PER_QUERY = 500
 
-        /** `DATE_TAKEN` as the capture date every platform reports — second precision, UTC — or no date. */
-        fun captureDateOf(dateTaken: Long?): String =
-            if (dateTaken == null || dateTaken == 0L) {
-                ""
-            } else {
-                Instant.fromEpochSeconds(Math.floorDiv(dateTaken, 1_000L)).toString()
-            }
+        /** `DATE_TAKEN` as a capture date, to the second as every capture date the app compares is — or no date. */
+        fun capturedAt(dateTaken: Long?): Instant? =
+            dateTaken?.takeIf { it != 0L }?.let { Instant.fromEpochSeconds(Math.floorDiv(it, 1_000L)) }
     }
 }
 
@@ -309,7 +309,7 @@ internal data class Query(val selection: String? = null, val args: List<String> 
 
 /** One MediaStore row, as the reader needs it. */
 internal class MediaItem(
-    val assetId: AssetId,
+    val assetId: PlatformAssetId,
     val uri: Uri,
     val isVideo: Boolean,
     private val dateTaken: Long?,
@@ -321,36 +321,35 @@ internal class MediaItem(
     private val displayName: String?,
     private val mimeType: String?,
 ) {
-    private val creationDate: String = AndroidGalleryReader.captureDateOf(dateTaken)
-
-    fun facts(): AssetFacts = AssetFacts(
-        assetId = assetId,
-        creationDate = CaptureDate(creationDate),
+    fun asset(): GalleryAsset = GalleryAsset(
+        id = assetId,
+        created = AndroidGalleryReader.capturedAt(dateTaken),
+        isScreenshot = false,
+        isScreenRecording = false,
         isVideo = isVideo,
-        // Unknown when MediaStore has no dimensions: admitted on doubt, never read as tiny.
+        isEdited = false,
+        // Unknown when MediaStore has no dimensions: never read as tiny.
         pixelArea = if (width > 0 && height > 0) width.toLong() * height else null,
     )
 
     /** The item's one original — a motion photo is one file — as the upload's resource. */
-    fun rawAsset(): RawAsset = RawAsset(
-        assetId = assetId,
-        creationDate = creationDate,
-        rawResources = listOf(
-            RawResource(
-                role = ResourceRole.PRIMARY,
-                mimeContentType = mimeType ?: "application/octet-stream",
+    fun withResources(): GalleryAssetResources = GalleryAssetResources(
+        asset(),
+        listOf(
+            GalleryResource(
+                kind = if (isVideo) ResourceKind.VIDEO else ResourceKind.PHOTO,
+                contentType = mimeType ?: "application/octet-stream",
                 originalFilename = displayName ?: "$assetId",
-                handle = uri,
+                handle = MediaStoreResource(uri),
             ),
         ),
-        facts = facts(),
     )
 
     companion object {
         fun of(cursor: Cursor, collection: Uri): MediaItem {
             val id = cursor.getLong(0)
             return MediaItem(
-                assetId = AssetId(id.toString()),
+                assetId = PlatformAssetId(id.toString()),
                 uri = ContentUris.withAppendedId(collection, id),
                 isVideo = collection == AndroidGalleryReader.COLLECTIONS[1],
                 dateTaken = cursor.longOrNull(1),
@@ -370,3 +369,6 @@ internal class MediaItem(
 
 /** The grants under which a library read answers anything — a full or a partial one. */
 private val READABLE = setOf(LibraryGrant.GRANTED, LibraryGrant.LIMITED)
+
+/** A media-store item's original, as the gallery port hands it out: its content URI, which only this adapter reads. */
+data class MediaStoreResource(val uri: Uri) : GalleryResourceHandle

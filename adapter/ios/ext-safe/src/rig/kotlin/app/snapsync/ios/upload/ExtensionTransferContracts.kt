@@ -23,6 +23,7 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.contracts.runEntry
+import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.TransferNetwork
@@ -168,7 +169,7 @@ internal class ExtensionPhotoKitUploadBinding(private val recorder: Recorder) : 
             objects = recordingFixtureObjects(
                 recorder,
             ) { route -> landedAt(route)?.let { Landed(it.ifEmpty { null }) } },
-            photo = newestPhotoResource(),
+            photo = PhotoKitResource(newestPhotoResource()),
             log = log,
         )
     }

@@ -53,9 +53,7 @@ import app.snapsync.contracts.simulatorAppContract
 import app.snapsync.device.IosDeviceConditions
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
-import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
@@ -65,7 +63,9 @@ import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ProcessInfo
+import app.snapsync.ports.ResourceKind
 import app.snapsync.protection.IosProcessInfo
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -214,7 +214,7 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         // Minted through the adapter's own mapping, so the clauses check that mapping end to end.
         val ids = seeded.mapTo(
             linkedSetOf(),
-        ) { checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" } }
+        ) { PlatformAssetId(it) }
         val scratch = scratch(GalleryReaderContract.name, clauseId)
         val files = ClauseFiles({ "$scratch/$it" }, { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() })
         return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log), ids, files))
@@ -283,8 +283,8 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             )
         }
         val library = object : ImportedLibrary {
-            override suspend fun captureDate(id: AssetId): String? {
-                val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(PhotoKitAssetIds.localIdentifierOf(id)), null)
+            override suspend fun captureDate(id: PlatformAssetId): String? {
+                val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(id.value), null)
                     .firstObject() as? PHAsset ?: return null
                 return asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) }
             }
@@ -292,9 +292,9 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             override val deliveries = delivered
 
             // Through the reader's resource read — the same read a later install's join makes.
-            override suspend fun primaryFilename(id: AssetId): String? =
+            override suspend fun primaryFilename(id: PlatformAssetId): String? =
                 (IosGalleryReader(Logger.withTag("contract")).resources(setOf(id)) as? GalleryRead.Read)
-                    ?.value?.firstOrNull()?.rawResources?.firstOrNull { it.role == ResourceRole.PRIMARY }?.originalFilename
+                    ?.value?.firstOrNull()?.resources?.firstOrNull { it.kind == ResourceKind.PHOTO }?.originalFilename
         }
         return Entered.Ready(StagedImport(importer, stage, library))
     }
@@ -326,20 +326,20 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
             listOf(StagedResource(key, ResourceRole.PRIMARY.wire, "image/jpeg", "PXL_0001.MP.jpg", path))
         }
         val library = object : LivePhotoLibrary {
-            override suspend fun captureDate(id: AssetId): String? =
+            override suspend fun captureDate(id: PlatformAssetId): String? =
                 asset(id)?.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) }
 
             override val deliveries = delivered
 
             // Through the reader's resource read — the same read a later install's join makes.
-            override suspend fun primaryFilename(id: AssetId): String? =
+            override suspend fun primaryFilename(id: PlatformAssetId): String? =
                 (IosGalleryReader(Logger.withTag("contract")).resources(setOf(id)) as? GalleryRead.Read)
-                    ?.value?.firstOrNull()?.rawResources?.firstOrNull { it.role == ResourceRole.PRIMARY }?.originalFilename
+                    ?.value?.firstOrNull()?.resources?.firstOrNull { it.kind == ResourceKind.PHOTO }?.originalFilename
 
-            override suspend fun isLivePhoto(id: AssetId): Boolean? =
+            override suspend fun isLivePhoto(id: PlatformAssetId): Boolean? =
                 asset(id)?.let { (it.mediaSubtypes and PHAssetMediaSubtypePhotoLive) != 0UL }
 
-            override suspend fun resourceKinds(id: AssetId): List<String> {
+            override suspend fun resourceKinds(id: PlatformAssetId): List<String> {
                 val asset = asset(id) ?: return emptyList()
                 return PHAssetResource.assetResourcesForAsset(asset).filterIsInstance<PHAssetResource>().map {
                     when (it.type) {
@@ -350,9 +350,9 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
                 }
             }
 
-            private fun asset(id: AssetId): PHAsset? =
+            private fun asset(id: PlatformAssetId): PHAsset? =
                 PHAsset.fetchAssetsWithLocalIdentifiers(
-                    listOf(PhotoKitAssetIds.localIdentifierOf(id)),
+                    listOf(id.value),
                     null,
                 ).firstObject() as? PHAsset
         }

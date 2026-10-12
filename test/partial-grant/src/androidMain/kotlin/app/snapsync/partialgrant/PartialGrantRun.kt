@@ -24,7 +24,7 @@ import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.AssetId
+import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,7 +39,7 @@ internal class PartialGrantRun {
 
     private val context: Context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val foreground by lazy { ForegroundActivity(context.applicationContext as Application) }
-    private val seeded = mutableSetOf<AssetId>()
+    private val seeded = mutableSetOf<PlatformAssetId>()
 
     private fun permission() = AndroidPhotoPermission(context, foreground)
 
@@ -89,7 +89,7 @@ internal class PartialGrantRun {
     private fun holds(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
     /** A photo this APK saves itself into the default gallery — its own, so a partial grant always shows it. */
-    private fun seedOwnPhoto(clauseId: String): AssetId {
+    private fun seedOwnPhoto(clauseId: String): PlatformAssetId {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "partial-${System.nanoTime()}.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
@@ -102,7 +102,7 @@ internal class PartialGrantRun {
         ) { "$clauseId: the photo could not be saved" }
         resolver.openOutputStream(uri).use { checkNotNull(it).write(PhotoLibrary.jpeg) }
         resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-        return AssetId(uri.lastPathSegment!!).also { seeded += it }
+        return PlatformAssetId(uri.lastPathSegment!!).also { seeded += it }
     }
 
     private companion object {

@@ -1,9 +1,9 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.RawAsset
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAssetId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -18,9 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
  * asked while undetermined; [answers] how the library answers each import's change (the default always succeeds).
  */
 fun inMemoryGallery(
-    library: MutableStateFlow<List<RawAsset>>,
+    library: MutableStateFlow<List<GalleryAssetResources>>,
     access: MutableStateFlow<LibraryGrant> = MutableStateFlow(LibraryGrant.GRANTED),
-    userAlbums: StateFlow<Map<String, Set<AssetId>>> = MutableStateFlow(emptyMap()),
+    userAlbums: StateFlow<Map<String, Set<PlatformAssetId>>> = MutableStateFlow(emptyMap()),
     answer: LibraryGrant = LibraryGrant.GRANTED,
     answers: LibraryChangeAnswers = LibraryChangeAnswers.Ordinary,
 ): Gallery = InMemoryGallery(LibraryState(library, access, userAlbums, answer, answers))
