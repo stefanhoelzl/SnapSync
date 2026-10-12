@@ -11,6 +11,7 @@ import app.snapsync.model.DumpResult
 import app.snapsync.model.MAX_BREADCRUMBS
 import app.snapsync.model.PLATFORM_TAG
 import app.snapsync.model.PROCESS_TAG
+import app.snapsync.model.describedBuildStamped
 import app.snapsync.model.diagnosticDumpEvent
 import app.snapsync.model.scrubbedCrumb
 import app.snapsync.model.scrubbedEvent
@@ -118,8 +119,8 @@ class CrashReporterSubject(
  * - Nothing runs until `start`: before it, every member changes nothing, and a dump answers `NotSent`.
  * - `start` is idempotent: a second start that re-initialised the channel would lose its scope.
  * - A captured event is one event; a breadcrumb is not an event and rides the next one.
- * - Every event and breadcrumb passes the registered handlers on the way out: what they return is what leaves, and
- *   `null` leaves nothing.
+ * - Every event and breadcrumb passes the registered handlers on the way out: what they return is what leaves — an
+ *   event's release, build number and tags included — and `null` leaves nothing.
  * - An event's tags and its exception ride it.
  * - The build facts `start` is given — release, environment, build number, and the platform and process tags — ride
  *   every event.
@@ -151,7 +152,10 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
     val PASS_THROUGH = CrashHandlers(onEvent = { it }, onBreadcrumb = { it })
 
     /** The handlers production registers (`CrashReporting`): the pure rules of `model/Crash.kt`. */
-    val PRODUCTION = CrashHandlers(onEvent = ::scrubbedEvent, onBreadcrumb = ::scrubbedCrumb)
+    val PRODUCTION = CrashHandlers(
+        onEvent = { scrubbedEvent(describedBuildStamped(it)) },
+        onBreadcrumb = ::scrubbedCrumb,
+    )
 
     fun dumpFor(clauseId: String): DiagnosticDump = DiagnosticDump(
         note = "$clauseId: upload of ${uuidFor(clauseId)} never finished",
@@ -310,13 +314,19 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                         e.copy(
                             message = e.message?.let { "$it (shaped)" },
                             formatted = e.formatted?.let { "$it (shaped)" },
+                            // What files a report under the build it describes rather than the one sending it.
+                            release = "shaped-release",
+                            dist = "shaped-dist",
+                            tags = e.tags - "shaped.away",
                         )
                     },
                     onBreadcrumb = { c -> c.copy(message = c.message?.let { "shaped: $it" }) },
                 ),
             )
             s.reporter.breadcrumb(Crumb(CrashLevel.INFO, "WIRE_HANDLERS_SHAPE_WHAT_LEAVES crumb"))
-            s.reporter.capture(CrashEvent(message = "WIRE_HANDLERS_SHAPE_WHAT_LEAVES"))
+            s.reporter.capture(
+                CrashEvent(message = "WIRE_HANDLERS_SHAPE_WHAT_LEAVES", tags = mapOf("shaped.away" to "x")),
+            )
             val event = s.observe.delivered { e -> e.any { it.message?.startsWith("WIRE_HANDLERS") == true } }
                 .first { it.message?.startsWith("WIRE_HANDLERS") == true }
             assertEquals(
@@ -328,6 +338,9 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 event.breadcrumbs.any { it.startsWith("shaped: WIRE_HANDLERS_SHAPE_WHAT_LEAVES crumb") },
                 "and so does its breadcrumb: ${event.breadcrumbs}",
             )
+            assertEquals("shaped-release", event.release, "the release the handler names wins over the options'")
+            assertEquals("shaped-dist", event.dist, "and so does the build number")
+            assertFalse("shaped.away" in event.tags, "a tag the handler removed does not leave: ${event.tags}")
         }
 
         clause(

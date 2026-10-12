@@ -15,11 +15,14 @@ import co.touchlab.kermit.Logger
  * ```
  *
  * The rule itself — what is worth reporting — is `model/`'s [processMetricEmissions], which returns emissions
- * (severity, text, reason); this loops over them.
+ * (severity, text, reason); this loops over them, logging each and sending a crossing's event.
  *
- * The context is attached **before** the emissions are logged. A crossing is logged at `Error`, which the channel
- * turns into an event through the logging seam — so the context has to be standing by then, or the very event this
- * exists to explain would arrive without its explanation.
+ * A crossing's event is sent HERE rather than born from its log line, because it is filed under the build the report
+ * describes — which the report names and a log line cannot carry. Its line is logged first, so it rides the event as
+ * the last breadcrumb.
+ *
+ * The context is attached **before** the emissions are logged, so it is standing by when the very event this exists
+ * to explain is sent.
  *
  * The context also carries the [footprints] the app recorded before it was last suspended — the ended process's own
  * last readings, which no report states — for a reader telling a footprint that spiked from one that was always high.
@@ -42,9 +45,12 @@ class ProcessAccount(
         val reasons = emissions.mapNotNull { it.reason }
         val crossed = if (reasons.isEmpty()) emptyMap() else mapOf(REASONS_KEY to reasons.joinToString(","))
         crash.describeProcess(ProcessMetricReport(report.fields + crossed + footprints.fields()))
-        // Each emission carries Kermit's own severity, so this renders without deciding. An `Error` here is what
-        // the channel carries onward as the event.
-        emissions.forEach { emission -> log.log(emission.severity, log.tag, null, emission.message) }
+        // Each emission carries Kermit's own severity, so this renders without deciding. A reason is what makes an
+        // emission a crossing, and a crossing an event.
+        emissions.forEach { emission ->
+            log.log(emission.severity, log.tag, null, emission.message)
+            emission.reason?.let { crash.reportCrossing(emission, report) }
+        }
     }
 
     private companion object {

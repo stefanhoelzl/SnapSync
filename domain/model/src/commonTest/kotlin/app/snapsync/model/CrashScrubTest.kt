@@ -185,4 +185,45 @@ class CrashScrubTest {
         assertFalse(id in logged.crumb.message.orEmpty())
         assertTrue("reconcile" in logged.event?.message.orEmpty(), "and the message did arrive")
     }
+
+    // ---- the build an event describes --------------------------------------------------------------------------
+
+    @Test
+    fun an_event_naming_the_build_it_describes_is_filed_under_it_and_carries_no_such_tag() {
+        val stamped = describedBuildStamped(
+            CrashEvent(
+                message = "process metric crossed: x",
+                tags = mapOf(DESCRIBED_RELEASE_TAG to "0.4", DESCRIBED_BUILD_TAG to "1", PROCESS_TAG to "app.snapsync"),
+                release = "0.6",
+                dist = "2369",
+            ),
+        )
+        assertEquals("0.4", stamped.release)
+        assertEquals("1", stamped.dist)
+        assertEquals(mapOf(PROCESS_TAG to "app.snapsync"), stamped.tags, "the naming tags never leave as tags")
+    }
+
+    @Test
+    fun an_event_naming_no_build_keeps_the_channels_own() {
+        val event = CrashEvent(message = "m", tags = mapOf(PROCESS_TAG to "p"), release = "0.6", dist = "2369")
+        assertEquals(event, describedBuildStamped(event))
+    }
+
+    @Test
+    fun an_event_naming_only_a_release_keeps_the_channels_build_number() {
+        val stamped = describedBuildStamped(
+            CrashEvent(message = "m", tags = mapOf(DESCRIBED_RELEASE_TAG to "0.4"), release = "0.6", dist = "2369"),
+        )
+        assertEquals("0.4", stamped.release)
+        assertEquals("2369", stamped.dist)
+    }
+
+    @Test
+    fun an_event_naming_only_a_build_number_keeps_the_channels_release() {
+        val stamped = describedBuildStamped(
+            CrashEvent(message = "m", tags = mapOf(DESCRIBED_BUILD_TAG to "1"), release = "0.6", dist = "2369"),
+        )
+        assertEquals("0.6", stamped.release)
+        assertEquals("1", stamped.dist)
+    }
 }

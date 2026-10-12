@@ -32,11 +32,11 @@ data class Crumb(
  *
  * Outbound (`CrashReporter.capture`, `sendDump`): a [message] or a [throwable], [tags] and [contexts].
  * Leaving (`CrashHandlers.onEvent`): the adapter fills in what the event carries by then — the SDK's [formatted]
- * rendering, [params], the [exceptionValues] (one per exception, in order) and the attached [breadcrumbs] — and
- * writes back what the handler returns. A captured message's text arrives there as [formatted] (measured on the
- * Sentry SDK: the contract's shaping clauses failed while they read [message] alone), so a handler reads and
- * shapes both. A handler reshapes those fields; it does not add or remove exceptions or
- * breadcrumbs, and the adapter writes them back positionally.
+ * rendering, [params], the [exceptionValues] (one per exception, in order), the attached [breadcrumbs], the [tags]
+ * the scopes added and the [release] and [dist] it is filed under — and writes back what the handler returns. A
+ * captured message's text arrives there as [formatted] (measured on the Sentry SDK: the contract's shaping clauses
+ * failed while they read [message] alone), so a handler reads and shapes both. A handler reshapes those fields; it
+ * does not add or remove exceptions or breadcrumbs, and the adapter writes them back positionally.
  */
 data class CrashEvent(
     val message: String? = null,
@@ -47,6 +47,13 @@ data class CrashEvent(
     val breadcrumbs: List<Crumb> = emptyList(),
     val tags: Map<String, String> = emptyMap(),
     val contexts: Map<String, Map<String, String>> = emptyMap(),
+    /**
+     * Leaving only: the version line the event is filed under — the channel's own from the build's options unless a
+     * handler names another (see [describedBuildStamped]).
+     */
+    val release: String? = null,
+    /** Leaving only: the build number the event is filed under, likewise. */
+    val dist: String? = null,
 )
 
 /**
@@ -76,6 +83,36 @@ const val PLATFORM_TAG: String = "platform"
 
 /** The tag naming the process a report came from: its bundle id on iOS (app or extension), its package on Android. */
 const val PROCESS_TAG: String = "process"
+
+/** The tag naming the entry point an event's log line was written under. */
+const val ENTRY_POINT_TAG: String = "entry_point"
+
+/**
+ * The tags an outbound event names the build it is ABOUT with, when that is not the build sending it: a process-metric
+ * report describes a process that has ended, and arrives on whichever launch came next — a day later, possibly of
+ * another build (SNAPSYNC-61: a dev build's foreground kill, delivered and filed as TestFlight's 0.6 (2369)). They
+ * never leave as tags: [describedBuildStamped] moves them into the event's own release and build number.
+ */
+const val DESCRIBED_RELEASE_TAG: String = "described.release"
+
+/** The build number half of [DESCRIBED_RELEASE_TAG]. */
+const val DESCRIBED_BUILD_TAG: String = "described.build"
+
+/**
+ * An event as filed under the build it describes: the [DESCRIBED_RELEASE_TAG]/[DESCRIBED_BUILD_TAG] it carries become
+ * its release and build number, and leave it as tags. An event naming none keeps the channel's own; one naming only
+ * one half keeps the channel's other.
+ */
+fun describedBuildStamped(event: CrashEvent): CrashEvent {
+    val release = event.tags[DESCRIBED_RELEASE_TAG]
+    val build = event.tags[DESCRIBED_BUILD_TAG]
+    if (release == null && build == null) return event
+    return event.copy(
+        release = release ?: event.release,
+        dist = build ?: event.dist,
+        tags = event.tags - DESCRIBED_RELEASE_TAG - DESCRIBED_BUILD_TAG,
+    )
+}
 
 /**
  * The build number a platform's events are stamped with, or `null` to leave it unset.
@@ -250,7 +287,7 @@ class LoggedCrash(val crumb: Crumb, val event: CrashEvent?)
 fun loggedCrash(severity: Severity, message: String, tag: String, throwable: Throwable?, entry: String?): LoggedCrash {
     val text = redactEventKeys(redactUuids(if (entry != null) "[$entry] $message" else message))
     val level = severity.crashLevel()
-    val tags = if (entry != null) mapOf("entry_point" to entry) else emptyMap()
+    val tags = if (entry != null) mapOf(ENTRY_POINT_TAG to entry) else emptyMap()
     val event = when (level) {
         CrashLevel.ERROR ->
             if (throwable != null) {

@@ -10,12 +10,15 @@ import app.snapsync.model.FileResult
 import app.snapsync.model.PLATFORM_TAG
 import app.snapsync.model.PROCESS_METRIC_CONTEXT
 import app.snapsync.model.PROCESS_TAG
+import app.snapsync.model.ProcessMetricEmission
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.model.crashDist
+import app.snapsync.model.describedBuildStamped
 import app.snapsync.model.diagnosticDumpEvent
 import app.snapsync.model.loggedCrash
+import app.snapsync.model.processMetricCrossingEvent
 import app.snapsync.model.savedDiagnosticReport
 import app.snapsync.model.scrubbedCrumb
 import app.snapsync.model.scrubbedEvent
@@ -89,8 +92,8 @@ class CrashReporting(
         },
     )
 
-    /** What an event may leave as — the port's `onEvent` handler. */
-    fun shapeEvent(event: CrashEvent): CrashEvent? = scrubbedEvent(event)
+    /** What an event may leave as — the port's `onEvent` handler: filed under the build it describes, then scrubbed. */
+    fun shapeEvent(event: CrashEvent): CrashEvent? = scrubbedEvent(describedBuildStamped(event))
 
     /** What a breadcrumb may leave as — the port's `onBreadcrumb` handler. */
     fun shapeCrumb(crumb: Crumb): Crumb? = scrubbedCrumb(crumb)
@@ -108,6 +111,16 @@ class CrashReporting(
         start()
         if (!isConfigured) return
         reporter.setContext(PROCESS_METRIC_CONTEXT, report.fields)
+    }
+
+    /**
+     * Send the event for one crossing [emission] of [report], filed under the build the report describes
+     * ([processMetricCrossingEvent]). Starts the channel itself, for the reason [describeProcess] does.
+     */
+    fun reportCrossing(emission: ProcessMetricEmission, report: ProcessMetricReport) {
+        start()
+        if (!isConfigured) return
+        reporter.capture(processMetricCrossingEvent(emission, report, entry.current()))
     }
 
     /**

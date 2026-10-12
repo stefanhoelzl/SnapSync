@@ -219,6 +219,39 @@ class ProcessCompositionTest {
     }
 
     @Test
+    fun a_crossing_is_sent_once_and_leaves_filed_under_the_build_the_report_describes() {
+        // SNAPSYNC-61: a dev build's foreground kill, delivered a day later by a TestFlight launch.
+        val reporter = Recording()
+        val process = snapSyncProcess(ports(reporter, NoProcessMetrics, "https://key@ingest/1"))
+        process.processAccount.handle(
+            metricPayloadOf(
+                mapOf(
+                    "applicationExitMetrics.foregroundExitData.cumulativeMemoryResourceLimitExitCount" to "1",
+                    app.snapsync.model.PROCESS_METRIC_RELEASE_KEY to "0.4",
+                    app.snapsync.model.PROCESS_METRIC_BUILD_KEY to "1",
+                ),
+            ),
+        )
+        val event = reporter.events.single()
+        val handlers = assertNotNull(reporter.handlers)
+        val leaving = assertNotNull(handlers.onEvent(event.copy(release = "0.6", dist = "2369")))
+        assertEquals("0.4", leaving.release)
+        assertEquals("1", leaving.dist)
+        assertTrue(leaving.tags.keys.none { it.startsWith("described.") }, "no naming tag leaves: ${leaving.tags}")
+    }
+
+    @Test
+    fun a_crossing_on_a_build_that_reports_nowhere_sends_nothing() {
+        val reporter = Recording()
+        snapSyncProcess(ports(reporter, NoProcessMetrics, dsn = null)).processAccount.handle(
+            metricPayloadOf(
+                mapOf("applicationExitMetrics.foregroundExitData.cumulativeMemoryResourceLimitExitCount" to "1"),
+            ),
+        )
+        assertTrue(reporter.events.isEmpty())
+    }
+
+    @Test
     fun a_report_carries_the_footprints_the_app_recorded_before_it_was_last_suspended() {
         val reporter = Recording()
         snapSyncProcess(ports(reporter, NoProcessMetrics, "https://key@ingest/1")).footprints
