@@ -2,6 +2,7 @@
 
 package app.snapsync.ios.upload
 
+import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.contract.extension.landedAt
 import app.snapsync.contracts.Binding
@@ -28,7 +29,6 @@ import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.uploadTarget
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.destinationPathOf
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -257,7 +257,7 @@ internal fun transferRunStep(clauseId: String, call: Int, tape: String?): Step {
         return Step.Continue(recorder.recording(emptyList()).render())
     }
     val results = run(single(clause), ExtensionPhotoKitUploadBinding(recorder))
-    val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val env = IosBuildInfo()
     val header = listOf(
         "contract" to OsUploadQueueContract.name,
         "host" to Host.IOS_DEVICE_PHOTOKIT_EXT.name,

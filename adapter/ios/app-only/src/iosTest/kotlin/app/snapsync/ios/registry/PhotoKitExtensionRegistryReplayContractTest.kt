@@ -40,7 +40,13 @@ class PhotoKitExtensionRegistryReplayContractTest {
             recordingName(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP, grant),
             clauseId,
         ) { replayer ->
-            registryInState(ReplayingRegistrationApi(replayer), state, log, afterDispose = replayer::assertExhausted)
+            registryInState(
+                ReplayingRegistrationApi(replayer),
+                replayedOsFact(replayer),
+                state,
+                log,
+                afterDispose = replayer::assertExhausted,
+            )
         }
 
     private val granted = object : Binding<ExtensionRegistryState, ExtensionRegistry> {

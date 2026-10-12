@@ -2,6 +2,7 @@
 
 package app.snapsync.contract
 
+import app.snapsync.config.IosBuildInfo
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
@@ -35,7 +36,6 @@ import app.snapsync.ios.urlsession.UploadSession
 import app.snapsync.ios.urlsession.UploadSessionApi
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.link.SystemUrlOpenerApi
-import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.logging.documentsDirectory
 import app.snapsync.ports.Completion
 import app.snapsync.ports.SystemUi
@@ -456,7 +456,7 @@ private fun runRelaunched(handler: () -> Unit) {
         single(TransferSessionContract, RELAUNCH_CLAUSE),
         DeviceRelaunchedUploadBinding(recorder, handler),
     )
-    val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val env = IosBuildInfo()
     val header = listOf(
         "contract" to TransferSessionContract.name,
         "host" to Host.IOS_DEVICE_APP.name,

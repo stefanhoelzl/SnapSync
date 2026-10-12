@@ -19,7 +19,7 @@ internal class PlatformAdapters(
     val ui: Lazy<Ui<UiState, UiIntent>>,
     /** The ports this launch composes over. */
     val ports: AppDevicePorts,
-    /** What this build adds to the process's boot banner. */
+    /** What only this build's adapter set knows, logged right after the boot banner. */
     val bootLines: List<String>,
     /** What this build starts once the root has composed — the control channel, on a rig build. */
     val afterLaunch: () -> Unit,

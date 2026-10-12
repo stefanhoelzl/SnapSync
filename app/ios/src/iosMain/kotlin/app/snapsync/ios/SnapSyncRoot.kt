@@ -9,7 +9,6 @@ import app.snapsync.compose.AppPorts
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.config.IosBuildInfo
-import app.snapsync.config.iosBootLines
 import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.crypto.IosCrypto
 import app.snapsync.databases.IosDatabases
@@ -295,10 +294,7 @@ object SnapSyncRoot {
             clock = ports.clock.value,
             crypto = ports.crypto.value,
             entryContext = IosEntryContext,
-            build = IosBuildInfo(
-                osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
-                bootLines = iosBootLines("app") + adapters.bootLines,
-            ),
+            build = IosBuildInfo(),
         )
     }
 
@@ -348,7 +344,7 @@ object SnapSyncRoot {
             lane = compositionLane,
             cutoffFormatter = cutoffFormatter,
             ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),
-        )
+        ).also { adapters.bootLines.forEach { line -> log.i { line } } }
     }
 
     // A silent push's own work (the download arm) and the tail its wake joins are both composed in the app graph

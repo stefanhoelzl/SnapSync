@@ -25,6 +25,6 @@ internal class PlatformAdapters(
     val ports: AppDevicePorts,
     /** Compose the graph at launch — [compose] itself in production; nothing on a rig launch whose adapter choice was refused. */
     val launch: (compose: () -> Unit) -> Unit,
-    /** What this build adds to the process's boot banner: nothing in production. */
+    /** What only this build's adapter set knows, logged right after the boot banner: nothing in production. */
     val bootLines: List<String>,
 )

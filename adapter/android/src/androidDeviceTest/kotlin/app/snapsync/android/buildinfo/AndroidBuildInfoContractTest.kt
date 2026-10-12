@@ -23,8 +23,7 @@ class AndroidBuildInfoContractTest {
         appVersion = "1.2",
         buildNumber = "2140",
         uploadHost = "https://snapsync.example/api/v2",
-        bootLines = listOf("=== app process start ==="),
-        apnsEnvironment = "contract-project",
+        pushEnvironment = "contract-project",
         playStoreUrl = if (distributed) "https://play.google.com/store/apps/details?id=app.snapsync" else "",
         processId = context.packageName,
         dsn = if (distributed) "https://key@bugsink.example/1" else "",
@@ -39,13 +38,12 @@ class AndroidBuildInfoContractTest {
             BuildInfoState.BUNDLED,
             BuildInfoState.UNREPORTED_AND_UNLISTED,
             BuildInfoState.ON_ANDROID,
-            BuildInfoState.NO_OS_DRIVEN_UPLOAD,
         )
         override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
             if (state in reaches) {
                 Entered.Ready(build(distributed = state == BuildInfoState.REPORTING_AND_LISTED).recorded(log))
             } else {
-                Entered.Unreachable("an Android process has its package for a bundle, and no OS-driven uploader")
+                Entered.Unreachable("an Android process has its package for a bundle, and runs on Android")
             }
     }
 

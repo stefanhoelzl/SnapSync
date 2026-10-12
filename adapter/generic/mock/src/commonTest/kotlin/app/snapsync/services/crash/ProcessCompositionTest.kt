@@ -268,16 +268,6 @@ class ProcessCompositionTest {
         return assertNotNull(reporter.options, "the channel started")
     }
 
-    private fun facts(buildNumber: String) = app.snapsync.model.DiagnosticEnvironment(
-        appVersion = "1.4",
-        buildNumber = buildNumber,
-        osVersion = "unknown",
-        deviceModel = "unknown",
-        uploadTier = "unknown",
-        uploadBase = "unknown",
-        reporterEnvironment = "production",
-    )
-
     @Test
     fun an_ios_build_reports_its_release_environment_platform_and_process_and_leaves_the_build_number_unset() {
         val options = startedWith(
@@ -285,7 +275,8 @@ class ProcessCompositionTest {
                 dsn = "https://key@ingest/1",
                 declaredVersion = app.snapsync.mock.DeclaredVersion("1.4"),
                 processId = "app.snapsync.ios.extension",
-                diagnostics = facts("2512"),
+                buildNumber = "2512",
+                reporterEnvironment = "production",
             ),
         )
         assertEquals("https://key@ingest/1", options.dsn)
@@ -302,7 +293,8 @@ class ProcessCompositionTest {
                 dsn = "https://key@ingest/1",
                 platform = app.snapsync.model.Platform.ANDROID,
                 processId = "app.snapsync",
-                diagnostics = facts("2512"),
+                buildNumber = "2512",
+                reporterEnvironment = "production",
             ),
         )
         assertEquals("2512", options.dist)

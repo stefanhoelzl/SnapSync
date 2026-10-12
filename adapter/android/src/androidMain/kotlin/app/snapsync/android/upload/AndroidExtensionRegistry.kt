@@ -10,6 +10,8 @@ import app.snapsync.ports.ExtensionRegistry
  * iOS below 26.1 does, so the membership transitions need no platform branch.
  */
 object AndroidExtensionRegistry : ExtensionRegistry {
+    override val supported: Boolean = false
+
     override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer = RegistrationAnswer.Unsupported
 
     override fun isEnabled(): RegistrationState = RegistrationState.UNSUPPORTED

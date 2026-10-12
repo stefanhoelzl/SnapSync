@@ -166,9 +166,8 @@ class SnapSyncRoot(internal val application: Application) {
                 appVersion = BuildConfig.APP_VERSION,
                 buildNumber = BuildConfig.VERSION_CODE.toString(),
                 uploadHost = BuildConfig.UPLOAD_BASE,
-                bootLines = listOf("=== app process start ===") + adapters.bootLines,
                 // An FCM token belongs to the Firebase project that issued it: that project is its push environment.
-                apnsEnvironment = firebase.projectId,
+                pushEnvironment = firebase.projectId,
                 playStoreUrl = BuildConfig.PLAY_STORE_URL,
                 processId = application.packageName,
                 dsn = BuildConfig.SENTRY_DSN,
@@ -192,7 +191,7 @@ class SnapSyncRoot(internal val application: Application) {
             cutoffFormatter = cutoffFormatter,
             // The app's uploader transport is the only uploader Android has (no OS-driven tier).
             ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),
-        )
+        ).also { adapters.bootLines.forEach { line -> log.i { line } } }
     }
 
     /** The composed core. `internal` for a rig build's channel, which reaches it as a thunk. */

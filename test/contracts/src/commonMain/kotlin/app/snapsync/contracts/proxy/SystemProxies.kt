@@ -23,13 +23,14 @@ internal class BuildInfoProxy(private val inner: BuildInfo, log: CallLog) : Buil
     override val appVersion get() = r.returns("appVersion", inner.appVersion)
     override val uploadHost get() = r.returns("uploadHost", inner.uploadHost)
     override val store get() = r.returns("store", inner.store)
-    override val apnsEnvironment get() = r.returns("apnsEnvironment", inner.apnsEnvironment)
-    override val osSupportsOsDrivenUpload get() = r.answer("osSupportsOsDrivenUpload", inner.osSupportsOsDrivenUpload)
-    override val diagnostics get() = r.returns("diagnostics", inner.diagnostics)
+    override val buildNumber get() = r.returns("buildNumber", inner.buildNumber)
+    override val pushEnvironment get() = r.returns("pushEnvironment", inner.pushEnvironment)
+    override val osVersion get() = r.returns("osVersion", inner.osVersion)
+    override val deviceModel get() = r.returns("deviceModel", inner.deviceModel)
+    override val reporterEnvironment get() = r.returns("reporterEnvironment", inner.reporterEnvironment)
     override val dsn get() = r.returns("dsn", inner.dsn)
     override val platform get() = r.answer("platform", inner.platform)
     override val processId get() = r.returns("processId", inner.processId)
-    override val bootLines get() = r.returns("bootLines", inner.bootLines)
 }
 
 /** [Clock] as its clause's [CallLog] sees it. */

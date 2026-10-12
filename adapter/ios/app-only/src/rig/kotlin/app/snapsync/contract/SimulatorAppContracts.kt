@@ -4,8 +4,6 @@ package app.snapsync.contract
 
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.config.IosBuildInfo
-import app.snapsync.config.iosBootLines
-import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.Binding
@@ -357,23 +355,15 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
  * this host presents `UNLOCKED` and never the locked state, which no host presents (`ProcessInfoContract`); and the
  * simulator's kernel accounts the app's memory as a device's does, so it presents `MEMORY_ACCOUNTED` too.
  */
-/**
- * The real [IosBuildInfo] in the simulator app, given the OS fact the app's root hands it — [osCarriesOsDrivenUpload],
- * the same call — on a simulator runtime that carries the OS-driven uploader.
- */
+/** The real [IosBuildInfo] in the simulator app: a bundle of its own, on iOS. */
 class SimAppBuildInfoBinding : Binding<BuildInfoState, BuildInfo> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(BuildInfoState.BUNDLED, BuildInfoState.OS_DRIVEN_UPLOAD, BuildInfoState.ON_IOS)
+    override val reaches = setOf(BuildInfoState.BUNDLED, BuildInfoState.ON_IOS)
 
     override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
         if (state in reaches) {
-            // The banner the app's root hands its build facts, as the root builds it.
-            val adapter = IosBuildInfo(
-                osSupportsOsDrivenUpload = osCarriesOsDrivenUpload(),
-                bootLines = iosBootLines("app"),
-            )
-            Entered.Ready(adapter.recorded(log))
+            Entered.Ready(IosBuildInfo().recorded(log))
         } else {
             Entered.Unreachable("a rig build on a simulator is neither distributed nor bundle-less")
         }

@@ -338,7 +338,7 @@ class WorldInspectorController(
             declaredVersion = DeclaredVersion(APP_VERSION),
             dsn = DSN,
             store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
-            apnsEnvironment = "sandbox",
+            pushEnvironment = "sandbox",
         )
         val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Ignored, network = null)
         return JvmApp(scope, lane, mocks) { device ->

@@ -17,6 +17,7 @@ import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.logs.ProcessLogWriters
 import app.snapsync.services.logs.SinkLogWriter
+import app.snapsync.services.logs.bootBanner
 import co.touchlab.kermit.Logger
 
 /**
@@ -46,8 +47,8 @@ class ProcessPorts(
     /** The ambient entry-point seam the device-log lines and the crash channel's `entry_point` tag read. */
     val entryContext: EntryContext,
     /**
-     * What the running build is: where it reports to ([BuildInfo.dsn]), its boot banner ([BuildInfo.bootLines]), and
-     * the constants every composition over this process reads.
+     * What the running build is: where it reports to ([BuildInfo.dsn]), what the boot banner names, and the constants
+     * every composition over this process reads.
      */
     val build: BuildInfo,
 )
@@ -94,7 +95,7 @@ class ProcessServices internal constructor(
     /** Which build this is, as the app menu shows it. */
 
     val buildLabel: BuildLabel
-        get() = BuildLabel(version = build.appVersion, buildNumber = build.diagnostics.buildNumber)
+        get() = BuildLabel(version = build.appVersion, buildNumber = build.buildNumber)
 }
 
 /**
@@ -125,7 +126,7 @@ fun snapSyncProcess(ports: ProcessPorts): ProcessServices {
         ports.entryContext, logging, ports.build,
     )
     val boot = services.logger("process")
-    ports.build.bootLines.forEach { line -> boot.i { line } }
+    ports.build.bootBanner().forEach { line -> boot.i { line } }
     crash.start()
     ports.processMetrics.listen(MetricHandlers(onReport = services.processAccount::handle))
     return services

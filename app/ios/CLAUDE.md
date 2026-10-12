@@ -266,8 +266,9 @@ reinstall. To exercise the app's uploader alone on a ≥26.1 device, switch the 
   10 MB roll. The os_log `PublicNSLogSink` is redacted `<private>` on current iOS. The extension's log
   lives in the App Group, which is not USB-pullable; read it through the control channel
   (`GET /device/logs?process=extension`, load `rig-channel`) — the copy-into-Documents launch trigger that
-  used to serve this is gone, along with every other one. Each root hands its boot banner in its `BuildInfo` and wraps
-  its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
+  used to serve this is gone, along with every other one. The banner is the composition's (`snapSyncProcess`,
+  from `BuildInfo`'s facts); a root logs only what it alone knows (the adapter choice, the extension's log
+  destination) right after composing, and wraps its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
   entry points wrapped, or their downstream lines lose the trigger prefix.
 - **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above) for any target linking SQLDelight's
   native driver — check any new target; the symbol resolves at link time, not
