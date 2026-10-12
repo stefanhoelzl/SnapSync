@@ -28,8 +28,6 @@ import kotlin.time.Instant
  */
 class BackendMock internal constructor(internal val state: BackendState) {
     constructor(
-        /** Devices an event admits, active or departed, before a join answers `409`. */
-        capacity: Int = DEFAULT_CAPACITY,
         /** The creation time every event it mints is stamped with — whole-second UTC, as the real backend's. */
         createdAt: Instant,
         /**
@@ -37,15 +35,13 @@ class BackendMock internal constructor(internal val state: BackendState) {
          * mocks pass the time they play.
          */
         now: () -> Instant,
-    ) : this(BackendState(mutableMapOf(), capacity, createdAt, now))
+    ) : this(BackendState(mutableMapOf(), createdAt, now))
 
     /** A backend on the wall clock, minting events stamped [createdAt]. */
     constructor(
-        /** Devices an event admits, active or departed, before a join answers `409`. */
-        capacity: Int = DEFAULT_CAPACITY,
         /** The creation time every event it mints is stamped with — whole-second UTC, as the real backend's. */
         createdAt: Instant = Instant.parse(DEFAULT_CREATED_AT),
-    ) : this(capacity, createdAt, { Clock.System.now() })
+    ) : this(createdAt, { Clock.System.now() })
 
     /**
      * One process's face: the device API over HTTP. The version a request declares is its own header, as the
@@ -70,7 +66,14 @@ class BackendMock internal constructor(internal val state: BackendState) {
     val operator: BackendOperator = BackendOperator(state)
 
     companion object {
-        const val DEFAULT_CAPACITY: Int = 40
+        /**
+         * What an event's `capacity` says on the wire: the real api's placeholder, which limits nothing (decision record
+         * `changes/remove-event-device-cap`, D4). An event admits any number of devices.
+         */
+        const val CAPACITY_PLACEHOLDER: Int = 1_000_000
+
+        /** The most members one wake reaches, chosen at random — the real api's fan-out bound (D1). */
+        const val FANOUT_MAX_RECIPIENTS: Int = 40
         const val DEFAULT_CREATED_AT: String = "2026-01-01T00:00:00Z"
     }
 }
@@ -216,9 +219,6 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** The minimum app version every route demands, or null for a gate that is off. */
     var minAppVersion: String? by state::minAppVersion
 
-    /** Devices an event admits before its join answers `409`. */
-    var capacity: Int by state::capacity
-
     /**
      * While set, the backend refuses this phone as not genuine for that reason — a refused phone is
      * told why: every attestation answers `401 attestation rejected: <reason>`, as v2 does, and every gated
@@ -316,7 +316,6 @@ class BackendOperator internal constructor(private val state: BackendState) {
 internal class BackendState(
     /** The byte store, by (event, device): what the byte route stored, each event its own (change `per-event-storage-layout`). */
     val storedFiles: MutableMap<Pair<String, String>, MutableSet<DeviceFile>>,
-    capacity: Int,
     val createdAt: Instant,
     /** The backend's clock — what an open-until date is judged against. */
     val now: () -> Instant,
@@ -324,8 +323,6 @@ internal class BackendState(
     private val lock = mockLock()
 
     fun <T> locked(block: () -> T): T = lock.locked(block)
-
-    @Volatile var capacity: Int = capacity
 
     class Event(
         var name: String,
@@ -356,7 +353,7 @@ internal class BackendState(
         var receivedPosition: Long? = null,
     )
 
-    enum class JoinOutcome { ENROLLED, FULL, CLOSED, NO_SUCH_EVENT }
+    enum class JoinOutcome { ENROLLED, CLOSED, NO_SUCH_EVENT }
 
     enum class PublishOutcome { APPLIED, OLDER, NOT_A_MEMBER, NO_SUCH_EVENT, CLOSED, COMPLETED }
 
@@ -449,8 +446,7 @@ internal class BackendState(
             existing.manifest = existing.manifest?.withFinal(false)
             return JoinOutcome.ENROLLED
         }
-        // Every membership ever enrolled counts, active or departed — leaving frees no slot.
-        if (memberships.keys.count { it.first == eventId } >= capacity) return JoinOutcome.FULL
+        // An open event admits any number of devices (decision record `changes/remove-event-device-cap`, D3).
         memberships[eventId to deviceId] = Membership()
         return JoinOutcome.ENROLLED
     }
@@ -615,13 +611,22 @@ internal class BackendState(
         union(eventId).orEmpty().filter { it.first == deviceId }.mapTo(mutableSetOf()) { it.second.assetId }
 
     /**
-     * Every OTHER active member of [eventId] holding a push registration is sent one silent push — recorded here. A wake
-     * that [announce]s a gain names the union position.
+     * Every OTHER active member of [eventId] holding a push registration — at most
+     * [BackendMock.FANOUT_MAX_RECIPIENTS] of them, picked at random as the real fan-out does — is sent one silent push,
+     * recorded here. A wake that [announce]s a gain names the union position.
      */
     private fun notifyMembers(eventId: String, publisherId: String, announce: Boolean) {
         val seq = if (announce) position(eventId) else null
-        memberships.filter { (key, membership) -> key.first == eventId && key.second != publisherId && !membership.departed }
-            .forEach { (key, _) -> deviceConfigs[key.second]?.let { pushes += SentPush(eventId, key.second, it.token, seq) } }
+        val recipients = memberships
+            .filter { (key, membership) -> key.first == eventId && key.second != publisherId && !membership.departed }
+            .mapNotNull { (key, _) -> deviceConfigs[key.second]?.let { key.second to it.token } }
+        // Sampled only past the bound, and kept in membership order, so a small event's pushes read as they always did.
+        val woken = if (recipients.size <= BackendMock.FANOUT_MAX_RECIPIENTS) {
+            recipients.toSet()
+        } else {
+            recipients.shuffled().take(BackendMock.FANOUT_MAX_RECIPIENTS).toSet()
+        }
+        recipients.filter { it in woken }.forEach { (deviceId, token) -> pushes += SentPush(eventId, deviceId, token, seq) }
     }
 
     companion object {

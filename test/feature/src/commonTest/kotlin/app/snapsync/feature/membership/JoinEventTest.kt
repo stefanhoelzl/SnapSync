@@ -92,14 +92,13 @@ class JoinEventTest {
 
     @Test
     fun the_outcome_maps_to_what_the_join_surface_shows() {
-        // The mapping lives HERE rather than in `compose/` because it is a rule, not wiring: capacity and
+        // The mapping lives HERE rather than in `compose/` because it is a rule, not wiring: a closed event and
         // a transient failure reach different screens, and only one of them offers a Retry. In the
         // composition no test could reach it (capability `join-event`).
         assertEquals(JoinCommit.Committed, JoinOutcome.Committed.toCommit())
         // Already a member IS a member — re-confirming is a no-op, never a failure.
         assertEquals(JoinCommit.Committed, JoinOutcome.AlreadyJoined.toCommit())
-        assertEquals(JoinCommit.Full, JoinOutcome.EventFull.toCommit())
-        // A closed event is a wall like a full one (capability `event-lifetime`).
+        // A closed event is a wall no retry moves (capability `event-lifetime`).
         assertEquals(JoinCommit.Closed, JoinOutcome.EventClosed.toCommit())
         assertEquals(JoinCommit.Failed, JoinOutcome.EnrollFailed.toCommit())
         assertEquals(JoinCommit.Unverified, JoinOutcome.Unverified.toCommit(), "never the generic failure")
@@ -257,21 +256,6 @@ class JoinEventTest {
 
         assertEquals(JoinOutcome.EventClosed, outcome)
         assertTrue(provisioned.isEmpty())
-    }
-
-    @Test
-    fun `a full event is reported apart from a failure`() = runTest {
-        // Capacity is a refusal the user can act on — "this event is full" — while a transport failure is
-        // not. The previous seam answered both as `false`, so the join surface could only say that something
-        // went wrong (capability `join-event`).
-        val provisioned = mutableListOf<EventConfig>()
-        val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_FULL, provisioned = provisioned)
-            .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
-            )
-
-        assertEquals(JoinOutcome.EventFull, outcome)
-        assertTrue(provisioned.isEmpty(), "no config should be provisioned when the event is full")
     }
 
     @Test

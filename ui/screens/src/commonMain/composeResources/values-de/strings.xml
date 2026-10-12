@@ -178,8 +178,6 @@
     <string name="link_incomplete_body">Diesem Link fehlt ein Teil der Einladung. Öffne den ganzen Link noch einmal oder scanne den QR-Code des Events.</string>
     <string name="join_failed_title">Beitritt fehlgeschlagen</string>
     <string name="join_failed_body">Etwas ist schiefgelaufen. Versuch es noch einmal.</string>
-    <string name="event_full_title">Dieses Event ist voll</string>
-    <string name="event_full_body">Es können keine weiteren Mitglieder beitreten.</string>
     <string name="loading_event">Event-Details werden geladen …</string>
     <string name="waiting_network_title">Warte auf ein Netzwerk</string>
     <string name="waiting_network_body">Das Event lädt, sobald du wieder online bist.</string>

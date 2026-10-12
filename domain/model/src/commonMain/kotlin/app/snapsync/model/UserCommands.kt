@@ -5,19 +5,15 @@ package app.snapsync.model
  *
  * A named outcome rather than a Boolean, because the two ways to fail need DIFFERENT screens and a
  * Boolean cannot carry the difference. [Failed] is transient — the network, the backend, the moment —
- * and the surface it produces offers a Retry that genuinely may work. [Full] is not: the event is at
- * capacity, retrying fails identically, and a Retry button there is an invitation to press it forever.
- * Collapsing them left a member tapping Retry against a wall with nothing telling them what the wall
- * was.
+ * and the surface it produces offers a Retry that genuinely may work. [Closed] is not: the event admits
+ * nobody any more, retrying fails identically, and a Retry button there is an invitation to press it
+ * forever.
  */
 enum class JoinCommit {
     /** The membership is committed (a re-join of the same event counts — it is already committed). */
     Committed,
 
-    /** The event is at capacity; no retry can change that. */
-    Full,
-
-    /** The event has closed; no retry can change that either. */
+    /** The event has closed; no retry can change that. */
     Closed,
 
     /** The commit did not land, for a reason that may not hold next time. */
@@ -61,8 +57,8 @@ enum class JoinCommit {
  *   the creation status read-model.
  * - [commitJoin] — join (a bodyless membership write, no manifest) then provision the membership's
  *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window
- *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), at
- *   capacity, or failed.
+ *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), closed,
+ *   or failed.
  * - [share] — hand the invite URL to the platform share surface, titled with the event's name (fire-and-forget,
  *   `UiState` unaffected).
  * - [requestAccess] — raise the system photo-access dialog: returns

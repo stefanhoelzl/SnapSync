@@ -687,7 +687,7 @@ a lost `resources` row is repaired only by a re-upload, which happens only if th
 believe the upload landed.
 
 ```
-events        id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds,
+events        id, name, created_at, starts_at, ends_at, capacity (a placeholder nothing reads), lifetime_seconds,
               closed_at?, completed_at?, last_landed_at?, zone? (migration 0009),
               key_id? (migration 0011: an encrypted event's key id; NULL = plain),
               open_until? (migration 0014: backfilled; NULL only for a row the previous bundle wrote)
@@ -768,9 +768,10 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   at most 30 days, which bounds uploads only and closes nothing. Lifetime `lifetime_seconds` (30 days)
   is stamped as a duration. The delete-by is derived per read as `max(createdAt, openUntil) + lifetime`
   (`src/lifecycle.ts`, shared with the sweep): 30 days after the event stops being open, so a 30-day event is not
-  cut off on its last day and a back-dated one is not born expired. `capacity` ever-enrolled devices (every state;
-  leaving frees nothing, rejoin reuses the slot) is the only refusal, `409`. It is 40 in the policy,
-  bounded by Edge's subrequest limit (`deployment.md`, "Edge Scripting limits worth knowing").
+  cut off on its last day and a back-dated one is not born expired. An event admits any number of devices; the
+  `capacity` column is a placeholder kept for a rollback and for released apps (`PENDING_CLEANUPS.md`). What
+  grows with the member count is bounded per wake instead: one wake reaches at most `FANOUT_MAX_RECIPIENTS`
+  members, chosen at random (`deployment.md`, "Edge Scripting limits worth knowing").
 - The **nightly sweep** (`src/scripts/sweep.ts`, a GitHub Actions workflow, since Edge caps requests at
   50 subrequests / 30 s CPU) gives each event one `sweepVerdict` (`src/lifecycle.ts`): **drop** the row
   past its delete-by; **complete** an ever-joined event that is finished, empty (no member present) or past
@@ -955,7 +956,7 @@ outside it fails both builds. `x-snapsync-export` hands a constraint to the app 
 (`Limits.EVENT_NAME_MAX_LENGTH`), so the screen and the route bound a name by one value.
 
 **Every declared response names its outcome** (`x-snapsync-outcome`), and an outcome is a type: a route's own is
-nested in its reply (`JoinEventReply.Full`), one defined once under `components/responses` is ONE type every reply
+nested in its reply (`CreateEventReply.InvalidName`), one defined once under `components/responses` is ONE type every reply
 that references it implements (`EventNotFound`, `Unauthorized`, `AppTooOld`, …). Each outcome belongs to one group by
 its status — `Success` (2xx–3xx), `ClientError` (4xx — a refused build is the client's), `ServerIssue` (5xx) — and
 every reply also answers `NoAnswer`: `Unreachable` (nothing came back) or `Malformed` (an answer outside the
@@ -1002,10 +1003,10 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `GET` | `/attest/challenge` | stateless HMAC-signed, time-bounded nonce, writes nothing | `200 {challenge}` |
 | `POST` | `/attest/token` `{deviceId, challenge, proof}`, `proof` = `{format:"apple-appattest", keyId, attestation}` or `{format:"android-key", chain:[DER b64, leaf first]}` | the format only CHOOSES the verifier. App Attest: chain to Apple root, nonce, app-id hash, counter, aaguid. Android key attestation (`src/android-attest.ts`): chain to a pinned Google root (by key), its provisioning shape, one extension in the leaf, validity (expiry ignored on factory chains), revocation (Google's public status list, cached per `max-age`), the challenge's SHA-256, the package and signing digest, TEE/StrongBox and a locked, verified boot — the last three per `androidAttestationTrust`. **Persists the device row with the platform that proved it, then mints** | `201 {token}` · `400` body (the retired flat v1 body too) · `401` failed check, its body `attestation rejected: <reason>` with the reason one of `device-modified` (software key, unlocked or unverified boot) · `app-not-genuine` (package, signing digest, App Attest app-id hash) · `device-unverifiable` (every other check — the default, which never accuses the user), suffixed ` (certificate)` when a certificate check failed (the chain's root, shape, signatures or validity, or a revoked certificate — diagnostics only, never told to the user) · `409` stale challenge · `502` write failed, or Android's status list unreachable |
 | `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies by the STORED row's `attest_platform`: an App Attest assertion, or an Android ECDSA-P256 signature over the challenge's UTF-8 bytes, against the stored key (no vendor call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
-| `POST` | `/events` `{name, startsAt, endsAt?, openUntil?, zone?, keyId?}` | name trimmed, non-empty, ≤100 chars; window rules; `openUntil` (absent → `endsAt`) at least `endsAt` and at most the window maximum after the later of `endsAt` and now (plus an hour for a creating phone whose clock runs ahead), else `400 invalid openUntil`; `zone` stored when usable, else NULL (never a `400`); `keyId` (16 lowercase hex — the encrypted file format's key id) makes the event **encrypted**, and a present invalid one is a `400`, never a plain event; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, openUntil, capacity, deletesAt, closedAt, completedAt, keyId?}` (`keyId` only on an encrypted event, in every event body) · `400` · `502` |
+| `POST` | `/events` `{name, startsAt, endsAt?, openUntil?, zone?, keyId?}` | name trimmed, non-empty, ≤100 chars; window rules; `openUntil` (absent → `endsAt`) at least `endsAt` and at most the window maximum after the later of `endsAt` and now (plus an hour for a creating phone whose clock runs ahead), else `400 invalid openUntil`; `zone` stored when usable, else NULL (never a `400`); `keyId` (16 lowercase hex — the encrypted file format's key id) makes the event **encrypted**, and a present invalid one is a `400`, never a plain event; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, openUntil, capacity, deletesAt, closedAt, completedAt, keyId?}` (`keyId` only on an encrypted event, in every event body; `capacity` a placeholder released apps require) · `400` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>` (ungated; an optional bearer token is verified, `changes/separate-event-page-from-device-api` D7) | metadata; `deletesAt` derived per response; `openUntil`; `closedAt` (the stored stamp, else derived for builds that predate open-until dates), `completedAt`, `members {active, final, waiting}` (`waiting`: present members not settled or with a declared role not landed), `keyId` | `200` (a completed event too, with `completedAt`) · `401` a sent token that does not verify · `404` sealed absence · `502` read failure |
 | `PATCH` | `/events/<eventId>` `{name}` (`changeEvent`) | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` an event closed before open-until dates, or completed · `502` |
-| `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` an event closed before open-until dates, or completed · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional insert, admitting any device; clears `manifest_version` and `final`; idempotent | `200` · `404` · `410` an event closed before open-until dates, or completed · `502` |
 | `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; closes nothing and wakes nobody; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), honoured only after `endsAt` and only for a present membership; closes nothing; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to an event closed before open-until dates) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to such an event · `410` completed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/received` `{position}` | the union-log position up to which the device holds every photo of the others (`received_position`, monotonic: a lower one changes nothing); only a present member | `200` · `400 invalid position` · `404` · `409` not a member · `502` |
@@ -1052,8 +1053,8 @@ The event's identity reaching `/join/<eventId>` is a decision
 
 - **Faithful outcome.** A write returns `2xx` only when the store confirmed it. A read returns an array
   only when every query succeeded, otherwise `502`, never a partial list (a short list looks like a
-  complete one, and a photo vanishes silently). A zero-row conditional write with two causes (capacity
-  or absent) is disambiguated by a follow-up read (`409` vs `404`).
+  complete one, and a photo vanishes silently). A zero-row conditional write with two causes (closed
+  or absent) is disambiguated by a follow-up read (`410` vs `404`).
 - **Presigned URLs.** SigV4 query-signed S3 `GET`, path-style
   `https://<s3-host>/<zone>/<the resource's path, each segment percent-encoded>`, signed with the zone name as
   access key id and the storage password as secret. Minted by one builder: by the download redirect, one
@@ -1132,7 +1133,7 @@ src/routes/        the routes as `(deps) => Hono` factories: site.ts (site proxy
                    web.ts (the event page's read),
                    attest.ts, shared.ts, v2.ts, manifest.ts (manifest body parsing) and
                    support.ts (actsFor, presignDownloadUrl, the routes' shared refusals)
-src/db.ts          the one narrow `Db` port and every statement (capacity insert, atomic publish, union,
+src/db.ts          the one narrow `Db` port and every statement (the enrollment, atomic publish, union,
                    sweep queries). No schema here
 src/db-libsql.ts   the deployed `Db` (bunny Database)
 src/storage.ts     byte-store and site-prefix key builders + LIST/GET/PUT/DELETE, shared with the sweep

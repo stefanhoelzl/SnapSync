@@ -215,8 +215,11 @@ export function v2Handlers(
         detail: `${route}: could not stamp the landing for ${completed.join(",")}: ${e}`,
       });
     }
+    // ONE wake at most: `eventsCompletedBy` asks about this request's own event (bytes are stored per event), so
+    // it answers that event or none — the fan-out's subrequest budget is one `notifyMembers` per request
+    // (decision record `changes/remove-event-device-cap`, D6).
     const woken: NotifyOutcome[] = [];
-    for (const id of completed) woken.push(await notifyMembers(deps, id, deviceId));
+    if (completed.length > 0) woken.push(await notifyMembers(deps, eventId, deviceId));
     return { completed: completed.length, woken, errors };
   }
 
@@ -310,7 +313,7 @@ export function v2Handlers(
     },
 
     // JOIN — the only route that creates or reactivates a membership, and the only one that decides
-    // capacity. In v1 the manifest publish did both, which meant a document describing what a device SHARES
+    // admission (an open event admits any device). In v1 the manifest publish did both, which meant a document describing what a device SHARES
     // also decided whether it was a member: a departed device rejoined merely by publishing.
     async joinEvent(c, { params }) {
       const { eventId } = params;

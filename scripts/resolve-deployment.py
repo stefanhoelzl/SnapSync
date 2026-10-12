@@ -262,11 +262,6 @@ INVENTORY = [
         alone, and the resolver refuses it for every deployment whose storage is not the local
         filesystem, so no deployed bundle can carry it.
     """),
-    Key("eventCapacity", [JSON], doc="""
-        Maximum devices EVER enrolled per event (active OR departed — leaving frees no slot). PRODUCT
-        POLICY, not a deployment-varying fact: every deployment extends the same component. The only
-        future paid-tier lever.
-    """),
     Key("eventWindowMaxSeconds", [JSON, PROPS], doc="""
         Largest permitted `endsAt - startsAt`, and the absent-`endsAt` fallback. Reaches Gradle too, where
         `:domain` generates the app's `EVENT_WINDOW_MAX_SECONDS` from it: the create screen's picker bounds

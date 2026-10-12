@@ -460,7 +460,7 @@ Deno.test("join → enrolls the device, and joining twice is harmless", async ()
   db.close();
 });
 
-Deno.test("join → a missing event is 404, a full event is 409 — told apart, never collapsed", async () => {
+Deno.test("join → a missing event is 404, and an event admits any number of devices", async () => {
   const missing = await store();
   assertEquals(
     (await v2({ config: CONFIG, db: missing, fetch: recorder().fetchImpl })
@@ -469,14 +469,17 @@ Deno.test("join → a missing event is 404, a full event is 409 — told apart, 
   );
   missing.close();
 
+  // A row stamped with a capacity of 1 — what an event created before the limit was removed carries — still
+  // admits a second device: nothing reads the column any more (decision record
+  // `changes/remove-event-device-cap`, D3).
   const db = await storeWithEvent({ capacity: 1 });
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
-  await app.request(JOIN_PATH, { method: "PUT" });
+  assertEquals((await app.request(JOIN_PATH, { method: "PUT" })).status, 200);
   const second = await app.request(`/api/v2/events/${E}/devices/${D2}`, {
     method: "PUT",
     headers: await as(D2),
   });
-  assertEquals(second.status, 409);
+  assertEquals(second.status, 200);
   db.close();
 });
 

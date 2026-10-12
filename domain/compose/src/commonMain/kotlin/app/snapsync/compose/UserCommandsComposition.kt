@@ -97,7 +97,7 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     }
 
     // The join gate's commit: join (no body, no manifest) then
-    // provision. The outcome is NAMED rather than reduced to a Boolean, because capacity and a
+    // provision. The outcome is NAMED rather than reduced to a Boolean, because a closed event and a
     // transient failure need different screens: one offers a Retry that may work, the other must
     // not offer one at all. The same-event no-op is a success.
     override suspend fun commitJoin(choice: JoinChoice): JoinCommit = awaitingOnCoreLane(

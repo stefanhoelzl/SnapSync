@@ -8,7 +8,7 @@
 // need). The sealed union therefore lives on the RESOLVED DEPLOYMENT: `readConfig` narrows to `bunny` or
 // throws, and this file narrows to `filesystem` and builds what the shim needs.
 //
-// It inherits every non-storage value — `eventCapacity`, the window maximum, the lifetime, the attest TTL,
+// It inherits every non-storage value — the window maximum, the lifetime, the attest TTL,
 // the Apple identity — from the SAME resolved deployment the Edge Script uses, so a change to any of them
 // is exercised by the rig for free and the rig cannot silently diverge from the values it exists to test.
 // What it supplies itself is exactly what a filesystem deployment does not declare: the four secrets (a

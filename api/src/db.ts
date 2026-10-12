@@ -38,7 +38,7 @@ export type Row = Record<string, unknown>;
 /** One statement plus its positional arguments. Positional throughout: no named-parameter dialect gap. */
 export type Statement = { sql: string; args?: unknown[] };
 
-/** What a write reports back. `rowsAffected` is load-bearing for the capacity gate — see `ENROLL`. */
+/** What a write reports back. `rowsAffected` is load-bearing for the enrollment — see `ENROLL`. */
 export type WriteResult = { rowsAffected: number };
 
 /**
@@ -177,7 +177,7 @@ export async function renameEvent(db: Db, eventId: string, name: string): Promis
   return { rowsAffected };
 }
 
-// ── Memberships and the capacity gate ─────────────────────────────────────────────────────────────
+// ── Memberships and the enrollment ────────────────────────────────────────────────────────────────
 
 /**
  * Where a member stands (capabilities `event-lifetime`, `manage-membership`; migration 0008). `sharing` and
@@ -190,18 +190,13 @@ export type MembershipState = "sharing" | "settled" | "done" | "left";
 const PRESENT = `('sharing', 'settled')`;
 
 /**
- * The capacity gate, as ONE conditional statement (capability `event-lifetime`, design.md D5).
+ * The enrollment, as ONE conditional statement: it admits any device while the event exists and carries no close
+ * stamp. There is no device limit (decision record `changes/remove-event-device-cap`, D3); the `events.capacity`
+ * column it once compared against is a placeholder nothing reads (D4).
  *
- * It admits a device when the event exists AND (the device already holds a membership — a rejoin reuses
- * its own slot — OR the event has fewer than `capacity` memberships of ANY state, because leaving frees
- * no slot). The count and the insert are evaluated together, so concurrent first enrollments cannot
- * overshoot: measured, ten devices racing for three slots enrolled TEN under read-then-write and exactly
- * THREE here, in 158 ms (`PROBE-FINDINGS.md` §4.4).
- *
- * ⚠️ `rowsAffected === 0` CONFLATES THREE ANSWERS — at capacity (`409`), closed (`410`) and no such event
- * (`404`) — because the existence test also requires the event to carry no close stamp and the capacity
- * subquery yields NULL for a missing event. Callers MUST disambiguate with `readEvent` rather than pick one;
- * see `enroll`. Events no longer close (decision record `changes/back-dated-events`, D2): the stamp is carried
+ * ⚠️ `rowsAffected === 0` CONFLATES TWO ANSWERS — closed (`410`) and no such event (`404`) — because the existence
+ * test also requires the event to carry no close stamp. Callers MUST disambiguate with `readEvent` rather than pick
+ * one; see `enroll`. Events no longer close (decision record `changes/back-dated-events`, D2): the stamp is carried
  * by a COMPLETED event, whose photos are gone, and by an event closed before that change, which keeps the old
  * rules until the sweep drops it (`PENDING_CLEANUPS.md`). Either admits nobody, a returning device included.
  *
@@ -217,22 +212,17 @@ const ENROLL = `
   INSERT INTO memberships (event_id, device_id, state, joined_at)
   SELECT ?, ?, 'sharing', ?
   WHERE EXISTS (SELECT 1 FROM events WHERE id = ? AND closed_at IS NULL)
-    AND (
-      EXISTS (SELECT 1 FROM memberships WHERE event_id = ? AND device_id = ?)
-      OR (SELECT COUNT(*) FROM memberships WHERE event_id = ?)
-         < (SELECT capacity FROM events WHERE id = ?)
-    )
   ON CONFLICT (event_id, device_id) DO UPDATE SET state = 'sharing', manifest_version = NULL`;
 
 /**
- * What an enrollment attempt resolved to — the four answers a route must tell apart. `closed` is a completed
+ * What an enrollment attempt resolved to — the three answers a route must tell apart. `closed` is a completed
  * event (its row carries `closed_at`), or one closed before events stopped closing (capability `event-lifetime`).
  */
-export type EnrollOutcome = "enrolled" | "full" | "closed" | "no-such-event";
+export type EnrollOutcome = "enrolled" | "closed" | "no-such-event";
 
 /**
  * Enroll (or re-enroll) a device, exactly. Absence is never silent here: a zero-row outcome is resolved
- * to `full` or `no-such-event` by a follow-up existence read, never collapsed into one status.
+ * to `closed` or `no-such-event` by a follow-up existence read, never collapsed into one status.
  */
 export async function enroll(
   db: Db,
@@ -240,20 +230,9 @@ export async function enroll(
   deviceId: string,
   joinedAt: string,
 ): Promise<EnrollOutcome> {
-  const { rowsAffected } = await db.execute(ENROLL, [
-    eventId,
-    deviceId,
-    joinedAt,
-    eventId,
-    eventId,
-    deviceId,
-    eventId,
-    eventId,
-  ]);
+  const { rowsAffected } = await db.execute(ENROLL, [eventId, deviceId, joinedAt, eventId]);
   if (rowsAffected > 0) return "enrolled";
-  const event = await readEvent(db, eventId);
-  if (event === null) return "no-such-event";
-  return event.closedAt ? "closed" : "full";
+  return (await readEvent(db, eventId)) === null ? "no-such-event" : "closed";
 }
 
 /**
@@ -1318,11 +1297,17 @@ export async function isMember(db: Db, eventId: string, deviceId: string): Promi
  * join, and the per-member form cost a round-trip per member on a path that now runs INSIDE a request the
  * caller times out. A member with no registered token is excluded by the query rather than by a later
  * filter, so "has no token" and "is not a member" stop being two passes over the same rows.
+ *
+ * At most [limit] of them, picked at RANDOM on every call (decision record `changes/remove-event-device-cap`,
+ * D1): each push is an Edge subrequest, so the fan-out's cost is bounded here rather than by the event's size.
+ * A member left out of one wake is as well off as one whose wake was lost — the next wake picks again, and
+ * its own uploads, the heartbeat and the foreground all read the union regardless (capability `delivery`).
  */
 export async function pushTokensForEvent(
   db: Db,
   eventId: string,
-  excludeDeviceId?: string,
+  excludeDeviceId: string | undefined,
+  limit: number,
 ): Promise<DevicePushToken[]> {
   const { rows } = await db.execute(
     `SELECT dr.push_kind, dr.push_token, dr.push_env
@@ -1331,8 +1316,9 @@ export async function pushTokensForEvent(
      WHERE m.event_id = ? AND m.state IN ${PRESENT}
        AND dr.push_token IS NOT NULL AND dr.push_kind IS NOT NULL AND dr.push_env IS NOT NULL
        AND m.device_id IS NOT ?
-     ORDER BY m.device_id`,
-    [eventId, excludeDeviceId ?? null],
+     ORDER BY RANDOM()
+     LIMIT ?`,
+    [eventId, excludeDeviceId ?? null, limit],
   );
   return rows.map((r) => ({
     kind: String(r.push_kind),

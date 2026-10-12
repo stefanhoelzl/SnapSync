@@ -3,7 +3,7 @@
 // `deno bundle` roots the deployed bundle at `main.ts`, so none of this can ship.
 //
 // WHY A REAL SQLITE RATHER THAN A FAKE. Every invariant this change moves into the database — the
-// two-level cascade, the atomic publish, the exact capacity gate, `uploaded`'s monotonicity — is a
+// two-level cascade, the atomic publish, the conditional enrollment, `uploaded`'s monotonicity — is a
 // property of SQL, not of our code. A hand-written in-memory double would assert our understanding of
 // those statements rather than their behaviour, which is precisely the thing worth testing. `node:sqlite`
 // is in-process: no network (the test task deliberately withholds `--allow-net`), no FFI flag, no server.

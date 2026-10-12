@@ -216,8 +216,6 @@
     <string name="link_incomplete_body">This link is missing part of the invite. Open the whole link again, or scan the event's QR code.</string>
     <string name="join_failed_title">Couldn't join</string>
     <string name="join_failed_body">Something went wrong. Try again.</string>
-    <string name="event_full_title">This event is full</string>
-    <string name="event_full_body">No more members can join it.</string>
     <string name="loading_event">Loading event details …</string>
     <string name="waiting_network_title">Waiting for a network</string>
     <string name="waiting_network_body">The event loads as soon as you're back online.</string>

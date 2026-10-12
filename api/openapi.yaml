@@ -322,13 +322,6 @@ paths:
           $ref: "#/components/responses/NotThisDevice"
         "404":
           $ref: "#/components/responses/EventNotFound"
-        "409":
-          description: The event admits no more devices.
-          x-snapsync-outcome: Full
-          content:
-            text/plain:
-              schema:
-                const: event full
         "410":
           $ref: "#/components/responses/Closed"
         "426":
@@ -1152,7 +1145,6 @@ components:
         - startsAt
         - endsAt
         - openUntil
-        - capacity
         - deletesAt
         - closedAt
         - completedAt
@@ -1171,7 +1163,10 @@ components:
           description: Until when the event stays open — its range end, or the date its host chose when it was over.
           $ref: "#/components/schemas/Timestamp"
         capacity:
-          description: Devices the event admits, present or departed.
+          description: >-
+            A placeholder with no meaning, always sent: apps released before the device limit was removed decode
+            it as required. Optional here, so newer apps never depend on it and it can be dropped once the version
+            floor passes them. An event admits any number of devices.
           type: integer
         deletesAt:
           description: The latest the event lives — derived, never stored.

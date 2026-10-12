@@ -37,14 +37,6 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.membershipClau
     }
 
     clause(
-        "JOIN_A_FULL_EVENT_IS_FULL",
-        BackendState.EVENT_FULL,
-        covers = cells { backend(Routes.JoinEvent.ID, JoinEventReply.Full::class) },
-    ) { s ->
-        assertAnswer<JoinEventReply.Full>(s.join(), "full, never not-found")
-    }
-
-    clause(
         "JOIN_AN_UNKNOWN_EVENT_IS_NOT_FOUND",
         BackendState.NO_SUCH_EVENT,
         covers = cells { backend(Routes.JoinEvent.ID, EventNotFound::class) },

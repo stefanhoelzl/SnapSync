@@ -11,9 +11,6 @@ enum class BackendState {
     /** An event the backend created, and a device that has not joined it. */
     EVENT_EXISTS,
 
-    /** An event every seat of which is taken. */
-    EVENT_FULL,
-
     /** An id no event was ever created under. */
     NO_SUCH_EVENT,
 
@@ -144,7 +141,6 @@ object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Bac
             else -> null
         }
         when (state) {
-            BackendState.EVENT_FULL -> setup.fillToCapacity(event.eventId)
             BackendState.MEMBER, BackendState.ENDED_MEMBER -> setup.join(event.eventId, device)
             BackendState.ENDED_BESIDE_A_SETTLED_MEMBER -> {
                 setup.join(event.eventId, device)

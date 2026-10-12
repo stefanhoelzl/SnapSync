@@ -303,9 +303,9 @@ class DeviceManifestProducerTest {
 
     @Test
     fun a_refused_join_does_not_enrol_and_is_distinguishable() = runTest {
-        // Capacity is a refusal the user can act on; the seam must not flatten it into "something failed".
-        val full = FakeJoin(JoinResult.EVENT_FULL)
-        assertEquals(JoinResult.EVENT_FULL, ManifestDeviceEnroller(full).enroll("E", "dev"))
+        // A closed event is a refusal the user can act on; the seam must not flatten it into "something failed".
+        val closed = FakeJoin(JoinResult.EVENT_CLOSED)
+        assertEquals(JoinResult.EVENT_CLOSED, ManifestDeviceEnroller(closed).enroll("E", "dev"))
     }
 
     @Test

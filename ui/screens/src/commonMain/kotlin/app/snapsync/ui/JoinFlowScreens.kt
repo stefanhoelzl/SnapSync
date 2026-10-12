@@ -25,8 +25,6 @@ import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.cancel
-import app.snapsync.ui.resources.event_full_body
-import app.snapsync.ui.resources.event_full_title
 import app.snapsync.ui.resources.join_failed_body
 import app.snapsync.ui.resources.join_failed_title
 import app.snapsync.ui.resources.joining
@@ -109,8 +107,7 @@ internal fun JoiningEventScreen(
                     )
                     JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = stage.phase.eventName)
                     // Every way a commit can end badly, on ONE surface — see [BlockedStep].
-                    JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.EventFull,
-                    JoinPhase.Detailed.Step.DeviceRefused,
+                    JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.DeviceRefused,
                     -> BlockedStep(stage.phase, actions, online)
                 }
             }
@@ -126,8 +123,6 @@ internal fun JoiningEventScreen(
  *
  * - a failure that may heal keeps a Retry, which re-sends the range the Ready phase committed (it survives Ready →
  *   Committing → CommitFailed because the screen stays mounted throughout);
- * - a FULL event gets none: capacity does not heal, so a Retry would fail identically every time and turn a clear
- *   answer into a member pressing a button against a wall;
  * - a phone the service refused — a refused phone is told why it cannot join — is told the
  *   cause, keeps a Retry that tries to verify it again, and — where only a report can help — offers the report.
  *
@@ -137,10 +132,9 @@ internal fun JoiningEventScreen(
 private fun BlockedStep(phase: JoinPhase.Detailed, actions: JoinActions, online: Boolean) {
     val refused = phase.step == JoinPhase.Detailed.Step.DeviceRefused
     val refusal = (phase.refusal ?: ScreenMessage.DEVICE_UNVERIFIABLE).takeIf { refused }
-    val full = phase.step == JoinPhase.Detailed.Step.EventFull
-    val title = stringResource(if (full) Res.string.event_full_title else Res.string.join_failed_title)
-    val body = refusal?.text() ?: stringResource(if (full) Res.string.event_full_body else Res.string.join_failed_body)
-    val onRetry = actions.onRetryJoin.takeIf { online && !full }
+    val title = stringResource(Res.string.join_failed_title)
+    val body = refusal?.text() ?: stringResource(Res.string.join_failed_body)
+    val onRetry = actions.onRetryJoin.takeIf { online }
     val onReport = refusal?.takeIf { it.offersReport }?.let { reportable ->
         {
             actions.onReportRefusal(reportable)

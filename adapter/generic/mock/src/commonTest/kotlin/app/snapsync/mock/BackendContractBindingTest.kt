@@ -33,7 +33,6 @@ class BackendContractBindingTest {
         override val reaches = setOf(
             BackendState.SERVING,
             BackendState.EVENT_EXISTS,
-            BackendState.EVENT_FULL,
             BackendState.NO_SUCH_EVENT,
             BackendState.MEMBER,
             BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS,

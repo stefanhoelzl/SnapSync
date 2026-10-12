@@ -20,7 +20,7 @@ still in it has shared and received everything, or 3 days after the later of the
 the last photo's arrival, or once everyone left; the app never leaves an event on its own — a deleted event is shown
 as over (`changes/back-dated-events`). The stamped lifetime (30 days from `max(createdAt, openUntil)`) stays the
 latest an event can live. Named futures (don't build for them; don't deepen assumptions
-against them unnamed): paid events (device count is the only lever) · concurrent multi-event
+against them unnamed): concurrent multi-event
 membership (single active membership is the *current* contract).
 
 > It began as a *personal one-way photo backup*. Defaults inherited from that era are dangerous here:

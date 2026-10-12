@@ -179,10 +179,10 @@ class JoinGateEdgesTest {
 
     @Test
     fun `an autoJoin that does not commit names the reason in the log`() = runTest {
-        val world = World().apply { commit = { JoinCommit.Full } }
+        val world = World().apply { commit = { JoinCommit.Closed } }
         settle(host(world, backgroundScope, InviteLinkHints.Honoured).onOpenUrl(autoJoinLink()))
 
-        assertTrue("autoJoin aborted: join full for $EVENT_ID" in world.logged, "logged: ${world.logged}")
+        assertTrue("autoJoin aborted: join closed for $EVENT_ID" in world.logged, "logged: ${world.logged}")
     }
 
     @Test
@@ -482,6 +482,30 @@ class JoinGateEdgesTest {
     }
 
     @Test
+    fun `a confirm while the commit is in flight commits nothing more`() = runTest {
+        // Committing is no step a confirm is taken from: a second tap is not a second join.
+        val committing = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val world = World().apply {
+            commit = {
+                committing.complete(Unit)
+                release.await()
+                JoinCommit.Committed
+            }
+        }
+        val host = host(world, backgroundScope)
+        settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
+        val first = host.onConfirmJoin()
+        committing.await()
+
+        settle(host.onConfirmJoin())
+        release.complete(Unit)
+        settle(first)
+
+        assertEquals(1, world.commits.size)
+    }
+
+    @Test
     fun `a confirm with no join open commits nothing`() = runTest {
         val world = World()
         settle(host(world, backgroundScope).onConfirmJoin())
@@ -490,26 +514,12 @@ class JoinGateEdgesTest {
     }
 
     @Test
-    fun `a confirm on a full event commits nothing`() = runTest {
-        // A full event offers no confirm; one that arrives anyway is not a second try.
-        val world = World().apply { commit = { JoinCommit.Full } }
-        val host = host(world, backgroundScope)
-        settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
-        settle(host.onConfirmJoin())
-        assertEquals(JoinPhase.Detailed.Step.EventFull, (world.pending.value?.phase as? JoinProgress.Detailed)?.step)
-
-        settle(host.onConfirmJoin())
-
-        assertEquals(1, world.commits.size)
-    }
-
-    @Test
     fun `a commit's outcome lands only on the join that started it`() = runTest {
         // A newer link may open, or the join be cancelled, while a commit is in flight; whatever the commit answers,
         // what the member did since stands.
         val outcomes: List<suspend () -> JoinCommit> = listOf(
             { JoinCommit.Committed },
-            { JoinCommit.Full },
+            { JoinCommit.Closed },
             { error("the commit threw") },
         )
         val since: Map<String, suspend (StatusContainerHost) -> Job> = mapOf(

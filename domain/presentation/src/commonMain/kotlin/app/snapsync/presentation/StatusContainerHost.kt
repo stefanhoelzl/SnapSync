@@ -1814,8 +1814,8 @@ internal data class Owned<T>(val eventId: String?, val value: T) {
 }
 
 /**
- * The phase a commit that did not land shows: a full event and a closed one are walls no
- * retry moves, so neither offers one; anything else may heal and keeps the Retry.
+ * The phase a commit that did not land shows: a closed event is a wall no retry moves, so it
+ * offers none; anything else may heal and keeps the Retry.
  */
 private fun failedPhase(
     commit: JoinCommit,
@@ -1824,7 +1824,6 @@ private fun failedPhase(
 ): JoinProgress = when (commit) {
     JoinCommit.Closed -> JoinProgress.Closed
     JoinCommit.WrongLink -> JoinProgress.WrongLink
-    JoinCommit.Full -> JoinProgress.Detailed(event, JoinPhase.Detailed.Step.EventFull)
     // Refused for this phone's credential: told why when the service said why — a refused phone
     // is told why it cannot join. Without a verdict — the attempt to verify got no answer — it is the ordinary failure.
     JoinCommit.Unverified if refusal != null ->

@@ -36,12 +36,12 @@ class ManifestDeviceEnrollerTest {
     }
 
     @Test
-    fun a_full_event_does_not_enrol() = runTest {
-        // Passed through rather than flattened, so the join surface can say WHY: capacity is a refusal
+    fun a_closed_event_does_not_enrol() = runTest {
+        // Passed through rather than flattened, so the join surface can say WHY: a closed event is a refusal
         // the user can act on, and a transport failure is not (capability `join-event`).
         assertEquals(
-            JoinResult.EVENT_FULL,
-            ManifestDeviceEnroller(CapturingJoin(JoinResult.EVENT_FULL)).enroll("E", "dev"),
+            JoinResult.EVENT_CLOSED,
+            ManifestDeviceEnroller(CapturingJoin(JoinResult.EVENT_CLOSED)).enroll("E", "dev"),
         )
     }
 

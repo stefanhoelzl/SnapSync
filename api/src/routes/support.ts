@@ -9,7 +9,7 @@
 // a best-effort failure is RETURNED, for the handler to record.
 
 import type { AwsClient } from "aws4fetch";
-import type { Config } from "../config.ts";
+import { CAPACITY_PLACEHOLDER, type Config } from "../config.ts";
 import {
   type Db,
   type EnrollOutcome,
@@ -308,6 +308,9 @@ export function publicEvent(event: EventRow, closedAt: string | null = event.clo
   const { lifetimeSeconds: _stamped, lastLandedAt: _landed, zone: _zone, keyId, ...wire } = event;
   return {
     ...wire,
+    // A placeholder on every event, whatever its row was stamped with before the device limit was removed: released
+    // apps require the field, and nothing reads it (decision record `changes/remove-event-device-cap`, D4).
+    capacity: CAPACITY_PLACEHOLDER,
     ...(keyId ? { keyId } : {}),
     closedAt,
     completedAt: event.completedAt ?? null,
@@ -322,14 +325,13 @@ export function closedRefusal(): never {
 
 /**
  * Refuse an enrollment that did not admit the device; return when it did. The zero-row outcome has TWO
- * causes and they are told apart rather than collapsed (capability `database`): at capacity is a `409` the
- * user can act on, absent is a `404` that means something else entirely. A failed enrollment stays the
- * `502` it already is.
+ * causes and they are told apart rather than collapsed (capability `database`): closed is a `410` the user
+ * can act on, absent is a `404` that means something else entirely. A failed enrollment stays the `502` it
+ * already is.
  */
 export function enrollRefusal(outcome: EnrollOutcome): void {
   if (outcome === "no-such-event") refuse(404, "event not found");
   if (outcome === "closed") closedRefusal();
-  if (outcome === "full") refuse(409, "event full");
 }
 
 /**
@@ -365,12 +367,17 @@ export async function noteAppVersion(
   }
 }
 
-// The fan-out's own bound. Generous next to the work (one push per other member, at most the event's
-// capacity, sent in parallel over one HTTP/2 connection) but well inside the device's 12-second budget for
-// the request that carries it — so a stalled APNs socket costs a notification, never the write. Each push
-// is also a subrequest, and Edge allows 50 per request: the capacity is bounded by that, not by this
-// (`docs/deployment.md`, "Edge Scripting limits worth knowing").
+// The fan-out's own bound. Generous next to the work (one push per recipient, at most
+// FANOUT_MAX_RECIPIENTS, sent in parallel over one HTTP/2 connection) but well inside the device's 12-second
+// budget for the request that carries it — so a stalled APNs socket costs a notification, never the write.
 const FANOUT_TIMEOUT_MS = 4000;
+
+// The most members one wake reaches, whatever the event's size (decision record
+// `changes/remove-event-device-cap`, D1). Each push is an Edge subrequest and Edge documents 50 per request:
+// 40 pushes plus the route's own calls (the storage PUT, three or four statements, the token query, now and
+// then an FCM OAuth fetch) stay under it. A larger event wakes a random 40 each time; the rest catch up as
+// from a lost wake (`docs/deployment.md`, "Edge Scripting limits worth knowing").
+export const FANOUT_MAX_RECIPIENTS = 40;
 
 /**
  * The fan-out: wake the event's other PRESENT members (`sharing` or `settled`) so they read the union — after a
@@ -383,7 +390,7 @@ const FANOUT_TIMEOUT_MS = 4000;
  * download, which the next foreground read repairs; failing the publish would cost the manifest itself,
  * and the device's skip-if-unchanged would then not retry it.
  *
- * BOUNDED, because bounded member count does not bound a stalled socket. The publish runs synchronously
+ * BOUNDED in time, because a bounded recipient count does not bound a stalled socket. The publish runs synchronously
  * inside the device's own upload cycle under an OS deadline, so a hung APNs connection here would make
  * the device time out a write that actually committed — and the next cycle would skip it as unchanged.
  */
@@ -394,7 +401,7 @@ export async function notifyMembers(
 ): Promise<NotifyOutcome> {
   const errors: Fault[] = [];
   try {
-    const tokens = await pushTokensForEvent(db, eventId, publisherId);
+    const tokens = await pushTokensForEvent(db, eventId, publisherId, FANOUT_MAX_RECIPIENTS);
     if (tokens.length === 0) return { recipients: 0, pushed: 0, unsent: "", errors };
     // A wake for a gain names the union position it announces (decision record
     // `changes/incremental-union`, D6), read AFTER the commit: the event's last gain, at or past the one

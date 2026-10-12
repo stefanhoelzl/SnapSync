@@ -2,6 +2,7 @@
 // version's router, so there is one implementation and no possibility of the two drifting apart.
 
 import { verifyToken } from "../attest.ts";
+import { CAPACITY_PLACEHOLDER } from "../config.ts";
 import {
   completeAssets,
   downloadStoragePath,
@@ -110,8 +111,8 @@ export function sharedHandlers(
     // failure → 502.
     //
     // `endsAt` is CREATOR-SUPPLIED and bounds ONLY which captures may be uploaded — it is not a lifetime. ABSENT, it
-    // falls back to `startsAt + windowMax`, so old clients that send only `startsAt` keep working. `capacity` and
-    // `lifetimeSeconds` stay server-resolved. An ENCRYPTED event names its key's id (the encrypted file format,
+    // falls back to `startsAt + windowMax`, so old clients that send only `startsAt` keep working. `lifetimeSeconds`
+    // stays server-resolved, and `capacity` is the placeholder (`CAPACITY_PLACEHOLDER`) whatever a client sends. An ENCRYPTED event names its key's id (the encrypted file format,
     // `docs/architecture.md`); the key itself never reaches this backend. The host's `zone` is only the event
     // page's (capability `event-site`): one this runtime cannot use arrives absent and is stored null.
     //
@@ -134,7 +135,7 @@ export function sharedHandlers(
         startsAt,
         endsAt,
         openUntil,
-        capacity: config.eventCapacity,
+        capacity: CAPACITY_PLACEHOLDER,
         lifetimeSeconds: config.eventLifetimeSeconds,
         zone: body.zone ?? null,
         keyId: body.keyId ?? null,
@@ -149,7 +150,7 @@ export function sharedHandlers(
     },
 
     // Event metadata / existence (`docs/architecture.md`). Returns the event — always carrying
-    // `startsAt`, `endsAt`, `capacity`, and the derived `deletesAt`, because those are `NOT NULL` columns
+    // `startsAt`, `endsAt`, the `capacity` placeholder, and the derived `deletesAt`, because those are `NOT NULL` columns
     // — or 404 when the event was never created or the sweep deleted it; a read failure → 502. This is the
     // canonical existence check the device-manifest write gate relies on. There is no third answer: the
     // INCOMPLETE case the object era had to carry is unstateable now (see `gateEvent`).

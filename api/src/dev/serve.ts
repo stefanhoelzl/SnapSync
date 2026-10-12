@@ -107,7 +107,7 @@ const publicScheme = new URL(origin).protocol.replace(":", "");
 const config = devConfig(publicHost, publicScheme);
 const storage = fsFetch(config, options.store);
 // The rig's relational store (`docs/architecture.md`): a real SQLite file beside the object store, so a
-// local run exercises the same statements the deployed store runs — cascades, the conditional capacity
+// local run exercises the same statements the deployed store runs — cascades, the conditional enrollment
 // insert, the atomic publish — with no credential and no network. It lives INSIDE the store directory so
 // `rm -rf` clears both halves at once: clearing one and not the other is the state where the rig looks
 // broken for no visible reason.
