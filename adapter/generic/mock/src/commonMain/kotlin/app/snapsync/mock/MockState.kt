@@ -3,7 +3,6 @@
 package app.snapsync.mock
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
@@ -699,22 +698,13 @@ private class AssetDto(
 }
 
 @Serializable
-private class RefDto(val device: String, val asset: String) {
-    fun ref() = AssetRef(device, AssetId(asset))
-
-    companion object {
-        fun of(ref: AssetRef) = RefDto(ref.sourceDeviceId, ref.sourceAssetId.value)
-    }
-}
-
-@Serializable
 private class LibraryDto(
     val library: List<AssetDto>,
     val access: String,
     val answer: String,
     val userAlbums: Map<String, List<String>>,
     val selection: List<AssetDto>?,
-    val attempts: List<Pair<RefDto, Int>>,
+    val attempts: List<Pair<String, Int>>,
     val albumCounter: Int,
     val created: Map<String, Pair<String, List<String>>>,
     val createdLog: List<Pair<String, String>>,
@@ -722,7 +712,7 @@ private class LibraryDto(
     val deletedAlbums: List<String>,
     val failNextEnumeration: Boolean,
     val byIdReadable: Boolean,
-    val imported: List<RefDto>,
+    val imported: List<String>,
 ) {
     fun into(state: LibraryState) {
         state.library.value = library.map { it.asset() }
@@ -730,7 +720,7 @@ private class LibraryDto(
         state.answer = LibraryGrant.valueOf(answer)
         state.writableAlbums?.value = userAlbums.mapValues { (_, ids) -> ids.mapTo(mutableSetOf(), ::PlatformAssetId) }
         state.selection.value = selection?.map { it.asset() }
-        attempts.forEach { (ref, n) -> state.attempts[ref.ref()] = n }
+        attempts.forEach { (correlation, n) -> state.attempts[correlation] = n }
         state.albumCounter = albumCounter
         created.forEach { (id, album) ->
             state.created[id] = LibraryState.Album(album.first, album.second.mapTo(mutableSetOf(), ::PlatformAssetId))
@@ -740,7 +730,7 @@ private class LibraryDto(
         state.deletedAlbums.addAll(deletedAlbums)
         state.failNextEnumeration = failNextEnumeration
         state.byIdReadable = byIdReadable
-        state.imports.restoreImported(imported.map { it.ref() })
+        state.imports.restoreImported(imported)
     }
 
     companion object {
@@ -750,7 +740,7 @@ private class LibraryDto(
             answer = state.answer.name,
             userAlbums = state.userAlbums.value.mapValues { (_, ids) -> ids.map { it.value } },
             selection = state.selection.value?.map(AssetDto::of),
-            attempts = state.attempts.map { (ref, n) -> RefDto.of(ref) to n },
+            attempts = state.attempts.map { (correlation, n) -> correlation to n },
             albumCounter = state.albumCounter,
             created = state.created.mapValues { (_, album) -> album.title to album.members.map { it.value } },
             createdLog = state.createdLog.toList(),
@@ -758,7 +748,7 @@ private class LibraryDto(
             deletedAlbums = state.deletedAlbums.toList(),
             failNextEnumeration = state.failNextEnumeration,
             byIdReadable = state.byIdReadable,
-            imported = state.imports.imported.map(RefDto::of),
+            imported = state.imports.imported,
         )
     }
 }

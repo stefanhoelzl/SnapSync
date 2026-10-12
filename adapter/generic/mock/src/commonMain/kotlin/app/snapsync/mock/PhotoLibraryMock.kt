@@ -1,7 +1,6 @@
 package app.snapsync.mock
 
 import app.snapsync.model.AlbumId
-import app.snapsync.model.AssetRef
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryHandlers
@@ -243,7 +242,7 @@ internal class LibraryState(
     /** The process face whose selection observer is open — the one a changed selection is delivered to. */
     @Volatile var observer: InMemoryGallery? = null
 
-    val attempts = mutableMapOf<AssetRef, Int>()
+    val attempts = mutableMapOf<String, Int>()
     var albumCounter = 0
     val created = mutableMapOf<AlbumId, Album>()
     val createdLog = mutableListOf<Pair<String, String>>()
@@ -279,12 +278,12 @@ class ImportScript internal constructor() {
     // The operator scripts and reads from its thread while the app imports on another.
     private val lock = mockLock()
 
-    private val importedRefs = mutableListOf<AssetRef>()
+    private val importedCorrelations = mutableListOf<String>()
 
-    /** The source refs imported, one entry per created asset (so a repeat shows up twice). */
-    val imported: List<AssetRef> get() = lock.locked { importedRefs.toList() }
+    /** The correlations of the imports that created an asset, one entry per created asset (a repeat shows twice). */
+    val imported: List<String> get() = lock.locked { importedCorrelations.toList() }
 
-    internal fun restoreImported(refs: List<AssetRef>) = lock.locked { importedRefs.addAll(refs) }
+    internal fun restoreImported(correlations: List<String>) = lock.locked { importedCorrelations.addAll(correlations) }
 
     @Volatile var failNextImport: Boolean = false
 
@@ -298,9 +297,10 @@ class ImportScript internal constructor() {
 
     /**
      * Completes once an import has actually parked, so a caller awaits the live transaction rather than guessing at a
-     * delay. **Replaced on every park**: a completed deferred would hand a second waiter the STALE ref at once.
+     * delay — completed with the parked import's correlation. **Replaced on every park**: a completed deferred would
+     * hand a second waiter the STALE one at once.
      */
-    @Volatile var suspendedImport: CompletableDeferred<AssetRef> = CompletableDeferred()
+    @Volatile var suspendedImport: CompletableDeferred<String> = CompletableDeferred()
         private set
 
     /** Deliver the parked import's outcome: on [succeeded] the asset lands; otherwise its marker is cleared. */
@@ -310,44 +310,44 @@ class ImportScript internal constructor() {
     }
 
     /**
-     * How many times ONE ref may be imported before the library raises: an unbounded re-selection of one ref is a
+     * How many times ONE import may be made before the library raises: an unbounded re-selection of one asset is a
      * live-lock, and a live-lock in a test is a hang that names nothing. The cap turns it into a failure naming the count.
      */
     var attemptCap: Int = DEFAULT_ATTEMPT_CAP
 
-    private val attempts = mutableMapOf<AssetRef, Int>()
+    private val attempts = mutableMapOf<String, Int>()
 
-    private suspend fun park(ref: AssetRef): String? {
+    private suspend fun park(correlation: String): String? {
         val gate = CompletableDeferred<Boolean>()
         val announced = lock.locked {
             // A second park would overwrite the first's gate and strand that import: refuse it, loudly.
-            check(parked == null) { "an import is already suspended; resume it before suspending ${ref.sourceAssetId}" }
+            check(parked == null) { "an import is already suspended; resume it before suspending $correlation" }
             parked = gate
             if (suspendedImport.isCompleted) suspendedImport = CompletableDeferred()
             suspendedImport
         }
-        announced.complete(ref)
+        announced.complete(correlation)
         return if (gate.await()) null else "suspended import resumed as failed"
     }
 
     internal val answers = object : LibraryChangeAnswers {
-        override suspend fun beforeChange(ref: AssetRef): String? {
+        override suspend fun beforeChange(correlation: String): String? {
             if (!failNextImport) return null
             failNextImport = false
             return "forced"
         }
 
-        override suspend fun beforeCommit(ref: AssetRef): String? {
+        override suspend fun beforeCommit(correlation: String): String? {
             if (!suspendNextImport) return null
             suspendNextImport = false
-            return park(ref)
+            return park(correlation)
         }
 
-        override suspend fun afterCommit(ref: AssetRef): String? {
-            lock.locked { importedRefs += ref }
+        override suspend fun afterCommit(correlation: String): String? {
+            lock.locked { importedCorrelations += correlation }
             if (suspendNextImportAfterCommit) {
                 suspendNextImportAfterCommit = false
-                park(ref)?.let { return it }
+                park(correlation)?.let { return it }
             }
             if (!failNextImportAfterCreating) return null
             failNextImportAfterCreating = false
@@ -355,12 +355,12 @@ class ImportScript internal constructor() {
         }
     }
 
-    /** Counts an import of [ref] against [attemptCap], raising at the cap. */
-    internal fun attempt(ref: AssetRef) {
-        val attempt = lock.locked { (attempts.getOrElse(ref) { 0 } + 1).also { attempts[ref] = it } }
+    /** Counts an import of [correlation] against [attemptCap], raising at the cap. */
+    internal fun attempt(correlation: String) {
+        val attempt = lock.locked { (attempts.getOrElse(correlation) { 0 } + 1).also { attempts[correlation] = it } }
         check(attempt <= attemptCap) {
-            "imported ${ref.sourceAssetId} $attempt times (cap $attemptCap) — the drain is live-locking " +
-                "on one ref instead of offering it once"
+            "imported $correlation $attempt times (cap $attemptCap) — the drain is live-locking " +
+                "on one asset instead of offering it once"
         }
     }
 

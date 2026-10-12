@@ -11,7 +11,6 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
-import app.snapsync.model.ImportRequest
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.captureCeiling
@@ -19,6 +18,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.backend.EventUnionSource
@@ -54,7 +54,7 @@ class DownloadPushReceiverTest {
     }
 
     private class NoopImporter : GalleryImport {
-        override suspend fun import(request: ImportRequest) =
+        override suspend fun import(request: GalleryImportRequest) =
             ImportOutcome.Imported(PlatformAssetId("LOCAL"))
     }
 

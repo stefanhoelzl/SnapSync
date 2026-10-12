@@ -26,10 +26,9 @@ import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.ImportFile
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
@@ -133,12 +132,11 @@ class PhotoContractBindingsTest {
             }
             val staged = {
                 listOf(
-                    StagedResource(
-                        resourceKey = "contract-$clauseId-primary.jpg",
-                        role = ResourceRole.PRIMARY.wire,
-                        contentType = "image/jpeg",
-                        originalFilename = "IMG_0001.JPG",
-                        stagedPath = "staged:/contract-$clauseId-primary.jpg",
+                    ImportFile(
+                        "staged:/contract-$clauseId-primary.jpg",
+                        "image/jpeg",
+                        ResourceKind.PHOTO,
+                        "IMG_0001.JPG",
                     ),
                 )
             }
@@ -164,12 +162,11 @@ class PhotoContractBindingsTest {
             val gallery = mock.port().recorded(log).apply { listen(ImportDeliveries().handlers) }
             val staged = {
                 listOf(
-                    StagedResource(
-                        resourceKey = "contract-$clauseId-primary.jpg",
-                        role = ResourceRole.PRIMARY.wire,
-                        contentType = "image/jpeg",
-                        originalFilename = "IMG_0001.JPG",
-                        stagedPath = "staged:/contract-$clauseId-primary.jpg",
+                    ImportFile(
+                        "staged:/contract-$clauseId-primary.jpg",
+                        "image/jpeg",
+                        ResourceKind.PHOTO,
+                        "IMG_0001.JPG",
                     ),
                 )
             }

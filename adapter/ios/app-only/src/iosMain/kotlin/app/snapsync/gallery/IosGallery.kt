@@ -5,11 +5,11 @@ import app.snapsync.ios.discovery.libraryChangeTokenOf
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.ImportRequest
 import app.snapsync.permission.PhotoKitSelection
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
+import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryChangeToken
@@ -83,8 +83,8 @@ class IosGallery(
      * Without registered handlers there is nowhere to record the marker that keeps the created asset from being
      * uploaded back, so nothing is created: an error, and an import the caller retries later.
      */
-    override suspend fun import(request: ImportRequest): ImportOutcome {
-        val handlers = handlers.orNull("the import of ${request.ref.sourceAssetId}")
+    override suspend fun import(request: GalleryImportRequest): ImportOutcome {
+        val handlers = handlers.orNull("the import of ${request.correlation}")
             ?: return ImportOutcome.Failed("no import handlers registered")
         return importer.import(request, handlers)
     }

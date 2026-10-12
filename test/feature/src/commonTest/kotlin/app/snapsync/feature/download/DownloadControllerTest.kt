@@ -18,7 +18,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.ImportRequest
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
@@ -31,6 +30,7 @@ import app.snapsync.model.eventEnd
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryImport
+import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.backend.EventUnionSource
@@ -38,6 +38,7 @@ import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
+import app.snapsync.services.gallery.assetRefOf
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 import app.snapsync.services.wake.EventChecks
@@ -137,10 +138,10 @@ class DownloadControllerTest {
         /** The event album each import was asked to file into, in order. */
         val albums = mutableListOf<AlbumId?>()
 
-        override suspend fun import(request: ImportRequest): ImportOutcome {
-            val ref = request.ref
+        override suspend fun import(request: GalleryImportRequest): ImportOutcome {
+            val ref = assetRefOf(request.correlation)
             attempted += ref
-            albums += request.album
+            albums += request.album?.value
             val forThisRef = attempted.count { it == ref }
             check(forThisRef <= attemptCap) {
                 "imported ${ref.sourceAssetId} $forThisRef times (cap $attemptCap) — the drain is " +

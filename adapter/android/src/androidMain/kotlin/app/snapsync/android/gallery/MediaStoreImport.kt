@@ -9,14 +9,12 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
-import app.snapsync.model.AssetRef
-import app.snapsync.model.ImportRequest
-import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.StagedResource
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.GalleryImportRequest
+import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.ResourceKind
 import co.touchlab.kermit.Logger
 import java.io.File
 import java.io.IOException
@@ -27,7 +25,7 @@ import kotlin.time.Instant
  * half-written — in the event album's folder when the import names one (a received photo is in the album the moment
  * it exists, never loose first), in `DCIM/Camera` otherwise.
  *
- * 1. **Insert pending** (`IS_PENDING = 1`) into the image or video collection, by the `PRIMARY` resource's content
+ * 1. **Insert pending** (`IS_PENDING = 1`) into the image or video collection, by the original's content
  *    type. A pending item is invisible to every other app and to this app's own reads, so its `_ID` — the asset's
  *    identity ([PlatformAssetId]) — is handed to [onPlaceholder] before anything can observe it: that record is what keeps the
  *    received photo from being shared back.
@@ -59,10 +57,10 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     private var orphansCleaned = false
 
     @Synchronized
-    fun import(request: ImportRequest, onPlaceholder: (PlatformAssetId) -> Unit): ImportOutcome {
+    fun import(request: GalleryImportRequest, onPlaceholder: (PlatformAssetId) -> Unit): ImportOutcome {
         cleanOrphansOnce()
-        val original = request.resources.firstOrNull { it.role == ResourceRole.PRIMARY.wire }
-            ?: return refused("no original to import among ${request.resources.map { it.role }}")
+        val original = request.files.firstOrNull { it.kind != ResourceKind.PAIRED_VIDEO }
+            ?: return refused("no original to import among ${request.files.map { it.kind }}")
         val collection = collectionFor(original.contentType)
             ?: return refused("'${original.contentType}' is neither a photo nor a video")
         if (!decodes(
@@ -70,33 +68,33 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
                 collection,
             )
         ) {
-            return refused("the original '${original.originalFilename}' does not decode")
+            return refused("the original '${original.name}' does not decode")
         }
-        val folder = request.album?.takeIf { DefaultGallery.isAlbumFolder(it) } ?: CAMERA_FOLDER
+        val folder = request.album?.value?.takeIf { DefaultGallery.isAlbumFolder(it) } ?: CAMERA_FOLDER
         val motion = motionPhotoOf(request, original, collection)
         try {
             return insert(request, motion ?: original, collection, folder, onPlaceholder)
         } finally {
-            motion?.let { File(it.stagedPath).delete() }
+            motion?.let { File(it.path).delete() }
         }
     }
 
     /** A Live Photo's motion photo, when the request is one and it can be built; null imports [original] as it is. */
-    private fun motionPhotoOf(request: ImportRequest, original: StagedResource, collection: Uri): StagedResource? {
-        val live = request.resources.firstOrNull { it.role == ResourceRole.LIVE.wire }
+    private fun motionPhotoOf(request: GalleryImportRequest, original: ImportFile, collection: Uri): ImportFile? {
+        val live = request.files.firstOrNull { it.kind == ResourceKind.PAIRED_VIDEO }
         if (live == null || collection != IMAGES || !live.contentType.startsWith("video/")) return null
-        return motionPhotos.build("${request.ref.sourceAssetId}", original, live)
+        return motionPhotos.build(request.correlation, original, live)
     }
 
     private fun insert(
-        request: ImportRequest,
-        primary: StagedResource,
+        request: GalleryImportRequest,
+        primary: ImportFile,
         collection: Uri,
         folder: String,
         onPlaceholder: (PlatformAssetId) -> Unit,
     ): ImportOutcome {
-        val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary, folder, request.ref)) }
-            .onFailure { log.w(it) { "${request.ref.sourceAssetId}: the insert was refused" } }
+        val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary, folder)) }
+            .onFailure { log.w(it) { "${request.correlation}: the insert was refused" } }
             .getOrNull()
             ?: return ImportOutcome.Failed("MediaStore refused the insert")
         val id = PlatformAssetId(ContentUris.parseId(uri).toString())
@@ -107,13 +105,13 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
             discard(uri)
             return ImportOutcome.Failed("the bytes could not be written: ${e.message}", placeholder = id)
         }
-        stampModified(uri, request.creationDate)
+        request.created?.let { stampModified(uri, it) }
         val published = runCatchingCancellable { resolver.update(uri, publishedValues(), null) }.getOrDefault(0)
         if (published != 1) {
             discard(uri)
             return ImportOutcome.Failed("the item could not be published", placeholder = id)
         }
-        log.i { "${request.ref.sourceAssetId}: imported as $id into $folder" }
+        log.i { "${request.correlation}: imported as $id into $folder" }
         return ImportOutcome.Imported(id)
     }
 
@@ -145,20 +143,20 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         ids.count { resolver.delete(ContentUris.withAppendedId(collection, it), null) == 1 }
     }.onFailure { log.w(it) { "the leftover pending items could not be cleaned" } }.getOrDefault(0)
 
-    private fun copy(resource: StagedResource, uri: Uri) {
+    private fun copy(resource: ImportFile, uri: Uri) {
         val out = resolver.openOutputStream(uri, "w") ?: throw IOException("MediaStore opened no stream")
-        out.use { stream -> File(resource.stagedPath).inputStream().use { it.copyTo(stream) } }
+        out.use { stream -> File(resource.path).inputStream().use { it.copyTo(stream) } }
     }
 
     /** Whether the staged original reads as what it claims to be: an image's bounds, a video's dimensions. */
-    private fun decodes(resource: StagedResource, collection: Uri): Boolean = runCatchingCancellable {
+    private fun decodes(resource: ImportFile, collection: Uri): Boolean = runCatchingCancellable {
         if (collection == IMAGES) {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(resource.stagedPath, bounds)
+            BitmapFactory.decodeFile(resource.path, bounds)
             bounds.outWidth > 0 && bounds.outHeight > 0
         } else {
             MediaMetadataRetriever().use { retriever ->
-                retriever.setDataSource(resource.stagedPath)
+                retriever.setDataSource(resource.path)
                 retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()?.let { it > 0 } == true
             }
         }
@@ -170,13 +168,9 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         }.onFailure { log.w(it) { "the unfinished item $uri stays pending" } }
     }
 
-    private fun pendingValues(resource: StagedResource, folder: String, ref: AssetRef) = ContentValues().apply {
-        // The sender's name with SnapSync's mark (`ReceivedPhotoName`): what a reinstalled app reads back to know the
-        // photo was received. A collision makes MediaStore append " (1)", which the mark's reader tolerates.
-        put(
-            MediaStore.MediaColumns.DISPLAY_NAME,
-            ReceivedPhotoName.mark(resource.originalFilename, resource.resourceKey, ref),
-        )
+    private fun pendingValues(resource: ImportFile, folder: String) = ContentValues().apply {
+        // The name the request gives. A collision makes MediaStore append " (1)".
+        put(MediaStore.MediaColumns.DISPLAY_NAME, resource.name)
         put(MediaStore.MediaColumns.MIME_TYPE, resource.contentType)
         put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
         put(MediaStore.MediaColumns.IS_PENDING, 1)
@@ -185,12 +179,12 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     private fun publishedValues() = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
 
     /**
-     * Set the pending file's modification time to the sender's [creationDate], before the publish scans it. The scanner
+     * Set the pending file's modification time to the sender's capture time [created], before the publish scans it. The scanner
      * derives `DATE_MODIFIED` from it, and MediaProvider ignores an app's `DATE_TAKEN` (only the scan writes it), so
      * this is the one date an app can give an item whose file carries none.
      */
-    private fun stampModified(uri: Uri, creationDate: String) {
-        val millis = runCatchingCancellable { Instant.parse(creationDate).toEpochMilliseconds() }.getOrNull() ?: return
+    private fun stampModified(uri: Uri, created: Instant) {
+        val millis = created.toEpochMilliseconds()
         val path = resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null)
             ?.use { if (it.moveToFirst()) it.getString(0) else null }
         if (path == null || !File(path).setLastModified(millis)) log.w { "$uri: the modification time could not be set" }

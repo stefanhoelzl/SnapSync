@@ -1,7 +1,6 @@
 package app.snapsync.mock
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
@@ -132,7 +131,7 @@ class MockStateTest {
         assertEquals(listOf("A1"), copy.library.operator.selection.value?.map { it.id.value })
         assertEquals(listOf("album-0" to "Party"), copy.library.operator.created)
         assertEquals(listOf(PlatformAssetId("A1")), copy.library.operator.assetsIn("album-0"))
-        assertEquals(listOf(AssetRef("D2", AssetId("F1"))), copy.library.operator.imports.imported)
+        assertEquals(listOf("D2/F1"), copy.library.operator.imports.imported)
     }
 
     @Test
@@ -194,7 +193,7 @@ class MockStateTest {
         val gallery = device.library.port()
         val album = checkNotNull(gallery.createAlbum("Party"))
         gallery.addToAlbum(album, setOf(PlatformAssetId("A1")))
-        device.library.state.imports.restoreImported(listOf(AssetRef("D2", AssetId("F1"))))
+        device.library.state.imports.restoreImported(listOf("D2/F1"))
 
         device.disk.operator.write(FileArea.SHARED, "eventconfig.json", "{}".encodeToByteArray())
         device.disk.operator.write(FileArea.PRIVATE, "secret", byteArrayOf(0, 1, 2, -1))

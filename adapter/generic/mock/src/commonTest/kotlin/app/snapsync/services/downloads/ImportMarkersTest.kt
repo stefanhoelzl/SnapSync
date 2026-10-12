@@ -8,6 +8,7 @@ import app.snapsync.model.UnconfirmedImport
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.CapturingLogWriter
+import app.snapsync.services.gallery.correlation
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -39,7 +40,7 @@ class ImportMarkersTest {
     @Test
     fun `a placeholder on a planned row marks it and says nothing`() = runTest {
         planned()
-        markers.placeholder(ref, created)
+        markers.placeholder(ref.correlation(), created)
         assertEquals(listOf(UnconfirmedImport(ref, marker)), downloads.unconfirmedImports())
         assertEquals(setOf(marker), downloads.suppressedLocalIds())
         assertTrue(log.lines.isEmpty(), "${log.lines}")
@@ -47,7 +48,7 @@ class ImportMarkersTest {
 
     @Test
     fun `a placeholder that lands on no row is an Error`() = runTest {
-        markers.placeholder(ref, created)
+        markers.placeholder(ref.correlation(), created)
         assertEquals(emptySet(), downloads.suppressedLocalIds())
         assertEquals(listOf(Severity.Error), log.severities)
         assertTrue("landed on NO ROW" in log.lines.single().second)
@@ -56,8 +57,8 @@ class ImportMarkersTest {
     @Test
     fun `an imported asset confirms its marker`() = runTest {
         planned()
-        markers.placeholder(ref, created)
-        markers.settled(ref, ImportOutcome.Imported(created))
+        markers.placeholder(ref.correlation(), created)
+        markers.settled(ref.correlation(), ImportOutcome.Imported(created))
         assertTrue(downloads.isSettled(ref))
         assertEquals(emptyList(), downloads.unconfirmedImports())
         assertEquals(setOf(marker), downloads.suppressedLocalIds(), "the confirmed marker stays the suppression handle")
@@ -66,8 +67,8 @@ class ImportMarkersTest {
     @Test
     fun `a failed import clears the placeholder it left`() = runTest {
         planned()
-        markers.placeholder(ref, created)
-        markers.settled(ref, ImportOutcome.Failed("refused", placeholder = created))
+        markers.placeholder(ref.correlation(), created)
+        markers.settled(ref.correlation(), ImportOutcome.Failed("refused", placeholder = created))
         assertEquals(emptySet(), downloads.suppressedLocalIds())
         assertEquals(emptyList(), downloads.unconfirmedImports())
         assertFalse(downloads.isSettled(ref), "a failed import is retried, not settled")
@@ -76,8 +77,8 @@ class ImportMarkersTest {
     @Test
     fun `a failure that left no placeholder touches nothing`() = runTest {
         planned()
-        markers.placeholder(ref, created)
-        markers.settled(ref, ImportOutcome.Failed("refused before the block ran"))
+        markers.placeholder(ref.correlation(), created)
+        markers.settled(ref.correlation(), ImportOutcome.Failed("refused before the block ran"))
         assertEquals(listOf(UnconfirmedImport(ref, marker)), downloads.unconfirmedImports())
     }
 }

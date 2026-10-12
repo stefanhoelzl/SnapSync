@@ -36,6 +36,7 @@ import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.gallery.assetId
+import app.snapsync.services.gallery.assetRefOf
 import app.snapsync.services.gallery.resourcesFrom
 import app.snapsync.services.gallery.role
 import app.snapsync.services.logs.LogTailService
@@ -613,8 +614,9 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
     "import/await-parked" to mocked(
         MockedSystem.LIBRARY,
         RigCommand { _, _ ->
-            val ref = withTimeoutOrNull(AWAIT) { device.library.operator.imports.suspendedImport.await() }
+            val parked = withTimeoutOrNull(AWAIT) { device.library.operator.imports.suspendedImport.await() }
                 ?: return@RigCommand CommandResult.refused("no import parked within $AWAIT")
+            val ref = assetRefOf(parked)
             CommandResult.ok(
                 buildJsonObject {
                     put("device", ref.sourceDeviceId)
