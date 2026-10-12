@@ -8,7 +8,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
@@ -21,6 +20,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesOf
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,7 +37,7 @@ import kotlin.time.Instant
 class GalleryServicesTest {
 
     private class ScriptedGallery(
-        var access: GalleryAccess = GalleryAccess.GRANTED,
+        var access: LibraryGrant = LibraryGrant.GRANTED,
         var readable: Boolean = true,
         var assets: List<RawAsset> = emptyList(),
         var albums: List<AlbumRecord> = emptyList(),
@@ -53,7 +53,7 @@ class GalleryServicesTest {
             return if (readable) GalleryRead.Read(value()) else GalleryRead.NotReadable
         }
 
-        override fun access(): GalleryAccess = access
+        override fun access(): LibraryGrant = access
         override suspend fun assets(filter: AssetFilter) = read("assets") { assets.map { it.facts } }
         override suspend fun assetsById(ids: Set<AssetId>) =
             read("assetsById") { assets.map { it.facts }.filter { it.assetId in ids } }
@@ -128,21 +128,21 @@ class GalleryServicesTest {
 
     @Test
     fun `only a full grant’s walk is authoritative for deletion`() = runTest {
-        for (access in GalleryAccess.entries) {
+        for (access in LibraryGrant.entries) {
             val walk = GalleryDiscovery(ScriptedGallery(access = access, assets = listOf(photo("A")))).discover(policy)
             assertEquals(listOf(AssetId("A")), walk.candidates.map { it.facts.assetId }, "$access")
-            assertEquals(access == GalleryAccess.GRANTED, walk.fullEnumeration, "$access")
+            assertEquals(access == LibraryGrant.GRANTED, walk.fullEnumeration, "$access")
         }
     }
 
     @Test
     fun `a policy that admits nothing reads nothing - its empty walk as authoritative as the grant makes it`() =
         runTest {
-            for (access in GalleryAccess.entries) {
+            for (access in LibraryGrant.entries) {
                 val gallery = ScriptedGallery(access = access, assets = listOf(photo("A")))
                 val walk = GalleryDiscovery(gallery).discover(SelectionPolicy(listOf(SelectionRule.DenyAll)))
                 assertTrue(walk.candidates.isEmpty(), "$access")
-                assertEquals(access == GalleryAccess.GRANTED, walk.fullEnumeration, "$access")
+                assertEquals(access == LibraryGrant.GRANTED, walk.fullEnumeration, "$access")
                 assertTrue(gallery.calls.isEmpty(), "nothing is read: $access")
             }
         }
@@ -151,10 +151,10 @@ class GalleryServicesTest {
     fun `a policy that admits nothing is a counted zero where the library is readable and no answer where not`() =
         runTest {
             val denyAll = SelectionPolicy(listOf(SelectionRule.DenyAll))
-            for (access in GalleryAccess.entries) {
+            for (access in LibraryGrant.entries) {
                 val gallery = ScriptedGallery(access = access, assets = listOf(photo("A")))
                 val read = GalleryCandidateSource(gallery).candidates(denyAll)
-                if (access == GalleryAccess.GRANTED || access == GalleryAccess.LIMITED) {
+                if (access == LibraryGrant.GRANTED || access == LibraryGrant.LIMITED) {
                     assertEquals(CandidateRead.Readable(emptyList()), read, "$access")
                 } else {
                     assertEquals(CandidateRead.NotReadable, read, "$access")
@@ -200,7 +200,7 @@ class GalleryServicesTest {
 
     @Test
     fun `no other grant may say absent and none asks the gallery`() = runTest {
-        for (access in GalleryAccess.entries - GalleryAccess.GRANTED) {
+        for (access in LibraryGrant.entries - LibraryGrant.GRANTED) {
             val gallery = ScriptedGallery(access = access, assets = listOf(photo("A")))
             assertEquals(
                 mapOf(AssetId("A") to AssetPresence.UNKNOWN, AssetId("GONE") to AssetPresence.UNKNOWN),

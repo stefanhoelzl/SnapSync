@@ -104,7 +104,7 @@ class ContractCoverageTest {
         assertTrue(
             undeclared.isEmpty(),
             "recordings carry a grant or precondition no Replay binding of that contract and host declares (`override " +
-                "val grant = GalleryAccess.X` / `override val precondition = \"X\"`), so nothing replays them: $undeclared",
+                "val grant = LibraryGrant.X` / `override val precondition = \"X\"`), so nothing replays them: $undeclared",
         )
     }
 

@@ -15,8 +15,8 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
-import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.LibraryGrant
 import kotlin.test.Test
 
 /**
@@ -30,7 +30,7 @@ import kotlin.test.Test
 class PhotoKitExtensionRegistryReplayContractTest {
 
     private fun replay(
-        grant: GalleryAccess,
+        grant: LibraryGrant,
         state: ExtensionRegistryState,
         clauseId: String,
         log: CallLog,
@@ -46,13 +46,13 @@ class PhotoKitExtensionRegistryReplayContractTest {
     private val granted = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
-        override val grant = GalleryAccess.GRANTED
+        override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(ExtensionRegistryState.RECORD_ABSENT, ExtensionRegistryState.RECORD_PRESENT)
 
         override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> =
             if (state in reaches) {
                 replay(
-                    GalleryAccess.GRANTED,
+                    LibraryGrant.GRANTED,
                     state,
                     clauseId,
                     log,
@@ -65,13 +65,13 @@ class PhotoKitExtensionRegistryReplayContractTest {
     private val limited = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
-        override val grant = GalleryAccess.LIMITED
+        override val grant = LibraryGrant.LIMITED
         override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
 
         override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> =
             if (state in reaches) {
                 replay(
-                    GalleryAccess.LIMITED,
+                    LibraryGrant.LIMITED,
                     state,
                     clauseId,
                     log,

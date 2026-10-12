@@ -8,7 +8,6 @@ import app.snapsync.model.CrashLevel
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
 import app.snapsync.model.FileArea
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.SecureSlots
@@ -20,6 +19,7 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.CrashHandlers
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.GetEventReply
@@ -127,7 +127,7 @@ class MockStateTest {
         val copy = copyOf(drive())
         assertEquals(listOf("A1", "S1"), copy.library.operator.current().map { it.assetId.value })
         assertTrue(copy.library.operator.current()[1].facts.isScreenshot)
-        assertEquals(GalleryAccess.LIMITED, copy.library.operator.access)
+        assertEquals(LibraryGrant.LIMITED, copy.library.operator.access)
         assertEquals(listOf("A1"), copy.library.operator.selection.value?.map { it.assetId.value })
         assertEquals(listOf("album-0" to "Party"), copy.library.operator.created)
         assertEquals(listOf(AssetId("A1")), copy.library.operator.assetsIn("album-0"))
@@ -188,7 +188,7 @@ class MockStateTest {
 
         device.library.operator.add(LibraryAssets.photo("A1"))
         device.library.operator.add(LibraryAssets.screenshot("S1"))
-        device.library.operator.access = GalleryAccess.LIMITED
+        device.library.operator.access = LibraryGrant.LIMITED
         device.library.state.selection.value = listOf(LibraryAssets.photo("A1"))
         val gallery = device.library.port()
         val album = checkNotNull(gallery.createAlbum("Party"))

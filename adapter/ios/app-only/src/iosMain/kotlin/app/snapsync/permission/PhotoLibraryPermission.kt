@@ -2,11 +2,10 @@ package app.snapsync.permission
 
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.invocation
-import app.snapsync.model.GalleryAccess
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.objc.onQueue
-import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,13 +38,17 @@ import platform.darwin.dispatch_get_main_queue
  *
  * Requires `NSPhotoLibraryUsageDescription` in the app's Info.plist, or [requestAccess] traps.
  */
-class PhotoLibraryPermission : PhotoAccessStatusSource {
+class PhotoLibraryPermission {
 
     private val state = MutableStateFlow(read())
 
     private val log = Logger.withTag("photoPermission")
 
-    override val permission: StateFlow<GalleryAccess> = state
+    /** The grant as last read: at construction, on every foreground, after a request, and on every [current]. */
+    val grant: StateFlow<LibraryGrant> = state
+
+    /** The grant now — read from the platform and published to [grant], so [grant] never holds an older answer. */
+    fun current(): LibraryGrant = read().also { state.value = it }
 
     // Block-based observer kept for the app's lifetime; the center retains it until removeObserver,
     // which v1 never calls (single app-lifetime adapter).
@@ -59,18 +62,18 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
             // PLATFORM ENTRY POINT: the OS calls this observer body, so
             // it records that it was called and what it read. Once per foreground: INFO.
             objcBoundary(log, "photoPermission.onDidBecomeActive") {
-                log.invocation("photoPermission.onDidBecomeActive", result = { status: GalleryAccess -> "$status" }) {
+                log.invocation("photoPermission.onDidBecomeActive", result = { status: LibraryGrant -> "$status" }) {
                     read().also { state.value = it }
                 }
             }
         }
 
     /**
-     * Ask for access and answer the grant that results; the same value lands on [permission]. With no screen
+     * Ask for access and answer the grant that results; the same value lands on [grant]. With no screen
      * the dialog could present on — the app in the background — it asks nothing and answers the grant as it
      * stands (`Gallery.requestAccess`). The state read hops to the main queue, where UIKit answers it.
      */
-    suspend fun requestAccess(): GalleryAccess = objcCallback(log, "photoPermission.request.completion") { done ->
+    suspend fun requestAccess(): LibraryGrant = objcCallback(log, "photoPermission.request.completion") { done ->
         onQueue(dispatch_get_main_queue(), log, "photoPermission.requestAccess") {
             if (UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateBackground) {
                 done.resume(read())
@@ -104,10 +107,10 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
      * to revise: PhotoKit reports the resulting selection through the library change observer, never through a
      * completion handler here.
      */
-    suspend fun widenSelection(): GalleryAccess {
+    suspend fun widenSelection(): LibraryGrant {
         // Only a partial grant has a selection to revise: under any other the picker has nothing to offer.
-        if (read() == GalleryAccess.LIMITED) presentPicker()
-        return read()
+        if (current() == LibraryGrant.LIMITED) presentPicker()
+        return current()
     }
 
     private fun presentPicker() {
@@ -128,5 +131,5 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
     }
 
     // The one mapping, shared with the extension process (ext-safe `currentPhotoPermission`).
-    private fun read(): GalleryAccess = currentPhotoPermission()
+    private fun read(): LibraryGrant = currentPhotoPermission()
 }

@@ -23,7 +23,7 @@ import app.snapsync.ports.GalleryReader
 class GalleryDiscovery(private val gallery: GalleryReader) : UploadDiscovery {
 
     override suspend fun discover(policy: SelectionPolicy): Discovery {
-        val authoritative = gallery.access() == GalleryAccess.GRANTED
+        val authoritative = gallery.access().galleryAccess() == GalleryAccess.GRANTED
         // A policy that admits nothing reads nothing: its empty answer is as authoritative as a read would have been.
         val filter = policy.assetFilter() ?: return Discovery(candidates = emptyList(), fullEnumeration = authoritative)
         return when (val read = gallery.assets(filter)) {

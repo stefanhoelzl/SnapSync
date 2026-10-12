@@ -24,7 +24,6 @@ import app.snapsync.model.Direction
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.NetworkAccess
@@ -33,6 +32,7 @@ import app.snapsync.model.StandbyBucket
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.ports.DeviceConditions
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
@@ -77,7 +77,7 @@ class CollectDiagnosticDumpTest {
         appLog: String? = null,
         extLog: String? = null,
         config: EventConfig? = null,
-        permission: GalleryAccess = GalleryAccess.GRANTED,
+        permission: LibraryGrant = LibraryGrant.GRANTED,
         ledger: LedgerService = LedgerService(testShared()) { LEDGER_EVENT },
         downloads: DownloadService = DownloadService(inMemoryDatabases()),
         environment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
@@ -233,7 +233,7 @@ class CollectDiagnosticDumpTest {
                 endsAt = eventEnd("2099-12-31T00:00:00Z"),
                 deletesAt = deletesAt("2099-12-31T00:00:00Z"),
             ),
-            permission = GalleryAccess.LIMITED,
+            permission = LibraryGrant.LIMITED,
             environment = DiagnosticEnvironment(
                 appVersion = "0.2",
                 buildNumber = "512",
@@ -383,7 +383,7 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `a partial grant reports the selection's size`() = runTest {
         val dump = collector(
-            permission = GalleryAccess.LIMITED,
+            permission = LibraryGrant.LIMITED,
             appFacts = { APP_FACTS.copy(selectionPhotos = Fact.Known(12)) },
         ).collect(NOTE, SCREEN)
 

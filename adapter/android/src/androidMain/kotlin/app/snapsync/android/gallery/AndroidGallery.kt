@@ -8,7 +8,6 @@ import android.os.Looper
 import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ImportRequest
@@ -18,10 +17,14 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LibraryChangeToken
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -47,6 +50,11 @@ class AndroidGallery(
 ) : AndroidGalleryReader(context, permission::current, log), Gallery {
 
     private val handlers = HandlerSlot<GalleryHandlers>("Gallery", BeforeListen.Logged(log))
+
+    override val grant: StateFlow<LibraryGrant> = permission.grant
+
+    private val read = MutableStateFlow<SelectionSnapshot?>(null)
+    override val selection: StateFlow<SelectionSnapshot?> = read.asStateFlow()
     private var observing = false
     private var observer: ContentObserver? = null
     private val reads = Channel<Unit>(Channel.CONFLATED)
@@ -57,15 +65,10 @@ class AndroidGallery(
             reads.receiveAsFlow().collect {
                 if (observer == null) return@collect
                 val snapshot = readable { items(Query()).map { it.rawAsset() } }
-                if (snapshot is GalleryRead.Read) {
-                    handlers.orNull(
-                        "a selection snapshot",
-                        BeforeListen.Dropped,
-                    )?.onChanged(SelectionSnapshot(snapshot.value))
-                }
+                if (snapshot is GalleryRead.Read) read.value = SelectionSnapshot(snapshot.value)
             }
         }
-        scope.launch { permission.permission.collect { reconcile() } }
+        scope.launch { permission.grant.collect { reconcile() } }
     }
 
     override fun listen(handlers: GalleryHandlers) = this.handlers.set(handlers)
@@ -75,9 +78,9 @@ class AndroidGallery(
         reconcile()
     }
 
-    override suspend fun requestAccess(): GalleryAccess = permission.requestAccess()
+    override suspend fun requestAccess(): LibraryGrant = permission.requestAccess()
 
-    override suspend fun widenSelection(): GalleryAccess = permission.widenSelection()
+    override suspend fun widenSelection(): LibraryGrant = permission.widenSelection()
 
     override suspend fun import(request: ImportRequest): ImportResult {
         val handlers = handlers.orNull("the import of ${request.ref.sourceAssetId}")
@@ -102,7 +105,7 @@ class AndroidGallery(
     /** Open the observer while observation is on and the grant is partial; close it otherwise. */
     @Synchronized
     private fun reconcile() {
-        val wanted = observing && permission.permission.value == GalleryAccess.LIMITED
+        val wanted = observing && permission.grant.value == LibraryGrant.LIMITED
         val open = observer
         when {
             wanted && open == null -> {

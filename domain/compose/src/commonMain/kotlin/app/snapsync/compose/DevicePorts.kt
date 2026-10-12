@@ -19,7 +19,6 @@ import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
-import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
@@ -65,7 +64,6 @@ class AppDevicePorts(
     val extensionRegistry: Lazy<ExtensionRegistry>,
     /** The app's photo library: its reads, its writes, its selection observer and its imports. */
     val gallery: Lazy<Gallery>,
-    val photoAccess: Lazy<PhotoAccessStatusSource>,
     /** The app uploader's background transfer session. */
     val appUpload: Lazy<Upload>,
     val download: Lazy<Download>,
@@ -92,7 +90,6 @@ class AppDevicePorts(
         // The protected small-value store — the device id, the attestation token.
         secureStore = secureStore.value,
         platformDeviceId = platformDeviceId.value,
-        photoAccess = photoAccess.value,
         systemUi = systemUi.value,
         // Every photo-library read and write, the partial grant's selection observer (opened at host assembly only)
         // and the import of foreign photos, whose markers the core's handlers write.

@@ -111,7 +111,7 @@ class CompositionSeamTest {
     private val constructorPins: Map<String, String> = mapOf(
         "App.admit" to
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
-            "scope and rig pin, all in-process state. The extension's variant is a PhotoGrantRead PORT",
+            "scope and rig pin, all in-process state. The extension's variant reads the GalleryReader PORT's grant",
         "AlbumGather.policyFor" to
             "the membership's ONE selection-policy derivation, built in compose/ over the download store and the " +
             "album port — a sibling the gather may not name (feature-blindness)",
@@ -121,7 +121,7 @@ class CompositionSeamTest {
             "one gate, not two. Nothing leaves the process",
         "CycleGateRead.admission" to
             "UploaderProcess.admission: the app's from its own core (grant, selection scope, rig pin — in-process " +
-            "state), the extension's from a PhotoGrantRead PORT through extensionAdmission",
+            "state), the extension's from the GalleryReader PORT's grant through extensionAdmission",
         "CycleGateRead.albumExclusions" to
             "UploadServices.albumExclusions, the tier's denylisted-album read — the gallery services over the Gallery port",
         "UploadServices.albumExclusions" to

@@ -8,7 +8,6 @@ import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
-import app.snapsync.mock.inMemoryPhotoAccess
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
@@ -19,10 +18,12 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.model.selectionScope
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.gallery.GalleryAccessState
+import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.upload.ExtensionRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -59,26 +60,26 @@ class ProducerExclusivityTest {
      * one — and, below iOS 26.1 ([supported] false), no record at all: the port answers `Unsupported` and asks the OS
      * nothing, so [calls] (the operating-system calls) stays empty there.
      */
-    private class PlatformRegistration(var grant: GalleryAccess, var registered: Boolean, val supported: Boolean) :
+    private class PlatformRegistration(var grant: LibraryGrant, var registered: Boolean, val supported: Boolean) :
         ExtensionRegistration {
         val calls = mutableListOf<String>()
 
         override suspend fun register() {
             if (!supported) return
             calls += "register"
-            if (grant != GalleryAccess.LIMITED) registered = true
+            if (grant != LibraryGrant.LIMITED) registered = true
         }
 
         override suspend fun deregister() {
             if (!supported) return
             calls += "deregister"
-            if (grant != GalleryAccess.LIMITED) registered = false
+            if (grant != LibraryGrant.LIMITED) registered = false
         }
 
         override fun isRegistered(): Boolean? {
             if (!supported) return null
             calls += "read"
-            return grant == GalleryAccess.GRANTED && registered
+            return grant == LibraryGrant.GRANTED && registered
         }
     }
 
@@ -93,8 +94,8 @@ class ProducerExclusivityTest {
 
     /** One device: OS fact, grant, membership, the rig switch, and the two uploaders' platform state. */
     private class Device(val osSupported: Boolean, registered: Boolean) {
-        private val grantCell = MutableStateFlow(GalleryAccess.NOT_DETERMINED)
-        var grant: GalleryAccess
+        private val grantCell = MutableStateFlow(LibraryGrant.NOT_DETERMINED)
+        var grant: LibraryGrant
             get() = grantCell.value
             set(value) { grantCell.value = value }
         var joined = false
@@ -109,8 +110,8 @@ class ProducerExclusivityTest {
         val engine = Engine()
         val transitions = UploadTransitions(
             configSource = config,
-            photoAccess = GalleryAccessState(inMemoryPhotoAccess(grantCell)),
-            extensionRegistrable = { extensionRegistrable(osSupported, grant, pin) },
+            photoAccess = GalleryAccessState(grantCell),
+            extensionRegistrable = { extensionRegistrable(osSupported, grant.galleryAccess(), pin) },
             registration = registration,
             appEngine = { engine },
         )
@@ -121,10 +122,10 @@ class ProducerExclusivityTest {
         data object Join : Step
         data object Reconfigure : Step
         data object Leave : Step
-        data class Permission(val grant: GalleryAccess) : Step
+        data class Permission(val grant: LibraryGrant) : Step
 
         /** A relaunch with its UI; the grant may have changed while dead, and the switch dies with the process. */
-        data class Launch(val grant: GalleryAccess) : Step
+        data class Launch(val grant: LibraryGrant) : Step
         data class Override(val pin: UploaderPin?) : Step
     }
 
@@ -132,7 +133,7 @@ class ProducerExclusivityTest {
         add(Step.Join)
         add(Step.Reconfigure)
         add(Step.Leave)
-        for (g in GalleryAccess.entries) {
+        for (g in LibraryGrant.entries) {
             add(Step.Permission(g))
             add(Step.Launch(g))
         }
@@ -231,18 +232,18 @@ class ProducerExclusivityTest {
             assertTrue(step == Step.Leave || switchedOff, "a deregistration outside a leave or the switch — $where")
         }
         val forced = step == Step.Join || step == Step.Leave
-        if (!forced && device.grant != GalleryAccess.GRANTED) {
+        if (!forced && device.grant != LibraryGrant.GRANTED) {
             assertTrue(
                 reg.none { it == "register" || it == "deregister" },
                 "a compared transition wrote the registration under ${device.grant} — $where",
             )
         }
         val switchedOff = step is Step.Override && step.pin?.extension == false
-        val couldDeregister = device.joined && device.osSupported && device.grant == GalleryAccess.GRANTED
+        val couldDeregister = device.joined && device.osSupported && device.grant == LibraryGrant.GRANTED
         if (switchedOff && couldDeregister) {
             assertTrue(!device.registration.registered, "switching the extension off left it registered — $where")
         }
-        if (step == Step.Join && extensionRegistrable(device.osSupported, device.grant, device.pin)) {
+        if (step == Step.Join && extensionRegistrable(device.osSupported, device.grant.galleryAccess(), device.pin)) {
             assertTrue(
                 device.registration.registered,
                 "a join where registrable left the extension unregistered — $where",

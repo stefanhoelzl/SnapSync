@@ -17,7 +17,6 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
@@ -34,6 +33,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.ExpiringCompletion
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.ui.state.Layer
@@ -148,7 +148,7 @@ class WorldInspectorController(
 
     // ---- membership -------------------------------------------------------------------------------
 
-    fun setPermission(status: GalleryAccess) = launchMutation { mocks.library.operator.access = status }
+    fun setPermission(status: LibraryGrant) = launchMutation { mocks.library.operator.access = status }
 
     /**
      * The device's network as the operating system reports it to the app. The app tells the
@@ -158,7 +158,7 @@ class WorldInspectorController(
 
     fun armNextRequest(grants: Boolean) {
         armedGrants = grants
-        mocks.library.operator.requestAnswer = if (grants) GalleryAccess.GRANTED else GalleryAccess.DENIED
+        mocks.library.operator.requestAnswer = if (grants) LibraryGrant.GRANTED else LibraryGrant.DENIED
     }
 
     /**
@@ -350,7 +350,7 @@ class WorldInspectorController(
         app.composed.host
         mocks.screen.operator.live()
         mocks.lifecycle.operator.foreground()
-        mocks.library.operator.requestAnswer = if (armedGrants) GalleryAccess.GRANTED else GalleryAccess.DENIED
+        mocks.library.operator.requestAnswer = if (armedGrants) LibraryGrant.GRANTED else LibraryGrant.DENIED
         appWatchers?.cancel()
         appWatchers = scope.launch {
             launch {

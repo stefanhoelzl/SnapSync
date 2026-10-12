@@ -261,7 +261,7 @@ class LaunchAdaptersTest {
         processInfo = unbuilt("processInfo"), network = network, deviceConditions = unbuilt("deviceConditions"),
         http = unbuilt("http"), backgroundTime = unbuilt("backgroundTime"), wake = unbuilt("wake"),
         extensionRegistry = unbuilt("extensionRegistry"), gallery = unbuilt("gallery"),
-        photoAccess = unbuilt("photoAccess"), appUpload = unbuilt("appUpload"), download = unbuilt("download"),
+        appUpload = unbuilt("appUpload"), download = unbuilt("download"),
         systemUi = systemUi, lifecycle = unbuilt("lifecycle"), links = unbuilt("links"),
         pushNotifications = unbuilt("pushNotifications"), ui = ui, dateFormatting = unbuilt("dateFormatting"),
     )

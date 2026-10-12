@@ -21,9 +21,9 @@ import app.snapsync.contracts.simulatorAppContract
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.GalleryAccess
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 
 /**
@@ -44,14 +44,14 @@ internal fun otherGrantContracts(): List<InAppContract> = listOf(
     simulatorAppContract(PhotoAccessContract, SimAppNeverAskedPhotoAccessBinding(), ::neverAskedRefusal),
 )
 
-private fun partialRefusal() = grantRefusal(GalleryAccess.LIMITED)
+private fun partialRefusal() = grantRefusal(LibraryGrant.LIMITED)
 
-private fun refusedRefusal() = grantRefusal(GalleryAccess.DENIED)
+private fun refusedRefusal() = grantRefusal(LibraryGrant.DENIED)
 
-private fun neverAskedRefusal() = grantRefusal(GalleryAccess.NOT_DETERMINED)
+private fun neverAskedRefusal() = grantRefusal(LibraryGrant.NOT_DETERMINED)
 
 /** Why this process cannot run an entry taken under [grant], or `null` when it can. */
-private fun grantRefusal(grant: GalleryAccess): String? = hostRefusal() ?: currentPhotoPermission().let { held ->
+private fun grantRefusal(grant: LibraryGrant): String? = hostRefusal() ?: currentPhotoPermission().let { held ->
     if (held == grant) {
         null
     } else {
@@ -67,7 +67,7 @@ private fun grantRefusal(grant: GalleryAccess): String? = hostRefusal() ?: curre
 class SimAppPartialGalleryBinding : Binding<GalleryState, GalleryChange> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val grant = GalleryAccess.LIMITED
+    override val grant = LibraryGrant.LIMITED
     override val reaches = setOf(GalleryState.PARTIAL)
 
     override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
@@ -84,12 +84,12 @@ class SimAppPartialGalleryBinding : Binding<GalleryState, GalleryChange> {
 class SimAppPartialPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val grant = GalleryAccess.LIMITED
+    override val grant = LibraryGrant.LIMITED
     override val reaches = setOf(PhotoAccessState.PARTIAL)
 
     override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> =
         if (state in reaches) {
-            Entered.Ready(PhotoAccess(PhotoLibraryPermission().recorded(log)))
+            Entered.Ready(PhotoAccess(photoAccessGallery().recorded(log)))
         } else {
             Entered.Unreachable("this launch holds a partial grant")
         }
@@ -99,7 +99,7 @@ class SimAppPartialPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
 class SimAppRefusedGalleryBinding : Binding<GalleryState, GalleryChange> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val grant = GalleryAccess.DENIED
+    override val grant = LibraryGrant.DENIED
     override val reaches = setOf(GalleryState.REFUSED)
 
     override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> =
@@ -114,7 +114,7 @@ class SimAppRefusedGalleryBinding : Binding<GalleryState, GalleryChange> {
 class SimAppNeverAskedGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val grant = GalleryAccess.NOT_DETERMINED
+    override val grant = LibraryGrant.NOT_DETERMINED
     override val reaches = setOf(GalleryReaderState.NEVER_ASKED)
 
     override fun create(
@@ -132,12 +132,12 @@ class SimAppNeverAskedGalleryReaderBinding : Binding<GalleryReaderState, SeededL
 class SimAppNeverAskedPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val grant = GalleryAccess.NOT_DETERMINED
+    override val grant = LibraryGrant.NOT_DETERMINED
     override val reaches = setOf(PhotoAccessState.NEVER_ASKED)
 
     override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> =
         if (state in reaches) {
-            Entered.Ready(PhotoAccess(PhotoLibraryPermission().recorded(log)))
+            Entered.Ready(PhotoAccess(photoAccessGallery().recorded(log)))
         } else {
             Entered.Unreachable("this launch was never asked for photo access")
         }

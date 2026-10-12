@@ -125,7 +125,6 @@ class SnapSyncRoot(internal val application: Application) {
         links = lazy { links },
         ui = lazy { ui },
         gallery = lazy { AndroidGallery(application, photoPermission, scope) },
-        photoAccess = lazy { photoPermission },
         systemUi = lazy { AndroidSystemUi(application, foreground) },
         extensionRegistry = lazyOf(AndroidExtensionRegistry),
         wake = lazy { AndroidWake(application) },

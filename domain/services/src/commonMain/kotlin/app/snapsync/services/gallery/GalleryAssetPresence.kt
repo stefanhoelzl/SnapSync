@@ -19,7 +19,7 @@ class GalleryAssetPresence(private val gallery: GalleryReader) : ImportedAssetPr
 
     override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> {
         if (localIds.isEmpty()) return emptyMap()
-        if (gallery.access() != GalleryAccess.GRANTED) return localIds.associateWith { AssetPresence.UNKNOWN }
+        if (gallery.access().galleryAccess() != GalleryAccess.GRANTED) return localIds.associateWith { AssetPresence.UNKNOWN }
         return when (val read = gallery.assetsById(localIds)) {
             GalleryRead.NotReadable -> localIds.associateWith { AssetPresence.UNKNOWN }
             is GalleryRead.Read -> {

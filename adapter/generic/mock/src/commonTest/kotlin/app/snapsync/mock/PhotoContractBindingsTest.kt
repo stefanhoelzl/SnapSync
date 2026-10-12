@@ -28,12 +28,12 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
@@ -56,8 +56,8 @@ class PhotoContractBindingsTest {
         )
     }
 
-    private fun access(granted: Boolean): MutableStateFlow<GalleryAccess> =
-        MutableStateFlow(if (granted) GalleryAccess.GRANTED else GalleryAccess.NOT_DETERMINED)
+    private fun access(granted: Boolean): MutableStateFlow<LibraryGrant> =
+        MutableStateFlow(if (granted) LibraryGrant.GRANTED else LibraryGrant.NOT_DETERMINED)
 
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = currentHost
@@ -100,9 +100,11 @@ class PhotoContractBindingsTest {
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
             if (state !in reaches) return Entered.Unreachable("the double plays no partial grant here")
             val cell = MutableStateFlow(
-                if (state == PhotoAccessState.GRANTED) GalleryAccess.GRANTED else GalleryAccess.NOT_DETERMINED,
+                if (state == PhotoAccessState.GRANTED) LibraryGrant.GRANTED else LibraryGrant.NOT_DETERMINED,
             )
-            return Entered.Ready(PhotoAccess(inMemoryPhotoAccess(cell).recorded(log)))
+            return Entered.Ready(
+                PhotoAccess(inMemoryGallery(MutableStateFlow(emptyList()), access = cell).recorded(log)),
+            )
         }
     }
 

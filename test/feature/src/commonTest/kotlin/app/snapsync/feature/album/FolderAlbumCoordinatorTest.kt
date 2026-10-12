@@ -53,7 +53,7 @@ class FolderAlbumCoordinatorTest {
     )
     private val library = PhotoLibraryMock().apply { operator.albumKind = AlbumKind.FOLDER }
     private val gallery: Gallery = library.port().apply {
-        listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
+        listen(GalleryHandlers(onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
     }
     private val store = AlbumMapService(testShared())
     private val coordinator = AlbumCoordinator(GalleryAlbums(gallery), store, kind = AlbumKind.FOLDER)

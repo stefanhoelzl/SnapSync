@@ -11,7 +11,6 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -33,6 +32,7 @@ import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
 import app.snapsync.services.gallery.Discovery
@@ -123,7 +123,7 @@ class UploadTransferServiceTest {
     /** A library that exports only [exportable] keys, recording where it wrote. */
     private class Library(val exportable: Set<String> = emptySet()) : GalleryReader {
         val exports = mutableListOf<Pair<String, String>>()
-        override fun access() = GalleryAccess.GRANTED
+        override fun access() = LibraryGrant.GRANTED
         override suspend fun assets(filter: AssetFilter): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
         override suspend fun assetsById(
             ids: Set<AssetId>,

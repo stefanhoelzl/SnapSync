@@ -1,14 +1,12 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
-import app.snapsync.model.SelectionSnapshot
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
-import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.delay
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -79,17 +77,17 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
             GalleryState.NEVER_ASKED,
             covers = cells {
                 on<Gallery> {
-                    answers(Gallery::requestAccess).with(GalleryAccess.NOT_DETERMINED)
-                    answers(Gallery::widenSelection).with(GalleryAccess.NOT_DETERMINED)
+                    answers(Gallery::requestAccess).with(LibraryGrant.NOT_DETERMINED)
+                    answers(Gallery::widenSelection).with(LibraryGrant.NOT_DETERMINED)
                 }
             },
         ) { subject ->
             assertEquals(
-                GalleryAccess.NOT_DETERMINED,
+                LibraryGrant.NOT_DETERMINED,
                 subject.gallery.requestAccess(),
                 "nothing to ask on, so still never asked",
             )
-            assertEquals(GalleryAccess.NOT_DETERMINED, subject.gallery.widenSelection(), "no selection to widen")
+            assertEquals(LibraryGrant.NOT_DETERMINED, subject.gallery.widenSelection(), "no selection to widen")
         }
 
         clause(
@@ -97,17 +95,17 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
             GalleryState.REFUSED,
             covers = cells {
                 on<Gallery> {
-                    answers(Gallery::requestAccess).with(GalleryAccess.DENIED)
-                    answers(Gallery::widenSelection).with(GalleryAccess.DENIED)
+                    answers(Gallery::requestAccess).with(LibraryGrant.DENIED)
+                    answers(Gallery::widenSelection).with(LibraryGrant.DENIED)
                 }
             },
         ) { subject ->
             assertEquals(
-                GalleryAccess.DENIED,
+                LibraryGrant.DENIED,
                 subject.gallery.requestAccess(),
                 "a refusal stands until the member changes it",
             )
-            assertEquals(GalleryAccess.DENIED, subject.gallery.widenSelection())
+            assertEquals(LibraryGrant.DENIED, subject.gallery.widenSelection())
         }
 
         clause(
@@ -115,34 +113,28 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
             GalleryState.PARTIAL,
             covers = cells {
                 on<Gallery> {
-                    answers(Gallery::requestAccess).with(GalleryAccess.LIMITED)
-                    answers(Gallery::widenSelection).with(GalleryAccess.LIMITED)
+                    answers(Gallery::requestAccess).with(LibraryGrant.LIMITED)
+                    answers(Gallery::widenSelection).with(LibraryGrant.LIMITED)
                     answers(Gallery::listen).returns()
                     answers(Gallery::observeChanges).returns()
-                    calls(GalleryHandlers::onChanged, SelectionSnapshot::class)
+                    emits(Gallery::selection).returns()
                 }
-                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.LIMITED)
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.LIMITED)
             },
         ) { subject ->
-            assertEquals(GalleryAccess.LIMITED, subject.gallery.access(), "a partial grant reads as one")
-            assertEquals(GalleryAccess.LIMITED, subject.gallery.requestAccess(), "asking again changes nothing")
+            assertEquals(LibraryGrant.LIMITED, subject.gallery.access(), "a partial grant reads as one")
+            assertEquals(LibraryGrant.LIMITED, subject.gallery.requestAccess(), "asking again changes nothing")
             assertEquals(
-                GalleryAccess.LIMITED,
+                LibraryGrant.LIMITED,
                 subject.gallery.widenSelection(),
                 "the answer is the grant as it stands; a revised selection arrives through the observer",
             )
-            val snapshots = mutableListOf<SelectionSnapshot>()
-            subject.gallery.listen(
-                GalleryHandlers(
-                    onChanged = { snapshots += it },
-                    onImportPlaceholder = { _, _ -> },
-                    onImportSettled = { _, _ -> },
-                ),
-            )
+            // Registered as a composition registers them; the selection itself arrives on the flow, not through them.
+            subject.gallery.listen(GalleryHandlers(onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
             subject.gallery.observeChanges(true)
             try {
-                awaitWithin { snapshots.isNotEmpty() }
-                val selected = snapshots.last().assets.map { it.assetId }.toSet()
+                awaitWithin { subject.gallery.selection.value != null }
+                val selected = subject.gallery.selection.value!!.assets.map { it.assetId }.toSet()
                 assertTrue(
                     selected.containsAll(subject.selection),
                     "the baseline is the selection: missing ${subject.selection - selected}",
@@ -161,25 +153,38 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
         }
 
         clause(
+            "GRANTED_OBSERVES_NO_SELECTION",
+            GalleryState.GRANTED,
+            covers = cells { on<Gallery>().emits(Gallery::selection).with(null) },
+        ) { subject ->
+            subject.gallery.observeChanges(true)
+            try {
+                assertNull(subject.gallery.selection.value, "a full grant has no selection: the observer reads none")
+            } finally {
+                subject.gallery.observeChanges(false)
+            }
+        }
+
+        clause(
             "GRANTED_HAS_NO_SELECTION_TO_WIDEN",
             GalleryState.GRANTED,
-            covers = cells { on<Gallery>().answers(Gallery::widenSelection).with(GalleryAccess.GRANTED) },
+            covers = cells { on<Gallery>().answers(Gallery::widenSelection).with(LibraryGrant.GRANTED) },
         ) { subject ->
-            assertEquals(GalleryAccess.GRANTED, subject.gallery.widenSelection(), "a full grant has nothing to widen")
+            assertEquals(LibraryGrant.GRANTED, subject.gallery.widenSelection(), "a full grant has nothing to widen")
         }
 
         clause(
             "A_REQUEST_AFTER_THE_GRANT_CHANGES_NOTHING",
             GalleryState.GRANTED,
             covers = cells {
-                on<Gallery>().answers(Gallery::requestAccess).with(GalleryAccess.GRANTED)
-                on<PhotoGrantRead>().answers(PhotoGrantRead::access).with(GalleryAccess.GRANTED)
+                on<Gallery>().answers(Gallery::requestAccess).with(LibraryGrant.GRANTED)
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.GRANTED)
             },
         ) { subject ->
-            assertEquals(GalleryAccess.GRANTED, subject.gallery.requestAccess())
-            assertEquals(GalleryAccess.GRANTED, subject.gallery.requestAccess())
+            assertEquals(LibraryGrant.GRANTED, subject.gallery.requestAccess())
+            assertEquals(LibraryGrant.GRANTED, subject.gallery.requestAccess())
             assertEquals(
-                GalleryAccess.GRANTED,
+                LibraryGrant.GRANTED,
                 subject.gallery.access(),
                 "a request after the grant is determined asks nothing and changes nothing, however often it runs",
             )

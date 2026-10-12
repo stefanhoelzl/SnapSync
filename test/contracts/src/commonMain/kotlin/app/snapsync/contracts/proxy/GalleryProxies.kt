@@ -3,9 +3,9 @@ package app.snapsync.contracts.proxy
 import app.snapsync.contracts.CallLog
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.Resource
+import app.snapsync.model.SelectionSnapshot
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
@@ -13,8 +13,7 @@ import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
-import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
@@ -26,8 +25,7 @@ fun GalleryReader.recorded(log: CallLog): GalleryReader = GalleryReaderProxy(thi
 internal class GalleryReaderProxy(private val inner: GalleryReader, log: CallLog) : GalleryReader {
     private val r = log.recorder("GalleryReader")
 
-    // Inherited from [PhotoGrantRead], so counted under it, as the grid counts it.
-    override fun access() = r.port("PhotoGrantRead").answer("access", inner.access())
+    override fun access() = r.answer("access", inner.access())
     override suspend fun assets(filter: AssetFilter) = r.answer("assets", inner.assets(filter))
     override suspend fun assetsById(ids: Set<AssetId>) = r.answer("assetsById", inner.assetsById(ids))
     override suspend fun resources(ids: Set<AssetId>) = r.answer("resources", inner.resources(ids))
@@ -85,10 +83,6 @@ internal class GalleryProxy(private val inner: Gallery, log: CallLog) :
         "listen",
         inner.listen(
             GalleryHandlers(
-                onChanged = { snapshot ->
-                    r.called("handlers.onChanged", Recorder.arg(snapshot, "SelectionSnapshot"))
-                    handlers.onChanged(snapshot)
-                },
                 onImportPlaceholder = { ref, id ->
                     r.called("handlers.onImportPlaceholder", Recorder.arg(ref, "AssetRef"), Recorder.arg(id, "AssetId"))
                     handlers.onImportPlaceholder(ref, id)
@@ -101,30 +95,13 @@ internal class GalleryProxy(private val inner: Gallery, log: CallLog) :
         ),
     )
 
+    override val grant: StateFlow<LibraryGrant> = RecordedStateFlow(inner.grant) { r.answer("grant", it) }
+    override val selection: StateFlow<SelectionSnapshot?> =
+        RecordedStateFlow(inner.selection) { r.returns("selection", it) }
+
     override fun observeChanges(enabled: Boolean) = r.returns("observeChanges", inner.observeChanges(enabled))
     override suspend fun requestAccess() = r.answer("requestAccess", inner.requestAccess())
     override suspend fun widenSelection() = r.answer("widenSelection", inner.widenSelection())
-}
-
-/** [PhotoGrantRead] as its clause's [CallLog] sees it. */
-fun PhotoGrantRead.recorded(log: CallLog): PhotoGrantRead = PhotoGrantReadProxy(this, log)
-
-internal class PhotoGrantReadProxy(private val inner: PhotoGrantRead, log: CallLog) : PhotoGrantRead {
-    private val r = log.recorder("PhotoGrantRead")
-
-    override fun access() = r.answer("access", inner.access())
-}
-
-/** [PhotoAccessStatusSource] as its clause's [CallLog] sees it. */
-fun PhotoAccessStatusSource.recorded(log: CallLog): PhotoAccessStatusSource = PhotoAccessStatusSourceProxy(this, log)
-
-internal class PhotoAccessStatusSourceProxy(private val inner: PhotoAccessStatusSource, log: CallLog) :
-    PhotoAccessStatusSource {
-    private val r = log.recorder("PhotoAccessStatusSource")
-
-    override val permission: StateFlow<GalleryAccess> = RecordedStateFlow(inner.permission) {
-        r.answer("permission", it)
-    }
 }
 
 /**

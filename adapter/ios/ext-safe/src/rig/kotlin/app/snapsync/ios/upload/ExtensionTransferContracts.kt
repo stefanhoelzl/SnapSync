@@ -25,7 +25,6 @@ import app.snapsync.contracts.run
 import app.snapsync.contracts.runEntry
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.deviceDiagnosticEnvironment
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
@@ -33,6 +32,7 @@ import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.destinationPathOf
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
@@ -191,7 +191,7 @@ internal fun transferRunStep(clauseId: String, call: Int, tape: String?): Step {
     val clause = UploadContract.clauses.firstOrNull { it.id == clauseId && it.state in UploadContract.PRESENTED }
     val refused = when {
         clause == null -> "no presented-state clause $clauseId in ${UploadContract.name}"
-        currentPhotoPermission() != GalleryAccess.GRANTED ->
+        currentPhotoPermission() != LibraryGrant.GRANTED ->
             "the upload-job contract records under a full photo grant; this process holds ${currentPhotoPermission()}"
         bakedUploadBase() != CONTRACT_UPLOAD_BASE ->
             "this build uploads to ${bakedUploadBase()}; the recording names $CONTRACT_UPLOAD_BASE (the rig build's local deployment)"

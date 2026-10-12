@@ -7,9 +7,8 @@ import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.model.EntryScope
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.invocation
-import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,10 +24,10 @@ import kotlin.coroutines.resume
  *
  * | Android grants | reads as |
  * |---|---|
- * | `READ_MEDIA_IMAGES` **and** `READ_MEDIA_VIDEO` (API 33+) · `READ_EXTERNAL_STORAGE` (API 30–32) | [GalleryAccess.GRANTED] |
- * | only `READ_MEDIA_VISUAL_USER_SELECTED` (API 34+: "Select photos and videos") | [GalleryAccess.LIMITED] |
- * | nothing, after the app asked | [GalleryAccess.DENIED] |
- * | nothing, never asked | [GalleryAccess.NOT_DETERMINED] |
+ * | `READ_MEDIA_IMAGES` **and** `READ_MEDIA_VIDEO` (API 33+) · `READ_EXTERNAL_STORAGE` (API 30–32) | [LibraryGrant.GRANTED] |
+ * | only `READ_MEDIA_VISUAL_USER_SELECTED` (API 34+: "Select photos and videos") | [LibraryGrant.LIMITED] |
+ * | nothing, after the app asked | [LibraryGrant.DENIED] |
+ * | nothing, never asked | [LibraryGrant.NOT_DETERMINED] |
  *
  * Android does not report "never asked", so the adapter records in its own preferences that it has asked. Once the
  * member has answered, the dialog is not raised again — a refused member is taken to Settings instead, as on iPhone.
@@ -41,45 +40,46 @@ class AndroidPhotoPermission(
     context: Context,
     private val foreground: ForegroundActivity,
     private val log: Logger = Logger.withTag("photoPermission"),
-) : PhotoAccessStatusSource {
+) {
 
     private val appContext = context.applicationContext
     private val record = appContext.getSharedPreferences(RECORD, Context.MODE_PRIVATE)
     private val state = MutableStateFlow(read())
     private val requests = AtomicInteger()
 
-    override val permission: StateFlow<GalleryAccess> = state
+    /** The grant as last read — every read here publishes it; a resumed activity reads it again. */
+    val grant: StateFlow<LibraryGrant> = state
 
     init {
         foreground.onResumed { refresh() }
     }
 
     /** The grant as it stands now. Cheap, synchronous, never raises anything. */
-    fun current(): GalleryAccess = read().also { state.value = it }
+    fun current(): LibraryGrant = read().also { state.value = it }
 
     /**
      * Ask for access while it was never decided, and answer the grant that results. With no activity in front, or once
      * the member has answered, it asks nothing and answers the grant as it stands (`Gallery.requestAccess`).
      */
-    suspend fun requestAccess(): GalleryAccess =
-        if (current() != GalleryAccess.NOT_DETERMINED) state.value else ask("requestAccess")
+    suspend fun requestAccess(): LibraryGrant =
+        if (current() != LibraryGrant.NOT_DETERMINED) state.value else ask("requestAccess")
 
     /**
      * Android's selection sheet, for a partial grant (API 34+): asking again is how Android lets a member revise the
      * selection, or allow every photo. The selection arrives through the gallery's observer; this answers the grant.
      */
-    suspend fun widenSelection(): GalleryAccess =
-        if (current() != GalleryAccess.LIMITED) state.value else ask("widenSelection")
+    suspend fun widenSelection(): LibraryGrant =
+        if (current() != LibraryGrant.LIMITED) state.value else ask("widenSelection")
 
     private fun refresh() {
         log.invocation(
             EntryScope.None,
             "photoPermission.onResumed",
-            result = { access: GalleryAccess -> "$access" },
+            result = { access: LibraryGrant -> "$access" },
         ) { current() }
     }
 
-    private suspend fun ask(name: String): GalleryAccess = withContext(Dispatchers.Main) {
+    private suspend fun ask(name: String): LibraryGrant = withContext(Dispatchers.Main) {
         val activity = foreground.current ?: return@withContext current().also {
             log.i { "$name: no activity in front — asked nothing" }
         }
@@ -92,7 +92,7 @@ class AndroidPhotoPermission(
                     EntryScope.None,
                     "photoPermission.$name.completion",
                     params = "granted=$granted",
-                    result = { access: GalleryAccess -> "$access" },
+                    result = { access: LibraryGrant -> "$access" },
                 ) {
                     launcher?.unregister()
                     record.edit().putBoolean(ASKED, true).apply()
@@ -104,12 +104,12 @@ class AndroidPhotoPermission(
         }
     }
 
-    private fun read(): GalleryAccess = when {
-        full() -> GalleryAccess.GRANTED
+    private fun read(): LibraryGrant = when {
+        full() -> LibraryGrant.GRANTED
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && holds(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) ->
-            GalleryAccess.LIMITED
-        record.getBoolean(ASKED, false) -> GalleryAccess.DENIED
-        else -> GalleryAccess.NOT_DETERMINED
+            LibraryGrant.LIMITED
+        record.getBoolean(ASKED, false) -> LibraryGrant.DENIED
+        else -> LibraryGrant.NOT_DETERMINED
     }
 
     private fun full(): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

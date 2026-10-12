@@ -95,7 +95,6 @@ class JvmApp<D>(
             wake = lazyOf(ports.systems.wake),
             extensionRegistry = lazyOf(ports.systems.extensionRegistry),
             gallery = lazyOf(ports.systems.gallery),
-            photoAccess = lazyOf(ports.systems.photoAccess),
             appUpload = lazyOf(ports.systems.appUpload),
             download = lazyOf(ports.systems.download),
             systemUi = lazyOf(ports.systems.systemUi),

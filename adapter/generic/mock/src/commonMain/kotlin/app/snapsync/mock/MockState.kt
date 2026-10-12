@@ -13,7 +13,6 @@ import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.FileArea
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RawAsset
@@ -33,6 +32,7 @@ import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
+import app.snapsync.ports.LibraryGrant
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -726,8 +726,8 @@ private class LibraryDto(
 ) {
     fun into(state: LibraryState) {
         state.library.value = library.map { it.asset() }
-        state.access.value = GalleryAccess.valueOf(access)
-        state.answer = GalleryAccess.valueOf(answer)
+        state.access.value = LibraryGrant.valueOf(access)
+        state.answer = LibraryGrant.valueOf(answer)
         state.writableAlbums?.value = userAlbums.mapValues { (_, ids) -> ids.mapTo(mutableSetOf(), ::AssetId) }
         state.selection.value = selection?.map { it.asset() }
         attempts.forEach { (ref, n) -> state.attempts[ref.ref()] = n }

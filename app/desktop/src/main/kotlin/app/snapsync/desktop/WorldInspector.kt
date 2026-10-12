@@ -28,10 +28,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.UploadError
+import app.snapsync.ports.LibraryGrant
 
 /**
  * The world-inspector control panel (`docs/testing.md`): raw Material 3, **never** App*
@@ -78,11 +78,11 @@ fun WorldInspector(
         Text("Permission")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
-                onClick = { controller.setPermission(GalleryAccess.NOT_DETERMINED) },
+                onClick = { controller.setPermission(LibraryGrant.NOT_DETERMINED) },
             ) { Text("Not determined") }
-            OutlinedButton(onClick = { controller.setPermission(GalleryAccess.DENIED) }) { Text("Denied") }
-            OutlinedButton(onClick = { controller.setPermission(GalleryAccess.LIMITED) }) { Text("Limited") }
-            OutlinedButton(onClick = { controller.setPermission(GalleryAccess.GRANTED) }) { Text("Granted") }
+            OutlinedButton(onClick = { controller.setPermission(LibraryGrant.DENIED) }) { Text("Denied") }
+            OutlinedButton(onClick = { controller.setPermission(LibraryGrant.LIMITED) }) { Text("Limited") }
+            OutlinedButton(onClick = { controller.setPermission(LibraryGrant.GRANTED) }) { Text("Granted") }
         }
         NetworkLevers(controller)
         Row(verticalAlignment = Alignment.CenterVertically) {

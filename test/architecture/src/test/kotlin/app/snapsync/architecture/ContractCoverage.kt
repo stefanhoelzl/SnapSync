@@ -12,7 +12,7 @@ import java.io.File
  * Kotlin/Native ones among them — that no JVM classpath reaches:
  *  - every binding (`: Binding<State, Port>`), its `kind`, `host` and literal `reaches = setOf(...)`;
  *  - every recording (`test/contracts/recordings/<Name>@<HOST>[.<GRANT>|.<PRECONDITION>].rec`) and its `[CLAUSE_ID]`
- *    blocks — a binding that declares `override val grant = GalleryAccess.X` (or `override val precondition = "X"`)
+ *    blocks — a binding that declares `override val grant = LibraryGrant.X` (or `override val precondition = "X"`)
  *    counts only through that file.
  *
  * A clause is REAL when a `Live` binding on a host CI runs declares its state reachable, or a `Replay` binding's
@@ -115,7 +115,7 @@ internal object ContractCoverage {
     private val REACHES = Regex("""override val reaches\s*=\s*setOf\(([^)]*)\)""")
     private val KIND = Regex("""override val kind\s*=\s*BindingKind\.(\w+)""")
     private val HOST = Regex("""override val host\s*=\s*(Host\.\w+|currentHost)""")
-    private val GRANT = Regex("""override val grant\s*=\s*GalleryAccess\.(\w+)""")
+    private val GRANT = Regex("""override val grant\s*=\s*LibraryGrant\.(\w+)""")
     private val PRECONDITION = Regex("""override val precondition\s*=\s*"(\w+)"""")
     private val STATE_REF = Regex("""\w+\.\w+""")
     private val BLOCK = Regex("""\[(.+)]""")

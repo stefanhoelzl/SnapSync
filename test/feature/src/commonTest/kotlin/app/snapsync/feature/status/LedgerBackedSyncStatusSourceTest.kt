@@ -4,9 +4,9 @@ package app.snapsync.feature.status
 
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -20,7 +20,7 @@ class LedgerBackedSyncStatusSourceTest {
     private val ledgerCounts = MutableLedgerCountsSource()
 
     // The photo-permission port's cell, read through the real grant service.
-    private val grant = MutableStateFlow(GalleryAccess.GRANTED)
+    private val grant = MutableStateFlow(LibraryGrant.GRANTED)
     private val permission = galleryAccess(grant)
 
     // The own-device admitted set the gallery counted (`OwnDeviceGalleryStatusSource.admitted`) — the test owns it.
@@ -225,7 +225,7 @@ class LedgerBackedSyncStatusSourceTest {
         val source = source(backgroundScope)
         runCurrent()
 
-        grant.value = GalleryAccess.DENIED
+        grant.value = LibraryGrant.DENIED
         runCurrent()
 
         assertEquals(ready(pending = 3, completed = 1, total = 4, active = false), source.status.value)
@@ -239,7 +239,7 @@ class LedgerBackedSyncStatusSourceTest {
         val source = source(backgroundScope)
         runCurrent()
 
-        grant.value = GalleryAccess.LIMITED
+        grant.value = LibraryGrant.LIMITED
         runCurrent()
 
         assertEquals(ready(pending = 3, completed = 1, total = 4, active = true), source.status.value)

@@ -9,6 +9,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.SelectionSnapshot
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -53,7 +54,10 @@ class LatestSelectionTest {
         changes.send(SelectionSnapshot(listOf(photo("C"))))
         changes.close()
 
-        selection.follow(changes, beforePublish = {}) { seen += selection.snapshot.value?.map { it.assetId } }
+        selection.follow(
+            changes.consumeAsFlow(),
+            beforePublish = {},
+        ) { seen += selection.snapshot.value?.map { it.assetId } }
 
         assertEquals<List<List<AssetId>?>>(listOf(listOf(AssetId("A"), AssetId("B")), listOf(AssetId("C"))), seen)
         val scoped = assertIs<SelectionScope.Scoped>(selection.scopeUnder(GalleryAccess.LIMITED))
@@ -80,7 +84,7 @@ class LatestSelectionTest {
 
         changes.send(SelectionSnapshot(emptyList()))
         changes.close()
-        selection.follow(changes, beforePublish = {}) { }
+        selection.follow(changes.consumeAsFlow(), beforePublish = {}) { }
         runCurrent()
         assertTrue(answerable, "an empty selection is a read one")
     }

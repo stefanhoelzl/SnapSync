@@ -3,8 +3,8 @@ package app.snapsync.permission
 import app.snapsync.gallery.photoKitRawAssets
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.model.ConfinedTo
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SelectionSnapshot
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.selection.SelectionPlatform
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSSortDescriptor
@@ -15,7 +15,7 @@ import platform.Photos.PHFetchResult
 
 /**
  * The PhotoKit binding of [IosGallery]'s selection observer: observes the photo
- * library **only while observation is on and permission is [GalleryAccess.LIMITED]** and delivers the full current
+ * library **only while observation is on and permission is [LibraryGrant.LIMITED]** and delivers the full current
  * selection with its resources — once when observation begins (the start's baseline read; the composition opens
  * observation on every start, a background one included) and after each change ([PhotoSelectionObserver] fires
  * for the in-app picker, Settings-side edits, and iCloud sync alike).

@@ -7,7 +7,6 @@ import app.snapsync.model.AssetRef
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RawAsset
@@ -18,6 +17,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.gallery.MarkedPhotoLookup
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -99,7 +99,7 @@ class MarkedPhotoLookupTest {
 
     @Test
     fun a_partial_grant_reads_the_snapshot_and_not_the_library() = runTest {
-        val gallery = Recording(inMemoryGallery(MutableStateFlow(library), MutableStateFlow(GalleryAccess.LIMITED)))
+        val gallery = Recording(inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.LIMITED)))
         val selection = resourcesFrom(library.filter { it.assetId.value != "L-B" }) // L-B was not selected
         val found = MarkedPhotoLookup(
             gallery,
@@ -110,7 +110,7 @@ class MarkedPhotoLookupTest {
 
     @Test
     fun an_unread_selection_finds_nothing_and_no_grant_reads_nothing() = runTest {
-        val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(GalleryAccess.DENIED))
+        val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.DENIED))
         assertEquals(emptyMap(), MarkedPhotoLookup(gallery) { SelectionScope.Unread }.markedIn(start, end, emptySet()))
         assertNull(
             MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, emptySet()),
@@ -120,7 +120,7 @@ class MarkedPhotoLookupTest {
 
     @Test
     fun a_known_asset_in_the_selection_is_passed_over_and_a_primary_with_no_name_is_unmarked() = runTest {
-        val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(GalleryAccess.LIMITED))
+        val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.LIMITED))
         val nameless = Resource(
             "L-X-primary.heic",
             AssetId("L-X"),

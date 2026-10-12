@@ -42,7 +42,6 @@ fun chosenAppPorts(real: AppDevicePorts, choice: AdapterChoice, device: MockDevi
             real.extensionRegistry,
         ) { device.extensionRegistry.port() },
         gallery = pick(MockedSystem.LIBRARY, real.gallery) { device.library.port() },
-        photoAccess = pick(MockedSystem.LIBRARY, real.photoAccess) { device.library.photoAccess() },
         appUpload = pick(MockedSystem.UPLOAD_SESSION, real.appUpload) { device.uploadSession.port() },
         download = pick(MockedSystem.DOWNLOADS, real.download) { device.downloads.port() },
         systemUi = pick(MockedSystem.SYSTEM_UI, real.systemUi) { device.systemUi.port() },

@@ -32,7 +32,7 @@ import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.logging.documentsDirectory
-import app.snapsync.model.GalleryAccess
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.SystemUi
 import app.snapsync.systemui.IosSystemUi
 import platform.Foundation.NSDate
@@ -126,9 +126,9 @@ private fun recordRegistry(refusal: () -> String?): String = if (!osCarriesUploa
 }
 
 private fun recordRegistryUnderGrant(refusal: () -> String?): String = when (val grant = currentPhotoPermission()) {
-    GalleryAccess.GRANTED -> refusal()?.let { "$CONTRACT_REFUSED$it\n" }
+    LibraryGrant.GRANTED -> refusal()?.let { "$CONTRACT_REFUSED$it\n" }
         ?: recordAppOnDevice(ExtensionRegistryContract, grant) { DeviceRegistryGrantedBinding(it) }
-    GalleryAccess.LIMITED ->
+    LibraryGrant.LIMITED ->
         recordAppOnDevice(ExtensionRegistryContract, grant) { DeviceRegistryLimitedBinding(it) }
     else ->
         CONTRACT_REFUSED +
@@ -144,7 +144,7 @@ private fun recordRegistryUnderGrant(refusal: () -> String?): String = when (val
  */
 internal fun <K : Enum<K>, T> recordAppOnDevice(
     contract: Contract<K, T>,
-    grant: GalleryAccess?,
+    grant: LibraryGrant?,
     precondition: String? = null,
     binding: (Recorder) -> Binding<K, T>,
 ): String {
@@ -173,7 +173,7 @@ internal fun <K : Enum<K>, T> recordAppOnDevice(
  * that takes the app to the background — the phone locked, the home screen shown — may find the rig's connection
  * gone by the time it answers, and the device tooling pulls `Documents/` like `debug.log`.
  */
-internal fun keepRecording(contract: String, grant: GalleryAccess?, precondition: String?, text: String) {
+internal fun keepRecording(contract: String, grant: LibraryGrant?, precondition: String?, text: String) {
     val dir = documentsDirectory()?.let { "$it/contracts" } ?: return
     NSFileManager.defaultManager.createDirectoryAtPath(
         dir,

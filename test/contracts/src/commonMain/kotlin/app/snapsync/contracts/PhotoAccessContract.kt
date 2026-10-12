@@ -1,7 +1,8 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.GalleryAccess
-import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -23,17 +24,18 @@ enum class PhotoAccessState {
     PARTIAL,
 }
 
-/** The photo-access adapter as a clause receives it: the permission status. */
-class PhotoAccess(val status: PhotoAccessStatusSource)
+/** The app's gallery as a clause receives it: the grant it reports. */
+class PhotoAccess(val gallery: Gallery)
 
 /**
- * What every photo-access adapter promises (`docs/architecture.md` — this list IS the specification of
- * the ports' obligations).
+ * What the app's gallery promises about the grant it reports (`docs/architecture.md` — this list IS the specification
+ * of the port's obligations): [Gallery.grant] reads what the platform says, and never an older answer than [Gallery.access]
+ * gave — every access read publishes there.
  *
- * Only the status is contracted: `SystemUi.openSettings` hands the user to another surface, and what the user
- * chooses there is read back only afterwards, through the status — no outcome a run can reach
+ * Only the reading is contracted: `SystemUi.openSettings` hands the user to another surface, and what the user
+ * chooses there is read back only afterwards — no outcome a run can reach
  * (`docs/architecture.md`, "An authorization the process cannot give itself is a precondition of the run").
- * Asking for access is the gallery's, contracted by `GalleryContract`.
+ * Asking for access is contracted by `GalleryContract`.
  */
 object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAccess") {
 
@@ -44,16 +46,14 @@ object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAcces
             PhotoAccessState.NO_GRANT,
             covers = cells {
                 oneOf {
-                    on<PhotoAccessStatusSource>().emits(
-                        PhotoAccessStatusSource::permission,
-                    ).with(GalleryAccess.NOT_DETERMINED)
-                    on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
+                    on<Gallery>().emits(Gallery::grant).with(LibraryGrant.NOT_DETERMINED)
+                    on<Gallery>().emits(Gallery::grant).with(LibraryGrant.DENIED)
                 }
             },
         ) { access ->
-            val status = access.status.permission.value
+            val status = access.gallery.grant.value
             assertTrue(
-                status == GalleryAccess.NOT_DETERMINED || status == GalleryAccess.DENIED,
+                status == LibraryGrant.NOT_DETERMINED || status == LibraryGrant.DENIED,
                 "a process holding no grant reads undetermined or denied, got $status",
             )
         }
@@ -62,42 +62,52 @@ object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAcces
             "NEVER_ASKED_READS_UNDETERMINED",
             PhotoAccessState.NEVER_ASKED,
             covers = cells {
-                on<PhotoAccessStatusSource>()
-                    .emits(PhotoAccessStatusSource::permission)
-                    .with(GalleryAccess.NOT_DETERMINED)
+                on<Gallery>().emits(Gallery::grant).with(LibraryGrant.NOT_DETERMINED)
             },
         ) { access ->
-            assertEquals(GalleryAccess.NOT_DETERMINED, access.status.permission.value, "never asked is still undecided")
+            assertEquals(LibraryGrant.NOT_DETERMINED, access.gallery.grant.value, "never asked is still undecided")
         }
 
         clause(
             "REFUSED_READS_DENIED",
             PhotoAccessState.REFUSED,
             covers = cells {
-                on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.DENIED)
+                on<Gallery>().emits(Gallery::grant).with(LibraryGrant.DENIED)
             },
         ) { access ->
-            assertEquals(GalleryAccess.DENIED, access.status.permission.value, "asked and refused is denied")
+            assertEquals(LibraryGrant.DENIED, access.gallery.grant.value, "asked and refused is denied")
         }
 
         clause(
             "PARTIAL_READS_LIMITED",
             PhotoAccessState.PARTIAL,
             covers = cells {
-                on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.LIMITED)
+                on<Gallery>().emits(Gallery::grant).with(LibraryGrant.LIMITED)
             },
         ) { access ->
-            assertEquals(GalleryAccess.LIMITED, access.status.permission.value, "a partial grant is its own answer")
+            assertEquals(LibraryGrant.LIMITED, access.gallery.grant.value, "a partial grant is its own answer")
+        }
+
+        clause(
+            "AN_ACCESS_READ_IS_WHAT_THE_GRANT_HOLDS",
+            PhotoAccessState.GRANTED,
+            covers = cells {
+                on<Gallery>().emits(Gallery::grant).with(LibraryGrant.GRANTED)
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.GRANTED)
+            },
+        ) { access ->
+            val read = access.gallery.access()
+            assertEquals(read, access.gallery.grant.value, "the grant never holds an older answer than a read gave")
         }
 
         clause(
             "GRANTED_READS_GRANTED",
             PhotoAccessState.GRANTED,
             covers = cells {
-                on<PhotoAccessStatusSource>().emits(PhotoAccessStatusSource::permission).with(GalleryAccess.GRANTED)
+                on<Gallery>().emits(Gallery::grant).with(LibraryGrant.GRANTED)
             },
         ) { access ->
-            assertEquals(GalleryAccess.GRANTED, access.status.permission.value)
+            assertEquals(LibraryGrant.GRANTED, access.gallery.grant.value)
         }
     }
 }

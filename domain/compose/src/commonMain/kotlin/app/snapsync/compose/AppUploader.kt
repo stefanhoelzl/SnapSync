@@ -4,7 +4,7 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.WalkOutcome
 import app.snapsync.model.CycleResult
 import app.snapsync.model.invocation
-import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.ports.GalleryReader
 import app.snapsync.services.gallery.GalleryDiscovery
 
 /**
@@ -31,7 +31,7 @@ internal class AppUploader(private val core: AppCore) {
      * through the gallery port rather than the core's permission cell, which follows the platform rather than leading
      * it.
      */
-    private val grant: PhotoGrantRead get() = core.ports.gallery
+    private val grant: GalleryReader get() = core.ports.gallery
 
     /** The attestation bearer every request carries, read per request from the core's attestation service. */
     private val token: suspend () -> String? = { core.attestation.token() }

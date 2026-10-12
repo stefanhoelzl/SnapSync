@@ -10,19 +10,18 @@ import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -72,7 +71,7 @@ import kotlin.time.Instant
  */
 class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : GalleryReader {
 
-    override fun access(): GalleryAccess = currentPhotoPermission()
+    override fun access(): LibraryGrant = currentPhotoPermission()
 
     /**
      * Narrowed by [predicateFor] — [filter]'s date range, widened. Both QoS classes on the one line: the caller's, and the lane's
@@ -228,7 +227,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
 
     /** The read, on [photoKitReadLane], or [GalleryRead.NotReadable] with no PhotoKit call when no grant allows one. */
     private suspend fun <T> readable(read: () -> T): GalleryRead<T> =
-        if (!access().grantsPhotoAccess) {
+        if (access() !in READABLE) {
             GalleryRead.NotReadable
         } else {
             GalleryRead.Read(
@@ -297,3 +296,6 @@ private inline fun PHFetchResult.forEachAsset(action: (PHAsset) -> Unit) {
         i++
     }
 }
+
+/** The grants under which a library read answers anything — a full or a partial one. */
+private val READABLE = setOf(LibraryGrant.GRANTED, LibraryGrant.LIMITED)
