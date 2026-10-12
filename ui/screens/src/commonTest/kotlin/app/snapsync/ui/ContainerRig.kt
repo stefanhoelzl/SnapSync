@@ -180,6 +180,8 @@ internal class ContainerRig(
             override suspend fun loadJoinDetails(eventId: String, linkKey: String?) = details(eventId)
 
             override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
+
+            override suspend fun switchLosesNothing(): Boolean = false
         },
         diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
     )

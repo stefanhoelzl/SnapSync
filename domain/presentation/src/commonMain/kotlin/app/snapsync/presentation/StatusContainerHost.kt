@@ -60,10 +60,10 @@ import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.SharingNote
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
-import app.snapsync.ui.state.Waiting
 import app.snapsync.ui.state.step
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -1014,7 +1014,7 @@ class StatusContainerHost(
                     // hints are ignored — an ordinary invite — and says so in the log.
                     else -> {
                         if (result.payload.autoJoin) log("join gate: ignoring the invite-link hints of $eventId")
-                        startPending(eventId, result.payload.key)
+                        startPending(eventId, result.payload.key, leavesQuietly = current != null)
                     }
                 }
             }
@@ -1144,12 +1144,23 @@ class StatusContainerHost(
     // The gate's async work runs INLINE within the orbit intent (not on a side scope) so each pending
     // transition reduces through the container's own pipeline deterministically. A modal join is fine
     // to serialize; a real fetch suspends here, yielding a Loading frame before the result.
-    private suspend fun startPending(eventId: String, linkKey: String?) {
+    private suspend fun startPending(eventId: String, linkKey: String?, leavesQuietly: Boolean = false) {
         // A fresh surface starts from the defaults — all on, the full event window. Seeding HERE rather
         // than in the reduction is what keeps the member's edits from being overwritten by every
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
         local.update { it.copy(form = freshForm, picking = null) }
+        // Pending BEFORE any read: a repeated delivery of the same link is then the duplicate rung's, and a loading
+        // switch shows no dialog yet.
         pending.value = PendingJoin(eventId, JoinProgress.Loading, linkKey)
+        // Another event's invite while joined: when leaving the joined event loses nothing for anyone (decision record
+        // `changes/back-dated-events`, D8), it is left at once, without the switch question — the join that follows is
+        // then a first join, whose Cancel leaves the device in no event, exactly as after a confirmed switch. Otherwise
+        // the question is asked as before.
+        if (leavesQuietly && queries.switchLosesNothing() && pending.value?.eventId == eventId) {
+            log("join gate: leaving the joined event for $eventId without asking — it loses nothing")
+            local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
+            commands.leave()
+        }
         loadInto(eventId, linkKey)
     }
 
@@ -1196,7 +1207,13 @@ class StatusContainerHost(
                 JoinProgress.Closed
             } else {
                 JoinProgress.Detailed(
-                    EventDetails(load.name, load.startsAt, load.endsAt, load.deletesAt),
+                    EventDetails(
+                        load.name,
+                        load.startsAt,
+                        load.endsAt,
+                        load.deletesAt,
+                        load.completion.members?.active,
+                    ),
                     JoinPhase.Detailed.Step.Ready,
                 )
             }
@@ -1481,7 +1498,8 @@ private fun reduceFrom(
         ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
         ?.let { syncCounts(it.progress, download, config.direction) }
     return joinedLayer(
-        config, health, pendingSwitch, permission, JoinedFacts(timing, counts, display.today()),
+        config, health, pendingSwitch, permission,
+        JoinedFacts(timing, counts, display.today(), display.joinableUntil(config, nowCutoff)),
         rename, reconfiguring, transient, Choices(form, local.picking), display, local.inviteKey,
     )
 }
@@ -1584,9 +1602,9 @@ private fun joinedLayer(
     inviteKey: String?,
 ): Reduced {
     val form = choices.form
-    // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window. A closed event's settings are
-    // fixed: a surface left open when the close lands gives way to the status.
-    val settingsOpen = reconfiguring.surface != SettingsSurface.Closed && !config.closed
+    // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window. A deleted event has no settings
+    // any more: a surface left open when the deletion is learned gives way to the status.
+    val settingsOpen = reconfiguring.surface != SettingsSurface.Closed && !config.deleted
     val range = if (settingsOpen) display.resolve(form, config.startsAt, config.endsAt) else null
     val layer = Layer.Joined(
         membership = display.event(config),
@@ -1601,12 +1619,14 @@ private fun joinedLayer(
         canChoosePhotos = permission == GalleryAccess.LIMITED,
         timing = facts.timing,
         counts = facts.counts,
-        closed = config.closed,
-        // Only once this member is in sync is "who are we waiting for" the member's question; only while the event is
-        // open is anyone still settling.
-        waiting = config.members?.takeIf {
-            facts.timing == EventTiming.Ended && !config.closed && health == SyncHealth.InSync && it.waitingFor > 0
-        }?.let { Waiting(waitingFor = it.waitingFor, active = it.active) },
+        deleted = config.deleted,
+        members = config.members?.active?.takeIf { !config.deleted },
+        // Only once the range has ended and this member is in sync is "who are we waiting for" the member's question.
+        // Not a one-way latch: a late guest or new photos turn "everyone has shared" back into waiting.
+        sharingNote = config.members?.takeIf {
+            facts.timing == EventTiming.Ended && !config.deleted && health == SyncHealth.InSync
+        }?.let { if (it.waitingFor > 0) SharingNote.WaitingFor(it.waitingFor) else SharingNote.EveryoneShared },
+        joinableUntil = facts.joinableUntil,
         renameState = rename.toRenameState(),
         // The same transient cell the create layer's banner reads. A rejected link is rejected wherever
         // it arrives, so the message reaches whichever layer is showing rather than only one of them.
@@ -1649,7 +1669,13 @@ private fun syncHealth(progress: SyncProgress, download: DownloadProgress, heldF
 }
 
 /** What the joined layer says beside its health: the dates line's timing, the counts line, and the device's today. */
-private class JoinedFacts(val timing: EventTiming, val counts: SyncCounts?, val today: LocalDate)
+private class JoinedFacts(
+    val timing: EventTiming,
+    val counts: SyncCounts?,
+    val today: LocalDate,
+    /** A back-dated event's open-until date while it has not passed — the joined screen's "guests can join until". */
+    val joinableUntil: LocalDateTime? = null,
+)
 
 // The counts line, from the SAME pairs `syncHealth` derives the arrows from, so the numbers and the arrows
 // cannot disagree. A direction reads `Off` only when the member switched it off AND it has no work: the

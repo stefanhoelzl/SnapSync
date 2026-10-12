@@ -160,13 +160,28 @@
     <string name="allow_full_access">Allow full access</string>
     <!-- The counts line: "12/15 shared · 40 received". -->
     <string name="counts_line">%1$s · %2$s</string>
+    <!-- The counts line led by the member count: "4 members · 34 shared · 21 received". -->
+    <string name="counts_line_members">%1$s · %2$s · %3$s</string>
+    <plurals name="members_count">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
     <string name="counts_shared_progress">%1$d/%2$d shared</string>
     <string name="counts_shared">%1$d shared</string>
     <string name="counts_not_sharing">Not sharing</string>
     <string name="counts_received_progress">%1$d/%2$d received</string>
     <string name="counts_received">%1$d received</string>
     <string name="counts_not_receiving">Not receiving</string>
-    <string name="waiting_members">Waiting for %1$d of %2$d members</string>
+    <plurals name="waiting_members">
+        <item quantity="one">Waiting for %1$d member</item>
+        <item quantity="other">Waiting for %1$d members</item>
+    </plurals>
+    <string name="everyone_shared">Everyone has shared their photos</string>
+    <!-- An event created after its end: until when others can still join. %1$s is a date: "Mon, Oct 19". -->
+    <string name="joinable_until">Others can join until %1$s</string>
+    <!-- The event's photos were deleted: the joined screen says the event is over. -->
+    <string name="event_over_title">This event is over</string>
+    <string name="event_over_body">Its photos were removed from SnapSync. Everything you received stays in your gallery.</string>
     <string name="footer_settings">Settings</string>
     <string name="share_invite">Share</string>
     <string name="leave_event">Leave</string>
@@ -195,8 +210,8 @@
     <!-- The join phases. -->
     <string name="event_not_found_title">Event not found</string>
     <string name="event_not_found_body">This link is invalid, or the event no longer exists.</string>
-    <string name="event_closed_title">Event closed</string>
-    <string name="event_closed_body">This event can no longer be joined.</string>
+    <string name="event_closed_title">This event is over</string>
+    <string name="event_closed_body">Its photos were removed, so it can no longer be joined.</string>
     <string name="link_incomplete_title">Incomplete invite</string>
     <string name="link_incomplete_body">This link is missing part of the invite. Open the whole link again, or scan the event's QR code.</string>
     <string name="join_failed_title">Couldn't join</string>

@@ -4,6 +4,7 @@ package app.snapsync.presentation
 
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.model.Direction
+import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
@@ -11,6 +12,7 @@ import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
+import app.snapsync.model.MemberCounts
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -87,6 +89,9 @@ class JoinGateEdgesTest {
         var commit: suspend () -> JoinCommit = { JoinCommit.Committed }
         val rename = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         var loads = 0
+        var losesNothing = false
+        var asked = 0
+        var whileAsked: () -> Unit = {}
     }
 
     private fun host(
@@ -122,6 +127,11 @@ class JoinGateEdgesTest {
             load = { id, _ ->
                 world.loads++
                 world.load(id)
+            },
+            losesNothing = {
+                world.asked++
+                world.whileAsked()
+                world.losesNothing
             },
         ),
         diagnostics = testDiagnostics(log = { world.logged += it }, onIntentError = { world.errors += it }),
@@ -228,6 +238,64 @@ class JoinGateEdgesTest {
         settle(host.onRetryLoad())
 
         assertEquals(listOf<String?>(LINK_KEY, LINK_KEY), keys)
+    }
+
+    // ---- the switch without a question (capability `invite-link`; `changes/back-dated-events`, D8) ----------------
+
+    @Test
+    fun `another invite leaves without asking when the joined event loses nothing by it`() = runTest {
+        val world = World(OTHER_MEMBERSHIP).apply { losesNothing = true }
+        val host = host(world, backgroundScope)
+        settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
+
+        assertEquals(listOf("leave"), world.acts, "left without the switch question, and nothing committed yet")
+        assertNull(world.config.value)
+        // The join that follows is a first join's surface: the new event's details, ready to be confirmed.
+        assertEquals(JoinPhase.Detailed.Step.Ready, world.pending.value?.phase?.shows?.step)
+        assertEquals(EVENT_ID, world.pending.value?.eventId)
+
+        // Its Cancel leaves the device in no event, as after a confirmed switch.
+        settle(host.onCancelJoin())
+        assertNull(world.pending.value)
+        assertNull(world.config.value)
+    }
+
+    @Test
+    fun `another invite asks as before when the joined event could lose something`() = runTest {
+        val world = World(OTHER_MEMBERSHIP) // a member still sharing, offline, a failed read: all answer `false`
+        val host = host(world, backgroundScope)
+        settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
+
+        assertEquals(1, world.asked)
+        assertTrue(world.acts.isEmpty(), "nothing was left before the member answered")
+        assertEquals(OTHER_MEMBERSHIP, world.config.value)
+        assertEquals(JoinPhase.Detailed.Step.Ready, world.pending.value?.phase?.shows?.step)
+    }
+
+    @Test
+    fun `the join screen carries how many members the event has`() = runTest {
+        val world = World().apply { load = { FOUND.copy(completion = EventCompletionState(false, MemberCounts(3, 1))) } }
+        settle(host(world, backgroundScope).onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
+        assertEquals(3, assertIs<JoinPhase.Detailed>(world.pending.value?.phase?.shows).members)
+    }
+
+    @Test
+    fun `an invite backed out of while the switch was being weighed leaves nothing`() = runTest {
+        val world = World(OTHER_MEMBERSHIP).apply {
+            losesNothing = true
+            whileAsked = { pending.value = null } // the member backed out while the event was read
+        }
+        settle(host(world, backgroundScope).onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
+
+        assertTrue(world.acts.isEmpty(), "a switch the member no longer wants left their event")
+        assertEquals(OTHER_MEMBERSHIP, world.config.value)
+    }
+
+    @Test
+    fun `a first join never asks whether a switch loses nothing`() = runTest {
+        val world = World()
+        settle(host(world, backgroundScope).onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))))
+        assertEquals(0, world.asked)
     }
 
     @Test

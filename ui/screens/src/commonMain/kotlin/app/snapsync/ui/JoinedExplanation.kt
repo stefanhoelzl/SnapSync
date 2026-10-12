@@ -49,8 +49,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * "How it works": what happens to the member's photos, to the group's, and what to do
  * when photos are not arriving. Each row follows the membership's current choices and the grant; a row about
- * something that is not happening says how to change it, with the route there. A closed event shares nothing
- * any more, so it keeps only the receiving row and the hint.
+ * something that is not happening says how to change it, with the route there.
  */
 @Composable
 internal fun Explanation(
@@ -70,20 +69,18 @@ internal fun Explanation(
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             AppEyebrow(stringResource(Res.string.explain_eyebrow))
         }
-        if (!state.closed) {
-            SharingRow(
-                membership = membership,
-                range = appDateRangeLabel(
-                    start = membership.sharesFrom,
-                    end = membership.sharesUntil,
-                    today = state.today,
-                ),
-                limited = state.canChoosePhotos,
-                accessLink = accessLink,
-                settingsLink = settingsLink,
-                access = access,
-            )
-        }
+        SharingRow(
+            membership = membership,
+            range = appDateRangeLabel(
+                start = membership.sharesFrom,
+                end = membership.sharesUntil,
+                today = state.today,
+            ),
+            limited = state.canChoosePhotos,
+            accessLink = accessLink,
+            settingsLink = settingsLink,
+            access = access,
+        )
         ReceivingRow(membership, accessLink, settingsLink)
         AppExplainRow(
             subject = ExplainSubject.HINT,

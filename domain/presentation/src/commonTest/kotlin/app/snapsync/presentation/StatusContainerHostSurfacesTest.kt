@@ -386,17 +386,17 @@ class StatusContainerHostSurfacesTest {
     }
 
     @Test
-    fun `a shown QR code disappears when the event closes or the membership ends`() {
-        // A closed event admits nobody (capability `manage-membership`), so the invite it would show is masked
-        // the moment the event closes — while the same membership is still on screen with Leave.
+    fun `a shown QR code disappears when the event's photos are deleted or the membership ends`() {
+        // A deleted event admits nobody (capability `invite-link`), so the invite it would show is masked
+        // the moment the deletion is learned — while the same membership is still on screen with Leave.
         val config = MutableStateFlow<EventConfig?>(CONFIG)
         return onHost(config = config) { host ->
             host.surfaces.onQrOpen()
             host.stateWhere("the QR shown") { it.overlays.showingQr }
 
-            config.value = CONFIG.copy(closed = true)
-            val closed = host.stateWhere("the event closed") { (it.layer as? Layer.Joined)?.closed == true }
-            assertTrue(!closed.overlays.showingQr, "an invite was left over an event that admits nobody")
+            config.value = CONFIG.copy(deleted = true)
+            val deleted = host.stateWhere("the event deleted") { (it.layer as? Layer.Joined)?.deleted == true }
+            assertTrue(!deleted.overlays.showingQr, "an invite was left over an event that admits nobody")
 
             config.value = null
             val gone = host.stateWhere("the membership gone") { it.layer !is Layer.Joined }

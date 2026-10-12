@@ -178,6 +178,9 @@ class CompositionSeamTest {
         "LeaveEvent.everythingReceived" to
             "the sibling DownloadController.holdsEverythingFor (its union read is the EventUnionSource service), " +
             "asked of the snapshotted membership since the config is cleared by then — feature-blindness",
+        "QuietSwitch.holdsEverything" to
+            "the sibling DownloadController.holdsEverythingFor (its union read is the EventUnionSource service), " +
+            "asked of the joined membership when another invite opens — feature-blindness",
         "MembershipEntry.stopUploads" to "the sibling UploadTransitions.onLeave() — feature-blindness",
         "MembershipEntry.notifyLeave" to "the same best-effort wrapper as LeaveEvent.notifyLeave, over the LeaveNotifier port",
         "MembershipEntry.loadShareSet" to

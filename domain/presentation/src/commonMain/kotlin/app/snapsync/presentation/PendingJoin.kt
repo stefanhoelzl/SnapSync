@@ -67,7 +67,7 @@ sealed interface JoinProgress {
         /** Why the service refused this phone, on [JoinPhase.Detailed.Step.DeviceRefused] only — see [JoinPhase.Detailed.refusal]. */
         val refusal: ScreenMessage? = null,
     ) : JoinProgress {
-        override val shows: JoinPhase get() = JoinPhase.Detailed(event.name, step, refusal)
+        override val shows: JoinPhase get() = JoinPhase.Detailed(event.name, step, refusal, event.members)
     }
 }
 
@@ -92,4 +92,6 @@ data class EventDetails(
     val startsAt: EventStart,
     val endsAt: EventEnd,
     val deletesAt: DeletesAt,
+    /** How many members the event had when its details were read — the join screen shows it; `null` if not served. */
+    val members: Int? = null,
 )

@@ -60,6 +60,7 @@ import app.snapsync.ui.resources.link_incomplete_body
 import app.snapsync.ui.resources.link_incomplete_title
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.loading_event
+import app.snapsync.ui.resources.members_count
 import app.snapsync.ui.resources.message_device_modified
 import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.message_invalid_link
@@ -252,6 +253,14 @@ class JoinScreenTest {
         onNodeWithText(str(Res.string.waiting_network_title)).assertExists()
         onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
         onNodeWithText(str(Res.string.cancel)).assertExists()
+    }
+
+    @Test
+    fun `the join screen says how many members the event has`() = runComposeUiTest {
+        setScreen {
+            TestStatusScreen(joining(JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.Ready, members = 3)))
+        }
+        onNodeWithText(plural(Res.plurals.members_count, 3, 3)).assertExists()
     }
 
     @Test

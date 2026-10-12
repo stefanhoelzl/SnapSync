@@ -129,13 +129,25 @@
     <string name="choose_more_photos">Weitere Fotos auswählen</string>
     <string name="allow_full_access">Vollen Zugriff erlauben</string>
     <string name="counts_line">%1$s · %2$s</string>
+    <string name="counts_line_members">%1$s · %2$s · %3$s</string>
+    <plurals name="members_count">
+        <item quantity="one">%1$d Mitglied</item>
+        <item quantity="other">%1$d Mitglieder</item>
+    </plurals>
     <string name="counts_shared_progress">%1$d/%2$d geteilt</string>
     <string name="counts_shared">%1$d geteilt</string>
     <string name="counts_not_sharing">Teilen aus</string>
     <string name="counts_received_progress">%1$d/%2$d empfangen</string>
     <string name="counts_received">%1$d empfangen</string>
     <string name="counts_not_receiving">Empfangen aus</string>
-    <string name="waiting_members">Warte auf %1$d von %2$d Mitgliedern</string>
+    <plurals name="waiting_members">
+        <item quantity="one">Warte auf %1$d Mitglied</item>
+        <item quantity="other">Warte auf %1$d Mitglieder</item>
+    </plurals>
+    <string name="everyone_shared">Alle haben ihre Fotos geteilt</string>
+    <string name="joinable_until">Andere können bis %1$s beitreten</string>
+    <string name="event_over_title">Dieses Event ist vorbei</string>
+    <string name="event_over_body">Seine Fotos wurden aus SnapSync entfernt. Alles, was du erhalten hast, bleibt in deiner Galerie.</string>
     <string name="footer_settings">Einstellungen</string>
     <string name="share_invite">Teilen</string>
     <string name="leave_event">Verlassen</string>
@@ -160,8 +172,8 @@
 
     <string name="event_not_found_title">Event nicht gefunden</string>
     <string name="event_not_found_body">Dieser Link ist ungültig, oder das Event existiert nicht mehr.</string>
-    <string name="event_closed_title">Event geschlossen</string>
-    <string name="event_closed_body">Diesem Event kann man nicht mehr beitreten.</string>
+    <string name="event_closed_title">Dieses Event ist vorbei</string>
+    <string name="event_closed_body">Seine Fotos wurden entfernt, deshalb kann man ihm nicht mehr beitreten.</string>
     <string name="link_incomplete_title">Einladung unvollständig</string>
     <string name="link_incomplete_body">Diesem Link fehlt ein Teil der Einladung. Öffne den ganzen Link noch einmal oder scanne den QR-Code des Events.</string>
     <string name="join_failed_title">Beitritt fehlgeschlagen</string>

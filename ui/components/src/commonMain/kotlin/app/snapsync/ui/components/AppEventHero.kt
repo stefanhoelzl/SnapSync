@@ -25,11 +25,12 @@ import org.jetbrains.compose.resources.stringResource
  * because it is one.
  *
  * It exists because the join surface's job is to ask a question. A full-height hero there pushed the
- * question below the fold and left the answer controls competing for what was left.
+ * question below the fold and left the answer controls competing for what was left. A [subtitle] — the event's member
+ * count — sits quietly under the name when there is one.
  */
 @Composable
-fun AppEventHeaderCompact(title: String) {
-    AppIdentityHeader(stringResource(Res.string.invited_eyebrow), title, subtitle = null)
+fun AppEventHeaderCompact(title: String, subtitle: String? = null) {
+    AppIdentityHeader(stringResource(Res.string.invited_eyebrow), title, subtitle = subtitle)
 }
 
 /**

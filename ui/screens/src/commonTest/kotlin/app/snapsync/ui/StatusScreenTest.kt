@@ -67,6 +67,7 @@ import app.snapsync.ui.resources.allow_full_access
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.choose_more_photos
 import app.snapsync.ui.resources.counts_line
+import app.snapsync.ui.resources.counts_line_members
 import app.snapsync.ui.resources.counts_not_receiving
 import app.snapsync.ui.resources.counts_not_sharing
 import app.snapsync.ui.resources.counts_received
@@ -79,6 +80,9 @@ import app.snapsync.ui.resources.creating
 import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.duration_hours
 import app.snapsync.ui.resources.duration_minutes_short
+import app.snapsync.ui.resources.event_over_body
+import app.snapsync.ui.resources.event_over_title
+import app.snapsync.ui.resources.everyone_shared
 import app.snapsync.ui.resources.explain_access_link
 import app.snapsync.ui.resources.explain_hint_caption
 import app.snapsync.ui.resources.explain_hint_title
@@ -100,11 +104,13 @@ import app.snapsync.ui.resources.explain_share_off_title
 import app.snapsync.ui.resources.explain_share_title
 import app.snapsync.ui.resources.footer_settings
 import app.snapsync.ui.resources.invite_caption
+import app.snapsync.ui.resources.joinable_until
 import app.snapsync.ui.resources.joined_statement
 import app.snapsync.ui.resources.leave_cancel
 import app.snapsync.ui.resources.leave_confirm
 import app.snapsync.ui.resources.leave_event
 import app.snapsync.ui.resources.leave_title
+import app.snapsync.ui.resources.members_count
 import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_rename_failed
@@ -150,12 +156,12 @@ import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.SharingNote
 import app.snapsync.ui.state.StoreName
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.TimeLeft
 import app.snapsync.ui.state.UiState
-import app.snapsync.ui.state.Waiting
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import org.jetbrains.compose.resources.StringResource
@@ -228,8 +234,9 @@ private fun joined(
     membership: JoinedEvent = MEMBERSHIP,
     inviteUrl: String? = SAMPLE_INVITE,
     renameState: RenameState = RenameState.Idle,
-    closed: Boolean = false,
-    waiting: Waiting? = null,
+    deleted: Boolean = false,
+    members: Int? = null,
+    sharingNote: SharingNote? = null,
 ) = UiState(
     Layer.Joined(
         membership = membership,
@@ -241,8 +248,9 @@ private fun joined(
         timing = timing,
         counts = counts,
         renameState = renameState,
-        closed = closed,
-        waiting = waiting,
+        deleted = deleted,
+        members = members,
+        sharingNote = sharingNote,
     ),
 )
 
@@ -1291,40 +1299,96 @@ class StatusScreenTest {
     // ---- joined layer: early completion (capabilities `sync-status`, `manage-membership`) ----
 
     @Test
-    fun `an ended open event says who it is still waiting for beneath the counts`() = runComposeUiTest {
+    fun `an ended event says how many members it is still waiting for beneath the counts`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
                 joined(
                     SyncHealth.InSync,
                     timing = EventTiming.Ended,
-                    waiting = Waiting(waitingFor = 2, active = 5),
+                    members = 5,
+                    sharingNote = SharingNote.WaitingFor(2),
                     counts = SyncCounts(progress(34, 34), progress(110, 110)),
                 ),
             )
         }
         onNodeWithText(
-            str(Res.string.counts_line, str(Res.string.counts_shared, 34), str(Res.string.counts_received, 110)),
+            str(
+                Res.string.counts_line_members,
+                plural(Res.plurals.members_count, 5, 5),
+                str(Res.string.counts_shared, 34),
+                str(Res.string.counts_received, 110),
+            ),
         ).assertExists()
-        onNodeWithText(str(Res.string.waiting_members, 2, 5)).assertExists()
+        onNodeWithText(plural(Res.plurals.waiting_members, 2, 2)).assertExists()
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
     }
 
     @Test
-    fun `a closed event offers only Leave`() = runComposeUiTest {
+    fun `once everyone has shared the ended event says so`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true),
+                joined(
+                    SyncHealth.InSync,
+                    timing = EventTiming.Ended,
+                    members = 4,
+                    sharingNote = SharingNote.EveryoneShared,
+                    counts = SyncCounts(progress(34, 34), progress(58, 58)),
+                ),
             )
         }
+        onNodeWithText(str(Res.string.everyone_shared)).assertExists()
+    }
+
+    @Test
+    fun `the member count stands alone when there are no photo counts`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.NeedsAccess(canAsk = true), members = 1)) }
+        onNodeWithText(plural(Res.plurals.members_count, 1, 1)).assertExists()
+    }
+
+    @Test
+    fun `a back-dated event says until when others can join`() = runComposeUiTest {
+        setContent {
+            val ended = joined(SyncHealth.InSync, timing = EventTiming.Ended).layer as Layer.Joined
+            TestStatusScreen(UiState(ended.copy(joinableUntil = LocalDateTime(2026, 7, 13, 12, 0))))
+        }
+        onNode(hasText(str(Res.string.joinable_until, ""), substring = true)).assertExists()
+    }
+
+    @Test
+    fun `a deleted event is shown as over and offers only Leave which does not ask`() = runComposeUiTest {
+        var leaves = 0
+        var asked = 0
+        setContent {
+            TestStatusScreen(
+                joined(
+                    SyncHealth.InSync,
+                    timing = EventTiming.Ended,
+                    deleted = true,
+                    counts = SyncCounts(progress(34, 34), progress(58, 58)),
+                ),
+                actions = testActions(
+                    joined = testJoinedActions(onLeaveEvent = { leaves++ }),
+                    surfaces = testSurfaceActions(onConfirmLeaveOpen = { asked++ }),
+                ),
+            )
+        }
+        onNodeWithText(str(Res.string.event_over_title)).assertExists()
+        onNodeWithText(str(Res.string.event_over_body)).assertExists()
+        onNodeWithText(
+            str(Res.string.counts_line, str(Res.string.counts_shared, 34), str(Res.string.counts_received, 58)),
+        ).assertExists()
         onNodeWithText(str(Res.string.share_invite)).assertDoesNotExist()
         onNodeWithText(str(Res.string.footer_settings)).assertDoesNotExist()
         onNodeWithContentDescription(str(Res.string.rename_event)).assertDoesNotExist()
         onNodeWithText(str(Res.string.show_qr)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.leave_event)).assertExists()
-        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
-        // The name, the joined statement and the dates stay.
-        onNodeWithText(str(Res.string.joined_statement)).assertExists()
+        onNodeWithText(str(Res.string.joined_statement)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.explain_share_title)).assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
+        // The name and the dates stay.
         onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ended)).assertExists()
+        onNodeWithText(str(Res.string.leave_event)).performClick()
+        assertEquals(1, leaves)
+        assertEquals(0, asked)
     }
 
     // ---- how it works (capability `sync-status`) ----
@@ -1446,18 +1510,6 @@ class StatusScreenTest {
         setContent { TestStatusScreen(inSync) }
         onNodeWithText(str(Res.string.choose_more_photos)).assertDoesNotExist()
         onNodeWithText(str(Res.string.allow_full_access)).assertDoesNotExist()
-    }
-
-    @Test
-    fun `a closed event explains only receiving and the hint`() = runComposeUiTest {
-        setContent {
-            TestStatusScreen(
-                joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true),
-            )
-        }
-        onNodeWithText(str(Res.string.explain_share_title)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.explain_receive_title)).assertExists()
-        onNodeWithText(str(Res.string.explain_hint_title)).assertExists()
     }
 
     @Test

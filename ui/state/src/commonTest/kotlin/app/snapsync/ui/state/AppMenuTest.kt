@@ -61,7 +61,7 @@ class AppMenuTest {
             health = SyncHealth.InSync,
             today = LocalDate(2026, 7, 6),
         )
-        for (layer in offered + joined + joined.copy(closed = true)) assertTrue(layer.offersMenu, "$layer")
+        for (layer in offered + joined + joined.copy(deleted = true)) assertTrue(layer.offersMenu, "$layer")
         assertFalse(joined.copy(surface = JoinedSurface.Reconfigure(range)).offersMenu)
         assertFalse(Layer.CreatingEvent.offersMenu)
         assertFalse(
