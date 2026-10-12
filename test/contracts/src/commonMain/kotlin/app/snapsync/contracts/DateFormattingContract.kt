@@ -64,8 +64,16 @@ object DateFormattingContract : Contract<DateFormattingState, DateFormatting>("D
         }
 
         clause("A_LANGUAGE_WITH_NO_REGION_SPEAKS_IT", DateFormattingState.PLATFORM, covers = covers) {
-            assertEquals("October", it.formats("en").reads("MMMM"), "English with no region reads English, whatever the device")
-            assertEquals("Oktober", it.formats("de").reads("MMMM"), "German with no region reads German, whatever the device")
+            assertEquals(
+                "October",
+                it.formats("en").reads("MMMM"),
+                "English with no region reads English, whatever the device",
+            )
+            assertEquals(
+                "Oktober",
+                it.formats("de").reads("MMMM"),
+                "German with no region reads German, whatever the device",
+            )
         }
 
         clause(
@@ -81,7 +89,11 @@ object DateFormattingContract : Contract<DateFormattingState, DateFormatting>("D
             val device = it.deviceLocale()
             assertTrue(device.language.isNotBlank(), "the device states its language")
             assertTrue(device.region?.isNotBlank() ?: true, "and a region it has is never blank")
-            assertEquals("2026", it.formats(DateLocale.Device).reads("y"), "the device's locale formats the value it was given")
+            assertEquals(
+                "2026",
+                it.formats(DateLocale.Device).reads("y"),
+                "the device's locale formats the value it was given",
+            )
         }
     }
 }

@@ -20,7 +20,9 @@ class JvmDateFormatting : DateFormatting {
         when (locale) {
             DateLocale.Device -> device()
             // An empty region is the language's default conventions, as no region at all.
-            is DateLocale.Explicit -> Locale.Builder().setLanguage(locale.language).setRegion(locale.region.orEmpty()).build()
+            is DateLocale.Explicit -> Locale.Builder().setLanguage(
+                locale.language,
+            ).setRegion(locale.region.orEmpty()).build()
         },
     )
 

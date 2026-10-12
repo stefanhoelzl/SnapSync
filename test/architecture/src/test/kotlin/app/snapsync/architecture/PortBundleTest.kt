@@ -55,6 +55,7 @@ class PortBundleTest {
         "ChangeOutcome" to "what the platform answered a change to an upload — a sealed answer",
         "TransferSource" to "the bytes a session transfer sends, a file or a library resource — a sealed value handed in",
         "OsUploadJobHandle" to "the OS's own upload job, presented by the queue and handed back — a handle, not a seam",
+        "MetricNode" to "one node of a platform's metric payload, read lazily — a value a port hands over",
         "LinkDelivery" to "what the platform opened the app with — a sealed value a port hands over",
         "TransferHandle" to "the platform's own transfer, listed by the session and handed back — a handle, not a seam",
     )

@@ -2,11 +2,11 @@ package app.snapsync.metrics
 
 import app.snapsync.logging.IosThreadEntryContext
 import app.snapsync.model.PlatformEntry
-import app.snapsync.model.ProcessMetricReport
-import app.snapsync.model.flattenToDottedKeys
 import app.snapsync.model.invocation
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.MetricHandlers
+import app.snapsync.ports.MetricNode
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
 import co.touchlab.kermit.Logger
 import platform.MetricKit.MXDiagnosticPayload
@@ -24,8 +24,8 @@ import platform.darwin.NSObject
  * only for the length of one invocation.
  *
  * **Transcription only.** Every decision — what a crossing is, what a line says, which branches are
- * dropped — lives in `:domain:model` and is tested there. This class converts the platform's own
- * serialization into a report and hands it over.
+ * dropped — is the core's, and tested there. This class hands the platform's own serialization over as a lazy view
+ * ([metricNode]), converting a node only when the core reads it.
  *
  * ⚠️ **The subscriber is held in a field that is READ — do not make it write-only again.**
  * MetricKit is not documented to keep a strong reference to a subscriber, and the sibling
@@ -71,11 +71,9 @@ class MetricKitProcessMetrics internal constructor(
     private val log: Logger = Logger.withTag("processMetrics")
 
     override fun listen(handlers: MetricHandlers) {
-        // Convert and hand over, INLINE — before the delivery returns (see [MetricKitSubscriber]).
-        val queue = api.subscribe { raw ->
-            val nested = raw.entries.associate { (key, value) -> key.toString() to value }
-            handlers.onReport(ProcessMetricReport(flattenToDottedKeys(nested)))
-        }
+        // Hand over INLINE — before the delivery returns (see [MetricKitSubscriber]) — as a view: nothing is converted
+        // until the core reads it, and a branch it skips is never converted at all.
+        val queue = api.subscribe { raw -> handlers.onReport(ProcessMetricPayload(metricNode(raw) ?: EMPTY)) }
         // The two `past…` counts say something about the QUEUE rather than only about us, which is the
         // one thing four days of silence could not distinguish: an empty queue reads the same as a
         // subscriber that cannot be reached. Measured to be 0 on a fresh process even moments before a
@@ -135,8 +133,8 @@ internal class SystemMetricKitApi : MetricKitApi {
  * silently.
  *
  * **Delivery is inline** — handed over before the callback returns, not hopped to another lane, deliberately and
- * against the observer convention this module otherwise follows. The work is small (call-stack branches are dropped by
- * [flattenToDottedKeys] before anything is rendered — measured: one delivery of twelve queued payloads WITH call stacks
+ * against the observer convention this module otherwise follows. The work is small (call-stack branches are skipped by
+ * the core without being read — measured: one delivery of twelve queued payloads WITH call stacks
  * serialized to 15.1 MB, rolled the 10 MB log and blocked 18 s; see changes/archive/2026-09-14-add-os-exit-attribution),
  * and a process woken briefly in the background may be killed before deferred work runs — which for a one-shot
  * delivery means losing the report permanently.
@@ -169,4 +167,28 @@ internal class MetricKitSubscriber(
             }
         }
     }
+}
+
+/**
+ * MetricKit's dictionaries and arrays as [MetricNode]s, each converted only when read: a dictionary's keys are its keys
+ * rendered as text, any other value a leaf of its own rendering. `null` is a slot that holds nothing.
+ */
+internal fun metricNode(value: Any?): MetricNode? = when (value) {
+    null -> null
+    is Map<*, *> -> object : MetricNode.Branch {
+        private val byKey by lazy { value.entries.associate { (key, child) -> key.toString() to child } }
+        override val keys: List<String> get() = byKey.keys.toList()
+        override fun child(key: String): MetricNode? = metricNode(byKey[key])
+    }
+    is List<*> -> object : MetricNode.Items {
+        override val size: Int get() = value.size
+        override fun item(index: Int): MetricNode? = metricNode(value[index])
+    }
+    else -> MetricNode.Leaf(value.toString())
+}
+
+/** A delivery that carried nothing at all. */
+private val EMPTY: MetricNode = object : MetricNode.Branch {
+    override val keys: List<String> = emptyList()
+    override fun child(key: String): MetricNode? = null
 }

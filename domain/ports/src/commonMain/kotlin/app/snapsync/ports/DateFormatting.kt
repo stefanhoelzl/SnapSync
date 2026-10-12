@@ -20,4 +20,4 @@ interface DateFormatting : Port {
 }
 
 /** The device's own locale: its [language], and its [region] where it has one. */
-data class DeviceLocale(val language: String, val region: String?)
+class DeviceLocale(val language: String, val region: String?)

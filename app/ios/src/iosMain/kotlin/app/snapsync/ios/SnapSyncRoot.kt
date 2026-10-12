@@ -1,6 +1,5 @@
 package app.snapsync.ios
 
-import app.snapsync.services.dates.formatsFor
 import app.snapsync.attest.IosDeviceIntegrity
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
@@ -50,6 +49,7 @@ import app.snapsync.scene.IosLifecycle
 import app.snapsync.scene.IosUi
 import app.snapsync.scene.SceneRecord
 import app.snapsync.sentry.SentryCrashReporter
+import app.snapsync.services.dates.formatsFor
 import app.snapsync.systemui.IosSystemUi
 import app.snapsync.time.SystemClock
 import app.snapsync.ui.components.DateFormatter

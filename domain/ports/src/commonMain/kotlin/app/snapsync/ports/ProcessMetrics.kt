@@ -1,9 +1,31 @@
 package app.snapsync.ports
 
-import app.snapsync.model.ProcessMetricReport
-
 /** Where each process-metric report goes. Handled INLINE, before [onReport] returns — see [ProcessMetrics]. */
-class MetricHandlers(val onReport: (ProcessMetricReport) -> Unit)
+class MetricHandlers(val onReport: (ProcessMetricPayload) -> Unit)
+
+/** A process-metric report as the platform delivered it: its [root], a view nothing converts until it is walked. */
+class ProcessMetricPayload(val root: MetricNode)
+
+/**
+ * One node of a platform's metric payload, read lazily — a branch's children and a list's items are converted only as
+ * a reader asks for them, so a branch the reader skips (a 300 KB call-stack tree) is never converted at all.
+ */
+sealed interface MetricNode {
+    /** A value, as the platform renders it (`"749 ms"`, `"3"`, `"true"`). */
+    class Leaf(val text: String) : MetricNode
+
+    /** A dictionary: its [keys], each [child] read on demand — `null` for a key that holds nothing. */
+    interface Branch : MetricNode {
+        val keys: List<String>
+        fun child(key: String): MetricNode?
+    }
+
+    /** A list: its [size], each [item] read on demand — `null` for a slot that holds nothing. */
+    interface Items : MetricNode {
+        val size: Int
+        fun item(index: Int): MetricNode?
+    }
+}
 
 /**
  * Reports about **this process's own behaviour**: how its previous runs ended, how responsive it was, what it peaked

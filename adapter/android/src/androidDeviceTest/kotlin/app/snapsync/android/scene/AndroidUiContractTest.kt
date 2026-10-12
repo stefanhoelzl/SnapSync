@@ -33,7 +33,6 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.v2.runAndroidComposeUiTest
-import app.snapsync.model.resolveDateLocale
 import app.snapsync.android.dates.AndroidDateFormatting
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -75,6 +74,7 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.model.resolveDateLocale
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
