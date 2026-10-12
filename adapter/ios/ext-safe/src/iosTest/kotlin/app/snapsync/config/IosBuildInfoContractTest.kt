@@ -25,8 +25,7 @@ class IosBuildInfoContractTest {
             setOf(BuildInfoState.UNREPORTED_AND_UNLISTED, BuildInfoState.UNBUNDLED, BuildInfoState.ON_IOS)
         override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
             if (state in reaches) {
-                val os = osCarriesOsDrivenUpload()
-                Entered.Ready(IosBuildInfo(osSupportsOsDrivenUpload = os, bootLines = emptyList()).recorded(log))
+                Entered.Ready(IosBuildInfo().recorded(log))
             } else {
                 Entered.Unreachable("a test executable has no bundle: nothing distributed, no app on a device")
             }

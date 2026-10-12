@@ -1,6 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.Platform
 import app.snapsync.model.StoreLink
 
@@ -29,17 +28,23 @@ interface BuildInfo : Port {
      */
     val store: StoreLink?
 
-    /** The APNs environment this build's push tokens belong to (`sandbox` or `production`), fixed at compile time. */
-    val apnsEnvironment: String
+    /** The build number the store and the dump name it by (`CFBundleVersion` on iOS, the version code on Android). */
+    val buildNumber: String
 
     /**
-     * Whether this OS carries the OS-driven upload mechanism at all (iOS ≥26.1) — a constant of the running OS, and an
-     * input to the registration fact, never an operating-system call.
+     * The push environment this build's tokens belong to: the APNs environment on iOS (`sandbox` or `production`,
+     * fixed at compile time), the Firebase project that issues them on Android.
      */
-    val osSupportsOsDrivenUpload: Boolean
+    val pushEnvironment: String
 
-    /** The build/OS/device facts a diagnostic dump's state section transcribes. */
-    val diagnostics: DiagnosticEnvironment
+    /** The running OS's version, as the platform states it. */
+    val osVersion: String
+
+    /** The device's model, as the platform names it (`iPhone12,8`, `samsung SM-A405FN`). */
+    val deviceModel: String
+
+    /** The environment this build's crash reports are filed under (`production`, `development`), or `?` unread. */
+    val reporterEnvironment: String
 
     /** Where this build reports crashes to, or `null` for a build that reports nowhere. */
     val dsn: String?
@@ -53,10 +58,4 @@ interface BuildInfo : Port {
      * executable). The crash channel's `process` tag, which tells the app's reports from the extension's.
      */
     val processId: String?
-
-    /**
-     * The process's boot banner — what the process is and which build, logged first, so a reader who concatenates the
-     * app's and the extension's logs can tell runs apart.
-     */
-    val bootLines: List<String>
 }

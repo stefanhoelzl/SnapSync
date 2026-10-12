@@ -6,6 +6,8 @@ import app.snapsync.model.RegistrationState
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * What the operating system holds for this app's upload-extension registration when a clause starts.
@@ -55,11 +57,13 @@ object ExtensionRegistryContract :
             ExtensionRegistryState.NO_MECHANISM,
             covers = cells {
                 on<ExtensionRegistry> {
+                    answers(ExtensionRegistry::supported).with(false)
                     answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Unsupported::class)
                     answers(ExtensionRegistry::isEnabled).with(RegistrationState.UNSUPPORTED)
                 }
             },
         ) { registry ->
+            assertFalse(registry.supported, "an OS without the mechanism says so")
             assertEquals(RegistrationAnswer.Unsupported, registry.setEnabled(true), "nothing to register")
             assertEquals(RegistrationAnswer.Unsupported, registry.setEnabled(false), "nor to deregister")
             assertEquals(RegistrationState.UNSUPPORTED, registry.isEnabled(), "and no record to read back")
@@ -70,11 +74,13 @@ object ExtensionRegistryContract :
             ExtensionRegistryState.RECORD_ABSENT,
             covers = cells {
                 on<ExtensionRegistry> {
+                    answers(ExtensionRegistry::supported).with(true)
                     answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Answered::class)
                     answers(ExtensionRegistry::isEnabled).with(RegistrationState.REGISTERED)
                 }
             },
         ) { registry ->
+            assertTrue(registry.supported, "an OS that holds a record carries the mechanism")
             assertEquals(
                 RegistrationOutcome.Applied(enabling = true),
                 registrationOutcome(true, registry.setEnabled(true)),

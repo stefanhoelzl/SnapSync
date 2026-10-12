@@ -28,6 +28,8 @@ class OsDrivenRegistrationTest {
         var refuseWith: Pair<Boolean, RegistrationAnswer>? = null,
         var registered: Boolean = false,
     ) : ExtensionRegistry {
+        override val supported = true
+
         override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
             log += if (enabled) "enable" else "disable"
             refuseWith?.takeIf { it.first == enabled }?.let { return it.second }
@@ -128,6 +130,7 @@ class OsDrivenRegistrationTest {
     @Test
     fun `a platform without the extension registers nothing and reads no record`() = runTest {
         val unsupported = object : ExtensionRegistry {
+            override val supported = false
             var writes = 0
             override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
                 writes++

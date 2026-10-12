@@ -27,6 +27,12 @@ import app.snapsync.model.RegistrationState
  */
 interface ExtensionRegistry : Port {
 
+    /**
+     * Whether this OS carries the upload-extension mechanism at all (iOS 26.1 and later) — a constant of the running
+     * OS, read once by the adapter. Where it is `false`, [setEnabled] and [isEnabled] answer unsupported.
+     */
+    val supported: Boolean
+
     /** Change the registration, and report what the platform answered. Returns rather than throws. */
     suspend fun setEnabled(enabled: Boolean): RegistrationAnswer
 

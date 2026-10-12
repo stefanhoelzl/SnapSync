@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * are the platform's, and its contract holds its adapters to them).
  */
 internal class InMemoryExtensionRegistry(private val record: MutableStateFlow<Boolean>?) : ExtensionRegistry {
+    override val supported: Boolean = record != null
+
     override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
         val cell = record ?: return RegistrationAnswer.Unsupported
         cell.value = enabled

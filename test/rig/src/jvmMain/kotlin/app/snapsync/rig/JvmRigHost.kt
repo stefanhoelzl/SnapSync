@@ -119,7 +119,7 @@ class JvmRigHost private constructor(
                 declaredVersion = version,
                 dsn = DSN,
                 store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
-                apnsEnvironment = "sandbox",
+                pushEnvironment = "sandbox",
             )
             val app = JvmApp(scope, lane, mocks) { device ->
                 device.adapters(

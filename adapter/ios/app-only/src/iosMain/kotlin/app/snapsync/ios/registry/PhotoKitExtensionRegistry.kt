@@ -2,6 +2,7 @@
 
 package app.snapsync.ios.registry
 
+import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.logging.invocation
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
@@ -12,9 +13,6 @@ import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.cValue
-import platform.Foundation.NSOperatingSystemVersion
-import platform.Foundation.NSProcessInfo
 import platform.Photos.PHPhotoLibrary
 
 /**
@@ -36,7 +34,7 @@ internal class PhotoKitExtensionRegistry(
     private val log: Logger,
     private val api: ExtensionRegistrationApi = SystemExtensionRegistrationApi,
     /** Whether this OS carries the selector. The device's, unless a replay supplies the recording's (it did). */
-    private val supported: Boolean = osCarriesUploadExtension(),
+    override val supported: Boolean = osCarriesOsDrivenUpload(),
 ) : ExtensionRegistry {
 
     /**
@@ -73,20 +71,6 @@ internal class PhotoKitExtensionRegistry(
         else -> RegistrationState.NOT_REGISTERED
     }
 }
-
-/** Whether this OS carries the iOS 26.1 upload-extension registration selector. */
-@OptIn(ExperimentalForeignApi::class)
-internal fun osCarriesUploadExtension(): Boolean =
-    NSProcessInfo.processInfo.isOperatingSystemAtLeastVersion(
-        cValue<NSOperatingSystemVersion> {
-            majorVersion = UPLOAD_EXTENSION_MAJOR
-            minorVersion = UPLOAD_EXTENSION_MINOR
-            patchVersion = 0
-        },
-    )
-
-private const val UPLOAD_EXTENSION_MAJOR = 26L
-private const val UPLOAD_EXTENSION_MINOR = 1L
 
 /** The three facts a registration write returns: whether it took, and if not, which error. */
 internal class PlatformWriteAnswer(val ok: Boolean, val errorDomain: String?, val errorCode: Long?)

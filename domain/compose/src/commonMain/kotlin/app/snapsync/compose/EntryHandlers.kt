@@ -153,7 +153,7 @@ private const val TOKEN_PREFIX = 12
 /** The `onForeground` invocation params: the app uploader's admission and the registration fact. */
 private fun AppCore.foregroundParams(): String =
     "app=${appUploadAdmission().name} extensionRegistrable=${extensionRegistrableNow()}" +
-        " osSupported=${ports.process.build.osSupportsOsDrivenUpload}"
+        " osSupported=${ports.extensionRegistry.supported}"
 
 /**
  * The shared prelude of a wake with no flow of its own: re-read the membership (cross-process writes and a

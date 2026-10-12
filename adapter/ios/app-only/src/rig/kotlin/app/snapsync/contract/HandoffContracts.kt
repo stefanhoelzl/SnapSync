@@ -3,10 +3,11 @@
 package app.snapsync.contract
 
 import app.snapsync.background.SystemBackgroundTimeApi
+import app.snapsync.config.IosBuildInfo
+import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
-import app.snapsync.contracts.BuildInfoContract
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Contract
@@ -27,10 +28,8 @@ import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.ios.registry.osCarriesUploadExtension
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
-import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.logging.documentsDirectory
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.SystemUi
@@ -109,7 +108,6 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
     InAppContract(NetworkMonitorContract.name, Host.IOS_DEVICE_APP) { params -> recordNetwork(params) },
     InAppContract(ProcessInfoContract.name, Host.IOS_DEVICE_APP) { recordProcessInfoLocked() },
     InAppContract(BackgroundTimeContract.name, Host.IOS_DEVICE_APP) { recordBackgroundTimeExpiry() },
-    InAppContract(BuildInfoContract.name, Host.IOS_DEVICE_APP) { recordBuildInfo() },
 ) + relaunchContracts() + downloadRelaunchContracts() + metricsContracts()
 
 /**
@@ -118,7 +116,7 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
  * the process cannot give itself is a precondition of the run") — so a person switches it in Settings between the two
  * recordings.
  */
-private fun recordRegistry(refusal: () -> String?): String = if (!osCarriesUploadExtension()) {
+private fun recordRegistry(refusal: () -> String?): String = if (!osCarriesOsDrivenUpload()) {
     // Below 26.1 the registration selector does not exist: the grant decides nothing, and nothing may call it.
     recordAppOnDevice(ExtensionRegistryContract, null, BELOW_IOS_26_1) { DeviceRegistryNoMechanismBinding(it) }
 } else {
@@ -154,7 +152,7 @@ internal fun <K : Enum<K>, T> recordAppOnDevice(
     }
     val recorder = Recorder()
     val results = run(contract, binding(recorder))
-    val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val env = IosBuildInfo()
     val header = listOf("contract" to contract.name, "host" to Host.IOS_DEVICE_APP.name) +
         listOfNotNull(grant?.let { "grant" to it.name }, precondition?.let { "precondition" to it }) +
         listOf(

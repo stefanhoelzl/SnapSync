@@ -118,7 +118,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * graph is composed.
      */
     val pushTokens: PushTokenSource by lazy {
-        PushTokenSource(ports.pushNotifications.kind, ports.process.build.apnsEnvironment)
+        PushTokenSource(ports.pushNotifications.kind, ports.process.build.pushEnvironment)
     }
 
     /**

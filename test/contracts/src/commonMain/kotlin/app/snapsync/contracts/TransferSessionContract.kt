@@ -146,7 +146,11 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             awaitWithin { subject.objects.landed(route) != null && subject.endsOf(key(id)).any { it } }
         }
 
-        heldUntilUnrestricted(TransferSessionState.RESTRICTED_NETWORK, landed, route = { id -> path(id, UPLOAD_ACCEPT) }) {
+        heldUntilUnrestricted(
+            TransferSessionState.RESTRICTED_NETWORK,
+            landed,
+            route = { id -> path(id, UPLOAD_ACCEPT) },
+        ) {
                 subject ->
             heldSession(subject)
         }

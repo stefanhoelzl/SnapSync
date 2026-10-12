@@ -2,6 +2,7 @@
 
 package app.snapsync.contract
 
+import app.snapsync.config.IosBuildInfo
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
@@ -27,7 +28,6 @@ import app.snapsync.download.IosDownload
 import app.snapsync.download.SystemDownloadSessionApi
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.transferSessionConfiguration
-import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.ports.TransferOutcome
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -347,7 +347,7 @@ private fun runDownloadRelaunched(handler: () -> Unit) {
         single(DownloadContract, DOWNLOAD_RELAUNCH_CLAUSE),
         DeviceRelaunchedDownloadBinding(recorder, handler),
     )
-    val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val env = IosBuildInfo()
     val header = listOf(
         "contract" to DownloadContract.name,
         "host" to Host.IOS_DEVICE_APP.name,

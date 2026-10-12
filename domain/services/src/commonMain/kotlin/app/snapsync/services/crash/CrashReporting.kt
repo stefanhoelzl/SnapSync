@@ -81,8 +81,8 @@ class CrashReporting(
     private fun options(dsn: String): CrashOptions = CrashOptions(
         dsn = dsn,
         release = build.appVersion.takeIf { it.isNotBlank() },
-        environment = build.diagnostics.reporterEnvironment,
-        dist = crashDist(build.platform, build.diagnostics.buildNumber),
+        environment = build.reporterEnvironment,
+        dist = crashDist(build.platform, build.buildNumber),
         tags = buildMap {
             put(PLATFORM_TAG, build.platform.tag)
             build.processId?.takeIf { it.isNotBlank() }?.let { put(PROCESS_TAG, it) }

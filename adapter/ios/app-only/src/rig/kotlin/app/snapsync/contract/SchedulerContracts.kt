@@ -5,6 +5,7 @@ package app.snapsync.contract
 import app.snapsync.background.BackgroundTaskApi
 import app.snapsync.background.IosWake
 import app.snapsync.background.SystemBackgroundTaskApi
+import app.snapsync.config.IosBuildInfo
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
@@ -19,7 +20,6 @@ import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
-import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.objc.ObjCFailure
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -175,7 +175,7 @@ internal fun recordScheduler(): String {
     }
     val recorder = Recorder()
     val results = run(WakeContract, DeviceSchedulerBinding(recorder))
-    val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val env = IosBuildInfo()
     val header = listOf(
         "contract" to WakeContract.name,
         "host" to Host.IOS_DEVICE_APP.name,

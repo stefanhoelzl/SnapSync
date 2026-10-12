@@ -3,7 +3,6 @@ package app.snapsync.contracts
 import app.snapsync.model.Platform
 import app.snapsync.ports.BuildInfo
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -22,23 +21,17 @@ enum class BuildInfoState {
     /** A process with no bundle of its own — the simulator's test executable. */
     UNBUNDLED,
 
-    /** A build running on Android, which carries no OS-driven uploader. */
+    /** A build running on Android. */
     ON_ANDROID,
 
     /** A build running on iOS. */
     ON_IOS,
-
-    /** A build on an OS that carries the OS-driven upload mechanism (iOS 26.1 and later). */
-    OS_DRIVEN_UPLOAD,
-
-    /** A build on an OS that does not carry it (iOS below 26.1, Android). */
-    NO_OS_DRIVEN_UPLOAD,
 }
 
 /**
  * What the running build says of itself (`docs/architecture.md`): its version and backend, where it reports and is
- * listed — or `null`, never an empty value, where it does neither — the platform it runs on, and the boot banner and
- * diagnostics a report carries. Each answer is a constant of the running build, read from what the build was given.
+ * listed — or `null`, never an empty value, where it does neither — the platform, OS and device it runs on. Each
+ * answer is a constant of the running build, read from what the build was given or from the platform as it states it.
  */
 object BuildInfoContract : Contract<BuildInfoState, BuildInfo>("BuildInfo") {
 
@@ -59,29 +52,34 @@ object BuildInfoContract : Contract<BuildInfoState, BuildInfo>("BuildInfo") {
         }
 
         clause(
-            "BUNDLED_NAMES_ITS_PROCESS_VERSION_AND_BACKEND",
+            "BUNDLED_NAMES_ITS_PROCESS_BUILD_DEVICE_AND_BACKEND",
             BuildInfoState.BUNDLED,
             covers = cells {
                 on<BuildInfo> {
                     answers(BuildInfo::processId).returns()
                     answers(BuildInfo::appVersion).returns()
                     answers(BuildInfo::uploadHost).returns()
-                    answers(BuildInfo::apnsEnvironment).returns()
-                    answers(BuildInfo::diagnostics).returns()
-                    answers(BuildInfo::bootLines).returns()
+                    answers(BuildInfo::buildNumber).returns()
+                    answers(BuildInfo::pushEnvironment).returns()
+                    answers(BuildInfo::osVersion).returns()
+                    answers(BuildInfo::deviceModel).returns()
+                    answers(BuildInfo::reporterEnvironment).returns()
                 }
             },
         ) { build ->
             assertTrue(assertNotNull(build.processId, "a process with a bundle names it").isNotBlank())
             assertTrue(build.appVersion.isNotBlank(), "every request declares the build's version")
             assertTrue(build.uploadHost.isNotBlank(), "and the backend it talks to")
-            assertTrue(build.apnsEnvironment.isNotBlank())
-            assertEquals(
-                build.appVersion,
-                build.diagnostics.appVersion,
-                "a report names the version the build declares",
-            )
-            assertTrue(build.bootLines.isNotEmpty(), "every process logs a boot banner")
+            assertTrue(build.pushEnvironment.isNotBlank(), "a push token belongs to an environment")
+            for ((fact, value) in listOf(
+                "build number" to build.buildNumber,
+                "OS version" to build.osVersion,
+                "device model" to build.deviceModel,
+                "reporter environment" to build.reporterEnvironment,
+            )) {
+                assertTrue(value.isNotBlank(), "the $fact is stated, never blank")
+                assertTrue("null" !in value, "an absent $fact reads as ?, never the string null: $value")
+            }
         }
 
         clause(
@@ -107,17 +105,11 @@ object BuildInfoContract : Contract<BuildInfoState, BuildInfo>("BuildInfo") {
         }
 
         clause(
-            "ON_ANDROID_IS_ANDROID_WITH_NO_OS_DRIVEN_UPLOADER",
+            "ON_ANDROID_IS_ANDROID",
             BuildInfoState.ON_ANDROID,
-            covers = cells {
-                on<BuildInfo> {
-                    answers(BuildInfo::platform).with(Platform.ANDROID)
-                    answers(BuildInfo::osSupportsOsDrivenUpload).with(false)
-                }
-            },
+            covers = cells { on<BuildInfo>().answers(BuildInfo::platform).with(Platform.ANDROID) },
         ) { build ->
             assertEquals(Platform.ANDROID, build.platform)
-            assertFalse(build.osSupportsOsDrivenUpload, "Android has no upload extension")
         }
 
         clause(
@@ -126,22 +118,6 @@ object BuildInfoContract : Contract<BuildInfoState, BuildInfo>("BuildInfo") {
             covers = cells { on<BuildInfo>().answers(BuildInfo::platform).with(Platform.IOS) },
         ) { build ->
             assertEquals(Platform.IOS, build.platform)
-        }
-
-        clause(
-            "OS_DRIVEN_UPLOAD_IS_CARRIED",
-            BuildInfoState.OS_DRIVEN_UPLOAD,
-            covers = cells { on<BuildInfo>().answers(BuildInfo::osSupportsOsDrivenUpload).with(true) },
-        ) { build ->
-            assertTrue(build.osSupportsOsDrivenUpload, "an OS that carries the mechanism says so")
-        }
-
-        clause(
-            "NO_OS_DRIVEN_UPLOAD_IS_NOT_CARRIED",
-            BuildInfoState.NO_OS_DRIVEN_UPLOAD,
-            covers = cells { on<BuildInfo>().answers(BuildInfo::osSupportsOsDrivenUpload).with(false) },
-        ) { build ->
-            assertFalse(build.osSupportsOsDrivenUpload, "an OS without the mechanism says so")
         }
     }
 }

@@ -2,9 +2,13 @@ package app.snapsync.compose
 
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.model.AppFacts
+import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.Fact
 import app.snapsync.model.asFact
 import app.snapsync.model.inMegabytes
+import app.snapsync.model.uploadersCarried
+import app.snapsync.ports.BuildInfo
+import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.network.NetworkReadings
 
@@ -18,7 +22,7 @@ import app.snapsync.services.network.NetworkReadings
  * tier's `LargeClass` ceiling is what keeps it from absorbing every composition in the graph.
  */
 internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnosticDump(
-    environment = ports.process.build.diagnostics,
+    environment = diagnosticEnvironment(ports.process.build, ports.extensionRegistry),
     logs = services.deviceLogs,
     ledger = services.ledger,
     downloads = services.downloadStore,
@@ -44,3 +48,18 @@ internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnos
     },
     refusalFacts = { attestation.refusalFacts() },
 )
+
+/**
+ * The build, OS and device a dump's state section names: the build's own facts, and which uploaders this OS carries —
+ * the app's always, the upload extension's where the OS has the mechanism.
+ */
+internal fun diagnosticEnvironment(build: BuildInfo, registry: ExtensionRegistry): DiagnosticEnvironment =
+    DiagnosticEnvironment(
+        appVersion = build.appVersion,
+        buildNumber = build.buildNumber,
+        osVersion = build.osVersion,
+        deviceModel = build.deviceModel,
+        uploadTier = uploadersCarried(registry.supported),
+        uploadBase = build.uploadHost,
+        reporterEnvironment = build.reporterEnvironment,
+    )

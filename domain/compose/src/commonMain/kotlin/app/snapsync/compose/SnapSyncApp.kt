@@ -467,7 +467,7 @@ class AppCore internal constructor(
      */
     val extensionRegistrableNow: () -> Boolean = {
         extensionRegistrable(
-            osSupportsOsDrivenUpload = ports.process.build.osSupportsOsDrivenUpload,
+            osSupportsOsDrivenUpload = ports.extensionRegistry.supported,
             permission = galleryAccess.grant.value,
             pin = ports.devControls.uploaderPin(),
         )

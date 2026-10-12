@@ -8,7 +8,6 @@ import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.snapSyncExtension
 import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.bakedUploadBase
-import app.snapsync.config.iosBootLines
 import app.snapsync.crypto.IosCrypto
 import app.snapsync.databases.IosDatabases
 import app.snapsync.extension.IosExtensionHost
@@ -130,20 +129,17 @@ object UploadExtensionRoot {
                 clock = device.clock.value,
                 crypto = device.crypto.value,
                 entryContext = IosEntryContext,
-                build = IosBuildInfo(
-                    // This process exists only where the OS carries the OS-driven mechanism (iOS ≥26.1).
-                    osSupportsOsDrivenUpload = true,
-                    // Where this run's log is going — including whether it fell back to this bundle's own Documents, in
-                    // which case no dump will carry it (the sentence is the adapter's). The upload base the banner
-                    // names matters more here than in the app: this process IS the upload path.
-                    bootLines = iosBootLines("extension", listOf(logDestination.bannerLine)),
-                ),
+                build = IosBuildInfo(),
             ),
             host = extensionHost(host),
         ),
     )
 
     init {
+        // Where this run's log is going — including whether it fell back to this bundle's own Documents, in which case
+        // no dump will carry it (the sentence is the adapter's). Only this root knows it, so it is logged right after
+        // the composition's boot banner.
+        Logger.withTag("UploadExtensionRoot").i { logDestination.bannerLine }
         // The pre-relocation file at the old path would otherwise keep answering pulls with frozen
         // content forever. Idempotent, and a no-op while the sink is itself falling back there.
         removeStaleExtensionDocumentsLog(logDestination)

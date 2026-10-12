@@ -188,6 +188,7 @@ fun ExtensionRegistry.recorded(log: CallLog): ExtensionRegistry = ExtensionRegis
 internal class ExtensionRegistryProxy(private val inner: ExtensionRegistry, log: CallLog) : ExtensionRegistry {
     private val r = log.recorder("ExtensionRegistry")
 
+    override val supported get() = r.answer("supported", inner.supported)
     override suspend fun setEnabled(enabled: Boolean) = r.answer("setEnabled", inner.setEnabled(enabled))
     override fun isEnabled() = r.answer("isEnabled", inner.isEnabled())
 }

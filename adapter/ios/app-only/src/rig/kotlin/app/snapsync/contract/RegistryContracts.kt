@@ -1,5 +1,6 @@
 package app.snapsync.contract
 
+import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -13,7 +14,6 @@ import app.snapsync.ios.registry.ExtensionRegistrationApi
 import app.snapsync.ios.registry.PhotoKitExtensionRegistry
 import app.snapsync.ios.registry.PlatformWriteAnswer
 import app.snapsync.ios.registry.SystemExtensionRegistrationApi
-import app.snapsync.ios.registry.osCarriesUploadExtension
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
@@ -67,18 +67,20 @@ private val logger = Logger.withTag("RegistryContract")
  */
 internal fun registryInState(
     api: ExtensionRegistrationApi,
+    carries: () -> Boolean,
     state: ExtensionRegistryState,
     log: CallLog,
     afterDispose: () -> Unit = {},
 ): Entered<ExtensionRegistry> {
+    // The OS fact the registry is built on, recorded as the block's first call.
+    val supported = carries()
     when (state) {
         ExtensionRegistryState.RECORD_ABSENT -> api.setEnabled(false)
         ExtensionRegistryState.RECORD_PRESENT -> api.setEnabled(true)
         ExtensionRegistryState.UNDER_PARTIAL_GRANT -> Unit
         ExtensionRegistryState.NO_MECHANISM -> error("a device that carries the mechanism never enters $state")
     }
-    // Recorded on an iOS 26.6 device, which carries the selector: replayed as such on whatever host replays it.
-    return Entered.Ready(PhotoKitExtensionRegistry(logger, api, supported = true).recorded(log), dispose = afterDispose)
+    return Entered.Ready(PhotoKitExtensionRegistry(logger, api, supported).recorded(log), dispose = afterDispose)
 }
 
 internal const val REGISTRY_NEEDS_FULL_GRANT =
@@ -100,7 +102,8 @@ internal class DeviceRegistryGrantedBinding(private val recorder: Recorder) :
     override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
         if (state !in reaches) return Entered.Unreachable(REGISTRY_NEEDS_PARTIAL_GRANT)
         recorder.open(clauseId)
-        return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state, log)
+        val api = RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder)
+        return registryInState(api, recordedOsFact(recorder), state, log)
     }
 }
 
@@ -118,12 +121,13 @@ internal class DeviceRegistryLimitedBinding(private val recorder: Recorder) :
     override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
         if (state !in reaches) return Entered.Unreachable(REGISTRY_NEEDS_FULL_GRANT)
         recorder.open(clauseId)
-        return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state, log)
+        val api = RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder)
+        return registryInState(api, recordedOsFact(recorder), state, log)
     }
 }
 
-/** The one OS fact an OS below 26.1 decides the registry by, as its recording spells it. */
-private const val OS_CARRIES_CALL = "osCarriesUploadExtension()"
+/** The one OS fact the registry is built on, as a recording spells it. */
+private const val OS_CARRIES_CALL = "osCarriesOsDrivenUpload()"
 
 /** The condition the no-mechanism recording is taken under, which names its file. */
 internal const val BELOW_IOS_26_1 = "BELOW_IOS_26_1"
@@ -142,7 +146,7 @@ internal fun registryWithoutMechanism(
 
 /** The fact on the device, recorded in the block [recorder] has open. */
 internal fun recordedOsFact(recorder: Recorder): () -> Boolean =
-    { osCarriesUploadExtension().also { recorder.record(OS_CARRIES_CALL, "$it") } }
+    { osCarriesOsDrivenUpload().also { recorder.record(OS_CARRIES_CALL, "$it") } }
 
 /** The fact as the recording holds it. */
 internal fun replayedOsFact(replayer: Replayer): () -> Boolean = { replayer.answer(OS_CARRIES_CALL).toBooleanStrict() }

@@ -4,6 +4,7 @@ import app.snapsync.attest.SystemAppAttestApi
 import app.snapsync.attest.contract.RecordingAppAttestApi
 import app.snapsync.attest.contract.attestStoreInState
 import app.snapsync.attest.contract.integrityInState
+import app.snapsync.config.IosBuildInfo
 import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
@@ -22,7 +23,6 @@ import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.keychain.SystemKeychainApi
-import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.SecureStore
@@ -126,7 +126,7 @@ private fun <K : Enum<K>, T> recordOnDevice(contract: Contract<K, T>, binding: (
     }
     val recorder = Recorder()
     val results = run(contract, binding(recorder))
-    val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val env = IosBuildInfo()
     val header = listOf(
         "contract" to contract.name,
         "host" to Host.IOS_DEVICE_APP.name,

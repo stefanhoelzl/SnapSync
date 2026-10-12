@@ -146,6 +146,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     deviceCommands = deviceCommands(
         launch = launch,
         core = { SnapSyncRoot.app },
+        photoAccess = SnapSyncRoot.permission,
         osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
         handleReport = SnapSyncRoot.process.processAccount::handle,
     ),

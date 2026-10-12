@@ -77,6 +77,9 @@ internal class SimulatorExtensionRegistry(
     private val record: SimulatorRecord = SimulatorExtensionRecord,
 ) : ExtensionRegistry {
 
+    /** The simulator runs an iOS that carries the mechanism; its record is held here instead (see the class). */
+    override val supported: Boolean = true
+
     override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
         val forced = record.consumeFailure()
         // A disable against no record is a genuine failure on a real device (`3201`), not a courtesy
