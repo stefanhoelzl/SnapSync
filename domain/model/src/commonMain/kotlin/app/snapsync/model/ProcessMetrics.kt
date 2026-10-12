@@ -82,6 +82,12 @@ const val SUSPENDED_MEMORY_KEY: String = "memoryMetrics.averageSuspendedMemory.a
  */
 const val SUSPENDED_MEMORY_CEILING_KB: Long = 150_000L
 
+/** Where a report names the version line of the build it describes — not necessarily the build delivering it. */
+const val PROCESS_METRIC_RELEASE_KEY: String = "appVersion"
+
+/** Where a report names the build number of the build it describes. */
+const val PROCESS_METRIC_BUILD_KEY: String = "metaData.appBuildVersion"
+
 /**
  * One thing to emit for a report — a severity and a line, exactly as [RegistrationOutcome] does it.
  *
@@ -92,7 +98,10 @@ const val SUSPENDED_MEMORY_CEILING_KB: Long = 150_000L
 data class ProcessMetricEmission(
     val severity: Severity,
     val message: String,
-    /** Why this crossed, for the report's context. Null on the routine per-report line. */
+    /**
+     * Why this crossed, for the report's context — and what makes it an event ([processMetricCrossingEvent]). Null on
+     * the routine per-report line and the delivery note.
+     */
     val reason: String? = null,
 )
 
@@ -132,6 +141,10 @@ const val PROCESS_METRIC_DELIVERY_NOTE: String =
  * constitutes one. Nothing is ever withheld once this function has decided it.
  *
  * A report that crosses also emits [PROCESS_METRIC_DELIVERY_NOTE], between the line and the crossings.
+ *
+ * A crossing is a `Warn` line, not an `Error`: its event is sent by the caller as [processMetricCrossingEvent], filed
+ * under the build the report describes, and an `Error` line would send it a second time through the logging seam,
+ * filed under the build that happened to deliver it.
  */
 fun processMetricEmissions(report: ProcessMetricReport): List<ProcessMetricEmission> {
     val line = ProcessMetricEmission(
@@ -140,7 +153,9 @@ fun processMetricEmissions(report: ProcessMetricReport): List<ProcessMetricEmiss
     )
     val crossings = (exitReasons(report) + hangReasons(report)).sorted().map { reason ->
         ProcessMetricEmission(
-            severity = Severity.Error,
+            // Not Error: the logging seam would send it as an event filed under the DELIVERING build. Its event is
+            // [processMetricCrossingEvent]'s, and this line rides that event as its last breadcrumb.
+            severity = Severity.Warn,
             message = PROCESS_METRIC_CROSSED_PREFIX + reason,
             reason = reason,
         )
@@ -148,6 +163,30 @@ fun processMetricEmissions(report: ProcessMetricReport): List<ProcessMetricEmiss
     if (crossings.isEmpty()) return listOf(line)
     return listOf(line, ProcessMetricEmission(severity = Severity.Info, message = PROCESS_METRIC_DELIVERY_NOTE)) + crossings
 }
+
+/**
+ * The event a crossing [emission] of [report] sends: its message, the [entry] point it was handled under, and the
+ * build the report DESCRIBES — which `describedBuildStamped` files it under on its way out. A report arrives on a later
+ * launch, possibly of another build (an update, or a dev build replaced by a store one), so the delivering build's
+ * own release and build number would attribute the crossing to a build it never happened on (SNAPSYNC-61). A report
+ * naming neither leaves the event filed under the delivering build, as before.
+ */
+fun processMetricCrossingEvent(
+    emission: ProcessMetricEmission,
+    report: ProcessMetricReport,
+    entry: String?,
+): CrashEvent =
+    CrashEvent(
+        message = emission.message,
+        tags = buildMap {
+            entry?.let { put(ENTRY_POINT_TAG, it) }
+            report.named(PROCESS_METRIC_RELEASE_KEY)?.let { put(DESCRIBED_RELEASE_TAG, it) }
+            report.named(PROCESS_METRIC_BUILD_KEY)?.let { put(DESCRIBED_BUILD_TAG, it) }
+        },
+    )
+
+/** The field at [key], or `null` when the report leaves it absent or blank. */
+private fun ProcessMetricReport.named(key: String): String? = fields[key]?.takeIf { it.isNotBlank() }
 
 /** Every non-normal exit tally carrying a non-zero count, named by its own key's leaf. */
 private fun exitReasons(report: ProcessMetricReport): List<String> =

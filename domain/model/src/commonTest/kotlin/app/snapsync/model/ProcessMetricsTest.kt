@@ -25,7 +25,7 @@ class ProcessMetricsTest {
     private fun report(vararg pairs: Pair<String, String>) = ProcessMetricReport(mapOf(*pairs))
 
     private fun crossings(report: ProcessMetricReport) =
-        processMetricEmissions(report).filter { it.severity == Severity.Error }
+        processMetricEmissions(report).filter { it.reason != null }
 
     private fun crossing(report: ProcessMetricReport) = crossings(report).singleOrNull()
 
@@ -123,7 +123,7 @@ class ProcessMetricsTest {
         // SNAPSYNC-38: the report arrives a launch later, so its events' breadcrumbs are not the ended process's.
         val emissions = processMetricEmissions(report(exit("backgroundExitData", "cumulativeAppWatchdogExitCount", 2)))
         assertEquals(
-            listOf(Severity.Info, Severity.Info, Severity.Error),
+            listOf(Severity.Info, Severity.Info, Severity.Warn),
             emissions.map { it.severity },
             "the report's line, the note, then the crossing — so the note is every crossing event's last breadcrumb",
         )
@@ -310,6 +310,45 @@ class ProcessMetricsTest {
     @Test
     fun `a report with no hang data at all is quiet`() {
         assertTrue(crossing(report("metaData.osVersion" to "iPhone OS 26.6 (23G71)")) == null)
+    }
+
+    // ── The crossing's event ──────────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `a crossing is a Warn line - its event is the caller's so the logging seam does not send it twice`() {
+        val crossed = crossings(report(exit("foregroundExitData", "cumulativeMemoryResourceLimitExitCount", 1)))
+        assertEquals(listOf(Severity.Warn), crossed.map { it.severity })
+    }
+
+    @Test
+    fun `a crossing's event names the build the report describes - not the build delivering it`() {
+        // SNAPSYNC-61: a dev build's day, delivered by TestFlight 0.6 (2369) and filed under it.
+        val report = report(
+            exit("foregroundExitData", "cumulativeMemoryResourceLimitExitCount", 1),
+            PROCESS_METRIC_RELEASE_KEY to "0.4",
+            PROCESS_METRIC_BUILD_KEY to "1",
+        )
+        val event = processMetricCrossingEvent(crossings(report).single(), report, "didReceiveMetricPayloads")
+        assertEquals(
+            "${PROCESS_METRIC_CROSSED_PREFIX}foregroundExitData.cumulativeMemoryResourceLimitExitCount",
+            event.message,
+        )
+        assertEquals(
+            mapOf(
+                ENTRY_POINT_TAG to "didReceiveMetricPayloads",
+                DESCRIBED_RELEASE_TAG to "0.4",
+                DESCRIBED_BUILD_TAG to "1",
+            ),
+            event.tags,
+        )
+    }
+
+    @Test
+    fun `a report that names no build leaves its crossing's event the delivering build's`() {
+        val report =
+            report(exit("backgroundExitData", "cumulativeAppWatchdogExitCount", 1), PROCESS_METRIC_BUILD_KEY to " ")
+        val event = processMetricCrossingEvent(crossings(report).single(), report, null)
+        assertEquals(emptyMap(), event.tags, "a blank build is no build, and no entry point is none")
     }
 }
 

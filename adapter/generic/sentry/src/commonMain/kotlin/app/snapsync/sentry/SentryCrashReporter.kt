@@ -162,11 +162,22 @@ internal fun SentryEvent.toCrashEvent(): CrashEvent = CrashEvent(
     exceptionValues = exceptions.map { it.value },
     breadcrumbs = breadcrumbs.map { it.toCrumb() },
     tags = tags.toMap(),
+    release = release,
+    dist = dist,
 )
 
-/** Write back what the handler shaped. Exceptions and breadcrumbs are matched by position (see [CrashEvent]). */
+/**
+ * Write back what the handler shaped. Exceptions and breadcrumbs are matched by position (see [CrashEvent]).
+ *
+ * Release and build number are written back as the handler returned them, which wins on both platforms: `beforeSend`
+ * runs after each native SDK applied its options, and sentry-kmp copies a changed release and dist onto the native
+ * event (`applyKmpEvent`, read at 0.27.0 — the contract's `WIRE_HANDLERS_SHAPE_WHAT_LEAVES` asserts it on the wire).
+ */
 internal fun SentryEvent.shapedAs(shaped: CrashEvent): SentryEvent {
     message = message?.copy(message = shaped.message, formatted = shaped.formatted, params = shaped.params)
+    tags = shaped.tags.toMutableMap()
+    release = shaped.release
+    dist = shaped.dist
     exceptions = exceptions.zip(shaped.exceptionValues) { e, value -> e.copy(value = value) }.toMutableList()
     breadcrumbs.zip(shaped.breadcrumbs).forEach { (crumb, into) -> crumb.shapedAs(into) }
     return this
