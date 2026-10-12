@@ -15,6 +15,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:android` Hold; `:adapter:generic:mock` Hold; `:adapter:ios:app-only` Held, Refused; `:test:contracts` HoldProxy | no |
 | `BackgroundTransfer` | `:domain:services` | `:domain:services` OsQueueTransfer, SessionTransfer; `:test:feature` FakePlatform, Library | yes |
 | `BeforeListen` | `:domain:model` | `:domain:model` Dropped, Logged, Thrown | no |
+| `Branch` | `:domain:ports` | — | no |
 | `BuildInfo` | `:domain:ports` | `:adapter:android` AndroidBuildInfo; `:adapter:ios:ext-safe` IosBuildInfo; `:test:contracts` BuildInfoProxy | no |
 | `Candidate` | `:domain:model` | `:domain:model` BatchedCandidate, HeldCandidate, LazyCandidate | no |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
@@ -35,7 +36,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CycleResult` | `:domain:model` | `:domain:model` COMPLETED, FAILED, PROCESSING, Paused, SKIPPED | no |
 | `Databases` | `:domain:ports` | `:adapter:android` AndroidDatabases; `:adapter:generic:app` JdbcDatabases; `:adapter:generic:mock` Process; `:adapter:ios:ext-safe` IosDatabases; `:domain:services` Failing, Scripted; `:test:contracts` DatabasesProxy; `:test:feature` RecordingDatabases | yes |
 | `DateFormats` | `:domain:model` | `:adapter:android` AndroidDateFormats; `:adapter:generic:app` JvmDateFormats; `:adapter:ios:app-only` IosDateFormats | no |
-| `DateFormatting` | `:domain:ports` | `:adapter:android` AndroidDateFormatting; `:adapter:generic:app` JvmDateFormatting; `:adapter:ios:app-only` IosDateFormatting; `:test:contracts` DateFormattingProxy | no |
+| `DateFormatting` | `:domain:ports` | `:adapter:android` AndroidDateFormatting; `:adapter:generic:app` JvmDateFormatting; `:adapter:ios:app-only` IosDateFormatting; `:domain:services` Platform; `:test:contracts` DateFormattingProxy | no |
 | `DateLocale` | `:domain:model` | `:domain:model` Device, Explicit | no |
 | `DbOpen` | `:domain:ports` | `:domain:ports` Failed, Missing, OldSchema, Opened | no |
 | `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:test:contracts` DevControlsProxy; `:test:rig` RigDevControls | yes |
@@ -82,6 +83,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportOutcome` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
 | `ImportResult` | `:domain:model` | `:domain:model` Failed, Imported | no |
 | `ImportedAssetPresence` | `:domain:services` | `:adapter:generic:mock` UnknownPresence; `:domain:services` GalleryAssetPresence, PermissionAwareAssetPresence, RecordingLibrary; `:test:feature` CountingPresence, InMemoryAssetPresence | yes |
+| `Items` | `:domain:ports` | — | no |
 | `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound, WrongLink | no |
 | `JoinProgress` | `:domain:presentation` | `:domain:presentation` Closed, Detailed, LoadFailed, Loading, NotFound, WrongLink | no |
@@ -97,6 +99,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:contracts` LogSinkProxy; `:test:rig` RecordedLog | yes |
 | `ManifestPublisher` | `:domain:services` | `:domain:services` BackendManifestPublisher; `:test:feature` FakeUploader | yes |
 | `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
+| `MetricNode` | `:domain:ports` | `:domain:ports` Leaf | no |
 | `NetworkAccess` | `:domain:model` | `:domain:model` Blocked, Offline, Online | no |
 | `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor; `:test:contracts` NetworkMonitorProxy | yes |
 | `NetworkStatusSource` | `:domain:feature` | `:domain:feature` NetworkWatch; `:domain:presentation` AlwaysOnline, FakeNetwork | yes |

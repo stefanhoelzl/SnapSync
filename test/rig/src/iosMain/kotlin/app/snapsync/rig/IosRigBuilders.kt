@@ -3,11 +3,13 @@ package app.snapsync.rig
 import app.snapsync.compose.AppCore
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.mock.MockedSystem
+import app.snapsync.mock.metricPayloadOf
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.RegistrationState
 import app.snapsync.model.processMetricEmissions
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.WipeScope
@@ -49,7 +51,7 @@ fun deviceCommands(
     photoAccess: PhotoLibraryPermission,
     osSupportsOsDrivenUpload: Boolean,
     /** The app's OWN process-metric handler, so a synthetic report drives the path the OS drives. */
-    handleReport: (ProcessMetricReport) -> Unit,
+    handleReport: (ProcessMetricPayload) -> Unit,
 ): Map<String, RigCommand> = uploadJobDeviceCommands() + photoKitCommands(launch, photoAccess) +
     launch.world.honouredLevers() + adapterCommands(launch) + mapOf(
         // The development switch per uploader. Reports the switch AND the
@@ -79,7 +81,7 @@ fun deviceCommands(
                 )
                 else -> {
                     val report = ProcessMetricReport(fields)
-                    handleReport(report)
+                    handleReport(metricPayloadOf(fields))
                     val reasons = processMetricEmissions(report).mapNotNull { it.reason }
                     CommandResult.ok(
                         """{"fields":${fields.size},"crossed":${reasons.isNotEmpty()},""" +

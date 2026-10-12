@@ -152,7 +152,7 @@ internal class ProcessMetricsProxy(private val inner: ProcessMetrics, log: CallL
         inner.listen(
             MetricHandlers(
                 onReport = { report ->
-                    r.called("handlers.onReport", Recorder.arg(report, "ProcessMetricReport"))
+                    r.called("handlers.onReport", Recorder.arg(report, "ProcessMetricPayload"))
                     handlers.onReport(report)
                 },
             ),

@@ -7,7 +7,9 @@ import app.snapsync.model.MemoryFootprint
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.MetricNode
 import app.snapsync.ports.ProcessInfo
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.SystemUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -134,3 +136,14 @@ class SystemUiOperator internal constructor(mock: SystemUiMock) {
     /** How many times the app opened its Settings page. */
     val settingsOpened: StateFlow<Int> = mock.settings.asStateFlow()
 }
+
+/**
+ * A process-metric payload of already-dotted [fields] — each a leaf under the root — as an operator plays a delivery:
+ * read as a report, its keys come back as they were given.
+ */
+fun metricPayloadOf(fields: Map<String, String>): ProcessMetricPayload = ProcessMetricPayload(
+    object : MetricNode.Branch {
+        override val keys: List<String> = fields.keys.toList()
+        override fun child(key: String): MetricNode? = fields[key]?.let(MetricNode::Leaf)
+    },
+)

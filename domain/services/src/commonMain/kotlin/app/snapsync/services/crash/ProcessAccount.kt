@@ -2,6 +2,7 @@ package app.snapsync.services.crash
 
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.processMetricEmissions
+import app.snapsync.ports.ProcessMetricPayload
 import co.touchlab.kermit.Logger
 
 /**
@@ -32,7 +33,8 @@ class ProcessAccount(
     private val log: Logger = Logger.withTag("processMetrics"),
 ) {
 
-    fun handle(report: ProcessMetricReport) {
+    fun handle(payload: ProcessMetricPayload) {
+        val report = payload.report()
         val emissions = processMetricEmissions(report)
         // Why it crossed, carried WITH the report rather than as transport tags. The vocabulary is open precisely so
         // a derived fact can ride alongside the measured ones. Each crossing's message names its own reason; the

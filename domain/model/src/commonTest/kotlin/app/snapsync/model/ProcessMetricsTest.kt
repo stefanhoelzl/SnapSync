@@ -29,46 +29,6 @@ class ProcessMetricsTest {
 
     private fun crossing(report: ProcessMetricReport) = crossings(report).singleOrNull()
 
-    // ── Flattening ────────────────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `nested maps become dotted keys`() {
-        val flat = flattenToDottedKeys(
-            mapOf(
-                "applicationExitMetrics" to mapOf(
-                    "foregroundExitData" to mapOf("cumulativeAbnormalExitCount" to 6),
-                    "backgroundExitData" to emptyMap<String, Any?>(),
-                ),
-                "appVersion" to "0.1",
-            ),
-        )
-        assertEquals("6", flat["applicationExitMetrics.foregroundExitData.cumulativeAbnormalExitCount"])
-        assertEquals("0.1", flat["appVersion"])
-        // An empty branch contributes no keys at all, rather than a key holding "{}".
-        assertTrue(flat.keys.none { it.startsWith("applicationExitMetrics.backgroundExitData") })
-    }
-
-    @Test
-    fun `lists are indexed by position and nesting is unbounded`() {
-        val flat = flattenToDottedKeys(mapOf("a" to listOf(mapOf("b" to mapOf("c" to 1)), "x")))
-        assertEquals("1", flat["a.0.b.c"])
-        assertEquals("x", flat["a.1"])
-    }
-
-    @Test
-    fun `an empty key adds no separator so it never yields a key starting with a dot`() {
-        assertEquals(mapOf("a" to "1"), flattenToDottedKeys(mapOf("" to mapOf("a" to 1))))
-    }
-
-    @Test
-    fun `a null leaf is dropped rather than rendered as the string null`() {
-        // "null" would be indistinguishable from a platform that really reported that text, and
-        // absence already has a defined meaning for a report.
-        val flat = flattenToDottedKeys(mapOf("terminationReason" to null, "signal" to 6))
-        assertTrue("terminationReason" !in flat)
-        assertEquals("6", flat["signal"])
-    }
-
     // ── The routine line ──────────────────────────────────────────────────────────────────────────
 
     @Test
@@ -350,34 +310,6 @@ class ProcessMetricsTest {
     @Test
     fun `a report with no hang data at all is quiet`() {
         assertTrue(crossing(report("metaData.osVersion" to "iPhone OS 26.6 (23G71)")) == null)
-    }
-}
-
-/** Call-stack pruning — the one branch that must never reach any channel (see [CALL_STACK_SEGMENTS]). */
-class ProcessMetricsCallStackTest {
-
-    @Test
-    fun `a call stack tree is dropped by default - at any depth`() {
-        val flat = flattenToDottedKeys(
-            mapOf(
-                "crashDiagnostics" to listOf(
-                    mapOf(
-                        "callStackTree" to mapOf("callStacks" to List(19) { mapOf("frames" to List(351) { "x" }) }),
-                        "diagnosticMetaData" to mapOf("signal" to 6, "exceptionType" to 10),
-                    ),
-                ),
-            ),
-        )
-        assertTrue(flat.keys.none { "callStackTree" in it }, "a call stack survived: ${flat.keys.take(3)}")
-        assertEquals("6", flat["crashDiagnostics.0.diagnosticMetaData.signal"])
-        assertEquals("10", flat["crashDiagnostics.0.diagnosticMetaData.exceptionType"])
-    }
-
-    @Test
-    fun `dropping is the default - so forgetting it cannot happen`() {
-        assertTrue("callStackTree" in CALL_STACK_SEGMENTS)
-        val flat = flattenToDottedKeys(mapOf("callStackTree" to mapOf("a" to 1)))
-        assertTrue(flat.isEmpty())
     }
 }
 

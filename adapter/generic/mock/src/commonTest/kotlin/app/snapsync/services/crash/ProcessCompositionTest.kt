@@ -9,6 +9,7 @@ import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryCrashReporter
 import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.metricPayloadOf
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpHandOff
@@ -19,6 +20,7 @@ import app.snapsync.model.ReportDestination
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.MetricHandlers
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -43,7 +45,7 @@ class ProcessCompositionTest {
     private val privateFiles = mutableMapOf<String, ByteArray>()
 
     /** A provider that hands over whatever it holds the moment something listens — MetricKit's one-shot shape. */
-    private class HeldReports(private val held: List<ProcessMetricReport>) : ProcessMetrics {
+    private class HeldReports(private val held: List<ProcessMetricPayload>) : ProcessMetrics {
         var listens = 0
         override fun listen(handlers: MetricHandlers) {
             listens++
@@ -130,7 +132,7 @@ class ProcessCompositionTest {
 
     @Test
     fun a_held_report_is_handled_by_a_live_handler_the_moment_the_process_listens() {
-        val metrics = HeldReports(listOf(ProcessMetricReport(mapOf("timeStampBegin" to "x"))))
+        val metrics = HeldReports(listOf(metricPayloadOf(mapOf("timeStampBegin" to "x"))))
         process(dsn = "https://key@ingest/1", metrics = metrics)
         assertEquals(1, metrics.listens, "listened to exactly once")
         assertTrue(started.value, "and the report found the channel already running")
@@ -207,7 +209,7 @@ class ProcessCompositionTest {
         val process = snapSyncProcess(
             ports(reporter, NoProcessMetrics, "https://key@ingest/1"),
         )
-        val crossing = ProcessMetricReport(
+        val crossing = metricPayloadOf(
             mapOf("applicationExitMetrics.backgroundExitData.cumulativeAppWatchdogExitCount" to "3"),
         )
         process.processAccount.handle(crossing)
@@ -224,7 +226,7 @@ class ProcessCompositionTest {
         // The report arrives in a LATER process, which reads what the earlier one kept.
         val later = snapSyncProcess(ports(reporter, NoProcessMetrics, "https://key@ingest/1"))
         later.processAccount.handle(
-            ProcessMetricReport(
+            metricPayloadOf(
                 mapOf("applicationExitMetrics.backgroundExitData.cumulativeMemoryPressureExitCount" to "1"),
             ),
         )
@@ -241,7 +243,7 @@ class ProcessCompositionTest {
     fun a_report_with_nothing_recorded_carries_only_itself() {
         val reporter = Recording()
         val process = snapSyncProcess(ports(reporter, NoProcessMetrics, "https://key@ingest/1"))
-        process.processAccount.handle(ProcessMetricReport(mapOf("timeStampBegin" to "x")))
+        process.processAccount.handle(metricPayloadOf(mapOf("timeStampBegin" to "x")))
         assertEquals(mapOf("timeStampBegin" to "x"), reporter.contexts[app.snapsync.model.PROCESS_METRIC_CONTEXT])
     }
 

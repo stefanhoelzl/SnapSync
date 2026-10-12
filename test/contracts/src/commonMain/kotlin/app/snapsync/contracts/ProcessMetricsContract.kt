@@ -2,12 +2,14 @@
 
 package app.snapsync.contracts
 
-import app.snapsync.model.ProcessMetricReport
 import app.snapsync.ports.MetricHandlers
+import app.snapsync.ports.MetricNode
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.update
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** What reports the platform holds for the process when a clause starts. */
@@ -25,7 +27,7 @@ enum class ProcessMetricsState {
 /**
  * What the process's metric reports promise (`docs/architecture.md`): listening is safe at any time, a process
  * with no provider never reports — its handler is never called with an invented report — and a provider's report
- * reaches the handler, its fields read. A provider's delivery is the platform's to time (MetricKit, about daily), so it
+ * reaches the handler as a tree the reader walks. A provider's delivery is the platform's to time (MetricKit, about daily), so it
  * is recorded on a device.
  */
 object ProcessMetricsContract : Contract<ProcessMetricsState, ProcessMetrics>("ProcessMetrics") {
@@ -37,7 +39,7 @@ object ProcessMetricsContract : Contract<ProcessMetricsState, ProcessMetrics>("P
             ProcessMetricsState.NO_PROVIDER,
             covers = cells { on<ProcessMetrics>().answers(ProcessMetrics::listen).returns() },
         ) { metrics ->
-            val reports = mutableListOf<ProcessMetricReport>()
+            val reports = mutableListOf<ProcessMetricPayload>()
             metrics.listen(MetricHandlers(onReport = { reports += it }))
             settle()
             assertTrue(reports.isEmpty(), "a process with no provider is handed no report")
@@ -49,17 +51,24 @@ object ProcessMetricsContract : Contract<ProcessMetricsState, ProcessMetrics>("P
             covers = cells {
                 on<ProcessMetrics> {
                     answers(ProcessMetrics::listen).returns()
-                    calls(MetricHandlers::onReport, ProcessMetricReport::class)
+                    calls(MetricHandlers::onReport, ProcessMetricPayload::class)
                 }
             },
         ) { metrics ->
-            val reports = AtomicReference<List<ProcessMetricReport>>(emptyList())
+            val reports = AtomicReference<List<ProcessMetricPayload>>(emptyList())
             metrics.listen(MetricHandlers(onReport = { report -> reports.update { it + report } }))
             awaitWithin { reports.load().isNotEmpty() }
-            assertTrue(
-                reports.load().all { it.fields.isNotEmpty() },
-                "every report the provider hands over arrives with its fields read",
-            )
+            for (report in reports.load()) {
+                val root = assertIs<MetricNode.Branch>(
+                    report.root,
+                    "a report is a dictionary of what the provider measured",
+                )
+                assertTrue(root.keys.isNotEmpty(), "with something in it")
+                assertTrue(
+                    root.keys.any { root.child(it) != null },
+                    "and what it holds is there to read, not only named",
+                )
+            }
         }
     }
 }

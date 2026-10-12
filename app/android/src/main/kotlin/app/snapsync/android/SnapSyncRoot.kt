@@ -1,7 +1,6 @@
 package app.snapsync.android
 
 import android.app.Application
-import app.snapsync.services.dates.formatsFor
 import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
 import app.snapsync.android.buildinfo.AndroidBuildInfo
@@ -46,6 +45,7 @@ import app.snapsync.model.invocation
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.sentry.SentryCrashReporter
+import app.snapsync.services.dates.formatsFor
 import app.snapsync.time.SystemClock
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
