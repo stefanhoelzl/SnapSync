@@ -1,5 +1,6 @@
 package app.snapsync.ios
 
+import app.snapsync.services.dates.formatsFor
 import app.snapsync.attest.IosDeviceIntegrity
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
@@ -163,7 +164,7 @@ object SnapSyncRoot {
 
     /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
     private val screenDates: ScreenDates by lazy {
-        ScreenDates { tag -> DateFormatter(ports.dateFormatting.value.formats(tag)::format) }
+        ScreenDates { tag -> DateFormatter(ports.dateFormatting.value.formatsFor(tag)::format) }
     }
 
     /** What this process knows about its scenes — shared by the UI and the lifecycle adapters, on the main thread. */

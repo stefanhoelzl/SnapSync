@@ -33,6 +33,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.v2.runAndroidComposeUiTest
+import app.snapsync.model.resolveDateLocale
 import app.snapsync.android.dates.AndroidDateFormatting
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -203,7 +204,11 @@ private fun str(res: StringResource): String = runBlocking { getString(res) }
 class AndroidUiContractTest {
 
     private val ui = AndroidUi(
-        dates = ScreenDates { tag -> DateFormatter(AndroidDateFormatting().formats(tag)::format) },
+        dates = ScreenDates { tag ->
+            val dates = AndroidDateFormatting()
+            val device = dates.deviceLocale()
+            DateFormatter(dates.formats(resolveDateLocale(tag, device.language, device.region))::format)
+        },
         log = Logger.withTag("contract"),
     )
 

@@ -18,6 +18,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.snapsync.services.dates.formatsFor
 import app.snapsync.control.RigClient
 import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.model.runCatchingCancellable
@@ -99,7 +100,7 @@ fun MirrorHarnessRoot(url: String) {
                     if (shown != null) {
                         StatusScreen(
                             state = shown.ui,
-                            dateFormats = { tag -> DateFormatter(dates.formats(tag)::format) },
+                            dateFormats = { tag -> DateFormatter(dates.formatsFor(tag)::format) },
                             actions = actions,
                         )
                     } else {

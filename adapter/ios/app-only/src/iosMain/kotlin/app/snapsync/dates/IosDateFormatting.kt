@@ -2,8 +2,8 @@ package app.snapsync.dates
 
 import app.snapsync.model.DateFormats
 import app.snapsync.model.DateLocale
-import app.snapsync.model.resolveDateLocale
 import app.snapsync.ports.DateFormatting
+import app.snapsync.ports.DeviceLocale
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
@@ -22,17 +22,19 @@ import platform.Foundation.timeZoneForSecondsFromGMT
  * instant, so the wall-clock value is read as UTC and formatted in UTC — the same fields come back out.
  */
 class IosDateFormatting : DateFormatting {
-    override fun formats(languageTag: String?): DateFormats = IosDateFormats(languageTag)
+    override fun deviceLocale(): DeviceLocale =
+        NSLocale.currentLocale.let { DeviceLocale(it.languageCode, it.countryCode?.ifEmpty { null }) }
+
+    override fun formats(locale: DateLocale): DateFormats = IosDateFormats(
+        when (locale) {
+            DateLocale.Device -> NSLocale.currentLocale
+            is DateLocale.Explicit ->
+                NSLocale(localeIdentifier = listOfNotNull(locale.language, locale.region).joinToString("_"))
+        },
+    )
 }
 
-private class IosDateFormats(languageTag: String?) : DateFormats {
-    private val locale: NSLocale = NSLocale.currentLocale.let { device ->
-        when (val resolved = resolveDateLocale(languageTag, device.languageCode, device.countryCode)) {
-            DateLocale.Device -> device
-            is DateLocale.Explicit ->
-                NSLocale(localeIdentifier = listOfNotNull(resolved.language, resolved.region).joinToString("_"))
-        }
-    }
+private class IosDateFormats(private val locale: NSLocale) : DateFormats {
     private val formatters = HashMap<String, NSDateFormatter>()
 
     override fun format(value: LocalDateTime, skeleton: String): String {

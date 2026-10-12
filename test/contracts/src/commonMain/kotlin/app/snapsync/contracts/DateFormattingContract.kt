@@ -1,6 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.DateFormats
+import app.snapsync.model.DateLocale
 import app.snapsync.ports.DateFormatting
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.assertEquals
@@ -15,8 +16,8 @@ enum class DateFormattingState {
 /**
  * What `DateFormatting` promises (`docs/architecture.md`, "Localization"): a skeleton names fields, never an order, a
  * month name or an hour cycle, and each locale writes them its own way — so the design system spells out none of them.
- * A tag with a region is that locale whatever the device's; a bare language speaks that language; no tag is the
- * device's own locale.
+ * A language in a region is that locale whatever the device's; a language with no region speaks that language; the
+ * device's own locale is the device's, which the platform states. Which locale a screen formats in is the core's.
  *
  * German's punctuation between a weekday and its day differs by platform, so that clause checks the names and their
  * order, not the comma.
@@ -31,6 +32,9 @@ object DateFormattingContract : Contract<DateFormattingState, DateFormatting>("D
 
     private val covers = cells { on<DateFormatting>().answers(DateFormatting::formats).returns() }
 
+    private fun DateFormatting.formats(language: String, region: String? = null) =
+        formats(DateLocale.Explicit(language, region))
+
     /** [formats]' reading of [AT] in [skeleton], its spaces plain. */
     private fun DateFormats.reads(skeleton: String): String =
         format(AT, skeleton).replace(' ', ' ').replace(' ', ' ')
@@ -38,11 +42,11 @@ object DateFormattingContract : Contract<DateFormattingState, DateFormatting>("D
     override val clauses = clauses {
 
         clause("A_SKELETON_FOLLOWS_THE_LOCALES_ORDER_AND_NAMES", DateFormattingState.PLATFORM, covers = covers) {
-            assertEquals("5 Oct 2026", it.formats("en-GB").reads("yMMMd"), "British English puts the day first")
-            assertEquals("Oct 5, 2026", it.formats("en-US").reads("yMMMd"), "American English puts the month first")
+            assertEquals("5 Oct 2026", it.formats("en", "GB").reads("yMMMd"), "British English puts the day first")
+            assertEquals("Oct 5, 2026", it.formats("en", "US").reads("yMMMd"), "American English puts the month first")
             // German's punctuation between the weekday and the day is the platform's ("Mo., 5. Okt." on the JVM,
             // "Mo. 5. Okt." on iOS); its names and their order are not.
-            val german = it.formats("de-DE").reads("MMMEd")
+            val german = it.formats("de", "DE").reads("MMMEd")
             assertTrue(
                 german.startsWith("Mo.") && german.endsWith("5. Okt."),
                 "German names its own days and months, the day before the month: '$german'",
@@ -50,27 +54,34 @@ object DateFormattingContract : Contract<DateFormattingState, DateFormatting>("D
         }
 
         clause("A_SKELETON_FOLLOWS_THE_LOCALES_HOUR_CYCLE", DateFormattingState.PLATFORM, covers = covers) {
-            assertEquals("14:30", it.formats("en-GB").reads("jm"), "British English reads a 24-hour clock")
-            assertEquals("2:30 PM", it.formats("en-US").reads("jm"), "American English reads a 12-hour clock")
+            assertEquals("14:30", it.formats("en", "GB").reads("jm"), "British English reads a 24-hour clock")
+            assertEquals("2:30 PM", it.formats("en", "US").reads("jm"), "American English reads a 12-hour clock")
         }
 
         clause("A_LONE_FIELD_READS_IN_FULL", DateFormattingState.PLATFORM, covers = covers) {
-            assertEquals("Monday", it.formats("en-GB").reads("EEEE"), "a lone weekday is its full name")
-            assertEquals("Oktober", it.formats("de-DE").reads("MMMM"), "a lone month is its full name")
+            assertEquals("Monday", it.formats("en", "GB").reads("EEEE"), "a lone weekday is its full name")
+            assertEquals("Oktober", it.formats("de", "DE").reads("MMMM"), "a lone month is its full name")
         }
 
-        clause("A_BARE_LANGUAGE_SPEAKS_IT", DateFormattingState.PLATFORM, covers = covers) {
-            assertEquals("October", it.formats("en").reads("MMMM"), "a bare `en` reads English, whatever the device")
-            assertEquals("Oktober", it.formats("de").reads("MMMM"), "a bare `de` reads German, whatever the device")
+        clause("A_LANGUAGE_WITH_NO_REGION_SPEAKS_IT", DateFormattingState.PLATFORM, covers = covers) {
+            assertEquals("October", it.formats("en").reads("MMMM"), "English with no region reads English, whatever the device")
+            assertEquals("Oktober", it.formats("de").reads("MMMM"), "German with no region reads German, whatever the device")
         }
 
-        clause("NO_TAG_IS_THE_DEVICE_LOCALE", DateFormattingState.PLATFORM, covers = covers) {
-            assertEquals(
-                it.formats(null).reads("yMMMMEEEEdjm"),
-                it.formats(" ").reads("yMMMMEEEEdjm"),
-                "no tag and a blank one are both the device's own locale",
-            )
-            assertEquals("2026", it.formats(null).reads("y"), "the device's locale formats the value it was given")
+        clause(
+            "THE_DEVICE_STATES_ITS_LOCALE_AND_FORMATS_IN_IT",
+            DateFormattingState.PLATFORM,
+            covers = cells {
+                on<DateFormatting> {
+                    answers(DateFormatting::deviceLocale).returns()
+                    answers(DateFormatting::formats).returns()
+                }
+            },
+        ) {
+            val device = it.deviceLocale()
+            assertTrue(device.language.isNotBlank(), "the device states its language")
+            assertTrue(device.region?.isNotBlank() ?: true, "and a region it has is never blank")
+            assertEquals("2026", it.formats(DateLocale.Device).reads("y"), "the device's locale formats the value it was given")
         }
     }
 }

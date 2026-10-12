@@ -1,6 +1,7 @@
 package app.snapsync.android
 
 import android.app.Application
+import app.snapsync.services.dates.formatsFor
 import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
 import app.snapsync.android.buildinfo.AndroidBuildInfo
@@ -80,7 +81,7 @@ class SnapSyncRoot(internal val application: Application) {
 
     /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
     private val screenDates: ScreenDates by lazy {
-        ScreenDates { tag -> DateFormatter(ports.dateFormatting.value.formats(tag)::format) }
+        ScreenDates { tag -> DateFormatter(ports.dateFormatting.value.formatsFor(tag)::format) }
     }
 
     /**
