@@ -200,8 +200,8 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   (wiping in-flight upload jobs), so it answers `409` while the device is a member of an event — reset first
   (`POST /device/reset`), deliberately.
   On the **XS** (below iOS 26.1) the same verb records `…UploadExtensionRegistry@IOS_DEVICE_APP.BELOW_IOS_26_1.rec`
-  whatever the grant: there is no mechanism, so it asks iOS nothing. **`BuildInfo`** records there too
-  (`…/contract/BuildInfo > …/BuildInfo@IOS_DEVICE_APP.BELOW_IOS_26_1.rec`); on a 26.1+ phone it answers `409`.
+  whatever the grant: there is no mechanism, so it asks iOS nothing but whether the OS carries it — which every
+  grant's recording now holds as its first call too.
 - **`NetworkMonitor`** records once per network condition, which YOU state — the run never reads it from the adapter
   under test. Wi-Fi joined: `…/contract/NetworkMonitor?network=online > …/NetworkMonitor@IOS_DEVICE_APP.ONLINE.rec`;
   then airplane mode on **and Wi-Fi off** (iOS keeps Wi-Fi on in airplane mode once you have re-enabled it there):
