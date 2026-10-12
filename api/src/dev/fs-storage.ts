@@ -38,18 +38,21 @@ import type { BunnyEntry, FetchLike } from "../storage.ts";
  * Build a {@link FetchLike} that answers bunny's native Storage API from a directory tree under `root`.
  *
  * The returned fetch handles exactly the four operations `storage.ts` performs — object `PUT`, object
- * `GET`, object `DELETE`, and directory `GET` (a key with a trailing slash) — and **throws** on anything
- * else, including any URL outside `https://<config.host>/<config.zone>/`. That guard is the point: an
- * upstream call this shim does not model fails loudly instead of silently reaching the real internet (and,
- * with a real `AccessKey`, the real zone).
+ * `GET`, object `DELETE`, and directory `GET` (a key with a trailing slash) — plus the S3 multipart subset
+ * `s3.ts` performs on `<config.s3Scheme>://<config.s3Host>/<config.zone>` ({@link s3Multipart}), and **throws**
+ * on anything else, including any URL outside those two. That guard is the point: an upstream call this shim
+ * does not model fails loudly instead of silently reaching the real internet (and, with a real `AccessKey`,
+ * the real zone).
  */
 export function fsFetch(config: Config, root: string): FetchLike {
   const objectsRoot = join(root, "objects");
   const typesRoot = join(root, "types");
   const zonePrefix = `/${config.zone}/`;
   const urlPrefix = `https://${config.host}${zonePrefix}`;
+  const multipart = s3Multipart(config, root);
 
   return async (url: string, init: RequestInit): Promise<Response> => {
+    if (multipart.owns(url)) return await multipart.answer(url, init);
     if (!url.startsWith(urlPrefix)) {
       // Loud on purpose. A silent pass-through here would reach the real bunny zone.
       throw new Error(`fs-storage: refusing an upstream call outside ${urlPrefix}: ${url}`);
@@ -166,6 +169,156 @@ async function listDirectory(objectsRoot: string, key: string): Promise<Response
     throw e;
   }
   return Response.json(entries);
+}
+
+/**
+ * bunny's S3 multipart upload, the subset `s3.ts` performs, over the same object tree as the native API: an
+ * open upload is a directory under `<root>/multipart/<uploadId>/` holding its parts, and Complete writes the
+ * joined object where the native API reads it. Like bunny (measured), every part but the last must be at
+ * least 5 MiB, a re-sent part replaces the stored one, and an object folder's recursive DELETE leaves an
+ * open upload alone. Signatures are not checked.
+ */
+function s3Multipart(config: Config, root: string) {
+  const base = `${config.s3Scheme}://${config.s3Host}/${config.zone}`;
+  const uploadsRoot = join(root, "multipart");
+  const xml = (body: string, status = 200) =>
+    new Response(`<?xml version="1.0" encoding="UTF-8"?>${body}`, {
+      status,
+      headers: { "Content-Type": "application/xml" },
+    });
+  const noSuchUpload = () => xml("<Error><Code>NoSuchUpload</Code></Error>", 404);
+  const uploadDir = (id: string) => safeJoin(uploadsRoot, id);
+  const meta = async (id: string) =>
+    JSON.parse(await Deno.readTextFile(join(uploadDir(id), "meta.json")).catch(() => "null")) as
+      | { key: string; contentType: string }
+      | null;
+  const partFiles = async (id: string) => {
+    const parts: { n: number; size: number; etag: string }[] = [];
+    for await (const e of Deno.readDir(uploadDir(id))) {
+      const m = e.name.match(/^part-(\d+)$/);
+      if (!m) continue;
+      const bytes = await Deno.readFile(join(uploadDir(id), e.name));
+      parts.push({ n: Number(m[1]), size: bytes.byteLength, etag: await etagOf(bytes) });
+    }
+    return parts.sort((a, b) => a.n - b.n);
+  };
+
+  async function create(key: string, init: RequestInit) {
+    const id = crypto.randomUUID();
+    await Deno.mkdir(uploadDir(id), { recursive: true });
+    const contentType = new Headers(init.headers).get("content-type") ?? "application/octet-stream";
+    await Deno.writeTextFile(
+      join(uploadDir(id), "meta.json"),
+      JSON.stringify({ key, contentType }),
+    );
+    return xml(
+      `<InitiateMultipartUploadResult><UploadId>${id}</UploadId></InitiateMultipartUploadResult>`,
+    );
+  }
+
+  async function putPart(id: string, n: number, init: RequestInit) {
+    if (await meta(id) === null) return noSuchUpload();
+    const bytes = new Uint8Array(await new Response(init.body ?? null).arrayBuffer());
+    await Deno.writeFile(join(uploadDir(id), `part-${n}`), bytes);
+    return new Response(null, { status: 200, headers: { ETag: await etagOf(bytes) } });
+  }
+
+  async function listParts(id: string) {
+    if (await meta(id) === null) return noSuchUpload();
+    const parts = await partFiles(id);
+    return xml(
+      `<ListPartsResult>${
+        parts.map((p) =>
+          `<Part><PartNumber>${p.n}</PartNumber><Size>${p.size}</Size><ETag>${p.etag}</ETag></Part>`
+        ).join("")
+      }</ListPartsResult>`,
+    );
+  }
+
+  async function complete(id: string, init: RequestInit) {
+    const m = await meta(id);
+    if (m === null) return noSuchUpload();
+    const asked = [...(await new Response(init.body ?? null).text()).matchAll(
+      /<PartNumber>(\d+)<\/PartNumber>/g,
+    )].map((x) => Number(x[1]));
+    const stored = new Map((await partFiles(id)).map((p) => [p.n, p]));
+    const chunks: Uint8Array[] = [];
+    for (const [i, n] of asked.entries()) {
+      const part = stored.get(n);
+      if (part === undefined) return xml("<Error><Code>InvalidPart</Code></Error>", 400);
+      if (i < asked.length - 1 && part.size < 5 * 1024 * 1024) {
+        return xml("<Error><Code>EntityTooSmall</Code></Error>", 400);
+      }
+      chunks.push(await Deno.readFile(join(uploadDir(id), `part-${n}`)));
+    }
+    const path = safeJoin(join(root, "objects"), m.key);
+    await Deno.mkdir(dirname(path), { recursive: true });
+    await Deno.writeFile(path, concatBytes(chunks));
+    const typePath = safeJoin(join(root, "types"), m.key);
+    await Deno.mkdir(dirname(typePath), { recursive: true });
+    await Deno.writeTextFile(typePath, m.contentType);
+    await Deno.remove(uploadDir(id), { recursive: true });
+    return xml(
+      `<CompleteMultipartUploadResult><Key>${m.key}</Key></CompleteMultipartUploadResult>`,
+    );
+  }
+
+  async function abort(id: string) {
+    if (await meta(id) === null) return noSuchUpload();
+    await Deno.remove(uploadDir(id), { recursive: true });
+    return new Response(null, { status: 204 });
+  }
+
+  async function listUploads(prefix: string) {
+    const uploads: string[] = [];
+    await Deno.mkdir(uploadsRoot, { recursive: true });
+    for await (const e of Deno.readDir(uploadsRoot)) {
+      const m = await meta(e.name);
+      if (m !== null && decodeURIComponent(m.key).startsWith(prefix)) {
+        uploads.push(
+          `<Upload><Key>${decodeURIComponent(m.key)}</Key><UploadId>${e.name}</UploadId></Upload>`,
+        );
+      }
+    }
+    return xml(`<ListMultipartUploadsResult>${uploads.join("")}</ListMultipartUploadsResult>`);
+  }
+
+  return {
+    owns: (url: string) => url.startsWith(`${base}/`) || url.startsWith(`${base}?`),
+    async answer(url: string, init: RequestInit): Promise<Response> {
+      const u = new URL(url);
+      const method = (init.method ?? "GET").toUpperCase();
+      const key = u.pathname.slice(`/${config.zone}/`.length);
+      const id = u.searchParams.get("uploadId");
+      const part = u.searchParams.get("partNumber");
+      if (key === "" && u.searchParams.has("uploads") && method === "GET") {
+        return await listUploads(u.searchParams.get("prefix") ?? "");
+      }
+      if (method === "POST" && u.searchParams.has("uploads")) return await create(key, init);
+      if (method === "PUT" && id !== null && part !== null) {
+        return await putPart(id, Number(part), init);
+      }
+      if (method === "GET" && id !== null) return await listParts(id);
+      if (method === "POST" && id !== null) return await complete(id, init);
+      if (method === "DELETE" && id !== null) return await abort(id);
+      throw new Error(`fs-storage: unmodelled S3 call ${method} ${url}`);
+    },
+  };
+}
+
+async function etagOf(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-1", bytes));
+  return `"${Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("")}"`;
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
 }
 
 /**

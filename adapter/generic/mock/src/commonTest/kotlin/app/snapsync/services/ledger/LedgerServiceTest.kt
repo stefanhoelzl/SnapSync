@@ -81,6 +81,13 @@ class LedgerServiceTest {
     }
 
     @Test
+    fun `a row is found by its key - what keeps a failed upload's staged file for its resume`() = runTest {
+        ledger.recordUnlessSettled(entry(key = "k", state = LedgerState.DISCOVERED))
+        assertEquals(LedgerState.DISCOVERED, ledger.entryForKey("k")?.state)
+        assertNull(ledger.entryForKey("absent"))
+    }
+
+    @Test
     fun `purging keeps the named event's rows and deletes every other's`() = runTest {
         ledger.recordUnlessSettled(entry(key = "a"))
 

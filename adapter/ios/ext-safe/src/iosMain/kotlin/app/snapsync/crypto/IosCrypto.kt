@@ -11,9 +11,16 @@ import dev.whyoleg.cryptography.operations.IvAuthenticatedCipher
 import dev.whyoleg.cryptography.providers.cryptokit.CryptoKit
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
 import platform.CoreCrypto.CCHmac
+import platform.CoreCrypto.CC_SHA256_CTX
+import platform.CoreCrypto.CC_SHA256_Final
+import platform.CoreCrypto.CC_SHA256_Init
+import platform.CoreCrypto.CC_SHA256_Update
 import platform.CoreCrypto.kCCHmacAlgSHA256
 import platform.Security.SecRandomCopyBytes
 import platform.Security.errSecSuccess
@@ -21,11 +28,11 @@ import platform.Security.kSecRandomDefault
 
 /**
  * The iOS [Crypto], in BOTH processes (the upload extension derives a file's key; the app seals and opens files):
- * the Security framework's generator, CommonCrypto's HMAC, and CryptoKit's AES-GCM — CommonCrypto declares no public
+ * the Security framework's generator, CommonCrypto's HMAC and SHA-256, and CryptoKit's AES-GCM — CommonCrypto declares no public
  * GCM, and CryptoKit is Swift-only, so it is reached through cryptography-kotlin's CryptoKit provider, which bridges it.
  * Measured on the SE2: ~2.6 GB/s sealing, ~3.0 GB/s opening.
  */
-@OptIn(ExperimentalForeignApi::class, DelicateCryptographyApi::class)
+@OptIn(ExperimentalForeignApi::class, DelicateCryptographyApi::class, ExperimentalUnsignedTypes::class)
 class IosCrypto : Crypto {
 
     private val gcm = CryptographyProvider.CryptoKit.get(AES.GCM)
@@ -68,6 +75,18 @@ class IosCrypto : Crypto {
         val cipher = cipher(key)
         // CryptoKit answers a seal that does not authenticate by throwing; nothing else here throws for valid inputs.
         return runCatchingCancellable { cipher.decryptWithIvBlocking(nonce.bytes, sealed) }.getOrNull()
+    }
+
+    override fun sha256(chunks: Sequence<ByteArray>): ByteArray = memScoped {
+        val context = alloc<CC_SHA256_CTX>()
+        CC_SHA256_Init(context.ptr)
+        for (chunk in chunks) {
+            if (chunk.isEmpty()) continue
+            chunk.usePinned { CC_SHA256_Update(context.ptr, it.addressOf(0), chunk.size.convert()) }
+        }
+        val out = UByteArray(HASH_LENGTH)
+        out.usePinned { CC_SHA256_Final(it.addressOf(0), context.ptr) }
+        out.asByteArray()
     }
 
     private fun cipher(key: AesKey): IvAuthenticatedCipher =

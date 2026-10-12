@@ -21,8 +21,11 @@ interface TransferSession : Port, Listenable<TransferHandlers> {
 
 /** The bytes a transfer sends. */
 sealed interface TransferSource {
-    /** A file at the platform [path]. */
-    class File(val path: String) : TransferSource
+    /**
+     * A file at the platform [path], sent from byte [from] on: a resumed upload sends the file's rest
+     * (`docs/architecture.md`, "Resumable uploads"), however the platform manages to send part of a file.
+     */
+    class File(val path: String, val from: Long = 0) : TransferSource
 
     /** A library resource's own bytes. */
     class Resource(val handle: GalleryResourceHandle) : TransferSource

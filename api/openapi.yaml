@@ -582,13 +582,31 @@ paths:
         assetId: invalid asset
         role: invalid role
         filename: missing filename
+        x-snapsync-sha256: invalid sha256
+        content-range: invalid content-range
       tags: [files]
       summary: Store one resource's bytes in the event.
       description: |
-        Streamed through, never buffered. A plain event stores the body as it came; an encrypted one requires a
-        body already encrypted for its key, or the two file-key headers with which the edge seals it.
+        A body under one part is one write; a larger one is stored as S3 multipart parts as it arrives. A plain
+        event stores the body as it came; an encrypted one requires a body already encrypted for its key, or the
+        two file-key headers with which the edge seals it. With `x-snapsync-sha256`, an upload whose client
+        breaks off keeps what arrived, and a partial PUT (`Content-Range`, RFC 9110 §14.5) sends the rest
+        (`docs/architecture.md`, "Resumable uploads").
       x-snapsync-transport: os
       parameters:
+        - name: x-snapsync-sha256
+          in: header
+          description: |
+            The SHA-256 of the whole file, 64 lowercase hex digits — what makes the upload resumable. Required
+            with `Content-Range`.
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: content-range
+          in: header
+          description: A resumed upload's rest, `bytes <from>-<size − 1>/<size>`.
+          schema:
+            type: string
+            pattern: "^bytes [0-9]+-[0-9]+/[0-9]+$"
         - name: filename
           in: query
           required: true
@@ -629,6 +647,21 @@ paths:
             text/plain:
               schema:
                 enum: [not a member, not this device, another key]
+        "409":
+          description: |
+            A resume from past what is stored (`Upload-Offset` says where to send from), or one a newer request
+            for the same resource took over.
+          x-snapsync-outcome: NotResumed
+          headers:
+            Upload-Offset:
+              description: Where to send the rest from — on `wrong offset` only.
+              schema:
+                type: string
+                pattern: "^[0-9]{1,15}$"
+          content:
+            text/plain:
+              schema:
+                enum: [wrong offset, superseded]
         "422":
           description: An encrypted event's upload that is not encrypted for its key.
           x-snapsync-outcome: NotEncrypted
@@ -698,6 +731,68 @@ paths:
               $ref: "#/components/headers/Allow"
         "426":
           $ref: "#/components/responses/AppTooOld"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events/{eventId}/files/devices/{deviceId}/{assetId}/{role}/upload:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AssetId"
+      - $ref: "#/components/parameters/Role"
+      - $ref: "#/components/parameters/AppVersion"
+    get:
+      operationId: uploadState
+      x-snapsync-refusals:
+        eventId: invalid id
+        deviceId: invalid id
+        assetId: invalid asset
+        role: invalid role
+        x-snapsync-sha256: invalid sha256
+      tags: [files]
+      summary: Where an upload of these bytes stands — asked before a failed upload is sent again.
+      description: |
+        Its own path because GET on the upload's path is the download redirect; HEAD cannot be used, the pull
+        zone sends it to the origin as a GET (`docs/architecture.md`, "Resumable uploads").
+      parameters:
+        - name: x-snapsync-sha256
+          in: header
+          required: true
+          description: The SHA-256 of the whole file the device would send.
+          schema:
+            $ref: "#/components/schemas/Sha256"
+      responses:
+        "200":
+          description: Part of these bytes is stored — send the rest from `Upload-Offset`.
+          x-snapsync-outcome: Stored
+          headers:
+            Upload-Offset:
+              $ref: "#/components/headers/UploadOffset"
+        "204":
+          description: These bytes landed — the last attempt's answer was lost.
+          x-snapsync-outcome: Landed
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Refused for this device — not a member, or another device.
+          x-snapsync-outcome: Forbidden
+          content:
+            text/plain:
+              schema:
+                enum: [not a member, not this device]
+        "404":
+          description: Nothing is stored for these bytes — send them whole.
+          x-snapsync-outcome: NothingStored
+          content:
+            text/plain:
+              schema:
+                const: nothing stored
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
         "503":
           $ref: "#/components/responses/Maintenance"
 
@@ -901,6 +996,12 @@ components:
       schema:
         type: string
         pattern: "^[0-9]{1,15}$"
+    UploadOffset:
+      required: true
+      description: How many bytes of an upload are stored — where its rest is sent from.
+      schema:
+        type: string
+        pattern: "^[0-9]{1,15}$"
     RetryAfter:
       required: true
       description: Seconds after which to try again.
@@ -980,6 +1081,10 @@ components:
     Uuid:
       type: string
       pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    Sha256:
+      description: A SHA-256, 64 lowercase hex digits.
+      type: string
+      pattern: "^[0-9a-f]{64}$"
     Timestamp:
       description: An instant, whole-second UTC. Compared as text, so this one shape is the contract.
       type: string

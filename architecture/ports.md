@@ -30,7 +30,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient, Unverified | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `Credential` | `:domain:services` | `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential; `:test:contracts` HeldToken | yes |
-| `Crypto` | `:domain:ports` | `:adapter:android` AndroidCrypto; `:adapter:generic:app` JcaCrypto; `:adapter:generic:mock` FakeCrypto; `:adapter:ios:ext-safe` IosCrypto; `:test:contracts` CryptoProxy | yes |
+| `Crypto` | `:domain:ports` | `:adapter:android` AndroidCrypto; `:adapter:generic:app` JcaCrypto; `:adapter:generic:mock` FakeCrypto; `:adapter:ios:ext-safe` IosCrypto; `:domain:services` Hash; `:test:contracts` CryptoProxy | yes |
 | `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Paused, Run, Skip, Withheld | no |
 | `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Enumerated, NotJoined, Paused, Unreadable, Withheld | no |
 | `CycleResult` | `:domain:model` | `:domain:model` COMPLETED, FAILED, PROCESSING, Paused, SKIPPED | no |
@@ -68,12 +68,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `FileAccess` | `:domain:model` | `:domain:model` Denied, Failed | no |
 | `FileLocation` | `:domain:model` | `:domain:model` AreaUnavailable, Ok | no |
 | `FileResult` | `:domain:model` | `:domain:model` NotFound | no |
-| `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, SharedArea; `:test:contracts` FilesProxy, UnusedFiles; `:test:feature` RecordingFiles, ThrowingDeletes, UnlistableStaging | yes |
+| `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, MemFiles, SharedArea; `:test:contracts` FilesProxy, UnusedFiles; `:test:feature` RecordingFiles, ThrowingDeletes, UnlistableStaging | yes |
 | `Found` | `:domain:services` | `:domain:services` Failed, Missing, OldSchema, Open | no |
 | `Gallery` | `:domain:ports` | `:adapter:android` AndroidGallery; `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery; `:test:contracts` GalleryProxy | yes |
 | `GalleryImport` | `:domain:ports` | `:adapter:generic:mock` NoImports, Recording; `:test:contracts` GalleryImportProxy, GalleryProxy; `:test:feature` FakeImporter, NoopImporter | yes |
 | `GalleryRead` | `:domain:ports` | `:domain:ports` NotReadable, Read | no |
-| `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Recording, RecordingAlbums; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:compose` FullGrant; `:domain:services` GrantOnlyReader, Library, RecordingLibrary, ScriptedGallery; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:feature` FakeAlbumManager, RecordingAlbumManager | yes |
+| `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Recording, RecordingAlbums; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:compose` FullGrant; `:domain:services` ExportingLibrary, GrantOnlyReader, Library, RecordingLibrary, ScriptedGallery; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:feature` FakeAlbumManager, RecordingAlbumManager | yes |
 | `GalleryResourceHandle` | `:domain:ports` | `:adapter:android` MediaStoreResource; `:adapter:generic:mock` InMemoryResource, NotThisPlatformsHandle; `:adapter:ios:ext-safe` NotAPhoto, PhotoKitResource, ReplayOther, ReplayPhoto, StandInPhoto; `:domain:services` KeyHandle, TestHandle; `:test:feature` TestPhoto | yes |
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
 | `HeadRead` | `:domain:model` | `:domain:model` Read, Refused | no |
@@ -124,6 +124,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RenameOutcome` | `:domain:model` | `:domain:model` InvalidName, Renamed, Transient | no |
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
 | `ResourceBatch` | `:domain:model` | `:domain:model` RecordingBatch | no |
+| `ResumePoint` | `:domain:services` | `:domain:services` Deferred, From, Landed | no |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:feature` LockableSecureStore | yes |
 | `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
@@ -133,6 +134,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Settled` | `:domain:feature` | `:domain:feature` Ready | no |
 | `SharedRecordsReadiness` | `:domain:model` | `:domain:model` LegacyPending, Ready, Unavailable | no |
 | `Slot` | `:domain:services` | `:domain:services` Held, Unread | no |
+| `Standings` | `:domain:services` | `:domain:services` UploadStandings | no |
 | `SuppressionReadiness` | `:domain:model` | `:domain:model` OldSchema, Ready, Unavailable | no |
 | `SuppressionSource` | `:domain:services` | `:domain:services` DownloadService, SuppressionService; `:test:feature` Suppression | yes |
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` Stay | no |
@@ -144,7 +146,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, ProofFailed, Refused, Unreachable | no |
 | `TransferHandle` | `:domain:ports` | `:adapter:android` Live; `:adapter:generic:mock` Live; `:domain:services` Handle | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |
-| `TransferSession` | `:domain:ports` | `:adapter:android` AndroidUpload; `:adapter:generic:mock` NetworkedSession; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:domain:services` ScriptedSession, Session; `:test:contracts` TransferSessionProxy; `:test:feature` FileSession | yes |
+| `TransferSession` | `:domain:ports` | `:adapter:android` AndroidUpload; `:adapter:generic:mock` NetworkedSession; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:domain:services` FileSession, ScriptedSession, Session; `:test:contracts` TransferSessionProxy; `:test:feature` FileSession | yes |
 | `TransferSource` | `:domain:ports` | `:domain:ports` File, Resource | no |
 | `Ui` | `:domain:ports` | `:adapter:android` AndroidUi; `:adapter:ios:ui` IosUi; `:test:contracts` UiProxy; `:test:rig` RigUi | yes |
 | `UploadDiscovery` | `:domain:services` | `:domain:feature` RecordingDelegate, SelectionScopedDiscovery; `:domain:services` GalleryDiscovery, Library, Resources, WalkMemo; `:test:feature` FakePlatform, Library | yes |

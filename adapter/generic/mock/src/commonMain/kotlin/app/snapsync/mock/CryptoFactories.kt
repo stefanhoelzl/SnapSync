@@ -42,6 +42,19 @@ private class FakeCrypto : Crypto {
         return ByteArray(body.size) { (body[it].toInt() xor pad[it].toInt()).toByte() }
     }
 
+    /** Over the chunks' concatenation, so how a file was cut into reads never changes the answer. */
+    override fun sha256(chunks: Sequence<ByteArray>): ByteArray {
+        var a = 0x452821e638d01377L
+        var b = 0L
+        for (chunk in chunks) {
+            chunk.forEach {
+                a = splitmix(a xor (it.toLong() and 0xff))
+                b = splitmix(b + a)
+            }
+        }
+        return stream(longArrayOf(a, b), HASH_LENGTH)
+    }
+
     private fun tag(key: ByteArray, nonce: ByteArray, body: ByteArray) =
         stream(mix(key) + mix(nonce) + mix(body) + longArrayOf(body.size.toLong()), TAG_LENGTH)
 

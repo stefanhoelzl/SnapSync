@@ -57,15 +57,14 @@ class TransferContractBindingsTest {
      * The network the transfers cross, as the binding plays it: every request reaches it and is accepted, and the route
      * is recorded with the type it declared. The binding settles only transfers whose fixture route accepts.
      */
-    private fun recordingNetwork(received: MutableMap<String, String?>) = UploadNetwork { url, headers, _ ->
-        received[routeOf(url)] = headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
+    private fun recordingNetwork(received: MutableMap<String, Landed>) = UploadNetwork { url, headers, bytes ->
+        val type = headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
+        received[routeOf(url)] = Landed(type, bytes.size.toLong())
         CREATED
     }
 
     /** What landed at a route: bytes the network received there, under the type the transfer declared. */
-    private fun landedOn(received: Map<String, String?>) = FixtureObjects { path ->
-        if (path in received) Landed(received[path]) else null
-    }
+    private fun landedOn(received: Map<String, Landed>) = FixtureObjects { path -> received[path] }
 
     /**
      * The OS's job queue. No queue clause waits on a job it made — what becomes of a made job is the presented states',
@@ -79,7 +78,7 @@ class TransferContractBindingsTest {
         override fun create(state: OsUploadQueueState, clauseId: String, log: CallLog): Entered<QueueUnderTest> {
             // A state this host does not present: another platform's fact, or one no binding here enters.
             if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
-            val received = mutableMapOf<String, String?>()
+            val received = mutableMapOf<String, Landed>()
             val mock = UploadQueueMock(recordingNetwork(received), restricted = { false })
             if (state == OsUploadQueueState.AT_CAP) {
                 mock.operator.jobLimit = CAP
@@ -134,7 +133,7 @@ class TransferContractBindingsTest {
     }
 
     /** The network a session's transfers cross: what [recordingNetwork] records, answered with the route's status. */
-    private fun answeringNetwork(received: MutableMap<String, String?>): UploadNetwork {
+    private fun answeringNetwork(received: MutableMap<String, Landed>): UploadNetwork {
         val recording = recordingNetwork(received)
         return UploadNetwork { url, headers, bytes ->
             recording.put(url, headers, bytes)
@@ -156,7 +155,7 @@ class TransferContractBindingsTest {
         override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
             // A state this host does not present: another platform's fact, or one no binding here enters.
             if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
-            val received = mutableMapOf<String, String?>()
+            val received = mutableMapOf<String, Landed>()
             var restricted = state == TransferSessionState.RESTRICTED_NETWORK
             val held: (TransferNetwork) -> Boolean = { rule -> restricted && rule == TransferNetwork.UNRESTRICTED_ONLY }
             val networked = NetworkedSession(UploadSessionMock(answeringNetwork(received), held))

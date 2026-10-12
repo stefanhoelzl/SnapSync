@@ -190,6 +190,15 @@ export type MembershipState = "sharing" | "settled" | "done" | "left";
 const PRESENT = `('sharing', 'settled')`;
 
 /**
+ * Whether the `resources` row under `alias` has LANDED (migration 0015) — what every "are these bytes there"
+ * read selects. A row whose first upload is still under way is in no union, listing or completeness check: a
+ * read that forgot this would announce a photo whose bytes do not exist yet.
+ */
+function landed(alias: string): string {
+  return `${alias}.landed_at IS NOT NULL`;
+}
+
+/**
  * The enrollment, as ONE conditional statement: it admits any device while the event exists and carries no close
  * stamp. There is no device limit (decision record `changes/remove-event-device-cap`, D3); the `events.capacity`
  * column it once compared against is a placeholder nothing reads (D4).
@@ -442,7 +451,8 @@ function sharedAll(m: string): string {
              WHERE ea.event_id = ${m}.event_id AND ea.device_id = ${m}.device_id
                AND NOT EXISTS (SELECT 1 FROM resources rs
                                 WHERE rs.event_id = ea.event_id AND rs.device_id = ea.device_id
-                                  AND rs.asset_id = ea.asset_id AND rs.role = r.value))`;
+                                  AND rs.asset_id = ea.asset_id AND rs.role = r.value
+                                  AND ${landed("rs")}))`;
 }
 
 /**
@@ -545,6 +555,8 @@ export type ResourceRecord = {
   path: string;
   contentType: string;
   filename: string;
+  /** When they landed. */
+  landedAt: string;
 };
 
 /**
@@ -557,14 +569,186 @@ export type ResourceRecord = {
  * serve, and a record without its log row would leave the asset out of every delta.
  */
 export function recordResourceStatement(r: ResourceRecord): Statement {
+  // `landed_at` on conflict too: a row whose first resumable upload is still under way lands with these
+  // bytes, and that upload's own completion — conditional on its claim — then overwrites them with an equally
+  // valid copy, which is the overlap's usual "uploaded twice, never lost".
   return {
-    sql: `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+    sql:
+      `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename, landed_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (event_id, device_id, asset_id, role) DO UPDATE SET
             path         = excluded.path,
             content_type = excluded.content_type,
-            filename     = excluded.filename`,
-    args: [r.eventId, r.deviceId, r.assetId, r.role, r.path, r.contentType, r.filename],
+            filename     = excluded.filename,
+            landed_at    = excluded.landed_at,
+            sha256       = NULL`,
+    args: [r.eventId, r.deviceId, r.assetId, r.role, r.path, r.contentType, r.filename, r.landedAt],
+  };
+}
+
+// ── The resumable upload's state (migration 0015, `docs/architecture.md` "Resumable uploads") ─────────
+
+/** Which resource a byte route writes: its row's key. */
+export type ResourceKey = { eventId: string; deviceId: string; assetId: string; role: string };
+
+const KEY_WHERE = `event_id = ? AND device_id = ? AND asset_id = ? AND role = ?`;
+const keyArgs = (k: ResourceKey) => [k.eventId, k.deviceId, k.assetId, k.role];
+
+/** What a resource's row says about its bytes and the upload under way, if any. */
+export type UploadState = {
+  landed: boolean;
+  /** The SHA-256 the landed bytes were declared with; `null` when none was. */
+  sha256: string | null;
+  /** The S3 multipart upload holding the stored parts; `null` until the first part filled. */
+  uploadId: string | null;
+  /** The SHA-256 the upload under way is for; `null` when none is. */
+  uploadSha256: string | null;
+  uploadSize: number | null;
+  partSize: number | null;
+  /** The storage key of what a dropped request received past its last stored part, where it starts, its size. */
+  tail: { key: string; start: number; bytes: number } | null;
+  claim: string | null;
+};
+
+/** The resource's row as {@link UploadState}, or `null` when it has none. */
+export async function readUploadState(db: Db, k: ResourceKey): Promise<UploadState | null> {
+  const { rows } = await db.execute(
+    `SELECT landed_at, sha256, upload_id, upload_sha256, upload_size, upload_part_size,
+            tail_key, tail_start, tail_bytes, claim
+       FROM resources WHERE ${KEY_WHERE}`,
+    keyArgs(k),
+  );
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  const text = (v: unknown) => v == null ? null : String(v);
+  const num = (v: unknown) => v == null ? null : Number(v);
+  return {
+    landed: r.landed_at != null,
+    sha256: text(r.sha256),
+    uploadId: text(r.upload_id),
+    uploadSha256: text(r.upload_sha256),
+    uploadSize: num(r.upload_size),
+    partSize: num(r.upload_part_size),
+    tail: r.tail_key == null
+      ? null
+      : { key: String(r.tail_key), start: Number(r.tail_start), bytes: Number(r.tail_bytes) },
+    claim: text(r.claim),
+  };
+}
+
+/**
+ * Start a NEW upload of `sha256` (`size` bytes, cut into `partSize` parts) on the resource's row, claimed by
+ * `claim`: a resource with no row gets one that has not landed; an existing row keeps its landed bytes and
+ * forgets any earlier upload — the caller has aborted it and deleted its tail.
+ */
+export async function startUpload(
+  db: Db,
+  k: ResourceKey,
+  meta: { path: string; contentType: string; filename: string },
+  upload: { sha256: string; size: number; partSize: number; claim: string },
+): Promise<void> {
+  await db.execute(
+    `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename,
+                            upload_sha256, upload_size, upload_part_size, claim)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (event_id, device_id, asset_id, role) DO UPDATE SET
+       upload_id = NULL, upload_sha256 = excluded.upload_sha256, upload_size = excluded.upload_size,
+       upload_part_size = excluded.upload_part_size, tail_key = NULL, tail_start = NULL,
+       tail_bytes = NULL, claim = excluded.claim`,
+    [
+      ...keyArgs(k),
+      meta.path,
+      meta.contentType,
+      meta.filename,
+      upload.sha256,
+      upload.size,
+      upload.partSize,
+      upload.claim,
+    ],
+  );
+}
+
+/**
+ * Take over the upload of `sha256` under way on the resource's row for `claim` — a newer request for the same
+ * bytes wins, and the older one stops at its next conditional write. Answers whether such an upload exists.
+ */
+export async function claimUpload(
+  db: Db,
+  k: ResourceKey,
+  sha256: string,
+  claim: string,
+): Promise<boolean> {
+  const { rowsAffected } = await db.execute(
+    `UPDATE resources SET claim = ? WHERE ${KEY_WHERE} AND upload_sha256 = ?`,
+    [claim, ...keyArgs(k), sha256],
+  );
+  return rowsAffected > 0;
+}
+
+/** Record the S3 upload id of `claim`'s upload. Answers whether `claim` still holds the row. */
+export async function recordUploadId(
+  db: Db,
+  k: ResourceKey,
+  claim: string,
+  uploadId: string,
+): Promise<boolean> {
+  const { rowsAffected } = await db.execute(
+    `UPDATE resources SET upload_id = ? WHERE ${KEY_WHERE} AND claim = ?`,
+    [uploadId, ...keyArgs(k), claim],
+  );
+  return rowsAffected > 0;
+}
+
+/** Record `claim`'s tail (or none). Answers whether `claim` still holds the row. */
+export async function recordTail(
+  db: Db,
+  k: ResourceKey,
+  claim: string,
+  tail: { key: string; start: number; bytes: number } | null,
+): Promise<boolean> {
+  const { rowsAffected } = await db.execute(
+    `UPDATE resources SET tail_key = ?, tail_start = ?, tail_bytes = ? WHERE ${KEY_WHERE} AND claim = ?`,
+    [tail?.key ?? null, tail?.start ?? null, tail?.bytes ?? null, ...keyArgs(k), claim],
+  );
+  return rowsAffected > 0;
+}
+
+/** Whether `claim` still holds the row — asked before completing, so a superseded request leaves it alone. */
+export async function holdsClaim(db: Db, k: ResourceKey, claim: string): Promise<boolean> {
+  const { rows } = await db.execute(
+    `SELECT 1 FROM resources WHERE ${KEY_WHERE} AND claim = ?`,
+    [...keyArgs(k), claim],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Land `claim`'s upload, as a statement: the bytes are the row's now, the upload's state goes, and the SHA-256
+ * stays so a later status read for the same bytes answers "already landed". Conditional on the claim, so the
+ * caller's batch puts its union-log rows behind {@link onlyIfLanded}.
+ */
+export function landUploadStatement(
+  k: ResourceKey,
+  claim: string,
+  r: { path: string; contentType: string; filename: string; sha256: string; landedAt: string },
+): Statement {
+  return {
+    sql: `UPDATE resources SET landed_at = ?, sha256 = ?, path = ?, content_type = ?, filename = ?,
+            upload_id = NULL, upload_sha256 = NULL, upload_size = NULL, upload_part_size = NULL,
+            tail_key = NULL, tail_start = NULL, tail_bytes = NULL, claim = NULL
+          WHERE ${KEY_WHERE} AND claim = ?`,
+    args: [r.landedAt, r.sha256, r.path, r.contentType, r.filename, ...keyArgs(k), claim],
+  };
+}
+
+/**
+ * `statement`, run only when the statement before it in the same batch changed a row — what puts a landing's
+ * union-log rows behind {@link landUploadStatement}'s claim, so a superseded request logs no gain.
+ */
+export function onlyIfLanded(statement: Statement): Statement {
+  return {
+    sql: statement.sql.replace(/ VALUES \(([^)]*)\)$/, " SELECT $1 WHERE changes() > 0"),
+    args: statement.args,
   };
 }
 
@@ -595,13 +779,14 @@ export async function eventsCompletedBy(db: Db, r: {
         AND EXISTS (SELECT 1 FROM json_each(ea.roles) j WHERE j.value = ?)
         AND NOT EXISTS (SELECT 1 FROM resources r
                          WHERE r.event_id = ea.event_id AND r.device_id = ea.device_id
-                           AND r.asset_id = ea.asset_id AND r.role = ?)
+                           AND r.asset_id = ea.asset_id AND r.role = ? AND ${landed("r")})
         AND NOT EXISTS (
               SELECT 1 FROM json_each(ea.roles) j
                WHERE j.value != ?
                  AND NOT EXISTS (SELECT 1 FROM resources r
                                   WHERE r.event_id = ea.event_id AND r.device_id = ea.device_id
-                                    AND r.asset_id = ea.asset_id AND r.role = j.value))`,
+                                    AND r.asset_id = ea.asset_id AND r.role = j.value
+                                    AND ${landed("r")}))`,
     [r.eventId, r.deviceId, r.assetId, r.role, r.role, r.role],
   );
   return rows.map((row) => String(row.event_id));
@@ -642,7 +827,8 @@ export async function publishUnionChanges(
                                              WHERE r.event_id = ea.event_id
                                                AND r.device_id = ea.device_id
                                                AND r.asset_id = ea.asset_id
-                                               AND r.role = j.value))) AS complete
+                                               AND r.role = j.value
+                                               AND ${landed("r")}))) AS complete
        FROM event_assets ea
       WHERE ea.event_id = ? AND ea.device_id = ?`,
     [eventId, deviceId],
@@ -654,7 +840,9 @@ export async function publishUnionChanges(
   // A stored resource row per (asset, role) this device holds in this event — the reality the incoming
   // declaration is compared against.
   const held = await db.execute(
-    `SELECT asset_id, role FROM resources WHERE event_id = ? AND device_id = ?`,
+    `SELECT asset_id, role FROM resources r WHERE event_id = ? AND device_id = ? AND ${
+      landed("r")
+    }`,
     [eventId, deviceId],
   );
   const present = new Set(held.rows.map((r) => `${String(r.asset_id)} ${String(r.role)}`));
@@ -750,7 +938,7 @@ export async function unionRows(
      JOIN json_each(ea.roles) j
      LEFT JOIN resources r
        ON r.event_id = ea.event_id AND r.device_id = ea.device_id AND r.asset_id = ea.asset_id
-      AND r.role = j.value
+      AND r.role = j.value AND ${landed("r")}
      WHERE ea.event_id = ?${delta}
      -- Deterministic, and PRIMARY first within an asset: no consumer depends on the order, but an
      -- unordered join makes a response diff noise rather than signal. Plain ORDER BY role would put
@@ -816,7 +1004,7 @@ export async function downloadStoragePath(
     `SELECT r.path
        FROM event_assets ea
        JOIN resources r ON r.event_id = ea.event_id AND r.device_id = ea.device_id
-                       AND r.asset_id = ea.asset_id AND r.role = ?
+                       AND r.asset_id = ea.asset_id AND r.role = ? AND ${landed("r")}
       WHERE ea.event_id = ? AND ea.device_id = ? AND ea.asset_id = ?
         AND EXISTS (SELECT 1 FROM json_each(ea.roles) j WHERE j.value = ?)`,
     [role, eventId, deviceId, assetId, role],
@@ -1214,7 +1402,8 @@ export async function deviceResources(
   deviceId: string,
 ): Promise<DeviceResourceRow[]> {
   const { rows } = await db.execute(
-    `SELECT asset_id, role, filename FROM resources WHERE event_id = ? AND device_id = ?
+    `SELECT asset_id, role, filename FROM resources r
+      WHERE event_id = ? AND device_id = ? AND ${landed("r")}
      ORDER BY asset_id, role`,
     [eventId, deviceId],
   );

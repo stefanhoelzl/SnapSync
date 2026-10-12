@@ -137,6 +137,30 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
         }
 
         clause(
+            "SHA256_IS_FIPS_180_4_OVER_THE_CHUNKS_CONCATENATED",
+            CryptoState.READY,
+            covers = cells { on<Crypto>().answers(Crypto::sha256).returns() },
+        ) { crypto ->
+            val abc = hex("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+            assertContentEquals(
+                hex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+                crypto.sha256(emptySequence()),
+                "nothing at all",
+            )
+            assertContentEquals(abc, crypto.sha256(sequenceOf("abc".encodeToByteArray())), "\"abc\"")
+            assertContentEquals(
+                abc,
+                crypto.sha256(sequenceOf("a", "", "bc").map { it.encodeToByteArray() }),
+                "cut anywhere, an empty chunk included, it hashes the same bytes",
+            )
+            assertContentEquals(
+                hex("cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"),
+                crypto.sha256(generateSequence { ByteArray(1000) { 'a'.code.toByte() } }.take(1000)),
+                "a million 'a's, a thousand chunks",
+            )
+        }
+
+        clause(
             "RANDOM_BYTES_ARE_FRESH",
             CryptoState.READY,
             covers = cells { on<Crypto>().answers(Crypto::randomBytes).returns() },

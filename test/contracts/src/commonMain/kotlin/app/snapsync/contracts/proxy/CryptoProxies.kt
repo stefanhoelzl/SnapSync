@@ -17,6 +17,7 @@ internal class CryptoProxy(private val inner: Crypto, log: CallLog) : Crypto {
         key: ByteArray,
         message: ByteArray,
     ) = r.returns("hmacSha256", inner.hmacSha256(key, message))
+    override fun sha256(chunks: Sequence<ByteArray>) = r.returns("sha256", inner.sha256(chunks))
     override fun aesGcmSeal(key: AesKey, nonce: GcmNonce, plaintext: ByteArray) =
         r.returns("aesGcmSeal", inner.aesGcmSeal(key, nonce, plaintext))
     override fun aesGcmOpen(key: AesKey, nonce: GcmNonce, sealed: ByteArray) =

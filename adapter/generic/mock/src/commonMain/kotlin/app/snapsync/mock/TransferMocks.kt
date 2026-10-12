@@ -233,7 +233,8 @@ class UploadSessionMock(
     /** Whether the device's network holds a transfer created under this rule. */
     internal val held: (TransferNetwork) -> Boolean,
 ) {
-    internal class Live(val tag: String, val target: UploadTarget) : TransferHandle
+    /** One live transfer — [from] is the first byte of its file it sends (a resumed upload sends the rest). */
+    internal class Live(val tag: String, val target: UploadTarget, val from: Long = 0) : TransferHandle
 
     // The app creates transfers from its thread while the operator lands them from another; never held across the
     // network or a call into the app's handlers.
@@ -258,7 +259,7 @@ class UploadSessionMock(
             if (source !is TransferSource.File) return CreateOutcome.FAILED
             return locked {
                 if (live.size >= LIVE_CAP) return@locked CreateOutcome.LIMIT_EXCEEDED
-                live += Live(tag, target)
+                live += Live(tag, target, source.from)
                 created += tag
                 CreateOutcome.CREATED
             }
@@ -302,7 +303,8 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
     suspend fun complete(key: String) {
         val transfer = mock.locked { mock.live.firstOrNull { it.tag == key } } ?: return
         if (mock.held(transfer.target.network)) return
-        val status = mock.network.put(transfer.target.url, transfer.target.headers, TRANSFERRED_BYTES)
+        val bytes = TRANSFERRED_BYTES.copyOfRange(transfer.from.toInt().coerceIn(0, FILE_SIZE), FILE_SIZE)
+        val status = mock.network.put(transfer.target.url, transfer.target.headers, bytes)
         mock.locked { mock.live.remove(transfer) }
         val failure = when {
             status == null -> TransferFailure("network")
@@ -324,8 +326,14 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
     }
 
     private companion object {
-        /** A minimal JPEG: the mocked photos carry no bytes, and no backend reads these back. */
-        val TRANSFERRED_BYTES = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
+        /**
+         * Every mocked file's bytes: the mocked photos carry none of their own, and no backend reads these back — a JPEG's
+         * markers, then filler, long enough that a transfer from a byte on sends a measurable rest.
+         */
+        const val FILE_SIZE = 8_192
+        val TRANSFERRED_BYTES = ByteArray(FILE_SIZE).also {
+            byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte()).copyInto(it)
+        }
     }
 }
 

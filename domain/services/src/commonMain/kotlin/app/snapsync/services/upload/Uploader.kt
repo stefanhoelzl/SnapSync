@@ -29,9 +29,9 @@ sealed interface Uploader {
         override fun transferFor(setup: TransferSetup): BackgroundTransfer = OsQueueTransfer(queue, setup)
     }
 
-    /** The app's background transfer session. */
-    class Session(private val session: TransferSession) : Uploader {
-        override fun transferFor(setup: TransferSetup): BackgroundTransfer = SessionTransfer(session, setup)
+    /** The app's background transfer session; [resuming] makes its file uploads resume a failed attempt. */
+    class Session(private val session: TransferSession, private val resuming: Resuming? = null) : Uploader {
+        override fun transferFor(setup: TransferSetup): BackgroundTransfer = SessionTransfer(session, setup, resuming)
     }
 }
 

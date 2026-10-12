@@ -14,6 +14,7 @@ import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.model.withFinal
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
+import app.snapsync.wire.api.Routes
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -324,6 +325,19 @@ internal class BackendState(
 
     fun <T> locked(block: () -> T): T = lock.locked(block)
 
+    /**
+     * The SHA-256 each landed resource's bytes were declared with, by `<event>/<device>/<asset>/<role>` — what the
+     * upload-state read answers "landed" for.
+     */
+    val landedSha256 = mutableMapOf<String, String>()
+
+    /**
+     * What an upload that ended short of its declared range kept, by the same key: its SHA-256 and how many bytes
+     * arrived — what the upload-state read answers "stored" for. The mock's OS uploader lands a transfer whole, so only
+     * a request to its HTTP face leaves one.
+     */
+    val partial = mutableMapOf<String, Pair<String, Long>>()
+
     class Event(
         var name: String,
         val createdAt: Instant,
@@ -601,8 +615,16 @@ internal class BackendState(
             else -> named.takeIf { isPresent(it, deviceId) } ?: return FORBIDDEN
         }
         deposit(eventId, deviceId, DeviceFile(AssetId(segments[1]), role, filename))
+        val key = "$eventId/$deviceId/${segments[1]}/${role.wire}"
+        val shaHeader = Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256
+        val sha256 = headers.entries.firstOrNull { it.key.equals(shaHeader, ignoreCase = true) }?.value
+        if (sha256 == null) landedSha256 -= key else landedSha256[key] = sha256
+        partial -= key
         return CREATED
     }
+
+    /** Whether [deviceId] is still a member of [eventId] — who may write into it, and ask where its upload stands. */
+    fun mayUpload(eventId: String, deviceId: String): Boolean = isPresent(eventId, deviceId)
 
     private fun isPresent(eventId: String, deviceId: String): Boolean =
         memberships[eventId to deviceId]?.departed == false && events[eventId]?.completed == false

@@ -184,16 +184,16 @@ export async function seedResource(db: Db, r: {
   /** Whether the backend has recorded this resource's bytes as arrived. Defaults to true. */
   uploaded?: boolean;
 }) {
-  // NOT UPLOADED IS AN ABSENT ROW. The schema carries no upload flag: the row's existence IS the record
-  // that the bytes arrived, written by the one route that watched them arrive. So a caller asking for a
-  // not-yet-uploaded resource is asking for no row at all — the same fact the retired `uploaded = 0`
-  // expressed, spelled the way the store now holds it.
+  // NOT UPLOADED IS AN ABSENT ROW. A landed row records that the bytes arrived, written by the one route
+  // that watched them arrive; a row with no `landed_at` is a resumable upload still under way (migration
+  // 0013), which this seed does not make. So a caller asking for a not-yet-uploaded resource is asking for no
+  // row at all.
   if ((r.uploaded ?? true) === false) return;
   const assetId = r.assetId ?? "A";
   const role = r.role ?? "primary";
   await db.execute(
-    `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename, landed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, '2026-07-01T00:00:00.000Z')`,
     [
       r.eventId,
       r.deviceId,

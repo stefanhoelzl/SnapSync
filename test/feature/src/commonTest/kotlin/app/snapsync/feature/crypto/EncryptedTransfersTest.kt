@@ -156,6 +156,7 @@ class EncryptedTransfersTest {
                 state = LedgerState.REQUESTED,
                 destinationPath = destinationPath,
             )
+        override suspend fun entryForKey(key: String): LedgerEntry? = null
         override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean = true
     }
 

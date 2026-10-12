@@ -267,6 +267,12 @@ bundle that disagreed with the schema", never "certainly".
 - Only a **migrating** deploy rolls back automatically. There is **no rebuild fallback**: a missing
   archive fails loudly and names the commit. If a **non**-migrating deploy goes red, the live bundle stays
   live and a human fixes forward.
+- ⚠️ **A bundle older than migration 0015 running on the migrated store** (that migration's deploy rolled
+  back, or any later rollback past it) records each photo it receives without `resources.landed_at`, which
+  the newer bundle reads as "still uploading": out of every union, while the phone holds a `201` and never
+  sends it again. Once a 0015-or-newer bundle is live again, repair those rows — the newer bundle never leaves
+  `landed_at` NULL without an upload under way, so they are exactly these:
+  `UPDATE resources SET landed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE landed_at IS NULL AND upload_sha256 IS NULL;`
 
 ### Credentials the deploy path holds
 
@@ -348,14 +354,18 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
 
 ### Edge Scripting limits worth knowing
 
-- **30 s CPU** per request. CPU, not wall-clock, so streaming bytes through is cheap. What would break
-  it: buffering a body (`request.bytes()` overflows the **128 MB** isolate) or per-byte CPU work.
-- **No documented wall-clock limit on the script, but the pull zone has a 60 s request timeout.** That is
-  the real ceiling for a large Live Photo video over a slow link. If it ever bites, the fix is
-  server-side resumable uploads.
-- 10 MB script, 500 ms startup, **50 subrequests** per request, 128 env vars. bunny documents the limits as
-  tolerating occasional spikes and policing a script that "consistently hits or exceeds" one (throttled or
-  terminated). What a subrequest past 50 does has **not been measured**, so the code stays under it.
+- **30 s CPU** per request. CPU, not wall-clock, so moving bytes through is cheap. What would break
+  it: buffering a whole body (`request.bytes()` overflows the **128 MB** isolate) or per-byte CPU work. The
+  byte route holds at most two upload parts per request (`max(5 MiB, size ÷ 40)` each).
+- **No documented wall-clock limit on the script, but the pull zone ends a request after 60 s without
+  progress** (a stalled body, or a reply later than 60 s after the body ended — `OriginResponseTimeout`
+  has no effect on an Edge Script origin, measured). That is what kills uploads on slow links, and why the
+  byte route resumes (`docs/architecture.md`, "Resumable uploads").
+- 10 MB script, 500 ms startup, **50 subrequests** per request, 128 env vars. ⚠️ Measured 2026-10-12:
+  the 50 is **not enforced** today — 80 subrequests per request to APNs and to storage, sequential and
+  parallel, and 150 to storage all succeeded. bunny's docs say a script that keeps exceeding a limit may be
+  throttled. A large resumable upload exceeds it by design (one subrequest per part, about 40 at most, plus
+  the fan-out below); everything else stays within it.
 - **The wake fan-out is bounded by `FANOUT_MAX_RECIPIENTS` (40, `src/routes/support.ts`), not by the event's
   size.** Every libSQL call and every push is a subrequest. A v2 byte upload or manifest publish costs at most
   40 pushes + about 5 (the storage PUT, three or four statements, the token query, sometimes an FCM token

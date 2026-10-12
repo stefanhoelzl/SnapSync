@@ -3,6 +3,7 @@ package app.snapsync.crypto
 import app.snapsync.model.AesKey
 import app.snapsync.model.GcmNonce
 import app.snapsync.ports.Crypto
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
@@ -37,6 +38,12 @@ class JcaCrypto : Crypto {
             null
         }
     }
+
+    override fun sha256(chunks: Sequence<ByteArray>): ByteArray =
+        MessageDigest.getInstance("SHA-256").run {
+            chunks.forEach(::update)
+            digest()
+        }
 
     private fun gcm(mode: Int, key: AesKey, nonce: GcmNonce): Cipher {
         return Cipher.getInstance(

@@ -34,6 +34,10 @@ export const ERROR_TAGS = [
   "uncaught",
   /** The response body broke off mid-stream (`cut=true`). */
   "body-cut",
+  /** A dropped upload's received bytes could not be kept; its retry resends them. */
+  "tail-save",
+  /** Tidying a resumable upload (an abort, a superseded tail) failed; the sweep collects what is left. */
+  "upload-cleanup",
   /** The byte route could not ask which events this upload completed; it wakes nobody. */
   "completion-lookup",
   /** The byte route could not stamp the events' landing time (capability `event-lifetime`). */
@@ -281,6 +285,7 @@ export function errorHandler(report?: ReportError): ErrorHandler {
     if (e instanceof Refusal) {
       for (const [key, value] of Object.entries(e.fields)) log?.field(key, value);
       if (e.fault !== undefined) log?.error(e.fault.tag, e.fault.detail);
+      for (const [name, value] of Object.entries(e.headers)) c.header(name, value);
       return typeof e.body === "string" ? c.text(e.body, e.status) : c.json(e.body, e.status);
     }
     if (report) log?.field("bugsink", await report(e, c));

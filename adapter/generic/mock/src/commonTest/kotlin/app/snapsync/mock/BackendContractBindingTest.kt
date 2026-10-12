@@ -39,6 +39,7 @@ class BackendContractBindingTest {
             BackendState.UNION_COMPLETE_ASSET,
             BackendState.UNION_INCOMPLETE_ASSET,
             BackendState.DEVICE_UPLOADED,
+            BackendState.DEVICE_UPLOAD_BROKE_OFF,
             BackendState.VERSION_REFUSED,
             BackendState.FOREIGN_TOKEN,
             BackendState.ENDED_MEMBER,

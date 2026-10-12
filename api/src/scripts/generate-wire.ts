@@ -75,6 +75,8 @@ export function checkVocabulary(node: unknown, where = "#"): void {
     if (key.startsWith("x-snapsync-") && !VOCABULARY.has(key)) {
       fail(where, `\`${key}\` is not in the closed x-snapsync vocabulary`);
     }
+    // A refusals map is keyed by INPUT names, and a header input may be named `x-snapsync-…` itself.
+    if (key === "x-snapsync-refusals") continue;
     checkVocabulary(value, `${where}/${key}`);
   }
 }

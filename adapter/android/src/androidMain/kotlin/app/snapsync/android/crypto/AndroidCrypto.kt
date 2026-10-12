@@ -3,6 +3,7 @@ package app.snapsync.android.crypto
 import app.snapsync.model.AesKey
 import app.snapsync.model.GcmNonce
 import app.snapsync.ports.Crypto
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
@@ -28,6 +29,12 @@ class AndroidCrypto : Crypto {
 
     override fun aesGcmSeal(key: AesKey, nonce: GcmNonce, plaintext: ByteArray): ByteArray =
         gcm(Cipher.ENCRYPT_MODE, key, nonce).doFinal(plaintext)
+
+    override fun sha256(chunks: Sequence<ByteArray>): ByteArray =
+        MessageDigest.getInstance("SHA-256").run {
+            chunks.forEach(::update)
+            digest()
+        }
 
     override fun aesGcmOpen(key: AesKey, nonce: GcmNonce, sealed: ByteArray): ByteArray? {
         if (sealed.size < TAG_BITS / Byte.SIZE_BITS) return null

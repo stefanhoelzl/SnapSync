@@ -164,7 +164,21 @@ interface BackendSetup {
 
     /** One resource's bytes landing in [eventId], as the app's uploader addresses them. */
     suspend fun upload(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole)
+
+    /**
+     * One resource's upload that ended short — the first [SEEDED_PART] bytes of a [SEEDED_SIZE]-byte file, declared by
+     * [SEEDED_PART_SHA256] — which keeps what arrived (`docs/architecture.md`, "Resumable uploads").
+     */
+    suspend fun uploadPart(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole)
 }
+
+/** The SHA-256 a setup's upload declares its bytes by — of [EdgeSetup]'s seeded body. */
+const val SEEDED_SHA256 = "39a916512a4553bd151288b42c4977e99602f21249c0c9b1d77935b1edfc1839"
+
+/** The SHA-256 a setup's broken-off upload declares; the size of its whole file; how many bytes it sent. */
+const val SEEDED_PART_SHA256 = "5eed000000000000000000000000000000000000000000000000000000000001"
+const val SEEDED_SIZE = 64L
+const val SEEDED_PART = 12L
 
 /**
  * [BackendSetup] over the backend's public HTTP surface — the real `api/`'s or the backend mock's, the one [transport]
@@ -209,10 +223,31 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
     /** Uploads one resource's bytes, as the app's uploader addresses them. */
     override suspend fun upload(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole) {
         val path = Routes.UploadResource.path(eventId, deviceId, asset.assetId.value, role.wire, asset.filename)
-        val headers = mapOf(Limits.VERSION_HEADER to SERVED_APP_VERSION, "Content-Type" to "image/jpeg")
+        val headers = mapOf(
+            Limits.VERSION_HEADER to SERVED_APP_VERSION,
+            "Content-Type" to "image/jpeg",
+            // Declared, as the app declares a file it can resume, so the upload state can answer for it.
+            Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256 to SEEDED_SHA256,
+        )
         val result = transport.send(HttpRequest(Routes.UploadResource.METHOD, base + path, headers, JPEG))
         check(result is HttpResult.Response && result.status in SUCCESS) {
             "setup step 'upload ${asset.assetId}/${role.wire}' was refused by the backend: ${result.describe()}"
+        }
+    }
+
+    override suspend fun uploadPart(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole) {
+        val path = Routes.UploadResource.path(eventId, deviceId, asset.assetId.value, role.wire, asset.filename)
+        val headers = mapOf(
+            Limits.VERSION_HEADER to SERVED_APP_VERSION,
+            "Content-Type" to "image/jpeg",
+            Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256 to SEEDED_PART_SHA256,
+            Routes.UploadResource.HEADER_CONTENT_RANGE to "bytes 0-${SEEDED_SIZE - 1}/$SEEDED_SIZE",
+        )
+        val body = "x".repeat(SEEDED_PART.toInt())
+        val result = transport.send(HttpRequest(Routes.UploadResource.METHOD, base + path, headers, body))
+        // A body shorter than its range is refused — and kept: that refusal IS the state this step enters.
+        check(result is HttpResult.Response && result.status == BAD_REQUEST) {
+            "setup step 'upload part of ${asset.assetId}/${role.wire}' was not kept by the backend: ${result.describe()}"
         }
     }
 
@@ -237,6 +272,7 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
         val SUCCESS = 200..299
 
         /** A body for a route that stores whatever it is sent: setup never reads the bytes back. */
+        const val BAD_REQUEST = 400
         const val JPEG = "seeded bytes"
     }
 }

@@ -396,7 +396,10 @@ class AndroidWorkContractTest {
             try {
                 if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
                 val body = connection.inputStream.use { it.readBytes().decodeToString() }
-                Landed(Regex("\"contentType\"\\s*:\\s*\"([^\"]*)\"").find(body)?.groupValues?.get(1))
+                Landed(
+                    Regex("\"contentType\"\\s*:\\s*\"([^\"]*)\"").find(body)?.groupValues?.get(1),
+                    Regex("\"length\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)?.toLongOrNull(),
+                )
             } finally {
                 connection.disconnect()
             }

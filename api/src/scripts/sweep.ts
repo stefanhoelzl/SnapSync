@@ -50,6 +50,8 @@
 import { BUILD_SHA, DEPLOYMENT, readSweepConfig } from "../config.ts";
 import { libsqlDb } from "../db-libsql.ts";
 import { deleteObject, eventDir, type FetchLike, listDir } from "../storage.ts";
+import { AwsClient } from "aws4fetch";
+import { s3Client } from "../s3.ts";
 import {
   collectableDevices,
   completeEvent,
@@ -121,6 +123,41 @@ export type SweepDeps = {
   /** Where a day's 5xx report goes. Defaults to one that cannot send, so a day with 5xx fails the run. */
   sendReport?: ReportSender;
 };
+
+/**
+ * Abort every open multipart upload (the resumable byte route's, `s3.ts`) of an event that no longer lives —
+ * BEFORE its folder goes, because the folder's recursive delete leaves an open upload behind and completing it
+ * afterwards would put its object back (measured). Listed from the zone rather than per folder: an upload that
+ * never stored a whole file has no folder entry to find it by. A failure is counted and the run continues.
+ */
+async function abortOpenUploads(
+  { fetch: f, config, dryRun, log = console.log }: SweepDeps,
+  lives: (eventId: string) => boolean,
+  summary: SweepSummary,
+): Promise<void> {
+  const aws = new AwsClient({
+    accessKeyId: config.zone,
+    secretAccessKey: config.accessKey,
+    region: config.s3Region,
+    service: "s3",
+  });
+  const s3 = s3Client(f, config, aws);
+  try {
+    for (const u of await s3.uploadsUnder("files/")) {
+      const eventId = u.key.split("/")[1] ?? "";
+      if (!validateUUID(eventId) || lives(eventId)) continue;
+      if (dryRun) {
+        log(`[dry-run] would abort the open upload of ${u.key}`);
+      } else {
+        await s3.abort(u.key, u.uploadId);
+        log(`aborted the open upload of ${u.key}`);
+      }
+    }
+  } catch (e) {
+    summary.errors++;
+    log(`open uploads could not be aborted (continuing): ${e}`);
+  }
+}
 
 /**
  * Run the two-phase sweep. THROWS only on a SYSTEMIC failure (cannot list the top-level `files/`
@@ -202,10 +239,12 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const staleIds = new Set(stale);
   const top = await listDir(f, config, `files/`);
   const live = await db.transaction((tx) => liveEventIds(tx));
+  const lives = (eventId: string) => live.has(eventId) && !staleIds.has(eventId);
+  await abortOpenUploads(deps, lives, summary);
   for (const entry of top.filter((e) => e.IsDirectory)) {
     const eventId = entry.ObjectName;
     if (!validateUUID(eventId)) continue; // `devices`, and anything this sweep did not write
-    const keep = live.has(eventId) && !staleIds.has(eventId);
+    const keep = lives(eventId);
     try {
       const files = (await listDir(f, config, eventDir(eventId))).filter((e) => !e.IsDirectory);
       const tally = keep ? summary.files.kept : summary.files.deleted;
