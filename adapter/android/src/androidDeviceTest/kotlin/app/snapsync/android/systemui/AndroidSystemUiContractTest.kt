@@ -1,6 +1,7 @@
 package app.snapsync.android.systemui
 
 import android.app.Application
+import android.content.Intent
 import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.android.storage.context
 import app.snapsync.android.storage.deviceShell
@@ -39,7 +40,7 @@ class AndroidSystemUiContractTest {
         override val reaches = setOf(SharePresenterState.PRESENTABLE)
         override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> =
             if (state in reaches) {
-                Entered.Ready(systemUi().recorded(log))
+                Entered.Ready(systemUi().recorded(log), dispose = { dismissHandoff("-a ${Intent.ACTION_CHOOSER}") })
             } else {
                 Entered.Unreachable(
                     "Android starts the sheet as a task of its own: there is always somewhere to present it",
@@ -52,7 +53,17 @@ class AndroidSystemUiContractTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
         override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> =
-            Entered.Ready(systemUi().recorded(log))
+            when (state) {
+                LinkOpenerState.CLAIMED -> Entered.Ready(
+                    systemUi().recorded(log),
+                    dispose = {
+                        dismissHandoff(
+                            "-a ${Intent.ACTION_VIEW} -c ${Intent.CATEGORY_BROWSABLE} -d ${LinkOpenerContract.CLAIMED_URL}",
+                        )
+                    },
+                )
+                LinkOpenerState.UNCLAIMED -> Entered.Ready(systemUi().recorded(log))
+            }
     }
 
     @Test
@@ -88,6 +99,35 @@ class AndroidSystemUiContractTest {
             )
     }
 
+    /**
+     * Returns the screen to the launcher after a clause handed something to another app — the app the system resolves
+     * for [intent] (`cmd package resolve-activity` arguments). The hand-off answers before that app has started, and a
+     * cold one keeps launching after the clause ends: Chrome's trampoline opens its first-run page a few seconds later,
+     * on top of whatever the next clause brought to the front (the AppSettings clause, which then never sees Settings).
+     * So wait for the app to come to the front, go home, force-stop it so nothing it started is still on its way, and
+     * wait for the launcher — which the system may bring back late, over the next clause's hand-off — to be in front.
+     * Every wait is bounded and none fails the clause: this only puts the screen back.
+     */
+    private fun dismissHandoff(intent: String) {
+        val handler = resolvedPackage(intent)
+        awaitInFront(handler)
+        deviceShell("input keyevent KEYCODE_HOME")
+        // `android` is the system's own resolver, answering when several apps claim the intent: never stop it.
+        if (handler != null && handler != SYSTEM_PACKAGE) deviceShell("am force-stop $handler")
+        awaitInFront(resolvedPackage("-a ${Intent.ACTION_MAIN} -c ${Intent.CATEGORY_HOME}"))
+    }
+
+    private fun resolvedPackage(intent: String): String? =
+        deviceShell("cmd package resolve-activity --brief $intent")
+            .lineSequence().lastOrNull { "/" in it }?.substringBefore('/')?.trim()
+
+    private fun awaitInFront(pkg: String?) {
+        val deadline = System.currentTimeMillis() + HANDOFF_FRONT_MILLIS
+        while (pkg != null && pkg !in resumedActivity() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(HANDOFF_POLL_MILLIS)
+        }
+    }
+
     private fun resumedActivity(): String =
         deviceShell("dumpsys activity activities").lineSequence().firstOrNull { "ResumedActivity" in it }.orEmpty()
 
@@ -100,5 +140,8 @@ class AndroidSystemUiContractTest {
 
     private companion object {
         const val SETTINGS_PACKAGE = "com.android.settings"
+        const val SYSTEM_PACKAGE = "android"
+        const val HANDOFF_FRONT_MILLIS = 20_000L
+        const val HANDOFF_POLL_MILLIS = 100L
     }
 }
