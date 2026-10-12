@@ -9,6 +9,7 @@ import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
@@ -44,8 +45,14 @@ internal class SessionEvents(
 
 /** One brought-up session. */
 internal interface UploadSession {
-    /** Starts a transfer of [file] to [request], tagged [tag]. */
-    fun upload(request: NSURLRequest, file: String, tag: String)
+    /**
+     * Starts a transfer of [file] to [request], tagged [tag], and answers `true` — or `false`, starting nothing, when
+     * [file] cannot be read: a background session raises `NSInvalidArgumentException` ("Cannot read file") for one
+     * (measured on the simulator and macOS, 2026-10-12), an Objective-C exception no Kotlin catch stops. The upload
+     * services hold the file in place from its export until the transfer exists (`SessionTransfer`'s staging lock), so
+     * this check meets no concurrent deleter; it turns a broken invariant into a refusal rather than an abort.
+     */
+    fun upload(request: NSURLRequest, file: String, tag: String): Boolean
 
     /** The session's transfers still running. */
     suspend fun tasks(): List<TransferTask>
@@ -78,10 +85,12 @@ internal class SystemUploadSessionApi(private val log: Logger) : UploadSessionAp
 @OptIn(ExperimentalForeignApi::class)
 private class SystemUploadSession(private val session: NSURLSession, private val log: Logger) : UploadSession {
 
-    override fun upload(request: NSURLRequest, file: String, tag: String) {
+    override fun upload(request: NSURLRequest, file: String, tag: String): Boolean {
+        if (!NSFileManager.defaultManager.isReadableFileAtPath(file)) return false
         val task = session.uploadTaskWithRequest(request, fromFile = NSURL.fileURLWithPath(file))
         task.taskDescription = tag
         task.resume()
+        return true
     }
 
     override suspend fun tasks(): List<TransferTask> = suspendCancellableCoroutine { cont ->

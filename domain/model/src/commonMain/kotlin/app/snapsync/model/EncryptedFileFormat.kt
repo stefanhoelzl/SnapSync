@@ -50,8 +50,8 @@ object EncryptedFileFormat {
     )
 
     /** The key one file's segments are sealed with. */
-    fun fileKeyOf(eventKey: ByteArray, salt: ByteArray, associatedData: ByteArray, hmac: Hmac): ByteArray =
-        Hkdf.derive(hmac, eventKey, salt, associatedData, KEY_LENGTH)
+    fun fileKeyOf(eventKey: ByteArray, salt: ByteArray, associatedData: ByteArray, hmac: Hmac): AesKey =
+        AesKey(Hkdf.derive(hmac, eventKey, salt, associatedData, KEY_LENGTH))
 
     /** What a file is bound to. The ids are validated path segments, so no `/` occurs inside one. */
     fun associatedData(eventId: String, deviceId: String, assetId: String, role: String): ByteArray =
@@ -63,15 +63,17 @@ object EncryptedFileFormat {
     /** How many ciphertext bytes segment [segment] occupies, unless it is the last. */
     fun ciphertextSegmentLength(segment: Int): Int = plaintextSegmentLength(segment) + TAG_LENGTH
 
-    /** Segment [segment]'s nonce. */
-    fun segmentNonce(noncePrefix: ByteArray, segment: Int, last: Boolean): ByteArray = ByteArray(NONCE_LENGTH).also {
-        noncePrefix.copyInto(it)
-        it[7] = (segment ushr 24).toByte()
-        it[8] = (segment ushr 16).toByte()
-        it[9] = (segment ushr 8).toByte()
-        it[10] = segment.toByte()
-        it[11] = if (last) 1 else 0
-    }
+    /** Segment [segment]'s nonce: [noncePrefix] (a [FileHead]'s, [NONCE_PREFIX_LENGTH] bytes) ‖ segment ‖ last. */
+    fun segmentNonce(noncePrefix: ByteArray, segment: Int, last: Boolean): GcmNonce = GcmNonce(
+        ByteArray(NONCE_LENGTH).also {
+            noncePrefix.copyInto(it, endIndex = NONCE_PREFIX_LENGTH)
+            it[7] = (segment ushr 24).toByte()
+            it[8] = (segment ushr 16).toByte()
+            it[9] = (segment ushr 8).toByte()
+            it[10] = segment.toByte()
+            it[11] = if (last) 1 else 0
+        },
+    )
 
     /** The prefix and header, as they open the file. */
     fun encodeHead(head: FileHead): ByteArray = ByteArray(HEAD_LENGTH).also {
@@ -145,5 +147,36 @@ object Hkdf {
             block++
         }
         return out
+    }
+}
+
+/**
+ * An AES-256 key: exactly [EncryptedFileFormat.KEY_LENGTH] bytes, by construction — so the `Crypto` port has no wrong
+ * length to refuse (a platform cipher would quietly run AES-128 or AES-192 under a 16- or 24-byte one). Production
+ * keys are minted by [EncryptedFileFormat.fileKeyOf] alone; [of] is the way in for key material from outside — a
+ * published test vector.
+ */
+class AesKey internal constructor(bytes: ByteArray) {
+    /** The key's bytes — a copy, so no holder can change the key behind its back. */
+    val bytes: ByteArray = bytes.copyOf()
+
+    companion object {
+        /** [bytes] as a key, or `null` unless exactly [EncryptedFileFormat.KEY_LENGTH] long. */
+        fun of(bytes: ByteArray): AesKey? = if (bytes.size == EncryptedFileFormat.KEY_LENGTH) AesKey(bytes) else null
+    }
+}
+
+/**
+ * An AES-GCM nonce: exactly [EncryptedFileFormat.NONCE_LENGTH] bytes, by construction. Production nonces are minted by
+ * [EncryptedFileFormat.segmentNonce] alone; [of] is the way in for a published test vector's.
+ */
+class GcmNonce internal constructor(bytes: ByteArray) {
+    /** The nonce's bytes — a copy. */
+    val bytes: ByteArray = bytes.copyOf()
+
+    companion object {
+        /** [bytes] as a nonce, or `null` unless exactly [EncryptedFileFormat.NONCE_LENGTH] long. */
+        fun of(bytes: ByteArray): GcmNonce? =
+            if (bytes.size == EncryptedFileFormat.NONCE_LENGTH) GcmNonce(bytes) else null
     }
 }

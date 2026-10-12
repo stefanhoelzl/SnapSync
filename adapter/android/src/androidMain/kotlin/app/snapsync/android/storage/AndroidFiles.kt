@@ -9,6 +9,7 @@ import app.snapsync.model.FileTail
 import app.snapsync.ports.Files
 import java.io.File
 import java.io.IOException
+import java.io.UncheckedIOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AccessDeniedException
@@ -112,6 +113,8 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
         FileResult.Ok(false)
     } catch (e: IOException) {
         e.toAccessFailure()
+    } catch (e: SecurityException) {
+        FileResult.Denied("${e::class.simpleName}: ${e.message}")
     }
 
     override fun locate(area: FileArea, path: String): FileLocation<String> = FileResult.Ok(
@@ -162,6 +165,9 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
         block()
     } catch (e: IOException) {
         e.toAccessFailure()
+    } catch (e: UncheckedIOException) {
+        // What a directory walk's stream throws for the I/O failure it met on the way — its constructor requires it.
+        e.cause!!.toAccessFailure()
     } catch (e: SecurityException) {
         FileResult.Denied("${e::class.simpleName}: ${e.message}")
     }

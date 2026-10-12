@@ -5,6 +5,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
+import android.database.sqlite.SQLiteException
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -126,7 +127,16 @@ open class AndroidGalleryReader(
             "gallery.createAlbum",
             params = "title=$title",
             result = { "$it" },
-        ) { PlatformAlbumId(newAlbum(title)) }
+        ) {
+            // The name is found by querying the media provider, which can refuse: then no album is made.
+            try {
+                PlatformAlbumId(newAlbum(title))
+            } catch (e: SecurityException) {
+                null.also { log.w { "createAlbum: the media provider refused — ${e::class.simpleName}: ${e.message}" } }
+            } catch (e: SQLiteException) {
+                null.also { log.w { "createAlbum: the media provider failed — ${e::class.simpleName}: ${e.message}" } }
+            }
+        }
     }
 
     private fun newAlbum(title: String): String {
@@ -156,8 +166,15 @@ open class AndroidGalleryReader(
         ) {
             return@withContext WriteOutcome.Failed("$album is not an event album's folder")
         }
+        val items = try {
+            itemsById(assets)
+        } catch (e: SecurityException) {
+            return@withContext WriteOutcome.Failed("the media provider refused: ${e::class.simpleName}: ${e.message}")
+        } catch (e: SQLiteException) {
+            return@withContext WriteOutcome.Failed("the media provider failed: ${e::class.simpleName}: ${e.message}")
+        }
         var skipped = 0
-        itemsById(assets).filter { it.relativePath != album }.forEach { item ->
+        items.filter { it.relativePath != album }.forEach { item ->
             val moved = runCatchingCancellable {
                 resolver.update(
                     item.uri,
@@ -194,15 +211,29 @@ open class AndroidGalleryReader(
         )
     }
 
-    /** The read on [Dispatchers.IO], or [GalleryRead.NotReadable] with no query when no grant allows one. */
+    /**
+     * The read on [Dispatchers.IO], or [GalleryRead.NotReadable] — with no query when no grant allows one, and when the
+     * media provider refuses the query: the grant revoked while it ran (`SecurityException`; a revocation also ends the
+     * process, so this is the window before it does) or the provider's database failing (`SQLiteException`). Either is
+     * "could not look", never an empty library.
+     */
     protected suspend fun <T> readable(read: () -> T): GalleryRead<T> =
         if (access() !in READABLE) {
             GalleryRead.NotReadable
         } else {
-            GalleryRead.Read(
-                withContext(Dispatchers.IO) { read() },
-            )
+            withContext(Dispatchers.IO) { refusedAsUnreadable("read") { GalleryRead.Read(read()) } }
         }
+
+    /** [block]'s answer, or [GalleryRead.NotReadable] when the media provider refuses it ([readable]). */
+    private inline fun <T> refusedAsUnreadable(what: String, block: () -> GalleryRead<T>): GalleryRead<T> = try {
+        block()
+    } catch (e: SecurityException) {
+        log.w { "$what: the media provider refused — ${e::class.simpleName}: ${e.message}" }
+        GalleryRead.NotReadable
+    } catch (e: SQLiteException) {
+        log.w { "$what: the media provider failed — ${e::class.simpleName}: ${e.message}" }
+        GalleryRead.NotReadable
+    }
 
     /** Every default-gallery item matching [narrowing], images and videos alike ([DefaultGallery]). */
     internal fun items(narrowing: Query): List<MediaItem> =

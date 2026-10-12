@@ -1,5 +1,6 @@
 package app.snapsync.services.crypto
 
+import app.snapsync.model.AesKey
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EncryptedFileFormat.HEAD_LENGTH
 import app.snapsync.model.FileArea
@@ -166,7 +167,7 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
 }
 
 /** What the edge needs to seal one file of the iOS extension's: its opening bytes, and that one file's key. */
-class ElsewhereSeal(val head: ByteArray, val fileKey: ByteArray)
+class ElsewhereSeal(val head: ByteArray, val fileKey: AesKey)
 
 /** What became of one decryption. */
 sealed interface Opened {

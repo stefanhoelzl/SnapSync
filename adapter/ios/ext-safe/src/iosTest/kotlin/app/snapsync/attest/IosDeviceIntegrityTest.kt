@@ -1,9 +1,11 @@
 package app.snapsync.attest
 
-import app.snapsync.objc.ObjCFailure
+import app.snapsync.ports.ProveResult
 import kotlinx.coroutines.runBlocking
+import platform.Foundation.NSData
+import platform.Foundation.NSError
 import kotlin.test.Test
-import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -13,38 +15,26 @@ import kotlin.test.assertTrue
  * is false on a simulator, and the real attestation is anchored to a Secure Enclave key a simulator
  * does not have. That half of the capability is evidenced on device.
  *
- * That a refusal is an exception at all — not a hang, not an invented answer — is `DeviceIntegrityContract`'s, run
- * live on this host by `AttestContractTest`. What stays here is this adapter's own diagnostic: WHICH step
- * refused, with the platform's domain and code, which no other implementation of the port need spell alike.
- *
- * What is reachable is the half that decides how a device behaves when the ceremony **cannot** run —
- * which is not an exotic state. `isSupported` is also false inside the upload extension on real
- * hardware (measured on device: the app process reported `true` and completed the ceremony while the
- * extension, in the same build and a healthy `process()` cycle, reported `false`), so every renewal
- * happens in the app and the extension lives permanently on this path. It therefore matters that a
- * refusal is **reported** — with the platform's own domain and code — rather than hanging on a
- * completion handler that never fires or resuming with a null nobody can explain. A silent hang here
- * would park an OS-invoked cycle until its watchdog killed it.
+ * That an unavailable service answers `NotAvailable` — not a hang, not an invented proof — is `DeviceIntegrityContract`'s,
+ * run live on this host by `AttestContractTest`. What stays here is this adapter's own diagnostic: WHICH step refused,
+ * with the platform's domain and code, which no other implementation of the port need spell alike. A silent hang
+ * would park the caller until a watchdog killed it; a refusal without the platform's code would be undiagnosable.
  */
 class IosDeviceIntegrityTest {
 
     private val integrity = IosDeviceIntegrity()
 
-    /**
-     * The refusal must arrive as a diagnosable exception. `DeviceAttestation` catches it and reduces
-     * it to "no fresh token"; what it cannot reduce is a coroutine that never resumes.
-     */
     @Test
-    fun `a fresh proof on an unavailable service raises with the platform's own error for the key generation`() {
-        val failure = assertFailsWith<ObjCFailure> { runBlocking { integrity.prove("challenge") } }
+    fun `a fresh proof on an unavailable service names the key generation and the platform's own error`() {
+        val refused = assertIs<ProveResult.Refused.NotAvailable>(runBlocking { integrity.prove("challenge") })
 
         assertTrue(
-            failure.message.orEmpty().startsWith("App Attest generateKey failed:"),
-            "the step must be named — three calls share this error shape: ${failure.message}",
+            refused.reason.startsWith("App Attest generateKey:"),
+            "the step must be named — three calls share this error shape: ${refused.reason}",
         )
         assertTrue(
-            "domain=" in failure.message.orEmpty() && "code=" in failure.message.orEmpty(),
-            "the platform's domain and code are the only diagnosis available: ${failure.message}",
+            "domain=" in refused.reason && "code=" in refused.reason,
+            "the platform's domain and code are the only diagnosis available: ${refused.reason}",
         )
     }
 
@@ -53,13 +43,48 @@ class IosDeviceIntegrityTest {
 
     @Test
     fun `a proof by an unusable handle names the assertion step`() {
-        val failure = assertFailsWith<ObjCFailure> {
-            runBlocking { integrity.prove("challenge", "no-such-key") }
-        }
+        val refused = assertIs<ProveResult.Refused>(runBlocking { integrity.prove("challenge", "no-such-key") })
 
         assertTrue(
-            failure.message.orEmpty().startsWith("App Attest generateAssertion failed:"),
-            "the assertion is the cheap renewal path and must be distinguishable in a log: ${failure.message}",
+            refused.reason.startsWith("App Attest generateAssertion:"),
+            "the assertion is the cheap renewal path and must be distinguishable in a log: ${refused.reason}",
         )
     }
+
+    /**
+     * How App Attest's refusals are told apart (`DCError.h`): answered here by a fake service at the adapter's own seam,
+     * for the codes no host produces on request. An unsupported service is also observed live (this host, above), and
+     * `invalidKey` in the device recording.
+     */
+    @Test
+    fun `every other App Attest refusal is Failed and the two it names are told apart`() = runBlocking {
+        fun answering(code: Long?, supported: Boolean = true) = IosDeviceIntegrity(RefusingAppAttest(code, supported))
+        assertIs<ProveResult.Refused.NotAvailable>(answering(1).prove("challenge"))
+        assertIs<ProveResult.Refused.NotAvailable>(
+            answering(0, supported = false).prove("challenge"),
+            "any code, unsupported",
+        )
+        assertIs<ProveResult.Refused.UnknownKey>(answering(3).prove("challenge", "key"))
+        listOf(0L, 2L, 4L).forEach { code ->
+            val refused = assertIs<ProveResult.Refused.Failed>(answering(code).prove("challenge", "key"), "code $code")
+            assertTrue("code=$code" in refused.reason, refused.reason)
+        }
+        assertIs<ProveResult.Refused.Failed>(answering(null).prove("challenge"), "neither a value nor an error")
+        Unit
+    }
+}
+
+/** App Attest refusing every call with `DCError` `code` — or, for `null`, with neither a value nor an error. */
+private class RefusingAppAttest(code: Long?, private val supported: Boolean) : AppAttestApi {
+    private val error = code?.let { NSError.errorWithDomain("com.apple.devicecheck.error", it, null) }
+
+    override fun isSupported(): Boolean = supported
+
+    override fun generateKey(completion: (String?, NSError?) -> Unit) = completion(null, error)
+
+    override fun attestKey(keyId: String, clientDataHash: NSData, completion: (NSData?, NSError?) -> Unit) =
+        completion(null, error)
+
+    override fun generateAssertion(keyId: String, clientDataHash: NSData, completion: (NSData?, NSError?) -> Unit) =
+        completion(null, error)
 }

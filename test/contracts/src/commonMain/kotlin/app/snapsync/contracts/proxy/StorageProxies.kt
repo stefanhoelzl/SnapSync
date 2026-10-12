@@ -5,15 +5,12 @@ import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.contracts.CallLog
 import app.snapsync.model.FileArea
 import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.Files
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
-import kotlin.reflect.KClass
 
 /** [Files] as its clause's [CallLog] sees it. */
 fun Files.recorded(log: CallLog): Files = FilesProxy(this, log)
@@ -92,26 +89,4 @@ internal class PlatformDeviceIdProxy(private val inner: PlatformDeviceId, log: C
     private val r = log.recorder("PlatformDeviceId")
 
     override fun stableId() = r.returns("stableId", inner.stableId())
-}
-
-/** [AttestStore] as its clause's [CallLog] sees it. */
-fun AttestStore.recorded(log: CallLog): AttestStore = AttestStoreProxy(this, log)
-
-internal class AttestStoreProxy(private val inner: AttestStore, log: CallLog) : AttestStore {
-    private val r = log.recorder("AttestStore")
-
-    override fun token() = r.returns("token", r.throwing("token", THROWS.getValue("token")) { inner.token() })
-    override fun setToken(token: String) = r.returns("setToken", inner.setToken(token))
-    override fun keyId() = r.returns("keyId", r.throwing("keyId", THROWS.getValue("keyId")) { inner.keyId() })
-    override fun setKeyId(keyId: String) = r.returns("setKeyId", inner.setKeyId(keyId))
-    override fun clearToken() = r.returns("clearToken", inner.clearToken())
-    override fun clearTokenIf(expected: String) = r.answer("clearTokenIf", inner.clearTokenIf(expected))
-
-    companion object {
-        /** Each member's `@Throws`, which Kotlin/Native cannot read at run time; held to the port by `:test:architecture`. */
-        val THROWS: Map<String, KClass<out Throwable>> = mapOf(
-            "token" to SecureStoreUnavailable::class,
-            "keyId" to SecureStoreUnavailable::class,
-        )
-    }
 }

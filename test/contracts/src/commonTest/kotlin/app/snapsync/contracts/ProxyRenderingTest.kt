@@ -6,12 +6,10 @@ import app.snapsync.model.FileResult
 import app.snapsync.model.HttpResult
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
@@ -20,16 +18,15 @@ import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.test.runTest
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.time.Instant
 
 /**
@@ -67,15 +64,16 @@ class ProxyRenderingTest {
             ClientIdentity.SERVED,
             log,
         ).send(Routes.Challenge.request())
-        val attest = attestStore { null }.recorded(log)
-        attest.token()
+        object : PlatformDeviceId {
+            override fun stableId(): String? = null
+        }.recorded(log).stableId()
 
         val declared = cells {
             on<SecureStore>().answers(SecureStore::read).with(SecureStoreRead.Absent::class)
             on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.LIMITED)
             on<Files>().answers(Files::read).withGenericLeaf(FileResult.Ok::class)
             backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
-            on<AttestStore>().answers(AttestStore::token).with(null)
+            on<PlatformDeviceId>().answers(PlatformDeviceId::stableId).with(null)
         }.cells
         assertEquals(declared.toSet(), log.cells)
     }
@@ -120,40 +118,6 @@ class ProxyRenderingTest {
         }.cells
         assertEquals(declared.toSet(), log.cells)
     }
-
-    @Test
-    fun `only the declared throw is recorded and every throw passes unchanged`() {
-        val unavailable = SecureStoreUnavailable("locked")
-        val log = log()
-        assertEquals(
-            unavailable,
-            assertFailsWith<SecureStoreUnavailable> {
-                attestStore { throw unavailable }.recorded(log).token()
-            },
-        )
-        assertEquals(setOf("AttestStore.token → throws"), log.cells)
-
-        val other = log()
-        assertFailsWith<IllegalStateException> {
-            attestStore {
-                error(
-                    "not the declared type",
-                )
-            }.recorded(other).token()
-        }
-        assertFailsWith<CancellationException> {
-            attestStore {
-                throw CancellationException(
-                    "x",
-                )
-            }.recorded(other).token()
-        }
-        assertEquals(emptySet(), other.cells)
-    }
-
-    private fun attestStore(token: () -> String?) = object : AttestStore by UnusedAttestStore {
-        override fun token() = token()
-    }
 }
 
 /** Ports whose members the test does not call: Kotlin's delegation needs an instance, so it gets a refusing one. */
@@ -169,15 +133,6 @@ private object UnusedFiles : Files {
     override fun move(area: FileArea, from: String, to: String) = error("unused")
     override fun adopt(osPath: String, area: FileArea, to: String) = error("unused")
     override fun list(area: FileArea, directory: String) = error("unused")
-}
-
-private object UnusedAttestStore : AttestStore {
-    override fun token() = error("unused")
-    override fun setToken(token: String) = error("unused")
-    override fun keyId() = error("unused")
-    override fun setKeyId(keyId: String) = error("unused")
-    override fun clearToken() = error("unused")
-    override fun clearTokenIf(expected: String) = error("unused")
 }
 
 private object UnusedReader : GalleryReader {

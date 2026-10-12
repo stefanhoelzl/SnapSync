@@ -1,5 +1,7 @@
 package app.snapsync.android.attest
 
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
 import app.snapsync.android.network.EmulatorNetwork
@@ -14,10 +16,15 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.ProveResult
 import kotlinx.coroutines.test.runTest
+import java.security.KeyPairGenerator
+import java.security.KeyStore
+import java.security.spec.ECGenParameterSpec
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 /**
  * [DeviceIntegrityContract] against the real [AndroidDeviceIntegrity] on the emulator's Keystore — which attests in
@@ -41,14 +48,33 @@ class AndroidDeviceIntegrityContractTest {
     private val binding = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(DeviceIntegrityState.AVAILABLE)
+        override val reaches = setOf(DeviceIntegrityState.AVAILABLE, DeviceIntegrityState.UNUSABLE_KEY)
 
         override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =
-            if (state == DeviceIntegrityState.AVAILABLE) {
-                Entered.Ready(AndroidDeviceIntegrity().recorded(log))
-            } else {
-                Entered.Unreachable("key attestation exists in the one process Android has")
+            when (state) {
+                DeviceIntegrityState.AVAILABLE -> Entered.Ready(AndroidDeviceIntegrity().recorded(log))
+                DeviceIntegrityState.UNUSABLE_KEY -> {
+                    val alias = DeviceIntegrityContract.unusableHandle(clauseId)
+                    verifyOnlyKey(alias)
+                    Entered.Ready(AndroidDeviceIntegrity().recorded(log)) { keyStore().deleteEntry(alias) }
+                }
+                DeviceIntegrityState.UNAVAILABLE ->
+                    Entered.Unreachable("key attestation exists in the one process Android has")
             }
+
+        /** An EC key under [alias] the Keystore holds but may only VERIFY with: present, and refused for signing. */
+        private fun verifyOnlyKey(alias: String) {
+            KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore").apply {
+                initialize(
+                    KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_VERIFY)
+                        .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                        .setDigests(KeyProperties.DIGEST_SHA256)
+                        .build(),
+                )
+            }.generateKeyPair()
+        }
+
+        private fun keyStore(): KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
     }
 
     @BeforeTest
@@ -61,9 +87,9 @@ class AndroidDeviceIntegrityContractTest {
     @Test
     fun `it records a proof for the api to replay`() = runTest {
         val integrity = AndroidDeviceIntegrity()
-        val fresh = integrity.prove(RECORDED_CHALLENGE)
+        val fresh = assertIs<ProveResult.Ok>(integrity.prove(RECORDED_CHALLENGE)).proof
         assertEquals(ProofFormat.ANDROID_KEY, fresh.format)
-        val renewal = integrity.prove(RECORDED_RENEWAL, fresh.handle)
+        val renewal = assertIs<ProveResult.Ok>(integrity.prove(RECORDED_RENEWAL, fresh.handle)).proof
         Log.i(RECORDING_TAG, "attestation=" + Base64.encodeToString(fresh.bytes, Base64.NO_WRAP))
         Log.i(RECORDING_TAG, "renewal=" + Base64.encodeToString(renewal.bytes, Base64.NO_WRAP))
     }

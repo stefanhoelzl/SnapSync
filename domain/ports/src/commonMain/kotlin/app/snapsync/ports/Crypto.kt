@@ -1,5 +1,8 @@
 package app.snapsync.ports
 
+import app.snapsync.model.AesKey
+import app.snapsync.model.GcmNonce
+
 /**
  * **The platform's cryptographic primitives** — one external system, and nothing decided here: which key, which nonce,
  * how a file is cut into segments and what it is bound to are the encrypted file format's (`:domain:model`'s
@@ -8,31 +11,26 @@ package app.snapsync.ports
  * written here, only framed.
  *
  * Every member is synchronous and thread-agnostic: a segment is 64 KiB, which the slowest supported phone seals in
- * well under a millisecond.
+ * well under a millisecond. None throws: a key and a nonce are of their exact length by construction ([AesKey],
+ * [GcmNonce]), and a seal that does not authenticate opens to `null`.
  *
  * Its promises are the port contract `CryptoContract`: published known-answer vectors for HMAC-SHA256 (RFC 4231) and
  * AES-256-GCM, a tampered seal that never opens, and random bytes that are not repeated.
  */
 interface Crypto : Port {
 
-    /** [count] bytes from the platform's cryptographically secure generator. */
+    /** [count] (≥ 0) bytes from the platform's cryptographically secure generator. */
     fun randomBytes(count: Int): ByteArray
 
-    /** HMAC-SHA256 of [message] under [key] — 32 bytes. */
+    /** HMAC-SHA256 of [message] under [key] — 32 bytes. Any key length, the empty key included (RFC 2104). */
     fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray
 
-    /**
-     * AES-256-GCM of [plaintext] under [key] (32 bytes) and [nonce] (12 bytes), no associated data: the ciphertext
-     * followed by its 16-byte tag. A [key] of any other length throws [IllegalArgumentException], here and in
-     * [aesGcmOpen]: the platform ciphers would quietly run AES-128 or AES-192 under a 16- or 24-byte one.
-     */
-    @Throws(IllegalArgumentException::class)
-    fun aesGcmSeal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray
+    /** AES-256-GCM of [plaintext] under [key] and [nonce], no associated data: the ciphertext then its 16-byte tag. */
+    fun aesGcmSeal(key: AesKey, nonce: GcmNonce, plaintext: ByteArray): ByteArray
 
     /**
      * The plaintext [sealed] (ciphertext then tag) was sealed from under [key] and [nonce], or `null` when it does
-     * not authenticate — a wrong key, a wrong nonce, or any changed byte.
+     * not authenticate — a wrong key, a wrong nonce, any changed byte, or fewer bytes than a tag.
      */
-    @Throws(IllegalArgumentException::class)
-    fun aesGcmOpen(key: ByteArray, nonce: ByteArray, sealed: ByteArray): ByteArray?
+    fun aesGcmOpen(key: AesKey, nonce: GcmNonce, sealed: ByteArray): ByteArray?
 }

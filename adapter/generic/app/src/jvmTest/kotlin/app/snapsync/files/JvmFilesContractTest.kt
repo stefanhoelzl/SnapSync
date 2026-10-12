@@ -48,6 +48,7 @@ class JvmFilesContractTest {
             FilesState.READ_ONLY_DIRECTORY,
             FilesState.UNSEARCHABLE_DIRECTORY,
             FilesState.LOOPED_LINK,
+            FilesState.DENIED_SUBDIRECTORY,
         )
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
             if (state == FilesState.UNAVAILABLE) return Entered.Ready(unavailable().recorded(log))
@@ -58,6 +59,11 @@ class JvmFilesContractTest {
                 FilesState.DENIED -> {
                     areas.files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
                     File(areas.shared, path).setReadable(false)
+                }
+                FilesState.DENIED_SUBDIRECTORY -> {
+                    areas.files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))
+                    areas.files.write(FileArea.SHARED, FilesContract.innerPath(clauseId), FilesContract.seed(clauseId))
+                    File(areas.shared, FilesContract.innerPath(clauseId)).parentFile.setReadable(false)
                 }
                 FilesState.DENIED_DIRECTORY -> {
                     areas.files.write(FileArea.SHARED, path, FilesContract.seed(clauseId))

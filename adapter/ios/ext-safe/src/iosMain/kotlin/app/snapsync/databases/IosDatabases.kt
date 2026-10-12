@@ -88,8 +88,14 @@ class IosDatabases(private val basePath: String?) : Databases {
         if (readOnly && !NSFileManager.defaultManager.fileExistsAtPath("$base/$name")) return DbOpen.Missing
         val opened = runCatchingCancellable {
             if (readOnly) openReadOnly(base, name, schema) else openReadWrite(base, name, schema)
-        }.getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
-        return if (opened is DbOpen.Opened) DbOpen.Opened(signalled(name, opened.driver)) else opened
+        }.getOrElse { return DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
+        if (opened !is DbOpen.Opened) return opened
+        // The commit signalling reads the database too (`PRAGMA data_version`), so it can fail like the open: then the
+        // open failed, and the driver it would have wrapped is closed.
+        return runCatchingCancellable { DbOpen.Opened(signalled(name, opened.driver)) }.getOrElse {
+            opened.driver.close()
+            DbOpen.Failed("${it::class.simpleName}: ${it.message}")
+        }
     }
 
     private fun openReadWrite(base: String, name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {

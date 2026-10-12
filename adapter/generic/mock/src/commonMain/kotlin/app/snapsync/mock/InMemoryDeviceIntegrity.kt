@@ -5,15 +5,15 @@ import app.snapsync.model.CertificateFacts
 import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.ProveResult
 
 /**
  * The honest in-memory [DeviceIntegrity] — App Attest's device half, without a Secure Enclave.
  *
- * [available] is initial state rather than a constant because it is the one fact that differs between the
- * processes and hosts this double stands in for: `true` in the app, **`false` in the upload extension**
- * (measured on device), and **`false` on any simulator**, where App Attest does not exist at all. A
- * composition given `available = false` never attests and never renews — which is exactly what the
- * extension and the simulator do, and why `DeviceAttestation` has a branch for it.
+ * [available] is initial state rather than a constant because it is the one fact that differs between the hosts this
+ * double stands in for: `true` in a device's app, **`false` on any simulator**, where App Attest does not exist at
+ * all. A composition given `available = false` is refused every proof as [ProveResult.Refused.NotAvailable] — which
+ * is exactly what a simulator's App Attest answers.
  *
  * Its proofs have a recognisable shape — `attestation:<handle>:<challenge>` for a fresh key,
  * `assertion:<handle>:<challenge>` for a renewal — which is what the in-memory backends verify in place of Apple's
@@ -28,19 +28,19 @@ internal class InMemoryDeviceIntegrity(
     private val keys: EnclaveKeys = EnclaveKeys(),
 ) : DeviceIntegrity {
 
-    override fun isAvailable(): Boolean = available
-
-    // Refusals are exceptions, as the real service's are (`DeviceIntegrityContract`): an unavailable process has no
+    // Refusals are values, as the real service's are (`DeviceIntegrityContract`): an unavailable process has no
     // App Attest to prove WITH, and no key but one this service created can sign.
-    override suspend fun prove(challenge: String, handle: String?): Proof {
-        if (handle == null) {
-            check(available) { "App Attest attestKey failed: unsupported in this process" }
-            val key = keys.create()
-            return Proof(key, ProofFormat.APP_ATTEST, "attestation:$key:$challenge".encodeToByteArray(), MOCK_CHAIN)
+    override suspend fun prove(challenge: String, handle: String?): ProveResult = when {
+        !available -> ProveResult.Refused.NotAvailable("App Attest: unsupported in this process")
+        handle == null -> keys.create().let { key ->
+            ProveResult.Ok(
+                Proof(key, ProofFormat.APP_ATTEST, "attestation:$key:$challenge".encodeToByteArray(), MOCK_CHAIN),
+            )
         }
-        check(available) { "App Attest generateAssertion failed: unsupported in this process" }
-        check(keys.holds(handle)) { "App Attest generateAssertion failed: no such key $handle" }
-        return Proof(handle, ProofFormat.APP_ATTEST, "assertion:$handle:$challenge".encodeToByteArray())
+        !keys.holds(handle) -> ProveResult.Refused.UnknownKey("App Attest generateAssertion: no such key $handle")
+        else -> ProveResult.Ok(
+            Proof(handle, ProofFormat.APP_ATTEST, "assertion:$handle:$challenge".encodeToByteArray()),
+        )
     }
 }
 

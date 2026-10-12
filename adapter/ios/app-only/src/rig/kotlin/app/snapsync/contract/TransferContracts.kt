@@ -150,6 +150,7 @@ class SimAppSessionBinding : Binding<TransferSessionState, SessionUnderTest>, Ru
         TransferSessionState.AT_CAP,
         TransferSessionState.TAKES_FILES,
         TransferSessionState.REPORTS_AS_IT_HAPPENS,
+        TransferSessionState.READS_FILES_FROM_DISK,
     )
 
     private val fixture = FixtureAddress()

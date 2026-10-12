@@ -5,10 +5,14 @@ import android.security.keystore.KeyProperties
 import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.ProveResult
+import java.io.IOException
+import java.security.GeneralSecurityException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.PrivateKey
+import java.security.ProviderException
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.UUID
@@ -30,19 +34,28 @@ import java.util.UUID
  * superseded by a re-attestation, stays in the Keystore: nothing names it again, and the count is bounded by how often
  * the device attests.
  *
- * Refusals are exceptions (the port's contract): an unknown handle, or a Keystore that cannot generate or sign.
+ * Every refusal is a value (the port's contract): a handle under which the Keystore holds no private key is
+ * [ProveResult.Refused.UnknownKey]; a Keystore that cannot generate, attest or sign — the platform's
+ * `GeneralSecurityException`, or its `ProviderException` from a generation the hardware refused — is
+ * [ProveResult.Refused.Failed]. Key attestation exists on every Android this app runs on (minSdk 30), so it never
+ * answers [ProveResult.Refused.NotAvailable].
  */
 class AndroidDeviceIntegrity : DeviceIntegrity {
 
     private fun keyStore(): KeyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
 
-    // Key attestation exists on every Android this app runs on (API 24+; minSdk is 30), in the one process there is.
-    override fun isAvailable(): Boolean = true
+    override suspend fun prove(challenge: String, handle: String?): ProveResult = try {
+        if (handle == null) attest(challenge) else sign(handle, challenge)
+    } catch (e: GeneralSecurityException) {
+        ProveResult.Refused.Failed("Keystore: ${e::class.simpleName}: ${e.message}")
+    } catch (e: ProviderException) {
+        ProveResult.Refused.Failed("Keystore: ${e::class.simpleName}: ${e.message}")
+    } catch (e: IOException) {
+        // `KeyStore.load` declares it; the Keystore daemon unreachable.
+        ProveResult.Refused.Failed("Keystore: ${e::class.simpleName}: ${e.message}")
+    }
 
-    override suspend fun prove(challenge: String, handle: String?): Proof =
-        if (handle == null) attest(challenge) else Proof(handle, ProofFormat.ANDROID_KEY, sign(handle, challenge))
-
-    private fun attest(challenge: String): Proof {
+    private fun attest(challenge: String): ProveResult {
         val alias = "$ALIAS_PREFIX${UUID.randomUUID()}"
         KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, KEYSTORE).apply {
             initialize(
@@ -54,20 +67,25 @@ class AndroidDeviceIntegrity : DeviceIntegrity {
             )
         }.generateKeyPair()
         val chain = keyStore().getCertificateChain(alias)
-        check(!chain.isNullOrEmpty()) { "the Keystore attested no certificate chain for $alias" }
+        if (chain.isNullOrEmpty()) {
+            return ProveResult.Refused.Failed(
+                "Keystore attested no certificate chain for $alias",
+            )
+        }
         // The summary rides beside the bytes, for a report the user may send if the backend refuses them; the backend
         // never sees it.
         val der = chain.fold(ByteArray(0)) { all, cert -> all + cert.encoded }
-        return Proof(alias, ProofFormat.ANDROID_KEY, der, chain = summarise(chain))
+        return ProveResult.Ok(Proof(alias, ProofFormat.ANDROID_KEY, der, chain = summarise(chain)))
     }
 
-    private fun sign(alias: String, challenge: String): ByteArray {
+    private fun sign(alias: String, challenge: String): ProveResult {
         val key = keyStore().getKey(alias, null) as? PrivateKey
-            ?: error("the Keystore holds no attested key '$alias'")
-        return Signature.getInstance(SIGNATURE).apply {
+            ?: return ProveResult.Refused.UnknownKey("the Keystore holds no private key '$alias'")
+        val signature = Signature.getInstance(SIGNATURE).apply {
             initSign(key)
             update(challenge.encodeToByteArray())
         }.sign()
+        return ProveResult.Ok(Proof(alias, ProofFormat.ANDROID_KEY, signature))
     }
 
     private fun sha256(challenge: String): ByteArray = MessageDigest.getInstance(

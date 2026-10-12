@@ -1,5 +1,7 @@
 package app.snapsync.android.crypto
 
+import app.snapsync.model.AesKey
+import app.snapsync.model.GcmNonce
 import app.snapsync.ports.Crypto
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
@@ -19,14 +21,15 @@ class AndroidCrypto : Crypto {
 
     override fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray =
         Mac.getInstance("HmacSHA256").run {
-            init(SecretKeySpec(key, "HmacSHA256"))
+            // JCA refuses an empty key; HMAC pads a key with zeros to its block (RFC 2104), so one zero byte is the same key.
+            init(SecretKeySpec(key.takeIf { it.isNotEmpty() } ?: ByteArray(1), "HmacSHA256"))
             doFinal(message)
         }
 
-    override fun aesGcmSeal(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray =
+    override fun aesGcmSeal(key: AesKey, nonce: GcmNonce, plaintext: ByteArray): ByteArray =
         gcm(Cipher.ENCRYPT_MODE, key, nonce).doFinal(plaintext)
 
-    override fun aesGcmOpen(key: ByteArray, nonce: ByteArray, sealed: ByteArray): ByteArray? {
+    override fun aesGcmOpen(key: AesKey, nonce: GcmNonce, sealed: ByteArray): ByteArray? {
         if (sealed.size < TAG_BITS / Byte.SIZE_BITS) return null
         return try {
             gcm(Cipher.DECRYPT_MODE, key, nonce).doFinal(sealed)
@@ -35,15 +38,13 @@ class AndroidCrypto : Crypto {
         }
     }
 
-    private fun gcm(mode: Int, key: ByteArray, nonce: ByteArray): Cipher {
-        require(key.size == KEY_LENGTH) { "AES-256 key length ${key.size}" }
+    private fun gcm(mode: Int, key: AesKey, nonce: GcmNonce): Cipher {
         return Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, nonce))
+            init(mode, SecretKeySpec(key.bytes, "AES"), GCMParameterSpec(TAG_BITS, nonce.bytes))
         }
     }
 
     private companion object {
-        const val KEY_LENGTH = 32
         const val TAG_BITS = 128
     }
 }

@@ -380,12 +380,13 @@ question: what could an adapter answer at all? It reads `:domain:ports` by refle
 - `Port.member.param(…)`: the same, for a callback handed to a member.
 - `Port.Handle.member → Variant`: a handle (`Completion`, …) counted under each port that hands it out.
 
-Errors are reduced into values, so a throw is a cell only where the member **declares** it with
-`@Throws` (one `throws` cell, whatever it throws: `AttestStore.token`, `DeviceIntegrity.prove`). A member
-with a default body in the interface is not the adapter's answer, so it gets no cell. The test writes
+A throw is never a cell: a port answers every expected failure as a value in its signature
+(`docs/architecture.md`, "A port answers every expected failure as a value"), and the test **fails** on a
+port member that declares `@Throws` — the one assertion it makes beyond its own scan. A member with a
+default body in the interface is not the adapter's answer, so it gets no cell. The test writes
 `build/reports/port-grid/port-grid.txt`. It also writes an estimate that marks a cell with `~` where a
 port contract's source mentions the member and the variant. That is a mention, not a clause asserting the
-cell. **Report only:** it fails nothing but its own scan.
+cell. Otherwise a **report**: it fails nothing but its own scan and a declared throw.
 
 ### Every clause declares the cells it covers
 
@@ -402,7 +403,7 @@ clause(
 The forms are `answers(member).with(LeafClass::class | ENUM_ENTRY | true | null)`, `.withGenericLeaf(…)`
 (a leaf of a generic sealed type such as `FileResult.Ok`, which the compiler cannot check), `.returns()`,
 `backend(Routes.<Op>.ID, Outcome::class)` for one of the backend's outcomes,
-`.throws()`, `emits(flowMember)` for a `Flow`, `calls(XHandlers::field, args…)` for an event port's
+`emits(flowMember)` for a `Flow`, `calls(XHandlers::field, args…)` for an event port's
 handler, `callsBack(member, "param", args…)` for a callback handed to a member, and `handle<H>()` for a
 handle's members. The port is a reified `on<P>()` because a Kotlin/Native member reference carries only its
 name. The variant is fixed against the member's return type in two steps, so a wrong leaf, enum or `null`
@@ -436,8 +437,7 @@ answers do not depend on the host, and one check keeps the mock and the adapter 
   JVM and Kotlin/Native alike. It wraps what it hands on, too: the handlers passed to `listen` (logged as
   `Port.handlers.field(…)`), the callbacks handed to a member, and the handles a member returns or a
   handler receives (`Completion`, `BackgroundTimeHold`, `LibraryChangeToken`), each under the port that
-  hands it out. A member that declares `@Throws` records `throws` only for the declared type: another
-  throw, or a cancellation, passes unrecorded, and every throw is rethrown unchanged.
+  hands it out. A throw is never recorded — no port declares one — and passes unchanged.
 - Only the clause's **window** counts: from just before its body to the end of the binding's `dispose`.
   What `create` does to enter the state (seeding writes, `listen`) satisfies no claim; a handler the
   adapter calls late, during the body or the disposal, does. A call after the window is dropped. So a
@@ -447,11 +447,9 @@ answers do not depend on the host, and one check keeps the mock and the adapter 
   occurred")`, and a one-of group none of whose cells occurred is `Failed("none of … occurred")`. A cell
   that occurred undeclared is ignored.
 
-Kotlin/Native cannot read `@Throws` at run time, so each proxy names its members' declared types in a
-`THROWS` map. `ProxyCompletenessTest` (`:test:architecture`) holds every proxy to the grid: each grid
-port has one; it drives **every** cell of the grid through it, over a reflective double that answers the
-cell's variant, throws its declared type or calls its handler, callback or handle, and requires exactly
-that cell to be recorded; and each `THROWS` map equals the port's `@Throws` declarations. A proxy for a
+`ProxyCompletenessTest` (`:test:architecture`) holds every proxy to the grid: each grid port has one;
+it drives **every** cell of the grid through it, over a reflective double that answers the cell's
+variant or calls its handler, callback or handle, and requires exactly that cell to be recorded. A proxy for a
 port no contract binds yet is held to the grid all the same. `ProxyRenderingTest` runs the rendering on
 every target `:test:contracts` tests, the iOS simulator included.
 
@@ -504,9 +502,10 @@ No host can enter "protected data unavailable before first unlock", and the reas
 than a gap in the fleet: before first unlock the App-Group file the launch-time adapters read sits in a
 class the OS will not decrypt, so `LaunchMix` refuses and a rig build composes nothing — the observer is
 disabled by the very condition it would observe. A clause conditioned on it has no real host, so it is
-not written. What that state would prove is covered where a host CAN enter it: `AttestStoreContract`'s
-`AN_UNREADABLE_TOKEN_IS_NOT_ABSENCE` and `AN_UNREADABLE_KEY_ID_IS_NOT_ABSENCE`, whose `INACCESSIBLE`
-state is reached on `IOS_SIM_KEXE`, where every `SecItem*` call answers `-25291`.
+not written. What that state would prove is covered where a host CAN enter it: `SecureStoreContract`'s
+`INACCESSIBLE` clauses, reached on `IOS_SIM_KEXE`, where every `SecItem*` call answers `-25291` — the
+store the attestation token and keyId live in (`AttestState`, whose own suite holds that an unreadable
+item is never read as absent).
 
 ### How each host is run
 

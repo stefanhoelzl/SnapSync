@@ -1,7 +1,5 @@
 package app.snapsync.mock
 
-import app.snapsync.contracts.AttestStoreContract
-import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -19,12 +17,10 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.Availability
 import app.snapsync.model.NetworkAccess
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.ProcessInfo
-import app.snapsync.services.trust.CachedAttestStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
@@ -41,59 +37,17 @@ class AttestContractBindingsTest {
         override val reaches = setOf(DeviceIntegrityState.UNAVAILABLE, DeviceIntegrityState.AVAILABLE)
 
         override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =
-            Entered.Ready(inMemoryDeviceIntegrity(available = state == DeviceIntegrityState.AVAILABLE).recorded(log))
-    }
-
-    @Test
-    fun `the in-memory integrity satisfies the DeviceIntegrity contract`() = verify(DeviceIntegrityContract, integrity)
-
-    private val store = object : Binding<AttestStoreState, AttestStore> {
-        override val host = currentHost
-        override val kind = BindingKind.Fake
-        override val reaches = setOf(
-            AttestStoreState.EMPTY,
-            AttestStoreState.HOLDING,
-            AttestStoreState.HOLDING_CONTESTED,
-        )
-
-        override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> = when (state) {
-            AttestStoreState.INACCESSIBLE -> Entered.Unreachable("the in-memory store models no unreadable Keychain")
-            AttestStoreState.EMPTY -> Entered.Ready(inMemoryAttestStore().recorded(log))
-            AttestStoreState.HOLDING, AttestStoreState.HOLDING_CONTESTED -> Entered.Ready(
-                inMemoryAttestStore(AttestStoreContract.seedToken(clauseId), AttestStoreContract.seedKeyId(clauseId))
-                    .recorded(log),
-            )
-        }
-    }
-
-    @Test
-    fun `the in-memory store satisfies the AttestStore contract`() = verify(AttestStoreContract, store)
-
-    /**
-     * Both processes compose the store behind the in-memory token copy ([CachedAttestStore]), so the copy must
-     * keep every promise the store makes — a write reads back, a clear keeps the keyId. The real Keychain's
-     * clauses stay bound to the bare adapter: the copy adds no platform call, and binding it there would change
-     * the recorded call sequence the replay matches.
-     */
-    private val cachedStore = object : Binding<AttestStoreState, AttestStore> {
-        override val host = currentHost
-        override val kind = BindingKind.Fake
-        override val reaches = setOf(
-            AttestStoreState.EMPTY,
-            AttestStoreState.HOLDING,
-            AttestStoreState.HOLDING_CONTESTED,
-        )
-
-        override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> =
-            // The copy is the subject under contract, so it is the one recorded; the store behind it records nowhere.
-            when (val entered = store.create(state, clauseId, CallLog())) {
-                is Entered.Ready -> Entered.Ready(CachedAttestStore(entered.subject).recorded(log), entered.dispose)
-                else -> entered
+            if (state == DeviceIntegrityState.UNUSABLE_KEY) {
+                Entered.Unreachable("the in-memory enclave holds no key it refuses to use")
+            } else {
+                Entered.Ready(
+                    inMemoryDeviceIntegrity(available = state == DeviceIntegrityState.AVAILABLE).recorded(log),
+                )
             }
     }
 
     @Test
-    fun `the in-memory token copy keeps the AttestStore contract`() = verify(AttestStoreContract, cachedStore)
+    fun `the in-memory integrity satisfies the DeviceIntegrity contract`() = verify(DeviceIntegrityContract, integrity)
 
     private val processInfo = object : Binding<ProcessInfoState, ProcessInfo> {
         override val host = currentHost

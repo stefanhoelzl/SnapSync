@@ -57,6 +57,9 @@ class AndroidSystemUi(
                 Handoff.Accepted
             } catch (e: ActivityNotFoundException) {
                 Handoff.Refused("no app claims it: ${e.message}")
+            } catch (e: SecurityException) {
+                // The app that claims it guards the activity with a permission this app does not hold.
+                Handoff.Refused("the app that claims it refused: ${e.message}")
             }
         }
     }

@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -104,6 +105,9 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         } catch (e: IOException) {
             discard(uri)
             return ImportOutcome.Failed("the bytes could not be written: ${e.message}", placeholder = id)
+        } catch (e: SecurityException) {
+            discard(uri)
+            return ImportOutcome.Failed("the item could not be opened for writing: ${e.message}", placeholder = id)
         }
         request.created?.let { stampModified(uri, it) }
         val published = runCatchingCancellable { resolver.update(uri, publishedValues(), null) }.getOrDefault(0)
@@ -185,9 +189,17 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
      */
     private fun stampModified(uri: Uri, created: Instant) {
         val millis = created.toEpochMilliseconds()
-        val path = resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null)
-            ?.use { if (it.moveToFirst()) it.getString(0) else null }
-        if (path == null || !File(path).setLastModified(millis)) log.w { "$uri: the modification time could not be set" }
+        // Best effort, as a missing path already is: the item then keeps the time it was written at.
+        val stamped = try {
+            val path = resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null)
+                ?.use { if (it.moveToFirst()) it.getString(0) else null }
+            path != null && File(path).setLastModified(millis)
+        } catch (e: SecurityException) {
+            false.also { log.w { "$uri: ${e::class.simpleName}: ${e.message}" } }
+        } catch (e: SQLiteException) {
+            false.also { log.w { "$uri: ${e::class.simpleName}: ${e.message}" } }
+        }
+        if (!stamped) log.w { "$uri: the modification time could not be set" }
     }
 
     private fun refused(reason: String) = ImportOutcome.Failed(reason, consumedResources = true)

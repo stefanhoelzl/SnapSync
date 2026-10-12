@@ -236,7 +236,7 @@ class EncryptedTransfersTest {
         val eventKey = decodeEventKey(minted.linkKey)!!
         assertContentEquals(EncryptedFileFormat.keyIdOf(eventKey, Hmac(crypto::hmacSha256)), head.keyId)
         assertContentEquals(
-            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, adFor(DEVICE_A), Hmac(crypto::hmacSha256)),
+            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, adFor(DEVICE_A), Hmac(crypto::hmacSha256)).bytes,
             decodeEventKey(target.headers.getValue(EncryptedFileFormat.FILE_KEY_HEADER)),
             "the one file's key, bound to this resource — never the event key",
         )

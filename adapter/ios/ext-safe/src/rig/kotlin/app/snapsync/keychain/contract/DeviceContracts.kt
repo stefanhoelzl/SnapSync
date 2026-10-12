@@ -2,11 +2,8 @@ package app.snapsync.keychain.contract
 
 import app.snapsync.attest.SystemAppAttestApi
 import app.snapsync.attest.contract.RecordingAppAttestApi
-import app.snapsync.attest.contract.attestStoreInState
 import app.snapsync.attest.contract.integrityInState
 import app.snapsync.config.IosBuildInfo
-import app.snapsync.contracts.AttestStoreContract
-import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
@@ -23,7 +20,6 @@ import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.keychain.SystemKeychainApi
-import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.SecureStore
 import platform.Foundation.NSDate
@@ -71,23 +67,6 @@ internal class DeviceIntegrityBinding(private val recorder: Recorder) : Binding<
 }
 
 /**
- * The real attestation store ([app.snapsync.services.identity.AttestState] over the Keychain) in the entitled
- * app, over the recorded Keychain seam.
- * Replayed on every CI build by `AttestReplayContractTest`, which reuses [attestStoreInState].
- */
-internal class DeviceAttestStoreBinding(private val recorder: Recorder) : Binding<AttestStoreState, AttestStore> {
-    override val host = Host.IOS_DEVICE_APP
-    override val kind = BindingKind.Live
-    override val reaches = setOf(AttestStoreState.EMPTY, AttestStoreState.HOLDING)
-
-    override fun create(state: AttestStoreState, clauseId: String, log: CallLog): Entered<AttestStore> {
-        if (state !in reaches) return Entered.Unreachable(DEVICE_UNREACHABLE_INACCESSIBLE)
-        recorder.open(clauseId)
-        return attestStoreInState(RecordingKeychainApi(SystemKeychainApi, recorder), state, clauseId, log)
-    }
-}
-
-/**
  * The contracts the rig can run on a device, by name — `POST /contract/<name>` (`docs/architecture.md`,
  * "The device run is reached through the rig and contained at compile time").
  *
@@ -101,9 +80,6 @@ fun deviceContracts(): List<InAppContract> = listOf(
     },
     InAppContract(DeviceIntegrityContract.name, Host.IOS_DEVICE_APP) {
         recordOnDevice(DeviceIntegrityContract) { DeviceIntegrityBinding(it) }
-    },
-    InAppContract(AttestStoreContract.name, Host.IOS_DEVICE_APP) {
-        recordOnDevice(AttestStoreContract) { DeviceAttestStoreBinding(it) }
     },
 )
 
