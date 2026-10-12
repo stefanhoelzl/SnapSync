@@ -58,20 +58,20 @@ class ReceivedPhotoAdoptionTest {
 
     private fun ref(asset: String, device: String = other) = AssetRef(device, AssetId(asset))
 
-    private fun unionOf(vararg refs: AssetRef) = refs.map {
+    private fun unionOf(vararg refs: AssetRef, taken: String = date) = refs.map {
         UnionAsset(
             it.sourceDeviceId,
             it.sourceAssetId,
-            date,
+            taken,
             emptyList(),
         )
     }
 
     /** A photo an earlier install received for [ref]: named with its mark. */
-    private fun received(localId: String, ref: AssetRef): GalleryAssetResources =
+    private fun received(localId: String, ref: AssetRef, taken: String = date): GalleryAssetResources =
         LibraryAssets.photo(
             localId,
-            creationDate = date,
+            creationDate = taken,
             resources = listOf(LibraryAssets.primaryResource(ReceivedPhotoName.mark("IMG.HEIC", "k.heic", ref))),
         )
 
@@ -132,6 +132,36 @@ class ReceivedPhotoAdoptionTest {
         )
         assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds(), "and it is never shared back")
         assertEquals(1, world.store.counts("EVENT-1").imported, "it counts as received for this event")
+    }
+
+    @Test
+    fun a_received_photo_from_before_the_event_is_adopted() = runTest {
+        // Capability `receiving-photos`: another member's range reached the week before the event, so a photo they took
+        // then was received — and after a reinstall it is still recognised, never shared back or downloaded again.
+        val before = "2026-05-25T12:00:00Z"
+        val world = World(
+            Result.success(unionOf(ref("A"), taken = before)),
+            listOf(received("L-A", ref("A"), taken = before)),
+        )
+        world.adoption(me).adopt(cfg)
+
+        assertEquals(setOf(ref("A")), world.store.settledAmong(listOf(ref("A"))))
+        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds())
+    }
+
+    @Test
+    fun the_search_spans_the_event_and_every_open_photo_date() {
+        val window = receivedSearchWindow(
+            cfg,
+            unionOf(ref("A"), taken = "2026-05-25T12:00:00Z") + unionOf(ref("B"), taken = "2026-06-12T09:00:00Z") +
+                unionOf(ref("C"), taken = "not a date"),
+        )
+        assertEquals(CaptureDate.parse("2026-05-25T12:00:00Z") to CaptureDate.parse("2026-06-12T09:00:00Z"), window)
+        assertEquals(
+            cfg.startsAt.at to cfg.endsAt.at,
+            receivedSearchWindow(cfg, unionOf(ref("A"))),
+            "never narrower than the event",
+        )
     }
 
     @Test
@@ -376,6 +406,16 @@ class ReceivedPhotoAdoptionTest {
         answer = Result.failure(IllegalStateException("unreachable"))
         adoption.afterSelectionPublished(cfg)
         assertFalse(world.store.recognition.isRecognised(cfg.eventId), "an unreadable union keeps it withheld")
+    }
+
+    @Test
+    fun a_selection_bringing_a_marked_photo_from_before_the_event_withholds_too() = runTest {
+        val world = World(Result.success(emptyList()), emptyList())
+        val adoption = world.adoption(me)
+        adoption.adopt(cfg)
+        val before = received("L-A", ref("A"), taken = "2026-05-25T12:00:00Z")
+        adoption.beforeSelectionPublished(cfg, resourcesFrom(listOf(before)))
+        assertFalse(world.store.recognition.isRecognised(cfg.eventId), "whatever its date")
     }
 
     @Test

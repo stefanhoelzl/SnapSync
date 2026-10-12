@@ -4,11 +4,12 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
- * Capture-date helpers: the one formatter of a capture date's canonical text, the local-pick conversion, the clamps and
- * the deletion witness.
+ * Capture-date helpers: the one formatter of a capture date's canonical text, the local-pick conversion, the
+ * share-range rule and the deletion witness.
  */
 
 /**
@@ -23,39 +24,46 @@ internal fun canonicalText(instant: Instant): String {
 /** A picked **local** wall-clock date-time in the device [zone], as the capture date it names. */
 fun localToCutoff(local: LocalDateTime, zone: TimeZone): CaptureDate = CaptureDate.of(local.toInstant(zone))
 
-/**
- * Clamp a [chosen] cutoff up to the event's [startsAt] **floor** — the effective cutoff is
- * `max(chosen, startsAt)`.
- *
- * This is applied ONCE, at join, and the result is what gets persisted as `EventConfig.minPhotoDate`.
- * Because `startsAt` is immutable, the clamped value is stable for the life of the membership — which is
- * what lets the upload cycle keep filtering on a single cutoff and keeps `startsAt` out of the upload
- * path entirely.
- *
- * It is also the load-bearing half of "nothing syncs before the event starts": a photo's capture date
- * cannot lie in the future, so while `minPhotoDate >= startsAt > now` NO asset satisfies
- * `creationDate >= minPhotoDate`. The gate is a theorem, not a branch.
- *
- * The floor can only ever **narrow** a membership's scope. A host who sets a distant-past start lowers
- * the *default* a joiner sees (which the joiner sees and can override upward); a host can never cause a
- * photo taken before `startsAt` to be uploaded, nor raise a member above the member's own choice.
- */
-fun clampToFloor(chosen: CaptureCutoff, startsAt: EventStart): CaptureCutoff =
-    CaptureCutoff(maxOf(chosen.at, startsAt.at))
+/** Why a chosen capture range cannot be a membership's — see [shareRangeFault]. */
+enum class ShareRangeFault {
+    /** Its end lies before its start. */
+    INVERTED,
+
+    /** It is longer than an event may be ([EVENT_WINDOW_MAX_SECONDS]). */
+    TOO_LONG,
+
+    /** It does not overlap the event's own range `[startsAt, endsAt]`. */
+    OUTSIDE_EVENT,
+}
 
 /**
- * Clamp a [chosen] upper bound down to the event's [endsAt] **ceiling** — the effective upper bound is
- * `min(chosen, endsAt)`. The mirror of [clampToFloor].
+ * The one rule a membership's capture range obeys, or `null` when `[from, until]` obeys it:
+ * no longer than an event may be, and overlapping the event's own range — it MAY start before [startsAt] and end
+ * after [endsAt], as far as the member chose. Both ends are inclusive, so a range touching the event at one instant
+ * overlaps it.
  *
- * Applied ONCE, at join, alongside the floor clamp in the single `JoinEvent` choke point; the result is persisted as
- * `EventConfig.maxPhotoDate`. Because [endsAt] is the host's declared, immutable event window ceiling (creator-chosen
- * at creation), the clamp guarantees the invariant `maxPhotoDate <= endsAt`: the event can only **narrow** a
- * membership's window, never widen it beyond the member's own pick. A photo taken after `endsAt` is not a late event
- * photo but a **non-event** photo, and the window the member is committing to is shown before confirm — so the ceiling
- * is neither coarse nor silent. Every photo `<= endsAt` is still admitted on doubt.
+ * It REFUSES, it never clamps. Every entry path funnels through the join and the reconfigure, which call it, and in a
+ * shipped build none can produce a failing range: the calendar greys out what breaks it, the presets obey it by
+ * construction, and an invite link's range hints are dropped. A failing range is therefore a bug or a rig caller's
+ * mistake, and quietly moving it would join a range nobody chose.
+ *
+ * The length is measured in INSTANTS, as the create screen measures an event's ([EVENT_WINDOW_MAX_SECONDS]): "30
+ * local days" across a daylight-saving change is an hour more or less.
+ *
+ * "Nothing is uploaded before the event starts" does NOT follow from this rule — a floor before the start is allowed.
+ * The membership's policy derivation holds it instead ([selectionRulesFor]).
  */
-fun clampToCeiling(chosen: CaptureCeiling, endsAt: EventEnd): CaptureCeiling =
-    CaptureCeiling(minOf(chosen.at, endsAt.at))
+fun shareRangeFault(
+    from: CaptureCutoff,
+    until: CaptureCeiling,
+    startsAt: EventStart,
+    endsAt: EventEnd,
+): ShareRangeFault? = when {
+    until.at < from.at -> ShareRangeFault.INVERTED
+    until.at.at - from.at.at > EVENT_WINDOW_MAX_SECONDS.seconds -> ShareRangeFault.TOO_LONG
+    until.at < startsAt.at || from.at > endsAt.at -> ShareRangeFault.OUTSIDE_EVENT
+    else -> null
+}
 
 /**
  * Has this membership's own retention deadline passed? [deletesAt] is the server-derived instant persisted on the

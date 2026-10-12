@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupPositionProvider
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.calendar_day_today
+import app.snapsync.ui.components.resources.calendar_event_day
 import app.snapsync.ui.components.resources.calendar_next_month
 import app.snapsync.ui.components.resources.calendar_previous_month
 import app.snapsync.ui.components.resources.calendar_weekdays
@@ -63,8 +65,9 @@ private val DAY_CIRCLE = 32.dp
 
 /**
  * The month grid in **range mode**: the two endpoint days are filled with the brand-green circle, the days
- * strictly between them wear a lighter `primaryContainer` band, and days outside the `[floor, ceiling]`
- * window are greyed and inert: a 7-column Monday-start grid of whole weeks.
+ * strictly between them wear a lighter `primaryContainer` band, days the bounds do not allow are greyed and inert,
+ * and the bounds' marked days (an event's own) carry a dot beneath their number: a 7-column Monday-start grid of whole
+ * weeks.
  */
 @Composable
 internal fun RangeCalendarGrid(
@@ -99,6 +102,7 @@ internal fun RangeCalendarGrid(
                                     isEnd = date == rangeEnd,
                                     inRange = date > rangeStart && date < rangeEnd,
                                     isToday = date == bounds.today,
+                                    isMarked = bounds.marks(date),
                                 ),
                                 enabled = bounds.allows(date),
                                 onClick = { onPick(date) },
@@ -133,8 +137,7 @@ private fun RangeDayCell(
         !enabled -> scheme.onSurfaceVariant.copy(alpha = 0.35f)
         else -> scheme.onSurface
     }
-    val spoken = LocalDateFormats.current.format(LocalDateTime(date, LocalTime(0, 0)), "yMMMMEEEEd")
-    val label = if (position.isToday) stringResource(Res.string.calendar_day_today, spoken) else spoken
+    val label = dayLabel(date, position)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -170,9 +173,38 @@ private fun RangeDayCell(
                 ),
                 color = textColor,
             )
+            if (position.isMarked) MarkDot(onEndpoint = endpoint)
         }
     }
 }
+
+/** A day as it is read out: its full date, then whether it is one of the event's days, then whether it is today. */
+@Composable
+private fun dayLabel(date: LocalDate, position: DayInRange): String {
+    val spoken = LocalDateFormats.current.format(LocalDateTime(date, LocalTime(0, 0)), "yMMMMEEEEd")
+    val marked = if (position.isMarked) stringResource(Res.string.calendar_event_day, spoken) else spoken
+    return if (position.isToday) stringResource(Res.string.calendar_day_today, marked) else marked
+}
+
+/**
+ * The event's own day, beneath whatever range is chosen: a dot under the number, in the number's colour so it reads
+ * on the filled endpoint as on a plain day.
+ */
+@Composable
+private fun BoxScope.MarkDot(onEndpoint: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 3.dp)
+            .size(MARK_DOT)
+            .clip(CircleShape)
+            .background(if (onEndpoint) scheme.onPrimary else scheme.primary),
+    )
+}
+
+/** The dot that marks an event's own day. */
+private val MARK_DOT = 4.dp
 
 /**
  * Centres the picker horizontally on the anchor (a pane-wide `Box`, so this is the pane's centre) and
@@ -265,10 +297,11 @@ internal fun WeekdayHeader() {
 }
 
 /**
- * What a calendar month is bounded by: today (ringed), and the selectable window's ends.
+ * What a calendar month is bounded by: today (ringed), the selectable window's ends, the days inside it that are not
+ * selectable all the same ([gap]), and the days it marks ([marked]).
  *
- * The three travel together: a `floor`/`ceiling` pair separated from the `today` it is compared against is
- * easy to hand over in the wrong order, since all three are `LocalDate`.
+ * They travel together: a `floor`/`ceiling` pair separated from the `today` it is compared against is
+ * easy to hand over in the wrong order, since all of them are `LocalDate`s.
  *
  * A null bound means unbounded on that side, not "unknown": the create surface has no window at all.
  */
@@ -276,12 +309,17 @@ internal class CalendarBounds(
     val today: LocalDate,
     val floor: LocalDate? = null,
     val ceiling: LocalDate? = null,
+    val gap: ClosedRange<LocalDate>? = null,
+    val marked: ClosedRange<LocalDate>? = null,
 ) {
     /**
      * Whether a day is selectable; a null bound is unbounded, so it admits.
      */
     fun allows(date: LocalDate): Boolean =
-        (floor == null || date >= floor) && (ceiling == null || date <= ceiling)
+        (floor == null || date >= floor) && (ceiling == null || date <= ceiling) && gap?.contains(date) != true
+
+    /** Whether a day is one of the [marked] ones. */
+    fun marks(date: LocalDate): Boolean = marked?.contains(date) == true
 }
 
 /**
@@ -296,6 +334,8 @@ internal class DayInRange(
     val isEnd: Boolean,
     val inRange: Boolean,
     val isToday: Boolean,
+    /** One of the event's own days, marked beneath the range (see [CalendarBounds.marked]). */
+    val isMarked: Boolean = false,
 )
 
 /** Any Monday: the header names a week's days from it. */

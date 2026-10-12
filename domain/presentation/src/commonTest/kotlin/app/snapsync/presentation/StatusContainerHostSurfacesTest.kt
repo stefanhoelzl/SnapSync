@@ -429,7 +429,7 @@ class StatusContainerHostSurfacesTest {
 
         val form = host.reconfigureForm()
         // Cutoff on the floor and ceiling on the event end → the whole event, the window's own bounds.
-        assertEquals(RangeChoice.WHOLE_EVENT, form.preset)
+        assertEquals(RangeChoice.EVENT_START, form.preset)
         assertEquals(form.windowStart to form.windowEnd, form.from to form.until)
         assertTrue(form.shareOn)
         assertTrue(form.receiveOn)
@@ -569,7 +569,7 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy, config = MutableStateFlow(narrowed)) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onRangePreset(RangeChoice.WHOLE_EVENT)
+            host.form.onRangePreset(RangeChoice.EVENT_START)
             awaitReconfigures(spy, 1)
             assertEquals(CONFIG.minPhotoDate, spy.reconfigures.single().from, "widened to the event's start")
 
@@ -702,13 +702,13 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
             host.surfaces.onOpenReconfigure()
             assertEquals(RangeChoice.CUSTOM, host.reconfigureForm().preset)
-            host.form.onRangePreset(RangeChoice.WHOLE_EVENT)
+            host.form.onRangePreset(RangeChoice.EVENT_START)
             awaitReconfigures(spy, 1)
             assertEquals(
                 CONFIG.minPhotoDate to CONFIG.maxPhotoDate,
                 spy.reconfigures.single().let { it.from to it.until },
             )
-            host.stateWhere("the whole event shown") { it.settings()?.range?.preset == RangeChoice.WHOLE_EVENT }
+            host.stateWhere("the whole event shown") { it.settings()?.range?.preset == RangeChoice.EVENT_START }
         }
     }
 

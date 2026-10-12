@@ -179,7 +179,7 @@ class EventConfigTest {
         )
         assertEquals(
             listOf<SelectionRule>(SelectionRule.DenyAll),
-            selectionRulesFor(config, { emptySet() }, { emptySet() }),
+            selectionRulesFor(config, CaptureDate.parse("2026-08-01T00:00:00Z"), { emptySet() }, { emptySet() }),
         )
     }
 
@@ -344,5 +344,49 @@ class EventConfigTest {
         assertEquals(true, "2026-07-06T14:32:11Z" >= "")
         assertEquals(true, "" >= "")
         assertEquals(false, "" >= "2026-07-06T14:32:11Z")
+    }
+
+    // ── the start gate (capability `photo-sharing`, "Nothing is shared before the event starts") ──
+
+    private val startsBefore = EventConfig(
+        "E",
+        "E",
+        captureCutoff("2026-07-08T18:00:00Z"),
+        startsAt = eventStart("2026-07-10T18:00:00Z"),
+        endsAt = eventEnd("2026-07-12T18:00:00Z"),
+        maxPhotoDate = captureCeiling("2026-07-12T18:00:00Z"),
+        deletesAt = deletesAt("2026-08-12T18:00:00Z"),
+    )
+
+    @Test
+    fun `before the start a floor reaching before it is held at the start`() {
+        assertEquals(
+            CaptureCutoff(startsBefore.startsAt.at),
+            startsBefore.sharingFloor(CaptureDate.parse("2026-07-09T12:00:00Z")),
+        )
+    }
+
+    @Test
+    fun `from the start on the member's own floor applies`() {
+        assertEquals(startsBefore.minPhotoDate, startsBefore.sharingFloor(CaptureDate.parse("2026-07-10T18:00:00Z")))
+        assertEquals(startsBefore.minPhotoDate, startsBefore.sharingFloor(CaptureDate.parse("2026-07-20T00:00:00Z")))
+    }
+
+    @Test
+    fun `a floor after the start is never lowered`() {
+        val late = startsBefore.copy(minPhotoDate = captureCutoff("2026-07-11T09:00:00Z"))
+        assertEquals(late.minPhotoDate, late.sharingFloor(CaptureDate.parse("2026-07-09T12:00:00Z")))
+        assertEquals(late.minPhotoDate, late.sharingFloor(CaptureDate.parse("2026-07-11T12:00:00Z")))
+    }
+
+    @Test
+    fun `the policy before the start admits no photo — however early the member's range starts`() = runTest {
+        val rules = selectionRulesFor(
+            startsBefore,
+            CaptureDate.parse("2026-07-09T12:00:00Z"),
+            { emptySet() },
+            { emptySet() },
+        )
+        assertTrue(SelectionRule.CaptureAfter(CaptureCutoff(startsBefore.startsAt.at)) in rules, "$rules")
     }
 }

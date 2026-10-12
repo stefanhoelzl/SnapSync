@@ -12,14 +12,17 @@ import kotlinx.serialization.Serializable
  * deliberately have none — `:domain:presentation` is Compose-free and `:ui:components` knows nothing of
  * the reduction.
  *
- * One preset, not a start list and an end list: the surface offers exactly three choices, and the model
+ * One preset, not a start list and an end list: the surface offers exactly three choices, side by side, and the model
  * has exactly three values — a start preset crossed with an end preset admitted combinations no surface
  * offered any more (decision record `simplify-join-screen`, D1).
  */
 @Serializable
 enum class RangeChoice {
-    /** The whole event window — the default, and the widest a range can be. */
-    WHOLE_EVENT,
+    /**
+     * From the event's start until its end — exactly the event's own dates, and the default. Not "the whole event": a
+     * custom range may reach outside the event's dates, so this is not the widest a range can be.
+     */
+    EVENT_START,
 
     /**
      * From the present instant until the event's end. Offered only while the present is INSIDE the event
@@ -27,6 +30,9 @@ enum class RangeChoice {
      */
     FROM_NOW,
 
-    /** A range the member picked on the calendar, bounded to the window. */
+    /**
+     * A range the member picked on the calendar — at most an event's length and overlapping the event, and it MAY
+     * reach outside the event's dates.
+     */
     CUSTOM,
 }

@@ -15,8 +15,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
-private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+/** Every membership carries a concrete capture-date ceiling (capability `join-event`): here the event's end. */
+private val FIXTURE_CEILING = captureCeiling("2026-07-08T12:00:00Z")
 
 class ReconfigureEventTest {
 
@@ -28,7 +28,7 @@ class ReconfigureEventTest {
         if (fails) it.store.failSaves()
     }
 
-    // A joined membership on event E1, started 2026-07-06T12:00:00Z, cutoff already at the floor.
+    // A joined membership on event E1, from 2026-07-06T12:00:00Z to 2026-07-08T12:00:00Z, sharing all of it.
     private fun current(
         eventId: String = "E1",
         direction: Direction = Direction.Both,
@@ -42,7 +42,7 @@ class ReconfigureEventTest {
         maxPhotoDate = FIXTURE_CEILING,
         direction = direction,
         saveToAlbum = saveToAlbum,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
+        endsAt = eventEnd("2026-07-08T12:00:00Z"),
         deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
@@ -164,16 +164,54 @@ class ReconfigureEventTest {
     }
 
     @Test
-    fun `a chosen cutoff below the floor is clamped up to startsAt`() = runTest {
+    fun `a start before the event's start is kept as chosen`() = runTest {
+        // Capability `manage-membership`: a changed range follows the join rule and may reach outside the event.
+        val store = ConfigWrites()
+        val outcome = make(Membership(current()), store).reconfigure(
+            eventId = "E1",
+            direction = Direction.Both,
+            chosenCutoff = captureCutoff("2026-07-05T09:00:00Z"), // the day before the event
+            chosenUpper = FIXTURE_CEILING,
+            saveToAlbum = false,
+        )
+        assertEquals(ReconfigureOutcome.Saved, outcome)
+        assertEquals(captureCutoff("2026-07-05T09:00:00Z"), store.saved!!.minPhotoDate)
+    }
+
+    @Test
+    fun `an end after the event's end is kept as chosen`() = runTest {
         val store = ConfigWrites()
         make(Membership(current()), store).reconfigure(
             eventId = "E1",
             direction = Direction.Both,
-            chosenCutoff = captureCutoff("2026-07-01T00:00:00Z"), // before the event start
-            chosenUpper = FIXTURE_CEILING,
+            chosenCutoff = captureCutoff("2026-07-06T12:00:00Z"),
+            chosenUpper = captureCeiling("2026-07-10T12:00:00Z"),
             saveToAlbum = false,
         )
-        assertEquals(captureCutoff("2026-07-06T12:00:00Z"), store.saved!!.minPhotoDate)
+        assertEquals(captureCeiling("2026-07-10T12:00:00Z"), store.saved!!.maxPhotoDate)
+    }
+
+    @Test
+    fun `a range breaking the rule is refused and changes nothing`() = runTest {
+        for ((from, until) in listOf(
+            "2026-05-01T00:00:00Z" to "2026-07-08T12:00:00Z", // longer than an event may be
+            "2026-07-01T00:00:00Z" to "2026-07-02T00:00:00Z", // misses the event
+        )) {
+            val store = ConfigWrites()
+            val order = mutableListOf<String>()
+            var bumps = 0
+            val outcome = make(Membership(current()), store, order, bumpManifestVersion = { bumps++ }).reconfigure(
+                eventId = "E1",
+                direction = Direction.Both,
+                chosenCutoff = captureCutoff(from),
+                chosenUpper = captureCeiling(until),
+                saveToAlbum = false,
+            )
+            assertEquals(ReconfigureOutcome.Refused, outcome, "$from..$until")
+            assertNull(store.saved, "nothing is saved for $from..$until")
+            assertEquals(0, bumps)
+            assertTrue(order.isEmpty(), "no effect runs for $from..$until")
+        }
     }
 
     @Test

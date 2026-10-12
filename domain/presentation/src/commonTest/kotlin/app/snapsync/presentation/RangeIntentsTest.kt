@@ -127,7 +127,7 @@ class RangeIntentsTest {
             containerHost.onIntent(UiIntent.RangePickerDismiss)
             testScheduler.runCurrent()
             assertNull(shownRange().picker, "Cancel closes the calendar")
-            assertEquals(RangeChoice.WHOLE_EVENT, shownRange().preset, "and changes nothing")
+            assertEquals(RangeChoice.EVENT_START, shownRange().preset, "and changes nothing")
 
             containerHost.onIntent(UiIntent.RangePickerOpen)
             testScheduler.runCurrent()
@@ -152,9 +152,9 @@ class RangeIntentsTest {
             // A preset closes the calendar it sits on.
             containerHost.onIntent(UiIntent.RangePickerOpen)
             testScheduler.runCurrent()
-            containerHost.onIntent(UiIntent.RangePreset(RangeChoice.WHOLE_EVENT))
+            containerHost.onIntent(UiIntent.RangePreset(RangeChoice.EVENT_START))
             testScheduler.runCurrent()
-            awaitShown { it.joining?.range?.preset == RangeChoice.WHOLE_EVENT }
+            awaitShown { it.joining?.range?.preset == RangeChoice.EVENT_START }
             assertNull(shownRange().picker)
             cancelAndIgnoreRemainingItems()
         }

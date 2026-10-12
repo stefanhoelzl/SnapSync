@@ -17,8 +17,8 @@ import kotlinx.serialization.Transient
  * [minPhotoDate] is likewise a **dev/test** key (default absent): a capture-date cutoff (UTC `…Z` string) that, on an
  * auto-confirmed join, forces a specific lower bound so a headless launch can observe date filtering. [maxPhotoDate] is
  * likewise a **dev/test** key (default absent): the capture-date **ceiling** (UTC `…Z` string) that, on an
- * auto-confirmed join, forces a specific upper bound — clamped to the event `endsAt` on the far side in `JoinEvent`,
- * exactly as [minPhotoDate] is clamped to the floor — so a headless launch can exercise the upper end of the range.
+ * auto-confirmed join, forces a specific upper bound — held to the share-range rule on the far side in `JoinEvent`,
+ * exactly as [minPhotoDate] is — so a headless launch can exercise the upper end of the range.
  * [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one of the
  * [Direction.wire] tokens `both`/`upload`/`download` — that, on an auto-confirmed join, forces the membership's
  * direction so a headless launch can exercise upload-only / download-only without a tap. [saveToAlbum] is likewise a
@@ -50,6 +50,25 @@ class EventLinkPayload(
 fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
 
 /**
+ * Whether this membership's OWN capture range has ended at [now] — strictly after its [EventConfig.maxPhotoDate] —
+ * which is when its share may be settled. For most members it is the event's end; earlier for a range that ends before
+ * it, later for one that ends after it.
+ */
+fun EventConfig.shareHasEnded(now: CaptureDate): Boolean = now > maxPhotoDate.at
+
+/**
+ * The capture floor this membership shares from at [now] — nothing is shared before the event starts: its own
+ * [EventConfig.minPhotoDate] once the event has started, and never earlier than the event's start before then.
+ *
+ * A member's range MAY start before the event (`shareRangeFault`), so the old theorem — a floor at or after a future
+ * start admits no photo, since no photo is taken in the future — no longer holds on its own. Raising the floor to the
+ * start while the start lies ahead restores it exactly; from the start on, the photos taken before it come into scope
+ * on the next ordinary occasion, with no wake-up of their own.
+ */
+fun EventConfig.sharingFloor(now: CaptureDate): CaptureCutoff =
+    if (now < startsAt.at) CaptureCutoff(maxOf(minPhotoDate.at, startsAt.at)) else minPhotoDate
+
+/**
  * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined `eventId`, the
  * human-readable event `name`, and this device's chosen capture-date [minPhotoDate] cutoff for the event. The name is
  * **required, with no default**: the join gate only provisions from a loaded phase that carries a name, and the backend
@@ -78,10 +97,9 @@ fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
  * cutoff.)
  *
  * [startsAt] is the **event's** start date — set once by the host at creation, immutable, and the same canonical `…Z`
- * shape as [minPhotoDate]. It is both the **default** and the **floor** for this membership's cutoff: the persisted
- * [minPhotoDate] is always `max(chosen, startsAt)` (the clamp lives in `JoinEvent`), so the invariant
- * `minPhotoDate >= startsAt` holds for every config. It is what the not-started status line compares against
- * (`startsAt > now`).
+ * shape as [minPhotoDate]. It is the **default** for this membership's cutoff, which the member MAY move before it
+ * (`shareRangeFault`, applied in `JoinEvent` and `ReconfigureEvent`). It is what holds "nothing is shared before the
+ * event starts" ([sharingFloor]) and what the not-started status line compares against (`startsAt > now`).
  *
  * Unlike [minPhotoDate], [startsAt] **defaults** — to [minPhotoDate] — so a config persisted before this
  * field existed decodes instead of failing. That asymmetry is deliberate and the reasoning is *not*
@@ -90,19 +108,18 @@ fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
  * **only** holder of the `eventId`, and the invite QR is derived from it, so a decode failure destroys
  * the member's event id *and* their QR with nothing in the app to surface either back; a host who is the
  * only member yet would be locked out of their own event permanently, its uploaded photos stranded.
- * [minPhotoDate] is the right default because it is the only value **guaranteed** consistent with the
- * floor invariant (satisfying it with equality), and because it lands the not-started state correctly by
- * construction: a legacy member joined an event that had already begun, so their cutoff was at or before
+ * [minPhotoDate] is the right default because it changes nothing a legacy member shares (their cutoff was held at
+ * or after the start when they joined), and because it lands the not-started state correctly by construction:
+ * a legacy member joined an event that had already begun, so their cutoff was at or before
  * "now" when they picked it, so the derived [startsAt] is never in the future.
  *
  * (The `@Serializable` plugin honours a default that references an **earlier** constructor parameter —
  * verified by `EventConfigTest`. [startsAt] must therefore stay declared *after* [minPhotoDate].)
  *
  * [endsAt] is the **event's** end date — the host's declared, immutable event window ceiling, same canonical `…Z` shape
- * as [startsAt]. It is the ceiling the membership's upper bound is clamped to, the default upper bound a joiner sees,
- * and what the "Event ended" status line compares against (`now > endsAt`). [maxPhotoDate] is this membership's chosen
- * capture-date **upper** bound, always clamped to `min(chosen, endsAt)` at join (the clamp lives in `JoinEvent`), so
- * `maxPhotoDate <= endsAt` holds for every config that has one.
+ * as [startsAt]. It is the default upper bound a joiner sees and what the "Event ended" status line compares against
+ * (`now > endsAt`). [maxPhotoDate] is this membership's chosen capture-date **upper** bound, which MAY lie after
+ * [endsAt]: the share-range rule (`shareRangeFault`) bounds the range by its length and its overlap with the event.
  *
  * [maxPhotoDate] is **required and non-null, with no default** — like [minPhotoDate], and this **reverses**
  * the allowance it shipped with. A membership persisted before the ceiling existed used to decode with a
@@ -117,7 +134,7 @@ fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
  * on this controlled, internal install base, and a device reset clears any holdout.
  *
  * [endsAt] stays nullable, deliberately. It is the *event's* fact rather than the membership's bound: it
- * feeds the "Event ended" line and gives the reconfigure surface something to clamp against, and neither
+ * feeds the "Event ended" line and gives the share-range rule the event to overlap, and neither
  * failure is worth a decode failure. Its backfill stays.
  *
  * [deletesAt] is when the backend deletes the event's shared data — a canonical `…Z` instant **derived server-side**

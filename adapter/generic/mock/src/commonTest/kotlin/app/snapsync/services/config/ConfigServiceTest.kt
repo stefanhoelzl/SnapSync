@@ -224,7 +224,7 @@ class ConfigServiceTest {
         val service = service()
         assertNull(service.activeEventId())
         assertNull(service.downloadsEnabled(), "not joined is neither yes nor no")
-        assertFalse(service.freshReadHasEnded())
+        assertFalse(service.freshReadShareHasEnded())
     }
 
     @Test
@@ -235,16 +235,22 @@ class ConfigServiceTest {
     }
 
     @Test
-    fun `a fresh read says whether the joined range has ended`() {
-        assertFalse(joined(SEED).freshReadHasEnded())
-        assertTrue(joined(SEED.copy(endsAt = EventEnd(CaptureDate.parse("2026-06-01T00:00:00Z")))).freshReadHasEnded())
+    fun `a fresh read says whether the membership's own range has ended`() {
+        // Capability `event-lifetime`: a share is settled at the member's own end, not the event's.
+        val june1 = CaptureDate.parse("2026-06-01T00:00:00Z")
+        assertFalse(joined(SEED).freshReadShareHasEnded())
+        assertTrue(joined(SEED.copy(maxPhotoDate = CaptureCeiling(june1))).freshReadShareHasEnded(), "ended early")
+        assertFalse(
+            joined(SEED.copy(endsAt = EventEnd(june1))).freshReadShareHasEnded(),
+            "the event ended, but the member's range reaches past it",
+        )
     }
 
     @Test
     fun `an unreadable config has not ended`() {
-        stored(SEED.copy(endsAt = EventEnd(CaptureDate.parse("2026-06-01T00:00:00Z"))))
+        stored(SEED.copy(maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-06-01T00:00:00Z"))))
         databases.operator.lock()
-        assertFalse(service().freshReadHasEnded())
+        assertFalse(service().freshReadShareHasEnded())
     }
 }
 

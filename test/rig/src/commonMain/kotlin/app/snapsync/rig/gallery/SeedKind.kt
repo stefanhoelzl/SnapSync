@@ -29,8 +29,8 @@ enum class SeedKind {
      * - and the bulk seed's assets are dated 2001, so the **cutoff** excludes them before the origin
      *   rules are ever consulted.
      *
-     * Dating them ahead of *now* puts them past any cutoff an event created today can carry (the cutoff is
-     * clamped to `max(chosen, startsAt)`), so the **only** thing that can separate
+     * Dating them ahead of *now* puts them past the cutoff of an event created today with its default range
+     * (the cutoff is the event's start), so the **only** thing that can separate
      * them is the resolution floor. One seed then answers every question at once: the walk returns assets
      * (the predicate is not silently empty), exactly the below-floor half is origin-excluded, `N` counts
      * only the rest, and only the rest uploads.

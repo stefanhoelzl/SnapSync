@@ -22,11 +22,15 @@ import co.touchlab.kermit.Logger
  * the tail's end runs [finish] once. It does, in order:
  *
  * 1. **Delivers the leaves the backend has not confirmed** ([PendingLeaves]) — a leave made offline must still count.
- * 2. Nothing more while the event's range has not ended — nobody can be done before it — or once its photos are
- *    known to be deleted.
- * 3. **Settles this device's share** ([publishFinal]) when its last published manifest is not yet marked final — the
- *    upload cycle marks it once the range has ended, but under a partial grant the tail itself publishes nothing, so
- *    this is what makes sure every device eventually says "settled".
+ * 2. Nothing more while neither this membership's own range nor the event's has ended — nobody can be done before
+ *    either — or once its photos are known to be deleted.
+ * 3. **Settles this device's share** ([publishFinal]) once the membership's OWN range has ended and its last published
+ *    manifest is not yet marked final — the upload cycle marks it then, but under a partial grant the tail itself
+ *    publishes nothing, so this is what makes sure every device eventually says "settled". A range that ends before
+ *    the event settles early; one that ends after it settles late, and is not done before.
+ *
+ *    Everything below waits for the EVENT's end: receiving does not depend on the member's own range, and the others'
+ *    photos may arrive until the event ends.
  * 4. **Reads the event's state** ([EventDirectory]) and folds it through the one [MembershipRefresh] rule — which marks
  *    a deleted event. A **bounded** step — a wake that is not a push, an opening or a join — reads it at most once an
  *    hour per event ([EventChecks]; decision record `changes/timely-background-receiving`, D5).
@@ -85,16 +89,16 @@ class EventCompletion(
         pendingLeaves.deliverAll() // never raises: what it cannot read or confirm waits for the next wake
         val current = config.config.value ?: return CompletionOutcome.NOT_JOINED
         if (current.deleted) return CompletionOutcome.DELETED
-        if (!config.hasEnded(current)) return CompletionOutcome.NOT_ENDED
         val eventId = current.eventId
 
-        if (published(eventId)?.final != true) {
+        if (config.shareHasEnded(current) && published(eventId)?.final != true) {
             runCatchingCancellable { publishFinal() }.onFailure {
                 log.w(
                     it,
                 ) { "settling the share failed; next wake retries" }
             }
         }
+        if (!config.hasEnded(current)) return CompletionOutcome.NOT_ENDED
 
         if (bounded && !checks.due(EventCheck.CLOSE, eventId)) {
             log.i { "the event's state was read within the hour — this wake reads none" }

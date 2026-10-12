@@ -37,7 +37,7 @@ data class RangeForm(
     val receiveOn: Boolean = true,
     val saveToAlbum: Boolean = true,
     val albumKind: AlbumKind = AlbumKind.COLLECTION,
-    val preset: RangeChoice = RangeChoice.WHOLE_EVENT,
+    val preset: RangeChoice = RangeChoice.EVENT_START,
     /** The picked start behind [RangeChoice.CUSTOM]; `null` resolves to the window's start. */
     val customFrom: LocalDateTime? = null,
     /** The picked end behind [RangeChoice.CUSTOM]; `null` resolves to the window's end. */

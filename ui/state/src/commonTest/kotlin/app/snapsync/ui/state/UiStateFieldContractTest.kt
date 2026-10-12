@@ -120,8 +120,12 @@ class UiStateFieldContractTest {
                 untilMinute = 0,
                 fromTimes = null,
                 firstDay = LocalDate(2026, 7, 1),
+                firstEndDay = LocalDate(2026, 7, 10),
+                markedDays = DaySpan(LocalDate(2026, 7, 10), LocalDate(2026, 7, 12)),
             ),
+            optional = setOf("firstEndDay", "markedDays"),
         )
+        assertFieldContract(DaySpan.serializer(), DaySpan(LocalDate(2026, 7, 10), LocalDate(2026, 7, 12)))
         assertFieldContract(TimeSpan.serializer(), TimeSpan(LocalTime(0, 0), LocalTime(23, 59)))
         assertFieldContract(CreateStep.Complete.serializer(), CreateStep.Complete(CoarseDuration.Weeks(2)))
         assertFieldContract(
@@ -188,8 +192,8 @@ class UiStateFieldContractTest {
         assertFieldContract(JoinStage.Loaded.serializer(), JoinStage.Loaded(detailed, range))
         assertFieldContract(
             RangeView.serializer(),
-            range.copy(picker = FRESH_CREATE_FORM.picker),
-            optional = setOf("picker"),
+            range.copy(picker = FRESH_CREATE_FORM.picker, outside = OutsideReach.BEFORE),
+            optional = setOf("picker", "outside"),
         )
         assertFieldContract(ShareCount.Ready.serializer(), ShareCount.Ready(3))
     }

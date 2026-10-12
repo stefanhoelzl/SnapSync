@@ -12,4 +12,10 @@ enum class ReconfigureOutcome {
 
     /** The surface was opened for a membership that is no longer current; nothing was changed. */
     NotCurrent,
+
+    /**
+     * The chosen range breaks the share-range rule (`shareRangeFault`): nothing was changed. The calendar cannot
+     * produce one, so the settings show it as a change that could not be saved.
+     */
+    Refused,
 }

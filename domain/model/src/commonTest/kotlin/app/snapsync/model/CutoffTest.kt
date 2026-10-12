@@ -5,7 +5,9 @@ import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 class CutoffTest {
@@ -41,108 +43,76 @@ class CutoffTest {
         assertTrue(CaptureDate.parse("2026-07-06T16:32:12+02:00") > cutoff, "an offset is no string to mis-sort")
     }
 
-    // ── the event-start floor (capability `photo-sharing`) ─────────────────────────────────────
+    // ── the share-range rule (capability `join-event`) ─────────────────────────────────────────
 
+    // An event from Tuesday 18:00 to the next Tuesday 18:00.
     private val startsAt = eventStart("2026-07-14T18:00:00Z")
+    private val endsAt = eventEnd("2026-07-21T18:00:00Z")
+
+    private fun fault(from: String, until: String) =
+        shareRangeFault(captureCutoff(from), captureCeiling(until), startsAt, endsAt)
 
     @Test
-    fun `a cutoff below the event start is clamped up to it`() {
+    fun `the event's own range obeys the rule`() {
+        assertNull(fault("2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z"))
+    }
+
+    @Test
+    fun `a range may reach before the start and after the end`() {
+        assertNull(fault("2026-07-13T09:00:00Z", "2026-07-21T18:00:00Z"), "the evening before")
+        assertNull(fault("2026-07-14T18:00:00Z", "2026-07-23T18:00:00Z"), "two days after")
+        assertNull(fault("2026-07-10T00:00:00Z", "2026-07-25T00:00:00Z"), "both")
+    }
+
+    @Test
+    fun `a range exactly as long as an event may be obeys it — a second more does not`() {
+        val from = CaptureDate.parse("2026-07-01T00:00:00Z")
+        val longest = CaptureDate.of(from.at + EVENT_WINDOW_MAX_SECONDS.seconds)
+        assertNull(shareRangeFault(CaptureCutoff(from), CaptureCeiling(longest), startsAt, endsAt))
         assertEquals(
-            CaptureCutoff(startsAt.at),
-            clampToFloor(chosen = captureCutoff("2026-07-14T12:00:00Z"), startsAt = startsAt),
-        )
-        assertEquals(
-            CaptureCutoff(startsAt.at),
-            clampToFloor(chosen = captureCutoff("2001-01-01T00:00:00Z"), startsAt = startsAt),
+            ShareRangeFault.TOO_LONG,
+            shareRangeFault(
+                CaptureCutoff(from),
+                CaptureCeiling(CaptureDate.of(longest.at + 1.seconds)),
+                startsAt,
+                endsAt,
+            ),
         )
     }
 
     @Test
-    fun `a cutoff at or above the event start is honored unchanged`() {
-        assertEquals(CaptureCutoff(startsAt.at), clampToFloor(chosen = CaptureCutoff(startsAt.at), startsAt = startsAt))
-        assertEquals(
-            captureCutoff("2026-07-14T21:00:00Z"),
-            clampToFloor(chosen = captureCutoff("2026-07-14T21:00:00Z"), startsAt = startsAt),
-            "the member chooses freely ABOVE the floor",
-        )
+    fun `a range touching the event at one instant overlaps it`() {
+        assertNull(fault("2026-07-10T00:00:00Z", "2026-07-14T18:00:00Z"), "ends at the start")
+        assertNull(fault("2026-07-21T18:00:00Z", "2026-07-25T00:00:00Z"), "starts at the end")
     }
 
     @Test
-    fun `the floor only ever narrows scope`() {
-        // The whole safety argument in one assertion: whatever the member (or a hostile deeplink) picks,
-        // the persisted cutoff is never EARLIER than the event's start — so no photo taken before the
-        // event began can be uploaded to it.
-        val picks =
-            listOf(
-                captureCutoff("2001-01-01T00:00:00Z"),
-                CaptureCutoff(startsAt.at),
-                captureCutoff("2099-12-31T23:59:59Z"),
-            )
-        for (chosen in picks) {
-            assertTrue(
-                clampToFloor(chosen, startsAt).at >= startsAt.at,
-                "clamp($chosen) must not fall below the floor",
-            )
-        }
+    fun `a range that misses the event is refused`() {
+        assertEquals(ShareRangeFault.OUTSIDE_EVENT, fault("2026-07-10T00:00:00Z", "2026-07-14T17:59:59Z"))
+        assertEquals(ShareRangeFault.OUTSIDE_EVENT, fault("2026-07-21T18:00:01Z", "2026-07-25T00:00:00Z"))
+    }
+
+    @Test
+    fun `an inverted range is refused`() {
+        assertEquals(ShareRangeFault.INVERTED, fault("2026-07-16T00:00:00Z", "2026-07-15T00:00:00Z"))
+    }
+
+    @Test
+    fun `a whole camera roll is never a range`() {
+        // The promise the old floor kept, now kept by the length: years of photos cannot be one membership's range.
+        assertEquals(ShareRangeFault.TOO_LONG, fault("2001-01-01T00:00:00Z", "2026-07-21T18:00:00Z"))
     }
 
     @Test
     fun `the empty-string cutoff cannot be constructed`() {
         // "" is the trapdoor to whole-library scope (every string is >= ""). A membership's dates hold an instant by
-        // construction, so it never reaches the clamp — nor does any other off-shape value, for any of the four roles.
+        // construction, so it never reaches the share-range rule — nor does any other off-shape value, for any of the
+        // four roles.
         for (bad in listOf("", "not-a-date")) {
             assertFailsWith<IllegalArgumentException> { captureCutoff(bad) }
             assertFailsWith<IllegalArgumentException> { captureCeiling(bad) }
             assertFailsWith<IllegalArgumentException> { eventStart(bad) }
             assertFailsWith<IllegalArgumentException> { eventEnd(bad) }
-        }
-    }
-
-    @Test
-    fun `a future event start clamps every choice into the future`() {
-        // This is what makes "nothing syncs before the event starts" a theorem rather than a gate: a
-        // photo's creationDate cannot be in the future, so a future cutoff admits nothing.
-        val future = eventStart("2099-12-31T23:59:59Z")
-        assertEquals(
-            CaptureCutoff(future.at),
-            clampToFloor(chosen = captureCutoff("2026-07-14T12:00:00Z"), startsAt = future),
-        )
-        assertTrue(CaptureDate.parse("2026-07-14T12:00:00Z") < future.at, "no photo of today satisfies a 2099 cutoff")
-    }
-
-    private val endsAt = eventEnd("2026-07-21T18:00:00Z")
-
-    @Test
-    fun `an upper bound above the event end is clamped down to it`() {
-        assertEquals(
-            CaptureCeiling(endsAt.at),
-            clampToCeiling(chosen = captureCeiling("2026-07-31T00:00:00Z"), endsAt = endsAt),
-        )
-        assertEquals(
-            CaptureCeiling(endsAt.at),
-            clampToCeiling(chosen = captureCeiling("2099-01-01T00:00:00Z"), endsAt = endsAt),
-        )
-    }
-
-    @Test
-    fun `an upper bound at or below the event end is honored unchanged`() {
-        assertEquals(CaptureCeiling(endsAt.at), clampToCeiling(chosen = CaptureCeiling(endsAt.at), endsAt = endsAt))
-        assertEquals(
-            captureCeiling("2026-07-18T09:00:00Z"),
-            clampToCeiling(chosen = captureCeiling("2026-07-18T09:00:00Z"), endsAt = endsAt),
-        )
-    }
-
-    @Test
-    fun `the ceiling only ever narrows scope`() {
-        // Mirror of the floor property: the persisted upper bound is never ABOVE the event end, whatever
-        // the member picked — so the event can only narrow a membership's window, never widen it.
-        for (chosen in listOf(
-            captureCeiling("2026-07-14T00:00:00Z"),
-            CaptureCeiling(endsAt.at),
-            captureCeiling("2030-01-01T00:00:00Z"),
-        )) {
-            assertTrue(clampToCeiling(chosen, endsAt).at <= endsAt.at, "clampToCeiling($chosen) must be <= endsAt")
         }
     }
 }

@@ -11,7 +11,7 @@
     "shortDescription <=80, description <=4000; Apple's by `asc metadata validate`."
   ],
   "name": "SnapSync Photos",
-  "description": "Every photo, in your gallery.\n\nCreate an event for a day out, a party or a holiday. Your family and friends just join, and from then on every photo anyone takes arrives in your gallery, while you're still together.\n\nJust join\nNo account, no sign-up, no password. Scan the QR code or tap the link, and you're in. Even someone who joins late gets every photo from the event.\n\nEvery photo, in your gallery\nThe group's photos land in the gallery you already use, next to your own, exactly as they were taken. Only photos taken during the event are shared; screenshots and photos saved from chats stay out.\n\nFor a day out, a party or a holiday\nQuick enough for a spontaneous afternoon, long enough for a two-week holiday.",
+  "description": "Every photo, in your gallery.\n\nCreate an event for a day out, a party or a holiday. Your family and friends just join, and from then on every photo anyone takes arrives in your gallery, while you're still together.\n\nJust join\nNo account, no sign-up, no password. Scan the QR code or tap the link, and you're in. Even someone who joins late gets every photo from the event.\n\nEvery photo, in your gallery\nThe group's photos land in the gallery you already use, next to your own, exactly as they were taken. You choose which dates you share; screenshots and photos saved from chats stay out.\n\nFor a day out, a party or a holiday\nQuick enough for a spontaneous afternoon, long enough for a two-week holiday.",
   "urls": {
     "marketing": "https://{{domain}}",
     "support": "https://github.com/stefanhoelzl/SnapSync/issues",

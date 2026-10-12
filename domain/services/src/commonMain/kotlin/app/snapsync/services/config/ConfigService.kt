@@ -8,6 +8,7 @@ import app.snapsync.model.MembershipRead
 import app.snapsync.model.confirmedGone
 import app.snapsync.model.hasEnded
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.model.shareHasEnded
 import app.snapsync.ports.Clock
 import app.snapsync.services.databases.LegacySource
 import app.snapsync.services.databases.SharedDatabase
@@ -136,11 +137,20 @@ class ConfigService(
      */
     fun isPastDeletion(deletesAt: DeletesAt): Boolean = confirmedGone(deletesAt, CaptureDate.of(clock.now()))
 
+    /** Now, on the clock every membership-time decision here reads — what a policy is derived at. */
+    fun now(): CaptureDate = CaptureDate.of(clock.now())
+
     /**
      * Has [config]'s event range ended? Read on the same clock as [isPastDeletion]; an
      * end not yet learned has not passed — see [hasEnded].
      */
     fun hasEnded(config: EventConfig): Boolean = config.hasEnded(CaptureDate.of(clock.now()))
+
+    /**
+     * Has [config]'s OWN capture range ended — what its share is settled by? Read on the same clock as [hasEnded]; see
+     * [shareHasEnded].
+     */
+    fun shareHasEnded(config: EventConfig): Boolean = config.shareHasEnded(CaptureDate.of(clock.now()))
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
     /** The joined event's id, or `null` while not joined — the scope every per-event read takes. */
@@ -153,10 +163,10 @@ class ConfigService(
     fun downloadsEnabled(): Boolean? = held.config.value?.let { it.direction.includesDownload && !it.deleted }
 
     /**
-     * Whether a fresh read finds a joined membership whose range has ended — what a manifest published now is settled
-     * by. An unreadable config or none is "not ended".
+     * Whether a fresh read finds a joined membership whose OWN range has ended ([shareHasEnded]) — what a manifest
+     * published now is settled by. An unreadable config or none is "not ended".
      */
-    fun freshReadHasEnded(): Boolean = read().joinedOrNull()?.let(::hasEnded) == true
+    fun freshReadShareHasEnded(): Boolean = read().joinedOrNull()?.let(::shareHasEnded) == true
 }
 
 private fun ConfigRead.joinedOrNull(): EventConfig? = (this as? ConfigRead.Joined)?.config

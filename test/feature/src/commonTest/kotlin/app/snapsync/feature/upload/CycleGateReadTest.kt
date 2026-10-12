@@ -3,6 +3,7 @@ package app.snapsync.feature.upload
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.configService
+import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testShared
 import app.snapsync.feature.support.unreadableIdentity
@@ -20,6 +21,8 @@ import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
+import app.snapsync.ports.Clock
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.crypto.EventKeys
@@ -30,12 +33,14 @@ import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The entry-gate translation (capability `background-upload`, "The upload cycle owns its entry decision"; `join-event`,
@@ -82,10 +87,11 @@ class CycleGateReadTest {
         admission: UploadAdmission = UploadAdmission.Admit,
         albumExclusions: suspend (CaptureCutoff) -> Set<AssetId> = { emptySet() },
         eventKeys: EventKeys = EventKeys(fakeCrypto(), inMemorySecureStore()),
+        clock: Clock = testClock(),
     ) = CycleGateRead(
         records = records,
         ledger = ledger,
-        config = configService(joined, store),
+        config = configService(joined, store, clock),
         identity = identity,
         suppression = suppression,
         recognition = suppression,
@@ -152,6 +158,30 @@ class CycleGateReadTest {
         assertTrue(SelectionRule.CaptureAfter(cutoff) in rules, "the floor is the membership's own cutoff")
         assertEquals(listOf(cutoff), askedFrom)
         assertEquals(1, suppression.idsAsked)
+    }
+
+    @Test
+    fun `before the event starts the floor is the start — from the start on it is the member's own`() = runTest {
+        // Capability `photo-sharing`, "Nothing is shared before the event starts": a member who chose to share from two
+        // days before the start shares nothing of those days until the start has passed — then all of them.
+        val start = eventStart("2026-07-10T18:00:00Z")
+        val own = captureCutoff("2026-07-08T18:00:00Z")
+        val joined = event().copy(
+            minPhotoDate = own,
+            startsAt = start,
+            maxPhotoDate = captureCeiling("2026-07-12T18:00:00Z"),
+        )
+        var now = Instant.parse("2026-07-09T12:00:00Z")
+        val clock = object : Clock {
+            override fun now(): Instant = now
+            override fun timeZone(): TimeZone = TimeZone.UTC
+        }
+        val run = assertIs<CycleGate.Run>(gate(joined = joined, clock = clock).read())
+
+        val beforeTheStart = run.membership.policy().rules
+        assertTrue(SelectionRule.CaptureAfter(CaptureCutoff(start.at)) in beforeTheStart, "before the start")
+        now = Instant.parse("2026-07-10T18:00:01Z")
+        assertTrue(SelectionRule.CaptureAfter(own) in run.membership.policy().rules, "from the start on")
     }
 
     @Test

@@ -9,6 +9,7 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.localToCutoff
+import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount
 import kotlinx.datetime.LocalDateTime
@@ -48,11 +49,11 @@ class RangeResolutionTest {
     // ── resolveUntil ────────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `the whole-event and from-now presets end at the window end`() {
-        assertEquals(windowEnd, resolveUntil(RangeChoice.WHOLE_EVENT, null, windowStart, windowEnd))
+    fun `the event-start and from-now presets end at the window end`() {
+        assertEquals(windowEnd, resolveUntil(RangeChoice.EVENT_START, null, windowStart, windowEnd))
         assertEquals(windowEnd, resolveUntil(RangeChoice.FROM_NOW, null, windowStart, windowEnd))
         // A custom value is IGNORED while a non-custom preset is chosen — the preset is what the member chose.
-        assertEquals(windowEnd, resolveUntil(RangeChoice.WHOLE_EVENT, insideWindow, windowStart, windowEnd))
+        assertEquals(windowEnd, resolveUntil(RangeChoice.EVENT_START, insideWindow, windowStart, windowEnd))
         assertEquals(windowEnd, resolveUntil(RangeChoice.FROM_NOW, insideWindow, windowStart, windowEnd))
     }
 
@@ -67,39 +68,49 @@ class RangeResolutionTest {
     }
 
     @Test
-    fun `a custom until outside the window is coerced back into it`() {
+    fun `a custom until after the window is taken as picked — one before it is held to the window start`() {
+        // Capability `join-event`: a member's range may end after the event, never before it starts.
+        assertEquals(afterWindow, resolveUntil(RangeChoice.CUSTOM, afterWindow, windowStart, windowEnd))
         assertEquals(windowStart, resolveUntil(RangeChoice.CUSTOM, beforeWindow, windowStart, windowEnd))
-        assertEquals(windowEnd, resolveUntil(RangeChoice.CUSTOM, afterWindow, windowStart, windowEnd))
     }
 
     // ── resolveFrom ─────────────────────────────────────────────────────────────────────────────
 
+    /** [resolveFrom] over this test's window. */
+    private fun from(preset: RangeChoice, custom: LocalDateTime?, now: LocalDateTime, until: LocalDateTime) =
+        resolveFrom(preset, custom, windowStart, windowEnd, now, until)
+
     @Test
-    fun `the whole-event preset starts at the window start`() {
-        assertEquals(windowStart, resolveFrom(RangeChoice.WHOLE_EVENT, null, windowStart, nowInside, windowEnd))
+    fun `the event-start preset starts at the window start`() {
+        assertEquals(windowStart, from(RangeChoice.EVENT_START, null, now = nowInside, until = windowEnd))
         // A stale custom value does not leak through a non-custom preset.
-        assertEquals(windowStart, resolveFrom(RangeChoice.WHOLE_EVENT, insideWindow, windowStart, nowInside, windowEnd))
+        assertEquals(windowStart, from(RangeChoice.EVENT_START, insideWindow, now = nowInside, until = windowEnd))
     }
 
     @Test
     fun `the from-now preset starts at now while now is inside the window`() {
-        assertEquals(nowInside, resolveFrom(RangeChoice.FROM_NOW, null, windowStart, nowInside, windowEnd))
-        assertEquals(nowInside, resolveFrom(RangeChoice.FROM_NOW, insideWindow, windowStart, nowInside, windowEnd))
+        assertEquals(nowInside, from(RangeChoice.FROM_NOW, null, now = nowInside, until = windowEnd))
+        assertEquals(nowInside, from(RangeChoice.FROM_NOW, insideWindow, now = nowInside, until = windowEnd))
     }
 
     @Test
     fun `a custom from with no picked value falls back to the window start`() {
-        assertEquals(windowStart, resolveFrom(RangeChoice.CUSTOM, null, windowStart, nowInside, windowEnd))
+        assertEquals(windowStart, from(RangeChoice.CUSTOM, null, now = nowInside, until = windowEnd))
     }
 
     @Test
     fun `a custom from inside the window is taken as picked`() {
-        assertEquals(insideWindow, resolveFrom(RangeChoice.CUSTOM, insideWindow, windowStart, nowInside, windowEnd))
+        assertEquals(insideWindow, from(RangeChoice.CUSTOM, insideWindow, now = nowInside, until = windowEnd))
     }
 
     @Test
-    fun `a from below the window start is floored to it`() {
-        assertEquals(windowStart, resolveFrom(RangeChoice.CUSTOM, beforeWindow, windowStart, nowInside, windowEnd))
+    fun `a custom from before the window start is taken as picked`() {
+        assertEquals(beforeWindow, from(RangeChoice.CUSTOM, beforeWindow, now = nowInside, until = windowEnd))
+    }
+
+    @Test
+    fun `a from never lies after the window end — whatever until`() {
+        assertEquals(windowEnd, from(RangeChoice.CUSTOM, afterWindow, now = nowInside, until = afterWindow))
     }
 
     @Test
@@ -107,15 +118,15 @@ class RangeResolutionTest {
         // The ceiling is the RESOLVED until, not the window's end — a member who narrowed the upper bound
         // must not be able to push the lower bound past it.
         val until = insideWindow
-        assertEquals(until, resolveFrom(RangeChoice.CUSTOM, afterWindow, windowStart, nowInside, until))
+        assertEquals(until, from(RangeChoice.CUSTOM, afterWindow, now = nowInside, until = until))
         // "From now" is subject to the same cap.
-        assertEquals(until, resolveFrom(RangeChoice.FROM_NOW, null, windowStart, afterWindow, until))
+        assertEquals(until, from(RangeChoice.FROM_NOW, null, now = afterWindow, until = until))
     }
 
     // ── the invariant the resolution ORDER exists for ────────────────────────────────────────────
 
     @Test
-    fun `every preset resolves to a non-inverted range inside the window`() {
+    fun `every preset resolves to a non-inverted range overlapping the window`() {
         // Every custom value a picker could hold (including outside the window on both sides), every
         // preset, and every "now" the clock could report relative to the window.
         val customs = listOf(null, beforeWindow, insideWindow, afterWindow, windowStart, windowEnd)
@@ -125,7 +136,7 @@ class RangeResolutionTest {
                 customs.flatMap { untilCustom -> nows.map { Case(preset, fromCustom, untilCustom, it) } }
             }
         }
-        for (c in cases) assertResolvesInsideWindow(c)
+        for (c in cases) assertResolvesAroundWindow(c)
     }
 
     private class Case(
@@ -135,14 +146,16 @@ class RangeResolutionTest {
         val now: LocalDateTime,
     )
 
-    private fun assertResolvesInsideWindow(c: Case) {
+    private fun assertResolvesAroundWindow(c: Case) {
         val until = resolveUntil(c.preset, c.untilCustom, windowStart, windowEnd)
-        val from = resolveFrom(c.preset, c.fromCustom, windowStart, c.now, until)
+        val from = resolveFrom(c.preset, c.fromCustom, windowStart, windowEnd, c.now, until)
         val case = "${c.preset} ${c.fromCustom} .. ${c.untilCustom} @ ${c.now}"
         assertTrue(from <= until, "range inverted for $case: $from > $until")
-        assertTrue(from >= windowStart, "from below the window for $case: $from")
-        assertTrue(until <= windowEnd, "until above the window for $case: $until")
-        assertTrue(until >= windowStart, "until below the window for $case: $until")
+        assertTrue(from <= windowEnd, "from after the window for $case: $from")
+        assertTrue(until >= windowStart, "until before the window for $case: $until")
+        if (c.preset != RangeChoice.CUSTOM) {
+            assertTrue(from >= windowStart && until <= windowEnd, "a preset stays inside the window for $case")
+        }
     }
 
     // ── the COMPOSITION of the two, which was untestable while it lived in a Composable ──────────
@@ -197,6 +210,21 @@ class RangeResolutionTest {
         // Absent and zero are different answers and stay distinguishable (capability `join-event`).
         assertEquals(ShareCount.Ready(0), counted.shareCount)
         assertEquals(ShareCount.Unavailable, absent.shareCount)
+    }
+
+    @Test
+    fun `the outside reach names the side a range passes the event on`() {
+        // Capability `join-event`: the screen says when the chosen range reaches outside the event's dates.
+        fun reach(from: LocalDateTime?, until: LocalDateTime?) = outsideReach(
+            RangeForm(preset = RangeChoice.CUSTOM, customFrom = from, customUntil = until)
+                .resolve(windowStart, windowEnd, nowInside, nowAvailable = true, toCutoff = ::stubCutoff),
+        )
+        assertNull(reach(null, null), "the event's own dates")
+        assertNull(reach(insideWindow, null), "narrower than the event")
+        assertEquals(OutsideReach.BEFORE, reach(beforeWindow, null))
+        assertEquals(OutsideReach.AFTER, reach(null, afterWindow))
+        assertEquals(OutsideReach.BOTH, reach(beforeWindow, afterWindow))
+        assertNull(reach(windowStart, windowEnd), "touching both ends is still the event's dates")
     }
 
     /** A fixed-shape cutoff conversion — the resolution is under test, not the formatter. */
@@ -267,7 +295,7 @@ class RangeResolutionTest {
     @Test
     fun `a membership spanning the whole window pre-fills the whole event`() {
         val form = reconfigureForm(membership("2026-07-06T14:00:00Z", "2026-07-13T14:00:00Z"), ::local)
-        assertEquals(RangeChoice.WHOLE_EVENT, form.preset)
+        assertEquals(RangeChoice.EVENT_START, form.preset)
         assertNull(form.customFrom)
         assertNull(form.customUntil)
     }

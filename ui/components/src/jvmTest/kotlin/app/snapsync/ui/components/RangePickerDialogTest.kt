@@ -19,6 +19,7 @@ import app.snapsync.ui.components.resources.share_range_title
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_not_set
 import app.snapsync.ui.components.resources.wheel_start_hour
+import app.snapsync.ui.state.DaySpan
 import app.snapsync.ui.state.PickerView
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -28,7 +29,7 @@ import kotlin.test.assertEquals
 
 /**
  * The range picker as the join and settings surfaces open it ([RangePickerDialog]): the create screen's
- * [RangeEditor] in a dialog with preset chips and Cancel / OK (capabilities `join-event`, `manage-membership`). It draws
+ * [RangeEditor] in a dialog with Cancel / OK (capabilities `join-event`, `manage-membership`). It draws
  * the picker it is given — the app opens it on the chosen range, held to the event's window — offers OK only while
  * that picker is complete, and reports every gesture.
  *
@@ -58,7 +59,6 @@ class RangePickerDialogTest {
 
     private val log = GestureLog()
     private var confirmed = 0
-    private var chosen: String? = null
 
     @Test
     fun `the title is a heading and both ends' wheels show the chosen range`() {
@@ -113,11 +113,38 @@ class RangePickerDialogTest {
     }
 
     @Test
-    fun `a preset chip reports its choice and never the calendar's span`() {
+    fun `the dialog holds no preset - only the calendar`() {
+        // Decision record `flexible-share-range`, D3: the quick choices are on the screen beside it.
         setDialog()
-        rule.onNodeWithText("Whole event").performClick()
-        assertEquals("whole", chosen)
-        assertEquals(0, confirmed)
+        rule.onNodeWithText("From event start").assertDoesNotExist()
+        rule.onNodeWithText("From now").assertDoesNotExist()
+    }
+
+    @Test
+    fun `while the last day is pending the days between the start and the event are not offered`() {
+        // A start the week before the event: an end there would miss the event (capability `join-event`).
+        setDialog(
+            WHOLE.copy(
+                from = LocalDateTime(2026, 3, 3, 18, 0),
+                endDay = LocalDate(2026, 3, 3),
+                endPending = true,
+                firstDay = LocalDate(2026, 2, 8),
+                lastDay = LocalDate(2026, 4, 2),
+                firstEndDay = LocalDate(2026, 3, 10),
+                complete = false,
+            ),
+        )
+        rule.onNodeWithContentDescription("Monday, 2 March 2026").assertIsEnabled()
+        rule.onNodeWithContentDescription("Wednesday, 4 March 2026").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Monday, 9 March 2026").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Tuesday, 10 March 2026").assertIsEnabled()
+    }
+
+    @Test
+    fun `the event's own days are spoken as event days`() {
+        setDialog(WHOLE.copy(markedDays = DaySpan(LocalDate(2026, 3, 10), LocalDate(2026, 3, 20))))
+        rule.onNodeWithContentDescription("Wednesday, 11 March 2026, event day").assertExists()
+        rule.onNodeWithContentDescription("Saturday, 21 March 2026").assertExists()
     }
 
     @Test
@@ -142,7 +169,6 @@ class RangePickerDialogTest {
                 RangePickerDialog(
                     picker = picker,
                     title = "Which photos to share",
-                    presets = listOf(RangePresetChip("Whole event", selected = true) { chosen = "whole" }),
                     gestures = log.gestures,
                     onDismiss = {},
                     onConfirm = { confirmed++ },

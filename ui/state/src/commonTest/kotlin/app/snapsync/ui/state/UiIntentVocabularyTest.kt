@@ -123,7 +123,7 @@ class UiIntentVocabularyTest {
                 UiIntent.ShareOn(on = true),
                 UiIntent.ReceiveOn(on = true),
                 UiIntent.SaveToAlbum(on = true),
-                UiIntent.RangePreset(RangeChoice.WHOLE_EVENT),
+                UiIntent.RangePreset(RangeChoice.EVENT_START),
                 UiIntent.RetryLoad,
                 UiIntent.ConfirmJoin,
                 UiIntent.ConfirmSwitch,
@@ -149,7 +149,7 @@ class UiIntentVocabularyTest {
         assertValueEquality({ UiIntent.ReceiveOn(on = true) }, UiIntent.ReceiveOn(on = false))
         assertValueEquality({ UiIntent.SaveToAlbum(on = true) }, UiIntent.SaveToAlbum(on = false))
         assertValueEquality(
-            { UiIntent.RangePreset(RangeChoice.WHOLE_EVENT) },
+            { UiIntent.RangePreset(RangeChoice.EVENT_START) },
             UiIntent.RangePreset(RangeChoice.FROM_NOW),
         )
         assertValueEquality({ UiIntent.CreateName("Picnic") }, UiIntent.CreateName("Party"))

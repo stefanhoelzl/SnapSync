@@ -6,8 +6,6 @@ import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
@@ -30,8 +28,8 @@ import kotlin.test.assertTrue
 /** The join's read of the library's SnapSync-marked photos (capability `receiving-photos`), over the in-memory gallery. */
 class MarkedPhotoLookupTest {
 
-    private val start = EventStart(CaptureDate.parse("2026-06-01T00:00:00Z"))
-    private val end = EventEnd(CaptureDate.parse("2026-06-10T00:00:00Z"))
+    private val start = CaptureDate.parse("2026-06-01T00:00:00Z")
+    private val end = CaptureDate.parse("2026-06-10T00:00:00Z")
     private val refA = AssetRef("dev-a", AssetId("SRC-A"))
     private val refB = AssetRef("dev-b", AssetId("SRC-B"))
 
@@ -77,7 +75,7 @@ class MarkedPhotoLookupTest {
     }
 
     @Test
-    fun a_full_grant_finds_the_marked_photos_in_the_event_window() = runTest {
+    fun a_full_grant_finds_the_marked_photos_in_the_window() = runTest {
         val gallery = Recording(inMemoryGallery(MutableStateFlow(library)))
         val found = MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, known = emptySet())
         assertEquals(
@@ -86,8 +84,26 @@ class MarkedPhotoLookupTest {
         )
         assertTrue(
             PlatformAssetId("L-EARLY") !in gallery.resourceReads.flatten(),
-            "a photo outside the event is never read",
+            "a photo outside the window is never read",
         )
+    }
+
+    @Test
+    fun a_window_reaching_before_the_event_finds_a_photo_received_from_before_it() = runTest {
+        // Capability `receiving-photos`: another member's range may start before the event, so the photo they took
+        // the week before is a received photo too — found when the caller's window reaches it.
+        val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unrestricted }
+            .markedIn(CaptureDate.parse("2026-05-15T00:00:00Z"), end, known = emptySet())
+        assertEquals(AssetId("L-EARLY"), found?.get(ReceivedPhotoName.token(AssetRef("dev-c", AssetId("SRC-C")))))
+    }
+
+    @Test
+    fun a_selection_snapshot_is_searched_for_marked_photos_whatever_their_date() {
+        // The pre-check a selection change makes: no date narrows it, so a received photo from before the event pauses
+        // sharing too. The member's own unmarked photo is never a candidate.
+        val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unread }
+            .markedAmong(resourcesFrom(library), known = setOf(AssetId("L-A")))
+        assertEquals(setOf(AssetId("L-B"), AssetId("L-EARLY")), found.values.toSet())
     }
 
     @Test

@@ -20,9 +20,6 @@ import app.snapsync.ui.resources.link_incomplete_body
 import app.snapsync.ui.resources.link_incomplete_title
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.ok
-import app.snapsync.ui.resources.range_custom
-import app.snapsync.ui.resources.range_from_now
-import app.snapsync.ui.resources.range_whole_event
 import app.snapsync.ui.resources.report_body_developer
 import app.snapsync.ui.resources.report_body_device
 import app.snapsync.ui.resources.report_send
@@ -30,6 +27,9 @@ import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.share_detail_count
 import app.snapsync.ui.resources.share_detail_counting
+import app.snapsync.ui.resources.share_outside_after
+import app.snapsync.ui.resources.share_outside_before
+import app.snapsync.ui.resources.share_outside_both
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.store_google_play
 import app.snapsync.ui.resources.switch_body
@@ -45,8 +45,8 @@ import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.PendingSwitch
-import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.StoreName
@@ -116,17 +116,19 @@ class ScreenWordsTest {
     // ---- the range row --------------------------------------------------------------------------------------------
 
     @Test
-    fun `the range row names the preset and the count once there is one — an unavailable count is left out`() {
-        val whole = listOf(Res.string.range_whole_event)
-        assertEquals(whole, shareDetail(RangeChoice.WHOLE_EVENT, ShareCount.Unavailable).said())
-        assertEquals(
-            listOf(Res.string.share_detail_counting, listOf(Res.string.range_from_now)),
-            shareDetail(RangeChoice.FROM_NOW, ShareCount.Counting).said(),
-        )
-        assertEquals(
-            listOf(Res.plurals.share_detail_count, 7, listOf(Res.string.range_custom), 7),
-            shareDetail(RangeChoice.CUSTOM, ShareCount.Ready(7)).said(),
-        )
+    fun `the range row says the count once there is one — an unavailable count is no line`() {
+        // The preset is no longer named here: the selected chip above says it (decision record
+        // `flexible-share-range`, D3).
+        assertNull(shareDetail(ShareCount.Unavailable))
+        assertEquals(listOf(Res.string.share_detail_counting), shareDetail(ShareCount.Counting)?.said())
+        assertEquals(listOf(Res.plurals.share_detail_count, 7, 7), shareDetail(ShareCount.Ready(7))?.said())
+    }
+
+    @Test
+    fun `the outside note names the side the range reaches past`() {
+        assertEquals(Res.string.share_outside_before, outsideNote(OutsideReach.BEFORE))
+        assertEquals(Res.string.share_outside_after, outsideNote(OutsideReach.AFTER))
+        assertEquals(Res.string.share_outside_both, outsideNote(OutsideReach.BOTH))
     }
 
     // ---- the create screen ----------------------------------------------------------------------------------------

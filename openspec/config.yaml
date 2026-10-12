@@ -120,7 +120,10 @@ context: |
   leaves an event on its own: a deleted event is shown as over, and opening
   another invite skips the switch question only when nothing can be lost
   (decision record: changes/back-dated-events). A member
-  shares photos taken within a chosen sub-range of the event window. Photos sync directly
+  shares only photos taken within the capture range they chose — by default the
+  event's dates; at most 30 days long and overlapping the event, so it may reach
+  before its start or after its end, and nothing is uploaded before the event
+  starts (decision record: changes/flexible-share-range). Photos sync directly
   between device galleries: members never care how photos arrive, they just look
   at their own gallery. No accounts — a device UUID plus platform attestation is
   the whole identity — and setup/enrollment stay simple.

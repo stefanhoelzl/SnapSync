@@ -108,9 +108,13 @@ export function v2Handlers(
    * Apply a v2 publish as ONE batch (see `publishStatements`) and read its verdict: whether the version
    * comparison admitted it — the first statement's count.
    *
-   * Only after the range has ended may a publish settle anything: before it, the device may still take photos
-   * that belong in the event (capability `photo-sharing`). Settling closes nothing — events no longer close
-   * (decision record `changes/back-dated-events`, D2); whether everyone is done is computed on every read.
+   * The device's `final` is stored as declared: a device settles once its member's OWN capture range has ended
+   * (capability `event-lifetime`; decision record `changes/flexible-share-range`, D4), which may be before the event's
+   * end or after it, and the range never reaches the server. An early settle finishes nothing — an event is finished
+   * only after its open-until date (`finishedEvent`), and the `closedAt` builds that predate open-until dates wait for
+   * is derived only after it too — and a later non-final publish turns the membership back to `sharing`. Builds
+   * before that change declare `final` only after the event's end, which this always admitted. Settling closes
+   * nothing — events no longer close (decision record `changes/back-dated-events`, D2).
    */
   async function applyPublish(
     event: EventRow,
@@ -121,14 +125,13 @@ export function v2Handlers(
     changes: { gained: string[]; removed: string[] },
   ): Promise<boolean> {
     const nowMs = now();
-    const ended = nowMs > Date.parse(event.endsAt);
     const results = await tryUpstream(
       `v2 manifest: publish failed for ${event.eventId}/${deviceId}`,
       () =>
         db.batch(
           publishStatements(event.eventId, deviceId, assets, {
             version,
-            final: final && ended,
+            final,
             log: { ...changes, at: new Date(nowMs).toISOString() },
           }),
         ),

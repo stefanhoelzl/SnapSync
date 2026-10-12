@@ -2,10 +2,10 @@
 
 ## Purpose
 
-Every member who shares relies on one promise: the photos they took during the event — and only those —
-reach the other members, and nothing else from their camera roll does. This capability decides which of a
-member's photos enter an event: a capture-date range that is always bounded and never wider than the
-event's own dates, minus media that is certainly not a photo someone took at the event (screenshots,
+Every member who shares relies on one promise: the photos they took in the range they chose — by default the
+event's own dates — and only those reach the other members, and nothing else from their camera roll does. This
+capability decides which of a member's photos enter an event: a capture-date range that is always bounded, at most
+30 days long and overlapping the event's dates, minus media that is certainly not a photo someone took at the event (screenshots,
 screen recordings, compressed received media, messaging-app albums). On iPhone, where the app cannot tell,
 it shares, because a stray meme is visible and harmless while an event photo that silently never arrives
 is a failure nobody can notice or fix; on Android only the phone's camera folder (DCIM) is shared, for

@@ -2,9 +2,11 @@ package app.snapsync.feature.membership
 
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
+import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventUnionSource
@@ -98,14 +100,14 @@ class ReceivedPhotoAdoption(
 
     /**
      * A selection change's first step, BEFORE its snapshot is published: when the new
-     * selection's [resources] hold marked photos in the joined event's window that the download store does not record,
+     * selection's [resources] hold marked photos — of any capture date — that the download store does not record,
      * any of them may be a received photo no pass has recognised — so the membership's recognition is withdrawn before
      * any reader sees the snapshot, and [afterSelectionPublished] recognises them. A read of memory and the store only.
      * Unjoined ([joined] `null`), there is nothing to withhold.
      */
     suspend fun beforeSelectionPublished(joined: EventConfig?, resources: List<Resource>) = gate.withLock {
         val cfg = joined ?: return@withLock
-        val unknown = library.markedAmong(resources, cfg.startsAt, cfg.endsAt, known = store.suppressedLocalIds())
+        val unknown = library.markedAmong(resources, known = store.suppressedLocalIds())
         if (unknown.isEmpty()) return@withLock
         store.recognition.unmark(cfg.eventId)
         settledFor = null
@@ -162,7 +164,8 @@ class ReceivedPhotoAdoption(
         val byToken = open.keys.groupBy(
             ReceivedPhotoName::token,
         ).filterValues { it.size == 1 }.mapValues { it.value.single() }
-        val marked = library.markedIn(cfg.startsAt, cfg.endsAt, known = store.suppressedLocalIds())
+        val (from, until) = receivedSearchWindow(cfg, open.values)
+        val marked = library.markedIn(from, until, known = store.suppressedLocalIds())
         if (marked == null) {
             log.i { "library not readable yet — adoption waits for a usable grant (${open.size} open foreign ref(s))" }
             return false
@@ -173,8 +176,24 @@ class ReceivedPhotoAdoption(
         val recorded = record(adopted, cfg.eventId)
         store.recognition.mark(cfg.eventId)
         log.i {
-            "adopted ${recorded.size} received photo(s) of ${open.size} open foreign ref(s); ${marked.size} marked in window"
+            "adopted ${recorded.size} received photo(s) of ${open.size} open foreign ref(s); " +
+                "${marked.size} marked in $from..$until"
         }
         return true
     }
+}
+
+/**
+ * Where a full pass looks for marked photos: from the earliest to the latest capture date among the event's [open]
+ * foreign photos, and never narrower than the event's own range. A member's range may reach outside the event's
+ * dates, so the event's range alone would miss a received photo another member took the evening before; the event's
+ * range stays inside it, so nothing the pass found before is missed now — and the margin it gives
+ * a photo whose date drifted (Android fills it from the file's EXIF) is kept. A date the union carries that does not
+ * parse widens nothing.
+ */
+fun receivedSearchWindow(cfg: EventConfig, open: Collection<UnionAsset>): Pair<CaptureDate, CaptureDate> {
+    val dates = open.mapNotNull { CaptureDate.parseOrNull(it.creationDate) }
+    val from = (dates + cfg.startsAt.at).min()
+    val until = (dates + cfg.endsAt.at).max()
+    return from to until
 }

@@ -5,8 +5,7 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.clampToCeiling
-import app.snapsync.model.clampToFloor
+import app.snapsync.model.shareRangeFault
 import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
 
@@ -22,8 +21,9 @@ import co.touchlab.kermit.Logger
  * device identity are all preserved. `direction` is a device-local gate, so a reconfigure reaches nothing
  * on the backend.
  *
- * The **cutoff** is re-clamped to the immutable `startsAt` floor (`max(chosen, startsAt)`) exactly as at
- * join, so a reconfigure can never lower a membership below the event's start.
+ * The chosen range obeys the same share-range rule as at join ([shareRangeFault]): at most an event's length and
+ * overlapping the event, and it MAY reach outside the event's own range. A range that breaks it is refused as
+ * [ReconfigureOutcome.Refused] and changes nothing — it is never clamped.
  *
  * On a successful save it re-drives the same provision-side effects a join performs, so a change takes
  * effect immediately rather than waiting for the OS's next scheduled cycle — but with a deliberate
@@ -81,13 +81,17 @@ class ReconfigureEvent(
     ): ReconfigureOutcome {
         val current = configSource.config.value
         if (current == null || current.eventId != eventId) return ReconfigureOutcome.NotCurrent
-        // The upper bound mirrors the cutoff: re-clamp the chosen ceiling to the event's immutable `endsAt`
-        // (`min(chosen, endsAt)`). The clamp can only ever narrow.
-        val newMax = clampToCeiling(chosenUpper, current.endsAt)
+        shareRangeFault(chosenCutoff, chosenUpper, current.startsAt, current.endsAt)?.let { fault ->
+            steps.log.e {
+                "reconfigure: refused — the range $chosenCutoff..$chosenUpper breaks the share-range rule ($fault) " +
+                    "for the event ${current.startsAt}..${current.endsAt}"
+            }
+            return ReconfigureOutcome.Refused
+        }
         val newCfg = current.copy(
             direction = direction,
-            minPhotoDate = clampToFloor(chosenCutoff, current.startsAt),
-            maxPhotoDate = newMax,
+            minPhotoDate = chosenCutoff,
+            maxPhotoDate = chosenUpper,
             saveToAlbum = saveToAlbum,
         )
         // Persist the WHOLE config with only the participation fields changed (one-writer, in place) —

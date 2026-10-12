@@ -1,30 +1,30 @@
 package app.snapsync.ui.components
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.share_range_change
+import app.snapsync.ui.components.resources.share_range_custom
+import app.snapsync.ui.components.resources.share_range_event_start
 import app.snapsync.ui.components.resources.share_range_from_now
 import app.snapsync.ui.components.resources.share_range_title
-import app.snapsync.ui.components.resources.share_range_whole_event
 import app.snapsync.ui.state.PickerView
 import app.snapsync.ui.state.RangeChoice
 import kotlinx.datetime.LocalDateTime
@@ -54,21 +54,19 @@ class RangeChoiceActions(
 )
 
 /**
- * The capture-date **range** as ONE row: the resolved
- * range in the row's heaviest type, a [detail] line beneath it (the caller's "<preset> · <count>"), and an
- * edit affordance that opens the design system's range calendar bounded to the event's window, with the
- * **Whole event** / **From now** presets as chips above it. It replaced two captioned preset lists (three
- * start rows, two end rows) that alone filled the first view of the join screen (decision record
- * `simplify-join-screen`, D2).
+ * The capture-date **range** as one choice and its answer: a row of chips — **From event start**, **From now** while
+ * it is [fromNowOffered], and **Custom** — and beneath them the resolved range in the row's heaviest type with a
+ * [detail] line (the caller's count). The quick options sit on the screen, one tap each; they used to hide behind an
+ * edit button inside the calendar dialog (decision record `flexible-share-range`, D3).
  *
- * The calendar is the create screen's range picker in a dialog ([RangePickerDialog]), drawn from [picker] — the app's
- * calendar while it is open, `null` while closed. A chip commits its preset; OK commits the calendar's span as a custom
- * range; Cancel changes nothing. The app opens it on the range currently chosen, complete, and holds it to the event's
- * window.
+ * A preset chip commits its preset. **Custom** opens the design system's range calendar ([RangePickerDialog]), drawn
+ * from [picker] — the app's calendar while it is open, `null` while closed — on the range currently chosen; tapping it
+ * again while selected reopens the calendar there. OK takes the calendar's span as a custom range; Cancel changes
+ * nothing. The calendar holds only the calendar: the presets are the chips.
  *
- * It is **not** a card of its own: it sits inside the Share section, because "do I share" and "which
- * photos" are one decision. Appearance-free: the choices, the actions, the window, and two strings cross
- * the signature — the caller owns the date formatting (`:ui:components` never re-derives it).
+ * It is **not** a card of its own: it sits inside the Share section, because "do I share" and "which photos" are one
+ * decision. Appearance-free: the choices, the actions and strings cross the signature — the caller owns the date
+ * formatting (`:ui:components` never re-derives it).
  */
 @Composable
 fun AppShareRangeRow(
@@ -78,48 +76,44 @@ fun AppShareRangeRow(
     fromNowOffered: Boolean,
     picker: PickerView?,
     rangeLabel: String,
-    detail: String,
+    /** The line beneath the range — how many photos it shares — or `null` when there is nothing to say. */
+    detail: String?,
 ) {
     val scheme = MaterialTheme.colorScheme
-
-    Surface(
-        color = scheme.surface,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, scheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(vertical = 10.dp)) {
-                Text(
-                    text = rangeLabel,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = scheme.onSurface,
-                )
-                Text(
-                    text = detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RangeChip(
+                label = stringResource(Res.string.share_range_event_start),
+                selected = choices.preset == RangeChoice.EVENT_START,
+            ) { actions.onPreset(RangeChoice.EVENT_START) }
+            if (fromNowOffered) {
+                RangeChip(
+                    label = stringResource(Res.string.share_range_from_now),
+                    selected = choices.preset == RangeChoice.FROM_NOW,
+                ) { actions.onPreset(RangeChoice.FROM_NOW) }
             }
-            IconButton(onClick = actions.onOpen) {
-                Icon(Icons.Filled.Edit, contentDescription = stringResource(Res.string.share_range_change))
-            }
+            RangeChip(
+                label = stringResource(Res.string.share_range_custom),
+                selected = choices.preset == RangeChoice.CUSTOM,
+                hint = stringResource(Res.string.share_range_change),
+                onClick = actions.onOpen,
+            )
+        }
+        Text(
+            text = rangeLabel,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            color = scheme.onSurface,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        if (detail != null) {
+            Text(text = detail, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
     }
 
     if (picker != null) {
-        val wholeEvent = stringResource(Res.string.share_range_whole_event)
-        val fromNow = stringResource(Res.string.share_range_from_now)
         RangePickerDialog(
             picker = picker,
             title = stringResource(Res.string.share_range_title),
-            presets = buildList {
-                add(presetChip(wholeEvent, RangeChoice.WHOLE_EVENT, choices, actions))
-                if (fromNowOffered) add(presetChip(fromNow, RangeChoice.FROM_NOW, choices, actions))
-            },
             gestures = actions.gestures,
             onDismiss = actions.onDismiss,
             onConfirm = actions.onConfirm,
@@ -127,5 +121,29 @@ fun AppShareRangeRow(
     }
 }
 
-private fun presetChip(label: String, preset: RangeChoice, choices: RangeChoices, actions: RangeChoiceActions) =
-    RangePresetChip(label = label, selected = choices.preset == preset) { actions.onPreset(preset) }
+/**
+ * One choice of the range: a selected chip is filled in the brand's container tone, the rest are outlined. Each is one
+ * click target with the radio-button role and its selection stated — the choices are mutually exclusive. [hint] is
+ * what the tap does, read out where the label alone does not say it (Custom opens the calendar).
+ */
+@Composable
+private fun RangeChip(label: String, selected: Boolean, hint: String? = null, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = CircleShape // 50% corners: a pill on a wider-than-tall chip
+    Box(
+        modifier = Modifier
+            .border(1.dp, if (selected) scheme.primary else scheme.outlineVariant, shape)
+            .background(if (selected) scheme.primaryContainer else scheme.surface, shape)
+            .clickable(onClickLabel = hint, role = Role.RadioButton, onClick = onClick)
+            .semantics { this.selected = selected }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            ),
+            color = if (selected) scheme.onPrimaryContainer else scheme.onSurface,
+        )
+    }
+}
