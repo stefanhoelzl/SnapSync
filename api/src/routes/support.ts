@@ -17,6 +17,7 @@ import {
   pushTokensForEvent,
   readEvent,
   recordAppVersion,
+  sharedByEveryone,
   unionPosition,
 } from "../db.ts";
 import { deleteByMs } from "../lifecycle.ts";
@@ -297,8 +298,10 @@ export async function gateEvent(db: Db, eventId: string, route: string): Promise
  * keeps the anchor policy in ONE place and means no client ever holds a copy of the lifetime constant.
  * A duplicated constant would let a join gate confidently promise a date the backend will not honour,
  * and the drift would be silent.
+ *
+ * `closedAt` is the stored stamp unless the caller derived one ([closedForOldBuilds]).
  */
-export function publicEvent(event: EventRow) {
+export function publicEvent(event: EventRow, closedAt: string | null = event.closedAt ?? null) {
   // `zone` stays off the wire too: only the event page reads it (capability `event-site`), and no app needs it.
   // `keyId` is on the wire only for an ENCRYPTED event, so a plain event's body is byte-identical to what
   // every installed build has always parsed.
@@ -306,7 +309,7 @@ export function publicEvent(event: EventRow) {
   return {
     ...wire,
     ...(keyId ? { keyId } : {}),
-    closedAt: event.closedAt ?? null,
+    closedAt,
     completedAt: event.completedAt ?? null,
     deletesAt: canonicalFromMs(deleteByMs(event)),
   };
@@ -388,7 +391,6 @@ export async function notifyMembers(
   { db, pushSender }: Pick<RouteDeps, "db" | "pushSender">,
   eventId: string,
   publisherId: string,
-  announce: "gain" | "close",
 ): Promise<NotifyOutcome> {
   const errors: Fault[] = [];
   try {
@@ -398,15 +400,13 @@ export async function notifyMembers(
     // `changes/incremental-union`, D6), read AFTER the commit: the event's last gain, at or past the one
     // this caller logged. A failed read sends the wake without one, which the device reads as before.
     let seq: number | undefined;
-    if (announce === "gain") {
-      try {
-        seq = await unionPosition(db, eventId);
-      } catch (e) {
-        errors.push({
-          tag: "union-position",
-          detail: `notify: position read failed for ${eventId}, waking without one: ${e}`,
-        });
-      }
+    try {
+      seq = await unionPosition(db, eventId);
+    } catch (e) {
+      errors.push({
+        tag: "union-position",
+        detail: `notify: position read failed for ${eventId}, waking without one: ${e}`,
+      });
     }
     const outcomes = await Promise.race([
       pushSender.sendSilent(tokens, eventId, seq),
@@ -444,4 +444,23 @@ export function recordNotify(
   log.field("pushed", outcome.pushed);
   if (outcome.unsent !== "") log.field("unsent", outcome.unsent);
   for (const e of outcome.errors) log.error(e.tag, e.detail);
+}
+
+/**
+ * The `closedAt` an event read serves (decision record `changes/back-dated-events`, D5). Events no longer close;
+ * the field survives for the builds that predate open-until dates, which treat a non-null value as "closed" and
+ * leave once they hold everything. So it is the stored stamp where there is one — an event closed before events
+ * stopped closing, or a completed one — and otherwise the open-until date once it has passed and everyone still
+ * in the event has shared everything ([sharedByEveryone]): exactly when such a build can leave without missing a
+ * photo still on its way. `null` before that, and again if a late guest joins.
+ * `PENDING_CLEANUPS.md`, "Derived closedAt".
+ */
+export async function closedForOldBuilds(
+  db: Db,
+  event: EventRow,
+  nowMs: number,
+): Promise<string | null> {
+  if (event.closedAt) return event.closedAt;
+  if (!(Date.parse(event.openUntil) < nowMs)) return null;
+  return await sharedByEveryone(db, event.eventId) ? event.openUntil : null;
 }

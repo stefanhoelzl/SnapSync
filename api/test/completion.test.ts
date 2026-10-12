@@ -1,9 +1,10 @@
-// Early event completion (capability `event-lifetime`; decision record `changes/early-event-completion`):
-// a device declares its manifest FINAL after the range has ended, which makes its membership `settled`; the
-// publish or leave that leaves no member `sharing` CLOSES the event and wakes its members once; a leave records
-// `done` or `left`; a closed event refuses joins, renames and
-// any change to a member's asset set; a COMPLETED event (the sweep's verdict) keeps its row and answers
-// "completed". The sweep's own rules are in `scripts/sweep.test.ts`.
+// Event completion (capability `event-lifetime`; decision records `changes/early-event-completion`,
+// `changes/back-dated-events`): a device declares its manifest FINAL after the range has ended, which makes its
+// membership `settled`; NOTHING closes any more — no publish or leave stamps a close or wakes anyone for one, and
+// the event read derives the `closedAt` builds that predate open-until dates still wait for; a leave records `done`
+// or `left`; an event closed BEFORE events stopped closing keeps refusing joins, renames and any change to a
+// member's asset set; a COMPLETED event (the sweep's verdict) keeps its row and answers "completed". The sweep's
+// own rules are in `scripts/sweep.test.ts`.
 import { assert, assertEquals } from "@std/assert";
 import {
   apnsConfig,
@@ -22,14 +23,14 @@ import {
   storeWithEvent,
   VERSION_HEADER,
 } from "./support/harness.ts";
-import { canonicalFromMs } from "../src/validators.ts";
 
 const JOIN = (d: string) => `/api/v2/events/${E}/devices/${d}`;
 const MANIFEST = (d: string) => `/api/v2/events/${E}/devices/${d}/manifest`;
 const DETAILS = `/api/v2/events/${E}`;
 const BYTE_PATH = `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
 const D3 = "33333333-0000-4000-8000-000000000004";
-const ENDED = { endsAt: "2026-07-10T00:00:00Z" }; // before the harness's NOW (2026-07-14T12:00Z)
+// Ended, and open until its end, before the harness's NOW (2026-07-14T12:00Z).
+const ENDED = { endsAt: "2026-07-10T00:00:00Z", openUntil: "2026-07-10T00:00:00Z" };
 
 type Store = Awaited<ReturnType<typeof storeWithEvent>>;
 
@@ -109,50 +110,115 @@ Deno.test("final → a non-boolean final is 400 and writes nothing", async () =>
   db.close();
 });
 
-Deno.test("close → the publish that settles the LAST sharing member closes the event and wakes once", async () => {
+Deno.test("settle → the publish that settles the last member closes nothing and wakes nobody", async () => {
   const db = await storeWithEvent(ENDED);
   const { app, pushed, lines } = await twoMembers(db);
-
-  // D2 settles first: D is still unsettled, so nothing closes.
   await app.request(MANIFEST(D2), {
     method: "PUT",
     body: body([], { final: true }),
     headers: await as(D2),
   });
-  assertEquals(await closedAt(db), null);
-
-  // D settles: no member is sharing any more → closed, and D2 (the other member) is woken once.
   const res = await app.request(MANIFEST(D), {
     method: "PUT",
     body: body([ASSET], { final: true }),
   });
   assertEquals(res.status, 200);
-  assertEquals(await closedAt(db), canonicalFromMs(NOW));
-  assertEquals(pushed, ["recipient"]);
-  assert(lines.at(-1)!.endsWith(" closed=true recipients=1 pushed=1"), lines.at(-1));
+  assertEquals(await closedAt(db), null);
+  assertEquals(pushed, []);
+  assert(!lines.at(-1)!.includes("closed="), lines.at(-1));
 
-  // The waiting line's counts.
-  const details = await (await app.request(DETAILS)).json() as Record<string, unknown>;
-  assertEquals(details.closedAt, canonicalFromMs(NOW));
+  // D's photo has not arrived: a build that predates open-until dates is not told the event closed yet.
+  let details = await (await app.request(DETAILS)).json() as Record<string, unknown>;
+  assertEquals(details.closedAt, null);
+  assertEquals(details.members, { active: 2, final: 2, waiting: 1 });
+
+  // It lands: everyone still in the event has shared everything → such a build may leave once it has it all.
+  assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "x" })).status, 201);
+  details = await (await app.request(DETAILS)).json() as Record<string, unknown>;
+  assertEquals(details.closedAt, ENDED.openUntil);
   assertEquals(details.completedAt, null);
-  assertEquals(details.members, { active: 2, final: 2 });
+  assertEquals(details.members, { active: 2, final: 2, waiting: 0 });
+  assertEquals(await closedAt(db), null, "nothing is stamped");
   db.close();
 });
 
-Deno.test("close → a member that left is not waited for", async () => {
+Deno.test("derived closedAt → never before the open-until date; gone again when a guest joins late", async () => {
+  // Range over, but kept open until after NOW (a back-dated event): everyone shared, still not closed for anyone.
+  const open = await storeWithEvent({ ...ENDED, openUntil: "2026-07-20T00:00:00Z" });
+  const one = await twoMembers(open);
+  for (const [d, auth] of [[D, {}], [D2, await as(D2)]] as const) {
+    await one.app.request(MANIFEST(d), {
+      method: "PUT",
+      body: body([], { final: true }),
+      headers: auth,
+    });
+  }
+  assertEquals((await (await one.app.request(DETAILS)).json()).closedAt, null);
+  open.close();
+
+  // Open until its end: shared by everyone → closedAt; a late guest joins → null again, and it may join.
+  const ended = await storeWithEvent(ENDED);
+  const two = await twoMembers(ended);
+  for (const [d, auth] of [[D, {}], [D2, await as(D2)]] as const) {
+    await two.app.request(MANIFEST(d), {
+      method: "PUT",
+      body: body([], { final: true }),
+      headers: auth,
+    });
+  }
+  assertEquals((await (await two.app.request(DETAILS)).json()).closedAt, ENDED.openUntil);
+  assertEquals(
+    (await two.app.request(JOIN(D3), { method: "PUT", headers: await as(D3) })).status,
+    200,
+  );
+  assertEquals((await (await two.app.request(DETAILS)).json()).closedAt, null);
+  ended.close();
+});
+
+Deno.test("derived closedAt → a member that left is not waited for", async () => {
+  const db = await storeWithEvent(ENDED);
+  const { app } = await twoMembers(db);
+  await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
+  await app.request(MANIFEST(D), { method: "PUT", body: body([], { final: true }) });
+  assertEquals((await (await app.request(DETAILS)).json()).closedAt, ENDED.openUntil);
+  db.close();
+});
+
+Deno.test("ended → join, rejoin, rename and a changed asset set all still succeed after everyone settled", async () => {
   const db = await storeWithEvent(ENDED);
   const { app } = await twoMembers(db);
   await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
   await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: true }) });
-  assertEquals(await closedAt(db), canonicalFromMs(NOW));
+
+  assertEquals((await app.request(JOIN(D3), { method: "PUT", headers: await as(D3) })).status, 200);
+  assertEquals((await app.request(JOIN(D2), { method: "PUT", headers: await as(D2) })).status, 200);
+  const rename = await app.request(DETAILS, {
+    method: "PATCH",
+    body: JSON.stringify({ name: "Renamed" }),
+  });
+  assertEquals(rename.status, 200);
+  assertEquals((await rows(db, `SELECT name FROM events`))[0].name, "Renamed");
+  // A deleted photo is still withdrawn after the end (capability `photo-sharing`).
+  const retract = await app.request(MANIFEST(D), {
+    method: "PUT",
+    body: body([], { final: true, version: 1 }),
+  });
+  assertEquals(retract.status, 200);
+  assertEquals((await rows(db, `SELECT asset_id FROM event_assets`)).length, 0);
   db.close();
 });
 
-Deno.test("closed → join, rejoin and rename are refused 410; the name stays", async () => {
+/** An event closed before events stopped closing: the stamp the old close wrote (`PENDING_CLEANUPS.md`). */
+async function closedBeforeRollout(db: Store) {
+  await db.execute(`UPDATE events SET closed_at = ?`, ["2026-07-12T00:00:00Z"]);
+}
+
+Deno.test("legacy closed → join, rejoin and rename are refused 410; the name stays", async () => {
   const db = await storeWithEvent(ENDED);
   const { app } = await twoMembers(db);
   await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
   await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: true }) });
+  await closedBeforeRollout(db);
 
   const join = await app.request(JOIN(D3), { method: "PUT", headers: await as(D3) });
   assertEquals(join.status, 410);
@@ -165,21 +231,22 @@ Deno.test("closed → join, rejoin and rename are refused 410; the name stays", 
   });
   assertEquals(rename.status, 410);
   assertEquals((await rows(db, `SELECT name FROM events`))[0].name, "Party");
+  assertEquals((await (await app.request(DETAILS)).json()).closedAt, "2026-07-12T00:00:00Z");
   db.close();
 });
 
-Deno.test("closed → the same asset set is a 200 no-op; a changed one is refused 409 and changes nothing", async () => {
+Deno.test("legacy closed → the same asset set is a 200 no-op; a changed one is refused 409 and changes nothing", async () => {
   const db = await storeWithEvent(ENDED);
   const { app } = await twoMembers(db);
   await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
   await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: true }) });
+  await closedBeforeRollout(db);
 
   const same = await app.request(MANIFEST(D), {
     method: "PUT",
     body: body([ASSET], { final: true, version: 9 }),
   });
   assertEquals(same.status, 200);
-  // A deleted photo no longer withdraws it once closed (capability `photo-sharing`).
   const retract = await app.request(MANIFEST(D), {
     method: "PUT",
     body: body([], { final: true }),
@@ -242,7 +309,9 @@ Deno.test("completed → details answer 200 with completedAt; a publish is 410; 
   assertEquals(details.status, 200);
   const json = await details.json() as Record<string, unknown>;
   assertEquals(json.completedAt, "2026-07-13T00:00:00.000Z");
-  assertEquals(json.members, { active: 0, final: 0 });
+  assertEquals(json.members, { active: 0, final: 0, waiting: 0 });
+  // The completion's stamp is what a build that predates open-until dates reads as closed.
+  assertEquals(json.closedAt, "2026-07-13T00:00:00.000Z");
   assertEquals(
     (await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET]) })).status,
     410,
@@ -252,7 +321,7 @@ Deno.test("completed → details answer 200 with completedAt; a publish is 410; 
   db.close();
 });
 
-// ── The leave: `done` or `left`, and the close it can make ────────────────────────────────────────
+// ── The leave: `done` or `left` ───────────────────────────────────────────────────────────────────
 
 const LEAVE = (d: string, received?: boolean) =>
   received === undefined ? JOIN(d) : `${JOIN(d)}?received=${received}`;
@@ -313,27 +382,25 @@ Deno.test("leave → a repeated leave keeps the state the first one recorded", a
   db.close();
 });
 
-Deno.test("close → the leave that takes away the LAST sharing member closes the event and wakes once", async () => {
+Deno.test("leave → the leave that takes away the last sharing member closes nothing and wakes nobody", async () => {
   const db = await storeWithEvent(ENDED);
   const { app, pushed, lines } = await twoMembers(db);
-  // D2 settles; D is still sharing, so nothing closes.
   await app.request(MANIFEST(D2), {
     method: "PUT",
     body: body([], { final: true }),
     headers: await as(D2),
   });
-  assertEquals(await closedAt(db), null);
-  // D leaves without settling: every member still in the event has settled → closed, D2 woken once.
   assertEquals((await app.request(LEAVE(D), { method: "DELETE" })).status, 200);
-  assertEquals(await closedAt(db), canonicalFromMs(NOW));
-  assertEquals(pushed, ["recipient"]);
-  assert(lines.at(-1)!.endsWith(" closed=true recipients=1 pushed=1"), lines.at(-1));
+  assertEquals(await closedAt(db), null);
+  assertEquals(pushed, []);
+  assert(!lines.at(-1)!.includes("closed="), lines.at(-1));
   const details = await (await app.request(DETAILS)).json() as Record<string, unknown>;
-  assertEquals(details.members, { active: 1, final: 1 });
+  assertEquals(details.members, { active: 1, final: 1, waiting: 0 });
+  assertEquals(details.closedAt, ENDED.openUntil);
   db.close();
 });
 
-Deno.test("close → a leave closes nothing while a member is still sharing, or before the end", async () => {
+Deno.test("leave → a leave stamps nothing while a member is still sharing, or before the end", async () => {
   // Ended, but D2 is still sharing after D leaves.
   const ended = await storeWithEvent(ENDED);
   const one = await settledD(ended, true);
@@ -352,7 +419,7 @@ Deno.test("close → a leave closes nothing while a member is still sharing, or 
   open.close();
 });
 
-Deno.test("publish → the settled state follows the publish both ways until the close", async () => {
+Deno.test("publish → the settled state follows the publish both ways", async () => {
   const db = await storeWithEvent(ENDED);
   const { app } = await settledD(db, false);
   await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: false }) });

@@ -87,6 +87,7 @@ export const EVENT = {
   createdAt: "2026-06-27T00:00:00Z",
   startsAt: STARTS_AT,
   endsAt: ENDS_AT,
+  openUntil: ENDS_AT,
   capacity: 10,
   lifetimeSeconds: 30 * 24 * 60 * 60,
 };

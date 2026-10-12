@@ -19,7 +19,9 @@ import type { Handlers } from "../gen/wire.ts";
 import { APP_VERSION_HEADER, splitVersion } from "../version.ts";
 import { refuse } from "../refusal.ts";
 import { canonicalFromMs, canonicalPlusSeconds } from "../validators.ts";
+import { openUntilAdmitted } from "../lifecycle.ts";
 import {
+  closedForOldBuilds,
   closedRefusal,
   declaredAppVersion,
   deviceOrigin,
@@ -27,12 +29,10 @@ import {
   gateEvent,
   NO_CACHE,
   noteAppVersion,
-  notifyMembers,
   orUpstream502,
   ownDevice,
   presignDownloadUrl,
   publicEvent,
-  recordNotify,
   type RouteDeps,
   tryUpstream,
 } from "./support.ts";
@@ -113,14 +113,26 @@ export function sharedHandlers(
     // `lifetimeSeconds` stay server-resolved. An ENCRYPTED event names its key's id (the encrypted file format,
     // `docs/architecture.md`); the key itself never reaches this backend. The host's `zone` is only the event
     // page's (capability `event-site`): one this runtime cannot use arrives absent and is stored null.
+    //
+    // `openUntil` is until when the event stays open — the date every lifecycle rule counts from (decision record
+    // `changes/back-dated-events`, D1). ABSENT it is `endsAt`, which is what every build that predates it gets. Its
+    // bound reads the clock, which the declared validation cannot, so it is checked here: at least `endsAt`, and
+    // at most the window maximum after the later of `endsAt` and now — room for a host who creates an event that
+    // is already over to keep it open for the guests still to scan its invite, and no more.
     async createEvent(c, { body }) {
       const { name, startsAt } = body;
+      const endsAt = body.endsAt ?? canonicalPlusSeconds(startsAt, config.eventWindowMaxSeconds);
+      const openUntil = body.openUntil ?? endsAt;
+      if (!openUntilAdmitted(endsAt, openUntil, now(), config.eventWindowMaxSeconds)) {
+        refuse(400, "invalid openUntil");
+      }
       const event: EventRow = {
         eventId: crypto.randomUUID(),
         name,
         createdAt: canonicalFromMs(now()),
         startsAt,
-        endsAt: body.endsAt ?? canonicalPlusSeconds(startsAt, config.eventWindowMaxSeconds),
+        endsAt,
+        openUntil,
         capacity: config.eventCapacity,
         lifetimeSeconds: config.eventLifetimeSeconds,
         zone: body.zone ?? null,
@@ -153,11 +165,15 @@ export function sharedHandlers(
     async getEvent(c, { params: { eventId } }) {
       await optionalReader(c.req.header("authorization"));
       const event = await gateEvent(db, eventId, "metadata");
-      // `members` feeds the ended event's waiting line (capability `sync-status`): how many of the active
-      // members have settled what they share. A completed event has none left.
+      // `members` feeds the joined screen (capability `sync-status`): how many are in the event, and how many of
+      // them are still sharing — the ended event's waiting line. A completed event has none left.
       return await orUpstream502(
         `metadata: event read failed for ${eventId}`,
-        async () => c.json({ ...publicEvent(event), members: await memberCounts(db, eventId) }),
+        async () =>
+          c.json({
+            ...publicEvent(event, await closedForOldBuilds(db, event, now())),
+            members: await memberCounts(db, eventId),
+          }),
       );
     },
 
@@ -212,9 +228,8 @@ export function sharedHandlers(
     // the bytes. Idempotent: a repeated leave, or one naming a membership that never existed, changes nothing and
     // is not an error, so a retried DELETE re-runs harmlessly. Any transport failure → 502.
     //
-    // After the event's range has ended, the leave that takes away the last member still `sharing` CLOSES the
-    // event (capability `event-lifetime`, "A finished event closes": every member still in it has settled), and
-    // wakes the members still in it once, as the publish that closes does.
+    // A leave closes nothing and wakes nobody: events no longer close (decision record `changes/back-dated-events`,
+    // D2). Whether a departure leaves the event finished is computed by the sweep and the event read.
     async leaveEvent(c, { params }) {
       const { eventId } = params;
       const deviceId = ownDevice(c.get("tokenDeviceId"), params.deviceId);
@@ -223,27 +238,14 @@ export function sharedHandlers(
       // The lifecycle gate (capability `event-lifetime`): an absent event 404s, which the client already
       // treats as "nothing to leave". A leave DURING grace proceeds: members may still
       // depart an over-but-not-yet-swept event.
-      const event = await gateEvent(db, eventId, "leave");
+      await gateEvent(db, eventId, "leave");
 
-      const nowMs = now();
-      // A closed event cannot close again, and before the end nothing closes.
-      const closeAt = !event.closedAt && nowMs > Date.parse(event.endsAt)
-        ? canonicalFromMs(nowMs)
-        : null;
-      const closed = await tryUpstream(
+      // ONE column, one batch. Membership is a `state`, so leaving cannot leave a half-applied pair behind and
+      // cannot be double-counted.
+      await tryUpstream(
         `leave: depart failed for ${eventId}/${deviceId}`,
-        async () => {
-          // ONE column, one batch. Membership is a `state`, so leaving cannot leave a half-applied pair behind
-          // and cannot be double-counted; the close stamp runs last and sees it.
-          const results = await db.batch(leaveStatements(eventId, deviceId, received, closeAt));
-          return closeAt !== null && results[results.length - 1].rowsAffected > 0;
-        },
+        () => db.batch(leaveStatements(eventId, deviceId, received)),
       );
-      // AFTER the commit, and best-effort: the members still in it must learn the close to finish and leave.
-      if (closed) {
-        c.var.log.field("closed", true);
-        recordNotify(c.var.log, await notifyMembers(deps, eventId, deviceId, "close"));
-      }
       // Always succeed: the event persists (rejoinable while open) regardless of how many members remain,
       // and a leave naming a membership that never existed changes nothing rather than failing.
       return c.body(null, 200);

@@ -13,11 +13,13 @@
 // phase leaves NOT living, and the event phase deletes their rows (by cascade) first — row before byte.
 //
 //   EVENT phase — each event gets one `sweepVerdict` (`lifecycle.ts`). DROP past its derived delete-by
-//     (`max(createdAt, startsAt) + lifetimeSeconds` — the GUARANTEE): one `DELETE`, the cascade takes
-//     memberships, assets and resources. COMPLETE once it is finished — EMPTY (ever joined, nobody still
-//     present; dependable now that devices retry a leave until it lands) or past the CLOCK (`max(endsAt,
-//     lastLandedAt) + 3 days`, ever joined): memberships, assets and resources go, the row stays until DROP
-//     so a device still joined is told "completed". No notification is sent — see the delete site for why.
+//     (`max(createdAt, openUntil) + lifetimeSeconds` — the GUARANTEE): one `DELETE`, the cascade takes
+//     memberships, assets and resources. COMPLETE, only for an event someone joined, once it is FINISHED
+//     (past its open-until date, every member still in it has shared and received everything), EMPTY
+//     (nobody still present; dependable now that devices retry a leave until it lands) or past the CLOCK
+//     (`max(openUntil, lastJoinedAt, lastLandedAt) + 3 days`): memberships, assets and resources go, the
+//     row stays until DROP so a device still joined is told "completed". No notification is sent — see the
+//     delete site for why.
 //
 //     ⚠️ THE DECISION RUNS INSIDE AN INTERACTIVE TRANSACTION, which executes against the PRIMARY. The
 //     emptiness rule is the exposed one: a stale replica that had not yet observed a REJOIN would see a
@@ -144,8 +146,10 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   // primary: see the header for why a possibly-stale replica read must not decide a deletion.
   const stale: string[] = [];
   await db.transaction(async (tx) => {
-    for (const { event, total, active } of await eventsWithCounts(tx)) {
-      const verdict = sweepVerdict(event, { total, active }, now());
+    const at = now();
+    for (const counts of await eventsWithCounts(tx, canonicalFromMs(at))) {
+      const { event, total, active } = counts;
+      const verdict = sweepVerdict(event, counts, at);
       if (verdict === "keep") {
         summary.events.kept++;
         continue;
@@ -158,7 +162,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
           log(`[dry-run] would complete event ${event.eventId} (${active}/${total} active)`);
         } else {
           // No notification, for the same reason as a delete below: a device still joined learns the
-          // event completed from its own next read, and leaves on it (capability `event-lifetime`).
+          // event completed from its own next read, and shows it as over (capability `event-lifetime`).
           await completeEvent(tx, event.eventId, canonicalFromMs(now()));
           log(`completed event ${event.eventId} (${active}/${total} active)`);
         }

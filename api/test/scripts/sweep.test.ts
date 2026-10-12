@@ -36,20 +36,24 @@ const D2 = "22222222-0000-4000-8000-000000000002";
 const ORPHAN = "99999999-0000-4000-8000-000000000009";
 const LIFETIME = 30 * 24 * 60 * 60;
 
-// Staleness is decided by the DERIVED delete-by, `max(createdAt, startsAt) + lifetimeSeconds`. With
-// `createdAt` pinned at 2026-06-01, a `startsAt` of 2026-06-10 lands the deadline on 2026-07-10 (before
-// NOW → STALE) and one of 2026-07-01 lands it on 2026-07-31 (after NOW → LIVE). `endsAt` participates in
-// staleness NOT AT ALL: it bounds only which captures may be uploaded (capability `event-lifetime`).
+// Staleness is decided by the DERIVED delete-by, `max(createdAt, openUntil) + lifetimeSeconds`. With
+// `createdAt` pinned at 2026-06-01, an open-until date of 2026-06-10 lands the deadline on 2026-07-10 (before
+// NOW → STALE) and one of 2026-07-13 lands it on 2026-08-12 (after NOW → LIVE, and its 3-day clock not yet due
+// either). An ordinary event is open until
+// its range end, so the fixture's range ends on its open-until date unless a test says otherwise; `startsAt`
+// participates in staleness NOT AT ALL any more (decision record `changes/back-dated-events`, D2).
 const STALE_STARTS = "2026-06-10T00:00:00Z";
-const LIVE_STARTS = "2026-07-01T00:00:00Z";
+const LIVE_STARTS = "2026-07-13T00:00:00Z";
 
-function event(eventId: string, startsAt: string, overrides: Record<string, unknown> = {}) {
+function event(eventId: string, openUntil: string, overrides: Record<string, unknown> = {}) {
+  const endsAt = (overrides.endsAt as string | undefined) ?? openUntil;
   return {
     eventId,
     name: "e",
     createdAt: "2026-06-01T00:00:00.000Z",
-    startsAt,
-    endsAt: "2026-08-03T00:00:00Z",
+    startsAt: "2026-05-01T00:00:00Z",
+    endsAt,
+    openUntil: (overrides.openUntil as string | undefined) ?? endsAt,
     capacity: 10,
     lifetimeSeconds: LIFETIME,
     ...overrides,
@@ -353,12 +357,13 @@ Deno.test("event phase → a MINTED-BUT-NEVER-JOINED event is not empty and surv
   d.close();
 });
 
-Deno.test("event phase → the deadline anchors at max(createdAt, startsAt), both directions", async () => {
+Deno.test("event phase → the deadline anchors at max(createdAt, openUntil), both directions", async () => {
   const d = await db();
-  // Back-dated: startsAt long before createdAt → anchored at createdAt (2026-06-01) + 1 day → STALE.
+  // Open until long before its creation (no create admits it; a row that says so) → anchored at createdAt
+  // (2026-06-01) + 1 day → STALE.
   const BACK = "dddddddd-0000-4000-8000-000000000004";
   await insertEvent(d, event(BACK, "2026-01-01T00:00:00Z", { lifetimeSeconds: 24 * 60 * 60 }));
-  // Created early: startsAt weeks after createdAt → anchored at startsAt (2026-07-13) + 1 day → LIVE.
+  // Open until after its creation → anchored at the open-until date (2026-07-13T18:00) + 1 day → LIVE.
   const EARLY = "eeeeeeee-0000-4000-8000-000000000005";
   await insertEvent(d, event(EARLY, "2026-07-13T18:00:00Z", { lifetimeSeconds: 24 * 60 * 60 }));
   await run(d, fake({}));
@@ -366,8 +371,84 @@ Deno.test("event phase → the deadline anchors at max(createdAt, startsAt), bot
   d.close();
 });
 
+Deno.test("event phase → a back-dated event lives 30 days past the date its host chose, not past its range", async () => {
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  // Its range ended in May; created 2026-06-01 and kept open until 2026-06-20 → deadline 2026-07-20 → LIVE.
+  await insertEvent(
+    d,
+    event(E, "2026-05-03T00:00:00Z", { openUntil: "2026-06-20T00:00:00Z", lastLandedAt: null }),
+  );
+  await run(d, fake({}));
+  assertEquals(await eventIds(d), [E]);
+  d.close();
+});
+
+/** Mark [deviceId] as having shared everything it declared and received up to the event's union head. */
+async function done(d: Db, eventId: string, deviceId: string) {
+  await d.execute(
+    `UPDATE memberships SET state = 'settled', received_position = 1000000 WHERE event_id = ? AND device_id = ?`,
+    [eventId, deviceId],
+  );
+}
+
+Deno.test("event phase → a FINISHED event is completed at once; not before its open-until date", async () => {
+  const d = await db();
+  const FINISHED = "cccccccc-0000-4000-8000-000000000003";
+  const STILL_OPEN = "dddddddd-0000-4000-8000-000000000004";
+  // Open until yesterday, its one member done → finished → completed without waiting for the clock.
+  await insertEvent(d, event(FINISHED, "2026-07-13T12:00:00Z"));
+  // A back-dated event still open for a week: its host alone is done at once, and that finishes nothing.
+  await insertEvent(
+    d,
+    event(STILL_OPEN, "2026-07-10T00:00:00Z", { openUntil: "2026-07-21T12:00:00Z" }),
+  );
+  for (const e of [FINISHED, STILL_OPEN]) {
+    await member(d, e, D, ["a"]);
+    await done(d, e, D);
+  }
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.events, { deleted: 0, completed: 1, kept: 1 });
+  const completed = (await d.execute(`SELECT id FROM events WHERE completed_at IS NOT NULL`)).rows;
+  assertEquals(completed.map((r) => String(r.id)), [FINISHED]);
+  d.close();
+});
+
+Deno.test("event phase → a member who has not received everything keeps a finished-looking event", async () => {
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  await insertEvent(d, event(E, "2026-07-13T12:00:00Z"));
+  await member(d, E, D, ["a"]);
+  await member(d, E, D2, ["b"]);
+  await done(d, E, D);
+  // D2 settled with its photo landed, but never said what it received.
+  await d.execute(`UPDATE memberships SET state = 'settled' WHERE device_id = ?`, [D2]);
+  await d.execute(
+    `INSERT INTO union_log (event_id, kind, device_id, asset_id, at) VALUES (?, 'gained', ?, 'a', 'at')`,
+    [E, D],
+  );
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  d.close();
+});
+
+Deno.test("event phase → a late JOIN moves the clock: 3 days after the last join", async () => {
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  // Open until 07-05 → clock 07-08, long past — but a guest joined 07-13 → clock 07-16, after NOW.
+  await insertEvent(d, event(E, "2026-07-05T00:00:00Z"));
+  await member(d, E, D, []);
+  await d.execute(
+    `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'sharing', ?)`,
+    [E, D2, "2026-07-13T00:00:00.000Z"],
+  );
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  d.close();
+});
+
 Deno.test("event phase → an event past its WINDOW but within 3 days of it is untouched", async () => {
-  // `endsAt` alone closes nothing — the window passing changes no lifecycle answer until the clock.
+  // The open-until date passing changes no lifecycle answer by itself — only the clock, or everyone being done.
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS, { endsAt: "2026-07-12T00:00:00Z" }));

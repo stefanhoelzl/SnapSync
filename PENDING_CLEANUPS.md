@@ -249,6 +249,45 @@ then run an app that copied its legacy records, so no legacy file or key is left
   not-found classification is no longer load-bearing for the leave decision (`FileAbsence.kt`, `CLAUDE.md`).
 - **Record:** this file's PR (phase 2b, "ports: sql + shared records").
 
+## Once `MIN_APP_VERSION` ≥ the release that stopped events closing
+
+**Unlock condition:** the floor is at or above the first store release built with `back-dated-events` (open-until
+dates; the app never leaves an event on its own). Every device that can still talk to the backend then reads
+`openUntil` and `members.waiting`, reports what it received, and ignores `closedAt`.
+
+### Derived `closedAt` for builds that predate open-until dates (api)
+- **What:** events no longer close, but the event read still serves `closedAt`, because a build before this release
+  treats a non-null value as "closed" and leaves once it holds everything.
+  - `api/src/routes/support.ts`: `closedForOldBuilds` — the stored stamp, else the open-until date once it has
+    passed and everyone still in the event has shared everything.
+  - `api/src/db.ts`: `sharedByEveryone`, read only by it; `memberCounts`' `final`, read only by those builds' waiting
+    line.
+  - `api/openapi.yaml`: `Event.closedAt` and `MemberCounts.final`.
+- **Why:** without it such a build would never leave a finished event, and its membership would hold the fast
+  deletion back until the 3-day clock.
+- **Remove:** `closedForOldBuilds` (serve the stored stamp, or drop the field with a `/api/v3`), `sharedByEveryone`,
+  `MemberCounts.final`, and their tests in `api/test/completion.test.ts`.
+- **Record:** `openspec/changes/back-dated-events` (design, D5).
+
+## Once every event closed before open-until dates is gone
+
+**Unlock condition:** no event row carries a `closed_at` written by the old close. The sweep drops every such row at
+its deadline, so this holds 30 days after the later of the rollout and the longest such event's end — check with
+`SELECT count(*) FROM events WHERE closed_at IS NOT NULL AND completed_at IS NULL` (expect `0`; a completed event
+also carries the stamp, and keeps it).
+
+### The old close's rules for legacy closed events (api)
+- **What:** an event closed before this change keeps refusing joins, renames and a changed asset set.
+  - `api/src/db.ts`: the `closed_at IS NULL` test in `ENROLL`, the close gate in `publishStatements`,
+    `declaredAssets`.
+  - `api/src/routes/v2.ts`: `declaresSameSet` and the `event.closedAt` branch of `publishManifest`;
+    `api/src/routes/shared.ts`: the `closedRefusal` in `changeEvent`.
+  - `api/test/completion.test.ts`: the `legacy closed →` tests.
+- **Why:** its members were promised that what they shared was fixed; reopening it would let a late change through.
+- **Remove:** the branches above, keeping the refusals a COMPLETED event still needs (`completedAt`); then
+  `ClosedError`'s `SetFixed` outcome on `publishManifest` and the app's handling of it.
+- **Record:** `openspec/changes/back-dated-events` (design, D2/D5).
+
 ## One-off ops
 
 ### Bytes still in the old storage layout (api)

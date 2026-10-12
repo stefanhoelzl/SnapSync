@@ -60,14 +60,14 @@ CREATE TABLE events (
   capacity         INTEGER NOT NULL,
   lifetime_seconds INTEGER NOT NULL
 , closed_at TEXT, completed_at TEXT, last_landed_at TEXT, zone TEXT, key_id TEXT
-  CHECK (key_id IS NULL OR (length(key_id) = 16 AND key_id NOT GLOB '*[^0-9a-f]*'))) STRICT;
+  CHECK (key_id IS NULL OR (length(key_id) = 16 AND key_id NOT GLOB '*[^0-9a-f]*')), open_until TEXT) STRICT;
 
 CREATE TABLE memberships (
   event_id         TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   device_id        TEXT NOT NULL,
   state            TEXT NOT NULL CHECK (state IN ('sharing', 'settled', 'done', 'left')),
   joined_at        TEXT NOT NULL,
-  manifest_version INTEGER,
+  manifest_version INTEGER, received_position INTEGER,
   PRIMARY KEY (event_id, device_id)
 ) STRICT;
 

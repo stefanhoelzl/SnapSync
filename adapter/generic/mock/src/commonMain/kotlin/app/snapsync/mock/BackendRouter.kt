@@ -187,8 +187,8 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         val members = state.members(eventId)
         val e = event.onWire(eventId)
         val details = EventDetails(
-            e.eventId, e.name, e.createdAt, e.startsAt, e.endsAt, e.capacity, e.deletesAt, e.closedAt, e.completedAt,
-            e.keyId, MemberCounts(members.active, members.settled),
+            e.eventId, e.name, e.createdAt, e.startsAt, e.endsAt, e.openUntil, e.capacity, e.deletesAt, e.closedAt,
+            e.completedAt, e.keyId, MemberCounts(members.active, members.settled, waiting = 0),
         )
         return json(OK, EventDetails.serializer(), details)
     }
@@ -284,6 +284,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         createdAt = createdAt.toString(),
         startsAt = startsAt.toString(),
         endsAt = endsAt.toString(),
+        openUntil = endsAt.toString(),
         capacity = state.capacity,
         deletesAt = (maxOf(createdAt, startsAt) + WINDOW_DAYS.days).toString(),
         // The mock stamps no instants; the real route serves the moment. Presence is what a reader acts on.

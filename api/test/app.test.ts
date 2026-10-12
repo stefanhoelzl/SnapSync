@@ -41,22 +41,22 @@ const DEVLIST_PATH = `/api/v2/files/devices/${D}`;
 
 // ── The lifecycle derivation (capability `event-lifetime`) ───────────────────────────────────────────
 
-Deno.test("deleteByMs → anchors at max(createdAt, startsAt) and adds the stamped lifetime", () => {
+Deno.test("deleteByMs → anchors at max(createdAt, openUntil) and adds the stamped lifetime", () => {
   const day = 24 * 60 * 60;
-  // Back-dated: `startsAt` weeks before `createdAt` → anchored at createdAt, so it is not born expired.
+  // A back-dated event kept open a week after its creation → anchored at the open-until date.
   assertEquals(
     deleteByMs({
       createdAt: "2026-07-01T00:00:00Z",
-      startsAt: "2026-06-01T00:00:00Z",
+      openUntil: "2026-07-08T00:00:00Z",
       lifetimeSeconds: day,
     }),
-    Date.parse("2026-07-02T00:00:00Z"),
+    Date.parse("2026-07-09T00:00:00Z"),
   );
-  // Created early: `startsAt` weeks after `createdAt` → anchored at startsAt, so it outlives its window.
+  // A row open until before its creation (no create admits it) → anchored at createdAt.
   assertEquals(
     deleteByMs({
-      createdAt: "2026-06-01T00:00:00Z",
-      startsAt: "2026-07-01T00:00:00Z",
+      createdAt: "2026-07-01T00:00:00Z",
+      openUntil: "2026-06-01T00:00:00Z",
       lifetimeSeconds: day,
     }),
     Date.parse("2026-07-02T00:00:00Z"),
@@ -64,7 +64,7 @@ Deno.test("deleteByMs → anchors at max(createdAt, startsAt) and adds the stamp
 });
 
 Deno.test("deleteByMs → NaN when neither anchor parses", () => {
-  assert(Number.isNaN(deleteByMs({ createdAt: "nope", startsAt: "nope", lifetimeSeconds: 60 })));
+  assert(Number.isNaN(deleteByMs({ createdAt: "nope", openUntil: "nope", lifetimeSeconds: 60 })));
 });
 
 // ── The maintenance window (`docs/deployment.md`) ───────────────────────────────────────
@@ -377,31 +377,45 @@ const ROW = {
   createdAt: "2026-06-01T00:00:00.000Z",
   startsAt: "2026-06-01T00:00:00Z",
   endsAt: "2026-06-05T00:00:00Z",
+  openUntil: "2026-06-05T00:00:00Z",
   capacity: 10,
   lifetimeSeconds: 30 * 24 * 60 * 60,
 };
 const ENDS = Date.parse(ROW.endsAt);
 
-Deno.test("clockMs → 3 days after the end, or after a later landing; an earlier landing does not pull it in", () => {
+Deno.test("clockMs → 3 days after the open-until date, or after a later landing or join", () => {
   assertEquals(clockMs(ROW), ENDS + 3 * DAY);
   assertEquals(clockMs({ ...ROW, lastLandedAt: "2026-06-07T00:00:00.000Z" }), ENDS + 5 * DAY);
   assertEquals(clockMs({ ...ROW, lastLandedAt: "2026-06-03T00:00:00.000Z" }), ENDS + 3 * DAY);
   assertEquals(clockMs({ ...ROW, lastLandedAt: "garbage" }), ENDS + 3 * DAY);
-  assert(Number.isNaN(clockMs({ ...ROW, endsAt: "nope" })));
+  assertEquals(clockMs(ROW, "2026-06-09T00:00:00.000Z"), ENDS + 7 * DAY);
+  assertEquals(
+    clockMs({ ...ROW, lastLandedAt: "2026-06-07T00:00:00Z" }, "2026-06-06T00:00:00Z"),
+    ENDS + 5 * DAY,
+  );
+  // A back-dated event's clock runs from the date its host chose, not from its long-past range end.
+  assertEquals(
+    clockMs({ ...ROW, openUntil: "2026-06-20T00:00:00Z" }),
+    Date.parse("2026-06-23T00:00:00Z"),
+  );
+  assert(Number.isNaN(clockMs({ ...ROW, openUntil: "nope" })));
 });
 
-Deno.test("sweepVerdict → deadline drops; emptiness or the clock completes; the rest keeps", () => {
-  const joined = { total: 2, active: 1 };
+Deno.test("sweepVerdict → deadline drops; finished, emptiness or the clock completes; the rest keeps", () => {
+  const joined = { total: 2, active: 1, finished: false, lastJoinedAt: null };
   assertEquals(sweepVerdict(ROW, joined, ENDS + DAY), "keep");
+  assertEquals(sweepVerdict(ROW, { ...joined, finished: true }, ENDS + DAY), "complete");
   assertEquals(sweepVerdict(ROW, joined, ENDS + 3 * DAY + 1), "complete");
-  assertEquals(sweepVerdict(ROW, { total: 2, active: 0 }, ENDS - DAY), "complete");
-  // Never joined: neither emptiness nor the clock applies — it lives to its deadline.
-  assertEquals(sweepVerdict(ROW, { total: 0, active: 0 }, ENDS + 10 * DAY), "keep");
-  // Already completed: waits for the deadline.
   assertEquals(
-    sweepVerdict({ ...ROW, completedAt: "x" }, { total: 0, active: 0 }, ENDS + 10 * DAY),
+    sweepVerdict(ROW, { ...joined, lastJoinedAt: "2026-06-08T00:00:00Z" }, ENDS + 3 * DAY + 1),
     "keep",
   );
-  assertEquals(sweepVerdict(ROW, joined, Date.parse(ROW.createdAt) + 31 * DAY), "drop");
-  assertEquals(sweepVerdict({ ...ROW, createdAt: "x", startsAt: "y" }, joined, ENDS), "drop");
+  assertEquals(sweepVerdict(ROW, { ...joined, total: 2, active: 0 }, ENDS - DAY), "complete");
+  // Never joined: neither finished, emptiness nor the clock applies — it lives to its deadline.
+  const never = { total: 0, active: 0, finished: false, lastJoinedAt: null };
+  assertEquals(sweepVerdict(ROW, never, ENDS + 10 * DAY), "keep");
+  // Already completed: waits for the deadline.
+  assertEquals(sweepVerdict({ ...ROW, completedAt: "x" }, never, ENDS + 10 * DAY), "keep");
+  assertEquals(sweepVerdict(ROW, joined, ENDS + 30 * DAY + 1), "drop");
+  assertEquals(sweepVerdict({ ...ROW, createdAt: "x", openUntil: "y" }, joined, ENDS), "drop");
 });

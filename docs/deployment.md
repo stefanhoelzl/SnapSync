@@ -400,10 +400,11 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
   `db.ts`, `lifecycle.ts`, `storage.ts` and config, so the rules cannot drift. It **marks from the
   database and deletes from storage**. It makes no request to the Edge Script and sends no notification.
   Members find out the event is gone on their next foreground fetch.
-- **Event phase:** delete every event past its derived delete-by (`max(createdAt, startsAt) +
-  lifetimeSeconds`, the guarantee), and complete one that is **empty** (has memberships and none are
-  present) or past its clock. Emptiness is opportunistic, not promised. An event nobody ever joined is not
-  "empty". The decision runs inside an interactive transaction against the primary. One `DELETE` cascades
+- **Event phase:** delete every event past its derived delete-by (`max(createdAt, openUntil) +
+  lifetimeSeconds`, the guarantee), and complete one that is **finished** (past its open-until date, every
+  member still in it has shared and received everything), **empty** (has memberships and none are present) or
+  past its clock (`max(openUntil, last join, last landing) + 3 days`). Emptiness is opportunistic, not promised.
+  An event nobody ever joined is none of these. The decision runs inside an interactive transaction against the primary. One `DELETE` cascades
   memberships, assets and resources; a completion deletes the memberships, and with them the same.
 - **Byte phase:** an event's bytes are one folder, `files/<eventId>/`. The sweep lists `files/`, then reads
   which events still live (present and not completed) **on the primary**, in that order — a folder listed

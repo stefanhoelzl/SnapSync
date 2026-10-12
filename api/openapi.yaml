@@ -180,6 +180,7 @@ paths:
         name: invalid name
         startsAt: invalid startsAt
         endsAt: invalid endsAt
+        openUntil: invalid openUntil
         keyId: invalid keyId
       tags: [events]
       summary: Mint an event.
@@ -208,8 +209,8 @@ paths:
                   - const: invalid name
                     title: The name is missing, blank or too long.
                     x-snapsync-outcome: InvalidName
-                  - enum: [invalid startsAt, invalid endsAt]
-                    title: The date range is not one an event may have.
+                  - enum: [invalid startsAt, invalid endsAt, invalid openUntil]
+                    title: The date range, or how long the event stays open, is not one an event may have.
                     x-snapsync-outcome: InvalidWindow
                   - enum: [invalid body, invalid keyId]
                     title: The request is malformed.
@@ -419,6 +420,54 @@ paths:
                 $ref: "#/components/schemas/ClosedError"
         "410":
           $ref: "#/components/responses/Closed"
+        "426":
+          $ref: "#/components/responses/AppTooOld"
+        "502":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Maintenance"
+
+  /events/{eventId}/devices/{deviceId}/received:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/DeviceId"
+      - $ref: "#/components/parameters/AppVersion"
+    put:
+      operationId: reportReceived
+      x-snapsync-refusals:
+        eventId: invalid id
+        deviceId: invalid id
+        body: invalid position
+        position: invalid position
+      tags: [membership]
+      summary: Say up to which union position this device holds every photo of the others.
+      description: |
+        Monotonic: a position lower than the one recorded changes nothing and is answered like a recorded one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Received"
+      responses:
+        "200":
+          description: Recorded (or a higher position already was).
+          x-snapsync-outcome: Recorded
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/NotThisDevice"
+        "404":
+          $ref: "#/components/responses/EventNotFound"
+        "409":
+          description: The device is not in the event.
+          x-snapsync-outcome: NotAMember
+          content:
+            text/plain:
+              schema:
+                const: not a member
         "426":
           $ref: "#/components/responses/AppTooOld"
         "502":
@@ -1076,6 +1125,12 @@ components:
           x-snapsync-max-span:
             from: startsAt
             policy: eventWindowMaxSeconds
+        openUntil:
+          description: |
+            Until when the event stays open — the date its lifecycle counts from. Absent is `endsAt`. At least
+            `endsAt`, and at most the window maximum after the later of `endsAt` and now (the backend checks the
+            bound, since it reads the clock).
+          $ref: "#/components/schemas/Timestamp"
         zone:
           $ref: "#/components/schemas/Zone"
           x-snapsync-on-invalid: drop
@@ -1096,6 +1151,7 @@ components:
         - createdAt
         - startsAt
         - endsAt
+        - openUntil
         - capacity
         - deletesAt
         - closedAt
@@ -1111,6 +1167,9 @@ components:
           $ref: "#/components/schemas/Timestamp"
         endsAt:
           $ref: "#/components/schemas/Timestamp"
+        openUntil:
+          description: Until when the event stays open — its range end, or the date its host chose when it was over.
+          $ref: "#/components/schemas/Timestamp"
         capacity:
           description: Devices the event admits, present or departed.
           type: integer
@@ -1118,7 +1177,10 @@ components:
           description: The latest the event lives — derived, never stored.
           $ref: "#/components/schemas/Timestamp"
         closedAt:
-          description: When the event closed; `null` while open.
+          description: |
+            For builds that predate open-until dates (`PENDING_CLEANUPS.md`): set once the event is past its open-until
+            date and every member still in it has shared everything, `null` otherwise. An event closed before
+            open-until dates existed carries the instant it closed.
           $ref: "#/components/schemas/NullableTimestamp"
         completedAt:
           description: When the event completed; `null` until then.
@@ -1135,9 +1197,10 @@ components:
             members:
               $ref: "#/components/schemas/MemberCounts"
     MemberCounts:
-      description: The event's present members, and how many of them have settled what they share.
+      description: The event's present members, how many of them have settled what they share, and how many are
+        still sharing — not settled, or with a declared photo that has not arrived.
       type: object
-      required: [active, final]
+      required: [active, final, waiting]
       properties:
         active:
           type: integer
@@ -1145,6 +1208,19 @@ components:
         final:
           type: integer
           minimum: 0
+        waiting:
+          type: integer
+          minimum: 0
+    Received:
+      description: The union-log position up to which this device holds every photo of the others.
+      type: object
+      required: [position]
+      properties:
+        position:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
 
     Manifest:
       description: What a device shares in an event — a full snapshot, replacing the last.

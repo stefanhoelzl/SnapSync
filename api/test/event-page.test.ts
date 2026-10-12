@@ -24,6 +24,7 @@ const BERLIN: EventRow = {
   createdAt: "2026-10-01T10:00:00.000Z",
   startsAt: "2026-10-03T22:00:00Z",
   endsAt: "2026-10-05T18:00:00Z",
+  openUntil: "2026-10-05T18:00:00Z",
   capacity: 10,
   lifetimeSeconds: 30 * 86400,
   zone: "Europe/Berlin",

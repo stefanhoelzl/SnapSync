@@ -54,6 +54,7 @@ export const VERBATIM: Readonly<Record<string, ReadonlySet<string>>> = {
     "closed_at",
     "completed_at",
     "last_landed_at",
+    "open_until",
   ]),
   memberships: new Set(["state", "joined_at"]),
   event_assets: new Set(["creation_date", "roles"]),
