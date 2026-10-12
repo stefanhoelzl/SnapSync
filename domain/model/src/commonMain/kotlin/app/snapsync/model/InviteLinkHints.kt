@@ -18,6 +18,9 @@ enum class InviteLinkHints {
     /** The shipped behaviour: every link is an ordinary invite; hints are logged and dropped. */
     Ignored,
 
-    /** Rig builds only: `autoJoin` auto-confirms, honouring the link's overrides (still clamped in `JoinEvent`). */
+    /**
+     * Rig builds only: `autoJoin` auto-confirms, honouring the link's overrides (still held to the share-range rule in
+     * `JoinEvent`).
+     */
     Honoured,
 }

@@ -4,8 +4,6 @@ import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLookup
@@ -35,18 +33,10 @@ private const val DEVICE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 /** Every membership carries a cutoff (capability `photo-sharing`); there is no "no cutoff" join. */
 private val CUTOFF = captureCutoff("2026-07-06T14:32:11Z")
 
-/**
- * The event's start date — the FLOOR under every membership's cutoff (capability `photo-sharing`).
- * Deliberately earlier than [CUTOFF], so the clamp is a no-op for the tests that predate it and they go
- * on asserting exactly what they always did. The clamp's own behavior is pinned separately, below.
- */
+/** The event's start date — earlier than [CUTOFF], so the default fixtures share a range inside the event. */
 private val STARTS_AT = eventStart("2026-07-01T09:00:00Z")
 
-/**
- * The event's end date — the CEILING over every membership's upper capture-date bound (capability
- * `photo-sharing`). After [STARTS_AT], so the window is well-formed; the ceiling clamp
- * (`min(chosen, endsAt)`) is exercised separately where it matters.
- */
+/** The event's end date, a week after [STARTS_AT]. */
 private val ENDS_AT = eventEnd("2026-07-08T09:00:00Z")
 
 /** The same instant as [ENDS_AT], in its OTHER role: a membership's capture-date ceiling. */
@@ -301,23 +291,36 @@ class JoinEventTest {
     // ── the event-start floor (capability `photo-sharing`) ────────────────────────────────────
 
     @Test
-    fun `a cutoff below the event start is clamped up to it`() = runTest {
+    fun `a range starting before the event is kept as chosen`() = runTest {
+        // Capability `join-event`: the evening before, the trip there — a member may reach before the start.
         val provisioned = mutableListOf<EventConfig>()
+        val before = captureCutoff("2026-06-29T18:00:00Z")
+        val outcome = joinEvent(config = null, provisioned = provisioned)
+            .join(
+                JoinChoice(
+                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    before, CEILING, Direction.Both, false,
+                ),
+            )
+
+        assertEquals(JoinOutcome.Committed, outcome)
+        assertEquals(before, provisioned.single().minPhotoDate)
+        assertEquals(STARTS_AT, provisioned.single().startsAt)
+    }
+
+    @Test
+    fun `a range ending after the event is kept as chosen`() = runTest {
+        val provisioned = mutableListOf<EventConfig>()
+        val after = captureCeiling("2026-07-10T09:00:00Z")
         joinEvent(config = null, provisioned = provisioned)
             .join(
                 JoinChoice(
                     EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
-                    captureCutoff(
-                        "2026-06-01T00:00:00Z",
-                    ),
-                    CEILING, Direction.Both, false,
+                    CUTOFF, after, Direction.Both, false,
                 ),
             )
 
-        // The member asked for June 1st; the event began July 1st. Their photos from June are NOT the
-        // event's, and never become uploadable.
-        assertEquals(CaptureCutoff(STARTS_AT.at), provisioned.single().minPhotoDate)
-        assertEquals(STARTS_AT, provisioned.single().startsAt)
+        assertEquals(after, provisioned.single().maxPhotoDate)
     }
 
     @Test
@@ -328,72 +331,61 @@ class JoinEventTest {
                 JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
             )
 
-        // The floor NARROWS; it never widens. A member who joins late keeps their own, later cutoff.
         assertEquals(CUTOFF, provisioned.single().minPhotoDate)
         assertEquals(STARTS_AT, provisioned.single().startsAt)
     }
 
     @Test
-    fun `a hostile deeplink cutoff cannot lower the membership below the event start`() = runTest {
-        // The attack this closes: `minPhotoDate` is decoded from ANY event link, so a QR carrying
-        // `autoJoin=true` + a distant-past cutoff would auto-confirm a join at near-whole-library scope
-        // WITHOUT A TAP. The clamp lives in the use-case precisely so the autoJoin path cannot skip it.
+    fun `a hostile link's distant-past cutoff is refused before anything is enrolled`() = runTest {
+        // The attack the old floor closed: a QR carrying `autoJoin=true` + a 2001 cutoff would join at whole-library
+        // scope without a tap. Hints are dropped in a shipped build, and the rule refuses it here whatever the path.
         val provisioned = mutableListOf<EventConfig>()
-        joinEvent(config = null, provisioned = provisioned)
+        val enroller = FakeEnroller()
+        val outcome = joinEvent(config = null, provisioned = provisioned, enroller = enroller)
             .join(
                 JoinChoice(
                     EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
-                    captureCutoff(
-                        "2001-01-01T00:00:00Z",
-                    ),
-                    CEILING, Direction.Both, false,
+                    captureCutoff("2001-01-01T00:00:00Z"), CEILING, Direction.Both, false,
                 ),
             )
 
-        assertEquals(CaptureCutoff(STARTS_AT.at), provisioned.single().minPhotoDate, "the 2001 cutoff must not survive")
+        assertEquals(JoinOutcome.InvalidRange, outcome)
+        assertEquals(JoinCommit.Failed, outcome.toCommit())
+        assertTrue(enroller.calls.isEmpty(), "nothing is enrolled")
+        assertTrue(provisioned.isEmpty(), "nothing is joined")
     }
 
     @Test
-    fun `a future event start clamps the cutoff into the future so nothing can qualify`() = runTest {
-        // "Nothing syncs before the event starts" is a THEOREM, not a gate: a photo's capture date cannot
-        // be in the future, so a future cutoff admits nothing. No branch in the upload cycle enforces it.
-        val future = eventStart("2099-12-31T23:59:59Z")
+    fun `a range that misses the event is refused`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        joinEvent(config = null, provisioned = provisioned)
+        val outcome = joinEvent(config = null, provisioned = provisioned)
             .join(
                 JoinChoice(
-                    EVENT_A, "NYE", future,
-                    eventEnd(
-                        "2100-01-07T23:59:59Z",
-                    ),
-                    DELETES_AT, CUTOFF, captureCeiling("2100-01-07T23:59:59Z"), Direction.Both, false,
+                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    captureCutoff("2026-06-20T00:00:00Z"),
+                    captureCeiling("2026-06-25T00:00:00Z"),
+                    Direction.Both,
+                    false,
                 ),
             )
 
-        assertEquals(CaptureCutoff(future.at), provisioned.single().minPhotoDate)
-        assertTrue(
-            CaptureDate.parse("2026-07-06T14:32:11Z") < provisioned.single().minPhotoDate.at,
-            "no photo taken today satisfies `creationDate >= cutoff` for a 2099 cutoff",
-        )
+        assertEquals(JoinOutcome.InvalidRange, outcome)
+        assertTrue(provisioned.isEmpty())
     }
 
     @Test
-    fun `every provisioned config satisfies minPhotoDate greater or equal startsAt`() = runTest {
-        // The floor invariant, stated as such: it holds for EVERY join, whatever was chosen.
-        for (chosen in listOf(
-            captureCutoff("2001-01-01T00:00:00Z"),
-            CaptureCutoff(STARTS_AT.at),
-            CUTOFF,
-            captureCutoff("2099-01-01T00:00:00Z"),
-        )) {
-            val provisioned = mutableListOf<EventConfig>()
-            joinEvent(config = null, provisioned = provisioned)
-                .join(
-                    JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, chosen, CEILING, Direction.Both, false),
-                )
-            val saved = provisioned.single()
-            assertTrue(saved.minPhotoDate.at >= saved.startsAt.at, "floor violated for chosen=$chosen")
-        }
+    fun `a range longer than an event may be is refused`() = runTest {
+        val provisioned = mutableListOf<EventConfig>()
+        val outcome = joinEvent(config = null, provisioned = provisioned)
+            .join(
+                JoinChoice(
+                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    captureCutoff("2026-06-01T00:00:00Z"), CEILING, Direction.Both, false,
+                ),
+            )
+
+        assertEquals(JoinOutcome.InvalidRange, outcome)
+        assertTrue(provisioned.isEmpty())
     }
 
     @Test

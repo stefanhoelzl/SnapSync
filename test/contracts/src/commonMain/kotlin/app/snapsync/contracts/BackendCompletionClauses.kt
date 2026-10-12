@@ -35,6 +35,24 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.completionClau
     }
 
     clause(
+        "MANIFEST_A_SETTLE_BEFORE_THE_END_COUNTS_AND_SETS_NO_CLOSED_AT",
+        BackendState.MEMBER,
+        covers = cells {
+            backend(Routes.GetEvent.ID, GetEventReply.Found::class)
+            backend(Routes.PublishManifest.ID, PublishManifestReply.Published::class)
+        },
+    ) { s ->
+        // A member whose own range ended before the event's settles early (decision record
+        // `changes/flexible-share-range`, D4): the backend counts it settled, and derives no close before the event's
+        // open-until date has passed.
+        settle(s)
+        val meta = s.details(s.seeded.eventId)
+        assertEquals(MemberCounts(active = 1, `final` = 1, waiting = 0), meta.members)
+        assertNull(meta.closedAt, "nothing closes before the open-until date")
+        assertNull(meta.completedAt)
+    }
+
+    clause(
         "MANIFEST_THE_LAST_MEMBER_SETTLING_SETS_CLOSED_AT_FOR_OLD_BUILDS",
         BackendState.ENDED_MEMBER,
         covers = cells {

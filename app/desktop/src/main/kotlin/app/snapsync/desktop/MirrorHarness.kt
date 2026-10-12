@@ -228,7 +228,7 @@ private fun mirrorActions(
             choices = RangeChoiceActions(
                 onPreset = { preset ->
                     when (preset) {
-                        RangeChoice.WHOLE_EVENT -> post("setRange", "range" to "wholeEvent")()
+                        RangeChoice.EVENT_START -> post("setRange", "range" to "eventStart")()
                         RangeChoice.FROM_NOW -> post("setRange", "range" to "fromNow")()
                         RangeChoice.CUSTOM -> note("a custom range is set by picking dates")
                     }

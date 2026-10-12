@@ -175,7 +175,16 @@ private fun RangeCalendar(range: PickerView, gestures: RangeGestures) {
             visibleMonth = visibleMonth,
             rangeStart = range.from.date,
             rangeEnd = range.endDay,
-            bounds = CalendarBounds(range.today, floor = range.firstDay, ceiling = range.lastDay),
+            bounds = CalendarBounds(
+                range.today,
+                floor = range.firstDay,
+                ceiling = range.lastDay,
+                // While the last day is pending, the days after the start that no end may lie on.
+                gap = range.firstEndDay?.let { firstEnd ->
+                    range.from.date.plus(1, DateTimeUnit.DAY)..firstEnd.plus(-1, DateTimeUnit.DAY)
+                },
+                marked = range.markedDays?.let { it.first..it.last },
+            ),
             onPick = gestures.onDay,
         )
     }

@@ -83,7 +83,7 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
         dispatch(UiIntent.CancelReconfigure)
     },
     // The form, set without committing: what a member does before they confirm, and what the join gate's
-    // shareable-count preview answers. `range=wholeEvent|fromNow` picks a preset;
+    // shareable-count preview answers. `range=eventStart|fromNow` picks a preset;
     // a `cutoff`/`until` instant picks a custom range, as `confirmJoin` does.
     "setRange" to RigUserCommand { params ->
         params["range"]?.let { dispatch(UiIntent.RangePreset(rangePreset(it))) }
@@ -137,10 +137,10 @@ private const val SHOWN_POLL_MS = 50L
 private fun joinedEventId(state: UiState): String? = (state.layer as? Layer.Joined)?.membership?.eventId
 
 private fun rangePreset(raw: String): RangeChoice = when {
-    raw.equals("wholeEvent", ignoreCase = true) -> RangeChoice.WHOLE_EVENT
+    raw.equals("eventStart", ignoreCase = true) -> RangeChoice.EVENT_START
     raw.equals("fromNow", ignoreCase = true) -> RangeChoice.FROM_NOW
     else -> throw IllegalArgumentException(
-        "range must be wholeEvent|fromNow, was '$raw' — a custom range is `cutoff` and/or `until`",
+        "range must be eventStart|fromNow, was '$raw' — a custom range is `cutoff` and/or `until`",
     )
 }
 
@@ -228,7 +228,8 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
         "opens the range calendar over a participation surface, a drawing the channel does not need; with " +
         "`onConfirm` and `onDismiss`, it is the gesture path `onRangeEdit` explains.",
     "onRangePreset" to
-        "reached through `setRange?range=wholeEvent|fromNow`, which names the preset rather than a second command for it.",
+        "reached through `setRange?range=eventStart|fromNow`, which names the preset rather than a second command " +
+            "for it.",
     // ---- what is drawn OVER the layer ------------------------------------------------------
     //
     // Every one of these opens or dismisses a confirmation. None reaches a port, so driving them would

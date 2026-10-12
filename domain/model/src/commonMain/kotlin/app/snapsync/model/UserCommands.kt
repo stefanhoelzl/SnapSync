@@ -56,9 +56,9 @@ enum class JoinCommit {
  *   route it into the join gate. Fire-and-forget; outcomes arrive via
  *   the creation status read-model.
  * - [commitJoin] — join (a bodyless membership write, no manifest) then provision the membership's
- *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window
+ *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, held to the share-range rule against the event's
  *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), closed,
- *   or failed.
+ *   or failed — a range breaking the rule is a failed join.
  * - [share] — hand the invite URL to the platform share surface, titled with the event's name (fire-and-forget,
  *   `UiState` unaffected).
  * - [requestAccess] — raise the system photo-access dialog: returns

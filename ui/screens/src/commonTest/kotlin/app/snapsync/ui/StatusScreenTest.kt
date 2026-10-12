@@ -22,6 +22,7 @@ import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -53,6 +54,8 @@ import app.snapsync.ui.components.resources.key_lost_title
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
 import app.snapsync.ui.components.resources.range_starts
+import app.snapsync.ui.components.resources.share_range_custom
+import app.snapsync.ui.components.resources.share_range_event_start
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.status_in_sync
@@ -118,14 +121,13 @@ import app.snapsync.ui.resources.message_rename_name_refused
 import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.qr_sheet_title
-import app.snapsync.ui.resources.range_custom
-import app.snapsync.ui.resources.range_whole_event
 import app.snapsync.ui.resources.receive_toggle
 import app.snapsync.ui.resources.rename_body
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.settings_save_failed
 import app.snapsync.ui.resources.share_invite
+import app.snapsync.ui.resources.share_outside_before
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.stop_sharing_body
@@ -1069,12 +1071,12 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the reconfigure surface shows the whole event when the range spans the window`() = runComposeUiTest {
-        // minPhotoDate == startsAt and maxPhotoDate == endsAt → the whole event. The row states the full window
-        // as the compact adaptive range.
+    fun `the reconfigure surface shows from event start when the range spans the window`() = runComposeUiTest {
+        // minPhotoDate == startsAt and maxPhotoDate == endsAt → from event start. The row states the full window
+        // as the compact adaptive range, beneath the same chips as the join screen.
         setContent { TestStatusScreen(reconfiguring()) }
         onNodeWithText("6 Jul, 12:00 – 10 Jul, 12:00").assertExists()
-        onNodeWithText(str(Res.string.range_whole_event), substring = true).assertExists()
+        onNodeWithText(str(ComponentRes.string.share_range_event_start)).assertIsSelected()
     }
 
     @Test
@@ -1083,7 +1085,7 @@ class StatusScreenTest {
         val form = Choices(preset = RangeChoice.CUSTOM, customFrom = LocalDateTime(2026, 7, 6, 18, 0))
         setContent { TestStatusScreen(reconfiguring(above, form)) }
         onNodeWithText("6 Jul, 18:00 – 10 Jul, 12:00").assertExists()
-        onNodeWithText(str(Res.string.range_custom), substring = true).assertExists()
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).assertIsSelected()
     }
 
     @Test
@@ -1092,7 +1094,16 @@ class StatusScreenTest {
         val form = Choices(preset = RangeChoice.CUSTOM, customUntil = LocalDateTime(2026, 7, 9, 12, 0))
         setContent { TestStatusScreen(reconfiguring(below, form)) }
         onNodeWithText("6 Jul, 12:00 – 9 Jul, 12:00").assertExists()
-        onNodeWithText(str(Res.string.range_custom), substring = true).assertExists()
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).assertIsSelected()
+    }
+
+    @Test
+    fun `the reconfigure surface says a start before the event shares photos from before it`() = runComposeUiTest {
+        // Capability `manage-membership`: a changed range may reach outside the event's dates.
+        val earlier = MEMBERSHIP.copy(sharesFrom = LocalDateTime(2026, 7, 5, 9, 0))
+        val form = Choices(preset = RangeChoice.CUSTOM, customFrom = LocalDateTime(2026, 7, 5, 9, 0))
+        setContent { TestStatusScreen(reconfiguring(earlier, form)) }
+        onNodeWithText(str(Res.string.share_outside_before)).assertExists()
     }
 
     @Test

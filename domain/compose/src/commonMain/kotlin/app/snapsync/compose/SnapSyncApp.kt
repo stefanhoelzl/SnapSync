@@ -703,6 +703,7 @@ class AppCore internal constructor(
     private suspend fun selectionPolicyForMembership(config: EventConfig): SelectionPolicy =
         selectionPolicyFor(
             config = config,
+            now = services.config.now(),
             suppressedAssetIds = { services.downloadStore.suppressedLocalIds() },
             albumExcludedAssetIds = ::albumExclusionsWhenReadable,
         )

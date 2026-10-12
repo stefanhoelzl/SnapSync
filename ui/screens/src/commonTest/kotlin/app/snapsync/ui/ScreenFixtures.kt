@@ -6,6 +6,7 @@ import app.snapsync.ui.state.CreateStep
 import app.snapsync.ui.state.JoinedEvent
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.PickerView
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.RangeView
@@ -26,7 +27,7 @@ internal data class Choices(
     val receiveOn: Boolean = true,
     val saveToAlbum: Boolean = true,
     val albumStyle: AlbumStyle = AlbumStyle.COLLECTION,
-    val preset: RangeChoice = RangeChoice.WHOLE_EVENT,
+    val preset: RangeChoice = RangeChoice.EVENT_START,
     val customFrom: LocalDateTime? = null,
     val customUntil: LocalDateTime? = null,
 ) {
@@ -44,7 +45,7 @@ internal data class Choices(
         albumStyle = albumStyle,
         preset = preset,
         from = when (preset) {
-            RangeChoice.WHOLE_EVENT -> start
+            RangeChoice.EVENT_START -> start
             RangeChoice.FROM_NOW -> now
             RangeChoice.CUSTOM -> customFrom ?: start
         },
@@ -55,7 +56,21 @@ internal data class Choices(
         today = today,
         commitEnabled = shareOn || receiveOn,
         shareCount = count,
+        outside = outsideOf(
+            from = if (preset == RangeChoice.CUSTOM) customFrom ?: start else start,
+            until = if (preset == RangeChoice.CUSTOM) customUntil ?: end else end,
+            start = start,
+            end = end,
+        ),
     )
+}
+
+/** Which side of `[start, end]` a range `[from, until]` reaches past, as the reduction states it. */
+private fun outsideOf(from: LocalDateTime, until: LocalDateTime, start: LocalDateTime, end: LocalDateTime) = when {
+    from < start && until > end -> OutsideReach.BOTH
+    from < start -> OutsideReach.BEFORE
+    until > end -> OutsideReach.AFTER
+    else -> null
 }
 
 /** A membership as the joined screen states it; its own range is the event's unless a test says otherwise. */

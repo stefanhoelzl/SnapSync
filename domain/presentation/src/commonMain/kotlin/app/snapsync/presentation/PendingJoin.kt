@@ -75,12 +75,11 @@ sealed interface JoinProgress {
  * The event facts a join confirmation renders and commits.
  *
  * [startsAt] is the event's **start date** — already a canonical UTC `…Z` string (`BackendEventDirectory`
- * normalizes it and fails the load rather than invent one). It is both the range row's lower **default**
- * and its **floor**: the row cannot be empty and the confirm cannot
- * join below it, so joining at whole-library scope is unrepresentable. It also decides whether "From
- * now" is offered — when it is in the **future**, that preset would clamp to this same instant.
+ * normalizes it and fails the load rather than invent one). It is the range's lower **default**, and with [endsAt]
+ * the event range a chosen one must overlap — at most an event's length, so joining at whole-library scope is
+ * unrepresentable. It also decides whether "From now" is offered — only while now lies inside the event's range.
  *
- * [endsAt] is the event's **end date** — the range row's upper **default** and its **ceiling**.
+ * [endsAt] is the event's **end date** — the range's upper **default**.
  *
  * [deletesAt] is the event's **retention deadline** — **server-derived** and carried verbatim. The commit persists
  * it as the offline witness of the self-leave. It is never computed on the device: a client-side copy of the

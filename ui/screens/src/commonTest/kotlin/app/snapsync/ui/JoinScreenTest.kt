@@ -17,8 +17,6 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -30,7 +28,9 @@ import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
-import app.snapsync.ui.components.resources.share_range_change
+import app.snapsync.ui.components.resources.share_range_custom
+import app.snapsync.ui.components.resources.share_range_event_start
+import app.snapsync.ui.components.resources.share_range_from_now
 import app.snapsync.ui.components.resources.share_range_title
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.access_choose_title
@@ -66,15 +66,15 @@ import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.ok
-import app.snapsync.ui.resources.range_custom
-import app.snapsync.ui.resources.range_from_now
-import app.snapsync.ui.resources.range_whole_event
 import app.snapsync.ui.resources.receive_toggle
 import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.share_detail_count
 import app.snapsync.ui.resources.share_detail_counting
 import app.snapsync.ui.resources.share_off_note
+import app.snapsync.ui.resources.share_outside_after
+import app.snapsync.ui.resources.share_outside_before
+import app.snapsync.ui.resources.share_outside_both
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.share_zero_note
 import app.snapsync.ui.resources.switch_body
@@ -457,18 +457,18 @@ class JoinScreenTest {
     // ---- the range row (capability `photo-sharing`) --------------------------------------------------
 
     @Test
-    fun `ready shows the whole event window as the default range`() = runComposeUiTest {
+    fun `ready shows the event's dates as the default range`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready())) }
-        // The event's window (4 Jul, 18:00 – 20 Jul, 18:00), stated once, with the preset named beneath it.
+        // The event's window (4 Jul, 18:00 – 20 Jul, 18:00), stated once beneath the chosen "from event start".
         onNodeWithText("4 Jul, 18:00 – 20 Jul, 18:00").assertExists()
-        onNodeWithText(str(Res.string.range_whole_event)).assertExists()
+        onNodeWithText(str(ComponentRes.string.share_range_event_start)).assertIsRadio().assertIsSelected()
         // The old two-list selector is gone.
         onNodeWithText("Share from").assertDoesNotExist()
         onNodeWithText("Share until").assertDoesNotExist()
     }
 
     @Test
-    fun `the edit asks for the calendar`() = runComposeUiTest {
+    fun `Custom asks for the calendar`() = runComposeUiTest {
         var opened = 0
         setScreen {
             TestStatusScreen(
@@ -478,17 +478,18 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).performClick()
         assertEquals(1, opened)
         onNodeWithText(str(ComponentRes.string.share_range_title)).assertDoesNotExist()
     }
 
     @Test
-    fun `the open calendar offers both presets while the event runs`() = runComposeUiTest {
-        setScreen { TestStatusScreen(joining(ready(), picking = true)) }
-        onNodeWithText(str(ComponentRes.string.share_range_title)).assertExists()
-        onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).assertIsRadio().assertIsSelected()
-        onNodeWithText(str(Res.string.range_from_now)).assertIsRadio().assertIsNotSelected()
+    fun `the screen offers all three choices while the event runs`() = runComposeUiTest {
+        // Decision record `flexible-share-range`, D3: one tap each, on the screen — not behind the calendar.
+        setScreen { TestStatusScreen(joining(ready())) }
+        onNodeWithText(str(ComponentRes.string.share_range_event_start)).assertIsRadio().assertIsSelected()
+        onNodeWithText(str(ComponentRes.string.share_range_from_now)).assertIsRadio().assertIsNotSelected()
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).assertIsRadio().assertIsNotSelected()
     }
 
     @Test
@@ -496,10 +497,11 @@ class JoinScreenTest {
         // Now (2026-07-06 12:00) is before this window opens, so "from now" would clamp to a bound the member
         // did not choose.
         setScreen {
-            TestStatusScreen(joining(ready(), start = LocalDateTime(2026, 7, 10, 0, 0), picking = true))
+            TestStatusScreen(joining(ready(), start = LocalDateTime(2026, 7, 10, 0, 0)))
         }
-        onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).assertExists()
-        onNodeWithText(str(Res.string.range_from_now)).assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.share_range_event_start)).assertExists()
+        onNodeWithText(str(ComponentRes.string.share_range_from_now)).assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).assertExists()
     }
 
     @Test
@@ -507,13 +509,13 @@ class JoinScreenTest {
         var preset: RangeChoice? = null
         setScreen {
             TestStatusScreen(
-                joining(ready(), picking = true),
+                joining(ready()),
                 actions = testActions(
                     participation = participationActions(choices = testRangeChoiceActions(onPreset = { preset = it })),
                 ),
             )
         }
-        onNodeWithText(str(Res.string.range_from_now)).performClick()
+        onNodeWithText(str(ComponentRes.string.share_range_from_now)).performClick()
         assertEquals(RangeChoice.FROM_NOW, preset)
     }
 
@@ -565,7 +567,28 @@ class JoinScreenTest {
         )
         setScreen { TestStatusScreen(joining(ready(), form = form)) }
         onNodeWithText("6 Jul, 09:00 – 8 Jul, 21:00").assertExists()
-        onNodeWithText(str(Res.string.range_custom)).assertExists()
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).assertIsRadio().assertIsSelected()
+        onNodeWithText(str(Res.string.share_outside_before)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a range reaching outside the event says which side`() = runComposeUiTest {
+        // Capability `join-event`: a wide range never passes for the event's own dates.
+        val before = Choices(preset = RangeChoice.CUSTOM, customFrom = LocalDateTime(2026, 7, 3, 9, 0))
+        setScreen { TestStatusScreen(joining(ready(), form = before)) }
+        onNodeWithText(str(Res.string.share_outside_before)).assertExists()
+    }
+
+    @Test
+    fun `a range reaching past both ends says both`() = runComposeUiTest {
+        val both = Choices(
+            preset = RangeChoice.CUSTOM,
+            customFrom = LocalDateTime(2026, 7, 3, 9, 0),
+            customUntil = LocalDateTime(2026, 7, 22, 9, 0),
+        )
+        setScreen { TestStatusScreen(joining(ready(), form = both)) }
+        onNodeWithText(str(Res.string.share_outside_both)).assertExists()
+        onNodeWithText(str(Res.string.share_outside_after)).assertDoesNotExist()
     }
 
     // ---- no retention statement (capability `join-event`) ----------------------------------------------
@@ -595,7 +618,7 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithText(plural(Res.plurals.share_detail_count, 34, str(Res.string.range_whole_event), 34)).assertExists()
+        onNodeWithText(plural(Res.plurals.share_detail_count, 34, 34)).assertExists()
     }
 
     @Test
@@ -608,7 +631,7 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithText(plural(Res.plurals.share_detail_count, 0, str(Res.string.range_whole_event), 0)).assertExists()
+        onNodeWithText(plural(Res.plurals.share_detail_count, 0, 0)).assertExists()
         onNodeWithText(str(Res.string.share_zero_note)).assertExists()
     }
 
@@ -624,8 +647,8 @@ class JoinScreenTest {
             )
         }
         onNodeWithText("from your gallery", substring = true).assertDoesNotExist()
-        onNodeWithText("counting your photos", substring = true).assertDoesNotExist()
-        onNodeWithText(str(Res.string.range_whole_event)).assertExists()
+        onNodeWithText(str(Res.string.share_detail_counting)).assertDoesNotExist()
+        onNodeWithText("4 Jul, 18:00 – 20 Jul, 18:00").assertExists()
     }
 
     @Test
@@ -638,7 +661,7 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithText(str(Res.string.share_detail_counting, str(Res.string.range_whole_event))).assertExists()
+        onNodeWithText(str(Res.string.share_detail_counting)).assertExists()
     }
 
     @Test
@@ -669,7 +692,7 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithText(plural(Res.plurals.share_detail_count, 5, str(Res.string.range_whole_event), 5)).assertExists()
+        onNodeWithText(plural(Res.plurals.share_detail_count, 5, 5)).assertExists()
     }
 
     @Test
@@ -684,7 +707,7 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithText(plural(Res.plurals.share_detail_count, 1, str(Res.string.range_from_now), 1)).assertExists()
+        onNodeWithText(plural(Res.plurals.share_detail_count, 1, 1)).assertExists()
     }
 
     // ---- the album switch (capability `event-album`) ---------------------------------

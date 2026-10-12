@@ -80,6 +80,14 @@ class CutoffFormatter(
         (from.toInstant(zone) + EVENT_WINDOW_MAX_SECONDS.seconds).toLocalDateTime(zone)
 
     /**
+     * The earliest start a range ending at [until] may have — the mirror of [latestEnd], measured in instants for the
+     * same reason: a member's range is no longer than an event may be (`shareRangeFault`), which the join measures in
+     * seconds.
+     */
+    fun earliestStart(until: LocalDateTime): LocalDateTime =
+        (until.toInstant(zone) - EVENT_WINDOW_MAX_SECONDS.seconds).toLocalDateTime(zone)
+
+    /**
      * The open-until date of an event created now that guests may join for [days] more days (decision record
      * `changes/back-dated-events`, D1). Added in INSTANTS, like [latestEnd]: the backend bounds it in seconds from its
      * own now, and "30 local days" across a daylight-saving change is an hour more than the 30 days it admits.

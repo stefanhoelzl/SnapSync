@@ -12,6 +12,7 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.EntryScope
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
@@ -116,6 +117,7 @@ class AlbumGatherTest {
             policyFor = { c ->
                 selectionPolicyFor(
                     c,
+                    now = CaptureDate.parse("2026-10-01T00:00:00Z"),
                     suppressedAssetIds = { emptySet() },
                     albumExcludedAssetIds = { emptySet() },
                 )

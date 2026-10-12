@@ -686,7 +686,13 @@ data class RangeView(
     val shareCount: ShareCount,
     /** The range calendar, while it is open over the surface; `null` while closed. */
     val picker: PickerView? = null,
+    /** Where the chosen range reaches outside the event's dates; `null` while it lies within them. */
+    val outside: OutsideReach? = null,
 )
+
+/** Which side of the event's own dates a member's chosen range reaches past. */
+@Serializable
+enum class OutsideReach { BEFORE, AFTER, BOTH }
 
 /**
  * How this phone holds an event album, as the album note says it: an album the received
@@ -783,6 +789,13 @@ data class PickerView(
     /** The first and the last day that may be picked; `null` where any day may. */
     val firstDay: LocalDate?,
     val lastDay: LocalDate?,
+    /**
+     * While the last day is pending, the first day it may be placed on, when that is later than the day after the
+     * start: the days between can be neither. `null` where there is no such gap.
+     */
+    val firstEndDay: LocalDate? = null,
+    /** The days marked beneath the range — the event's own, when a member chooses a range around it. */
+    val markedDays: DaySpan? = null,
     /** The start times and the end times that may be settled on; `null` where none may. */
     val fromTimes: TimeSpan?,
     val untilTimes: TimeSpan?,
@@ -800,6 +813,10 @@ data class PickerView(
             null
         }
 }
+
+/** The days from [first] to [last], both included. */
+@Serializable
+data class DaySpan(val first: LocalDate, val last: LocalDate)
 
 /** The times of day from [first] to [last], both included, to the minute. */
 @Serializable

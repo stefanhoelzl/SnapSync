@@ -21,6 +21,8 @@
     <string name="calendar_weekdays">Weekdays, %1$s to %2$s</string>
     <!-- Spoken for today's cell: %1$s is its full date. -->
     <string name="calendar_day_today">%1$s, today</string>
+    <!-- Spoken for one of the event's own days, marked in a member's range calendar: %1$s is its full date. -->
+    <string name="calendar_event_day">%1$s, event day</string>
     <string name="range_starts">Starts</string>
     <string name="range_ends">Ends</string>
     <!-- %1$s is the end day, before its time is chosen. -->
@@ -34,11 +36,12 @@
     <string name="picker_cancel">Cancel</string>
     <string name="picker_save">Save</string>
 
-    <!-- The which-photos row of the join and settings screens. -->
-    <string name="share_range_change">Change which photos are shared</string>
+    <!-- The which-photos row of the join and settings screens: its three choices, and what Custom does when tapped. -->
+    <string name="share_range_change">Choose your own dates</string>
     <string name="share_range_title">Which photos to share</string>
-    <string name="share_range_whole_event">The whole event</string>
+    <string name="share_range_event_start">From event start</string>
     <string name="share_range_from_now">From now</string>
+    <string name="share_range_custom">Custom</string>
 
     <!-- The one-line sync status. -->
     <string name="status_syncing">Loading…</string>

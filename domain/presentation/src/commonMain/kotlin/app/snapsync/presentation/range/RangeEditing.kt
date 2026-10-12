@@ -1,5 +1,6 @@
 package app.snapsync.presentation.range
 
+import app.snapsync.ui.state.DaySpan
 import app.snapsync.ui.state.PickerView
 import app.snapsync.ui.state.TimeSpan
 import kotlinx.datetime.LocalDate
@@ -58,6 +59,8 @@ internal fun EventRange.view(bounds: RangeBounds, today: LocalDate): PickerView 
     today = today,
     firstDay = bounds.earliest?.date,
     lastDay = lastPickableDay(bounds),
+    firstEndDay = firstEndDay(bounds),
+    markedDays = bounds.markedDays?.let { DaySpan(it.start, it.endInclusive) },
     fromTimes = timeSpan { fromAllowed(it, bounds) },
     untilTimes = timeSpan { untilAllowed(it, bounds) },
     complete = isValid(bounds),

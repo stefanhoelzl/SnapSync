@@ -103,9 +103,9 @@ fun WorldInspector(
         }
         Text("Joined event: ${snap.joinedEventId ?: "— none —"}", maxLines = 1, overflow = TextOverflow.Ellipsis)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Both sides of the event-start FLOOR, drivable through the real stack. "started" is
+            // Both sides of the event's START, drivable through the real stack. "started" is
             // the ordinary case. "not started" is the interesting one:
-            // the event's start is in the future, so the clamped cutoff admits NO photo — invoking the
+            // the event's start is in the future, so the membership shares NO photo yet — invoking the
             // extension must leave the backend column empty while the phone frame reads the clock line.
             OutlinedButton(onClick = { controller.createEvent("Harness event", PAST_START, PAST_END) }) {
                 Text("Create event (started)")
@@ -301,7 +301,7 @@ private fun TwoUp(left: @Composable () -> Unit, right: @Composable () -> Unit) {
  *
  * [PAST_START]..[PAST_END] is a 30-day window around `LibraryAssets.DEFAULT_DATE`, so a default-dated photo is in scope
  * and uploads. [FUTURE_START] is far enough out that it stays in the future for the life of the project — the event
- * that has not begun, whose clamped cutoff admits no photo.
+ * that has not begun, which shares no photo yet.
  */
 /**
  * The membership's Leave, and the event's life past its range: the phone's clock (and the backend's, which reads the same one) set past "started"'s

@@ -53,7 +53,7 @@
     <string name="create_name_question">Wie heißt es?</string>
     <string name="create_name_placeholder">z. B. Annas Geburtstag</string>
     <string name="create_when_question">Wann ist es?</string>
-    <string name="create_window_note">Nur Fotos, die zwischen diesen Daten aufgenommen werden, werden geteilt. Ein Event kann bis zu %1$d Tage dauern.</string>
+    <string name="create_window_note">Fotos aus diesem Zeitraum werden geteilt. Jede und jeder kann den eigenen erweitern oder eingrenzen. Ein Event dauert höchstens %1$d Tage.</string>
     <string name="create_button">Event erstellen</string>
     <string name="create_join_hint">Um stattdessen einem Event beizutreten, scanne seinen QR-Code mit deiner Kamera.</string>
     <string name="create_step_name">Event benennen</string>
@@ -87,7 +87,7 @@
     <string name="access_choose_title">Alle Fotos erlauben oder auswählen, welche geteilt werden</string>
     <string name="access_choose_body">Auch eine Auswahl funktioniert – und du kannst jederzeit weitere hinzufügen.</string>
     <string name="access_range_title">Nur Fotos aus dem gewählten Zeitraum</string>
-    <string name="access_range_body">Nichts Älteres wird geteilt.</string>
+    <string name="access_range_body">Alles andere bleibt auf deinem Handy.</string>
 
     <string name="album_none">Es wird kein Album erstellt.</string>
     <string name="album_folder_receive">Fotos, die du empfängst, werden in einem Album mit dem Namen des Events gesammelt. Deine eigenen Fotos bleiben, wo sie sind.</string>
@@ -111,13 +111,13 @@
     <string name="share_off_note">Nichts von dir verlässt dieses Handy.</string>
     <string name="share_zero_note">Neue Fotos, die du aufnimmst, werden laufend geteilt.</string>
     <string name="share_exclusions_note">Screenshots, Bildschirmaufnahmen, GIFs und aus Chat-Apps gespeicherte Fotos werden nie geteilt.</string>
-    <string name="range_whole_event">Das ganze Event</string>
-    <string name="range_from_now">Ab jetzt</string>
-    <string name="range_custom">Eigener Zeitraum</string>
-    <string name="share_detail_counting">%1$s · deine Fotos werden gezählt …</string>
+    <string name="share_outside_before">Auch Fotos von vor dem Event.</string>
+    <string name="share_outside_after">Auch Fotos von nach dem Event.</string>
+    <string name="share_outside_both">Auch Fotos von vor und nach dem Event.</string>
+    <string name="share_detail_counting">Deine Fotos werden gezählt …</string>
     <plurals name="share_detail_count">
-        <item quantity="one">%1$s · %2$d Foto aus deiner Galerie</item>
-        <item quantity="other">%1$s · %2$d Fotos aus deiner Galerie</item>
+        <item quantity="one">%1$d Foto aus deiner Galerie</item>
+        <item quantity="other">%1$d Fotos aus deiner Galerie</item>
     </plurals>
 
     <string name="rename_event">Event umbenennen</string>

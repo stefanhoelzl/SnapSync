@@ -24,7 +24,7 @@ internal fun RangeForm.resolve(
     shareCount: ShareCount = ShareCount.Counting,
 ): ResolvedRange {
     val until = resolveUntil(preset, customUntil, windowStart, windowEnd)
-    val from = resolveFrom(preset, customFrom, windowStart, nowLocal, until)
+    val from = resolveFrom(preset, customFrom, windowStart, windowEnd, nowLocal, until)
     return ResolvedRange(
         windowStart = windowStart,
         windowEnd = windowEnd,
@@ -43,6 +43,9 @@ internal fun RangeForm.resolve(
 /**
  * The upper bound. Resolved BEFORE the lower one so that `from`'s ceiling can be floored to it — which is
  * what makes an inverted range unrepresentable rather than merely unlikely.
+ *
+ * A custom end is taken as picked: the calendar held it to the share-range rule, so it MAY lie after the event's end.
+ * It is only kept from ending before the event's start, which no pick reaches.
  */
 internal fun resolveUntil(
     preset: RangeChoice,
@@ -50,22 +53,26 @@ internal fun resolveUntil(
     windowStart: LocalDateTime,
     windowEnd: LocalDateTime,
 ): LocalDateTime = when (preset) {
-    RangeChoice.WHOLE_EVENT, RangeChoice.FROM_NOW -> windowEnd
-    RangeChoice.CUSTOM -> (custom ?: windowEnd).coerceIn(windowStart, windowEnd)
+    RangeChoice.EVENT_START, RangeChoice.FROM_NOW -> windowEnd
+    RangeChoice.CUSTOM -> (custom ?: windowEnd).coerceAtLeast(windowStart)
 }
 
-/** The lower bound, coerced into `[windowStart, until]` on every resolution. */
+/**
+ * The lower bound, never after `until` nor after the event's end. A custom start is taken as picked, so it MAY lie
+ * before the event's start; from now never does, since it is offered only inside the event's window.
+ */
 internal fun resolveFrom(
     preset: RangeChoice,
     custom: LocalDateTime?,
     windowStart: LocalDateTime,
+    windowEnd: LocalDateTime,
     nowLocal: LocalDateTime,
     untilResolved: LocalDateTime,
 ): LocalDateTime = when (preset) {
-    RangeChoice.WHOLE_EVENT -> windowStart
-    RangeChoice.FROM_NOW -> nowLocal
+    RangeChoice.EVENT_START -> windowStart
+    RangeChoice.FROM_NOW -> nowLocal.coerceAtLeast(windowStart)
     RangeChoice.CUSTOM -> (custom ?: windowStart)
-}.coerceIn(windowStart, untilResolved)
+}.coerceAtMost(minOf(untilResolved, windowEnd))
 
 /**
  * Participation, derived from the two switches. Both off is [Direction.Neither]: the event's settings may apply it,
@@ -90,8 +97,8 @@ internal fun nowWithinWindow(now: CaptureDate, startsAt: CaptureDate?, endsAt: C
 /**
  * The seeds the RECONFIGURE surface starts from, reconstructed from the persisted timestamps.
  *
- * Lossy by construction: the preset is not persisted, only the resulting instants, so a range spanning the
- * whole window seeds **Whole event** and anything narrower seeds **Custom** with its bounds — an original
+ * Lossy by construction: the preset is not persisted, only the resulting instants, so a range equal to the
+ * event's window seeds **From event start** and any other seeds **Custom** with its bounds — an original
  * "From now" pick is unrecoverable, and is just a custom start once "now" has moved on
  * (decision record `simplify-join-screen`, D1).
  */
@@ -103,7 +110,7 @@ internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> 
         shareOn = membership.direction.includesUpload,
         receiveOn = membership.direction.includesDownload,
         saveToAlbum = membership.saveToAlbum,
-        preset = if (whole) RangeChoice.WHOLE_EVENT else RangeChoice.CUSTOM,
+        preset = if (whole) RangeChoice.EVENT_START else RangeChoice.CUSTOM,
         customFrom = if (whole || fromAtFloor) null else toLocal(membership.minPhotoDate.at),
         customUntil = if (whole || untilAtCeiling) null else toLocal(membership.maxPhotoDate.at),
     )

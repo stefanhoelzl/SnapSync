@@ -488,10 +488,10 @@ internal class BackendState(
         publishes[eventId to deviceId] = (publishes[eventId to deviceId] ?: 0) + 1
         val after = servable(eventId, deviceId)
         logChanges(eventId, deviceId, before, after)
-        // Nothing closes. The mock does not judge the range's end for a settled
-        // declaration: a device declares itself settled only after it (the real route also ignores an earlier
-        // declaration, which the Backend contract pins against the real api/). Only a publish that made something newly
-        // servable wakes anyone, as on the real route.
+        // Nothing closes. A settled declaration is kept as declared, whenever it comes: a device settles once its
+        // member's own range has ended, which may be before the event's end (the real route does the same, which the
+        // Backend contract pins against the real api/). Only a publish that made something newly servable wakes
+        // anyone, as on the real route.
         if (!before.containsAll(after)) notifyMembers(eventId, deviceId, announce = true)
         return PublishOutcome.APPLIED
     }

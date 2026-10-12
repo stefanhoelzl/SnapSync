@@ -18,7 +18,7 @@ class AppMenuTest {
             receiveOn = true,
             saveToAlbum = true,
             albumStyle = AlbumStyle.COLLECTION,
-            preset = RangeChoice.WHOLE_EVENT,
+            preset = RangeChoice.EVENT_START,
             from = start,
             until = end,
             windowStart = start,

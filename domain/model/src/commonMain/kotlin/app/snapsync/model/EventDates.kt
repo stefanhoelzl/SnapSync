@@ -58,8 +58,9 @@ value class CaptureDate private constructor(val at: Instant) : Comparable<Captur
 }
 
 /**
- * A membership's capture-date **lower** bound: the earliest capture date this device contributes, already
- * clamped to `max(chosen, startsAt)` at join. Persisted as `EventConfig.minPhotoDate`.
+ * A membership's capture-date **lower** bound: the earliest capture date this device contributes, as the member chose
+ * it under the share-range rule (`shareRangeFault`) — it MAY lie before the event's start. Persisted as
+ * `EventConfig.minPhotoDate`.
  *
  * Distinct from [EventStart] on purpose — they are equal for a member who accepted the default, and
  * confusing them is how a floor gets silently lowered.
@@ -73,7 +74,8 @@ value class CaptureCutoff(val at: CaptureDate) : Comparable<CaptureCutoff> {
 
 /**
  * A membership's capture-date **upper** bound (the ceiling): the latest capture date this device
- * contributes, already clamped to `min(chosen, endsAt)` at join. Persisted as `EventConfig.maxPhotoDate`.
+ * contributes, as the member chose it under the share-range rule — it MAY lie after the event's end. Persisted as
+ * `EventConfig.maxPhotoDate`.
  *
  * This is the bound `add-event-date-range` dropped at two of four consumers. It reaches every consumer now because they
  * all read the one admitted set.
@@ -87,8 +89,8 @@ value class CaptureCeiling(val at: CaptureDate) : Comparable<CaptureCeiling> {
 
 /**
  * The **event's** start date — host-chosen at creation, immutable, shared by every member. It is the
- * *floor* a member's [CaptureCutoff] is clamped up to and the default that member sees; it is never itself
- * a membership's bound.
+ * default a member's [CaptureCutoff] starts at, and the moment before which nothing is shared
+ * (`EventConfig.sharingFloor`); it is never itself a membership's bound.
  */
 @Serializable(with = EventStartSerializer::class)
 @JvmInline
@@ -98,9 +100,9 @@ value class EventStart(val at: CaptureDate) : Comparable<EventStart> {
 }
 
 /**
- * The **event's** end date — host-chosen at creation, immutable. The *ceiling* a member's
- * [CaptureCeiling] is clamped down to, and what the "Event ended" status line compares against. It bounds
- * which photos may be uploaded and closes nothing: the event's lifetime is a separate, stamped value
+ * The **event's** end date — host-chosen at creation, immutable. The default a member's [CaptureCeiling] starts at,
+ * and what the "Event ended" status line compares against. With the start, it is the range a member's own must
+ * overlap, and it closes nothing: the event's lifetime is a separate, stamped value
  * ([DeletesAt]).
  */
 @Serializable(with = EventEndSerializer::class)

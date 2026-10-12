@@ -39,11 +39,15 @@ internal data class EventRange(
         get() = untilTime?.let { LocalDateTime(endDay, it) }
 }
 
-/** Whether [time] on the chosen last day would be a valid end: after the start and within the window. */
+/** Whether [time] on the chosen last day would be a valid end: after the start and within [bounds]. */
 internal fun EventRange.untilAllowed(time: LocalTime, bounds: RangeBounds): Boolean {
     val until = LocalDateTime(endDay, time)
-    return until > from && until <= bounds.latestEnd(from)
+    return until.endsValidly(from, bounds)
 }
+
+/** Whether a range from [from] may end at this instant: after the start, and between its earliest and latest end. */
+private fun LocalDateTime.endsValidly(from: LocalDateTime, bounds: RangeBounds): Boolean =
+    this > from && this >= bounds.earliestEnd(from) && this <= bounds.latestEnd(from)
 
 /** Whether [time] on the start's day would be a valid start, given whatever end is already chosen. */
 internal fun EventRange.fromAllowed(time: LocalTime, bounds: RangeBounds): Boolean {
@@ -51,14 +55,16 @@ internal fun EventRange.fromAllowed(time: LocalTime, bounds: RangeBounds): Boole
     val chosenEnd = until
     val chosenHour = untilHour
     val reachesEnd = when {
-        chosenEnd != null -> chosenEnd > candidate && chosenEnd <= bounds.latestEnd(candidate)
+        chosenEnd != null -> chosenEnd.endsValidly(candidate, bounds)
         // An end hour chosen without its minute must keep a minute that would still be a valid end.
         chosenHour != null -> hourHasAllowedMinute(chosenHour) { end ->
-            LocalDateTime(endDay, end).let { it > candidate && it <= bounds.latestEnd(candidate) }
+            LocalDateTime(endDay, end).endsValidly(candidate, bounds)
         }
         else -> endDay <= bounds.latestEnd(candidate).date
     }
-    return reachesEnd && bounds.earliest.let { it == null || candidate >= it }
+    // No check against the earliest start: around an event, a start before it cannot reach an end that overlaps the
+    // event within an event's length, which [reachesEnd] already refuses; a created event has no earliest start.
+    return reachesEnd && bounds.latestStart.let { it == null || candidate <= it }
 }
 
 /** Whether the range is complete and inside [bounds] — what a surface that confirms a range asks. */

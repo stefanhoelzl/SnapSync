@@ -30,8 +30,9 @@ membership (single active membership is the *current* contract).
 What a member contributes is decided by **one** policy at **one** place (capability `photo-sharing`, enforced in `UploadCycle`'s resource selection), over the member's
 **default gallery**, which the platform's gallery adapter defines — the photo library on iOS (or the limited selection),
 `DCIM` and its subfolders on Android, where each subfolder is an album for the denylist: the capture-date **range**
-`[from, until]` bounds *when* a photo was taken (lower bound clamped to the event start, upper to the event
-end); the **origin exclusions** bound *what it is* — screenshots, screen recordings, GIFs,
+`[from, until]` bounds *when* a photo was taken (the member's own choice — the event's dates by default, at most
+30 days and overlapping the event, so it may reach before the start or after the end; nothing uploads before the
+start; `changes/flexible-share-range`); the **origin exclusions** bound *what it is* — screenshots, screen recordings, GIFs,
 sub-floor-resolution received media, and members of a denylisted album (WhatsApp, Telegram, …) never enter
 an event. PhotoKit exposes **no** camera-origin flag on any iOS through 26, so the policy can only
 *subtract* known non-captures and **admits on doubt**: a stray uploaded meme is harmless and visible, while

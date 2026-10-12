@@ -83,17 +83,35 @@ async function closedAt(db: Store): Promise<unknown> {
   return (await rows(db, `SELECT closed_at FROM events`))[0].closed_at;
 }
 
-Deno.test("final → before the range has ended a final flag is ignored and nothing closes", async () => {
+Deno.test("final → before the event's end a final flag settles the member, and nothing closes or finishes", async () => {
+  // A member whose own range ended before the event's settles early (capability `event-lifetime`).
   const db = await storeWithEvent(); // ends 2026-07-27, after NOW
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
   await app.request(JOIN(D), { method: "PUT" });
   const res = await app.request(MANIFEST(D), {
     method: "PUT",
-    body: body([ASSET], { final: true }),
+    body: body([], { final: true }),
   });
   assertEquals(res.status, 200);
-  assertEquals((await rows(db, `SELECT state FROM memberships`))[0].state, "sharing");
+  assertEquals((await rows(db, `SELECT state FROM memberships`))[0].state, "settled");
   assertEquals(await closedAt(db), null);
+  const details = await (await app.request(DETAILS)).json();
+  assertEquals(details.closedAt, null, "no derived close before the open-until date");
+  assertEquals(details.completedAt, null, "not finished before the open-until date");
+  db.close();
+});
+
+Deno.test("final → a later non-final publish turns a settled member back to sharing", async () => {
+  // A member who widens their range past now again publishes unsettled.
+  const db = await storeWithEvent();
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  await app.request(JOIN(D), { method: "PUT" });
+  await app.request(MANIFEST(D), { method: "PUT", body: body([], { final: true }) });
+  await app.request(MANIFEST(D), {
+    method: "PUT",
+    body: body([ASSET], { final: false, version: 1 }),
+  });
+  assertEquals((await rows(db, `SELECT state FROM memberships`))[0].state, "sharing");
   db.close();
 });
 

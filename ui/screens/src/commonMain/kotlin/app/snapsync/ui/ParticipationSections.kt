@@ -11,9 +11,6 @@ import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeChoices
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_toggle
-import app.snapsync.ui.resources.range_custom
-import app.snapsync.ui.resources.range_from_now
-import app.snapsync.ui.resources.range_whole_event
 import app.snapsync.ui.resources.receive_off_note
 import app.snapsync.ui.resources.receive_on_note
 import app.snapsync.ui.resources.receive_toggle
@@ -21,12 +18,16 @@ import app.snapsync.ui.resources.share_detail_count
 import app.snapsync.ui.resources.share_detail_counting
 import app.snapsync.ui.resources.share_exclusions_note
 import app.snapsync.ui.resources.share_off_note
+import app.snapsync.ui.resources.share_outside_after
+import app.snapsync.ui.resources.share_outside_before
+import app.snapsync.ui.resources.share_outside_both
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.share_zero_note
 import app.snapsync.ui.state.AlbumStyle
-import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeView
 import app.snapsync.ui.state.ShareCount
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 // The participation decision surface — the three questions a member answers about an event, and the
@@ -41,9 +42,9 @@ import org.jetbrains.compose.resources.stringResource
  *
  * Every choice sits in ONE card, each switch followed by what it means and set apart from the next by a line:
  * share, receive, the album (a preference fed by both directions), then mobile data —
- * one section reads as one decision about one membership. Which photos are shared is one row inside the
- * Share section — the range, "<preset> · <count>", and an edit affordance opening the calendar — because
- * "do I share" and "which photos" are one decision (decision record `simplify-join-screen`, D4).
+ * one section reads as one decision about one membership. Which photos are shared sits inside the Share section — the
+ * choices (from event start · from now · custom), the range they make and its count — because "do I share" and "which
+ * photos" are one decision (decision records `simplify-join-screen`, D4; `flexible-share-range`, D3).
  *
  * The only string the two callers genuinely say differently is the album note: at the join gate it states
  * what WILL be collected and varies over the switches; at reconfigure it states that turning the album on
@@ -88,8 +89,8 @@ internal fun ColumnScope.ParticipationSections(
 }
 
 /**
- * What sharing means, beneath its switch: the range row, then what is never shared — or, with sharing off,
- * that nothing leaves the phone.
+ * What sharing means, beneath its switch: the range row, a line when the range reaches outside the event's dates,
+ * then what is never shared — or, with sharing off, that nothing leaves the phone.
  */
 @Composable
 private fun ColumnScope.ShareBody(state: ParticipationState, actions: ParticipationActions) {
@@ -103,8 +104,10 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
         fromNowOffered = state.range.nowAvailable,
         picker = state.range.picker,
         rangeLabel = state.rangeLabel,
-        detail = shareDetail(state.range.preset, state.range.shareCount).text(),
+        detail = shareDetail(state.range.shareCount)?.text(),
     )
+    // A range reaching outside the event's dates says so, so it never passes for the event's own.
+    state.range.outside?.let { AppSectionNote(stringResource(outsideNote(it))) }
     // A zero count carries a forward gloss so it does not read as broken.
     if (state.range.shareCount == ShareCount.Ready(0)) {
         AppSectionNote(stringResource(Res.string.share_zero_note))
@@ -117,23 +120,21 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
 }
 
 /**
- * The range row's second line: which preset is chosen and, when a count is available, how many of the
- * member's own photos it would share. An unavailable count — no usable grant, or a
- * failed read — is omitted, not shown as zero: the two mean different things.
+ * The range row's second line: when a count is available, how many of the member's own photos the range would share.
+ * An unavailable count — no usable grant, or a failed read — is no line at all, not zero: the two mean different
+ * things. The chosen preset is not named here: the selected chip above says it.
  */
-internal fun shareDetail(preset: RangeChoice, count: ShareCount): Phrase {
-    val name = Phrase.Of(
-        when (preset) {
-            RangeChoice.WHOLE_EVENT -> Res.string.range_whole_event
-            RangeChoice.FROM_NOW -> Res.string.range_from_now
-            RangeChoice.CUSTOM -> Res.string.range_custom
-        },
-    )
-    return when (count) {
-        ShareCount.Counting -> Phrase.Of(Res.string.share_detail_counting, listOf(name))
-        ShareCount.Unavailable -> name
-        is ShareCount.Ready -> Phrase.Counted(Res.plurals.share_detail_count, count.count, listOf(name, count.count))
-    }
+internal fun shareDetail(count: ShareCount): Phrase? = when (count) {
+    ShareCount.Counting -> Phrase.Of(Res.string.share_detail_counting)
+    ShareCount.Unavailable -> null
+    is ShareCount.Ready -> Phrase.Counted(Res.plurals.share_detail_count, count.count, listOf(count.count))
+}
+
+/** The line that says which side of the event's dates the chosen range reaches past. */
+internal fun outsideNote(outside: OutsideReach): StringResource = when (outside) {
+    OutsideReach.BEFORE -> Res.string.share_outside_before
+    OutsideReach.AFTER -> Res.string.share_outside_after
+    OutsideReach.BOTH -> Res.string.share_outside_both
 }
 
 /**

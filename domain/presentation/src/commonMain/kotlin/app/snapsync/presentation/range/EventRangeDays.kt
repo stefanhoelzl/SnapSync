@@ -5,9 +5,9 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 
 // What a tap or a drag on the calendar does to the range. Every
-// result keeps the range inside its [RangeBounds] — the last day never before the start's day nor past the
-// latest end, the start never before the earliest — so a bad range is unreachable rather than refused. The
-// start's clock time is kept whenever its day moves.
+// result keeps the range inside its [RangeBounds] — the last day never before the earliest end nor past the
+// latest end, the start never before the earliest nor after the latest — so a bad range is unreachable rather than
+// refused. The start's clock time is kept whenever its day moves.
 
 /**
  * A tap on [day]. While the last day is pending, a day on or after the start places it, and a day before the
@@ -20,7 +20,7 @@ internal fun EventRange.pickDay(day: LocalDate, bounds: RangeBounds): EventRange
     else -> placeEnd(day, bounds)
 }
 
-/** The last day dragged to [day]: it is placed there, held between the start's day and the window's end. */
+/** The last day dragged to [day]: it is placed there, held between the earliest and the latest end. */
 internal fun EventRange.dragEndTo(day: LocalDate, bounds: RangeBounds): EventRange = placeEnd(day, bounds)
 
 /**
@@ -41,10 +41,18 @@ internal fun EventRange.sweep(anchor: LocalDate, day: LocalDate, bounds: RangeBo
 
 /**
  * The last day the calendar offers: while the last day is pending, the latest end the start allows;
- * otherwise the window's end, or `null` when any day may start a new range.
+ * otherwise the latest start, or `null` when any day may start a new range.
  */
 internal fun EventRange.lastPickableDay(bounds: RangeBounds): LocalDate? =
-    if (endPending) bounds.latestEnd(from).date else bounds.ceiling?.date
+    if (endPending) bounds.latestEnd(from).date else bounds.latestStart?.date
+
+/**
+ * While the last day is pending, the first day it may be placed on when that is later than the day after the start:
+ * the days between are neither a new start (they are after it) nor an end (one there would not reach the event).
+ * `null` when there is no such gap.
+ */
+internal fun EventRange.firstEndDay(bounds: RangeBounds): LocalDate? =
+    bounds.earliestEnd(from).date.takeIf { endPending && it > from.date }
 
 /**
  * A new range on [day]: both ends there, the last day pending. The end time is blanked where the host must
@@ -59,16 +67,22 @@ private fun EventRange.restartAt(day: LocalDate, bounds: RangeBounds): EventRang
     }
 }
 
-/** The start moved to [day] at its clock time, never before the earliest start. */
+/** The start moved to [day] at its clock time, never before the earliest start nor after the latest. */
 private fun EventRange.startOn(day: LocalDate, bounds: RangeBounds): LocalDateTime =
-    LocalDateTime(day, from.time).let { start -> maxOf(start, bounds.earliest ?: start) }
+    LocalDateTime(day, from.time).let { start ->
+        minOf(maxOf(start, bounds.earliest ?: start), bounds.latestStart ?: start)
+    }
 
 private fun EventRange.placeEnd(day: LocalDate, bounds: RangeBounds): EventRange =
-    copy(endDay = day.coerceIn(from.date, bounds.latestEnd(from).date), endPending = false).keepValidTime(bounds)
+    copy(endDay = day.coerceIn(endDays(bounds)), endPending = false).keepValidTime(bounds)
 
-/** The start moved earlier: pull the last day back inside the window if the move left it outside. */
+/** The start moved earlier: pull the last day back inside the bounds if the move left it outside. */
 private fun EventRange.withinWindow(bounds: RangeBounds): EventRange =
-    copy(endDay = endDay.coerceIn(from.date, bounds.latestEnd(from).date)).keepValidTime(bounds)
+    copy(endDay = endDay.coerceIn(endDays(bounds))).keepValidTime(bounds)
+
+/** The days the last day may lie on, for this start. */
+private fun EventRange.endDays(bounds: RangeBounds): ClosedRange<LocalDate> =
+    bounds.earliestEnd(from).date..bounds.latestEnd(from).date
 
 /**
  * The end time after a day moved: kept while it is still a valid end; otherwise cleared where the host sets

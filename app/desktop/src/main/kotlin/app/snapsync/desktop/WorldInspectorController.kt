@@ -14,6 +14,7 @@ import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.id
 import app.snapsync.model.AssetId
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DeviceRefusal
@@ -441,6 +442,7 @@ class WorldInspectorController(
         val policy = joined?.let { config ->
             selectionPolicyFor(
                 config = config,
+                now = CaptureDate.of(mocks.clock.port().now()),
                 suppressedAssetIds = { emptySet() },
                 albumExcludedAssetIds = { GalleryAlbums(reads).assetIdsInAlbums(SELECTION_CALIBRATION, it) },
             )

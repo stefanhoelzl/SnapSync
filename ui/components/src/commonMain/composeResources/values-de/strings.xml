@@ -13,6 +13,7 @@
     <string name="calendar_next_month">Nächster Monat</string>
     <string name="calendar_weekdays">Wochentage, %1$s bis %2$s</string>
     <string name="calendar_day_today">%1$s, heute</string>
+    <string name="calendar_event_day">%1$s, Eventtag</string>
     <string name="range_starts">Beginn</string>
     <string name="range_ends">Ende</string>
     <string name="range_end_pick_time">%1$s, Uhrzeit wählen</string>
@@ -24,10 +25,11 @@
     <string name="picker_cancel">Abbrechen</string>
     <string name="picker_save">Speichern</string>
 
-    <string name="share_range_change">Ändern, welche Fotos geteilt werden</string>
+    <string name="share_range_change">Eigene Daten wählen</string>
     <string name="share_range_title">Welche Fotos geteilt werden</string>
-    <string name="share_range_whole_event">Das ganze Event</string>
+    <string name="share_range_event_start">Ab Eventbeginn</string>
     <string name="share_range_from_now">Ab jetzt</string>
+    <string name="share_range_custom">Anpassen</string>
 
     <string name="status_syncing">Wird geladen …</string>
     <string name="status_in_sync">Alles aktuell</string>

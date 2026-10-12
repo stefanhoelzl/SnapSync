@@ -92,6 +92,9 @@ class CycleGateRead(
                     policy = {
                         selectionPolicyFor(
                             config = it,
+                            // Read when the cycle derives its policy, not at the gate: a cycle that crosses the
+                            // event's start shares what the start admits from then on.
+                            now = config.now(),
                             suppressedAssetIds = { suppression.suppressedLocalIds() },
                             albumExcludedAssetIds = albumExclusions,
                         )

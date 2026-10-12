@@ -178,14 +178,19 @@ suspend fun selectionRulesFor(
  * compile error and a name swap is visible at the one site it can happen. The four-site positional
  * construction this replaces is what made the date-role swap possible (passing `startsAt` where
  * `minPhotoDate` was wanted *lowers* the capture floor and leaks excluded photos).
+ *
+ * [now] is what holds "nothing is shared before the event starts": the floor is [EventConfig.sharingFloor], never
+ * earlier than the event's start while that lies ahead. Every reader of a membership's contribution — both uploaders,
+ * the status total, the album gather — derives here, so they agree on it at every moment.
  */
 suspend fun selectionRulesFor(
     config: EventConfig,
+    now: CaptureDate,
     suppressedAssetIds: suspend () -> Set<AssetId>,
     albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ): List<SelectionRule> = selectionRulesFor(
     includesUpload = config.direction.includesUpload,
-    cutoff = config.minPhotoDate,
+    cutoff = config.sharingFloor(now),
     ceiling = config.maxPhotoDate,
     suppressedAssetIds = suppressedAssetIds,
     albumExcludedAssetIds = albumExcludedAssetIds,
@@ -202,10 +207,11 @@ suspend fun selectionRulesFor(
  */
 suspend fun selectionPolicyFor(
     config: EventConfig,
+    now: CaptureDate,
     suppressedAssetIds: suspend () -> Set<AssetId>,
     albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ): SelectionPolicy =
-    SelectionPolicy(selectionRulesFor(config, suppressedAssetIds, albumExcludedAssetIds))
+    SelectionPolicy(selectionRulesFor(config, now, suppressedAssetIds, albumExcludedAssetIds))
 
 /** The named-parameter door, for a caller holding the bounds rather than a persisted config. */
 suspend fun selectionPolicyFor(
@@ -228,14 +234,14 @@ suspend fun selectionPolicyFor(
 fun noContribution(): SelectionPolicy = SelectionPolicy(listOf(SelectionRule.DenyAll))
 
 /**
- * The library photos that may be one of an event's RECEIVED photos: everything captured inside the event's own range,
- * `[startsAt, endsAt]`, with no origin exclusion — a received photo is recognised by the SnapSync mark in its name, not
- * by what it is. Never a contribution policy: nothing it admits is shared.
+ * The library photos that may be one of an event's RECEIVED photos: everything captured inside `[from, until]`, with no
+ * origin exclusion — a received photo is recognised by the SnapSync mark in its name, not by what it is. Never a
+ * contribution policy: nothing it admits is shared.
  */
-fun eventWindow(startsAt: EventStart, endsAt: EventEnd): SelectionPolicy = SelectionPolicy(
+fun receivedWindow(from: CaptureDate, until: CaptureDate): SelectionPolicy = SelectionPolicy(
     listOf(
-        SelectionRule.CaptureAfter(CaptureCutoff(startsAt.at)),
-        SelectionRule.CaptureBefore(CaptureCeiling(endsAt.at)),
+        SelectionRule.CaptureAfter(CaptureCutoff(from)),
+        SelectionRule.CaptureBefore(CaptureCeiling(until)),
     ),
 )
 

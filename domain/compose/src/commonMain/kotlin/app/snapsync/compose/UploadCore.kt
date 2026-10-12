@@ -225,10 +225,10 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
                 // Read by the gate BEFORE the membership, so every change the rows or the policy miss
                 // carries a higher version.
                 manifestVersion = manifestVersion,
-                // Settled once the event's range has ended: the discovery this hook follows ran just now, after the
-                // end, so every in-range photo is declared. One fresh read, like the gate.
-
-                settled = ports.config.freshReadHasEnded(),
+                // Settled once the membership's OWN range has ended: the discovery this hook follows ran just now,
+                // after that end, so every in-range photo is declared. One fresh read, like the gate. A range widened
+                // past now again publishes unsettled, and the backend follows each publish both ways.
+                settled = ports.config.freshReadShareHasEnded(),
             )
         },
         // The cycle applies the membership's opt-in (it arrived with the gate).

@@ -67,9 +67,9 @@ class DeviceManifestProducer(
         rows: List<LedgerEntry>,
         manifestVersion: Long,
         /**
-         * Whether this snapshot declares the share SETTLED — a member's share is settled only after the event has
-         * ended: true once the event's range has ended, since the discovery this hook
-         * follows then ran after the end. The flag rides the marker, so its flip is published once.
+         * Whether this snapshot declares the share SETTLED — a member's share is settled only after their own range
+         * has ended: true once the membership's range has ended, since the discovery this hook
+         * follows then ran after that end. The flag rides the marker, so its flip is published once.
          */
         settled: Boolean = false,
     ): Boolean {

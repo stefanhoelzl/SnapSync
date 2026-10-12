@@ -67,7 +67,7 @@
     <string name="create_name_placeholder">e.g. Anna's birthday</string>
     <string name="create_when_question">When is it?</string>
     <!-- %1$d is the longest an event may last, in days. -->
-    <string name="create_window_note">Only photos taken between these dates are shared. An event can last up to %1$d days.</string>
+    <string name="create_window_note">Photos taken between these dates are shared. Everyone can widen or narrow their own. An event can last up to %1$d days.</string>
     <string name="create_button">Create event</string>
     <string name="create_join_hint">To join an event instead, scan its QR code with your camera.</string>
     <string name="create_step_name">Name the event</string>
@@ -108,7 +108,7 @@
     <string name="access_choose_title">Allow all photos, or pick which to share</string>
     <string name="access_choose_body">Choosing specific photos works too — and you can add more anytime.</string>
     <string name="access_range_title">Only photos in the range you chose</string>
-    <string name="access_range_body">Nothing older is shared.</string>
+    <string name="access_range_body">Everything else stays on your phone.</string>
 
     <!-- What the event album collects, named exactly for the switches that are on. -->
     <string name="album_none">No album is created.</string>
@@ -137,14 +137,15 @@
     <string name="share_zero_note">New photos you take will be shared as you go.</string>
     <!-- What is SUBTRACTED, never a promise of what gets through: the app cannot tell a camera photo apart. -->
     <string name="share_exclusions_note">Screenshots, screen recordings, GIFs and photos saved from chat apps are never shared.</string>
-    <string name="range_whole_event">The whole event</string>
-    <string name="range_from_now">From now</string>
-    <string name="range_custom">Custom range</string>
-    <!-- %1$s is the range's name ("The whole event"). -->
-    <string name="share_detail_counting">%1$s · counting your photos…</string>
+    <!-- Beneath the count when the chosen range reaches outside the event's own dates. -->
+    <string name="share_outside_before">Also photos from before the event.</string>
+    <string name="share_outside_after">Also photos from after the event.</string>
+    <string name="share_outside_both">Also photos from before and after the event.</string>
+    <!-- The line beneath the chosen range: how many of the member's photos it shares. %1$d is that number. -->
+    <string name="share_detail_counting">Counting your photos…</string>
     <plurals name="share_detail_count">
-        <item quantity="one">%1$s · %2$d photo from your gallery</item>
-        <item quantity="other">%1$s · %2$d photos from your gallery</item>
+        <item quantity="one">%1$d photo from your gallery</item>
+        <item quantity="other">%1$d photos from your gallery</item>
     </plurals>
 
     <!-- The joined screen. -->

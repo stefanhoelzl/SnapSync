@@ -267,29 +267,22 @@ class JoinGateIntegrationTest {
         requirement = "The shared capture range always has a lower bound inside the event window",
     )
     fun a_hostile_autoJoin_deeplink_cannot_widen_the_membership_below_the_event_start() = rigTest {
-        // THE attack the floor closes, proven end-to-end through the real stack.
+        // THE attack the old floor closed, proven end-to-end through the real stack.
         //
-        // `minPhotoDate` is decoded from ANY event link — it is documented as a dev/test key, but
-        // nothing stops an attacker putting it in a QR. Before the floor, a QR carrying `autoJoin=true`
-        // plus a distant-past cutoff auto-confirmed a join at near-whole-library scope WITHOUT A TAP:
-        // every photo the guest had ever taken would upload into a stranger's event.
+        // `minPhotoDate` is decoded from ANY event link — it is documented as a dev/test key, but nothing stops an
+        // attacker putting it in a QR. Unchecked, a QR carrying `autoJoin=true` plus a distant-past cutoff would
+        // auto-confirm a join at near-whole-library scope WITHOUT A TAP.
         //
-        // The clamp lives in `JoinEvent`, which every entry path funnels through — including this headless
-        // one, which has no surface on which a user could notice anything was wrong. (A production build no
-        // longer honours `autoJoin` at all — `InviteLinkHints`, proven by `InviteLinkHintsWorldTest`; this
-        // rig-composed host does, and the clamp still defends it.)
+        // The share-range rule lives in `JoinEvent`, which every entry path funnels through — including this headless
+        // one. A member's range may now reach before the event (decision record `changes/flexible-share-range`), but
+        // never further than an event may last, so a 2001 cutoff is REFUSED: nothing is joined. (A production build no
+        // longer honours `autoJoin` at all — `InviteLinkHints`, proven by `InviteLinkHintsWorldTest`; this rig-composed
+        // host does, and the rule still defends it.)
         val event = registerEvent(name = "Anna's Wedding")
 
         openLink(inviteLink(event, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"))
-        val joined = awaitState { it.ready.eventId == event }
-        val membership = joined.joined!!.membership
 
-        assertEquals(membership.startsAt, membership.sharesFrom, "the 2001 cutoff must not survive the clamp")
-        assertTrue(joined.ready.minPhotoDate?.startsWith("2001") == false)
-        assertTrue(
-            membership.sharesFrom >= membership.startsAt,
-            "the floor invariant holds for every reachable membership",
-        )
+        neverWithin(what = "a 2001 cutoff joins nothing") { it.ready.eventId == event }
     }
 
     // ── The membership self-leave ─────────────────────────────────────────────────────────────────────────────

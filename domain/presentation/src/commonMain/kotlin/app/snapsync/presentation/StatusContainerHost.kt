@@ -108,9 +108,8 @@ class StatusContainerHost(
     // directly; the armed presentation gate enforces the import law. Required: a host states every
     // command it wires, so a forgotten one is a compile error rather than an inert tap.
     //
-    // NB the CLAMP (`minPhotoDate = max(chosen, startsAt)`) is applied on the far side of the
-    // `commitJoin` command, inside `JoinEvent` — this container passes the chosen value through raw,
-    // so no entry path can reach a provision without the floor by forgetting to clamp here.
+    // NB the share-range rule is applied on the far side of the `commitJoin` command, inside `JoinEvent` — this
+    // container passes the chosen range through raw, so no entry path can reach a provision by forgetting it here.
     private val commands: UserCommands,
     // The user-query bundle (`docs/architecture.md`, "Queries cross a lane-gated door"): the join gate's
     // details read and the shareable count. Reads this container INVOKES and reduces on, built and
@@ -201,7 +200,7 @@ class StatusContainerHost(
      *
      * The join gate and the settings surface reach a window by different roads — one off the loaded
      * phase, one off the persisted membership — and those roads genuinely differ. From here down the
-     * rules are identical, and a clamping rule that held on one surface and not the other would be a bug
+     * rules are identical, and a range rule that held on one surface and not the other would be a bug
      * nobody would ever see.
      */
     private fun resolveRange(
@@ -522,8 +521,8 @@ class StatusContainerHost(
     /**
      * The range calendars: the gestures on the create
      * form's calendar or the open one's; and the calendar over a participation surface, which opens on the range the
-     * surface resolves, complete — so the first tap on a day starts a new range — held to the event's window. OK takes
-     * its span as a custom range; a preset chip takes the preset; closing changes nothing.
+     * surface resolves, complete — so the first tap on a day starts a new range — held to the share-range rule around
+     * the event's window. OK takes its span as a custom range; closing changes nothing.
      */
     val picker: PickerCommands = PickerCommands()
 
@@ -547,7 +546,7 @@ class StatusContainerHost(
         fun onOpen() {
             val r = container.stateFlow.value.shown.range ?: return
             val range = EventRange(r.from, r.until.date, r.until.time, endPending = false)
-            local.update { it.copy(picking = Picking(range, r.windowStart, r.windowEnd)) }
+            local.update { it.copy(picking = Picking(range, cutoffFormatter.shareBounds(r.windowStart, r.windowEnd))) }
         }
 
         fun onDismiss() = local.update { it.copy(picking = null) }
@@ -556,8 +555,7 @@ class StatusContainerHost(
             val open = local.value.picking ?: return
             val until = open.range.validUntil(open.bounds) ?: return
             onDismiss()
-            val window = open.windowStart..open.windowEnd
-            form.onRangeCustom(open.range.from.coerceIn(window), until.coerceIn(window))
+            form.onRangeCustom(open.range.from, until)
         }
     }
 
@@ -838,7 +836,7 @@ class StatusContainerHost(
         /**
          * Run one change through [UserCommands.reconfigure]. The event id rides with the values so a switch that landed
          * while the settings were open makes the use-case a no-op rather than overwriting a different membership; the
-         * clamp to the event's window is the use-case's. Afterwards the controls are re-seeded from the settings in
+         * share-range rule is the use-case's. Afterwards the controls are re-seeded from the settings in
          * effect — the change if it landed, the ones before it if not — so a change that did not land shows the setting
          * still in effect, and says so: the controls never hold a value that is not saved.
          */
@@ -854,7 +852,7 @@ class StatusContainerHost(
                 }
                 return
             }
-            val saved = outcome != ReconfigureOutcome.SaveFailed
+            val saved = outcome == ReconfigureOutcome.Saved
             val inEffect = if (saved) next else before
             val reseeded = reconfigureForm(
                 inEffect.appliedTo(config),
@@ -1324,16 +1322,15 @@ class StatusContainerHost(
         // an explicit dev/test one. Never an absent cutoff — the headless
         // path has no surface to notice one.
         //
-        // An explicit cutoff is passed through RAW and clamped on the far side of `commitJoin`, inside
-        // `JoinEvent` — it gets no exemption from the floor, and that is the whole point. `minPhotoDate`
-        // is decoded from ANY event link, so an unclamped override would let a hostile QR carrying
+        // An explicit cutoff is passed through RAW and checked on the far side of `commitJoin`, inside
+        // `JoinEvent` — it gets no exemption from the share-range rule, and that is the whole point. `minPhotoDate`
+        // is decoded from ANY event link, so an unchecked override would let a hostile QR carrying
         // `autoJoin=true` + a distant-past cutoff auto-confirm a join at near-whole-library scope WITHOUT
-        // A TAP. (Cost, accepted: the dev loop can no longer force a cutoff below the event's start — it
-        // creates the event with an early `startsAt` instead, which the unbounded picker permits.)
+        // A TAP; the rule refuses it instead.
         val cutoff = explicitCutoff ?: CaptureCutoff(load.startsAt.at)
         // The upper bound defaults to the event's `endsAt` (the full window), unless the event link supplied
         // an explicit dev/test override. Like the cutoff, an explicit `maxPhotoDate` is passed RAW and
-        // clamped to the ceiling on the far side, inside `JoinEvent`.
+        // checked on the far side, inside `JoinEvent`.
         val until = explicitUntil ?: CaptureCeiling(load.endsAt.at)
         // The direction defaults to Both, unless the event link supplied an explicit dev/test override
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.

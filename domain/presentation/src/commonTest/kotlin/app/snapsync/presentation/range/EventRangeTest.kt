@@ -34,9 +34,17 @@ class EventRangeTest {
             )
         }
 
-        /** A join's window: the event, 20 Jul 18:00 – 25 Jul 18:00, its end time always set. */
-        val EVENT = RangeBounds.within(LocalDateTime(2026, 7, 20, 18, 0), LocalDateTime(2026, 7, 25, 18, 0))
-        val WHOLE_EVENT =
+        /**
+         * A join's bounds around the event, 20 Jul 18:00 – 25 Jul 18:00: at most 30 days, overlapping the event, its
+         * end time always set.
+         */
+        val EVENT = RangeBounds.aroundEvent(
+            LocalDateTime(2026, 7, 20, 18, 0),
+            LocalDateTime(2026, 7, 25, 18, 0),
+            longest = { from -> LocalDateTime(from.date.plus(30, DateTimeUnit.DAY), from.time) },
+            earliestFrom = { until -> LocalDateTime(until.date.plus(-30, DateTimeUnit.DAY), until.time) },
+        )
+        val EVENT_START =
             EventRange(LocalDateTime(2026, 7, 20, 18, 0), LocalDate(2026, 7, 25), LocalTime(18, 0), endPending = false)
 
         /** The clock's hour, as the create screen hands it to a minute settle that has no hour yet. */
@@ -205,16 +213,16 @@ class EventRangeTest {
         assertNull(late.settleUntilHour(23, THIRTY_DAYS).untilHour)
     }
 
-    // ---- inside an event's window (join and settings) ----
+    // ---- around an event's window (join and settings) ----
 
     @Test
     fun `a join range opens complete and valid`() {
-        assertTrue(WHOLE_EVENT.isValid(EVENT))
+        assertTrue(EVENT_START.isValid(EVENT))
     }
 
     @Test
     fun `a first tap starts a new range and keeps the end time`() {
-        val restarted = WHOLE_EVENT.pickDay(LocalDate(2026, 7, 22), EVENT)
+        val restarted = EVENT_START.pickDay(LocalDate(2026, 7, 22), EVENT)
         assertEquals(LocalDateTime(2026, 7, 22, 18, 0), restarted.from)
         assertEquals(LocalTime(18, 0), restarted.untilTime, "the end time is never blanked on join")
         assertFalse(restarted.isValid(EVENT), "until the last day is placed the range ends where it starts")
@@ -225,42 +233,69 @@ class EventRangeTest {
 
     @Test
     fun `a same-day join range moves the end time to the nearest valid one`() {
-        val sameDay = WHOLE_EVENT.pickDay(LocalDate(2026, 7, 22), EVENT).pickDay(LocalDate(2026, 7, 22), EVENT)
+        val sameDay = EVENT_START.pickDay(LocalDate(2026, 7, 22), EVENT).pickDay(LocalDate(2026, 7, 22), EVENT)
         assertEquals(LocalDateTime(2026, 7, 22, 18, 1), sameDay.until)
     }
 
     @Test
-    fun `dragging an end narrows the range and never leaves the window`() {
-        assertEquals(LocalDate(2026, 7, 23), WHOLE_EVENT.dragEndTo(LocalDate(2026, 7, 23), EVENT).endDay)
-        assertEquals(LocalDate(2026, 7, 25), WHOLE_EVENT.dragEndTo(LocalDate(2026, 7, 30), EVENT).endDay)
-        val start = WHOLE_EVENT.dragStartTo(LocalDate(2026, 7, 10), EVENT)
-        assertEquals(LocalDateTime(2026, 7, 20, 18, 0), start.from, "never before the event's start")
+    fun `dragging may reach outside the event — never past thirty days`() {
+        // Capability `join-event`: the evening before, the morning after.
+        assertEquals(LocalDate(2026, 7, 23), EVENT_START.dragEndTo(LocalDate(2026, 7, 23), EVENT).endDay)
+        assertEquals(LocalDate(2026, 7, 30), EVENT_START.dragEndTo(LocalDate(2026, 7, 30), EVENT).endDay)
+        assertEquals(LocalDate(2026, 8, 19), EVENT_START.dragEndTo(LocalDate(2026, 9, 30), EVENT).endDay, "30 days")
+        val start = EVENT_START.dragStartTo(LocalDate(2026, 7, 10), EVENT)
+        assertEquals(LocalDateTime(2026, 7, 10, 18, 0), start.from, "before the event's start")
+        assertTrue(start.isValid(EVENT))
     }
 
     @Test
-    fun `on the window's first day a start before the event cannot be settled`() {
-        assertFalse(WHOLE_EVENT.fromAllowed(LocalTime(17, 59), EVENT))
-        assertEquals(LocalDateTime(2026, 7, 20, 18, 0), WHOLE_EVENT.settleFromHour(9, EVENT).from)
+    fun `a start may be settled before the event's start`() {
+        assertTrue(EVENT_START.fromAllowed(LocalTime(17, 59), EVENT))
+        assertEquals(LocalDateTime(2026, 7, 20, 9, 0), EVENT_START.settleFromHour(9, EVENT).from)
     }
 
     @Test
-    fun `days past the event are never offered`() {
-        assertEquals(LocalDate(2026, 7, 25), WHOLE_EVENT.lastPickableDay(EVENT))
+    fun `no new range starts after the event — nor further back than thirty days before it`() {
+        assertEquals(LocalDate(2026, 7, 25), EVENT_START.lastPickableDay(EVENT))
+        assertEquals(LocalDate(2026, 6, 20), EVENT_START.view(EVENT, LocalDate(2026, 7, 1)).firstDay)
+        assertEquals(
+            LocalDateTime(2026, 7, 25, 18, 0),
+            EVENT_START.pickDay(LocalDate(2026, 7, 28), EVENT).from,
+            "a tap after the event starts the new range on the event's last moment",
+        )
+    }
+
+    @Test
+    fun `a range started before the event must end in it - the days between are not offered`() {
+        val early = EVENT_START.pickDay(LocalDate(2026, 7, 10), EVENT)
+        assertEquals(LocalDate(2026, 7, 20), early.firstEndDay(EVENT), "an end before the event's start would miss it")
+        val placed = early.pickDay(LocalDate(2026, 7, 15), EVENT)
+        assertEquals(LocalDate(2026, 7, 20), placed.endDay, "a tap in the gap is held to the event's first day")
+        assertTrue(placed.isValid(EVENT))
+        assertNull(EVENT_START.pickDay(LocalDate(2026, 7, 22), EVENT).firstEndDay(EVENT), "no gap inside the event")
+    }
+
+    @Test
+    fun `the event's own days are marked`() {
+        val view = EVENT_START.view(EVENT, LocalDate(2026, 7, 1))
+        assertEquals(LocalDate(2026, 7, 20), view.markedDays?.first)
+        assertEquals(LocalDate(2026, 7, 25), view.markedDays?.last)
+        assertNull(fresh.view(THIRTY_DAYS, TODAY).markedDays, "the create screen marks none")
     }
 
     @Test
     fun `on join every settle keeps the end complete`() {
-        assertEquals(LocalDateTime(2026, 7, 25, 17, 0), WHOLE_EVENT.settleUntilHour(17, EVENT).until)
+        assertEquals(LocalDateTime(2026, 7, 25, 17, 0), EVENT_START.settleUntilHour(17, EVENT).until)
         assertEquals(
             LocalDateTime(2026, 7, 25, 17, 30),
-            WHOLE_EVENT.settleUntilHour(17, EVENT).settleUntilMinute(30, EVENT, NOW_HOUR).until,
+            EVENT_START.settleUntilHour(17, EVENT).settleUntilMinute(30, EVENT, NOW_HOUR).until,
         )
         assertEquals(
-            LocalDateTime(2026, 7, 25, 18, 0),
-            WHOLE_EVENT.settleUntilMinute(30, EVENT, NOW_HOUR).until,
-            "18:30 is past the event",
+            LocalDateTime(2026, 7, 25, 18, 30),
+            EVENT_START.settleUntilMinute(30, EVENT, NOW_HOUR).until,
+            "an end after the event's is a member's choice",
         )
-        assertTrue(WHOLE_EVENT.settleUntilHour(17, EVENT).isValid(EVENT))
+        assertTrue(EVENT_START.settleUntilHour(17, EVENT).isValid(EVENT))
     }
 
     @Test
@@ -307,21 +342,23 @@ class EventRangeTest {
     }
 
     @Test
-    fun `a complete range outside its window is not valid`() {
-        val pastTheEvent = EventRange(
-            LocalDateTime(2026, 7, 20, 18, 0),
-            LocalDate(2026, 7, 26),
-            LocalTime(18, 0),
-            endPending = false,
-        )
-        assertFalse(pastTheEvent.isValid(EVENT))
+    fun `a complete range that misses the event or outlasts thirty days is not valid`() {
         val beforeTheEvent = EventRange(
-            LocalDateTime(2026, 7, 20, 17, 0),
-            LocalDate(2026, 7, 21),
+            LocalDateTime(2026, 7, 10, 18, 0),
+            LocalDate(2026, 7, 20),
+            LocalTime(17, 59),
+            endPending = false,
+        )
+        assertFalse(beforeTheEvent.isValid(EVENT), "it ends a minute before the event starts")
+        val tooLong = EventRange(
+            LocalDateTime(2026, 7, 1, 18, 0),
+            LocalDate(2026, 8, 1),
             LocalTime(18, 0),
             endPending = false,
         )
-        assertFalse(beforeTheEvent.isValid(EVENT))
+        assertFalse(tooLong.isValid(EVENT))
+        val around = EventRange(LocalDateTime(2026, 7, 19, 9, 0), LocalDate(2026, 7, 26), LocalTime(12, 0), false)
+        assertTrue(around.isValid(EVENT), "the day before to the day after")
         assertFalse(fresh.isValid(THIRTY_DAYS), "an end time still blank is no range yet")
     }
 
@@ -338,16 +375,50 @@ class EventRangeTest {
     }
 
     @Test
-    fun `a join range restarted on the event's last day has no end time to settle on`() {
-        // Until its last day is placed the new range ends where it starts: 18:00 on the 25th, the event's end.
-        val lastDay = WHOLE_EVENT.pickDay(LocalDate(2026, 7, 25), EVENT)
-        assertEquals(lastDay, lastDay.settleUntilHour(17, EVENT))
+    fun `a join range restarted on the event's last day may end after the event`() {
+        // Until its last day is placed the new range ends where it starts: 18:00 on the 25th, the event's end. An end
+        // after it is a member's choice now, so the nearest valid end to 17:00 is the next minute.
+        val lastDay = EVENT_START.pickDay(LocalDate(2026, 7, 25), EVENT)
+        assertEquals(LocalDateTime(2026, 7, 25, 18, 1), lastDay.settleUntilHour(17, EVENT).until)
     }
 
     @Test
-    fun `a join range restarted on the event's first day has no start time to settle on`() {
-        // Its end is 18:00 on the 20th, the event's start: no start on that day is both in the event and before it.
-        val firstDay = WHOLE_EVENT.pickDay(LocalDate(2026, 7, 20), EVENT)
-        assertEquals(firstDay, firstDay.settleFromHour(19, EVENT))
+    fun `a join range restarted on the event's first day may start before the event`() {
+        // Its end is 18:00 on the 20th, the event's start: a start at 19:00 would come after it, so the nearest valid
+        // start is the hour before — before the event, which a member may choose.
+        val firstDay = EVENT_START.pickDay(LocalDate(2026, 7, 20), EVENT)
+        assertEquals(LocalDateTime(2026, 7, 20, 17, 0), firstDay.settleFromHour(19, EVENT).from)
+    }
+
+    // ---- the bounds around an event: a start held on both sides, and wheels with nothing to settle on ----
+
+    @Test
+    fun `a start further back than thirty days before the event cannot be settled`() {
+        // The earliest start is 20 Jun 18:00 (30 days before the event's start): 17:59 on that day is out of reach.
+        val farBack = EventRange(LocalDateTime(2026, 6, 20, 18, 0), LocalDate(2026, 7, 20), LocalTime(18, 0), false)
+        assertTrue(farBack.isValid(EVENT))
+        assertFalse(farBack.fromAllowed(LocalTime(17, 59), EVENT))
+    }
+
+    @Test
+    fun `a start after the event's end cannot be settled`() {
+        // On the event's last day a start after 18:00 would begin after the event ended.
+        val lastDay = EventRange(LocalDateTime(2026, 7, 25, 17, 0), LocalDate(2026, 7, 27), LocalTime(12, 0), false)
+        assertTrue(lastDay.fromAllowed(LocalTime(18, 0), EVENT))
+        assertFalse(lastDay.fromAllowed(LocalTime(18, 1), EVENT))
+    }
+
+    @Test
+    fun `an end wheel with no valid time keeps the range as it is`() {
+        // The start is the day's last minute and the end lies on that same day: no end time comes after it.
+        val late = EventRange(LocalDateTime(2026, 7, 6, 23, 59), LocalDate(2026, 7, 6), LocalTime(23, 59), false)
+        assertEquals(late, late.settleUntilHour(10, THIRTY_DAYS))
+    }
+
+    @Test
+    fun `a start wheel with no valid time keeps the range as it is`() {
+        // The end is midnight on the start's day: no start time comes before it.
+        val midnight = EventRange(LocalDateTime(2026, 7, 6, 0, 0), LocalDate(2026, 7, 6), LocalTime(0, 0), false)
+        assertEquals(midnight, midnight.settleFromHour(9, THIRTY_DAYS))
     }
 }

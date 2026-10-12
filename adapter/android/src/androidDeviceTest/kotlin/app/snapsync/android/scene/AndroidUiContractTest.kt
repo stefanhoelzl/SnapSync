@@ -582,7 +582,7 @@ class AndroidUiContractTest {
         onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         awaitShown { it.joining?.range?.picker != null }
         onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).performClick()
-        awaitShown { it.joining?.range?.preset == RangeChoice.WHOLE_EVENT }
+        awaitShown { it.joining?.range?.preset == RangeChoice.EVENT_START }
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
         awaitShown { it.joining?.range?.shareOn == false }
         onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().performClick()

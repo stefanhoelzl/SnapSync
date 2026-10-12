@@ -6,9 +6,8 @@ import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinResult
-import app.snapsync.model.clampToCeiling
-import app.snapsync.model.clampToFloor
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.model.shareRangeFault
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
@@ -25,8 +24,10 @@ import co.touchlab.kermit.Logger
  *   (`docs/architecture.md`, "Absence is never silent"). Nothing is persisted either way.
  * - [Unverified]: the service did not accept this phone's credential — the attestation's refusal says why.
  * - [EnrollFailed]: the join request failed or the event is gone — nothing persisted, no producer enabled.
+ * - [InvalidRange]: the chosen capture range breaks the share-range rule ([shareRangeFault]) — refused before anything
+ *   is enrolled. No shipped entry path can produce one, so the screen shows it as a failed join.
  */
-enum class JoinOutcome { Committed, AlreadyJoined, EventClosed, Unverified, EnrollFailed, WrongLink }
+enum class JoinOutcome { Committed, AlreadyJoined, EventClosed, Unverified, EnrollFailed, WrongLink, InvalidRange }
 
 /**
  * What the join surface should show for this outcome.
@@ -40,7 +41,7 @@ fun JoinOutcome.toCommit(): JoinCommit = when (this) {
     JoinOutcome.Committed, JoinOutcome.AlreadyJoined -> JoinCommit.Committed
     JoinOutcome.EventClosed -> JoinCommit.Closed
     JoinOutcome.Unverified -> JoinCommit.Unverified
-    JoinOutcome.EnrollFailed -> JoinCommit.Failed
+    JoinOutcome.EnrollFailed, JoinOutcome.InvalidRange -> JoinCommit.Failed
     JoinOutcome.WrongLink -> JoinCommit.WrongLink
 }
 
@@ -82,7 +83,7 @@ class JoinEvent(
      * cutoff would upload the whole library), its chosen participation `direction`, and whether it
      * opted into an event album (`saveToAlbum`): enroll (register-only empty manifest) — for **every** direction, so a
      * download-only device is still an enrolled member — then, only on a successful enrollment, provision
-     * (save config **with the clamped cutoff, the start date, and the direction**). The injected
+     * (save config **with the chosen range, the start date, and the direction**). The injected
      * [provision] enables the upload producer only when `Direction.includesUpload` and runs the download
      * reconcile only when `Direction.includesDownload` (the latter gated inside the download controller).
      * Re-confirming the already-joined event is a [JoinOutcome.AlreadyJoined] no-op that skips enrollment
@@ -90,24 +91,26 @@ class JoinEvent(
      * joined membership is done **in place** by `ReconfigureEvent`,
      * not by leaving and re-joining; only `startsAt` (the floor) stays immutable for the membership's life.
      *
-     * **The floor is applied here**: the persisted cutoff is
-     * `max(chosen, startsAt)`, never the raw `minPhotoDate`. Doing it in the use-case rather than in the
-     * UI is what makes it total — **every** entry path funnels through this one call (the interactive
-     * confirm, the switch confirm, the retry, and the `autoJoin` path carrying an event-link-supplied
-     * cutoff), so none of them can forget it. That last one is the reason it matters: `minPhotoDate` is
-     * decoded from **any** event link, so without the clamp a hostile QR carrying
-     * `autoJoin=true` + a distant-past cutoff would auto-confirm a join at near-whole-library scope
-     * *without a tap*.
-     *
-     * Because `startsAt` is immutable, the clamped value is stable for the life of the membership — which
-     * is what lets the upload cycle keep filtering on a single cutoff, with `startsAt` never reaching the
-     * upload path at all.
+     * **The share-range rule is applied here** ([shareRangeFault]): the persisted range is the chosen one, unchanged,
+     * or the join is refused as [JoinOutcome.InvalidRange] before anything is enrolled. Doing it in the use-case rather
+     * than in the UI is what makes it total — **every** entry path funnels through this one call (the interactive
+     * confirm, the switch confirm, the retry, and the rig's `autoJoin` path carrying a link-supplied range), so none of
+     * them can skip it. It refuses rather than clamps: the calendar cannot produce a failing range, so one that arrives
+     * is a bug, and moving it would join a range nobody chose.
      */
     private val log = Logger.withTag("JoinEvent")
 
     suspend fun join(choice: JoinChoice): JoinOutcome {
         val eventId = choice.eventId
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
+        shareRangeFault(choice.minPhotoDate, choice.maxPhotoDate, choice.startsAt, choice.endsAt)?.let { fault ->
+            log.e {
+                "join: refused — the range ${choice.minPhotoDate}..${choice.maxPhotoDate} " +
+                    "breaks the share-range rule " +
+                    "($fault) for the event ${choice.startsAt}..${choice.endsAt}"
+            }
+            return JoinOutcome.InvalidRange
+        }
         // Every entry path funnels here, the headless one included, so the key is checked here too — never only on
         // the screen: a member must not join an encrypted event it could not read, nor upload plaintext into it.
         if (!keys.opens(choice.linkKey, choice.eventKeyId)) return JoinOutcome.WrongLink
@@ -128,10 +131,10 @@ class JoinEvent(
             EventConfig(
                 eventId = eventId,
                 name = choice.name,
-                minPhotoDate = clampToFloor(chosen = choice.minPhotoDate, startsAt = choice.startsAt),
+                minPhotoDate = choice.minPhotoDate,
                 startsAt = choice.startsAt,
                 endsAt = choice.endsAt,
-                maxPhotoDate = clampToCeiling(chosen = choice.maxPhotoDate, endsAt = choice.endsAt),
+                maxPhotoDate = choice.maxPhotoDate,
                 // Persisted verbatim from the loaded details, never computed here: it is the OFFLINE
                 // witness of the self-leave, and a client-derived one would
                 // decide whether this membership is later destroyed.

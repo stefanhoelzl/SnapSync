@@ -2,7 +2,6 @@
 
 package app.snapsync.ui
 
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
@@ -11,7 +10,6 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -36,7 +34,9 @@ import app.snapsync.model.eventStart
 import app.snapsync.presentation.url
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.network_blocked
-import app.snapsync.ui.components.resources.share_range_change
+import app.snapsync.ui.components.resources.share_range_custom
+import app.snapsync.ui.components.resources.share_range_event_start
+import app.snapsync.ui.components.resources.share_range_from_now
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.resources.Res
@@ -61,8 +61,6 @@ import app.snapsync.ui.resources.message_app_not_genuine
 import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.mobile_data_toggle
-import app.snapsync.ui.resources.range_from_now
-import app.snapsync.ui.resources.range_whole_event
 import app.snapsync.ui.resources.receive_toggle
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.report_placeholder
@@ -332,21 +330,18 @@ class HostStatusActionsTest {
         rig.host.onOpenUrl(linkTo(OTHER_ID))
         awaitState(rig, ready)
 
-        // Each range edit, so a preset crossed with a custom pick lands in the wrong field.
-        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
-        awaitState(rig) { it.joining?.range?.picker != null }
-        onNodeWithText(str(Res.string.range_from_now)).performClick()
+        // Each range edit, so a preset crossed with a custom pick lands in the wrong field. The quick choices are on
+        // the screen; Custom opens the calendar.
+        onNodeWithText(str(ComponentRes.string.share_range_from_now)).performClick()
         awaitState(rig) { it.joining?.range?.preset == RangeChoice.FROM_NOW }
-        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNodeWithText(str(ComponentRes.string.share_range_custom)).performClick()
         awaitState(rig) { it.joining?.range?.picker != null }
         onNodeWithText(str(Res.string.save)).performClick()
         awaitState(rig) {
             it.joining?.range?.preset == RangeChoice.CUSTOM
         }
-        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
-        awaitState(rig) { it.joining?.range?.picker != null }
-        onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).performClick()
-        awaitState(rig) { it.joining?.range?.preset == RangeChoice.WHOLE_EVENT }
+        onNodeWithText(str(ComponentRes.string.share_range_event_start)).performClick()
+        awaitState(rig) { it.joining?.range?.preset == RangeChoice.EVENT_START }
         // The participation switches, likewise one field each.
         onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.range?.shareOn == false }

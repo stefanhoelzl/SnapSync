@@ -23,6 +23,7 @@ import app.snapsync.ui.state.JoinedEvent
 import app.snapsync.ui.state.KeepOpenChoice
 import app.snapsync.ui.state.KeepOpenSheet
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeView
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.ReportNotice
@@ -129,10 +130,15 @@ internal class Display(
         KeepOpenSheet(KEEP_OPEN_DAYS.map { days -> KeepOpenChoice(days, dates.toLocal(dates.openFor(days)).date) })
 }
 
-/** A range calendar open over a participation surface: the range it shows, held to the surface's window. */
-internal data class Picking(val range: EventRange, val windowStart: LocalDateTime, val windowEnd: LocalDateTime) {
-    val bounds: RangeBounds get() = RangeBounds.within(windowStart, windowEnd)
-}
+/**
+ * A range calendar open over a participation surface: the range it shows, held to the share-range rule around the
+ * event's window ([RangeBounds.aroundEvent]) — the one instance its gestures, its view and its confirm all ask.
+ */
+internal data class Picking(val range: EventRange, val bounds: RangeBounds)
+
+/** The bounds a member's range is picked in, around the event's `[windowStart, windowEnd]`. */
+internal fun CutoffFormatter.shareBounds(windowStart: LocalDateTime, windowEnd: LocalDateTime): RangeBounds =
+    RangeBounds.aroundEvent(windowStart, windowEnd, ::latestEnd, ::earliestStart)
 
 /** A form and what it resolved to — with the calendar, while it is [picking] — as the participation surface shows them. */
 internal fun RangeForm.view(range: ResolvedRange, picking: Picking? = null): RangeView = RangeView(
@@ -150,7 +156,23 @@ internal fun RangeForm.view(range: ResolvedRange, picking: Picking? = null): Ran
     commitEnabled = range.commitEnabled,
     shareCount = range.shareCount,
     picker = picking?.let { it.range.view(it.bounds, range.today) },
+    outside = outsideReach(range),
 )
+
+/**
+ * Where [range] reaches past the event's window — said beneath the count, so a wide range never passes for the
+ * event's.
+ */
+internal fun outsideReach(range: ResolvedRange): OutsideReach? {
+    val before = range.from < range.windowStart
+    val after = range.until > range.windowEnd
+    return when {
+        before && after -> OutsideReach.BOTH
+        before -> OutsideReach.BEFORE
+        after -> OutsideReach.AFTER
+        else -> null
+    }
+}
 
 internal val AlbumKind.shown: AlbumStyle
     get() = when (this) {

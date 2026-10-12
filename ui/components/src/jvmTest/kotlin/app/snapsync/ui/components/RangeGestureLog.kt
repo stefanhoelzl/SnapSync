@@ -1,5 +1,6 @@
 package app.snapsync.ui.components
 
+import app.snapsync.ui.state.DaySpan
 import app.snapsync.ui.state.PickerView
 import app.snapsync.ui.state.TimeSpan
 import kotlinx.datetime.LocalDate
@@ -26,7 +27,23 @@ internal fun picker(
     untilTimes: TimeSpan? = ALL_DAY,
     complete: Boolean = false,
     today: LocalDate = NOT_IN_MARCH,
-) = PickerView(from, endDay, untilHour, untilMinute, endPending, today, firstDay, lastDay, fromTimes, untilTimes, complete)
+    firstEndDay: LocalDate? = null,
+    markedDays: DaySpan? = null,
+) = PickerView(
+    from = from,
+    endDay = endDay,
+    untilHour = untilHour,
+    untilMinute = untilMinute,
+    endPending = endPending,
+    today = today,
+    firstDay = firstDay,
+    lastDay = lastDay,
+    firstEndDay = firstEndDay,
+    markedDays = markedDays,
+    fromTimes = fromTimes,
+    untilTimes = untilTimes,
+    complete = complete,
+)
 
 /** The gestures a range calendar reported, in order, each as `<kind> <values>`. */
 internal class GestureLog {

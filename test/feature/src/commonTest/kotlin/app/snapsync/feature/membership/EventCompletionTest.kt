@@ -159,6 +159,29 @@ class EventCompletionTest {
     }
 
     @Test
+    fun `a range that ends before the event settles before the event's end — and reads and reports nothing yet`() =
+        runTest {
+            // Capability `event-lifetime`: a member is done at the end of their OWN range. Receiving still waits for
+            // the event's end, so nothing is read or reported before it.
+            val early = joined.copy(maxPhotoDate = captureCeiling("2026-07-10T20:00:00Z"))
+            val w = World(now = "2026-07-11T00:00:00Z", initial = early, recorded = manifest(final = false))
+            assertEquals(CompletionOutcome.NOT_ENDED, w.completion().finish())
+            assertEquals(1, w.finalPublishes, "settled at the member's own end")
+            assertEquals(0, w.fetches)
+            assertEquals(emptyList(), w.reports)
+        }
+
+    @Test
+    fun `a range that ends after the event is not settled at the event's end — but still reports what it received`() =
+        runTest {
+            val late = joined.copy(maxPhotoDate = captureCeiling("2026-07-15T12:00:00Z"))
+            val w = World(now = "2026-07-14T00:00:00Z", initial = late, recorded = manifest(final = false))
+            assertEquals(CompletionOutcome.REPORTED, w.completion().finish())
+            assertEquals(0, w.finalPublishes, "not before the member's own end")
+            assertEquals(listOf("E" to 4L), w.reports)
+        }
+
+    @Test
     fun `a device holding everything reports its position and stays in the event`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z")
         assertEquals(CompletionOutcome.REPORTED, w.completion().finish())

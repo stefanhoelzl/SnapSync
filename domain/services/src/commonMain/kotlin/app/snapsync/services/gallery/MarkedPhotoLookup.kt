@@ -1,28 +1,28 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.eventWindow
 import app.snapsync.model.factsFromResources
+import app.snapsync.model.receivedWindow
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 
 /**
- * The library's SnapSync-marked photos inside one event's window: what a join reads
+ * The library's SnapSync-marked photos inside a capture-date window: what a join reads
  * to recognise photos an earlier install received, by the mark each one's filename carries ([ReceivedPhotoName]).
  *
- * The window is the EVENT's range, never the member's capture range — receiving covers the whole event, and the
- * event's range is fixed at creation. Candidates are narrowed by that window alone, not by an exact capture date: a
- * received photo's date can drift from the union's (Android fills it from the file's EXIF), and a missed candidate is
- * a duplicate download. Assets in [known] — the ones the download store already records — are never read.
+ * The window is the CALLER's, spanning the dates of the event's photos — never one member's capture range, since
+ * receiving covers what every member shares, and a member's range may reach outside the event's own dates. Candidates
+ * are narrowed by that window alone, not by an exact capture date: a received photo's date can drift from the union's
+ * (Android fills it from the file's EXIF), and a missed candidate is a duplicate download. Assets in [known] — the ones
+ * the download store already records — are never read.
  *
  * What is read follows the grant, as upload discovery's does ([selectionScope], decision record
  * `changes/selection-is-the-walk`):
@@ -41,35 +41,35 @@ class MarkedPhotoLookup(
 ) {
 
     /**
-     * Every marked photo in `[startsAt, endsAt]` outside [known], by the token its name carries, or `null` when the
-     * library cannot be read.
+     * Every marked photo in `[from, until]` outside [known], by the token its name carries, or `null` when the library
+     * cannot be read.
      */
-    suspend fun markedIn(startsAt: EventStart, endsAt: EventEnd, known: Set<AssetId>): Map<String, AssetId>? {
-        val window = eventWindow(startsAt, endsAt)
+    suspend fun markedIn(from: CaptureDate, until: CaptureDate, known: Set<AssetId>): Map<String, AssetId>? {
+        val window = receivedWindow(from, until)
         return when (val scope = selectionScope()) {
             is SelectionScope.Scoped -> fromSnapshot(scope.resources, window, known)
             SelectionScope.Unread -> emptyMap()
-            SelectionScope.Unrestricted ->
-                fromLibrary(window, AssetFilter(startsAt.at.at, endsAt.at.at), known)
+            SelectionScope.Unrestricted -> fromLibrary(window, AssetFilter(from.at, until.at), known)
         }
     }
 
     /**
-     * The marked photos among a selection snapshot's [resources] inside `[startsAt, endsAt]` and outside [known] — a read
-     * of memory only, which a selection change asks before it publishes the snapshot.
+     * The marked photos among a selection snapshot's [resources] outside [known], WHATEVER their capture date — a read
+     * of memory only, which a selection change asks before it publishes the snapshot. No date narrows it: a member's
+     * range may reach outside the event's dates, so a received photo may be dated anywhere a member could share from,
+     * and a marked photo of another event only costs the one full pass that adopts nothing.
      */
-    fun markedAmong(
-        resources: List<Resource>,
-        startsAt: EventStart,
-        endsAt: EventEnd,
-        known: Set<AssetId>,
-    ): Map<String, AssetId> =
-        fromSnapshot(resources, eventWindow(startsAt, endsAt), known)
+    fun markedAmong(resources: List<Resource>, known: Set<AssetId>): Map<String, AssetId> =
+        fromSnapshot(resources, window = null, known)
 
-    private fun fromSnapshot(resources: List<Resource>, window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId> {
+    private fun fromSnapshot(
+        resources: List<Resource>,
+        window: SelectionPolicy?,
+        known: Set<AssetId>,
+    ): Map<String, AssetId> {
         val inWindow = factsFromResources(
             resources,
-        ).filter { it.assetId !in known && window.admits(it) }.mapTo(mutableSetOf()) { it.assetId }
+        ).filter { it.assetId !in known && (window == null || window.admits(it)) }.mapTo(mutableSetOf()) { it.assetId }
         return resources
             .filter { it.assetId in inWindow && it.isPrimary() }
             .mapNotNull { r ->
