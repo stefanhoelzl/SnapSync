@@ -105,6 +105,12 @@ class CycleGateReadTest {
         assertEquals(0, suppression.readinessAsked, "a withheld cycle never asks the suppression store")
     }
 
+    @Test
+    fun `an event whose photos are deleted is withheld however the process would admit`() = runTest {
+        val gate = gate(joined = event().copy(deleted = true)).read()
+        assertEquals("E", assertIs<CycleGate.Withheld>(gate).config.eventId)
+    }
+
     // ---- joined -----------------------------------------------------------------------------------------
 
     @Test

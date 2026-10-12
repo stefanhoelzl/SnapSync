@@ -28,6 +28,7 @@ import app.snapsync.wire.models.EventDetails
 import app.snapsync.wire.models.Manifest
 import app.snapsync.wire.models.MemberCounts
 import app.snapsync.wire.models.MintRequest
+import app.snapsync.wire.models.Received
 import app.snapsync.wire.models.RenewRequest
 import app.snapsync.wire.models.Role
 import app.snapsync.wire.models.StoredResource
@@ -63,7 +64,8 @@ import kotlin.uuid.Uuid
  *   deployed.
  * - **Events** get UUID ids it mints, with the real window rules: a blank name, or one longer than
  *   [Limits.EVENT_NAME_MAX_LENGTH] trimmed, is refused; an end before the start or more than 30 days after it is
- *   refused, an absent end is `start + 30 days`, and an event lives 30 days from `max(createdAt, startsAt)`.
+ *   refused, an absent end is `start + 30 days`, an open-until date is the end or at most 30 days after the later
+ *   of the end and now, and an event lives 30 days from `max(createdAt, openUntil)`. Nothing closes.
  * - **Attestation** mints only for a proof the in-memory integrity produced (`attestation:<keyId>:<challenge>`), over
  *   a challenge this backend issued — one it did not issue is stale, as the real issuers answer it — and never
  *   renews.
@@ -132,6 +134,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         Routes.JoinEvent.ID -> join(call)
         Routes.LeaveEvent.ID -> leave(call)
         Routes.PublishManifest.ID -> publish(call)
+        Routes.ReportReceived.ID -> received(call)
         Routes.EventFiles.ID -> union(call)
         Routes.DeviceFiles.ID -> listing(call)
         Routes.PutDevice.ID -> putDevice(call)
@@ -167,19 +170,31 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         val name = req.name.trim()
         val startsAt = instantOrNull(req.startsAt)
         val endsAt = req.endsAt?.let(::instantOrNull) ?: startsAt?.plus(WINDOW_DAYS.days)
+        val openUntil = openUntilOf(req.openUntil, endsAt)
         return when {
             name.isEmpty() || name.length > Limits.EVENT_NAME_MAX_LENGTH -> text(BAD_REQUEST, "invalid name")
             startsAt == null -> text(BAD_REQUEST, "invalid startsAt")
             endsAt == null || endsAt < startsAt || endsAt > startsAt + WINDOW_DAYS.days ->
                 text(BAD_REQUEST, "invalid endsAt")
+            openUntil == null -> text(BAD_REQUEST, "invalid openUntil")
             req.keyId?.let { !KEY_ID.matches(it) } == true -> text(BAD_REQUEST, "invalid keyId")
             else -> {
                 val eventId = state.nextEventId?.also { state.nextEventId = null } ?: Uuid.random().toString()
-                val event = BackendState.Event(name, state.createdAt, startsAt, endsAt, keyId = req.keyId)
+                val event = BackendState.Event(name, state.createdAt, startsAt, endsAt, openUntil, keyId = req.keyId)
                 state.events[eventId] = event
                 json(CREATED, Event.serializer(), event.onWire(eventId))
             }
         }
+    }
+
+    /**
+     * The open-until date [raw] asks for over a range ending [endsAt], or `null` for one the backend refuses: absent is
+     * the end; present, at least the end and at most the window after the later of the end and now.
+     */
+    private fun openUntilOf(raw: String?, endsAt: Instant?): Instant? {
+        if (endsAt == null) return null
+        val openUntil = raw?.let { instantOrNull(it) ?: return null } ?: return endsAt
+        return openUntil.takeIf { it >= endsAt && it <= maxOf(endsAt, state.now()) + WINDOW_DAYS.days }
     }
 
     private fun details(eventId: String): HttpResult {
@@ -188,7 +203,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         val e = event.onWire(eventId)
         val details = EventDetails(
             e.eventId, e.name, e.createdAt, e.startsAt, e.endsAt, e.openUntil, e.capacity, e.deletesAt, e.closedAt,
-            e.completedAt, e.keyId, MemberCounts(members.active, members.settled, waiting = 0),
+            e.completedAt, e.keyId, MemberCounts(members.active, members.settled, members.waitingFor),
         )
         return json(OK, EventDetails.serializer(), details)
     }
@@ -198,7 +213,8 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         if (name.isNullOrEmpty() || name.length > Limits.EVENT_NAME_MAX_LENGTH) return text(BAD_REQUEST, "invalid name")
         val eventId = call.param("eventId")
         val event = state.events[eventId] ?: return eventNotFound()
-        if (event.closed) return closed()
+        // A completed event — or one closed before events stopped closing — changes no more.
+        if (event.closed || event.completed) return closed()
         event.name = name
         return json(OK, Event.serializer(), event.onWire(eventId))
     }
@@ -227,6 +243,23 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
                 json(CONFLICT, ClosedError.serializer(), ClosedError(ClosedErrorError.CLOSED))
             BackendState.PublishOutcome.COMPLETED -> closed()
             BackendState.PublishOutcome.APPLIED, BackendState.PublishOutcome.OLDER -> empty(OK)
+        }
+    }
+
+    private fun received(call: Call): HttpResult {
+        val position = call.decode(Received.serializer())?.position?.takeIf { it >= 0 }
+            ?: return text(BAD_REQUEST, "invalid position")
+        val eventId = call.param("eventId")
+        if (eventId !in state.events) return eventNotFound()
+        return if (state.received(
+                eventId,
+                call.param("deviceId"),
+                position,
+            )
+        ) {
+            empty(OK)
+        } else {
+            text(CONFLICT, "not a member")
         }
     }
 
@@ -284,11 +317,13 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         createdAt = createdAt.toString(),
         startsAt = startsAt.toString(),
         endsAt = endsAt.toString(),
-        openUntil = endsAt.toString(),
+        openUntil = openUntil.toString(),
         capacity = state.capacity,
-        deletesAt = (maxOf(createdAt, startsAt) + WINDOW_DAYS.days).toString(),
-        // The mock stamps no instants; the real route serves the moment. Presence is what a reader acts on.
-        closedAt = if (closed) state.createdAt.toString() else null,
+        // The lifetime is 30 days from the later of the creation and the open-until date.
+        deletesAt = (maxOf(createdAt, openUntil) + WINDOW_DAYS.days).toString(),
+        // For builds that predate open-until dates, derived as the real route derives it. The mock stamps no
+        // instants; the real route serves a moment. Presence is what a reader acts on.
+        closedAt = if (state.closedForOldBuilds(eventId)) openUntil.toString() else null,
         completedAt = if (completed) state.createdAt.toString() else null,
         keyId = keyId,
     )
@@ -448,6 +483,13 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
                 Routes.PublishManifest.ID,
                 Routes.PublishManifest.METHOD,
                 Routes.PublishManifest.TEMPLATE,
+                Access.GATED,
+                online = true,
+            ),
+            Route(
+                Routes.ReportReceived.ID,
+                Routes.ReportReceived.METHOD,
+                Routes.ReportReceived.TEMPLATE,
                 Access.GATED,
                 online = true,
             ),

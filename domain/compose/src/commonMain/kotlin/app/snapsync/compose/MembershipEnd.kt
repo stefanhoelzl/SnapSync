@@ -5,7 +5,7 @@ import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.services.leave.PendingLeaves
 
 /**
- * How a membership ends without the member — the app leaves on its own once the event is finished for it — and how
+ * How a membership tells the event it is done with it once the range has ended — never by leaving on its own — and how
  * every leave reaches the backend, so a leave made offline still counts — composed over [core], and a piece of its
  * graph of its own for the reason [AppTail] is: `AppCore` is already the graph, and its size ceiling says so.
  */
@@ -18,22 +18,21 @@ class MembershipEnd internal constructor(private val core: AppCore) {
 
     /**
      * The end of every wake — see [EventCompletion]. Run once after each wake's tail ([AppTail]), outside it: it may
-     * leave the event, and a leave must never run inside the tail it would stop.
+     * stop every transfer of an event whose photos are deleted, which must never run inside the tail it would stop.
      */
     val completion: EventCompletion by lazy {
         EventCompletion(
             config = core.services.config,
             refresh = core.membershipRefresh,
-            leaveEvent = core.leaveEvent,
             directory = core.backend.directory,
             manifestRecord = core.services.manifestStore,
-            ledger = core.services.ledger,
             pendingLeaves = pendingLeaves,
             // The uploader's own discovery → publish, which marks the manifest settled once the range has ended. Under
             // a partial grant it reads the selection snapshot, never the library.
 
             publishFinal = { core.appUploader.walkAndPublish { false } },
-            everythingReceived = { eventId -> core.downloadController.everythingReceived(eventId) },
+            receivedPosition = { eventId -> core.downloadController.receivedPosition(eventId) },
+            reporter = core.backend.received,
             checks = core.services.eventChecks,
             log = core.services.log,
         )

@@ -1,22 +1,16 @@
 package app.snapsync.flow
 
-import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.ForegroundWatches
 import app.snapsync.feature.status.MutableLedgerCountsSource
 import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.mock.NetworkMock
-import app.snapsync.mock.fakeCrypto
-import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.services.crypto.EventKeys
-import app.snapsync.services.databases.sharedOver
-import app.snapsync.services.leave.PendingLeaves
 import app.snapsync.services.network.NetworkReadings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -183,18 +177,7 @@ class ForegroundOrderingTest {
         val config = noMembership()
         return Foreground(
             downloadController = flowDownloadController(union),
-            membershipRefresh = MembershipRefresh(
-                configSource = config,
-                leaveEvent = LeaveEvent(
-                    keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
-                    config = config,
-                    stopUploads = {},
-                    notifyLeave = { _, _ -> },
-                    everythingReceived = { false },
-                    scope = this,
-                    pendingLeaves = PendingLeaves(sharedOver(), { _, _ -> Result.success(Unit) }),
-                ),
-            ),
+            membershipRefresh = MembershipRefresh(configSource = config, stopTransfers = {}),
             // A network watch on the test's background scope unless a test watches one: it stops with the test.
             watches = ForegroundWatches(
                 statusPoller,

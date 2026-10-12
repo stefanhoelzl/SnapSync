@@ -15,6 +15,7 @@ import app.snapsync.model.withFinal
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
 import kotlin.concurrent.Volatile
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
@@ -30,8 +31,21 @@ class BackendMock internal constructor(internal val state: BackendState) {
         /** Devices an event admits, active or departed, before a join answers `409`. */
         capacity: Int = DEFAULT_CAPACITY,
         /** The creation time every event it mints is stamped with — whole-second UTC, as the real backend's. */
+        createdAt: Instant,
+        /**
+         * The backend's clock — what an open-until date is judged against, as the real one reads its own: a device's
+         * mocks pass the time they play.
+         */
+        now: () -> Instant,
+    ) : this(BackendState(mutableMapOf(), capacity, createdAt, now))
+
+    /** A backend on the wall clock, minting events stamped [createdAt]. */
+    constructor(
+        /** Devices an event admits, active or departed, before a join answers `409`. */
+        capacity: Int = DEFAULT_CAPACITY,
+        /** The creation time every event it mints is stamped with — whole-second UTC, as the real backend's. */
         createdAt: Instant = Instant.parse(DEFAULT_CREATED_AT),
-    ) : this(BackendState(mutableMapOf(), capacity, createdAt))
+    ) : this(capacity, createdAt, { Clock.System.now() })
 
     /**
      * One process's face: the device API over HTTP. The version a request declares is its own header, as the
@@ -183,8 +197,12 @@ class BackendOperator internal constructor(private val state: BackendState) {
      */
     fun complete(eventId: String) = state.locked { state.complete(eventId) }
 
-    /** Whether [eventId] has closed. */
-    fun isClosed(eventId: String): Boolean = state.locked { state.events[eventId]?.closed == true }
+    /**
+     * Whether [eventId] is FINISHED now: its open-until date has passed, someone joined
+     * it, and every member still in it has shared everything and received everything — what lets the nightly sweep
+     * delete its photos early.
+     */
+    fun isFinished(eventId: String): Boolean = state.locked { state.finished(eventId) }
 
     /** Whether [eventId] was completed. */
     fun isCompleted(eventId: String): Boolean = state.locked { state.events[eventId]?.completed == true }
@@ -300,6 +318,8 @@ internal class BackendState(
     val storedFiles: MutableMap<Pair<String, String>, MutableSet<DeviceFile>>,
     capacity: Int,
     val createdAt: Instant,
+    /** The backend's clock — what an open-until date is judged against. */
+    val now: () -> Instant,
 ) {
     private val lock = mockLock()
 
@@ -312,7 +332,15 @@ internal class BackendState(
         val createdAt: Instant,
         val startsAt: Instant,
         val endsAt: Instant,
-        /** Closed: no join, no rename, no change to a member's asset set. */
+        /**
+         * Until when the event stays open — its end, or the date its host chose for an
+         * event created after its end. Write-once, like the real row.
+         */
+        val openUntil: Instant = endsAt,
+        /**
+         * Closed before events stopped closing (`PENDING_CLEANUPS.md`): no join, no rename, no change to a member's
+         * asset set. Nothing closes an event any more; only a state saved by an earlier mock carries `true`.
+         */
         var closed: Boolean = false,
         /** Completed — the sweep's verdict: memberships and assets gone, the record kept. */
         var completed: Boolean = false,
@@ -320,7 +348,13 @@ internal class BackendState(
         val keyId: String? = null,
     )
 
-    class Membership(var departed: Boolean = false, var manifest: DeviceManifest? = null, var manifestVersion: Long? = null)
+    class Membership(
+        var departed: Boolean = false,
+        var manifest: DeviceManifest? = null,
+        var manifestVersion: Long? = null,
+        /** The union position up to which the device said it holds every photo of the others; `null` before any. */
+        var receivedPosition: Long? = null,
+    )
 
     enum class JoinOutcome { ENROLLED, FULL, CLOSED, NO_SUCH_EVENT }
 
@@ -402,8 +436,9 @@ internal class BackendState(
 
     fun join(eventId: String, deviceId: String): JoinOutcome {
         val event = events[eventId] ?: return JoinOutcome.NO_SUCH_EVENT
-        // A closed event admits nobody, a returning device included — as the real enrolment's existence test.
-        if (event.closed) return JoinOutcome.CLOSED
+        // A completed event — or one closed before events stopped closing — admits nobody, a returning device
+        // included, as the real enrolment's existence test.
+        if (event.closed || event.completed) return JoinOutcome.CLOSED
         val existing = memberships[eventId to deviceId]
         if (existing != null) {
             // A rejoin clears the stored version, as the real enrolment does: a device whose counter restarted must
@@ -424,8 +459,8 @@ internal class BackendState(
         val event = events[eventId] ?: return PublishOutcome.NO_SUCH_EVENT
         if (event.completed) return PublishOutcome.COMPLETED
         val membership = memberships[eventId to deviceId] ?: return PublishOutcome.NOT_A_MEMBER
-        // A closed event's asset sets are fixed: the set already declared is answered and changes nothing, any other
-        // is refused.
+        // An event closed before events stopped closing keeps its asset sets fixed: the set already declared is
+        // answered and changes nothing, any other is refused.
         if (event.closed) {
             val held = membership.manifest?.assets.orEmpty().associate { a -> a.assetId to a.resources.map { it.role }.toSet() }
             val incomingSet = manifest.assets.associate { a -> a.assetId to a.resources.map { it.role }.toSet() }
@@ -443,48 +478,46 @@ internal class BackendState(
         publishes[eventId to deviceId] = (publishes[eventId to deviceId] ?: 0) + 1
         val after = servable(eventId, deviceId)
         logChanges(eventId, deviceId, before, after)
-        // The publish that leaves every active member settled closes the event, and wakes its members once. The mock
-        // does not judge the range's end: a device declares itself settled only after it (the real route also
-        // ignores an earlier declaration, which the Backend contract pins against the real api/).
-        val closes = closesNow(eventId)
-        if (closes) event.closed = true
-        // Only a publish that made something newly servable wakes anyone, as on the real route — or one that closed it.
-        val gained = !before.containsAll(after)
-        if (closes || gained) notifyMembers(eventId, deviceId, announce = gained)
+        // Nothing closes. The mock does not judge the range's end for a settled
+        // declaration: a device declares itself settled only after it (the real route also ignores an earlier
+        // declaration, which the Backend contract pins against the real api/). Only a publish that made something newly
+        // servable wakes anyone, as on the real route.
+        if (!before.containsAll(after)) notifyMembers(eventId, deviceId, announce = true)
         return PublishOutcome.APPLIED
     }
 
     /**
-     * A leave: the membership is gone, and keeps what it shared in the union. The leave that takes away the last member
-     * still unsettled closes the event and wakes the members still in it once, as the real route does. Whether the
-     * member left having everything (`done` or `left` on the real backend) is observable through no route, so the mock
-     * keeps no record of it.
+     * A leave: the membership is gone, and keeps what it shared in the union. Whether the member left having
+     * everything (`done` or `left` on the real backend) is observable through no route, so the mock keeps no record of
+     * it.
      */
     fun leave(eventId: String, deviceId: String) {
-        val membership = memberships[eventId to deviceId]?.takeUnless { it.departed } ?: return
-        membership.departed = true
-        val event = events[eventId] ?: return
-        if (!event.closed && closesNow(eventId)) {
-            event.closed = true
-            notifyMembers(eventId, deviceId, announce = false)
-        }
+        memberships[eventId to deviceId]?.takeUnless { it.departed }?.departed = true
     }
 
-    private fun closesNow(eventId: String): Boolean {
-        val active = memberships.filter { (key, m) -> key.first == eventId && !m.departed }.values
-        return active.isNotEmpty() && active.all { it.manifest?.final == true }
+    /**
+     * What a present member said it received: the highest [position] reported, never lowered — `false` for a device
+     * that is not in the event, as the real route answers it.
+     */
+    fun received(eventId: String, deviceId: String, position: Long): Boolean {
+        val membership = memberships[eventId to deviceId]?.takeUnless { it.departed } ?: return false
+        membership.receivedPosition = maxOf(membership.receivedPosition ?: -1L, position)
+        return true
     }
 
-    /** The event's active members and how many of them have settled what they share. */
+    /** The event's present members, how many of them settled, and how many are still sharing. */
     fun members(eventId: String): MemberCounts {
-        val active = memberships.filter { (key, m) -> key.first == eventId && !m.departed }.values
-        return MemberCounts(active.size, active.count { it.manifest?.final == true })
+        val active = present(eventId)
+        return MemberCounts(
+            active.size,
+            active.values.count { it.manifest?.final == true },
+            active.count { (key, m) -> !sharedAll(eventId, key.second, m) },
+        )
     }
 
     /** The sweep's completion: memberships and their assets go, the record stays. */
     fun complete(eventId: String) {
         val event = events[eventId] ?: return
-        event.closed = true
         event.completed = true
         memberships.keys.filter { it.first == eventId }.forEach { memberships.remove(it) }
         // The union log goes with the photos.
@@ -583,7 +616,7 @@ internal class BackendState(
 
     /**
      * Every OTHER active member of [eventId] holding a push registration is sent one silent push — recorded here. A wake
-     * that [announce]s a gain names the union position; the close wake names none.
+     * that [announce]s a gain names the union position.
      */
     private fun notifyMembers(eventId: String, publisherId: String, announce: Boolean) {
         val seq = if (announce) position(eventId) else null
@@ -642,3 +675,39 @@ internal fun percentDecoded(raw: String): String {
 }
 
 private const val HEX = 16
+
+/** The memberships of [eventId] still in it. */
+internal fun BackendState.present(eventId: String) =
+    memberships.filter { (key, m) -> key.first == eventId && !m.departed }
+
+/** Whether [membership] of [deviceId] has SHARED everything: settled, and every resource it declares landed. */
+internal fun BackendState.sharedAll(eventId: String, deviceId: String, membership: BackendState.Membership): Boolean {
+    val stored = storedFiles[eventId to deviceId].orEmpty().mapTo(mutableSetOf(), ::storedKey)
+    return membership.manifest?.final == true &&
+        membership.manifest?.assets.orEmpty().all { asset -> asset.resources.all { it.key in stored } }
+}
+
+/**
+ * Whether [eventId] is FINISHED now: its open-until date has passed, someone joined it, and every member still in it
+ * shared everything and holds every photo of the others up to the union's position.
+ */
+internal fun BackendState.finished(eventId: String): Boolean {
+    val event = events[eventId] ?: return false
+    if (event.openUntil >= now() || memberships.keys.none { it.first == eventId }) return false
+    val head = position(eventId)
+    return present(eventId).all { (key, m) ->
+        sharedAll(eventId, key.second, m) && (m.receivedPosition ?: -1L) >= head
+    }
+}
+
+/**
+ * The `closedAt` builds that predate open-until dates read (`PENDING_CLEANUPS.md`): set for an event closed before
+ * events stopped closing, or a completed one, and otherwise once the open-until date has passed and everyone still
+ * in the event has shared everything — as the real route derives it.
+ */
+internal fun BackendState.closedForOldBuilds(eventId: String): Boolean {
+    val event = events[eventId] ?: return false
+    if (event.closed || event.completed) return true
+    if (event.openUntil >= now() || memberships.keys.none { it.first == eventId }) return false
+    return present(eventId).all { (key, m) -> sharedAll(eventId, key.second, m) }
+}

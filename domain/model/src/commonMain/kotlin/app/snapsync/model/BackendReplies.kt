@@ -3,12 +3,14 @@ package app.snapsync.model
 import kotlinx.serialization.Serializable
 
 /**
- * An event's active members and how many of them have settled what they share — the ended event's waiting line.
+ * An event's present members, how many of them have settled what they share, and — [waiting] — how many are still
+ * sharing: not settled, or with a declared photo that has not arrived. The member count and the ended event's waiting
+ * line. [waiting] is `null` from a backend, or a record, that predates it.
  */
 @Serializable
-data class MemberCounts(val active: Int, val settled: Int) {
-    /** How many active members the event is still waiting for. */
-    val waitingFor: Int get() = (active - settled).coerceAtLeast(0)
+data class MemberCounts(val active: Int, val settled: Int, val waiting: Int? = null) {
+    /** How many present members the event is still waiting for to finish sharing. */
+    val waitingFor: Int get() = waiting ?: (active - settled).coerceAtLeast(0)
 }
 
 /** One resource a device has stored (`GET /files/devices/<id>`), in the terms the backend addresses it by. */
@@ -63,8 +65,11 @@ enum class UnionTrigger(val wire: String, val full: Boolean) {
     /** A settings change began receiving, with no position for a membership that never received. */
     RECONFIGURE("reconfigure", full = true),
 
-    /** Whether a closed event has given this device everything — the one decision where doubt must keep it. */
+    /** Whether a leaving member had everything — a doubt is a no. */
     LEAVE_CHECK("leave-check", full = true),
+
+    /** Up to which position this device holds every photo of the others — what it reports once the event has ended. */
+    RECEIVED_CHECK("received-check", full = true),
 }
 
 /**

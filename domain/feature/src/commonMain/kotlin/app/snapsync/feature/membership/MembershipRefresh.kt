@@ -19,8 +19,8 @@ import app.snapsync.services.config.ConfigService
  * fetched value means. (`Provision` once fetched too, to fill a name a scan couldn't fetch while
  * offline. A membership can no longer arrive nameless, and every provision route has just loaded or
  * minted its details, so that fetch was redundant by construction and is gone.) [RefreshOutcome] is what the
- * rule ANSWERS, not what the flows branch on: the one destructive consequence is performed here (see
- * [leaveEvent]), so no trigger can reach it by a different route.
+ * rule ANSWERS, not what the flows branch on: the one consequence — marking a deleted event — is performed here (see
+ * [stopTransfers]), so no trigger can reach it by a different route.
  *
  * Seated in `feature/membership` because the membership config is this feature's durable state
  * (one-writer: join/provision saves it, leave clears it, and this refresh rewrites it whole).
@@ -28,16 +28,12 @@ import app.snapsync.services.config.ConfigService
 class MembershipRefresh(
     private val configSource: ConfigService,
     /**
-     * The ordinary local teardown, performed on a confirmed absence.
-     *
-     * A SIBLING of this rule inside `feature/membership`, so referencing it directly is not a
-     * feature-blindness breach — and the consequence belongs with the decision. It lives here rather than
-     * as a `when` in the flow because the flow transcriber's closed grammar admits no `when` inside an
-     * escaping `scope.launch` (specs `docs/architecture.md` / `docs/architecture.md`), and its own remedy
-     * is to sink the rule into a feature. Doing so also means every trigger reaches the same consequence
-     * by construction: one verdict cannot mean two things depending on which flow observed it.
+     * What a confirmed deletion stops — every upload and download for the event, as a leave stops them — while the
+     * membership itself stays — the app never leaves an event on its own. The effect is
+     * built in `compose/`; the decision is here, so every trigger reaches the same consequence by construction: one
+     * verdict cannot mean two things depending on which flow observed it.
      */
-    private val leaveEvent: LeaveEvent,
+    private val stopTransfers: suspend () -> Unit,
 ) {
 
     /**
@@ -50,16 +46,16 @@ class MembershipRefresh(
      *   the rewrites from losing each other's field. The membership's own `maxPhotoDate` is **not**
      *   backfilled: it is required on every persisted membership, so a config
      *   that decoded at all already carries one.
-     * - [RefreshOutcome.CLOSED] — the same, for a membership whose event has closed (now or before).
      * - [RefreshOutcome.INCONCLUSIVE] — the fetch could not tell (offline, transport, non-404 status,
      *   unparseable body), or it resolved for an event that is no longer configured (a fetch landing
      *   after a switch or leave must not resurrect the departed membership). **Nothing is persisted and
      *   nothing is torn down.**
      * - [RefreshOutcome.ABSENT] — the event is definitively gone **and** this membership's own persisted
-     *   deadline has passed. Only then may the caller tear the membership down.
+     *   deadline has passed. Only then is the membership marked deleted.
+     * - [RefreshOutcome.COMPLETED] — the backend said the event's photos are deleted; the membership is marked so.
      *
-     * On [RefreshOutcome.ABSENT] this performs the teardown itself and then returns the verdict; callers
-     * need do nothing with the result but may read it (tests do).
+     * Marking deleted is done here ([markDeleted]) and the verdict returned; callers need do nothing with the result
+     * but may read it (tests do). The membership is never torn down: it stays, shown as over, until the member leaves.
      *
      * The two witnesses of ABSENT are independent and one of them is **offline**, so no backend fault can
      * manufacture both — see [confirmedGone] for why that matters and why the test is exact rather than
@@ -77,16 +73,16 @@ class MembershipRefresh(
                 // Witness two: this membership's OWN deadline. Absent it — or before it — the backend is
                 // disbelieved. Both readings mean "I could not tell", never "destroy it".
                 if (configSource.isPastDeletion(current.deletesAt)) {
-                    leaveEvent.leave()
+                    markDeleted(current)
                     RefreshOutcome.ABSENT
                 } else {
                     RefreshOutcome.INCONCLUSIVE
                 }
             // The backend's POSITIVE word that the event finished and its photos are gone: unlike a bare
             // "not found" it cannot be manufactured by a missing row or a
-            // misconfigured zone, so it needs no second witness — the membership ends at once, from any wake.
+            // misconfigured zone, so it needs no second witness — the membership is marked at once, from any wake.
             is JoinLoad.Found -> if (fetched.completion.completed) {
-                leaveEvent.leave()
+                markDeleted(current)
                 RefreshOutcome.COMPLETED
             } else {
                 converge(current, fetched)
@@ -103,33 +99,38 @@ class MembershipRefresh(
         // value. It is the only path by which that could ever happen. An unchanged name saves
         // nothing.
         if (current.name != fetched.name) next = next.copy(name = fetched.name)
-        // The completion state. Closing is final, so a stale answer can never
-        // reopen a membership's closed event; the counts are the waiting line's and simply follow the server.
-        if (fetched.completion.closed && !current.closed) next = next.copy(closed = true)
+        // The counts and the open-until date simply follow the server; one it did not serve keeps the last known.
         fetched.completion.members?.let { if (it != current.members) next = next.copy(members = it) }
+        fetched.openUntil?.let { if (it != current.openUntil) next = next.copy(openUntil = it) }
         if (next != current) configSource.save(next)
-        return if (next.closed) RefreshOutcome.CLOSED else RefreshOutcome.REFRESHED
+        return RefreshOutcome.REFRESHED
+    }
+
+    /**
+     * Mark [current] as an event whose photos are deleted, once: the membership stays and every transfer for it stops.
+     * Deletion is final, so an already-marked membership is left as it is.
+     */
+    private suspend fun markDeleted(current: EventConfig) {
+        if (current.deleted) return
+        configSource.save(current.copy(deleted = true))
+        stopTransfers()
     }
 }
 
 /**
  * The sealed answer of [MembershipRefresh.refresh] — what a fetched details result meant for the
- * persisted membership. Only [ABSENT] is destructive, and reaching it requires two independent
- * witnesses, one of them offline.
+ * persisted membership. Reaching [ABSENT] requires two independent witnesses, one of them offline.
  */
 enum class RefreshOutcome {
     /** Resolved and folded in (name refresh and/or backfill). Nothing further is due. */
     REFRESHED,
 
-    /** Resolved and folded in, and the membership's event has closed — now or by an earlier answer. Nothing was torn down. */
-    CLOSED,
-
     /** Could not tell, or no longer ours. Nothing is persisted and nothing is torn down. */
     INCONCLUSIVE,
 
-    /** Definitively gone AND past this membership's own deadline — the membership WAS torn down. */
+    /** Definitively gone AND past this membership's own deadline — the membership is marked deleted. */
     ABSENT,
 
-    /** The backend said the event COMPLETED (its photos deleted) — the membership WAS torn down. */
+    /** The backend said the event COMPLETED (its photos deleted) — the membership is marked deleted. */
     COMPLETED,
 }

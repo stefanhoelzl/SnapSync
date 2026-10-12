@@ -27,16 +27,31 @@ class PersistedFormatFieldContractTest {
                 direction = Direction.UploadOnly,
                 saveToAlbum = true,
                 closed = true,
-                members = MemberCounts(active = 2, settled = 1),
+                members = MemberCounts(active = 2, settled = 1, waiting = 1),
                 keyId = "k1",
+                openUntil = eventEnd("2026-07-14T00:00:00Z"),
+                deleted = true,
             ),
-            optional = setOf("startsAt", "direction", "saveToAlbum", "closed", "members", "keyId"),
+            optional = setOf(
+                "startsAt",
+                "direction",
+                "saveToAlbum",
+                "closed",
+                "members",
+                "keyId",
+                "openUntil",
+                "deleted",
+            ),
         )
     }
 
     @Test
-    fun `a stored membership's member counts require both counts`() {
-        assertFieldContract(MemberCounts.serializer(), MemberCounts(active = 2, settled = 1))
+    fun `a stored membership's member counts require both counts and may lack the waiting one`() {
+        assertFieldContract(
+            MemberCounts.serializer(),
+            MemberCounts(active = 2, settled = 1, waiting = 1),
+            optional = setOf("waiting"),
+        )
     }
 
     @Test

@@ -580,11 +580,15 @@ class AppCore internal constructor(
     // persisted membership — seated in `feature/membership` because that config is the feature's durable
     // state. The *fetch* it pairs with is [fetchEventDetails], coordinated by the Foreground flow — the
     // sole trigger that refreshes. It reads the clock because the absence verdict needs a second,
-    // OFFLINE witness.
+    // OFFLINE witness. A confirmed deletion stops every transfer as a leave does — downloads and uploads — and
+    // keeps the membership.
     val membershipRefresh: MembershipRefresh by lazy {
         MembershipRefresh(
             configSource = services.config,
-            leaveEvent = leaveEvent,
+            stopTransfers = {
+                downloadController.onLeaveOrSwitch()
+                uploadTransitions.onLeave()
+            },
         )
     }
 

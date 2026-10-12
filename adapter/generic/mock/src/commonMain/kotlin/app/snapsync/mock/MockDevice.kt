@@ -6,6 +6,7 @@ import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SecureSlots
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferNetwork
+import kotlin.time.Instant
 
 /**
  * **The device as mocks** (`docs/testing.md`, "Mocks"): one mock per external system, each holding what that system
@@ -31,7 +32,14 @@ open class MockDevice(
     /** Whether the upload-job queue takes a real library's resource handles (see [UploadQueueMock]). */
     acceptsAnyUploadHandle: Boolean = false,
 ) {
-    val backend = BackendMock()
+    val clock = ClockMock()
+
+    /** The backend, judging an open-until date by the time this device plays — as a backend shares the wall clock. */
+    val backend = BackendMock(
+        BackendMock.DEFAULT_CAPACITY,
+        Instant.parse(BackendMock.DEFAULT_CREATED_AT),
+        now = { clock.now },
+    )
     val library = PhotoLibraryMock()
     val disk = FileSystemMock()
     val databases = DatabasesMock(directory = databaseDirectory)
@@ -46,7 +54,6 @@ open class MockDevice(
 
     /** The device's power saving, battery, thermal state and background allowance, read for a bug report. */
     val deviceConditions = DeviceConditionsMock()
-    val clock = ClockMock()
     val wakes = WakeMock()
     val backgroundTime = BackgroundTimeMock()
     val extensionRegistry = ExtensionRegistryMock(supported = osDrivenUpload)

@@ -1,7 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.ui.state.Layer
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -11,18 +10,18 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Early event completion over the REAL composition (decision record `changes/early-event-completion`): the end-of-wake
- * step settles this device's share, reads the event's state, and ends the membership on its own once the event is
- * finished for it — and a leave the backend never heard of is delivered by a later wake. `EventCompletionTest` covers
- * the verdicts in isolation; these prove the wiring.
+ * The end of an event's life over the REAL composition (decision record `changes/back-dated-events`): the end-of-wake
+ * step settles this device's share and reads the event's state, and the app never ends a membership on its own — a
+ * finished event stays joined, a deleted one is shown as over — while a leave the backend never heard of is delivered
+ * by a later wake. `EventCompletionTest` covers the verdicts in isolation; these prove the wiring.
  *
  * The window is short (five days) so a moment exists after its end and before the event's deadline.
  */
 class EventCompletionIntegrationTest {
 
     @Test
-    @Verifies(spec = "event-lifetime", requirement = "The app leaves on its own once the event is finished for it")
-    fun the_only_member_settles_closes_the_event_and_leaves_at_the_end_of_a_wake() = rigTest {
+    @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after the event has ended")
+    fun the_only_member_settles_its_share_and_stays_in_the_finished_event() = rigTest {
         extensionUploadsOnly()
         device("clock/advance", "to" to DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
@@ -34,15 +33,13 @@ class EventCompletionIntegrationTest {
 
         os("app", "onForeground")
 
-        awaitState { it.ui.layer is Layer.CreateEvent }
-        assertFalse(state().ready.configResolved, "the membership ended on its own")
-        assertTrue(departed(event), "and the backend was told")
+        neverWithin(what = "a finished event never ends a membership") { !it.ready.configResolved }
+        assertFalse(departed(event), "and the backend heard of no leave")
     }
 
     @Test
-    @Verifies(spec = "event-lifetime", requirement = "A finished event closes")
-    @Verifies(spec = "event-lifetime", requirement = "The app leaves on its own once the event is finished for it")
-    fun a_member_still_settling_keeps_the_event_open_and_this_member_in_it() = rigTest {
+    @Verifies(spec = "event-lifetime", requirement = "The date range closes nothing")
+    fun a_member_still_settling_keeps_this_member_in_the_event() = rigTest {
         device("clock/advance", "to" to DURING)
         createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         // Another member who has not settled its share (a manifest without the flag).
@@ -52,17 +49,12 @@ class EventCompletionIntegrationTest {
 
         os("app", "onForeground")
 
-        neverWithin(what = "an open event never ends a membership") { !it.ready.configResolved }
-        assertFalse(state().joined!!.closed, "the event has not closed")
+        neverWithin(what = "an event still being shared never ends a membership") { !it.ready.configResolved }
     }
 
     @Test
-    @Verifies(
-        spec = "event-lifetime",
-        requirement = "The app leaves on its own once the event is finished for it",
-        scenario = "A member whose event finished without them",
-    )
-    fun a_completed_event_ends_the_membership_from_a_background_wake() = rigTest {
+    @Verifies(spec = "event-lifetime", requirement = "Deletion is never announced and never touches anyone's library")
+    fun a_completed_event_is_kept_as_deleted_from_a_background_wake() = rigTest {
         device("clock/advance", "to" to DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         foreignDevice("DEV-F", "FQ")
@@ -72,7 +64,8 @@ class EventCompletionIntegrationTest {
 
         os("app", "onSilentPush", event)
 
-        awaitState { !it.ready.configResolved }
+        neverWithin(what = "a deleted event is never left on its own") { !it.ready.configResolved }
+        assertFalse(departed(event), "the backend heard of no leave")
     }
 
     @Test

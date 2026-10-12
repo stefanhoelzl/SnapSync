@@ -154,10 +154,9 @@ data class EventConfig(
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
     /**
-     * Whether the event has CLOSED — learned from its details, never computed here. Once closed the joined screen
-     * offers no invite, settings or rename, and the membership ends on its own once it has everything. Defaults to
-     * `false`, so a config persisted before it existed decodes as open — the safe direction: an open event is only one
-     * that keeps its member.
+     * Whether the event CLOSED before events stopped closing (`PENDING_CLEANUPS.md`) — only a membership persisted by an
+     * earlier build carries `true`; nothing writes it any more. Such an event still refuses a rename until it is
+     * deleted. Defaults to `false`, so a config persisted before it existed decodes as open.
      */
     val closed: Boolean = false,
     /**
@@ -165,6 +164,18 @@ data class EventConfig(
      * line. `null` until the details first carry them.
      */
     val members: MemberCounts? = null,
+    /**
+     * Until when the event stays open — its range end, or for an event created after its end the date its host chose
+     * — as last served. `null` until the details first carry it; a membership then reads
+     * as open until [endsAt].
+     */
+    val openUntil: EventEnd? = null,
+    /**
+     * Whether the server confirmed the event's photos are deleted. The membership stays —
+     * the app never leaves on its own — and is shown as over; nothing is uploaded or downloaded for it any more.
+     * Defaults to `false`: a membership persisted before it existed is one whose event was not known to be deleted.
+     */
+    val deleted: Boolean = false,
     /**
      * An ENCRYPTED event's key id (16 lowercase hex — the encrypted file format, `docs/architecture.md`), `null` for a
      * plain event. The key itself is never here: it is in the secure store, beside the device id. Defaults to `null`,

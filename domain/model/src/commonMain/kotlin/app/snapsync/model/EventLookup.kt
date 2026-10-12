@@ -34,12 +34,13 @@ sealed interface EventLookup {
         val endsAt: EventEnd,
         val deletesAt: DeletesAt,
         /**
-         * The event's completion state — see [EventCompletionState]. Defaults to open: a backend predating it never
-         * closes an event.
+         * The event's completion state — see [EventCompletionState]. Defaults to not completed.
          */
         val completion: EventCompletionState = EventCompletionState.OPEN,
         /** An ENCRYPTED event's key id; `null` for a plain event (the encrypted file format, `docs/architecture.md`). */
         val keyId: String? = null,
+        /** Until when the event stays open; `null` when not served or unreadable. */
+        val openUntil: EventEnd? = null,
     ) : EventLookup
     data object NotFound : EventLookup
     data object Failed : EventLookup

@@ -1034,7 +1034,7 @@ components:
         Why a client reads the union. OPEN: a value this backend does not know is recorded as unknown, never
         refused, so a newer client never loses its reads to an older backend's vocabulary.
       type: string
-      examples: [push, wake, foreground, join, grant, reconfigure, leave-check]
+      examples: [push, wake, foreground, join, grant, reconfigure, leave-check, received-check]
 
     Challenge:
       type: object
