@@ -1,0 +1,7 @@
+// Only for the Deno-run scripts (check:unit, check:selfcontained, deploy). Deno also mirrors
+// package.json's dependency list into deno.lock, so an npm bump changes it too: frozen makes a lock
+// left behind fail here and in CI instead of being silently rewritten. Update it by rerunning the
+// failing command with `--frozen=false` (not `deno install`, which would lock every npm package).
+{
+  "lock": { "frozen": true }
+}

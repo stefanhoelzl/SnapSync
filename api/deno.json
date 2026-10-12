@@ -68,6 +68,10 @@
     "lineWidth": 100,
     "exclude": ["src/gen/"]
   },
+  // Deno never rewrites the lockfile on its own: a dependency change that left `deno.lock` behind fails
+  // here and in CI, instead of being patched over in CI's checkout. Update it on purpose by rerunning
+  // the failing command with `--frozen=false`.
+  "lock": { "frozen": true },
   // The project's own lint rules, declared here rather than on a workflow command line so that CI
   // and a developer's local `deno lint` run the SAME rule set (`docs/deployment.md`).
   // `complexity.ts` carries this backend's cyclomatic ceiling — the TypeScript half of capability
