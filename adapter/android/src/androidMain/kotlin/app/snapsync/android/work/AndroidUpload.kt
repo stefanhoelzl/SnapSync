@@ -38,10 +38,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
 import java.io.File
 import java.io.IOException
@@ -75,7 +73,9 @@ import java.util.concurrent.TimeUnit
  * at the whole uplink lands a photo, then the next. On a fast link a photo is megabytes, so one stream loses only the
  * per-request handshake between transfers.
  *
- * Every end is reported inline through [TransferHandlers.onFinished], once.
+ * Every end is reported inline through [TransferHandlers.onFinished], once — from the transfer's completion, not from
+ * inside it, so a transfer cancelled before its coroutine ever ran (a leave right after a create, on a busy device)
+ * or ended by an exception nothing expected is still reported, and frees its slot and the hold.
  */
 class AndroidUpload(
     context: Context,
@@ -148,7 +148,8 @@ class AndroidUpload(
             val transfer = Live(tag)
             live[tag] = transfer
             if (live.size == 1) hold = time.begin("uploads") { expireAll() }
-            transfer.job = scope.launch { transfer.run(body, target) }
+            transfer.job = scope.launch { transfer.result = transfer.run(body, target) }
+                .apply { invokeOnCompletion(transfer::ended) }
         }
         return CreateOutcome.CREATED
     }
@@ -189,34 +190,41 @@ class AndroidUpload(
     private inner class Live(val tag: String) : TransferHandle {
         var job: Job? = null
 
-        suspend fun run(body: Body, target: UploadTarget) {
-            val error = try {
-                if (target.network == TransferNetwork.UNRESTRICTED_ONLY) awaitUnrestricted()
-                val status = put(body, target)
-                if (status in 200..299) null else TransferFailure("http:$status")
-            } catch (e: CancellationException) {
-                // Stopped — a leave's cancel, or the hold's expiry: reported, then the cancellation goes on.
-                report(TransferFailure("cancelled"))
-                throw e
-            } catch (e: IOException) {
-                log.i { "$tag: the transfer broke: ${e::class.simpleName}: ${e.message}" }
-                TransferFailure("network")
-            } catch (e: SecurityException) {
-                TransferFailure("the photo can no longer be read: ${e.message}")
-            } catch (e: IllegalStateException) {
-                TransferFailure("${e::class.simpleName}: ${e.message}")
+        /** What [run] answered, read by [ended] once the job completes normally. */
+        @Volatile
+        var result: TransferFailure? = null
+
+        /** The transfer's own outcome: `null` for a success. A cancellation is not caught here — [ended] tells it. */
+        suspend fun run(body: Body, target: UploadTarget): TransferFailure? = try {
+            if (target.network == TransferNetwork.UNRESTRICTED_ONLY) awaitUnrestricted()
+            val status = put(body, target)
+            if (status in 200..299) null else TransferFailure("http:$status")
+        } catch (e: IOException) {
+            log.i { "$tag: the transfer broke: ${e::class.simpleName}: ${e.message}" }
+            TransferFailure("network")
+        } catch (e: SecurityException) {
+            TransferFailure("the photo can no longer be read: ${e.message}")
+        } catch (e: IllegalStateException) {
+            TransferFailure("${e::class.simpleName}: ${e.message}")
+        }
+
+        /**
+         * The job completed — exactly once, however it ended: [run]'s answer, or stopped (a leave's cancel, the hold's
+         * expiry — before the body started too, when it never runs at all), or an exception [run] does not expect.
+         */
+        fun ended(cause: Throwable?) {
+            val error = when (cause) {
+                null -> result
+                is CancellationException -> TransferFailure("cancelled")
+                else -> TransferFailure("${cause::class.simpleName}: ${cause.message}")
             }
-            report(error)
+            if (error != null) log.i { "$tag: failed ($error)" }
+            finish(tag, error)
         }
 
         private suspend fun awaitUnrestricted() {
             log.i { "$tag: held for an unmetered network" }
             unrestricted()
-        }
-
-        private suspend fun report(error: TransferFailure?) {
-            if (error != null) log.i { "$tag: failed ($error)" }
-            withContext(NonCancellable) { finish(tag, error) }
         }
 
         private suspend fun put(body: Body, target: UploadTarget): Int {
