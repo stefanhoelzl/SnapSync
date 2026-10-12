@@ -8,12 +8,6 @@ import app.snapsync.compose.installNetworkReturns
 import app.snapsync.compose.lifecycleHandlers
 import app.snapsync.compose.pushHandlers
 import app.snapsync.compose.snapSyncApp
-import app.snapsync.model.EventLinkDelivery
-import app.snapsync.model.LinkDelivery
-import app.snapsync.model.forwardEventLink
-import app.snapsync.model.invocation
-import app.snapsync.model.redactEventKeys
-import app.snapsync.model.userActivityParams
 import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.UiHandlers
@@ -24,7 +18,6 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -137,7 +130,7 @@ fun snapSyncHost(
     // A minted event routes into the host's join gate, so create and a scanned QR take one gate: collected from
     // composition on, so the host is assembled by the time the first one — a tap's — is minted.
     scope.launch { core.mintedEvents.collect { composed.host.onEventCreated(it.eventId, it.linkKey) } }
-    listenToEntries(composed, process, ports, log)
+    listenToEntries(composed, ports)
     // Asked at every launch, a background one included: the answer arrives through the push handlers just registered,
     // and asking is how a rotated token is learned.
     ports.pushNotifications.register()
@@ -151,7 +144,7 @@ fun snapSyncHost(
  * `Links.onLink` and `Ui.onLive`. Nothing else assembles it: a push token, a silent push, a scheduled or transfer wake
  * builds no host (a cold background start installs no permission-grant subscription).
  */
-private fun listenToEntries(composed: ComposedApp, process: ProcessServices, ports: AppPorts, log: Logger) {
+private fun listenToEntries(composed: ComposedApp, ports: AppPorts) {
     val core = composed.core
     ports.lifecycle.listen(lifecycleHandlers(core, assembleHost = { composed.host }))
     ports.pushNotifications.listen(pushHandlers(core))
@@ -161,7 +154,7 @@ private fun listenToEntries(composed: ComposedApp, process: ProcessServices, por
             onLink = { delivery ->
                 // Host-first: a link is a person opening the app, whatever the delivery turns out to be.
                 val host = composed.host
-                onLink(delivery, process, log) { url -> host.onOpenUrl(url) }
+                core.openLink(delivery) { url -> host.onOpenUrl(url) }
             },
         ),
     )
@@ -173,25 +166,6 @@ private fun listenToEntries(composed: ComposedApp, process: ProcessServices, por
             onLive = { ports.ui.show(composed.host.screen.value) },
         ),
     )
-}
-
-/**
- * A delivered link, through the pure `model/` filter: a web link carrying a URL opens the join gate on it, fragment
- * intact; every other delivery is logged by its outcome, so "we were called" stays distinguishable from "we were never
- * called".
- */
-private fun onLink(delivery: LinkDelivery, process: ProcessServices, log: Logger, open: (String) -> Unit) {
-    log.invocation(
-        process.entryContext,
-        delivery.hook,
-        params = userActivityParams(delivery.activityType, delivery.url),
-        result = { outcome: EventLinkDelivery -> outcome.summary },
-    ) {
-        forwardEventLink(delivery.isWebLink, delivery.activityType, delivery.url) { url ->
-            // The device log keeps the link, never an encrypted event's key in it.
-            log.invocation(process.entryContext, "onOpenUrl", params = "url=${redactEventKeys(url)}") { open(url) }
-        }
-    }
 }
 
 /**

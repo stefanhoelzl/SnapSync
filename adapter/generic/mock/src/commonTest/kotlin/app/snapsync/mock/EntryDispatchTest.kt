@@ -1,12 +1,12 @@
 package app.snapsync.mock
 
-import app.snapsync.model.LinkDelivery
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.Completion
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.LifecycleHandlers
+import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.TransferHandlers
@@ -55,8 +55,7 @@ class EntryDispatchTest {
 
         links.operator.open("https://snapsync.app/e/1#k", hook = "onOpenURL")
 
-        assertEquals("https://snapsync.app/e/1#k", delivered.single().url)
-        assertEquals("onOpenURL", delivered.single().hook)
+        assertEquals(LinkDelivery.Link("onOpenURL", "https://snapsync.app/e/1#k"), delivered.single())
     }
 
     @Test

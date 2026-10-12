@@ -55,7 +55,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventCreator` | `:domain:model` | `:domain:feature` CreateEvent; `:domain:presentation` SpyCreator | no |
 | `EventDirectory` | `:domain:services` | `:domain:services` BackendEventDirectory; `:test:feature` FakeDetails | yes |
 | `EventJoin` | `:domain:services` | `:domain:feature` CapturingJoin; `:domain:services` BackendEventJoin; `:test:feature` FakeJoin | yes |
-| `EventLinkDelivery` | `:domain:model` | `:domain:model` Forwarded, NoWebpageUrl, NotBrowsingWeb | no |
 | `EventLookup` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `EventRename` | `:domain:services` | `:domain:services` BackendEventRename; `:test:feature` FakeRename | yes |
 | `EventUnionSource` | `:domain:services` | `:adapter:generic:mock` EmptyUnion; `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, RecordingUnion | yes |
@@ -92,6 +91,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LibraryChangeTokenRead` | `:domain:ports` | `:test:contracts` GalleryProxy, LibraryChangeTokenReadProxy | no |
 | `LibraryResource` | `:domain:model` | `:domain:services` GalleryResourceRef; `:test:feature` Held | yes |
 | `Lifecycle` | `:domain:ports` | `:adapter:android` AndroidLifecycle, MainThreadListen; `:adapter:ios:ui` IosLifecycle; `:test:contracts` LifecycleProxy | no |
+| `LinkDelivery` | `:domain:ports` | `:domain:ports` InstallReferrer, Link, NoUrl, NotALink | no |
 | `Links` | `:domain:ports` | `:adapter:android` AndroidLinks; `:adapter:ios:app-only` IosLinks; `:test:contracts` LinksProxy | no |
 | `Listenable` | `:domain:ports` | — | no |
 | `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:contracts` LogSinkProxy; `:test:rig` RecordedLog | yes |

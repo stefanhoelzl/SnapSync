@@ -133,7 +133,7 @@ internal class LinksProxy(private val inner: Links, log: CallLog) : Links {
         inner.listen(
             LinkHandlers(
                 onLink = { delivery ->
-                    r.called("handlers.onLink", Recorder.arg(delivery, "LinkDelivery"))
+                    r.called("handlers.onLink", Recorder.arg(delivery))
                     handlers.onLink(delivery)
                 },
             ),

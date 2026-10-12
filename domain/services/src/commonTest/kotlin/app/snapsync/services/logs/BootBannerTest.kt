@@ -24,7 +24,7 @@ class BootBannerTest {
     }
 
     @Test
-    fun `the banner names the process and its build, then the backend it talks to`() {
+    fun `the banner names the process and its build - then the backend it talks to`() {
         assertEquals(
             listOf(
                 "=== app.snapsync process start build=1.4(2512) ===",

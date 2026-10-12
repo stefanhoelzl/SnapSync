@@ -4,9 +4,9 @@ import android.content.Intent
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.LinkDelivery
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.invocation
+import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links
 import co.touchlab.kermit.Logger
@@ -18,8 +18,9 @@ import co.touchlab.kermit.Logger
  *
  * It answers the one platform question — is this a VIEW of a web URL — and hands the URI over raw, `toString()` of the
  * intent's data, so the FRAGMENT an event link carries its payload in (`/join#v=3&d=…`) reaches the core unchanged;
- * whether it is an event link, and what opening one does, is the core's. An intent that carries no URI (the launcher's)
- * is not a link and is not delivered.
+ * whether it is an event link, and what opening one does, is the core's. Every other intent is delivered as what it
+ * is — a VIEW carrying no URI, or another intent named by its action (the launcher's `MAIN`) — so a device log tells
+ * "started with no link" from "never started".
  */
 class AndroidLinks(private val log: Logger) : Links {
     private val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Logged(log))
@@ -39,19 +40,14 @@ class AndroidLinks(private val log: Logger) : Links {
     @PlatformEntry
     fun deliverIntent(hook: String, intent: Intent?) =
         log.invocation(EntryScope.None, hook, params = "action=${intent?.action} data=${intent?.data != null}") {
-            val url = intent?.data?.toString() ?: return@invocation
-            val isWebLink = intent.action == Intent.ACTION_VIEW && (url.startsWith("https://") || url.startsWith("http://"))
-            deliver(LinkDelivery(hook, isWebLink, activityType = intent.action, url = url))
+            deliver(deliveryOf(hook, intent))
         }
 
-    /**
-     * The invite a Google Play install carried ([AndroidInstallReferrer]), as the event link it came from. Delivered as
-     * an ordinary web link: the core treats it exactly as a tapped invite, and never learns where it came from.
-     */
+    /** The referrer a Google Play install carried ([AndroidInstallReferrer]), raw: whether it is an invite is the core's. */
     @PlatformEntry
-    fun deliverInstallReferrer(url: String) = log.invocation(EntryScope.None, INSTALL_REFERRER_HOOK) {
-        deliver(LinkDelivery(INSTALL_REFERRER_HOOK, isWebLink = true, activityType = INSTALL_REFERRER_HOOK, url = url))
-    }
+    fun deliverInstallReferrer(
+        referrer: String,
+    ) = deliver(LinkDelivery.InstallReferrer(INSTALL_REFERRER_HOOK, referrer))
 
     private fun deliver(delivery: LinkDelivery) {
         handlers.orNull("a link through ${delivery.hook}")?.onLink(delivery)
@@ -60,3 +56,14 @@ class AndroidLinks(private val log: Logger) : Links {
 
 /** The hook a Play-carried invite is delivered on — named in the log only. */
 private const val INSTALL_REFERRER_HOOK = "installReferrer"
+
+/** What [intent] opened the app with: a VIEW of a web URL is a link; a VIEW with no URI carries none; the rest is not one. */
+private fun deliveryOf(hook: String, intent: Intent?): LinkDelivery {
+    val url = intent?.data?.toString()
+    val view = intent?.action == Intent.ACTION_VIEW
+    return when {
+        view && url == null -> LinkDelivery.NoUrl(hook)
+        view && url != null && (url.startsWith("https://") || url.startsWith("http://")) -> LinkDelivery.Link(hook, url)
+        else -> LinkDelivery.NotALink(hook, intent?.action)
+    }
+}

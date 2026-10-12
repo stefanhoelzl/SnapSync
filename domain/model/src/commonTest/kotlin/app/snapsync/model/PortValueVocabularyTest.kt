@@ -76,11 +76,7 @@ class PortValueVocabularyTest {
     }
 
     @Test
-    fun `a delivered link and a platform error compare by what they carry`() {
-        assertValueEquality(
-            { LinkDelivery(hook = "onOpenURL", isWebLink = true, activityType = null, url = "https://x") },
-            LinkDelivery(hook = "onOpenURL", isWebLink = false, activityType = null, url = "https://x"),
-        )
+    fun `a platform error compares by what it carries`() {
         assertValueEquality({ PlatformError("denied") }, PlatformError("restricted"))
     }
 

@@ -72,6 +72,7 @@ import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
+import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.PlatformDeviceId
@@ -102,6 +103,7 @@ import app.snapsync.services.gallery.LatestSelection
 import app.snapsync.services.gallery.PermissionAwareAssetPresence
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.gallery.denylistedAlbumMembers
+import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.upload.OsDrivenRegistration
@@ -493,6 +495,17 @@ class AppCore internal constructor(
     /** The OS-driven mechanism's registration ritual, over the registry port. */
     val extensionRegistration: ExtensionRegistration by lazy {
         OsDrivenRegistration(ports.extensionRegistry, services.log, process.entryContext)
+    }
+
+    private val linkOpening: LinkOpening by lazy { LinkOpening(process.logger("links"), process.entryContext) }
+
+    /**
+     * What the app does with what the platform opened it with ([LinkOpening]): a link — or an install referrer's
+     * invite — is handed to [open]; anything else is logged by name. The host calls it, its status host assembled
+     * first.
+     */
+    fun openLink(delivery: LinkDelivery, open: (url: String) -> Unit) {
+        linkOpening.deliver(delivery, open)
     }
 
     val uploadTransitions: UploadTransitions by lazy {

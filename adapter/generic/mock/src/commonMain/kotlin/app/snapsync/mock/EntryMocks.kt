@@ -3,7 +3,6 @@ package app.snapsync.mock
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.InviteLinkHints
-import app.snapsync.model.LinkDelivery
 import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.model.PlatformError
 import app.snapsync.model.ProcessingAnswer
@@ -17,6 +16,7 @@ import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
+import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links
 import app.snapsync.ports.PushHandlers
@@ -78,16 +78,10 @@ class LinksMock {
 
 class LinksOperator internal constructor(private val mock: LinksMock) {
     /** [url] was opened as a Universal Link, through [hook]'s path. */
-    fun open(url: String, hook: String = "onSceneContinueActivity") =
-        deliver(LinkDelivery(hook, isWebLink = true, activityType = WEB_LINK_ACTIVITY, url = url))
+    fun open(url: String, hook: String = "onSceneContinueActivity") = deliver(LinkDelivery.Link(hook, url))
 
-    /** The platform delivered [delivery], raw. */
+    /** The platform delivered [delivery]. */
     fun deliver(delivery: LinkDelivery) = mock.handlers.require("a link").onLink(delivery)
-
-    private companion object {
-        /** The browsing-web activity type the iOS adapter recognises — a label here; nothing decides on it. */
-        const val WEB_LINK_ACTIVITY = "NSUserActivityTypeBrowsingWeb"
-    }
 }
 
 /**

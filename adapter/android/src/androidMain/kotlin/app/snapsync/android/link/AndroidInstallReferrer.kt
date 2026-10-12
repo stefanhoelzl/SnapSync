@@ -3,7 +3,6 @@ package app.snapsync.android.link
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.RemoteException
-import app.snapsync.model.inviteLinkFromInstallReferrer
 import co.touchlab.kermit.Logger
 import com.android.installreferrer.api.InstallReferrerClient
 import com.android.installreferrer.api.InstallReferrerStateListener
@@ -12,9 +11,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * The invite a Google Play install carried, opened ONCE per installation. The event page's
  * Play button hands Play the invite's fragment payload as the install referrer; on the app's first foreground start
- * this reader asks Play for it and, when it is an invite ([inviteLinkFromInstallReferrer]), hands it to [links] as the
- * event link it came from — the join screen then opens exactly as for a tapped invite. An ORGANIC install, or a
- * referrer that is no invite, delivers nothing.
+ * this reader asks Play for it and hands it to [links] raw. Whether it carries an invite — the event page's install
+ * does, an ORGANIC one does not — and what opening one does, is the core's.
  *
  * **At most once.** Play answers the same referrer for 90 days after the install, so a small record of its own
  * ([record]) keeps it from reopening the join screen on every launch. That is this platform quirk's bookkeeping, not a
@@ -50,13 +48,7 @@ class AndroidInstallReferrer internal constructor(
         source.read { answer ->
             when (answer) {
                 is ReferrerAnswer.Referrer -> {
-                    val link = inviteLinkFromInstallReferrer(answer.value)
-                    if (link == null) {
-                        log.i { "install referrer carries no invite" }
-                    } else {
-                        log.i { "install referrer carries an invite — opening it" }
-                        links.deliverInstallReferrer(link)
-                    }
+                    links.deliverInstallReferrer(answer.value)
                     markHandled()
                 }
                 ReferrerAnswer.NeverAvailable -> {
