@@ -25,7 +25,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.completionClau
         val meta = s.details(s.seeded.eventId)
         assertNull(meta.closedAt)
         assertNull(meta.completedAt)
-        assertEquals(MemberCounts(active = 1, `final` = 0), meta.members)
+        assertEquals(MemberCounts(active = 1, `final` = 0, waiting = 1), meta.members)
     }
 
     clause(
@@ -40,7 +40,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.completionClau
         val meta = s.details(s.seeded.eventId)
         assertNotNull(meta.closedAt, "every active member has settled after the end")
         assertNull(meta.completedAt)
-        assertEquals(MemberCounts(active = 1, `final` = 1), meta.members)
+        assertEquals(MemberCounts(active = 1, `final` = 1, waiting = 0), meta.members)
     }
 
     clause(
@@ -55,7 +55,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.completionClau
         assertAnswer<LeaveEventReply.Left>(s.leave(received = false))
         val meta = s.details(s.seeded.eventId)
         assertNotNull(meta.closedAt, "every member still in the event has settled")
-        assertEquals(MemberCounts(active = 1, `final` = 1), meta.members)
+        assertEquals(MemberCounts(active = 1, `final` = 1, waiting = 0), meta.members)
     }
 
     clause(

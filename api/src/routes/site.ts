@@ -276,7 +276,10 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     };
     try {
       const event = await readEvent(db, eventId);
-      read = { event, members: event ? await memberCounts(db, eventId) : { active: 0, final: 0 } };
+      read = {
+        event,
+        members: event ? await memberCounts(db, eventId) : { active: 0, final: 0, waiting: 0 },
+      };
     } catch (e) {
       c.var.log.error("event-page", `site: event page read failed for ${eventId}: ${e}`);
       return new Response("upstream error", {

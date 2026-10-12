@@ -14,13 +14,13 @@ import {
   presentUploadMembership,
   publishStatements,
   publishUnionChanges,
+  recordReceived,
   recordResourceStatement,
   stampLanded,
   uploadMembership,
 } from "../db.ts";
 import type { Handlers } from "../gen/wire.ts";
 import { eventBytePath, storageKey } from "../storage.ts";
-import { canonicalFromMs } from "../validators.ts";
 import type { Fault } from "../refusal.ts";
 import type { RequestLog } from "../request-log.ts";
 import { APP_VERSION_HEADER } from "../version.ts";
@@ -65,13 +65,14 @@ export function v2Handlers(
   | "deviceFilesEventless"
   | "joinEvent"
   | "publishManifest"
+  | "reportReceived"
 > {
   const { fetchImpl, config, db, now } = deps;
   /**
-   * A publish to a CLOSED event (capability `photo-sharing`, "What a member shares is fixed once the event
-   * has closed"): the set it already declared is answered as published and changes nothing, so a device
-   * whose publish raced the close is not left retrying; any other set is refused `409 closed`. Answers
-   * whether it is the set already declared.
+   * A publish to an event closed before events stopped closing (`PENDING_CLEANUPS.md`): the set it already
+   * declared is answered as published and changes nothing, so a device whose publish raced that close is not
+   * left retrying; any other set is refused `409 closed`, as it was then. Answers whether it is the set already
+   * declared.
    */
   async function declaresSameSet(
     eventId: string,
@@ -89,12 +90,12 @@ export function v2Handlers(
   }
 
   /**
-   * Apply a v2 publish as ONE batch (see `publishStatements`) and read its two verdicts: `won` — the first
-   * statement's count, whether the version comparison admitted it — and `closed` — the close stamp's
-   * count, whether THIS publish left every active membership final and so closed the event.
+   * Apply a v2 publish as ONE batch (see `publishStatements`) and read its verdict: whether the version
+   * comparison admitted it — the first statement's count.
    *
-   * Only after the range has ended may a publish settle anything, or close the event: before it, the
-   * device may still take photos that belong in the event (capability `photo-sharing`).
+   * Only after the range has ended may a publish settle anything: before it, the device may still take photos
+   * that belong in the event (capability `photo-sharing`). Settling closes nothing — events no longer close
+   * (decision record `changes/back-dated-events`, D2); whether everyone is done is computed on every read.
    */
   async function applyPublish(
     event: EventRow,
@@ -103,10 +104,9 @@ export function v2Handlers(
     version: number,
     final: boolean,
     changes: { gained: string[]; removed: string[] },
-  ): Promise<{ won: boolean; closed: boolean }> {
+  ): Promise<boolean> {
     const nowMs = now();
     const ended = nowMs > Date.parse(event.endsAt);
-    const closeAt = ended ? canonicalFromMs(nowMs) : null;
     const results = await tryUpstream(
       `v2 manifest: publish failed for ${event.eventId}/${deviceId}`,
       () =>
@@ -114,16 +114,11 @@ export function v2Handlers(
           publishStatements(event.eventId, deviceId, assets, {
             version,
             final: final && ended,
-            closeAt,
             log: { ...changes, at: new Date(nowMs).toISOString() },
           }),
         ),
     );
-    return {
-      won: results[0].rowsAffected > 0,
-      // The close stamp is the batch's last statement when present.
-      closed: closeAt !== null && results[results.length - 1].rowsAffected > 0,
-    };
+    return results[0].rowsAffected > 0;
   }
 
   // ── THE v2 DEVICE API ───────────────────────────────────────────────────────────────────────────
@@ -221,7 +216,7 @@ export function v2Handlers(
       });
     }
     const woken: NotifyOutcome[] = [];
-    for (const id of completed) woken.push(await notifyMembers(deps, id, deviceId, "gain"));
+    for (const id of completed) woken.push(await notifyMembers(deps, id, deviceId));
     return { completed: completed.length, woken, errors };
   }
 
@@ -354,10 +349,10 @@ export function v2Handlers(
         () => isMember(db, eventId, deviceId),
       );
       if (!member) return c.text("not a member", 409);
-      // A CLOSED event's asset sets are fixed (capability `photo-sharing`, "What a member shares is fixed
-      // once the event has closed"): a publish naming the set it already declared changes nothing and is
-      // answered as published, so a device whose publish raced the close is not left retrying; any other set
-      // is refused. `publishStatements` gates the batch on the close too, for the race after this check.
+      // An event closed before events stopped closing keeps its fixed asset sets (`PENDING_CLEANUPS.md`): a
+      // publish naming the set it already declared changes nothing and is answered as published, so a device
+      // whose publish raced that close is not left retrying; any other set is refused. `publishStatements`
+      // gates the batch on the stamp too, for a completion racing this check.
       if (event.closedAt) {
         return await declaresSameSet(eventId, deviceId, assets)
           ? c.body(null, 200)
@@ -391,7 +386,7 @@ export function v2Handlers(
       // first statement's count is the verdict. A refused publish is an ORDINARY outcome of the app and the
       // upload extension publishing at once — a snapshot at least as new is already stored — so it answers
       // `200` like a won one, and the device treats it as published.
-      const { won, closed } = await applyPublish(event, deviceId, assets, version, final, changes);
+      const won = await applyPublish(event, deviceId, assets, version, final, changes);
       if (!won) {
         c.var.log.field("refused", "older-version");
         c.var.log.field("version", version ?? "-");
@@ -400,15 +395,28 @@ export function v2Handlers(
       // union and find the very state the notification announced to be missing. Best-effort — the response
       // is the transaction's outcome and is never changed by a push that failed, the same split the byte
       // route already draws for its database write. Only a publish that WON wakes anyone: a refused one
-      // changed nothing the union serves.
-      // The close wakes every member once (capability `delivery`): every byte may already have
-      // landed, so no landing would wake anyone, and each device must learn the close to finish and leave.
-      // The publisher is skipped like any fan-out — it made the close and learns it from its own next read.
-      if (closed) c.var.log.field("closed", true);
-      if ((won && addsFetchable) || closed) {
-        const announce = won && addsFetchable ? "gain" : "close";
-        recordNotify(c.var.log, await notifyMembers(deps, eventId, deviceId, announce));
+      // changed nothing the union serves. There is no close wake any more (capability `delivery`): events no
+      // longer close, and a member that finished sharing wakes nobody.
+      if (won && addsFetchable) {
+        recordNotify(c.var.log, await notifyMembers(deps, eventId, deviceId));
       }
+      return c.body(null, 200);
+    },
+
+    // What the device has RECEIVED (decision record `changes/back-dated-events`, D4): the union-log position up to
+    // which it holds every photo of the others — the half of "done" only the device can see, since only it sees its
+    // library. Monotonic (`recordReceived`): a lower position than the one stored changes nothing and is answered
+    // like a recorded one, so an out-of-order retry is harmless. Only a member still IN the event reports; any other
+    // device is told it is not one, like a manifest from a non-member.
+    async reportReceived(c, { params, body: { position } }) {
+      const { eventId } = params;
+      const deviceId = ownDevice(c.get("tokenDeviceId"), params.deviceId);
+      await gateEvent(db, eventId, "v2 received");
+      const member = await tryUpstream(
+        `v2 received: record failed for ${eventId}/${deviceId}`,
+        () => recordReceived(db, eventId, deviceId, position),
+      );
+      if (!member) return c.text("not a member", 409);
       return c.body(null, 200);
     },
   };

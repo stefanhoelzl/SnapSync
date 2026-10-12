@@ -689,9 +689,10 @@ believe the upload landed.
 ```
 events        id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds,
               closed_at?, completed_at?, last_landed_at?, zone? (migration 0009),
-              key_id? (migration 0011: an encrypted event's key id; NULL = plain)
+              key_id? (migration 0011: an encrypted event's key id; NULL = plain),
+              open_until? (migration 0014: backfilled; NULL only for a row the previous bundle wrote)
 memberships   (event_id -> events CASCADE, device_id), state in {sharing, settled, done, left} (CHECK),
-              joined_at, manifest_version?
+              joined_at, manifest_version?, received_position? (migration 0014)
 event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_date, roles (JSON array)
               + index (device_id, asset_id)
 resources     (event_id, device_id -> memberships CASCADE), asset_id, role, path (the full storage
@@ -709,19 +710,24 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   only the nightly sweep deletes. So a `404` is a real deletion, and a client may use it as a witness
   for self-leave. A **completed** event (below) keeps its row until its deadline precisely so it can
   answer "completed" instead of `404`.
-- **Early completion** (`changes/early-event-completion`). After `ends_at` each device publishes its
-  manifest with `final: true` — its membership becomes `settled`; the bytes may still be uploading. The
-  publish or leave that leaves no member `sharing` (and at least one `settled`) stamps `closed_at` in the
-  same batch and wakes the members still in it once (no landing would, when every byte is already there). `closed_at` is final: a closed
-  event refuses join and rename `410 {error:"closed"}`, and a manifest whose asset set differs from
-  the stored one `409 {error:"closed"}` (the identical set is a `200` no-op, and the batch itself is
-  gated on the close). Each device then leaves on its own once it holds everything
-  (`EventCompletion`, run after every full-scope tail — its read of the event's state at most once an hour
-  per event from a wake that is not a push, an opening or a join, `EventChecks`, just as the same step's union
-  read is), and a leave is recorded before it is sent
-  (`PendingLeaves`) and re-sent by every wake until the backend confirms it — which is what makes
-  EMPTY dependable. The byte route stamps `last_landed_at`; the **clock** is
-  `max(ends_at, last_landed_at) + 3 days`.
+- **Completion, with no close** (`changes/early-event-completion`, `changes/back-dated-events`). Every event is
+  **open until** a date fixed at its create (`open_until`): its range end, or — for an event created after its
+  end — the date its host chose, at most the window maximum after the later of the end and now. After `ends_at`
+  each device publishes its manifest with `final: true` — its membership becomes `settled`; the bytes may still be
+  uploading — and reports the union position up to which it holds every photo of the others
+  (`PUT …/received`, monotonic, `received_position`). Nothing closes and nothing is stamped: a member is **done**
+  when it is `settled`, every role it declares has landed and its `received_position` reaches the event's union
+  head; an event is **finished** when it is past `open_until`, someone joined it, and every member still in it is
+  done. Both are SQL predicates in `src/db.ts`, read on every use (the sweep, the event read), so a late join, a new
+  own photo or another member's gain makes them false again by itself. Joining, renaming and changing an asset set
+  keep working until the photos are deleted. An event closed by the OLD rule keeps its `closed_at` and the old
+  refusals (`410 {error:"closed"}` for join and rename, `409 {error:"closed"}` for a changed set) until it is
+  dropped; and the event read serves builds that predate open-until dates a **derived** `closedAt` — the stored
+  stamp, else `open_until` once it has passed and every member still in it has shared everything — which is when
+  such a build may leave without missing a photo (`PENDING_CLEANUPS.md`). A leave is recorded before it is sent
+  (`PendingLeaves`) and re-sent by every wake until the backend confirms it — which is what makes EMPTY
+  dependable. The byte route stamps `last_landed_at`; the **clock** is
+  `max(open_until, last joined_at, last_landed_at) + 3 days`.
 - **The host's zone is a label, beside the instants** (migration 0009). `starts_at`/`ends_at` stay canonical
   `…Z` instants, because they are compared lexicographically as capture cutoffs and installed apps parse that
   shape. `zone` is the host's IANA name (`Europe/Berlin`), sent with the create, which only the event page
@@ -731,7 +737,7 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   not settled), `settled` (its last publish after the end declared its share settled; it follows each
   publish both ways), `done` (left having everything: settled, every declared role landed, and the
   device's `?received=true` — it holds every photo of the others), `left` (left with anything missing).
-  `sharing`/`settled` are PRESENT (pushed, counted in the waiting line, they hold or make the close);
+  `sharing`/`settled` are PRESENT (pushed, counted in the waiting line, they hold an event unfinished);
   `done`/`left` are GONE, and are told apart for observability only — nothing decides on the difference.
   A manual leave and the app's own leave are the same request. A gone member's assets stay in the
   union; a join puts any state back to `sharing`.
@@ -760,16 +766,17 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   creates a row.
 - **Bounds** (policy in `deployments/components/policy.json`): capture window `[startsAt, endsAt]` of
   at most 30 days, which bounds uploads only and closes nothing. Lifetime `lifetime_seconds` (30 days)
-  is stamped as a duration. The delete-by is derived per read as `max(createdAt, startsAt) + lifetime`
-  (`src/lifecycle.ts`, shared with the sweep). `capacity` ever-enrolled devices (every state;
+  is stamped as a duration. The delete-by is derived per read as `max(createdAt, openUntil) + lifetime`
+  (`src/lifecycle.ts`, shared with the sweep): 30 days after the event stops being open, so a 30-day event is not
+  cut off on its last day and a back-dated one is not born expired. `capacity` ever-enrolled devices (every state;
   leaving frees nothing, rejoin reuses the slot) is the only refusal, `409`. It is 40 in the policy,
   bounded by Edge's subrequest limit (`deployment.md`, "Edge Scripting limits worth knowing").
 - The **nightly sweep** (`src/scripts/sweep.ts`, a GitHub Actions workflow, since Edge caps requests at
   50 subrequests / 30 s CPU) gives each event one `sweepVerdict` (`src/lifecycle.ts`): **drop** the row
-  past its delete-by; **complete** an ever-joined event that is empty (no member present) or past its
-  clock — memberships (and so `event_assets`) and the union log deleted, `closed_at`/`completed_at` stamped, the row
+  past its delete-by; **complete** an ever-joined event that is finished, empty (no member present) or past
+  its clock — memberships (and so `event_assets`) and the union log deleted, `closed_at`/`completed_at` stamped, the row
   kept — then deletes the byte folder `files/<eventId>/` of every event that no longer lives (one recursive
-  DELETE; any such folder it finds, so a crash or a byte that landed after the close is healed by the next
+  DELETE; any such folder it finds, so a crash or a byte that landed after the completion is healed by the next
   run), and collects a `devices` row only once no token minted for it can still verify. Its delete decision,
   and the read of which events live, run in an interactive transaction (primary), not an ordinary read.
   `files/devices/` (the bytes written before migration 0010) is never touched by it.
@@ -871,10 +878,9 @@ The fields today:
 
 | Where | Fields |
 |---|---|
-| a wake (byte landing, publish, leave) | `recipients= pushed= [unsent=<why ×n, …>]` |
+| a wake (byte landing, publish) | `recipients= pushed= [unsent=<why ×n, …>]` |
 | byte upload (v2) | `completed=<n>` + one wake's per completed event; `aborted=true` when the phone's body broke off (answered `400 upload aborted`: the client's network, not a 5xx) |
-| manifest (v2) | `closed=true` · `refused=older-version version=<n>` |
-| leave | `closed=true` + the wake's |
+| manifest (v2) | `refused=older-version version=<n>` + the wake's |
 | union read | `served=<n> trigger=<why\|->` |
 | event page read (`/web/events/<id>/photos`) | `served=<n>` |
 | push registration | `refused=not-attested` |
@@ -996,13 +1002,14 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `GET` | `/attest/challenge` | stateless HMAC-signed, time-bounded nonce, writes nothing | `200 {challenge}` |
 | `POST` | `/attest/token` `{deviceId, challenge, proof}`, `proof` = `{format:"apple-appattest", keyId, attestation}` or `{format:"android-key", chain:[DER b64, leaf first]}` | the format only CHOOSES the verifier. App Attest: chain to Apple root, nonce, app-id hash, counter, aaguid. Android key attestation (`src/android-attest.ts`): chain to a pinned Google root (by key), its provisioning shape, one extension in the leaf, validity (expiry ignored on factory chains), revocation (Google's public status list, cached per `max-age`), the challenge's SHA-256, the package and signing digest, TEE/StrongBox and a locked, verified boot — the last three per `androidAttestationTrust`. **Persists the device row with the platform that proved it, then mints** | `201 {token}` · `400` body (the retired flat v1 body too) · `401` failed check, its body `attestation rejected: <reason>` with the reason one of `device-modified` (software key, unlocked or unverified boot) · `app-not-genuine` (package, signing digest, App Attest app-id hash) · `device-unverifiable` (every other check — the default, which never accuses the user), suffixed ` (certificate)` when a certificate check failed (the chain's root, shape, signatures or validity, or a revoked certificate — diagnostics only, never told to the user) · `409` stale challenge · `502` write failed, or Android's status list unreachable |
 | `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies by the STORED row's `attest_platform`: an App Attest assertion, or an Android ECDSA-P256 signature over the challenge's UTF-8 bytes, against the stored key (no vendor call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
-| `POST` | `/events` `{name, startsAt, endsAt?, zone?, keyId?}` | name trimmed, non-empty, ≤100 chars; window rules; `zone` stored when usable, else NULL (never a `400`); `keyId` (16 lowercase hex — the encrypted file format's key id) makes the event **encrypted**, and a present invalid one is a `400`, never a plain event; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt, keyId?}` (`keyId` only on an encrypted event, in every event body) · `400` · `502` |
-| `GET`/`HEAD` | `/events/<eventId>` (ungated; an optional bearer token is verified, `changes/separate-event-page-from-device-api` D7) | metadata; `deletesAt` derived per response; `closedAt`, `completedAt`, `members {active, final}`, `keyId` | `200` (a completed event too, with `completedAt`) · `401` a sent token that does not verify · `404` sealed absence · `502` read failure |
-| `PATCH` | `/events/<eventId>` `{name}` (`changeEvent`) | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` closed · `502` |
-| `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` closed · `502` |
-| `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; after `endsAt` the leave that leaves no member `sharing` closes the event and wakes the rest; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
-| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), honoured only after `endsAt` and only for a present membership; the publish leaving no member `sharing` closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
-| `PUT` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` (the download redirect's path; the PUT is gated) | accepted only from a **present** member (`sharing`/`settled` — a closed event still takes its members' bytes, a completed one has none); streams bytes to `files/<eventId>/<sha256 of event/device/asset/role>` (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed the asset, wakes the event's other members. **An encrypted event takes only encrypted files** (`routes/encrypted-upload.ts`, read in the same statement as the membership): a body whose 9-byte prefix names the event's key id passes untouched; with the iOS extension's `x-snapsync-file-key` + `x-snapsync-file-head` (ONE file's key and opening bytes, never the event key; never logged) the edge seals the plaintext itself, byte for byte as a device would; anything else is refused before a byte is stored. A plain event refuses those headers | `201` · `400` bad role / missing filename / file-key headers on a plain event or malformed, or the body broke off mid-upload (`upload aborted`) · `403` not a present member, or a file head of another key · `422` an encrypted event's body that is not a file of its key · `502` (`OPTIONS` → `204`) |
+| `POST` | `/events` `{name, startsAt, endsAt?, openUntil?, zone?, keyId?}` | name trimmed, non-empty, ≤100 chars; window rules; `openUntil` (absent → `endsAt`) at least `endsAt` and at most the window maximum after the later of `endsAt` and now, else `400 invalid openUntil`; `zone` stored when usable, else NULL (never a `400`); `keyId` (16 lowercase hex — the encrypted file format's key id) makes the event **encrypted**, and a present invalid one is a `400`, never a plain event; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, openUntil, capacity, deletesAt, closedAt, completedAt, keyId?}` (`keyId` only on an encrypted event, in every event body) · `400` · `502` |
+| `GET`/`HEAD` | `/events/<eventId>` (ungated; an optional bearer token is verified, `changes/separate-event-page-from-device-api` D7) | metadata; `deletesAt` derived per response; `openUntil`; `closedAt` (the stored stamp, else derived for builds that predate open-until dates), `completedAt`, `members {active, final, waiting}` (`waiting`: present members not settled or with a declared role not landed), `keyId` | `200` (a completed event too, with `completedAt`) · `401` a sent token that does not verify · `404` sealed absence · `502` read failure |
+| `PATCH` | `/events/<eventId>` `{name}` (`changeEvent`) | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` an event closed before open-until dates, or completed · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` an event closed before open-until dates, or completed · `502` |
+| `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; closes nothing and wakes nobody; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), honoured only after `endsAt` and only for a present membership; closes nothing; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to an event closed before open-until dates) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to such an event · `410` completed · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>/received` `{position}` | the union-log position up to which the device holds every photo of the others (`received_position`, monotonic: a lower one changes nothing); only a present member | `200` · `400 invalid position` · `404` · `409` not a member · `502` |
+| `PUT` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` (the download redirect's path; the PUT is gated) | accepted only from a **present** member (`sharing`/`settled` — an ended event still takes its members' bytes, a completed one has none); streams bytes to `files/<eventId>/<sha256 of event/device/asset/role>` (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed the asset, wakes the event's other members. **An encrypted event takes only encrypted files** (`routes/encrypted-upload.ts`, read in the same statement as the membership): a body whose 9-byte prefix names the event's key id passes untouched; with the iOS extension's `x-snapsync-file-key` + `x-snapsync-file-head` (ONE file's key and opening bytes, never the event key; never logged) the edge seals the plaintext itself, byte for byte as a device would; anything else is refused before a byte is stored. A plain event refuses those headers | `201` · `400` bad role / missing filename / file-key headers on a plain event or malformed, or the body broke off mid-upload (`upload aborted`) · `403` not a present member, or a file head of another key · `422` an encrypted event's body that is not a file of its key · `502` (`OPTIONS` → `204`) |
 | `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | the **event-less** upload of builds before `per-event-storage-layout`: the same write, filed under the device's one present membership — and the same encrypted-event rule, so a build that predates encryption cannot put plaintext into one | as above, `409` with no present membership |
 | `GET` | `/events/<eventId>/files/devices/<deviceId>` | what the backend holds for me **in this event**, from the DB — never another event's | `200 [{assetId, role, filename}]` · `502` |
 | `GET` | `/files/devices/<deviceId>` | the event-less listing: the same answer for the device's present membership, `[]` with none | `200 [{assetId, role, filename}]` · `502` |
@@ -1060,7 +1067,7 @@ The event's identity reaching `/join/<eventId>` is a decision
 - **Wakes are best-effort and bounded.** The recipient set (present members with a push token) is one
   query, and the push happens **after** the transaction commits. A wake for a gain carries the union
   position (`seq`: top-level on APNs, a string `data` field on FCM) read after the commit, so a device
-  whose cursor is already there reads nothing; the close wake carries none. A failed, skipped or timed-out push
+  whose cursor is already there reads nothing; one whose position read failed carries none. A failed, skipped or timed-out push
   never changes the response. The byte upload wakes when its resource was the last missing declared
   role. The manifest publish wakes only when it made an asset **newly** fetchable (a widening that
   re-admits stored bytes). Otherwise nobody is woken (iOS allows only a few background pushes an hour).
@@ -1083,9 +1090,9 @@ The event's identity reaching `/join/<eventId>` is a decision
 - **Foreign keys are trusted**: the platform defaults `PRAGMA foreign_keys = 1`, as measured. If the
   store is re-provisioned or its engine changes, re-measure.
 - **One writer per table** on the current version: `events` by create (and rename, name only; the
-  publish stamps only `closed_at`, the byte route only `last_landed_at`, the sweep `closed_at` and
-  `completed_at`), `memberships` by join/leave (the publish writes only `manifest_version` and
-  `final`, and join only clears them),
+  byte route stamps only `last_landed_at`, the sweep `closed_at` and `completed_at`; `open_until` is written
+  once, by create), `memberships` by join/leave (the publish writes only `manifest_version` and `state`'s
+  settled half, the received report only `received_position`, and join only clears the version),
   `event_assets` by the manifest publish, `resources` by the byte upload, `union_log` by the byte upload
   and the publish (`gained`/`removed`) and the union read (`fetch`), and `devices` by attestation
   and the config write, each naming only its own column group — except `app_version`, which the mint,

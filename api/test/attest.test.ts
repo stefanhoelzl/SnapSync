@@ -681,6 +681,7 @@ Deno.test("leave: the departing device's record + attestation are RETAINED (no l
     createdAt: "2026-07-01T00:00:00.000Z",
     startsAt: "2026-07-01T00:00:00Z",
     endsAt: "2026-07-31T00:00:00Z",
+    openUntil: "2026-07-31T00:00:00Z",
     capacity: 10,
     lifetimeSeconds: 30 * 24 * 60 * 60,
   });
@@ -764,6 +765,7 @@ async function victimStore() {
     createdAt: "2026-07-01T00:00:00.000Z",
     startsAt: "2026-07-01T00:00:00Z",
     endsAt: "2026-07-31T00:00:00Z",
+    openUntil: "2026-07-31T00:00:00Z",
     capacity: 10,
     lifetimeSeconds: 30 * 24 * 60 * 60,
   });

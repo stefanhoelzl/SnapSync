@@ -59,6 +59,7 @@ Deno.test("POST /events → 201 with the event, and one row written", async () =
     "endsAt",
     "eventId",
     "name",
+    "openUntil",
     "startsAt",
   ]);
   // A fresh event is neither closed nor completed (capability `event-lifetime`).
@@ -193,7 +194,8 @@ Deno.test("GET /events/:id → 200 with the stored fields and the derived delete
   const body = await res.json() as Record<string, unknown>;
   assertEquals(body.eventId, E);
   assertEquals(body.endsAt, ENDS_AT);
-  assertEquals(body.deletesAt, "2026-07-27T18:00:00Z"); // max(createdAt, startsAt) + 30d
+  assertEquals(body.openUntil, ENDS_AT);
+  assertEquals(body.deletesAt, "2026-08-26T18:00:00Z"); // max(createdAt, openUntil) + 30d
   assert(!("lifetimeSeconds" in body)); // the duration is internal; the instant is the wire fact
   db.close();
 });

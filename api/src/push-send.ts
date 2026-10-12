@@ -22,7 +22,7 @@ export type SendOutcome = {
 /**
  * A sender of silent wakes for one event to a batch of tokens. Never throws. `seq`, when given, is the union
  * position the wake announces (decision record `changes/incremental-union`, D6): a device whose cursor is
- * already there reads nothing. The close wake announces none.
+ * already there reads nothing. A wake whose position could not be read announces none.
  */
 export type SilentSender = {
   sendSilent(tokens: PushToken[], eventId: string, seq?: number): Promise<SendOutcome[]>;
