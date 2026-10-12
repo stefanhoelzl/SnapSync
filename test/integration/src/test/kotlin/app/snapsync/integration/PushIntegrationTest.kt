@@ -16,10 +16,10 @@ import kotlin.test.assertTrue
 class PushIntegrationTest {
 
     @Test
-    @Verifies(spec = "delivery", requirement = "New photos are announced by a silent wake, and never only by it")
+    @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it")
     @Verifies(
         spec = "privacy-security",
-        requirement = "The notification token is used only to deliver new photos",
+        requirement = "The notification token is used only to announce new photos",
         scenario = "Another member shares a photo",
     )
     fun a_fellow_members_completed_photo_is_pushed_to_a_registered_device() = rigTest {

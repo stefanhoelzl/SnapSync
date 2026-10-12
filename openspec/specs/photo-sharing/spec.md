@@ -244,7 +244,7 @@ to others one by one as they complete, while the member's device is still workin
 
 ### Requirement: Deleting or no longer sharing a photo withdraws it
 
-Until the event closes (capability `event-lifetime`), a photo SHALL stop being offered to other members
+Until the event's photos are deleted (capability `event-lifetime`), a photo SHALL stop being offered to other members
 when the member deletes it from their library (moving it to the trash counts), removes it from their limited
 selection, moves it out of DCIM on Android, or stops sharing it — by narrowing the range, adding
 it to a messaging-app album, or turning sharing off (capability `manage-membership`). The withdrawal SHALL
@@ -278,12 +278,16 @@ or the app being unable to read the library for a moment, SHALL NOT withdraw any
 - **THEN** every photo already shared stays available to the other members
 
 #### Scenario: A deletion noticed late is still withdrawn
-- **WHEN** a photo is deleted while the device does no work for days, and the event has not closed
+- **WHEN** a photo is deleted while the device does no work for days, and the event's photos have not been deleted
 - **THEN** it is withdrawn the next time the device looks at the library
+
+#### Scenario: A deletion after the event's end is still withdrawn
+- **WHEN** a member deletes a shared photo a week after the event's range ended, before the event's photos were deleted
+- **THEN** members who have not yet received it never do, and members who already have it keep it
 
 ### Requirement: Restoring or re-including a photo shares it again
 
-Until the event closes (capability `event-lifetime`), a photo SHALL be offered to the other members again
+Until the event's photos are deleted (capability `event-lifetime`), a photo SHALL be offered to the other members again
 when it is recovered from Recently Deleted or the trash, re-added to the selection, moved back into
 DCIM on Android, or brought back into scope by widening the range or turning sharing back on. A
 photo that was already uploaded and was only out of scope SHALL come back without being uploaded again, and
@@ -298,7 +302,7 @@ bringing it back SHALL wake the other members.
 - **THEN** the photos that fell out come back for the other members with no photo uploaded again
 
 #### Scenario: A photo moved back into DCIM is shared again
-- **WHEN** an Android member moves a withdrawn photo back into DCIM before the event closes
+- **WHEN** an Android member moves a withdrawn photo back into DCIM before the event's photos are deleted
 - **THEN** it is offered to the other members again
 
 ### Requirement: A photo already in an event is not uploaded again for it

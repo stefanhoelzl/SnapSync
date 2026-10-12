@@ -73,12 +73,17 @@ photos are not publicly browsable.
 ### Requirement: Whoever holds the invite can join and see everything
 The app SHALL NOT restrict who may use an invite: anyone who scans the QR code or receives the link SHALL
 be able to join the event, contribute photos to it, and receive all of its photos, within the event's
-device limit and until the event closes (capability `event-lifetime`).
+device limit and until the event's photos are deleted (capability `event-lifetime`) — also after the event's
+range has ended.
 
 #### Scenario: A forwarded invite admits a stranger
 - **WHEN** a member's invite link is forwarded to someone outside the group, who opens it before the
-  event closes
+  event's photos are deleted
 - **THEN** that person can join the event and receives its photos like any other member
+
+#### Scenario: An invite opened after the end still admits
+- **WHEN** a guest opens the invite a week after the event's range ended, before its photos were deleted
+- **THEN** they can join, share their photos taken within the range and receive the event's photos
 
 ### Requirement: Only the whole invite opens an event's photos
 An encrypted event SHALL have a key of its own, made on the host's phone and carried to everyone else only inside the
@@ -255,6 +260,14 @@ Cancelling that join screen SHALL leave the device in no event. Declining the sw
 current event untouched. An invite to a missing event SHALL be reported without leaving; a failure to
 load SHALL offer Retry.
 
+The question SHALL be skipped only when switching cannot lose anything: the current event's range has ended,
+every member still in it has shared everything they share (a member who left counts with what reached the
+event; a member still in it who has not finished keeps the question), and this phone has received everything
+it receives from the event — or the current event's photos were deleted. Then the app SHALL leave the current
+event exactly as a confirmed switch does and show the new event's join screen directly. The app SHALL decide
+this when the invite is opened, from the service's answer at that moment; while offline, on a server error,
+or whenever it cannot tell, it SHALL ask as above.
+
 #### Scenario: The switch question names both events
 - **WHEN** a member of "Ana's 30th" opens the invite of "Ski Trip"
 - **THEN** a confirmation asks whether to switch, saying they will leave "Ana's 30th" and join "Ski Trip", and shows no count
@@ -275,17 +288,42 @@ load SHALL offer Retry.
 - **WHEN** a member opens the invite of a different event that no longer exists
 - **THEN** they are told the invite is invalid or the event no longer exists, and remain in their current event
 
-### Requirement: The joined screen offers the invite until the event closes
-The joined screen SHALL offer, while the device is in an event that has not closed (capability
+#### Scenario: A finished event is switched away from without asking
+- **WHEN** "Ana's 30th" ended last week, every member still in it has shared all their photos, this phone has
+  received all of them, and the member opens the invite of "Ski Trip"
+- **THEN** no switch question is asked: they have left "Ana's 30th", keep every photo they received, and see
+  the join screen for "Ski Trip"
+
+#### Scenario: A member still sharing keeps the question
+- **WHEN** "Ana's 30th" has ended but one member still in it has photos that have not reached the event, and
+  the member opens the invite of "Ski Trip"
+- **THEN** the switch question is asked as usual
+
+#### Scenario: Offline keeps the question
+- **WHEN** "Ana's 30th" has ended and everyone has shared everything, but the phone cannot reach the service
+  when the member opens the invite of "Ski Trip"
+- **THEN** the switch question is asked as usual
+
+#### Scenario: A deleted event is switched away from without asking
+- **WHEN** the photos of "Ana's 30th" were deleted and the member opens the invite of "Ski Trip"
+- **THEN** no switch question is asked and the join screen for "Ski Trip" is shown
+
+#### Scenario: Backing out after a switch without asking leaves no event
+- **WHEN** the switch was made without asking and the member then cancels on the new event's join screen
+- **THEN** the device is in no event and the create screen is shown
+
+### Requirement: The joined screen offers the invite until the event's photos are deleted
+The joined screen SHALL offer, while the device is in an event whose photos have not been deleted (capability
 `event-lifetime`), two equal ways to invite: a share action that hands the event's invite link to the system share sheet, and an action that shows a scannable QR code of the same link. The
 share sheet SHALL name the event as what is being shared. Both
-SHALL be offered even when photo access is missing. The QR code SHALL be shown only on request, over the
+SHALL be offered even when photo access is missing, and also after the event's range has ended. The QR code
+SHALL be shown only on request, over the
 joined screen, and SHALL close again without changing anything. The QR code SHALL be dark on a light background
 in both light and dark appearance. Shown, the QR code SHALL be presented as an invitation to join this event,
 and its caption SHALL be addressed to the member showing it, telling them to let family and friends scan it
 with their camera. Sharing or showing the QR code SHALL have no effect on the app's state, whether completed
-or cancelled. Invite affordances SHALL NOT appear while the device is in no event, nor once the event has
-closed, nor while the device cannot read an encrypted event's key — after it lost the key (capability `sync-status`)
+or cancelled. Invite affordances SHALL NOT appear while the device is in no event, nor once the event's photos
+have been deleted, nor while the device cannot read an encrypted event's key — after it lost the key (capability `sync-status`)
 or while the phone is locked since it was started — so an invite is only ever offered whole, never without its key
 (see "An incomplete invite never joins an encrypted event"); a QR code already shown then closes. They SHALL return as soon as the key can be read
 again.
@@ -325,8 +363,13 @@ again.
 - **THEN** it tells them to let family and friends scan it with their camera, and does not tell them to scan
   anything
 
-#### Scenario: A closed event offers no invite
-- **WHEN** the event closes while a member is looking at the joined screen, with or without the QR code shown
+#### Scenario: A back-dated event offers its invite
+- **WHEN** a host has just created and joined an event whose range is already over
+- **THEN** the joined screen offers to share the invite and to show its QR code
+
+#### Scenario: A deleted event offers no invite
+- **WHEN** the event's photos are deleted while a member is looking at the joined screen, with or without the
+  QR code shown
 - **THEN** the share action, the QR action and any shown QR code disappear
 
 #### Scenario: A phone that lost the event's key offers no invite

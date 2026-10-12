@@ -79,12 +79,12 @@ class EncryptedEventIntegrationTest {
     )
     @Verifies(
         spec = "invite-link",
-        requirement = "The joined screen offers the invite until the event closes",
+        requirement = "The joined screen offers the invite until the event's photos are deleted",
         scenario = "A phone that lost the event's key offers no invite",
     )
     @Verifies(
         spec = "invite-link",
-        requirement = "The joined screen offers the invite until the event closes",
+        requirement = "The joined screen offers the invite until the event's photos are deleted",
         scenario = "The invite returns with the key",
     )
     fun a_lost_key_stops_both_directions_and_the_reopened_invite_resumes_them() = rigTest {

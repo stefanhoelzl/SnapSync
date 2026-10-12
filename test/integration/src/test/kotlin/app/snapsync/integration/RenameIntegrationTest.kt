@@ -18,7 +18,10 @@ import kotlin.test.assertNotNull
 class RenameIntegrationTest {
 
     @Test
-    @Verifies(spec = "manage-membership", requirement = "Any member renames the event for everyone")
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+    )
     fun a_rename_rewrites_the_backend_marker_and_the_heading_follows() = rigTest {
         val event = createAndJoin(name = "Weekend")
         assertEquals("Weekend", heading(), "the heading starts at the joined name")
@@ -35,7 +38,10 @@ class RenameIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "manage-membership", requirement = "Any member renames the event for everyone")
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+    )
     fun the_backend_TRIMMED_name_is_what_lands_everywhere() = rigTest {
         val event = createAndJoin(name = "Weekend")
 

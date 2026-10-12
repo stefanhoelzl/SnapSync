@@ -267,7 +267,7 @@ dates; the app never leaves an event on its own). Every device that can still ta
   deletion back until the 3-day clock.
 - **Remove:** `closedForOldBuilds` (serve the stored stamp, or drop the field with a `/api/v3`), `sharedByEveryone`,
   `MemberCounts.final`, and their tests in `api/test/completion.test.ts`.
-- **Record:** `openspec/changes/back-dated-events` (design, D5).
+- **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D5).
 
 ## Once every event closed before open-until dates is gone
 
@@ -286,7 +286,7 @@ also carries the stamp, and keeps it).
 - **Why:** its members were promised that what they shared was fixed; reopening it would let a late change through.
 - **Remove:** the branches above, keeping the refusals a COMPLETED event still needs (`completedAt`); then
   `ClosedError`'s `SetFixed` outcome on `publishManifest` and the app's handling of it.
-- **Record:** `openspec/changes/back-dated-events` (design, D2/D5).
+- **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
 
 ### What stands in for the old close in the app and its mocks (app)
 - **What:** the app and its mocks still know an event can have closed.
@@ -299,7 +299,7 @@ also carries the stamp, and keeps it).
   backend still refuses its rename.
 - **Remove:** the field and its readers (a migration drops the column), the mock's branches and the fixture state, with
   the api entry above.
-- **Record:** `openspec/changes/back-dated-events` (design, D2/D5).
+- **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
 
 ## One-off ops
 

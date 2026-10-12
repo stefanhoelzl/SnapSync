@@ -43,8 +43,8 @@ another phone's personal hotspot or any other network the phone treats as costly
 which the phone's Low Data Mode (iPhone) or Data Saver (Android) is in force. Those photos SHALL wait and
 SHALL be sent and received, in the background and without the member opening the app, as soon as the
 phone is on a Wi-Fi network none of these apply to. Waiting SHALL never lose a photo or bring one twice;
-it only delays it. The choice SHALL NOT extend the event: a photo still waiting when the event closes
-(capability `event-lifetime`) is not shared to it.
+it only delays it. The choice SHALL NOT extend the event: a photo still waiting when the event's photos are
+deleted (capability `event-lifetime`) is not shared to it.
 
 #### Scenario: On mobile data nothing is transferred
 - **WHEN** a member with mobile data off takes an in-range photo while on mobile data, and another member shares a photo meanwhile

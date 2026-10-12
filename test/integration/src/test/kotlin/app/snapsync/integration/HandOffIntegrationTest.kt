@@ -17,7 +17,10 @@ import kotlin.test.assertEquals
 class HandOffIntegrationTest {
 
     @Test
-    @Verifies(spec = "invite-link", requirement = "The joined screen offers the invite until the event closes")
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The joined screen offers the invite until the event's photos are deleted",
+    )
     fun sharing_the_invite_hands_the_share_sheet_the_invite_the_screen_shows() = rigTest {
         createAndJoin()
         val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl

@@ -40,7 +40,5 @@
 - [x] 5.3 Edit the Purpose paragraphs of `event-lifetime`, `invite-link`, `manage-membership`, `photo-sharing`, `join-event`, `sync-status` in `openspec/specs/` to drop the close; update `openspec/config.yaml`'s mission paragraph and `CLAUDE.md`'s mission paragraph to the new lifetime; verify `npx --yes @fission-ai/openspec@1.13.2 validate --specs --strict` and the two archive gates in `openspec/config.yaml`
 - [x] 5.4 Run `./gradlew build`, `./gradlew compileIosMainKotlinMetadata`, `cd api && deno task test`, and `./gradlew architectureDiagrams` (commit if changed); verify all green
 
-> **At archive:** `VerifiesGateTest` reads only the main specs, so these `@Verifies` claims still cite requirements
-> the archive removes or renames and must be repointed in the archive commit: `PushIntegrationTest:19,22`,
-> `JoinGateIntegrationTest:324`, `HandOffIntegrationTest:20`, `EncryptedEventIntegrationTest:81,86`,
-> `RenameIntegrationTest:21,38`.
+
+> **At archive:** the `@Verifies` claims citing removed or renamed requirements were repointed in the archive commit.
