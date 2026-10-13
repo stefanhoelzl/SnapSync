@@ -36,6 +36,16 @@ data class DownloadCounts(
     val stillArriving: Int,
     /** Foreign assets with a resource enqueued to the OS but not yet staged — the ↓-pulse signal. */
     val inFlight: Int,
+    /**
+     * Every foreign asset of the event this device has a row for, imported and unimportable included — what the
+     * event's declared total already accounts for here. Event-scoped counts only; 0 for the device-wide census.
+     */
+    val known: Int = 0,
+    /**
+     * The event's declared total the last union read answered (change `count-declared-photos`), or `null` when no read
+     * has — a backend that predates it, or a position forgotten. Event-scoped counts only.
+     */
+    val declared: Long? = null,
 )
 
 /** The source identity of a foreign asset: its owning device and that device's assetId. */

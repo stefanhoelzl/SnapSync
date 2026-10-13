@@ -1028,6 +1028,30 @@ export async function unionPosition(db: Db, eventId: string): Promise<number> {
   return Number(rows[0].pos);
 }
 
+/**
+ * The event's DECLARED total (capability `sync-status`): every asset the whole union serves — complete, in a
+ * membership of either state, exactly as `unionRows` + `completeAssets` keep it — plus every asset a member still
+ * in the event declares that is not complete yet. What a member's "received" total counts, before subtracting its
+ * own declaration: a photo still uploading is on its way, while one declared by a member who has left never lands
+ * and so is not counted.
+ */
+export async function declaredTotal(db: Db, eventId: string): Promise<number> {
+  const { rows } = await db.execute(
+    `SELECT COUNT(*) AS n FROM event_assets ea
+      WHERE ea.event_id = ?
+        AND (EXISTS (SELECT 1 FROM memberships m
+                      WHERE m.event_id = ea.event_id AND m.device_id = ea.device_id AND m.state IN ${PRESENT})
+             OR (json_array_length(ea.roles) > 0 AND NOT EXISTS (
+                   SELECT 1 FROM json_each(ea.roles) j
+                    WHERE NOT EXISTS (SELECT 1 FROM resources rs
+                                       WHERE rs.event_id = ea.event_id AND rs.device_id = ea.device_id
+                                         AND rs.asset_id = ea.asset_id AND rs.role = j.value
+                                         AND ${landed("rs")}))))`,
+    [eventId],
+  );
+  return Number(rows[0].n);
+}
+
 /** One read of the union, as the union log records it (capability `privacy-security`). */
 export type UnionFetch = {
   eventId: string;

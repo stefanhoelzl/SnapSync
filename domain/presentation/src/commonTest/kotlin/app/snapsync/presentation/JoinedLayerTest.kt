@@ -15,6 +15,7 @@ import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
@@ -111,6 +112,11 @@ class JoinedLayerTest {
                 snapshot = SyncStatus.Ready(SyncProgress(1, 3, 4, 0, active = true, estimatedRemaining = null)),
             ),
             "the counts are unknown" to joined(backgroundScope, ENDED),
+            "photo access is missing" to joined(
+                backgroundScope,
+                ENDED.copy(members = waiting),
+                permission = GalleryAccess.DENIED,
+            ),
         )
         for ((case, host) in notWhen) assertNull(host.layer().sharingNote, case)
     }
@@ -213,6 +219,62 @@ class JoinedLayerTest {
         )
 
         assertEquals(DirectionCount.Progress(done = 1, total = 3), host.layer().counts?.received)
+    }
+
+    // ---- the others' declared photos (change `count-declared-photos`) --------------------------------
+
+    @Test
+    fun `photos still uploading on another phone count toward what there is to receive`() = runTest {
+        // The sharer's 200, 7 offered here, 6 received: 6 of 200, and only the others are left.
+        val host = joined(backgroundScope, download = DownloadProgress(downloaded = 6, total = 6, awaited = 194))
+
+        assertEquals(DirectionCount.Progress(done = 6, total = 200), host.layer().counts?.received)
+        assertEquals(
+            SyncHealth.Syncing(upload = Arrow.HIDDEN, download = Arrow.STATIC, waitingForOthers = true),
+            host.layer().health,
+        )
+    }
+
+    @Test
+    fun `this device's own work is never taken for waiting on the others`() = runTest {
+        val awaiting = DownloadProgress(downloaded = 6, total = 6, awaited = 10)
+        val notWaitingForOthers = mapOf(
+            "a photo of its own waits to upload" to joined(
+                backgroundScope,
+                snapshot = SyncStatus.Ready(SyncProgress(0, 3, 4, 0, active = false, estimatedRemaining = null)),
+                download = awaiting,
+            ),
+            "an offered photo is not here yet" to joined(
+                backgroundScope,
+                download = DownloadProgress(downloaded = 5, total = 6, awaited = 10),
+            ),
+            "a download is running" to joined(
+                backgroundScope,
+                download = DownloadProgress(downloaded = 5, total = 6, inFlight = 1, awaited = 10),
+            ),
+        )
+        for ((case, host) in notWaitingForOthers) {
+            assertFalse(assertIs<SyncHealth.Syncing>(host.layer().health).waitingForOthers, case)
+        }
+    }
+
+    @Test
+    fun `an ended event says whom it waits for beside waiting for photos too`() = runTest {
+        val host = joined(
+            backgroundScope,
+            ENDED.copy(members = MemberCounts(active = 2, settled = 1, waiting = 1)),
+            download = DownloadProgress(downloaded = 3, total = 3, awaited = 4),
+        )
+
+        assertEquals(SharingNote.WaitingFor(1), host.layer().sharingNote)
+    }
+
+    @Test
+    fun `nothing awaited and everything here reads up to date`() = runTest {
+        val host = joined(backgroundScope, download = DownloadProgress(downloaded = 6, total = 6, awaited = 0))
+
+        assertEquals(SyncHealth.InSync, host.layer().health)
+        assertEquals(DirectionCount.Progress(done = 6, total = 6), host.layer().counts?.received)
     }
 
     // ---- what holds a membership on loading --------------------------------------------------------

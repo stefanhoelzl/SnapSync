@@ -62,8 +62,9 @@ suspend fun Rig.manifest(event: String? = null, device: String? = null): Map<Str
 }
 
 /**
- * A fellow member of [event] (the joined one by default) whose [assets] are complete on the backend; [final] declares
- * its share settled, as a device does once the event's range has ended.
+ * A fellow member of [event] (the joined one by default) whose [assets] are complete on the backend — but [uploading]'s,
+ * declared and still on its phone; [final] declares its share settled, as a device does once the event's range has
+ * ended.
  */
 suspend fun Rig.foreignDevice(
     device: String,
@@ -71,10 +72,12 @@ suspend fun Rig.foreignDevice(
     event: String? = null,
     filename: String? = null,
     final: Boolean = false,
+    uploading: List<String> = emptyList(),
 ): String {
     val params = listOfNotNull(
         "device" to device,
         "assets" to assets.joinToString(","),
+        ("uploading" to uploading.joinToString(",")).takeIf { uploading.isNotEmpty() },
         event?.let { "event" to it },
         filename?.let { "filename" to it },
         ("final" to "true").takeIf { final },

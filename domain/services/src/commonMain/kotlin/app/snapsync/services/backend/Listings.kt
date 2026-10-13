@@ -107,7 +107,12 @@ class BackendEventUnionSource(private val gateway: BackendGateway) : EventUnionS
         return when (val reply = gateway.send(request)) {
             // A non-canonical asset id, or a position that is not a number, is a page the app could not continue from.
             is EventFilesReply.Page -> runCatchingCancellable {
-                UnionPage(reply.items.map { asset(eventId, it) }, reply.snapSyncCursor.toLong())
+                UnionPage(
+                    reply.items.map { asset(eventId, it) },
+                    reply.snapSyncCursor.toLong(),
+                    // A value that is no count is the absence of one: the screen reads as it did before the header.
+                    reply.snapSyncDeclared?.toLongOrNull(),
+                )
             }
             else -> Result.failure(IllegalStateException("$what: $reply"))
         }

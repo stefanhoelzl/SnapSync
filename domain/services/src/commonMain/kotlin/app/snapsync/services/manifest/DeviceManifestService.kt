@@ -1,6 +1,7 @@
 package app.snapsync.services.manifest
 
 import app.snapsync.model.UploadedManifest
+import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.databases.SharedDatabase
 import co.touchlab.kermit.Logger
@@ -35,6 +36,20 @@ class DeviceManifestService(
         runCatchingCancellable {
             db.use { it.uploadedManifestQueries.recordUploaded(record.eventId, record.version, record.manifest) }
         }.onFailure { log.w(it) { "the manifest record was not written" } }
+    }
+
+    /**
+     * How many photos the record declares for [eventId] — what this device last told the backend it shares there
+     * (change `count-declared-photos`). `0` when the record is another event's or there is none: nothing of this
+     * device's is in that event's declared total. `null` when it cannot be read or decoded.
+     */
+    fun publishedCount(eventId: String): Int? {
+        val record = runCatchingCancellable {
+            db.use { it.uploadedManifestQueries.selectUploaded(::UploadedManifest).executeAsOneOrNull() }
+        }.getOrElse { return null.also { _ -> log.w(it) { "the manifest record is unreadable — no own count" } } }
+        if (record == null || record.eventId != eventId) return 0
+        return runCatchingCancellable { deviceManifestFromJson(record.manifest).assets.size }
+            .getOrElse { null.also { _ -> log.w(it) { "the manifest record does not decode — no own count" } } }
     }
 
     /** Forgets the record: absent and "not believed" are the same state, which [loadLastUploaded] reads. */

@@ -513,6 +513,8 @@ paths:
           headers:
             SnapSync-Cursor:
               $ref: "#/components/headers/SnapSyncCursor"
+            SnapSync-Declared:
+              $ref: "#/components/headers/SnapSyncDeclared"
           content:
             application/json:
               schema:
@@ -993,6 +995,14 @@ components:
     SnapSyncCursor:
       required: true
       description: The union-log position the answer covers — the cursor of the next delta read.
+      schema:
+        type: string
+        pattern: "^[0-9]{1,15}$"
+    SnapSyncDeclared:
+      description: |
+        The event's declared total at the position the answer covers: every asset the whole union serves, plus every
+        asset a member still in the event has declared that is not complete yet. Event-wide — the same for every
+        reader, and on a delta read as on a full one. Absent from a backend that predates it.
       schema:
         type: string
         pattern: "^[0-9]{1,15}$"

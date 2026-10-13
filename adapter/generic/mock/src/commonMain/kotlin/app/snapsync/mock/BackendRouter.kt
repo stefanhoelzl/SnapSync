@@ -296,7 +296,12 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
                 },
             )
         }
-        return json(OK, ListSerializer(UnionAsset.serializer()), items, mapOf(CURSOR to position.toString()))
+        return json(
+            OK,
+            ListSerializer(UnionAsset.serializer()),
+            items,
+            mapOf(CURSOR to position.toString(), DECLARED to state.declared(eventId).toString()),
+        )
     }
 
     private fun listing(call: Call): HttpResult {
@@ -478,6 +483,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         /** How far a creating phone's clock may run ahead when it asks to stay open the whole window. */
         val OPEN_UNTIL_CLOCK_SLACK = 1.hours
         const val CURSOR = "SnapSync-Cursor"
+        const val DECLARED = "SnapSync-Declared"
 
         /** The shape of an encrypted event's key id, as the real `POST /events` validates it. */
         val KEY_ID = Regex("^[0-9a-f]{16}$")

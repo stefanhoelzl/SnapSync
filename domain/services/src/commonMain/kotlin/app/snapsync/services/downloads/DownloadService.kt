@@ -104,12 +104,15 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * [cursor], with an [eventId], is the union position the read that served these assets covered (decision record
      * `changes/incremental-union`, D6): it is stored in the SAME transaction, so the position never stands past an asset
      * that was not planned — a failed plan leaves the previous one, and the next delta serves the assets again.
+     * [declared] is the event's declared total that same read answered (change `count-declared-photos`), stored with the
+     * position — `null` from a backend that predates it, which reads as before.
      */
     suspend fun planAll(
         assets: List<PlannedAsset>,
         eventId: String? = null,
         members: Collection<AssetRef> = emptyList(),
         cursor: Long? = null,
+        declared: Long? = null,
     ) {
         if (assets.isEmpty() && (eventId == null || (members.isEmpty() && cursor == null))) return
         q.transaction {
@@ -137,7 +140,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
                     )
                 }
             }
-            if (eventId != null && cursor != null) q.upsertUnionCursor(eventId, cursor)
+            if (eventId != null && cursor != null) q.upsertUnionCursor(eventId, cursor, declared)
         }
     }
 
@@ -291,18 +294,20 @@ class DownloadService(databases: Databases) : SuppressionSource {
         // Scoped to ONE event's rows for what the joined screen shows: the table keeps
         // every event's imported rows as suppression handles, so the unscoped read is a census of the device
         // (diagnostics, reset), never this membership's progress.
-        val row = if (eventId == null) {
-            q.projectionCounts().executeAsOne().let { Triple(it.imported, it.stillArriving, it.inFlight) }
-        } else {
-            q.projectionCountsForEvent(
-                eventId,
-            ).executeAsOne().let { Triple(it.imported, it.stillArriving, it.inFlight) }
+        if (eventId == null) {
+            return q.projectionCounts().executeAsOne().let {
+                DownloadCounts(it.imported.toInt(), it.stillArriving.toInt(), it.inFlight.toInt())
+            }
         }
-        return DownloadCounts(
-            imported = row.first.toInt(),
-            stillArriving = row.second.toInt(),
-            inFlight = row.third.toInt(),
-        )
+        return q.projectionCountsForEvent(eventId).executeAsOne().let {
+            DownloadCounts(
+                imported = it.imported.toInt(),
+                stillArriving = it.stillArriving.toInt(),
+                inFlight = it.inFlight.toInt(),
+                known = it.known.toInt(),
+                declared = it.declared,
+            )
+        }
     }
 
     /**
@@ -422,6 +427,10 @@ class UnionTracking internal constructor(private val queries: () -> DownloadStor
 
     /** The union position [eventId] was last read to, or `null` for none — the next read is then a full one. */
     suspend fun cursor(eventId: String): Long? = queries().selectUnionCursor(eventId).executeAsOneOrNull()
+
+    /** The declared total stored with [eventId]'s position (change `count-declared-photos`), or `null` for none. */
+    suspend fun declared(eventId: String): Long? =
+        queries().selectUnionDeclared(eventId).executeAsOneOrNull()?.declared
 
     /**
      * Forget which photos belonged to every event's union but [eventId]'s — the join's purge (change

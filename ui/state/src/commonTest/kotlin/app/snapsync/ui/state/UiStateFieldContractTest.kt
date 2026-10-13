@@ -209,8 +209,8 @@ class UiStateFieldContractTest {
         )
         assertFieldContract(
             SyncHealth.Syncing.serializer(),
-            SyncHealth.Syncing(Arrow.PULSING, Arrow.STATIC, waitingForWifi = true),
-            optional = setOf("waitingForWifi"),
+            SyncHealth.Syncing(Arrow.PULSING, Arrow.STATIC, waitingForWifi = true, waitingForOthers = true),
+            optional = setOf("waitingForWifi", "waitingForOthers"),
         )
     }
 

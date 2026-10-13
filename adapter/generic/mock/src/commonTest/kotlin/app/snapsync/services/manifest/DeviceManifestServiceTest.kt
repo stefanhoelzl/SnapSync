@@ -1,7 +1,13 @@
 package app.snapsync.services.manifest
 
 import app.snapsync.mock.DatabasesMock
+import app.snapsync.model.AssetId
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.ManifestResource
+import app.snapsync.model.ResourceRole
 import app.snapsync.model.UploadedManifest
+import app.snapsync.model.encodeToJson
 import app.snapsync.services.databases.sharedOver
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,6 +23,12 @@ import kotlin.test.assertNull
  */
 class DeviceManifestServiceTest {
 
+    private fun asset(id: String) = DeviceManifestAsset(
+        AssetId(id),
+        "2026-07-01T00:00:00Z",
+        listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", "$id-primary", "IMG_$id.HEIC")),
+    )
+
     private val databases = DatabasesMock()
 
     private fun service() = DeviceManifestService(sharedOver(databases.port()))
@@ -25,6 +37,23 @@ class DeviceManifestServiceTest {
     fun `a saved manifest is read back verbatim by every process`() {
         service().saveLastUploaded(UploadedManifest("E", 3, """{"assets":[{"id":"a"}]}"""))
         assertEquals(UploadedManifest("E", 3, """{"assets":[{"id":"a"}]}"""), service().loadLastUploaded())
+    }
+
+    // What the device last told the backend it shares in an event (change `count-declared-photos`): the term its
+    // received total subtracts from the event's declared total.
+    @Test
+    fun `the published count is the record's photos for its own event and none for another`() {
+        val manifest = DeviceManifest("D", listOf(asset("a"), asset("b"))).encodeToJson()
+        service().saveLastUploaded(UploadedManifest("E", 3, manifest))
+        assertEquals(2, service().publishedCount("E"))
+        assertEquals(0, service().publishedCount("OTHER"), "nothing of this device's is in that event")
+    }
+
+    @Test
+    fun `with nothing published the count is none and an undecodable record is no count`() {
+        assertEquals(0, service().publishedCount("E"))
+        service().saveLastUploaded(UploadedManifest("E", 1, "not a manifest"))
+        assertNull(service().publishedCount("E"))
     }
 
     @Test
@@ -73,6 +102,7 @@ class DeviceManifestServiceTest {
         val service = service()
 
         assertNull(service.loadLastUploaded())
+        assertNull(service.publishedCount("E"), "no own count from a store it cannot read")
         service.saveLastUploaded(UploadedManifest("E", 2, "b"))
         service.clearLastUploaded()
 

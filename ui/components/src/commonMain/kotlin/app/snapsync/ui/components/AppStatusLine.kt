@@ -56,6 +56,7 @@ import app.snapsync.ui.components.resources.status_sharing
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
 import app.snapsync.ui.components.resources.status_syncing
+import app.snapsync.ui.components.resources.status_waiting_photos
 import app.snapsync.ui.components.resources.status_waiting_wifi
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.RefusalCause
@@ -81,7 +82,13 @@ sealed interface AppSyncStatus {
      * Work remaining; each arrow is [Arrow.HIDDEN]/[Arrow.STATIC]/[Arrow.PULSING]. [waitingForWifi]: the photos wait
      * for Wi-Fi because the member keeps them off mobile data.
      */
-    data class Syncing(val upload: Arrow, val download: Arrow, val waitingForWifi: Boolean = false) : AppSyncStatus
+    data class Syncing(
+        val upload: Arrow,
+        val download: Arrow,
+        val waitingForWifi: Boolean = false,
+        /** Only the other members' unfinished photos are left: the line says it waits for photos. */
+        val waitingForOthers: Boolean = false,
+    ) : AppSyncStatus
 
     /**
      * The event has not begun. Informational, not actionable: flat (no
@@ -269,6 +276,7 @@ private fun SyncingLine(status: AppSyncStatus.Syncing) {
         val label = when {
             ongoing -> stringResource(Res.string.status_sync_ongoing)
             status.waitingForWifi -> stringResource(Res.string.status_waiting_wifi)
+            status.waitingForOthers -> stringResource(Res.string.status_waiting_photos)
             else -> stringResource(Res.string.status_sync_pending)
         }
         LineText(label, MaterialTheme.colorScheme.onSurface)

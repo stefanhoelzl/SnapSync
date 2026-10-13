@@ -353,6 +353,8 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
     // one; `assets` is a comma-separated list of asset ids. `kind=motion-photo` makes each a real Google motion photo
     // (`PhotoLibrary.motionPhoto`), as an Android member's camera shares it; otherwise each is a placeholder photo.
     // `final=true` declares the member's share settled, as a device does once the event's range has ended.
+    // `uploading` (a comma-separated subset of `assets`) are declared but their bytes not sent — still uploading on
+    // that member's phone; a later call without them lands them.
     "foreign-device" to needs(
         Need.Reach,
         command = RigCommand { params, _ ->
@@ -377,8 +379,15 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
                     }
                 }
                 val final = params["final"]?.toBoolean() ?: false
-                val eventId =
-                    addForeignDevice(who, manifest, event, if (motion) PhotoLibrary.motionPhoto else null, final)
+                val uploading = params["uploading"]?.split(',')?.filter { it.isNotBlank() }.orEmpty().toSet()
+                val eventId = addForeignDevice(
+                    who,
+                    manifest,
+                    event,
+                    if (motion) PhotoLibrary.motionPhoto else null,
+                    final,
+                    uploading,
+                )
                 CommandResult.ok("""{"device":${jsonString(who)},"eventId":${jsonString(eventId)}}""")
             }
         },
@@ -927,7 +936,8 @@ internal fun foreignAsset(
 
 /**
  * A fellow member through the backend's public surface: [device] joins [event] — or an event the backend mints for it —
- * uploads every resource's bytes where the app's uploader addresses them, and publishes its manifest. Returns the event.
+ * uploads every resource's bytes where the app's uploader addresses them — but [uploading]'s, still on its phone — and
+ * publishes its manifest. Returns the event.
  */
 private suspend fun MockWorld.addForeignDevice(
     who: String,
@@ -935,11 +945,12 @@ private suspend fun MockWorld.addForeignDevice(
     event: String?,
     bytes: ByteArray? = null,
     final: Boolean = false,
+    uploading: Set<String> = emptySet(),
 ): String {
     val reach = reach!!
     val eventId = event ?: reach.createEvent(FOREIGN_EVENT_NAME, FOREIGN_EVENT_START)
     reach.join(eventId, who)
-    assets.forEach { asset ->
+    assets.filterNot { it.assetId.value in uploading }.forEach { asset ->
         asset.resources.forEach {
             if (bytes != null) {
                 reach.upload(

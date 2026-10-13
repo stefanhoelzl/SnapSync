@@ -39,7 +39,16 @@ class UnionAsset(
  * next delta starts from. The cursor is the backend's; the app stores it and sends it back, and reads nothing into it
  * beyond its order.
  */
-class UnionPage(val assets: List<UnionAsset>, val cursor: Long)
+class UnionPage(
+    val assets: List<UnionAsset>,
+    val cursor: Long,
+    /**
+     * The event's declared total the read answered (change `count-declared-photos`): every asset the whole union
+     * serves plus what members still in the event declared and have not finished — `null` from a backend that
+     * predates it.
+     */
+    val declared: Long? = null,
+)
 
 /**
  * Why the app reads the union (decision record `changes/incremental-union`, D5–D6) — what it tells the backend, which
