@@ -84,18 +84,27 @@ subprojects {
 //    integration surface delivers every trigger from the operating system's side. It covers no other module's unit
 //    measurement: a thick integration suite cannot stand in for a thin unit suite.
 //
+// `integration(…)` is what `:test:integration` ALONE covers of the module, judged right after the suite by its
+// `integrationCoverage` task; it credits no module. A target left out is `integrationGoal`; a lower one is an
+// EXCEPTION — the module's lowest measurement when it was set, rounded down — which only rises (lowering one needs a
+// reason stated in its PR) and fails the build once the module meets the goal. A measurement that moves between two
+// runs of the same code is a flaky test to fix, never a margin.
+//
 // The block lives here, not in each module's build file: `ModuleSetTest` asserts a `:domain:*` build file names no
 // module (the precondition for the platform-free compile error), and `Zones.kt` reads those files as TEXT, where an
 // edge to the covering module would render backwards. Name LEAF modules: `:domain` is an empty container, and a report
 // filtered to it measures nothing — `:domain:model:koverVerify` once passed at 100 over an empty report that way.
 coverage {
+    integrationGoal(instructions = 95, branches = 85)
     ":domain:model" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
+        integration(instructions = 72, branches = 40)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
     ":domain:ports" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
+        integration(instructions = 87, branches = 85) // no branches: any branch target is met
     }
     ":domain:services" {
         skipped(
@@ -105,6 +114,7 @@ coverage {
         )
         // Beside the JVM adapters runs the encrypted file format's cipher, held to Tink's reference implementation.
         unit(alsoCoveredBy = listOf(":adapter:generic:app", ":adapter:generic:mock", ":test:feature"))
+        integration(instructions = 80, branches = 58)
     }
     ":domain:wire" {
         skipped(
@@ -113,37 +123,50 @@ coverage {
             packages = listOf("app.snapsync.wire.api", "app.snapsync.wire.models"),
         )
         unit()
+        integration(instructions = 77, branches = 71)
     }
     ":domain:feature" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
+        integration(instructions = 90, branches = 72)
     }
     ":domain:domain" {
         unit()
+        integration(instructions = 83, branches = 64)
     }
     ":domain:inbound" {
         unit()
+        integration(instructions = 65, branches = 25)
     }
     ":domain:scheduling" {
         unit()
+        integration(instructions = 92, branches = 73)
     }
     // The process's composition registers its metric reports' entry point; the mocks' suite drives it.
     ":domain:entrypoints" {
         unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
+        // Held to 100/100 as wiring is; its one missed line is `OnMetricReport`'s body, which the suite cannot deliver
+        // until the JVM host has a process-metrics lever. The phase that adds it raises this to 100.
+        integration(instructions = 99, branches = 100)
     }
     ":domain:compose" {
         unit(alsoCoveredBy = listOf(":test:integration"))
+        integration(instructions = 100, branches = 100)
     }
     ":domain:host" {
         unit(alsoCoveredBy = listOf(":test:integration"))
+        integration(instructions = 100, branches = 100)
     }
     ":domain:presentation" {
         unit(alsoCoveredBy = listOf(":ui:screens"))
+        integration(instructions = 86, branches = 75)
     }
     ":app:jvm" {
         unit(alsoCoveredBy = listOf(":test:integration"))
+        integration(instructions = 100, branches = 100)
     }
     ":ui:state" {
         unit()
+        integration(instructions = 87, branches = 42)
     }
     // `:ui:screens`' Compose tests render the real screens, and with them these components.
     ":ui:components" {
@@ -153,6 +176,7 @@ coverage {
             packages = listOf("app.snapsync.ui.components.resources"),
         )
         unit(alsoCoveredBy = listOf(":ui:screens"))
+        integration { skipped("Compose: the suite stays at the intent level; the screens' own tests cover these") }
     }
     ":ui:screens" {
         skipped(
@@ -161,12 +185,15 @@ coverage {
             packages = listOf("app.snapsync.ui.resources"),
         )
         unit()
+        integration { skipped("Compose: the suite stays at the intent level; its own Compose tests cover it") }
     }
     ":adapter:generic:app" {
         unit()
+        integration { skipped("an adapter: the suite runs over mocks, and the port contracts prove adapters") }
     }
     ":adapter:generic:motionphoto" {
         unit()
+        integration { skipped("an adapters' codec: the suite runs over mocks; its own round-trip tests prove it") }
     }
     ":adapter:generic:mock" {
         skipped("test equipment: the mocks are proved against the port contracts, not measured")

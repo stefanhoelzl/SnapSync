@@ -1035,11 +1035,15 @@ claims (`docs/architecture.md`, "Tests verify requirements").
 A test that needs a missing lever or read adds it **to the vocabulary, classified on both hosts**. It
 never reaches past the protocol.
 
-**What it credits.** The suite is instrumented, and its coverage counts toward exactly three modules: the wiring —
-`:domain:compose`, `:domain:host` and `:app:jvm` (`docs/architecture.md`, "Coverage"). The wiring graph is not
-unit-tested by law and is smoke-tested here, so this suite is the test written for it. Everything else it runs —
-model, feature, services, presentation — it credits nothing: those modules reach zero through their own unit tests,
-never through a scenario that happens to pass through them.
+**What it covers, and what judges it.** The suite is instrumented, and plays two parts, both in the root build file's
+`coverage { }` (`docs/architecture.md`, "Coverage"):
+- It also covers the unit measurement of the WIRING — `:domain:compose`, `:domain:host`, `:app:jvm` — and of
+  `:domain:entrypoints`, whose entries name it in `alsoCoveredBy`. The wiring graph is not unit-tested by law and is
+  smoke-tested here, so this suite is the test written for it. Everything else it runs — model, feature, services,
+  presentation — reaches zero through its own unit tests, never through a scenario that happens to pass through it.
+- What it covers of each core module ON ITS OWN is judged by that module's `integration(…)` target, against a goal of
+  95 % instructions and 85 % branches: `integrationCoverage` runs right after the suite and fails when a module falls
+  below its target. It judges the suite, and counts toward no module. Its table: `build/reports/integration-coverage/summary.md`.
 
 ### Journeys: the contracts' safety net
 

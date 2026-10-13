@@ -17,6 +17,9 @@ dependencies {
     compileOnly(libs.android.gradle)
     // compileOnly for the same reason: `snapsync.coverage` configures the ONE Kover plugin the root build loaded.
     compileOnly("org.jetbrains.kotlinx:kover-gradle-plugin:${libs.versions.kover.get()}")
+    // compileOnly for the same reason: the integration measurement reads the suite's binary report through Kover's
+    // report library, which the ONE Kover plugin brings onto the root build's classpath (its runtime dependency).
+    compileOnly("org.jetbrains.kotlinx:kover-features-jvm:${libs.versions.kover.get()}")
     // compileOnly for the same reason: `snapsync.detekt-tiers` registers tasks of the ONE detekt plugin the root
     // loaded.
     compileOnly(libs.detekt.gradle)
