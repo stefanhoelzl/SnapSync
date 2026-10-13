@@ -42,6 +42,7 @@ flowchart LR
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
   test_launch_adapters[":test:launch-adapters"]
+  test_levers[":test:levers"]
   test_no_grant[":test:no-grant"]
   test_partial_grant[":test:partial-grant"]
   test_rig[":test:rig"]
@@ -80,6 +81,7 @@ flowchart LR
   adapter_generic_mock --> domain_services
   adapter_generic_mock --> domain_wire
   adapter_generic_mock --> test_contracts
+  adapter_generic_mock --> test_levers
   adapter_generic_mock --> ui_state
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
@@ -225,6 +227,7 @@ flowchart LR
   test_architecture --> domain_services
   test_architecture --> domain_wire
   test_architecture --> test_contracts
+  test_architecture --> test_levers
   test_architecture --> ui_state
   test_contracts --> adapter_generic_motionphoto
   test_contracts --> domain_domain
@@ -237,6 +240,7 @@ flowchart LR
   test_control --> domain_feature
   test_control --> domain_model
   test_control --> domain_presentation
+  test_control --> test_levers
   test_control --> test_rig
   test_control --> ui_state
   test_edge --> adapter_generic_app
@@ -290,6 +294,7 @@ flowchart LR
   test_rig --> test_contracts
   test_rig --> test_edge
   test_rig --> test_launch_adapters
+  test_rig --> test_levers
   test_rig --> ui_state
   ui_components --> adapter_generic_app
   ui_components --> ui_state

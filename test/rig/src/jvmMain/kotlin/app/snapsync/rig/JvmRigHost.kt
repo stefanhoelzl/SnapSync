@@ -6,7 +6,6 @@ import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
-import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
@@ -132,7 +131,7 @@ class JvmRigHost private constructor(
                     logSinks = listOf(log),
                 )
             }
-            val network = backend.network ?: UploadNetwork { url, headers, _ -> mocks.backend.operator.receive(url, headers) }
+            val network = backend.network ?: mocks.backend.byteRoute
             val rig = JvmRig(
                 app,
                 backend,

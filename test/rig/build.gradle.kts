@@ -79,6 +79,8 @@ kotlin {
             // host the ones its launch-time adapters mocks (`docs/testing.md`, "Launch-time adapters"). Contained with
             // this module: a production build links neither.
             implementation(project(":adapter:generic:mock"))
+            // The typed services the levers are served from (`LeverDispatch.kt`): their interfaces and descriptors.
+            implementation(project(":test:levers"))
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:ports"))

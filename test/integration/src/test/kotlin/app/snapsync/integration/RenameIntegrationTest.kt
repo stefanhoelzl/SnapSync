@@ -3,8 +3,6 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -82,7 +80,7 @@ class RenameIntegrationTest {
         val before = assertNotNull(state().joined).membership
 
         // The nightly sweep deleted the event — every subsequent request 404s.
-        device("backend/sweep", "event" to event)
+        backend.sweep(event)
 
         user("rename", "name" to "Ana's 30th")
         val status = awaitRename { it is RenameState.Failed }
@@ -125,5 +123,5 @@ class RenameIntegrationTest {
 
     /** The name the backend serves for [event]. */
     private suspend fun Rig.backendName(event: String): String? =
-        deviceJson("backend/event", "event" to event)["name"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+        publicBackend.event(event).name
 }

@@ -1,6 +1,8 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.levers.BackendCall
+import app.snapsync.levers.BackendFault
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -474,7 +476,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         }
     }
 
-    private companion object {
+    internal companion object {
         const val OK = 200
         const val CREATED = 201
         const val BAD_REQUEST = 400
@@ -503,7 +505,10 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         /** The device API's mount — `/api/v2` — which the routes are written without. */
         val VERSION_PREFIX = Regex("^/api/v[0-9]+")
 
-        val ROUTES = listOf(
+        /** Every operation the device API declares — what an operator's fault may name. */
+        val OPERATION_IDS: Set<String> by lazy { ROUTES.mapTo(mutableSetOf()) { it.id } }
+
+        private val ROUTES = listOf(
             Route(Routes.Challenge.ID, Routes.Challenge.METHOD, Routes.Challenge.TEMPLATE, Access.OPEN),
             Route(Routes.MintToken.ID, Routes.MintToken.METHOD, Routes.MintToken.TEMPLATE, Access.OPEN),
             Route(Routes.RenewToken.ID, Routes.RenewToken.METHOD, Routes.RenewToken.TEMPLATE, Access.OPEN),
@@ -580,35 +585,14 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
     }
 }
 
-/** A fault an operator injects into the backend's answers ([BackendOperator.fail]). */
-enum class BackendFault {
-    /** `502` — a store or upstream failure. */
-    SERVER_ERROR,
-
-    /** `503 maintenance` with a `Retry-After` — a deploy's migration window. */
-    MAINTENANCE,
-
-    /** No answer at all: the request never reached the backend. */
-    UNREACHABLE,
-
-    /** A `200` whose body is no JSON — an answer outside the contract. */
-    MALFORMED,
-
-    /** `410 closed` — an event that ended for good, as a backend that still closed events answered every write. */
-    ENDED_FOR_GOOD,
-
-    /** `409 closed` — an event closed before events stopped closing, answering a member's changed asset set. */
-    CLOSED,
-    ;
-
-    internal fun answer(): HttpResult = when (this) {
-        SERVER_ERROR -> HttpResult.Response(502, TEXT, "upstream error")
-        MAINTENANCE -> HttpResult.Response(503, TEXT + ("Retry-After" to "60"), "maintenance")
-        UNREACHABLE -> HttpResult.Unreachable("injected: the backend is unreachable")
-        MALFORMED -> HttpResult.Response(200, JSON, "<html>not the device API</html>")
-        ENDED_FOR_GOOD -> HttpResult.Response(410, JSON, CLOSED_BODY)
-        CLOSED -> HttpResult.Response(409, JSON, CLOSED_BODY)
-    }
+/** What the backend answers in place of a route an operator made [BackendFault] fail ([BackendOperator.fail]). */
+internal fun BackendFault.answer(): HttpResult = when (this) {
+    BackendFault.SERVER_ERROR -> HttpResult.Response(502, TEXT, "upstream error")
+    BackendFault.MAINTENANCE -> HttpResult.Response(503, TEXT + ("Retry-After" to "60"), "maintenance")
+    BackendFault.UNREACHABLE -> HttpResult.Unreachable("injected: the backend is unreachable")
+    BackendFault.MALFORMED -> HttpResult.Response(200, JSON, "<html>not the device API</html>")
+    BackendFault.ENDED_FOR_GOOD -> HttpResult.Response(410, JSON, CLOSED_BODY)
+    BackendFault.CLOSED -> HttpResult.Response(409, JSON, CLOSED_BODY)
 }
 
 private val TEXT = mapOf("Content-Type" to "text/plain; charset=UTF-8")

@@ -163,7 +163,8 @@ module.** The one exception is a source set that a build script adds only under 
 |---|---|
 | `:test:contracts` | the contract mechanism and every port contract (section 4). The only module whose **main** code depends on `kotlin-test`. Links into the app only under the rig property. |
 | `:test:rig` | the control channel: one HTTP protocol served by an iOS app host and a JVM host (section 6). The only module allowed `ktor-server-*`. |
-| `:test:control` | the typed JVM client of that protocol (`RigClient`), plus the JVM host's own tests. |
+| `:test:control` | the typed JVM client of that protocol (`RigClient`, and `levers(…)` for the typed services), plus the JVM host's own tests. |
+| `:test:levers` | the operator faces' typed interfaces and their value types (section 6, "Typed services"). The mocks implement them and a test calls them; neither sees the other. The only module the kotlinx-rpc compiler plugin runs on. Links into the app only through the mocks and the rig, so only under the rig property. |
 | `:test:integration` | the seam → UI-state integration suite, driven only over the protocol (section 7). Also the `journeys` source set. |
 | `:test:edge` | `LiveEdge`: the real `api/` as a local Deno process, one per test JVM. Used by the backend contracts' Live bindings and the rig's JVM host's second backend. |
 | `:test:architecture` | JVM guards over the repository's text. What each guard checks: `docs/architecture.md`. |
@@ -815,7 +816,8 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
 - The operator levers are ONE table (`MockLevers.kt`), each naming what it needs: a mocked system, the backend mock's
   operator, a reachable backend or a changeable build version. A host honours a lever exactly when its needs are met
   — the JVM host all of them (the backend mock's operator aside over the real `api/`), the app host those over the
-  systems its adapter choice mocks — and refuses the rest naming the real system.
+  systems its adapter choice mocks — and refuses the rest naming the real system. The faces that have become typed
+  services (below) are not in it: their verbs are derived, and the table is what is left to migrate.
 - `POST /device/reset` voids this device's durable sync state without telling any backend, through the
   development controls' reset (`DevControls.onReset`). Use it
   **whenever a build crosses backends** (for example device ↔ local rig). Otherwise leftover `COMPLETED`
@@ -828,6 +830,56 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
   tests run over **both** backends and prove the protocol is faithful to the application: routes, state
   encoding, the vocabulary advertisement, refusals. The only untested code in the channel is the iOS
   gallery seeder and wiper, for the reason its build file gives.
+
+### Typed services
+
+A mock's operator face becomes a **typed service**: a Kotlin interface in `:test:levers`, annotated `@Rpc`, whose
+companion object names the service once — its route name and what a host must offer before any of its methods is
+honoured (`LeverNeed`: the backend mocked, the backend reachable). The mock's operator implements the interface; a test
+calls the same interface. A method's return type is its reply: `Unit` for a lever, the value for a read. Nothing is
+echoed back. The backend is the first face to move, as two services:
+
+- `backend` (`BackendLevers`) — the backend operator's levers and reads, implemented by `BackendOperator`. It needs the
+  backend mocked, so over the real `api/` every method is refused, with the reason.
+- `public-backend` (`PublicBackendLevers`) — the backend's public surface as another member or the operator's seeding
+  reaches it: the union, the event, a device's objects, a fellow member joining, leaving, reporting what it received.
+  It needs only the backend reachable, so it holds against the real `api/` too. Each method names the operator members
+  it stands in for (`@StandsInFor`).
+
+**Every method is a verb**, derived from the descriptor the kotlinx-rpc compiler plugin generates and never listed:
+`/device/<service>/<method-in-kebab>` — `backend/refuse-next-credential`, `public-backend/foreign-device-leave`. The
+rig dispatches each onto the service's implementation through the descriptor's invoker (`LeverDispatch.kt`), and
+`RigVocabulary` lists the verbs from the same source, so `GET /device` classifies them like every other entry and a
+host that cannot meet a service's needs refuses all its methods with a `409`.
+
+- **curl** sends the arguments in the query, each read by its parameter's type: text for a string or an enum (an
+  enum by its serial name: `call=leave`, `reason=device-modified`), `true`/`3` for a boolean or a number, `A,B` for a
+  list. An argument the method does not take, a missing required one, or a value its type does not accept answers
+  `400` naming what was wrong and what is accepted.
+- **The typed client** (`client.levers(BackendLevers)`, `:test:control`) is generated from the same descriptor. It
+  posts the same verb with the arguments as one JSON object in the body, each encoded by its parameter's serializer,
+  and decodes the reply by the return type's. A refusal throws `LeverRefused` with the host's reason. The transport is
+  the readable verb itself — kotlinx-rpc's own wire protocol (kRPC, over a WebSocket) is not used — so a test drives
+  exactly what curl drives, and the app hosts need no WebSocket server.
+- **An omitted argument is `null`.** The descriptor carries the interface's types but not its default values, so a
+  parameter may be omitted only when it is nullable, and the method says what `null` means (`fail`'s `times`: once).
+  An omitted `event` marked `@JoinedEvent` is the event this device is joined to — `400` when it is joined to none —
+  and an omitted `device` marked `@ThisDevice` is this device; the channel resolves both before the call.
+
+**The gate** (`LeverFacesTest`, `:test:architecture`) derives the faces from `MockDevice`'s mocks — each one's
+`operator` — and holds every face that implements a declared service to it: each public member is a method of its
+interface or is named by a public-route method's `@StandsInFor`. Nothing else excuses a member; plumbing between mocks
+(the byte route an OS upload lands on, the pushes the played OS delivers) lives on the mock, not its face. The faces
+not yet migrated sit in a list that may only shrink. The same test holds the curl rule (an omittable parameter is
+nullable) and that every `@Rpc` interface is declared in `LEVER_SERVICES`.
+
+The plugin is experimental and must list the Kotlin version in `gradle/libs.versions.toml` (its versions page): a
+Kotlin bump waits for a kotlinx-rpc release that supports it. It runs on `:test:levers` alone; the descriptor and the
+generated client are its only API the rest of the build uses (`@ExperimentalRpcApi`). On the JVM and Android the
+descriptor is found by NAME — `<interface>$$rpcServiceStub`, read through kotlin-reflect — so `:test:levers` publishes
+R8 rules that keep the stubs and the names of their interfaces. Without the second, the Android rig release crashed at
+start (`Unable to find a service descriptor of the class jv`: R8 had renamed the interface, measured 2026-10-13); the
+`journeys (android)` job runs that release, so a rule that stops holding fails there.
 
 ### Launch-time adapters
 

@@ -2,6 +2,18 @@ package app.snapsync.mock
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.levers.AttestationRefusal
+import app.snapsync.levers.BackendCall
+import app.snapsync.levers.BackendFault
+import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.BackendSwitches
+import app.snapsync.levers.EventState
+import app.snapsync.levers.MembershipRecord
+import app.snapsync.levers.PublishedAsset
+import app.snapsync.levers.PublishedManifest
+import app.snapsync.levers.SentPush
+import app.snapsync.levers.StoredDeviceConfig
+import app.snapsync.levers.UnionFetch
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -66,6 +78,19 @@ class BackendMock internal constructor(internal val state: BackendState) {
     /** The levers and reads — what the backend's operator, and a test, can do to it. */
     val operator: BackendOperator = BackendOperator(state)
 
+    /**
+     * The byte route, as an OS transfer reaches it: `PUT <base>/events/<event>/files/devices/<device>/<asset>/<role>?filename=…`
+     * — or the event-less `<base>/files/devices/<device>/…` an earlier build's job still carries. Answers the HTTP status
+     * the backend would, or stores the object and answers `201`. What a device's upload network delivers to.
+     */
+    val byteRoute: UploadNetwork = UploadNetwork { url, headers, _ -> state.locked { state.receive(url, headers) } }
+
+    /**
+     * Every push the backend has handed the push service, in order — what the played operating system delivers from
+     * ([BackendOperator.pushes] is the operator's read of the same).
+     */
+    fun pushesHandedOver(): List<SentPush> = state.locked { state.pushes.toList() }
+
     companion object {
         /**
          * What an event's `capacity` says on the wire: the real api's placeholder, which limits nothing (decision record
@@ -87,53 +112,136 @@ class DeclaredVersion(value: String?) {
     @Volatile var value: String? = value
 }
 
-/** The backend calls an operator can hold unanswered — each one a screen the app shows only while it waits. */
-enum class BackendCall(val key: String) {
-    /** The event's details, which the join gate loads. */
-    EVENT("event"),
-
-    /** Creating an event. */
-    CREATE("create"),
-
-    /** A device's enrolment in an event. */
-    JOIN("join"),
-
-    /** A device leaving an event. */
-    LEAVE("leave"),
-    ;
-
-    companion object {
-        fun ofKey(key: String?): BackendCall? = entries.firstOrNull { it.key == key }
-    }
-}
-
-/**
- * A push the backend would have sent: the event it announces, and the member and token it was addressed to. [seq] is
- * the union position a wake for a gained photo announces; the close wake carries none (decision record
- * `changes/incremental-union`, D6).
- */
-data class SentPush(val eventId: String, val deviceId: String, val token: String, val seq: Long? = null)
-
-/**
- * One read of an event's union as the backend logged it — the service records who reads an event's photo list: the
- * reading device when its token verified (null otherwise), why it said it read,
- * the position it read from (null for a full read) and to, and how many assets it was given.
- */
-data class UnionFetch(
-    val deviceId: String?,
-    val trigger: String?,
-    val from: Long?,
-    val to: Long,
-    val served: Int,
-)
-
 /**
  * What the backend's operator can do to it and read from it — the levers a real backend has no route for, and the
- * outcomes a test asserts. Nothing here is on the device API.
+ * outcomes a test asserts ([BackendLevers], which the control channel serves). Nothing here is on the device API.
+ *
+ * Its other members are reached through the backend's public surface instead ([PublicBackendLevers] stands in for
+ * each), so a test that uses them holds against the real `api/` too; the harness and the mocks' own tests call them
+ * here. An `event` or `device` the interface lets a caller omit is resolved by the channel before it gets here.
  */
-class BackendOperator internal constructor(private val state: BackendState) {
+class BackendOperator internal constructor(private val state: BackendState) : BackendLevers {
+
+    // ---- levers ----------------------------------------------------------------------------------
+
+    override suspend fun offline(on: Boolean) {
+        state.offline = on
+    }
+
+    override suspend fun failListing(on: Boolean) {
+        state.failDeviceListing = on
+    }
+
+    override suspend fun failUnion(on: Boolean) {
+        state.failUnion = on
+    }
+
+    override suspend fun fallbackBearer(on: Boolean) {
+        state.fallbackBearer = on
+    }
+
+    override suspend fun minAppVersion(minimum: String?) {
+        state.minAppVersion = minimum
+    }
+
+    override suspend fun nextEventId(id: String) {
+        state.nextEventId = id
+    }
+
+    override suspend fun hold(call: BackendCall) {
+        state.locked { state.holds.getOrPut(call, ::OperatorHold) }.hold()
+    }
+
+    override suspend fun release(call: BackendCall) {
+        state.locked { state.holds.remove(call) }?.release()
+    }
+
+    override suspend fun fail(operation: String, fault: BackendFault, times: Int?) {
+        require(operation in OPERATIONS) {
+            "operation must be one of the device API's operationIds (${OPERATIONS.sorted().joinToString(
+                "|",
+            )}), was '$operation'"
+        }
+        val count = times ?: 1
+        require(count > 0) { "times must be positive, was $count" }
+        state.locked { state.faults[operation] = fault to count }
+    }
+
+    override suspend fun sweep(event: String?) {
+        val id = resolved(event)
+        state.locked { state.events.remove(id) }
+    }
+
+    override suspend fun complete(event: String?) {
+        val id = resolved(event)
+        state.locked { state.complete(id) }
+    }
+
+    override suspend fun wipeBytes(device: String?) {
+        val id = resolved(device)
+        state.locked { state.storedFiles.keys.removeAll { it.second == id } }
+    }
+
+    override suspend fun refuseNextCredential() {
+        state.refuseNextCredential = true
+    }
+
+    override suspend fun refuseAttestation(reason: AttestationRefusal?, detail: String?) {
+        state.refuseAttestation = reason?.let { DeviceRefusal.valueOf(it.name) }
+        state.refuseAttestationDetail = detail?.takeIf { reason != null }
+    }
 
     // ---- reads -----------------------------------------------------------------------------------
+
+    override suspend fun switches(): BackendSwitches = state.locked {
+        BackendSwitches(
+            offline = state.offline,
+            failListing = state.failDeviceListing,
+            failUnion = state.failUnion,
+            fallbackBearer = state.fallbackBearer,
+            minAppVersion = state.minAppVersion,
+            refusingAttestation = state.refuseAttestation?.let { AttestationRefusal.valueOf(it.name) },
+            held = BackendCall.entries.filter { it in state.holds },
+        )
+    }
+
+    override suspend fun membership(event: String?, device: String?): MembershipRecord {
+        val (e, d) = resolved(event) to resolved(device)
+        return state.locked {
+            val membership = state.memberships[e to d]
+            MembershipRecord(
+                departed = membership?.departed == true,
+                publishes = state.publishes[e to d] ?: 0,
+                manifest = membership?.let { (it.manifest ?: DeviceManifest(deviceIdOf(d), emptyList())).published() },
+            )
+        }
+    }
+
+    override suspend fun eventState(event: String?): EventState {
+        val id = resolved(event)
+        return state.locked {
+            EventState(
+                unionReads = state.unionReads[id] ?: 0,
+                detailReads = state.eventReads[id] ?: 0,
+                unionFetches = state.fetches[id].orEmpty().toList(),
+                unionPosition = state.position(id),
+                finished = state.finished(id),
+                completed = state.events[id]?.completed == true,
+            )
+        }
+    }
+
+    override suspend fun deviceConfig(device: String?): StoredDeviceConfig {
+        val id = resolved(device)
+        return state.locked {
+            val config = state.deviceConfigs[id]
+            StoredDeviceConfig(config?.token, config?.env, state.deviceConfigWrites[id] ?: 0)
+        }
+    }
+
+    override suspend fun pushes(): List<SentPush> = state.locked { state.pushes.toList() }
+
+    // ---- what the public surface stands in for ([PublicBackendLevers]) -------------------------
 
     /** The object keys stored for [deviceId], in every event. */
     fun objectsOf(deviceId: String): Set<String> = state.locked {
@@ -153,144 +261,6 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** The name the backend serves for [eventId]. */
     fun eventNameOf(eventId: String): String? = state.locked { state.events[eventId]?.name }
 
-    /**
-     * The manifest the backend holds for [deviceId] in [eventId] — an empty one for a member that has published nothing,
-     * as a joined device's membership declares no asset — or null when it holds no membership.
-     */
-    fun manifestOf(eventId: String, deviceId: String): DeviceManifest? =
-        state.locked {
-            state.memberships[eventId to deviceId]?.let { it.manifest ?: DeviceManifest(deviceIdOf(deviceId), emptyList()) }
-        }
-
-    /** How many publishes the backend applied for this membership. */
-    fun publishesOf(eventId: String, deviceId: String): Int = state.locked { state.publishes[eventId to deviceId] ?: 0 }
-
-    /** How many of the devices' reads of each event's union (`GET /events/:id/files`) reached the backend, by event. */
-    val unionReads: Map<String, Int> get() = state.locked { state.unionReads.toMap() }
-
-    /** Every read of [eventId]'s union the backend logged, in order — gone once the event completes. */
-    fun unionFetchesOf(eventId: String): List<UnionFetch> = state.locked { state.fetches[eventId].orEmpty().toList() }
-
-    /** The union position [eventId] stands at: its last gained photo's. */
-    fun unionPositionOf(eventId: String): Long = state.locked { state.position(eventId) }
-
-    /** How many of the devices' reads of each event's details (`GET /events/:id`) reached the backend, by event. */
-    val eventReads: Map<String, Int> get() = state.locked { state.eventReads.toMap() }
-
-    /** Whether [deviceId] has left [eventId]. */
-    fun isDeparted(
-        eventId: String,
-        deviceId: String,
-    ): Boolean = state.locked { state.memberships[eventId to deviceId]?.departed == true }
-
-    /** The push registration [deviceId] stored, or null. */
-    fun deviceConfigOf(deviceId: String): PushEndpoint? = state.locked { state.deviceConfigs[deviceId] }
-
-    /** How many push registrations it stored for [deviceId] — the config is last-write-wins, this count is not. */
-    fun deviceConfigWritesOf(deviceId: String): Int = state.locked { state.deviceConfigWrites[deviceId] ?: 0 }
-
-    /** Every push it would have sent, in order. It delivers none: the operating system's side is played elsewhere. */
-    fun pushesSent(): List<SentPush> = state.locked { state.pushes.toList() }
-
-    // ---- levers ----------------------------------------------------------------------------------
-
-    /** Listing, union, event details, rename, join, publish, leave and bytes answer `502`. */
-    var offline: Boolean by state::offline
-
-    /**
-     * Play the nightly sweep's COMPLETION of [eventId]: its memberships and assets go,
-     * its record stays and answers "completed".
-     */
-    fun complete(eventId: String) = state.locked { state.complete(eventId) }
-
-    /**
-     * Whether [eventId] is FINISHED now: its open-until date has passed, someone joined
-     * it, and every member still in it has shared everything and received everything — what lets the nightly sweep
-     * delete its photos early.
-     */
-    fun isFinished(eventId: String): Boolean = state.locked { state.finished(eventId) }
-
-    /** Whether [eventId] was completed. */
-    fun isCompleted(eventId: String): Boolean = state.locked { state.events[eventId]?.completed == true }
-
-    /** Only the per-device listing answers `502`. */
-    var failDeviceListing: Boolean by state::failDeviceListing
-
-    /** Only the event's union answers `502` — every other route, the join included, answers as ever. */
-    var failUnion: Boolean by state::failUnion
-
-    /** The minimum app version every route demands, or null for a gate that is off. */
-    var minAppVersion: String? by state::minAppVersion
-
-    /**
-     * While set, the backend refuses this phone as not genuine for that reason — a refused phone is
-     * told why: every attestation answers `401 attestation rejected: <reason>`, as v2 does, and every gated
-     * call answers `401`, whatever token it carries — a phone that held a token learns of the refusal by re-attesting.
-     * `null` is the genuine phone.
-     */
-    var refuseAttestation: DeviceRefusal? by state::refuseAttestation
-
-    /** The diagnostic code the refusal names beside its reason — `certificate` — or `null` for none. */
-    var refuseAttestationDetail: String? by state::refuseAttestationDetail
-
-    /**
-     * Whether a request carrying no `Authorization` header is served, as the local dev server's fallback bearer
-     * serves it (`api/src/dev/serve.ts`) — on by default, which the rig and the seeding stand on. Off, it is `401`,
-     * as deployed.
-     */
-    var fallbackBearer: Boolean by state::fallbackBearer
-
-    /** The next token-bearing call to a route that checks its token is answered `401`, once. */
-    fun refuseNextCredential() {
-        state.refuseNextCredential = true
-    }
-
-    /**
-     * The id the next created event is minted with, once — so a screen that renders it (the invite QR) renders the same
-     * every run. `null` mints a random one, as the real backend does.
-     */
-    var nextEventId: String? by state::nextEventId
-
-    /**
-     * The next [times] requests to [operationId] (`Routes.<Op>.ID`) are answered with [fault] before the route runs —
-     * nothing they ask for happens.
-     */
-    fun fail(operationId: String, fault: BackendFault, times: Int = 1) {
-        state.locked { state.faults[operationId] = fault to times }
-    }
-
-    /** Every [call] waits until [release]: the backend that has not answered yet. */
-    fun hold(call: BackendCall) {
-        state.locked { state.holds.getOrPut(call, ::OperatorHold) }.hold()
-    }
-
-    /** Whether [call] is held. */
-    fun isHeld(call: BackendCall): Boolean = state.locked { call in state.holds }
-
-    /** A held [call], and every later one, is answered. */
-    fun release(call: BackendCall) {
-        state.locked { state.holds.remove(call) }?.release()
-    }
-
-    /** The nightly sweep deleting [eventId]: every later read of it is `404`. */
-    fun sweepEvent(eventId: String) {
-        state.locked { state.events.remove(eventId) }
-    }
-
-    /** A storage reset wiping every byte object of [deviceId], in every event. */
-    fun wipeBytes(deviceId: String) {
-        state.locked { state.storedFiles.keys.removeAll { it.second == deviceId } }
-    }
-
-    // ---- the operating system's transfer of bytes ------------------------------------------------
-
-    /**
-     * The byte route, as an OS transfer reaches it: `PUT <base>/events/<event>/files/devices/<device>/<asset>/<role>?filename=…`
-     * — or the event-less `<base>/files/devices/<device>/…` an earlier build's job still carries — with [headers]. Answers
-     * the HTTP status the backend would, or stores the object and answers `201`.
-     */
-    fun receive(url: String, headers: Map<String, String>): Int = state.locked { state.receive(url, headers) }
-
     /** Another member joining [eventId] and publishing [manifest] there — the routes' rules, without the requests. */
     fun seedMember(eventId: String, manifest: DeviceManifest) {
         state.locked {
@@ -309,7 +279,24 @@ class BackendOperator internal constructor(private val state: BackendState) {
             state.deposit(event, deviceId, DeviceFile(assetId, role, filename))
         }
     }
+
+    private companion object {
+        /** The device API's operations — the `operationId`s a fault may name. */
+        val OPERATIONS: Set<String> = BackendRouter.OPERATION_IDS
+    }
 }
+
+/** An omitted event or device, which the control channel names before a call gets here. */
+private fun resolved(id: String?): String = requireNotNull(id) {
+    "no event or device was named: the control channel names the joined event and this device for an omitted one"
+}
+
+/** A held manifest as the operator reads it. */
+private fun DeviceManifest.published() = PublishedManifest(
+    assets = assets.map { a -> PublishedAsset(a.assetId.value, a.resources.map { it.role.wire }) },
+    final = final,
+    version = version,
+)
 
 /**
  * The backend's durable state, as the real `api/` keeps it in its database and byte store. Every [BackendMock.port]

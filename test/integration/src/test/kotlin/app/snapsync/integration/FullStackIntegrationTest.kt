@@ -1,14 +1,13 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.BackendCall
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -313,7 +312,7 @@ class FullStackIntegrationTest {
 
         // Upload completeness is the local ledger, not a storage LIST — backend-offline changes nothing (the read
         // never touches the network).
-        device("backend/offline", "on" to "true")
+        backend.offline(true)
         refresh()
         awaitInSync()
         // The download union read fails offline, without failing the reconcile (it keeps its last state).
@@ -343,10 +342,10 @@ class FullStackIntegrationTest {
         assertTrue(!state().ready.configResolved)
         // ...and the backend outcome lands when the fire-and-forget DELETE does. Leaving is RENAME-ONLY: the
         // device is departed, but the event and its bytes are RETAINED until the nightly sweep reclaims them.
-        eventually(read = { deviceJson("backend/departed", "event" to event) }) {
-            it.getValue("departed").jsonPrimitive.boolean
+        eventually(read = { backend.membership(event).departed }) {
+            it
         }
-        assertTrue(deviceJson("backend/event", "event" to event).getValue("registered").jsonPrimitive.boolean)
+        assertTrue(publicBackend.event(event).registered)
         assertTrue(objects(event = event).isNotEmpty(), "bytes are not collected by a leave")
     }
 
@@ -441,7 +440,7 @@ class FullStackIntegrationTest {
     fun leaving_flips_the_screen_before_the_backend_delete_completes() = rigTest {
         val event = createAndJoin()
         // The backend holds the leave's DELETE open: the backend that has not answered yet.
-        device("backend/hold", "call" to "leave", "on" to "true")
+        backend.hold(BackendCall.LEAVE)
 
         user("leave")
 
@@ -449,14 +448,14 @@ class FullStackIntegrationTest {
         awaitState { it.ui.layer is Layer.CreateEvent }
         assertTrue(!state().ready.configResolved)
         assertTrue(
-            !deviceJson("backend/departed", "event" to event).getValue("departed").jsonPrimitive.boolean,
+            !backend.membership(event).departed,
             "the backend has not answered, and the screen did not wait for it",
         )
 
         // Once the backend answers, the departure lands.
-        device("backend/hold", "call" to "leave", "on" to "false")
-        eventually(read = { deviceJson("backend/departed", "event" to event) }) {
-            it.getValue("departed").jsonPrimitive.boolean
+        backend.release(BackendCall.LEAVE)
+        eventually(read = { backend.membership(event).departed }) {
+            it
         }
         assertIs<Layer.CreateEvent>(state().ui.layer)
     }

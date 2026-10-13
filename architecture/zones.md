@@ -34,6 +34,7 @@ flowchart LR
   subgraph test
     test_contracts[":test:contracts"]
     test_edge[":test:edge"]
+    test_levers[":test:levers"]
   end
   subgraph ui
     ui_components[":ui:components"]
@@ -70,6 +71,7 @@ flowchart LR
   adapter_generic_mock --> domain_services
   adapter_generic_mock --> domain_wire
   adapter_generic_mock --> test_contracts
+  adapter_generic_mock --> test_levers
   adapter_generic_mock --> ui_state
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports

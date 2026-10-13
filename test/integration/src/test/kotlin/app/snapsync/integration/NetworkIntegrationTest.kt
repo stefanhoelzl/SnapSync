@@ -25,7 +25,7 @@ import kotlin.time.Duration.Companion.seconds
 class NetworkIntegrationTest {
 
     private suspend fun Rig.network(access: String, backendReachable: Boolean = access == "online") {
-        device("backend/offline", "on" to (!backendReachable).toString())
+        backend.offline(!backendReachable)
         device("network", "access" to access)
     }
 

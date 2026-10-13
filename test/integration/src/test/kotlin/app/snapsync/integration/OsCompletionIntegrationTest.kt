@@ -204,7 +204,7 @@ class OsCompletionIntegrationTest {
     fun a_push_whose_union_read_fails_still_imports_what_is_staged() = rigTest {
         val event = stagedBacklog()
         device("relaunch", "scene" to "false")
-        device("backend/offline") // the push's union read fails fast
+        backend.offline(true) // the push's union read fails fast
 
         os("app", "onSilentPush", event)
 

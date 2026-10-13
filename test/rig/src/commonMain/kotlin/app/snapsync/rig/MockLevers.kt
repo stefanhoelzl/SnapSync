@@ -3,7 +3,6 @@ package app.snapsync.rig
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
-import app.snapsync.mock.BackendCall
 import app.snapsync.mock.DeviceConditionsText
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
@@ -11,9 +10,7 @@ import app.snapsync.mock.MockedSystem
 import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.AssetRef
 import app.snapsync.model.CrashEvent
-import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.FileArea
 import app.snapsync.model.InviteLinkHints
@@ -21,7 +18,6 @@ import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
@@ -38,7 +34,6 @@ import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.gallery.assetId
 import app.snapsync.services.gallery.assetRefOf
 import app.snapsync.services.gallery.resourcesFrom
-import app.snapsync.services.gallery.role
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
@@ -108,140 +103,12 @@ private fun mocked(system: MockedSystem, command: RigCommand) = Lever(listOf(Nee
 
 /** The whole table, bound to this world. */
 internal fun MockWorld.levers(): Map<String, Lever> {
-    val world = this
-    fun op(body: suspend MockWorld.(Map<String, String>) -> CommandResult) =
-        Lever(listOf(Need.Operator), RigCommand { params, _ -> world.body(params) })
-    return backendReads(::op) + backendLevers(::op) + transferLevers() + libraryLevers() + deviceLevers() + deviceFacts()
+    return serviceLevers() + reporterReads() + versionLevers() + transferLevers() + libraryLevers() + deviceLevers() +
+        deviceFacts()
 }
 
-private fun MockWorld.backendReads(op: (suspend MockWorld.(Map<String, String>) -> CommandResult) -> Lever): Map<String, Lever> = mapOf(
-    "backend/union" to needs(
-        Need.Reach,
-        command = RigCommand { params, _ ->
-            withEvent(params) { event ->
-                val union = reach!!.unionOf(event)
-                CommandResult.ok(
-                    buildJsonObject {
-                        put("event", event)
-                        putJsonArray("assets") {
-                            union.forEach { a ->
-                                add(
-                                    buildJsonObject {
-                                        put("device", a.deviceId.value)
-                                        put("asset", a.assetId.value)
-                                        putJsonArray("roles") { a.resources.forEach { add(JsonPrimitive(it.role)) } }
-                                    },
-                                )
-                            }
-                        }
-                    }.toString(),
-                )
-            }
-        },
-    ),
-    "backend/manifest" to op { params ->
-        withEvent(params) { event ->
-            val who = params["device"] ?: ownDeviceId()
-            CommandResult.ok(manifestJson(event, who, device.backend.operator.manifestOf(event, who)))
-        }
-    },
-    // What the device registered for pushes, as the backend stored it: the token and its environment, and how many
-    // registrations it stored.
-    "backend/device-config" to op { params ->
-        val who = params["device"] ?: ownDeviceId()
-        val config = device.backend.operator.deviceConfigOf(who)
-        CommandResult.ok(
-            buildJsonObject {
-                put("device", who)
-                put("token", config?.token)
-                put("env", config?.env)
-                put("writes", device.backend.operator.deviceConfigWritesOf(who))
-            }.toString(),
-        )
-    },
-    "backend/event" to needs(
-        Need.Reach,
-        command = RigCommand { params, _ ->
-            withEvent(params) { event ->
-                val (registered, name) = reach!!.eventOf(event)
-                val closedAt = reach.closedAtOf(event)
-                CommandResult.ok(
-                    buildJsonObject {
-                        put("event", event)
-                        put("registered", registered)
-                        put("name", name)
-                        put("closedAt", closedAt)
-                    }.toString(),
-                )
-            }
-        },
-    ),
-    "backend/departed" to op { params ->
-        withEvent(params) { event ->
-            val who = params["device"] ?: ownDeviceId()
-            CommandResult.ok(
-                buildJsonObject {
-                    put("event", event)
-                    put("device", who)
-                    put("departed", device.backend.operator.isDeparted(event, who))
-                }
-                    .toString(),
-            )
-        }
-    },
-    "backend/publishes" to op { params ->
-        withEvent(params) { event ->
-            val who = params["device"] ?: ownDeviceId()
-            CommandResult.ok(
-                buildJsonObject {
-                    put("event", event)
-                    put("device", who)
-                    put("applied", device.backend.operator.publishesOf(event, who))
-                }.toString(),
-            )
-        }
-    },
-    "backend/reads" to op { params ->
-        withEvent(params) { event ->
-            val backend = device.backend.operator
-            val (union, details) = (backend.unionReads[event] ?: 0) to (backend.eventReads[event] ?: 0)
-            CommandResult.ok(
-                buildJsonObject {
-                    put("event", event)
-                    put("union", union)
-                    put("event-details", details)
-                }.toString(),
-            )
-        }
-    },
-    "backend/pushes" to op { _ ->
-        CommandResult.ok(
-            buildJsonObject {
-                putJsonArray("pushes") {
-                    device.backend.operator.pushesSent().forEach { p ->
-                        add(
-                            buildJsonObject {
-                                put("event", p.eventId)
-                                put("device", p.deviceId)
-                                put("token", p.token)
-                            },
-                        )
-                    }
-                }
-            }.toString(),
-        )
-    },
-    // What the backend lists for a device in an event — over its public surface. `device` defaults to this one, `event`
-    // to the joined one.
-    "backend/objects" to needs(
-        Need.Reach,
-        command = RigCommand { params, _ ->
-            val who = params["device"] ?: ownDeviceId()
-            withEvent(params) { event ->
-                CommandResult.ok("""{"device":${jsonString(who)},"objects":${jsonList(reach!!.objectsOf(event, who).sorted())}}""")
-            }
-        },
-    ),
+/** The crash reporter's backend: what the diagnostic dumps carried as they left the process. */
+private fun MockWorld.reporterReads(): Map<String, Lever> = mapOf(
     "diagnostics/sent" to mocked(
         MockedSystem.CRASH_REPORTER,
         RigCommand { _, _ ->
@@ -254,168 +121,7 @@ private fun MockWorld.backendReads(op: (suspend MockWorld.(Map<String, String>) 
     ),
 )
 
-private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>) -> CommandResult) -> Lever): Map<String, Lever> = mapOf(
-    "backend/offline" to op { params ->
-        device.backend.operator.offline = flag(params, "on")
-        CommandResult.ok("""{"ok":true}""")
-    },
-    // Without `minimum`, the gate is turned off.
-    "backend/min-app-version" to op { params ->
-        device.backend.operator.minAppVersion = params["minimum"]
-        OK
-    },
-    // The id the next created event is minted with, once — so a screen that renders it renders the same every run.
-    "backend/next-event-id" to op { params ->
-        val id = params["id"]?.takeIf { it.isNotBlank() } ?: return@op CommandResult.badRequest("id is required")
-        device.backend.operator.nextEventId = id
-        CommandResult.ok(buildJsonObject { put("next", id) }.toString())
-    },
-    "backend/sweep" to op { params ->
-        withEvent(params) { event ->
-            device.backend.operator.sweepEvent(event)
-            OK
-        }
-    },
-    // Every `call` (event|create|join|leave) waits until released (`on=false`) — the backend that has not answered yet,
-    // which is the only time the app shows the screen that waits on it.
-    "backend/hold" to op { params ->
-        val call = BackendCall.ofKey(params["call"])
-            ?: return@op CommandResult.badRequest(
-                "call must be one of ${BackendCall.entries.joinToString("|") { it.key }}, was '${params["call"]}'",
-            )
-        val on = flag(params, "on")
-        if (on) device.backend.operator.hold(call) else device.backend.operator.release(call)
-        CommandResult.ok("""{"call":"${call.key}","held":$on}""")
-    },
-    // The sweep's early completion: memberships and photos gone, the record kept.
-    "backend/complete" to op { params ->
-        withEvent(params) { event ->
-            device.backend.operator.complete(event)
-            OK
-        }
-    },
-    // Whether the sweep may delete the event's photos early: its open-until date passed, and everyone still in it has
-    // shared and received everything.
-    "backend/finished" to op { params ->
-        withEvent(params) { event ->
-            CommandResult.ok(
-                buildJsonObject {
-                    put("event", event)
-                    put("finished", device.backend.operator.isFinished(event))
-                }.toString(),
-            )
-        }
-    },
-    "backend/fail-listing" to op { params ->
-        device.backend.operator.failDeviceListing = flag(params, "on")
-        OK
-    },
-    // Only the event's union read fails — what a rejoin meets when the event cannot be read: the join itself still
-    // goes through.
-    "backend/fail-union" to op { params ->
-        device.backend.operator.failUnion = flag(params, "on")
-        OK
-    },
-    // An own photo's bytes land on the backend with NO acknowledgement reaching the app — the upload the OS completed
-    // while the process was gone. Through the backend's public byte route, so on either backend.
-    "backend/deposit" to needs(
-        Need.Reach, Need.Mocked(MockedSystem.LIBRARY),
-        command = RigCommand { params, _ ->
-            val asset = params["asset"] ?: return@RigCommand CommandResult.badRequest("asset is required")
-            landBytesWithoutAck(asset)
-            CommandResult.ok(buildJsonObject { put("landed", asset) }.toString())
-        },
-    ),
-    // The byte partition of a device is gone — an operator's storage wipe — while every record that names it stays.
-    "backend/wipe-bytes" to op { params ->
-        device.backend.operator.wipeBytes(params["device"] ?: ownDeviceId())
-        OK
-    },
-    "backend/refuse-credential" to op { _ ->
-        device.backend.operator.refuseNextCredential()
-        OK
-    },
-    // The backend refuses this phone as not genuine, for `reason` (device-modified|device-unverifiable|app-not-genuine),
-    // until `reason=off` (a refused phone is told why); `detail=certificate` names the
-    // diagnostic code beside the reason, as v2 does for a failed certificate check.
-    "backend/refuse-attestation" to op { params ->
-        val wire = params["reason"]
-        val reason = DeviceRefusal.entries.firstOrNull { it.wireName == wire }
-        if (reason == null && wire != "off") {
-            return@op CommandResult.badRequest(
-                "reason must be one of ${DeviceRefusal.entries.joinToString("|") { it.wireName }}|off, was '$wire'",
-            )
-        }
-        device.backend.operator.refuseAttestation = reason
-        device.backend.operator.refuseAttestationDetail = params["detail"]?.takeIf { reason != null }
-        CommandResult.ok(buildJsonObject { put("refusing", reason?.wireName ?: "off") }.toString())
-    },
-    // A fellow member with complete photos, through the backend's public surface. `event` defaults to the joined
-    // one; `assets` is a comma-separated list of asset ids. `kind=motion-photo` makes each a real Google motion photo
-    // (`PhotoLibrary.motionPhoto`), as an Android member's camera shares it; otherwise each is a placeholder photo.
-    // `final=true` declares the member's share settled, as a device does once the event's range has ended.
-    // `uploading` (a comma-separated subset of `assets`) are declared but their bytes not sent — still uploading on
-    // that member's phone; a later call without them lands them.
-    "foreign-device" to needs(
-        Need.Reach,
-        command = RigCommand { params, _ ->
-            val who = params["device"]
-            val assets = params["assets"]?.split(',')?.filter { it.isNotBlank() }.orEmpty()
-            val event = params["event"] ?: joinedEventId()
-            val motion = when (params["kind"]) {
-                null, "photo" -> false
-                "motion-photo" -> true
-                else -> return@RigCommand CommandResult.badRequest("kind is photo or motion-photo, was '${params["kind"]}'")
-            }
-            // The capturing device's own file name for every asset — what an import names its photo after.
-            val filename = params["filename"] ?: if (motion) "PXL_MOTION.MP.jpg" else null
-            if (who == null || assets.isEmpty()) {
-                CommandResult.badRequest("device and a non-empty comma-separated assets are required")
-            } else {
-                val manifest = assets.map {
-                    when {
-                        motion -> foreignAsset(it, filename!!, contentType = "image/jpeg")
-                        filename != null -> foreignAsset(it, filename)
-                        else -> foreignAsset(it)
-                    }
-                }
-                val final = params["final"]?.toBoolean() ?: false
-                val uploading = params["uploading"]?.split(',')?.filter { it.isNotBlank() }.orEmpty().toSet()
-                val eventId = addForeignDevice(
-                    who,
-                    manifest,
-                    event,
-                    if (motion) PhotoLibrary.motionPhoto else null,
-                    final,
-                    uploading,
-                )
-                CommandResult.ok("""{"device":${jsonString(who)},"eventId":${jsonString(eventId)}}""")
-            }
-        },
-    ),
-    // A fellow member leaving, through the backend's public surface — as any build's leave reaches it.
-    "foreign-device/leave" to needs(
-        Need.Reach,
-        command = RigCommand { params, _ ->
-            val who = params["device"] ?: return@RigCommand CommandResult.badRequest("device is required")
-            withEvent(params) { event ->
-                reach!!.leave(event, who)
-                OK
-            }
-        },
-    ),
-    // A fellow member saying it holds every photo of the others up to where the event's union stands now — what a
-    // current build reports once its downloads are in its library; a build that predates the report never sends it.
-    "foreign-device/received" to needs(
-        Need.Reach,
-        command = RigCommand { params, _ ->
-            val who = params["device"] ?: return@RigCommand CommandResult.badRequest("device is required")
-            withEvent(params) { event ->
-                reach!!.reportReceived(event, who)
-                OK
-            }
-        },
-    ),
+private fun MockWorld.versionLevers(): Map<String, Lever> = mapOf(
     // The marketing version this build declares on every request — so a test can play an old build, or an update.
     "app-version" to needs(
         Need.Version,
@@ -937,53 +643,6 @@ internal fun foreignAsset(
 }
 
 /**
- * A fellow member through the backend's public surface: [device] joins [event] — or an event the backend mints for it —
- * uploads every resource's bytes where the app's uploader addresses them — but [uploading]'s, still on its phone — and
- * publishes its manifest. Returns the event.
- */
-private suspend fun MockWorld.addForeignDevice(
-    who: String,
-    assets: List<DeviceManifestAsset>,
-    event: String?,
-    bytes: ByteArray? = null,
-    final: Boolean = false,
-    uploading: Set<String> = emptySet(),
-): String {
-    val reach = reach!!
-    val eventId = event ?: reach.createEvent(FOREIGN_EVENT_NAME, FOREIGN_EVENT_START)
-    reach.join(eventId, who)
-    assets.filterNot { it.assetId.value in uploading }.forEach { asset ->
-        asset.resources.forEach {
-            if (bytes != null) {
-                reach.upload(
-                    who,
-                    asset.assetId,
-                    it,
-                    bytes,
-                    eventId,
-                )
-            } else {
-                reach.upload(who, asset.assetId, it, eventId = eventId)
-            }
-        }
-    }
-    val device = requireNotNull(DeviceId.parse(who)) { "not a device id: '$who'" }
-    reach.publish(eventId, DeviceManifest(deviceId = device, assets = assets, final = final))
-    return eventId
-}
-
-/** Bytes of an own photo's resources land on the backend, and no acknowledgement reaches the app. */
-private suspend fun MockWorld.landBytesWithoutAck(assetId: String) {
-    val asset = device.library.operator.current().single { it.asset.id == PlatformAssetId(assetId) }
-    val id = asset.asset.id.assetId()
-    for (resource in asset.resources) {
-        val role = resource.kind.role()
-        val key = uploadKey(id, role, resource.originalFilename)
-        reach!!.upload(ownDeviceId(), id, ManifestResource(role, resource.contentType, key, resource.originalFilename))
-    }
-}
-
-/**
  * **An install upgraded from a build that predates per-asset byte release**: a
  * confirmed import of [ref] whose resource rows, with their staged paths, survive, and whose files are still on the
  * staging "disk". The one lever that writes app-private state, deliberately: no path in the current app produces it,
@@ -1010,16 +669,6 @@ private suspend fun MockWorld.seedLegacyStagedBacklog(ref: AssetRef): Set<String
     return paths.toSet()
 }
 
-private suspend fun MockWorld.withEvent(params: Map<String, String>, block: suspend (String) -> CommandResult): CommandResult {
-    val event = params["event"] ?: joinedEventId() ?: return CommandResult.badRequest("no joined event, and no `event` was named")
-    return block(event)
-}
-
-private fun manifestJson(event: String, device: String, manifest: DeviceManifest?): String =
-    """{"event":${JsonPrimitive(
-        event,
-    )},"device":${JsonPrimitive(device)},"manifest":${manifest?.encodeToJson() ?: "null"}}"""
-
 /** A dump as it left the process, read back into its five sections (`model/diagnosticDumpEvent` wrote them). */
 private fun dumpJson(dump: CrashEvent) = buildJsonObject {
     val section = { name: String -> dump.contexts[name].orEmpty() }
@@ -1043,11 +692,8 @@ private val leverJson = Json {
     encodeDefaults = true
     prettyPrint = true
 }
-private val OK = CommandResult.ok("""{"ok":true}""")
 private val AWAIT = 10.seconds
 private val LEGACY_BYTES = "staged".encodeToByteArray()
-private const val FOREIGN_EVENT_NAME = "Anna's Birthday"
-private const val FOREIGN_EVENT_START = "2026-01-01T00:00:00Z"
 
 /** The app host's bulk-seed date: 2001-09-09, before any event can start. */
 private const val BULK_DATE = "2001-09-09T01:46:40Z"

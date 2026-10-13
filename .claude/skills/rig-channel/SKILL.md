@@ -597,13 +597,11 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     Keychain, photo library and backend kept.
 - The **operator levers** (on the app host, only for the systems its adapter choice mocks): `device/jobs` (live jobs, each `<assetId>/<role>` — what its destination names, the one fact the OS keeps), `device/jobs/complete[?job=]` (the "OS"
   finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?job=&error=`, `device/jobs/limit?n=`,
-  `device/backend/objects[?device=&event=]`, `device/backend/offline?on=`, `device/permission?status=`,
+  `device/permission?status=`,
   `device/import/fail-next`, `device/databases/locked?on=`, `device/membership/undeletable?on=`,
   `device/downloads/stage[?status=502][&drained=true][&bytes=motion-photo]` (the OS finishes every in-flight
   download, then optionally reports the session's events drained; `bytes=motion-photo` makes what each brought a real
   Google motion photo — the mocked session otherwise leaves a fixed 16×16 JPEG, whatever was uploaded), `device/album/place?album=&asset=`, `device/album/hold-adds?on=`,
-  `device/foreign-device?device=&assets=a,b[&event=][&filename=][&kind=motion-photo]` (`motion-photo`: each a real Google
-  motion photo, as an Android member shares it),
   `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read),
   `device/encrypt-new-events?on=false` (the next event this device creates is PLAIN — its invite the fragment form;
   a rig build encrypts by default, its invite carrying `#k=` — unlike a shipped one, which creates plain events until
@@ -613,15 +611,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   `device/invite?event=` (JVM host only: the event's whole invite, key included, as its creating device shares it),
   `device/event-key/lose` (JVM host only: the joined event's key gone from the Keychain, the membership kept).
 - The **integration surface's** levers and reads (the same rule on the app host):
-  - backend reads (`[event=]` defaults to the joined one, `[device=]` to this one): `backend/union`, `backend/manifest`,
-    `backend/device-config` (`token`, `env`, `writes`), `backend/event`, `backend/departed`, `backend/publishes`,
-    `backend/pushes`;
-    `diagnostics/sent` (the dumps the reporter received);
-  - backend levers: `backend/min-app-version[?minimum=]`, `backend/sweep`,
-    `backend/hold?call=event|create|join|leave&on=` (the call waits unanswered until `on=false` — the only way to
-    catch a screen the app shows while it waits), `backend/next-event-id?id=` (the next create mints this id, once),
-    `backend/fail-listing?on=`, `backend/fail-union?on=`, `backend/deposit?asset=`,
-    `backend/refuse-credential`, `backend/wipe-bytes[?device=]`;
+  - `diagnostics/sent` (the dumps the reporter received);
+  - the backend: its two **typed services**, below;
   - OS and library: `clock/advance?to=<instant>`, `network?access=online|offline|blocked` (what the OS reports to
     the app; a notice follows after the watch's ~5 s grace, and only while the app is foregrounded — pair `offline`
     with `backend/offline?on=true` to play a network that is really gone), `conditions?<key>=<value>|unsupported|failed:<reason>[&hold=true|false]`
@@ -635,7 +626,42 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `staging/seed-legacy-backlog` (the one lever that writes app-private state: an upgraded install's leftovers).
 - Device facts off the mocked disk and library: `device/staging`, `device/album/contents`.
 - `/contract` refuses on this host (`409`, naming `JVM`): JVM contract bindings run under Gradle.
-- Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception).
+- Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception), and
+  `client.levers(BackendLevers)` / `client.levers(PublicBackendLevers)` for the typed services (a refusal throws
+  `LeverRefused`).
+
+### The backend's typed services
+
+The backend's verbs are **derived from interfaces** in `:test:levers` (`docs/testing.md`, "Typed services"):
+`/device/<service>/<method-in-kebab>`, one per method, listed by `GET /device` like every other verb. Arguments go in
+the query by name — `on=true`, `call=leave`, `reason=device-modified`, `assets=A,B` — and the reply is the method's
+return value as JSON (`{}` for a lever). An argument the method does not take, a missing one, or a value its type does
+not accept answers `400` naming what is accepted. An omitted `event` is the joined one, an omitted `device` this one;
+every other omitted argument is `null` (say `on=true` — it is never implied).
+
+- `backend/…` — the backend mock's operator (refused over the real `api/`, `409` "unavailable on this backend"):
+  - levers: `offline?on=`, `fail-listing?on=`, `fail-union?on=`, `fallback-bearer?on=`, `min-app-version[?minimum=]`
+    (omitted: the gate is off), `next-event-id?id=` (the next create mints this id, once), `hold?call=event|create|join|leave`
+    and `release?call=` (the call waits unanswered until released — the only way to catch a screen the app shows while
+    it waits), `fail?operation=<operationId>&fault=SERVER_ERROR|MAINTENANCE|UNREACHABLE|MALFORMED|ENDED_FOR_GOOD|CLOSED[&times=]`
+    (the next `times` — once by default — requests to that `api/openapi.yaml` operation answer the fault; an operation
+    the API does not declare is a `400`), `sweep[?event=]`, `complete[?event=]`, `wipe-bytes[?device=]`,
+    `refuse-next-credential`, `refuse-attestation[?reason=device-modified|device-unverifiable|app-not-genuine][&detail=]`
+    (no reason: the phone is genuine again);
+  - reads: `is-offline`, `refusing-attestation`, `held?call=`, `manifest[?event=&device=]` (`assets` with their
+    `roles`, `final`, `version`; `null` with no membership), `departed`, `publishes`, `reads` (`union`, `details`),
+    `union-fetches`, `union-position`, `finished`, `completed`, `device-config[?device=]` (`token`, `env`, `writes`),
+    `pushes`.
+- `public-backend/…` — the backend's public surface, so honoured over the real `api/` too: `union[?event=]`,
+  `event[?event=]` (`registered`, `name`, `closedAt`), `objects[?device=&event=]`,
+  `foreign-device?device=&assets=a,b[&event=][&filename=][&kind=motion-photo][&final=true][&uploading=a]` (a fellow
+  member with complete photos — `motion-photo`: each a real Google motion photo, as an Android member shares it;
+  answers the event), `foreign-device-leave?device=[&event=]`, `foreign-device-received?device=[&event=]`.
+
+Renamed from the hand-written verbs: `backend/refuse-credential` → `backend/refuse-next-credential`,
+`backend/hold?…&on=false` → `backend/release?call=`, `backend/objects`/`union`/`event` → `public-backend/…`,
+`foreign-device[/leave|/received]` → `public-backend/foreign-device[-leave|-received]`; `backend/deposit` is gone (an
+own photo's bytes land unacknowledged with `jobs/complete` and no extension invoke).
 - Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line
   contains that string: it matches itself.
 

@@ -216,6 +216,10 @@ class ModuleSetTest {
             // The Motion Photo codec both import adapters share: it withholds the core from them — the format they must
             // agree on lives here, not in `:domain:model`, so an adapter reaches it without linking the core.
             ":adapter:generic:motionphoto",
+            // The operator faces' typed interfaces: it withholds the mocks from the tests, which compile against these and
+            // call them through the control channel, while the mocks implement them (`docs/testing.md`, "Typed
+            // services"). Linked, like the mocks, only into a rig build.
+            ":test:levers",
             ":app:ios", ":app:ios:extension", ":app:android", ":app:desktop",
         )
 

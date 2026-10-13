@@ -34,6 +34,7 @@ module :test:feature
 module :test:harness-driver
 module :test:integration
 module :test:launch-adapters
+module :test:levers
 module :test:no-grant
 module :test:partial-grant
 module :test:rig
@@ -72,6 +73,7 @@ edge :adapter:generic:mock :domain:scheduling
 edge :adapter:generic:mock :domain:services
 edge :adapter:generic:mock :domain:wire
 edge :adapter:generic:mock :test:contracts
+edge :adapter:generic:mock :test:levers
 edge :adapter:generic:mock :ui:state
 edge :adapter:generic:sentry :domain:model
 edge :adapter:generic:sentry :domain:ports
@@ -217,6 +219,7 @@ edge :test:architecture :domain:ports
 edge :test:architecture :domain:services
 edge :test:architecture :domain:wire
 edge :test:architecture :test:contracts
+edge :test:architecture :test:levers
 edge :test:architecture :ui:state
 edge :test:contracts :adapter:generic:motionphoto
 edge :test:contracts :domain:domain
@@ -229,6 +232,7 @@ edge :test:contracts :ui:state
 edge :test:control :domain:feature
 edge :test:control :domain:model
 edge :test:control :domain:presentation
+edge :test:control :test:levers
 edge :test:control :test:rig
 edge :test:control :ui:state
 edge :test:edge :adapter:generic:app
@@ -282,6 +286,7 @@ edge :test:rig :domain:wire
 edge :test:rig :test:contracts
 edge :test:rig :test:edge
 edge :test:rig :test:launch-adapters
+edge :test:rig :test:levers
 edge :test:rig :ui:state
 edge :ui:components :adapter:generic:app
 edge :ui:components :ui:state

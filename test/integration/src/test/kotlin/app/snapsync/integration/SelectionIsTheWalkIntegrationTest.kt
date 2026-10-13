@@ -38,7 +38,7 @@ class SelectionIsTheWalkIntegrationTest {
         assertEquals(all.map(::primaryJob).toSet(), jobs().live.toSet(), "all four in flight")
 
         // The network returns: every object lands, and no acknowledgement ever reaches the app.
-        for (id in all) device("backend/deposit", "asset" to id)
+        device("jobs/complete") // the OS finishes all four jobs; the extension is never invoked
 
         // Access narrows to two of the four, and the selection is read. Under a partial grant the extension withholds,
         // so the app's uploader is the one that runs: its selection change walks the read selection.

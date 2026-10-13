@@ -1,8 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -49,5 +47,5 @@ class IncrementalUnionIntegrationTest {
     }
 
     private suspend fun Rig.unionReads(event: String): Int =
-        deviceJson("backend/reads", "event" to event).getValue("union").jsonPrimitive.int
+        backend.eventState(event).unionReads
 }

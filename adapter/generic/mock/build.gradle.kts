@@ -52,6 +52,8 @@ kotlin {
             implementation(project(":domain:wire"))
             // The screen's vocabulary the screen mock is a `Ui` port over.
             api(project(":ui:state"))
+            // The operator faces' typed interfaces, which the mocks implement (`docs/testing.md`, "Typed services").
+            api(project(":test:levers"))
             api(libs.coroutines.core)
             // The Clock double answers a zone (`TimeFactories.kt`).
             implementation(libs.kotlinx.datetime)

@@ -62,7 +62,7 @@ class MockConcurrencyTest {
                 },
                 read = {
                     backend.operator.unionOf(event)
-                    backend.operator.eventReads
+                    runBlocking { backend.operator.eventState(event) }
                     MockState.encode(device, MockedSystem.BACKEND)
                 },
             ),

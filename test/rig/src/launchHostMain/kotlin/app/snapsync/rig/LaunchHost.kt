@@ -7,7 +7,6 @@ import app.snapsync.launchadapters.AdapterParse
 import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
@@ -57,7 +56,7 @@ internal fun launchWorld(
         base = mockBase,
         name = "mock",
         transport = device.backend.port(device.declaredVersion),
-        network = UploadNetwork { url, headers, _ -> device.backend.operator.receive(url, headers) },
+        network = device.backend.byteRoute,
         declared = device.declaredVersion,
     ).takeIf { MockedSystem.BACKEND in mocked },
     reachRefusal = realBackend,

@@ -58,6 +58,8 @@ dependencies {
     testImplementation(project(":domain:ports"))
     testImplementation(project(":domain:services"))
     testImplementation(project(":adapter:generic:mock"))
+    // LeverFacesTest holds every migrated operator face to its typed interface, through the interfaces' descriptors.
+    testImplementation(project(":test:levers"))
     // GatedPathPinTest drives the client's REAL ungated-path predicate against the backend's closed list.
     testImplementation(project(":adapter:generic:app"))
     testImplementation(libs.coroutines.test)

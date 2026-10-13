@@ -2,7 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import kotlinx.coroutines.delay
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,8 +30,8 @@ class PushIntegrationTest {
 
         val pushes = pushesSent()
         assertTrue(pushes.isNotEmpty(), "the completed foreign photo woke the registered member")
-        val own = deviceJson("backend/device-config").getValue("device").jsonPrimitive.content // this device
-        assertTrue(pushes.all { (e, d, t) -> e == event && d == own && t == "DEADBEEF" })
+        // Only this device registered the token, and the foreign member that woke it is never pushed itself.
+        assertTrue(pushes.all { (e, d, t) -> e == event && d != "DEV-F" && t == "DEADBEEF" })
     }
 
     @Test
@@ -83,7 +82,7 @@ class PushIntegrationTest {
     @Test
     fun a_rejected_credential_is_recovered_and_the_registration_lands() = rigTest {
         createAndJoin()
-        device("backend/refuse-credential")
+        backend.refuseNextCredential()
 
         os("app", "onPushToken", "TOKEN1")
 

@@ -3,7 +3,10 @@ package app.snapsync.integration
 import app.snapsync.control.Reply
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
+import app.snapsync.control.levers
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigState
@@ -48,6 +51,12 @@ fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {
  * pushes sent). Never the ledger: it is the app's own bookkeeping, and the protocol no longer carries it.
  */
 class Rig(val client: RigClient) {
+    /** The backend operator's levers and reads — the backend mock's, refused where the backend is real. */
+    val backend: BackendLevers = client.levers(BackendLevers)
+
+    /** The backend through its public surface, as another member reaches it — on either backend. */
+    val publicBackend: PublicBackendLevers = client.levers(PublicBackendLevers)
+
     suspend fun state(): RigState = client.state()
 
     suspend fun awaitState(timeout: Duration = 10.seconds, until: (RigState) -> Boolean): RigState =

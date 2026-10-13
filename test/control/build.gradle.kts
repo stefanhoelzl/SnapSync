@@ -26,6 +26,8 @@ kotlin {
 dependencies {
     // The wire types (and, for the tests, the JVM host they start).
     api(project(":test:rig"))
+    // The typed services (`LeverClient.kt`): what a test calls instead of a string verb.
+    api(project(":test:levers"))
     // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
     api(project(":domain:model"))
     api(project(":ui:state"))

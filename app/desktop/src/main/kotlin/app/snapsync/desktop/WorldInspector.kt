@@ -315,7 +315,9 @@ private fun LifeLevers(controller: WorldInspectorController, joinedEventId: Stri
         controller.lever("clock → $AFTER_PAST_END") { clock.operator.now = Instant.parse(AFTER_PAST_END) }
     }) { Text("Clock: after the range") }
     OutlinedButton(enabled = joinedEventId != null, onClick = {
-        controller.lever("sweep: $joinedEventId's photos deleted") { joinedEventId?.let(backend.operator::complete) }
+        controller.lever(
+            "sweep: $joinedEventId's photos deleted",
+        ) { joinedEventId?.let { backend.operator.complete(it) } }
     }) { Text("Sweep: delete photos") }
 }
 

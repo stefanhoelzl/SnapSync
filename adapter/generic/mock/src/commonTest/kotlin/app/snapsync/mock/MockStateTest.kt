@@ -1,6 +1,9 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.levers.AttestationRefusal
+import app.snapsync.levers.SentPush
+import app.snapsync.levers.StoredDeviceConfig
 import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
@@ -8,7 +11,6 @@ import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
 import app.snapsync.model.FileArea
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -88,22 +90,26 @@ class MockStateTest {
         assertEquals("Party", copy.backend.operator.eventNameOf(event))
         assertTrue(device.backend.operator.objectsOf(DEVICE).isNotEmpty())
         assertEquals(device.backend.operator.objectsOf(DEVICE), copy.backend.operator.objectsOf(DEVICE))
-        assertEquals(1, copy.backend.operator.publishesOf(event, DEVICE))
-        assertEquals(PushEndpoint("apns", "tok", "sandbox"), copy.backend.operator.deviceConfigOf(DEVICE))
+        assertEquals(1, copy.backend.operator.membership(event, DEVICE).publishes)
+        assertEquals(StoredDeviceConfig("tok", "sandbox", writes = 1), copy.backend.operator.deviceConfig(DEVICE))
         // The wake for the gained photo names the union position it announced, and the copy keeps it.
-        val position = device.backend.operator.unionPositionOf(event)
+        val position = device.backend.operator.eventState(event).unionPosition
         assertTrue(position > 0)
-        assertEquals(listOf(SentPush(event, OTHER, "other-token", seq = position)), copy.backend.operator.pushesSent())
-        assertEquals(position, copy.backend.operator.unionPositionOf(event), "and so does the union's position")
+        assertEquals(listOf(SentPush(event, OTHER, "other-token", seq = position)), copy.backend.operator.pushes())
+        assertEquals(
+            position,
+            copy.backend.operator.eventState(event).unionPosition,
+            "and so does the union's position",
+        )
         assertIs<GetEventReply.Found>(Wire(copy.backend.port()).send(Routes.GetEvent.request(event)))
     }
 
     @Test
     fun a_refused_phone_stays_refused_across_a_relaunch_and_is_told_why() = runTest {
         val device = MockDevice(ownDeviceId = DEVICE, osDrivenUpload = true)
-        device.backend.operator.refuseAttestation = app.snapsync.model.DeviceRefusal.DEVICE_MODIFIED
+        device.backend.operator.refuseAttestation(AttestationRefusal.DEVICE_MODIFIED)
         val copy = copyOf(device)
-        assertEquals(app.snapsync.model.DeviceRefusal.DEVICE_MODIFIED, copy.backend.operator.refuseAttestation)
+        assertEquals(AttestationRefusal.DEVICE_MODIFIED, copy.backend.operator.switches().refusingAttestation)
 
         val backend = Wire(copy.backend.port())
         val challenge = assertIs<ChallengeReply.Issued>(backend.send(Routes.Challenge.request())).challenge.challenge
@@ -117,7 +123,7 @@ class MockStateTest {
         val create = Routes.CreateEvent.request(EventCreate("Party", "2026-06-01T00:00:00Z"))
         assertEquals(Unauthorized, backend.send(create))
 
-        copy.backend.operator.refuseAttestation = null
+        copy.backend.operator.refuseAttestation(null)
         assertIs<CreateEventReply.Created>(backend.send(create))
     }
 
@@ -183,7 +189,7 @@ class MockStateTest {
             app.snapsync.model.ResourceRole.PRIMARY,
             "A1-primary.jpg",
         )
-        device.backend.operator.minAppVersion = "0.5"
+        device.backend.operator.minAppVersion("0.5")
 
         device.library.operator.add(LibraryAssets.photo("A1"))
         device.library.operator.add(LibraryAssets.screenshot("S1"))

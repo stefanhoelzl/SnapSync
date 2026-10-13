@@ -1,7 +1,5 @@
 package app.snapsync.integration
 
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -89,10 +87,10 @@ class EventChecksIntegrationTest {
     }
 
     private suspend fun Rig.unionReads(event: String): Int =
-        deviceJson("backend/reads", "event" to event).getValue("union").jsonPrimitive.int
+        backend.eventState(event).unionReads
 
     private suspend fun Rig.eventReads(event: String): Int =
-        deviceJson("backend/reads", "event" to event).getValue("event-details").jsonPrimitive.int
+        backend.eventState(event).detailReads
 
     private companion object {
         const val T0 = "2026-06-10T12:00:00Z"

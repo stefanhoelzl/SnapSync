@@ -3,6 +3,8 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.levers.SentPush
+import app.snapsync.levers.UnionFetch
 import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel

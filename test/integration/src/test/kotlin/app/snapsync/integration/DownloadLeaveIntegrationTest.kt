@@ -2,8 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.ui.state.Layer
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -81,11 +79,11 @@ class DownloadLeaveIntegrationTest {
         leave()
 
         // The backend leave is sent after the local teardown, without the screen waiting for it.
-        eventually(read = { deviceJson("backend/departed", "event" to event) }) { departed ->
-            departed.getValue("departed").jsonPrimitive.boolean
+        eventually(read = { backend.membership(event).departed }) { departed ->
+            departed
         }
         assertTrue(
-            deviceJson("backend/event", "event" to event).getValue("registered").jsonPrimitive.boolean,
+            publicBackend.event(event).registered,
             "the event lives on",
         )
         assertTrue(primaryKey("A") in objects(event = event), "its bytes are kept")

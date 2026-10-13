@@ -1,7 +1,5 @@
 package app.snapsync.integration
 
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -27,5 +25,5 @@ class SwitchAfterFailedLeaveIntegrationTest {
     }
 
     private suspend fun Rig.departed(event: String): Boolean =
-        deviceJson("backend/departed", "event" to event).getValue("departed").jsonPrimitive.boolean
+        backend.membership(event).departed
 }
