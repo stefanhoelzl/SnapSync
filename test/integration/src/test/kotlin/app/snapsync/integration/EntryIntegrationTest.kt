@@ -8,6 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
+import app.snapsync.control.behaviour.behaviour
 
 /**
  * The app's entry points, as the operating system delivers them (`docs/architecture.md`, "Events arrive through
@@ -26,10 +27,10 @@ class EntryIntegrationTest {
 
     @Test
     @Verifies(spec = "invite-link", requirement = "An invite opens the app on its join screen")
-    fun a_link_opens_the_join_gate() = rigTest {
-        val event = registerEvent()
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
+    fun a_link_opens_the_join_gate() = behaviour {
+        val (event, link) = given { registeredEvent().let { it to inviteFor(it) } }
+        whenever { openLink(link) }
+        then { screen<Layer.JoiningEvent> { it.eventId == event } }
     }
 
     @Test

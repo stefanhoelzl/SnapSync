@@ -210,6 +210,9 @@ class LaneLoop(
         while (!closed) {
             take(lane)?.let { return Next.Run(it) }
             settledNow()?.let { return Next.Report(it) }
+            // Finding the loop quiet resumes whoever awaited it, which may queue work on this very lane: look again
+            // before sleeping, or this thread sleeps on its own signal.
+            take(lane)?.let { return Next.Run(it) }
             await()
         }
         return null

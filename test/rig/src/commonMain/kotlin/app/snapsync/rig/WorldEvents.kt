@@ -15,23 +15,24 @@ import kotlin.concurrent.Volatile
 class WorldEvents {
     private val history = MutableStateFlow<List<WorldEvent>>(emptyList())
 
-    /** The tag the next act carries, set by its caller just before it acts. */
-    @Volatile private var nextTag: String? = null
+    /** The tag every act carries until it is changed, set by its caller just before it acts. */
+    @Volatile private var tag: String? = null
 
     /** Appends [event]. */
     fun tell(event: WorldEvent) {
         history.update { it + event }
     }
 
-    /** Marks the next act with [tag]. */
-    fun tagNextAct(tag: String) {
-        nextTag = tag
+    /** Marks every act from now on with [tag], or none. */
+    fun tagActs(tag: String?) {
+        this.tag = tag
     }
+
+    /** How many acts marked with [tag] were announced. */
+    fun actsTagged(tag: String): Int = history.value.count { it is WorldEvent.Acted && it.tag == tag }
 
     /** Announces an act named [name], carrying the tag its caller set, if any. */
     fun acted(name: String) {
-        val tag = nextTag
-        nextTag = null
         tell(WorldEvent.Acted(name, tag))
     }
 

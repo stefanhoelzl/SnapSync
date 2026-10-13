@@ -7,6 +7,8 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 
 /**
  * The screens the app shows only while it waits (`docs/testing.md`, "Every reviewed state is reachable"): each is
@@ -17,18 +19,22 @@ class HeldScreenIntegrationTest {
 
     @Test
     @Verifies(spec = "join-event", requirement = "The join screen verifies the event before offering to join")
-    fun a_held_details_load_keeps_the_join_gate_loading_until_released() = rigTest {
-        val event = registerEvent()
-        hold("event")
-
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.Loading }
-        neverWithin(what = "the gate left Loading while the details were held") {
-            (it.ui.layer as? Layer.JoiningEvent)?.phase != JoinPhase.Loading
+    fun a_held_details_load_keeps_the_join_gate_loading_until_released() = behaviour {
+        val link = given {
+            val link = inviteFor(registeredEvent())
+            step("the event's details held", act = { backend.hold(BackendCall.EVENT) }, until = {})
+            link
         }
 
-        release("event")
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
+        whenever { openLink(link) }
+        then {
+            screen<Layer.JoiningEvent> { it.phase == JoinPhase.Loading }
+            event<WorldEvent.BackendHeld> { it.call == BackendCall.EVENT }
+            neverScreen<Layer.JoiningEvent> { it.phase != JoinPhase.Loading }
+        }
+
+        whenever { backend.release(BackendCall.EVENT) }
+        then { screen<Layer.JoiningEvent> { it.phase is JoinPhase.Detailed } }
     }
 
     @Test

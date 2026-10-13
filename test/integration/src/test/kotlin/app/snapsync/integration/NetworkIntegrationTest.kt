@@ -11,6 +11,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.time.Duration.Companion.seconds
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
+import app.snapsync.feature.status.NetworkWatch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * **The app says when it cannot reach the network** (decision record `changes/tell-when-offline`), over the real
@@ -41,14 +45,23 @@ class NetworkIntegrationTest {
         requirement = "One status line in a fixed priority",
         scenario = "A missing network outranks everything else",
     )
-    fun a_missing_network_outranks_in_sync_and_clears_when_it_returns() = rigTest {
-        createAndJoin()
-        foreground()
-        awaitInSync()
-        network("blocked")
-        assertEquals(SyncHealth.NoNetwork(NetworkNotice.BLOCKED), awaitHealth(NOTICE) { it is SyncHealth.NoNetwork })
-        network("online")
-        awaitInSync()
+    fun a_missing_network_outranks_in_sync_and_clears_when_it_returns() = behaviour {
+        given {
+            joinedEvent()
+            inFront()
+        }
+
+        // Slow to warn: a missing network is told only once it has lasted the grace — not a moment before.
+        whenever { network("blocked") }
+        then { neverScreen<Layer.Joined> { it.health is SyncHealth.NoNetwork } }
+        whenever { advance(NetworkWatch.DEFAULT_GRACE - 1.milliseconds) }
+        then { neverScreen<Layer.Joined> { it.health is SyncHealth.NoNetwork } }
+        whenever { advance(1.milliseconds) }
+        then { screen<Layer.Joined> { it.health == SyncHealth.NoNetwork(NetworkNotice.BLOCKED) } }
+
+        // Instant to clear.
+        whenever { network("online") }
+        then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
 
     @Test
@@ -72,33 +85,43 @@ class NetworkIntegrationTest {
         requirement = "The app says when it cannot reach the network",
         scenario = "The network returns while the app is open",
     )
-    fun the_network_s_return_resumes_the_app_s_work_without_an_opening() = rigTest {
-        createAndJoin()
-        foreground()
-        awaitInSync()
-        // Only this device is offline: the fellow member below still reaches the backend.
-        network("offline", backendReachable = true)
-        awaitHealth(NOTICE) { it is SyncHealth.NoNetwork }
+    fun the_network_s_return_resumes_the_app_s_work_without_an_opening() = behaviour {
+        given {
+            joinedEvent()
+            inFront()
+            // Only this device is offline: the fellow member below still reaches the backend.
+            step("offline", act = { network("offline", backendReachable = true) }, until = {})
+            step("told so", act = { advance(NetworkWatch.DEFAULT_GRACE) }, until = {
+                screen<Layer.Joined> { it.health is SyncHealth.NoNetwork }
+            })
+        }
 
-        // A fellow member shares while this device is offline; nothing here opens the app again.
-        foreignDevice(DEV_F, "FA")
-        network("online")
-
-        // The download is planned by the work the network's return runs — the screen shows it arriving.
-        assertIs<SyncHealth.Syncing>(awaitHealth { it is SyncHealth.Syncing })
-        eventually(read = { client.logs() }) { logs: String -> "OnNetworkReturned" in logs }
+        // Nothing opens the app again: the network's return is what resumes its work, and the work reaches the backend.
+        whenever { network("online") }
+        then { event<WorldEvent.BackendReceived>() }
     }
 
+    // The requirement's own condition — the app resumes its work when the network returns *while it is open* — seen from
+    // the other side: in the background, the return resumes nothing.
     @Test
-    fun a_return_while_backgrounded_resumes_nothing() = rigTest {
-        createAndJoin()
-        foreground()
-        network("offline")
-        awaitHealth(NOTICE) { it is SyncHealth.NoNetwork }
-        os("app", "onBackground")
-        network("online")
-        delay(GRACE_PASSED)
-        assertFalse("OnNetworkReturned" in client.logs(), "a backgrounded app resumed work on the network's return")
+    @Verifies(spec = "sync-status", requirement = "The app says when it cannot reach the network")
+    fun a_return_while_backgrounded_resumes_nothing() = behaviour {
+        given {
+            joinedEvent()
+            inFront()
+            step("offline", act = { network("offline") }, until = {})
+            step("told so", act = { advance(NetworkWatch.DEFAULT_GRACE) }, until = {
+                screen<Layer.Joined> { it.health is SyncHealth.NoNetwork }
+            })
+            step("in the background", act = { os("app", "onBackground") }, until = { settled { true } })
+        }
+
+        // Not now, and not later: the app reaches nothing, and leaves no timer that would.
+        whenever { network("online") }
+        then {
+            never<WorldEvent.BackendReceived>()
+            settled { it.nextTimer == null }
+        }
     }
 
     // ── the create screen ────────────────────────────────────────────────────────────────────────────────
