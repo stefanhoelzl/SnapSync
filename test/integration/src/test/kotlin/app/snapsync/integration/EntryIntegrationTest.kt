@@ -182,6 +182,7 @@ class EntryIntegrationTest {
         createAndJoin()
         foreignDevice("DEV-F", "FQ")
         reconcile()
+        awaitDownloadQueued()
         device("import/suspend-next")
         stage(wait = false) // the staging requests the tail, whose import parks
         device("import/await-parked")

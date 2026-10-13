@@ -128,3 +128,11 @@ const val DOWNLOAD_SESSION = "app.snapsync.download.session"
 
 /** Wait until the operating system's record satisfies [until]; answers it. */
 suspend fun Rig.awaitOs(until: (OsRecord) -> Boolean): OsRecord = eventually(read = { osRecord() }, until = until)
+
+/**
+ * Wait until a download the reconcile started is in flight. [foreground] can return before the entry has even taken its
+ * hold, so a test that stages what [reconcile] queued waits for the queue first — or it stages nothing.
+ */
+suspend fun Rig.awaitDownloadQueued() {
+    awaitOs { it.downloadsInFlight > 0 }
+}

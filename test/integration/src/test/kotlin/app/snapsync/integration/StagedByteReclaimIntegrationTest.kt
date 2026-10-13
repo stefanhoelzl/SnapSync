@@ -60,6 +60,7 @@ class StagedByteReclaimIntegrationTest {
         foreignDevice("DEV-F", "FR")
         device("import/suspend-next")
         reconcile()
+        awaitDownloadQueued()
         stage(wait = false)
         device("import/await-parked")
         val partial = stagedFiles()
