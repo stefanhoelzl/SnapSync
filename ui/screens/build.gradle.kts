@@ -23,6 +23,9 @@ kotlin {
             // One locale for every run (`docs/architecture.md`, "Localization"): the strings resolve to the base
             // language and a date reads as en-GB writes it, whatever machine runs the suite.
             jvmArgs("-Duser.language=en", "-Duser.country=GB")
+            // Two JVMs: the suite's time sits evenly across a few screen classes, so a second fork halves it while
+            // each fork pays Compose's start once (75–97 s in one, 56–59 s in two, 2026-10-13).
+            maxParallelForks = 2
         }
     }
     sourceSets {
