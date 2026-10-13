@@ -682,8 +682,9 @@ jobs:
       # The simulator, already past its first boot: the image's iPhone 17 (`scripts/lib/sim.sh`), its device directory
       # cached as `scripts/sim-settle` leaves it — booted, the unneeded daemons disabled, Photos' library created, shut
       # down clean, no app and no photo. A first boot on the runner otherwise spent ~4.5 min at a load of 100-480
-      # booting and installing (run 38393803729). Keyed on the image version, the device and the settle scripts. On a
-      # miss the device is settled and saved on main only; anywhere else the image's own directory is put back.
+      # booting and installing (run 38393803729); restored, boot and install took 2.7 min and the library's migration 4 s
+      # (run 38402060923). Keyed on the image version, the device and the settle scripts. On a miss the device is
+      # settled (~12 min) and saved on main only; anywhere else the image's own directory is put back.
       - name: Find the image's simulator
         id: sim
         if: matrix.platform == 'ios'
@@ -706,7 +707,7 @@ jobs:
         env:
           UDID: ${{ steps.sim.outputs.udid }}
           HIT: ${{ steps.sim-restore.outputs.cache-hit }}
-          SETTLE: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci-build-times' }}
+          SETTLE: ${{ github.ref == 'refs/heads/main' }}
         run: |
           D="$HOME/Library/Developer/CoreSimulator/Devices/$UDID"
           if [ "$HIT" = true ]; then
@@ -723,6 +724,17 @@ jobs:
         with:
           path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
           key: ${{ steps.sim-restore.outputs.cache-primary-key }}
+      # One entry is ~0.9 GB of a full 10 GB budget: drop the ones a new image or a changed settle superseded.
+      - name: Reclaim superseded simulator entries
+        if: steps.sim-settle.outputs.save == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ steps.sim-restore.outputs.cache-primary-key }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=sim-settled-" \
+            --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
+            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
       - name: Run the simulator app's port contracts and the journeys
         if: matrix.platform == 'ios'
         # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed `snapsync.rig=true`
