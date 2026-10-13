@@ -1,0 +1,6 @@
+-- v8 -> v9: the event's declared total, stored with the union position the read that answered it covered (change
+-- `count-declared-photos`): what the received total counts — the others' declared photos, not only the fetchable ones.
+--
+-- Nullable, no backfill: null is "no read has answered it yet", which reads exactly as before this column existed. The
+-- next union read writes it.
+ALTER TABLE unionCursor ADD COLUMN declared INTEGER;

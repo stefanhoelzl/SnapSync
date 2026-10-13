@@ -1622,7 +1622,8 @@ private fun joinedLayer(
         // Only once the range has ended and this member is in sync is "who are we waiting for" the member's question.
         // Not a one-way latch: a late guest or new photos turn "everyone has shared" back into waiting.
         sharingNote = config.members?.takeIf {
-            facts.timing == EventTiming.Ended && !config.deleted && health == SyncHealth.InSync
+            facts.timing == EventTiming.Ended && !config.deleted &&
+                (health == SyncHealth.InSync || (health as? SyncHealth.Syncing)?.waitingForOthers == true)
         }?.let { if (it.waitingFor > 0) SharingNote.WaitingFor(it.waitingFor) else SharingNote.EveryoneShared },
         joinableUntil = facts.joinableUntil,
         renameState = rename.toRenameState(),
@@ -1657,12 +1658,23 @@ private fun joinedLayer(
 private fun syncHealth(progress: SyncProgress, download: DownloadProgress, heldForWifi: Boolean): SyncHealth {
     // A held transfer is handed to the platform and so counts as in flight, but it is not RUNNING: no arrow pulses.
     val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0 && !heldForWifi)
-    val downloadArrow =
-        arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0 && !heldForWifi)
+    // The others' declared photos still uploading on their phones count as left to receive (change
+    // `count-declared-photos`): they raise the arrow, never its pulse — nothing of theirs runs here.
+    val downloadArrow = arrowOf(
+        shown = download.downloaded < download.total + download.awaited,
+        pulsing = download.inFlight > 0 && !heldForWifi,
+    )
     return if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) {
         SyncHealth.InSync
     } else {
-        SyncHealth.Syncing(upload = upload, download = downloadArrow, waitingForWifi = heldForWifi)
+        SyncHealth.Syncing(
+            upload = upload,
+            download = downloadArrow,
+            waitingForWifi = heldForWifi,
+            // Only the others are left: nothing of this device's own runs, waits or is offered and not yet here.
+            waitingForOthers = !heldForWifi && upload == Arrow.HIDDEN && downloadArrow == Arrow.STATIC &&
+                download.downloaded >= download.total,
+        )
     }
 }
 
@@ -1686,10 +1698,12 @@ private fun syncCounts(progress: SyncProgress, download: DownloadProgress, direc
         } else {
             DirectionCount.Progress(done = progress.synced, total = progress.total)
         },
-        received = if (!direction.includesDownload && download.total == 0) {
+        received = if (!direction.includesDownload && download.total + download.awaited == 0) {
             DirectionCount.Off
         } else {
-            DirectionCount.Progress(done = minOf(download.downloaded, download.total), total = download.total)
+            (download.total + download.awaited).let { total ->
+                DirectionCount.Progress(done = minOf(download.downloaded, total), total = total)
+            }
         },
     )
 

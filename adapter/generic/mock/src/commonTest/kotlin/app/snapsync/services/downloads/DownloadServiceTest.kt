@@ -813,6 +813,43 @@ class DownloadServiceTest {
         assertEquals(9, store.union.cursor("EVENT-1"), "a read that served nothing new still moves it")
     }
 
+    // The event's declared total (change `count-declared-photos`) rides with the position, and goes with it.
+    @Test
+    fun `the declared total is stored with the position and counted with the event`() = runTest {
+        assertEquals(null, store.counts("EVENT-1").declared, "none before any read")
+        store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref), cursor = 7, declared = 200)
+        assertEquals(200, store.union.declared("EVENT-1"))
+        assertEquals(200, store.counts("EVENT-1").declared)
+        assertEquals(null, store.counts("EVENT-2").declared, "per event")
+
+        store.planAll(emptyList(), "EVENT-1", cursor = 7, declared = null)
+        assertEquals(null, store.counts("EVENT-1").declared, "a backend without it answers none, which is stored")
+
+        store.planAll(emptyList(), "EVENT-1", cursor = 8, declared = 5)
+        store.pruneNonTerminal(emptySet())
+        assertEquals(null, store.counts("EVENT-1").declared, "forgotten with the position")
+    }
+
+    @Test
+    fun `known counts every foreign row of the event - received and given up included`() = runTest {
+        val given = AssetRef("DEVICE-B", AssetId("ASSET-GIVEN-UP"))
+        val received = AssetRef("DEVICE-B", AssetId("ASSET-RECEIVED"))
+        store.planAll(
+            listOf(planned(ref), planned(given), planned(received)),
+            "EVENT-1",
+            members = listOf(ref, given, received),
+        )
+        store.markStaged(given, "ASSET-Q-primary.heic", "/stage/p")
+        store.markStaged(given, "ASSET-Q-live.mov", "/stage/l")
+        assertTrue(store.settleUnimportable(given))
+        store.markImported(received, AssetId("LOCAL-R"))
+
+        val counts = store.counts("EVENT-1")
+        assertEquals(3, counts.known, "the declared total already counts all three")
+        assertEquals(2, counts.stillArriving, "the given-up one leaves the denominator")
+        assertEquals(1, counts.imported)
+    }
+
     @Test
     fun `a withdrawn row not yet received is pruned with the paths it stranded`() = runTest {
         store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))

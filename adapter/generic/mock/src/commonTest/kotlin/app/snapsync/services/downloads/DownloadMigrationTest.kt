@@ -61,4 +61,23 @@ class DownloadMigrationTest {
         // v7 → v8 (`changes/archive/2026-10-11-close-share-back-gaps`): recognition starts empty, with no backfill — the next pass decides.
         assertFalse(store.recognition.isRecognised("E1"), "no membership is recognised by the migration")
     }
+
+    /**
+     * v8 → v9 (change `count-declared-photos`): the union position gains the event's declared total, null until the
+     * next read writes it — which reads exactly as before the column existed. The position itself is kept, so the
+     * next push still reads only what is new.
+     */
+    @Test
+    fun `v8 to v9 keeps each position and declares nothing until the next read`() = runTest {
+        val (databases, _) = databaseAt(
+            DOWNLOADS_DB_NAME,
+            DownloadDatabase.Schema.at(8, "INSERT INTO unionCursor VALUES ('E1', 5)"),
+        )
+
+        val store = DownloadService(databases)
+
+        assertEquals(5, store.union.cursor("E1"), "the position survives")
+        assertEquals(null, store.union.declared("E1"))
+        assertEquals(null, store.counts("E1").declared)
+    }
 }

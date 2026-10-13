@@ -39,8 +39,9 @@
     <string name="status_allow_access_settings">Fotozugriff in den Einstellungen erlauben</string>
     <string name="status_sharing">teilen</string>
     <string name="status_receiving">empfangen</string>
-    <string name="status_sync_ongoing">Fotos kommen an …</string>
+    <string name="status_sync_ongoing">Fotos sind unterwegs …</string>
     <string name="status_waiting_wifi">Warte auf WLAN …</string>
+    <string name="status_waiting_photos">Warte auf Fotos …</string>
     <string name="status_sync_pending">Fotos warten …</string>
     <string name="network_blocked">Netzwerk für SnapSync blockiert – Einstellungen öffnen</string>
     <string name="network_offline">Du bist offline</string>

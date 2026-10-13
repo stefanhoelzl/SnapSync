@@ -568,9 +568,17 @@ sealed interface SyncHealth {
      * [waitingForWifi]: the member keeps photos off mobile data and the phone is on a network that choice avoids, so
      * nothing can be running — the arrows stay still, whatever is handed to the platform, and the line says the photos
      * wait for Wi-Fi.
+     *
+     * [waitingForOthers]: the only work left is photos the other members declared and have not finished sharing — a
+     * still download arrow this device can do nothing about, and the line says it waits for photos.
      */
     @Serializable
-    data class Syncing(val upload: Arrow, val download: Arrow, val waitingForWifi: Boolean = false) : SyncHealth
+    data class Syncing(
+        val upload: Arrow,
+        val download: Arrow,
+        val waitingForWifi: Boolean = false,
+        val waitingForOthers: Boolean = false,
+    ) : SyncHealth
 }
 
 /**

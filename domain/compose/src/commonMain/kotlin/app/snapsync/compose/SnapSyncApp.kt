@@ -384,9 +384,7 @@ class AppCore internal constructor(
     }
 
     // Download progress for the joined screen's received count and download arrow, scoped to the joined event.
-    val downloadStatusSource: StoreDownloadStatusSource by lazy {
-        StoreDownloadStatusSource(services.downloadStore, currentEvent = services.config::activeEventId)
-    }
+    val downloadStatusSource: StoreDownloadStatusSource by lazy { downloadStatus() }
 
     // Background byte transfers → durable staging. The queue, bounded window, and cancellation
     // lifecycle live in the tested feature; the transport is the shell's adapter thunk.

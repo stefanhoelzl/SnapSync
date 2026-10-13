@@ -7,6 +7,7 @@ import app.snapsync.model.uploadKey
 import app.snapsync.wire.api.DeviceFilesReply
 import app.snapsync.wire.api.EventFilesReply
 import app.snapsync.wire.api.EventNotFound
+import app.snapsync.wire.api.LeaveEventReply
 import app.snapsync.wire.api.PublishManifestReply
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.api.Unauthorized
@@ -69,6 +70,50 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.listingClauses
         covers = cells { backend(Routes.EventFiles.ID, EventFilesReply.Page::class) },
     ) { s ->
         assertEquals(emptyList(), s.page().items, "never half a photo")
+    }
+
+    // The declared total (change `count-declared-photos`): what a member's received total counts before subtracting
+    // its own declaration — every complete asset, plus what a member still in the event declared and has not finished.
+    clause(
+        "UNION_DECLARED_COUNTS_AN_ASSET_STILL_UPLOADING",
+        BackendState.UNION_INCOMPLETE_ASSET,
+        covers = cells { backend(Routes.EventFiles.ID, EventFilesReply.Page::class) },
+    ) { s ->
+        assertEquals(1L, s.page().declared(), "declared although not yet served")
+    }
+
+    clause(
+        "UNION_DECLARED_COUNTS_A_COMPLETE_ASSET_ON_A_DELTA_READ_TOO",
+        BackendState.UNION_COMPLETE_ASSET,
+        covers = cells { backend(Routes.EventFiles.ID, EventFilesReply.Page::class) },
+    ) { s ->
+        val full = s.page()
+        assertEquals(1L, full.declared())
+        assertEquals(1L, s.page(full.position()).declared(), "the event's total, not the page's")
+    }
+
+    clause(
+        "UNION_DECLARED_DROPS_A_DEPARTED_MEMBERS_UNFINISHED_ASSET",
+        BackendState.UNION_INCOMPLETE_ASSET,
+        covers = cells {
+            backend(Routes.EventFiles.ID, EventFilesReply.Page::class)
+            backend(Routes.LeaveEvent.ID, LeaveEventReply.Left::class)
+        },
+    ) { s ->
+        assertAnswer<LeaveEventReply.Left>(s.leave(received = true))
+        assertEquals(0L, s.page().declared(), "it will never arrive")
+    }
+
+    clause(
+        "UNION_DECLARED_KEEPS_A_DEPARTED_MEMBERS_COMPLETE_ASSET",
+        BackendState.UNION_COMPLETE_ASSET,
+        covers = cells {
+            backend(Routes.EventFiles.ID, EventFilesReply.Page::class)
+            backend(Routes.LeaveEvent.ID, LeaveEventReply.Left::class)
+        },
+    ) { s ->
+        assertAnswer<LeaveEventReply.Left>(s.leave(received = true))
+        assertEquals(1L, s.page().declared(), "it stays in the event")
     }
 
     // Incremental reads (decision record `changes/incremental-union`, D3–D4): a full read names the position it
@@ -175,6 +220,9 @@ private suspend fun EdgeSubject<BackendClient>.union(cursor: Long? = null, urls:
 /** [union], which must be served. */
 private suspend fun EdgeSubject<BackendClient>.page(cursor: Long? = null, urls: Boolean = false): EventFilesReply.Page =
     assertAnswer(union(cursor, urls))
+
+private fun EventFilesReply.Page.declared(): Long =
+    assertNotNull(snapSyncDeclared?.toLongOrNull(), "the declared total is a number: $snapSyncDeclared")
 
 private fun EventFilesReply.Page.position(): Long =
     assertNotNull(snapSyncCursor.toLongOrNull(), "the position is a number: $snapSyncCursor")

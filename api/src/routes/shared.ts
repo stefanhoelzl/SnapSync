@@ -5,6 +5,7 @@ import { verifyToken } from "../attest.ts";
 import { CAPACITY_PLACEHOLDER } from "../config.ts";
 import {
   completeAssets,
+  declaredTotal,
   downloadStoragePath,
   type EventRow,
   insertEvent,
@@ -67,6 +68,8 @@ const UNION_TRIGGERS = [
 
 /** The response header naming the position a union answer covers (decision record D3). */
 export const CURSOR_HEADER = "SnapSync-Cursor";
+/** The union read's declared total (`declaredTotal`): what a member's received total counts. */
+export const DECLARED_HEADER = "SnapSync-Declared";
 /** The request header naming why the client reads (decision record D5). */
 export const TRIGGER_HEADER = "SnapSync-Trigger";
 type UnionAsset = {
@@ -299,6 +302,8 @@ export function sharedHandlers(
         // is a fan-out — one directory listing to discover members, then a manifest read AND a byte listing
         // per member — whose cost grew with the event and which no index could help.
         const rows = await unionRows(db, eventId, after);
+        // The event's declared total, the same on a full and a delta read: it describes the event, not the page.
+        const declared = await declaredTotal(db, eventId);
 
         // Each COMPLETE asset (`completeAssets`): an asset naming a resource whose bytes have not arrived is
         // dropped. The sweep still protects a referenced byte from collection.
@@ -351,6 +356,7 @@ export function sharedHandlers(
 
         c.header("Cache-Control", NO_CACHE); // a `url` may be a time-limited presign; a cursor is a moment
         c.header(CURSOR_HEADER, String(position));
+        c.header(DECLARED_HEADER, String(declared));
         return c.json(assets);
       });
     },

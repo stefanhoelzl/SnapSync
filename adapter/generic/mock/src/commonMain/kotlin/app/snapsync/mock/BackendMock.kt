@@ -580,6 +580,22 @@ internal class BackendState(
         }
     }
 
+    /**
+     * The event's DECLARED total — what a member's received total counts — as the real union read's
+     * `SnapSync-Declared` header answers it: every asset the whole [union] serves, plus every asset a member still in
+     * the event declares that is not complete yet. A departed member's undelivered assets never land, so they do not
+     * count.
+     */
+    fun declared(eventId: String): Long {
+        val complete = union(eventId)?.size ?: return 0L
+        val pending = present(eventId).entries.sumOf { (key, membership) ->
+            val stored = storedFiles[eventId to key.second].orEmpty().mapTo(mutableSetOf(), ::storedKey)
+            membership.manifest?.assets.orEmpty()
+                .count { asset -> asset.resources.isEmpty() || !asset.resources.all { it.key in stored } }
+        }
+        return (complete + pending).toLong()
+    }
+
     fun deposit(eventId: String, deviceId: String, file: DeviceFile) {
         val was = servable(eventId, deviceId)
         storedFiles.getOrPut(eventId to deviceId) { mutableSetOf() } += file

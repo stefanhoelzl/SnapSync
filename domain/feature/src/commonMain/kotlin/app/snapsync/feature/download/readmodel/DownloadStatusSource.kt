@@ -14,6 +14,12 @@ data class DownloadProgress(
     val downloaded: Int,
     val total: Int,
     val inFlight: Int = 0,
+    /**
+     * Photos the other members declared that this device has not been offered yet — still uploading on their phones
+     * (change `count-declared-photos`). Counted toward what there is to receive, but never this device's work: it raises
+     * the download arrow, never its pulse, and it is what "Waiting for photos…" waits for. 0 when unknown.
+     */
+    val awaited: Int = 0,
     /** Whether these counts came from a refresh at all. See [UNREAD]. */
     val read: Boolean = true,
 ) {
@@ -28,7 +34,7 @@ data class DownloadProgress(
          * own, even after the upload side learned to distinguish un-read from zero. Without this the
          * defect would simply relocate to the other arm (`SNAPSYNC-14`, `SNAPSYNC-16`).
          */
-        val UNREAD = DownloadProgress(downloaded = 0, total = 0, inFlight = 0, read = false)
+        val UNREAD = DownloadProgress(downloaded = 0, total = 0, inFlight = 0, awaited = 0, read = false)
     }
 }
 

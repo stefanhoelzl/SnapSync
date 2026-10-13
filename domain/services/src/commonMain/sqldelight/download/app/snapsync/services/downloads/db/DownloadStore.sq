@@ -57,9 +57,14 @@ DELETE FROM recognised WHERE eventId != :eventId;
 selectUnionCursor:
 SELECT cursor FROM unionCursor WHERE eventId = :eventId;
 
+selectUnionDeclared:
+SELECT declared FROM unionCursor WHERE eventId = :eventId;
+
+-- `declared` rides with the position: the event's declared total the same read answered (change
+-- `count-declared-photos`), or null from a backend that predates it.
 upsertUnionCursor:
-INSERT INTO unionCursor (eventId, cursor) VALUES (:eventId, :cursor)
-ON CONFLICT (eventId) DO UPDATE SET cursor = excluded.cursor;
+INSERT INTO unionCursor (eventId, cursor, declared) VALUES (:eventId, :cursor, :declared)
+ON CONFLICT (eventId) DO UPDATE SET cursor = excluded.cursor, declared = excluded.declared;
 
 -- A reset forgets every position, so the next read of each event is a full one.
 deleteUnionCursors:
@@ -226,7 +231,8 @@ WHERE e.eventId = :eventId AND a.state = 'IMPORTED' AND a.createdLocalId IS NOT 
 -- database rather than three reads taken at different instants (capability `receiving-photos`; the
 -- `sync-status` group requires each of its members to be internally consistent). SQLite evaluates the
 -- whole SELECT in a single implicit transaction, so the three subqueries cannot disagree with each other.
--- The same three counts, scoped to ONE event's rows: the joined screen's received count and download arrow
+-- The same three counts, scoped to ONE event's rows — plus every foreign row of the event (`known`) and its declared total
+-- (`declared`), what the received total counts: the joined screen's received count and download arrow
 -- (capability `sync-status`, "The joined screen counts what was shared and received").
 projectionCountsForEvent:
 SELECT
@@ -240,7 +246,10 @@ SELECT
            SELECT 1 FROM downloadResource r
            WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
              AND r.enqueued = 1 AND r.stagedPath IS NULL
-       )) AS inFlight;
+       )) AS inFlight,
+  (SELECT COUNT(*) FROM downloadAsset a JOIN eventRef e USING (sourceDeviceId, sourceAssetId)
+     WHERE e.eventId = :eventId) AS known,
+  (SELECT declared FROM unionCursor WHERE eventId = :eventId) AS declared;
 
 -- The same counts over EVERY event this device has held — the diagnostics' and the reset's census, never
 -- the screen's.

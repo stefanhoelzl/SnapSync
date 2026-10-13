@@ -63,6 +63,7 @@ import app.snapsync.ui.components.resources.status_inactive
 import app.snapsync.ui.components.resources.status_not_started
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
+import app.snapsync.ui.components.resources.status_waiting_photos
 import app.snapsync.ui.components.resources.status_waiting_wifi
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_toggle
@@ -1332,6 +1333,24 @@ class StatusScreenTest {
         ).assertExists()
         onNodeWithText(plural(Res.plurals.waiting_members, 2, 2)).assertExists()
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
+    }
+
+    // Change `count-declared-photos`: waiting on the others' unfinished photos is when "whom" matters most.
+    @Test
+    fun `an ended event waiting for photos says whom it waits for`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(
+                joined(
+                    SyncHealth.Syncing(Arrow.HIDDEN, Arrow.STATIC, waitingForOthers = true),
+                    timing = EventTiming.Ended,
+                    members = 2,
+                    sharingNote = SharingNote.WaitingFor(1),
+                    counts = SyncCounts(progress(34, 34), progress(6, 200)),
+                ),
+            )
+        }
+        onNodeWithText(str(ComponentRes.string.status_waiting_photos)).assertExists()
+        onNodeWithText(plural(Res.plurals.waiting_members, 1, 1)).assertExists()
     }
 
     @Test

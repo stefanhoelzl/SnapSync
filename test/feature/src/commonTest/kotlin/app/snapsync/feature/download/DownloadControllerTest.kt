@@ -82,13 +82,15 @@ class DownloadControllerTest {
         var assets: List<UnionAsset>,
         val ok: Boolean = true,
         var position: Long = 0,
+        var declared: Long? = null,
     ) : EventUnionSource {
         var calls = 0
         val reads = mutableListOf<Pair<Long?, UnionTrigger>>()
         override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
             calls++
             reads += cursor to trigger
-            return if (ok) Result.success(UnionPage(assets, position)) else Result.failure(RuntimeException("boom"))
+            if (!ok) return Result.failure(RuntimeException("boom"))
+            return Result.success(UnionPage(assets, position, declared))
         }
     }
 
@@ -1652,6 +1654,25 @@ class DownloadControllerTest {
         val failing = FakeUnion(emptyList(), ok = false, position = 99)
         controller(failing, store = store).reconcile("event", UnionTrigger.PUSH)
         assertEquals(6, store.union.cursor("event"), "a failed read stores nothing")
+    }
+
+    // The event's declared total (change `count-declared-photos`) rides with the position.
+    @Test
+    fun a_read_stores_the_declared_total_it_answered_even_when_nothing_new_was_served() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val union = FakeUnion(emptyList(), position = 6, declared = 200)
+        val c = controller(union, store = store)
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        assertEquals(200, store.union.declared("event"))
+
+        union.declared = 230
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        assertEquals(230, store.union.declared("event"), "the others declared more, at the same position")
+        assertEquals(6, store.union.cursor("event"))
+
+        union.declared = null
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+        assertEquals(null, store.union.declared("event"), "a backend without it stores none")
     }
 
     @Test

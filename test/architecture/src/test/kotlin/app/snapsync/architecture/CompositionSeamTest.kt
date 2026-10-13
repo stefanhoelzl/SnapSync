@@ -166,6 +166,9 @@ class CompositionSeamTest {
         "StoreDownloadStatusSource.currentEvent" to
             "the joined membership's event id, read in compose/ off the ConfigService the composition already " +
             "holds, so the received count is scoped to it (capability `sync-status`) — null with no membership",
+        "StoreDownloadStatusSource.receives" to
+            "whether the membership receives — the same three-valued ConfigService.downloadsEnabled the download arm " +
+            "reads, so the others' declared photos count only for a member who fetches them; nothing leaves",
         "JoinEvent.provision" to
             "runs the provision the composition owns (the Provision flow under its entry label, then the album " +
             "gather start) — core machinery the join use-case may not name",

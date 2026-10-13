@@ -2,15 +2,19 @@ package app.snapsync.feature.download
 
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.download.readmodel.DownloadStatusSource
+import app.snapsync.model.DownloadCounts
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.manifest.DeviceManifestService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * The real [DownloadStatusSource] over the [DownloadService]: `downloaded` = imported foreign assets,
- * `total` = all foreign assets known for the event (pending + imported). [refresh] re-reads both
+ * `total` = all foreign assets known for the event (pending + imported), and `awaited` = what the others declared
+ * beyond them (change `count-declared-photos`): the event's declared total the last union read answered, less this
+ * device's own published declaration and every foreign photo it already has a row for. [refresh] re-reads both
  * counts; the composition root calls it on foreground entry and after a reconcile/import.
  *
  * Seeded [DownloadProgress.UNREAD]: before the first [refresh] this source has read nothing, and
@@ -23,6 +27,16 @@ class StoreDownloadStatusSource(
     // (they are the suppression handles), so the counts must be scoped to the event on screen: unscoped,
     // "received" was every foreign photo the device ever imported.
     private val currentEvent: () -> String?,
+    /**
+     * Whether the membership receives — the download arm's own three-valued answer. Only `true` counts the others'
+     * declared photos: a member who does not receive is never shown an arrow for photos it will not fetch.
+     */
+    private val receives: () -> Boolean?,
+    /**
+     * The manifest this device last published — the backend last accepted it, so its count describes the same backend
+     * state as the declared total. One it cannot read counts nothing awaited rather than a guess.
+     */
+    private val manifest: DeviceManifestService,
 ) : DownloadStatusSource {
     private val _progress = MutableStateFlow(DownloadProgress.UNREAD)
     override val progress: StateFlow<DownloadProgress> = _progress.asStateFlow()
@@ -49,6 +63,18 @@ class StoreDownloadStatusSource(
             downloaded = counts.imported,
             total = counts.stillArriving,
             inFlight = counts.inFlight,
+            awaited = awaited(eventId, counts),
         )
+    }
+
+    /**
+     * Clamped at 0: a publish crossing the read can make the subtraction briefly short, and the next read corrects it.
+     * Unknown — no declared total, no own count, or not receiving — is 0, which reads exactly as before this count.
+     */
+    private fun awaited(eventId: String, counts: DownloadCounts): Int {
+        if (receives() != true) return 0
+        val declared = counts.declared ?: return 0
+        val own = manifest.publishedCount(eventId) ?: return 0
+        return (declared - own - counts.known).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
     }
 }

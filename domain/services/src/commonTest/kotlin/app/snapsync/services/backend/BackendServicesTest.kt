@@ -353,6 +353,18 @@ class BackendServicesTest {
         )
     }
 
+    // Change `count-declared-photos`: the event's declared total rides on the page; a backend without it, or a value
+    // that is no count, reads as none.
+    @Test
+    fun the_unions_declared_total_is_read_and_its_absence_is_none() = runTest {
+        suspend fun declared(headers: Map<String, String>) =
+            servicesAnswering(json(200, "[]", mapOf("SnapSync-Cursor" to "7") + headers))
+                .union.union("E", null, UnionTrigger.FOREGROUND).getOrThrow().declared
+        assertEquals(200L, declared(mapOf("SnapSync-Declared" to "200")))
+        assertEquals(null, declared(emptyMap()))
+        assertEquals(null, declared(mapOf("SnapSync-Declared" to "many")))
+    }
+
     @Test
     fun the_union_is_read_without_urls_and_each_address_built_on_the_builds_backend() = runTest {
         val transport = ScriptedTransport {
