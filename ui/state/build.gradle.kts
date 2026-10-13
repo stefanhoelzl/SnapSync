@@ -3,8 +3,6 @@ plugins {
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
-    // The zero coverage gate (`docs/architecture.md`, "Coverage"): no instruction and no branch missed.
-    id("snapsync.coverage-zero")
 }
 
 // The screen's vocabulary (`docs/architecture.md`, "The screen's vocabulary"): what the status screen shows

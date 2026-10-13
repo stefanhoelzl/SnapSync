@@ -40,10 +40,11 @@ plugins {
     alias(libs.plugins.detekt)
     // Every detekt task this build runs, and the project's own rules on each (`DetektTiersPlugin`).
     id("snapsync.detekt-tiers")
+    // Every module's coverage, described in the `coverage { }` block below (`docs/architecture.md`, "Coverage").
+    id("snapsync.coverage")
     alias(libs.plugins.dependency.analysis)
-    // Applied per module rather than here (`docs/architecture.md`): the set of instrumented
-    // modules is part of the contract, so it is readable in each module's own build file and a new
-    // module is never silently instrumented.
+    // Loaded here so every module shares one Kover; `snapsync.coverage` applies it to the modules the `coverage { }`
+    // block measures, and the modules whose tests also cover them apply it themselves.
     alias(libs.plugins.kover) apply false
     alias(libs.plugins.kotlinx.rpc) apply false
 }
@@ -65,62 +66,113 @@ subprojects {
     apply(plugin = "com.autonomousapps.dependency-analysis")
 }
 
-// ---- Coverage crediting edges (`docs/architecture.md`) ----------------------------------
+// ---- Coverage (`docs/architecture.md`, "Coverage") -----------------------------------------------------------------
 //
-// `:domain` may not name another module in its OWN build file: `ModuleSetTest` asserts
-// domain/build.gradle.kts contains no module path at all, because that absence is the precondition
-// for the platform-free compile error. A Kover crediting edge is not a compile edge - it merges
-// coverage DATA and never puts classes on a classpath - but that guard is a text assertion by
-// design, and its worth is that it is absolute. So the edge is declared here rather than loosening
-// it.
+// Every module's coverage, described HERE and nowhere else (`snapsync.coverage`): which measurement holds it, which
+// other modules' tests also cover it, and what is skipped, with the reason. Every JVM module outside `:test:*` and
+// `:tools:*` has an entry, or `coverageEntries` fails naming it — so no module is measured, or left out, by nobody's
+// decision.
 //
-// Without the edges the zones measure a fraction of their coverage: `docs/testing.md` ("Feature tests compose real
-// services over port mocks") places the feature tests that need a port's mock in `:test:feature`, and the flow and
-// mock-driven service tests in `:adapter:generic:mock` — modules a `:domain:*` build file may not name.
+// `unit(…)` is the ZERO gate: the module's report misses no instruction and no branch, outside compiler-generated glue.
+// Its report is filtered to the module's OWN classes, so another module's tests count only when its entry names them in
+// `alsoCoveredBy` — tests a placement rule put elsewhere:
+//  - `:adapter:generic:mock` and `:test:feature` hold the zones' service- and mock-driven suites (`docs/testing.md`,
+//    "Feature tests compose real services over port mocks"), which a `:domain:*` build file may not name;
+//  - `:test:integration` covers the WIRING — `:domain:compose`, `:domain:host`, `:app:jvm` — and the entry points:
+//    "One shared composition" says the wiring graph is not unit-tested and IS smoke-tested by the integration surface,
+//    and the entry points order each trigger's steps and decide nothing (`docs/patterns.md`, "Entry points"), while the
+//    integration surface delivers every trigger from the operating system's side. It covers no other module's unit
+//    measurement: a thick integration suite cannot stand in for a thin unit suite.
 //
-// They all live here rather than in the consuming modules, for two reasons that are really one:
-// `ModuleSetTest` forbids `:domain` naming any module in its own build file, and `Zones.kt` reads
-// every build script under `adapter/`, `domain/` and `ui/` as TEXT — so a locally declared edge
-// renders in `architecture/zones.md` pointing the wrong way. Centralising them also puts the whole
-// coverage-crediting picture in one place.
-// ⚠️ `:domain` is NOT a consumer here any more. `include(":domain:model")` makes Gradle create an
-// empty container project at `:domain`, which applies no plugin and holds no class - so an edge from
-// it is never wired and a report filtered to it measures NOTHING. That is not hypothetical: after the
-// zone split this list still said `":domain"`, `:domain:model`'s filter still said `projects.add(":domain")`,
-// and `:domain:model:koverVerify` passed with `minValue = 100` over an empty report. Name the leaf
-// modules, never the container.
-listOf(
-    ":domain:model" to ":adapter:generic:mock",
-    ":domain:ports" to ":adapter:generic:mock",
-    // The services' suites run beside the mocks; beside the JVM adapters runs the encrypted file format's cipher,
-    // held to Tink's reference implementation there (a `:domain:*` build file names no module).
-    ":domain:services" to ":adapter:generic:app",
-    ":domain:services" to ":adapter:generic:mock",
-    ":domain:feature" to ":adapter:generic:mock",
-    // `:test:feature` holds the feature tests that compose real services over the ports' mocks (`docs/testing.md`):
-    // they exercise the feature zone first, and the services, the model and the ports it reaches through them.
-    ":domain:feature" to ":test:feature",
-    ":domain:services" to ":test:feature",
-    ":domain:model" to ":test:feature",
-    ":domain:ports" to ":test:feature",
-    // The WIRING modules, credited by the integration surface and by nothing else it runs (`docs/architecture.md`,
-    // "Coverage"): "One shared composition" says the wiring graph is not unit-tested and IS smoke-tested by the
-    // integration surface, so for these the integration tests are the tests written for the code. Every other
-    // module stays credited by unit tests only — integration still runs model, feature, services, … and counts for none
-    // of them.
-    ":domain:compose" to ":test:integration",
-    ":domain:host" to ":test:integration",
-    // The entry points order each trigger's steps and decide nothing (`docs/patterns.md`, "Entry points"): the
-    // integration surface delivers every trigger through the operating system's side, which is what they are for.
-    ":domain:entrypoints" to ":test:integration",
+// The block lives here, not in each module's build file: `ModuleSetTest` asserts a `:domain:*` build file names no
+// module (the precondition for the platform-free compile error), and `Zones.kt` reads those files as TEXT, where an
+// edge to the covering module would render backwards. Name LEAF modules: `:domain` is an empty container, and a report
+// filtered to it measures nothing — `:domain:model:koverVerify` once passed at 100 over an empty report that way.
+coverage {
+    ":domain:model" {
+        unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
+    }
+    // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
+    // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
+    ":domain:ports" {
+        unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
+    }
+    ":domain:services" {
+        skipped(
+            "SQLDelight's generated code: nobody writes or reviews it, and `DatabasesContract`'s schema clauses run " +
+                "every statement on each platform's own SQLite",
+            packages = listOf("app.snapsync.services.ledger.db", "app.snapsync.services.downloads.db"),
+        )
+        // Beside the JVM adapters runs the encrypted file format's cipher, held to Tink's reference implementation.
+        unit(alsoCoveredBy = listOf(":adapter:generic:app", ":adapter:generic:mock", ":test:feature"))
+    }
+    ":domain:wire" {
+        skipped(
+            "generated from api/openapi.yaml (`snapsync.wire`): the routes, replies and limits, and the DTOs; the " +
+                "Backend contract runs the real gateway over them",
+            packages = listOf("app.snapsync.wire.api", "app.snapsync.wire.models"),
+        )
+        unit()
+    }
+    ":domain:feature" {
+        unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
+    }
+    ":domain:domain" {
+        unit()
+    }
+    ":domain:inbound" {
+        unit()
+    }
+    ":domain:scheduling" {
+        unit()
+    }
     // The process's composition registers its metric reports' entry point; the mocks' suite drives it.
-    ":domain:entrypoints" to ":adapter:generic:mock",
-    ":app:jvm" to ":test:integration",
-    ":ui:components" to ":ui:screens",
-    ":domain:presentation" to ":ui:screens",
-).forEach { (consumer, producer) ->
-    project(consumer).plugins.withId("org.jetbrains.kotlinx.kover") {
-        project(consumer).dependencies.add("kover", project(producer))
+    ":domain:entrypoints" {
+        unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
+    }
+    ":domain:compose" {
+        unit(alsoCoveredBy = listOf(":test:integration"))
+    }
+    ":domain:host" {
+        unit(alsoCoveredBy = listOf(":test:integration"))
+    }
+    ":domain:presentation" {
+        unit(alsoCoveredBy = listOf(":ui:screens"))
+    }
+    ":app:jvm" {
+        unit(alsoCoveredBy = listOf(":test:integration"))
+    }
+    ":ui:state" {
+        unit()
+    }
+    // `:ui:screens`' Compose tests render the real screens, and with them these components.
+    ":ui:components" {
+        skipped(
+            "Compose Resources' generated `Res` accessors, one per string: measuring them would hold the module to " +
+                "which strings a test reads",
+            packages = listOf("app.snapsync.ui.components.resources"),
+        )
+        unit(alsoCoveredBy = listOf(":ui:screens"))
+    }
+    ":ui:screens" {
+        skipped(
+            "Compose Resources' generated `Res` accessors, one per string: measuring them would hold the module to " +
+                "which strings a test reads",
+            packages = listOf("app.snapsync.ui.resources"),
+        )
+        unit()
+    }
+    ":adapter:generic:app" {
+        unit()
+    }
+    ":adapter:generic:motionphoto" {
+        unit()
+    }
+    ":adapter:generic:mock" {
+        skipped("test equipment: the mocks are proved against the port contracts, not measured")
+    }
+    ":app:desktop" {
+        skipped("test equipment: the world harness, where a person reviews every UI state")
     }
 }
 

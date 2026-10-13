@@ -3,8 +3,6 @@ plugins {
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
-    // The zero coverage gate (`docs/architecture.md`, "Coverage"): no instruction and no branch missed.
-    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
     // The deployment's values compiled in (`LINK_ORIGIN`).
@@ -45,9 +43,3 @@ kotlin {
         }
     }
 }
-
-// Coverage (`docs/architecture.md`): at zero, under `snapsync.coverage-zero`. The crediting edges that let
-// `:adapter:generic:mock`'s and `:test:feature`'s tests count toward this module are declared in the ROOT build file,
-// not here: `ModuleSetTest` holds this file to the one zone edge it may name (the domain layer), because that is the
-// precondition for the platform-free compile error. What the gate excuses here is the serialization plugin's zero-mask
-// missing-field check in the `@Serializable` classes whose every field has a default; the task prints each one.

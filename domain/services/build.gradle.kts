@@ -3,8 +3,6 @@ plugins {
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.sqldelight)
-    // The zero coverage gate (`docs/architecture.md`, "Coverage"): no instruction and no branch missed.
-    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
 }
@@ -85,22 +83,6 @@ sqldelight {
             srcDirs.setFrom("src/commonMain/sqldelight/download")
             deriveSchemaFromMigrations.set(true)
             dialect(libs.sqldelight.dialect.sqlite)
-        }
-    }
-}
-
-// Coverage (`docs/architecture.md`): at zero, under `snapsync.coverage-zero`. The crediting edges that let the mocks'
-// suites, `:test:feature` and `:adapter:generic:app`'s tests count here are in the root build file.
-//
-// SQLDelight's GENERATED packages leave the report, so the gate never reads them: nobody writes or reviews them, and
-// holding them at zero would test a code generator's output rather than this module. What they run is held instead by
-// `DatabasesContract`'s schema clauses, every statement on each platform's own SQLite (`docs/testing.md`).
-kover {
-    reports {
-        filters {
-            excludes {
-                packages("app.snapsync.services.ledger.db", "app.snapsync.services.downloads.db")
-            }
         }
     }
 }

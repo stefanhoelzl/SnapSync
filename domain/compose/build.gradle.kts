@@ -2,10 +2,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
-    // Coverage at ZERO (`docs/architecture.md`, "Coverage"; `snapsync.coverage-zero`): no instruction or branch may be
-    // missed. A wiring module: credited by the integration surface (the root build file's edges), and holding no
-    // decision for it to miss (`detektAppShell`).
-    id("snapsync.coverage-zero")
     alias(libs.plugins.kotlin.serialization)
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")

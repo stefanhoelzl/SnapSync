@@ -21,8 +21,7 @@ plugins {
     id("snapsync.android")
     // The persisted mock state (`:test:launch-adapters`): each mocked system's durable state as JSON in the App Group.
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
+    // Instrumented: its suites also cover the zones whose entries in the root build file's `coverage { }` name it.
     alias(libs.plugins.kover)
 }
 

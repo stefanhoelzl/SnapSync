@@ -4,9 +4,6 @@ plugins {
     id("snapsync.targets")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
-    // Coverage measurement and its zero gate (`docs/architecture.md`, "Coverage"). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    id("snapsync.coverage-zero")
     // The text the OS shows outside the screens, generated from this module's strings (`docs/architecture.md`,
     // "Localization").
     id("snapsync.native-strings")

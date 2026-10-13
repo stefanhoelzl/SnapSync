@@ -1,5 +1,5 @@
 plugins {
-    // A core layer (`snapsync.layer`): targets, coverage at zero, the shared test dependencies.
+    // A core layer (`snapsync.layer`): targets, the shared test dependencies.
     id("snapsync.layer")
     // The deployment's product limits, generated as source (`EventWindow`).
     id("snapsync.deployment")

@@ -10,7 +10,6 @@ import org.gradle.api.artifacts.VersionCatalogsExtension
  * Everything such a module shares is declared once, here:
  *
  *  - the allowed targets ([TargetsPlugin]) on Kotlin Multiplatform;
- *  - coverage at ZERO from creation ([CoverageZeroPlugin]) — there is no floor to switch from;
  *  - the simulator test run's standard streams ([SimulatorTestOutputPlugin]);
  *  - the shared test dependencies (`kotlin-test`, `kotlinx-coroutines-test`).
  *
@@ -20,7 +19,6 @@ class LayerPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.pluginManager.apply(TargetsPlugin::class.java)
-        project.pluginManager.apply(CoverageZeroPlugin::class.java)
         project.pluginManager.apply(SimulatorTestOutputPlugin::class.java)
         val libs = project.extensions.getByType(VersionCatalogsExtension::class.java).named("libs")
         project.dependencies.add("commonTestImplementation", "org.jetbrains.kotlin:kotlin-test")
