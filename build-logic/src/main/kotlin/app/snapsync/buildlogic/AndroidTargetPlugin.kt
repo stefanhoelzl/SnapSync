@@ -48,7 +48,8 @@ class AndroidTargetPlugin : Plugin<Project> {
                     // which is why a module declares device tests only where it holds no common tests (the adapters).
                     withDeviceTestBuilder { sourceSetTreeName = "test" }.configure {
                         instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-                        instrumentationRunnerArguments["fixture"] = TransferFixtureService.FIXTURE_ADDRESS
+                        instrumentationRunnerArguments["fixture"] =
+                            TransferFixtureService.emulatorAddress(TransferFixtureService.port(project))
                         managedDevices {
                             localDevices.create(MANAGED_DEVICE) {
                                 // The phone the screen tests are measured on, and the one the `snapsync-android` skill

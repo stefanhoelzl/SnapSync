@@ -4,7 +4,7 @@ compilation target is real for the clauses it runs there"). It is a clause INPUT
 chose, encoded in the route's last segment, so what the contract states is how the app's transports behave given an
 answer, never how a backend behaves.
 
-    scripts/transfer-fixture.py --port 8123 --log build/sim-contracts/transfer-fixture.log
+    scripts/transfer-fixture.py --port <a free port> --log build/sim-contracts/transfer-fixture.log
 
 The grammar is `TransferFixture` in :test:contracts — change both or neither:
 
@@ -14,7 +14,7 @@ The grammar is `TransferFixture` in :test:contracts — change both or neither:
     GET|PUT /<Contract>/<CLAUSE_ID>/<name>/hold              never answer (closed after HOLD_SECONDS)
     GET     /<Contract>/<CLAUSE_ID>/<name>/r302-s200-n64-len answer 302, Location: the same route ending in s200-n64-len
     GET /_landed/<route>                                     200 {"contentType": …, "length": …} if a 2xx PUT landed, else 404
-    GET /_health                                             200, once the server is up
+    GET /_health                                             200 with the server's process id, once it is up
 
 A GET body is the byte pattern `i % 251`, so a clause can compare staged bytes. Every response says
 `Cache-Control: no-store`: the simulator's default session caches, and a cached answer is not a transfer. Every
@@ -22,6 +22,7 @@ request is logged, one line each, for the job's evidence. Stdlib only; dev infra
 """
 import argparse
 import json
+import os
 import re
 import sys
 import threading
@@ -76,7 +77,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/_health":
-            return self._send(200, b"ok")
+            return self._send(200, str(os.getpid()).encode())
         if self.path.startswith("/_landed/"):
             with lock:
                 hit = landed.get(self.path[len("/_landed"):])
