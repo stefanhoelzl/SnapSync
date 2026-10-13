@@ -27,12 +27,12 @@ import app.snapsync.ports.UiHandlers
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.CoroutineContext
 
 // The entry ports' mocks (`docs/testing.md`, "Mocks"): the platform side of each event port. What survives a relaunch
 // is the platform itself; the handlers are those of the process whose composition registered last, and the operator
@@ -201,7 +201,23 @@ class ScreenMock {
     internal val handlers = HandlerSlot<UiHandlers<UiState, UiIntent>>("Ui", BeforeListen.Thrown)
     internal val shown = MutableStateFlow<UiState?>(null)
 
+    /** Who is told each state the app shows, as it shows it — the control channel's event stream, or no one. */
+    @Volatile private var watcher: (UiState) -> Unit = {}
+
     fun port(): Ui<UiState, UiIntent> = Face()
+
+    /**
+     * Tells [listener] every state the app shows, on the showing thread, as it shows it — each one, where [ScreenOperator.shown]
+     * keeps only the last. One listener: the control channel's event stream (`docs/testing.md`, "How a test waits").
+     */
+    fun watch(listener: (UiState) -> Unit) {
+        watcher = listener
+    }
+
+    internal fun show(state: UiState) {
+        shown.value = state
+        watcher(state)
+    }
 
     /** The port face a process is handed. */
     internal inner class Face : Ui<UiState, UiIntent> {
@@ -214,9 +230,7 @@ class ScreenMock {
             this@ScreenMock.handlers.set(handlers)
         }
 
-        override fun show(state: UiState) {
-            shown.value = state
-        }
+        override fun show(state: UiState) = this@ScreenMock.show(state)
     }
 
     val operator: ScreenOperator = ScreenOperator(this)
@@ -228,7 +242,7 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) {
 
     /** A live screen is about to be built: it renders the state the app answers, before its first frame. */
     fun live() {
-        mock.shown.value = mock.handlers.require("a live screen").onLive.deliver(Unit)
+        mock.show(mock.handlers.require("a live screen").onLive.deliver(Unit))
     }
 
     /** A person did [intent] on the screen. */
@@ -320,11 +334,11 @@ class ExtensionHostMock {
 
 class ExtensionHostOperator internal constructor(private val mock: ExtensionHostMock) {
     /**
-     * The operating system invokes the extension's `process()` — synchronously, on a thread of its own, which the
-     * answer blocks until the cycle has run.
+     * The operating system invokes the extension's `process()` — synchronously, on [thread], a thread of its own that
+     * the answer blocks until the cycle has run. The caller names it: a mock starts no thread of its own.
      */
-    suspend fun process(): ProcessingAnswer =
-        withContext(Dispatchers.Default) { mock.handlers.require("process()").onProcess.answer(Unit) }
+    suspend fun process(thread: CoroutineContext): ProcessingAnswer =
+        withContext(thread) { mock.handlers.require("process()").onProcess.answer(Unit) }
 
     /** The operating system ends the invocation. */
     fun terminate() = mock.handlers.require("notifyTermination()").onTerminate.deliver(Unit)

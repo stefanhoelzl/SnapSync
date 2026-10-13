@@ -18,6 +18,8 @@ kotlin {
             api(libs.kotlinx.rpc.core)
             api(libs.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+            // The world's events carry what the app showed: the screen's vocabulary, as the rig serves it.
+            api(project(":ui:state"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

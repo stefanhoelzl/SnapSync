@@ -77,6 +77,9 @@ import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.test.assertSame
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 
@@ -317,6 +320,7 @@ private fun host(
     // The shipped answer by default, as a production root composes; the autoJoin tests pass `Honoured`,
     // which only a rig build's root does.
     inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
+    reduction: CoroutineDispatcher = Dispatchers.Default,
 ) = StatusContainerHost(
     StatusSources(source, permission.permission, configFake.config, verification = verification),
     scope,
@@ -330,6 +334,7 @@ private fun host(
     cutoffFormatter = fixedCutoffFormatter(),
     diagnostics = testDiagnostics(onIntentError = onIntentError),
     inviteLinkHints = inviteLinkHints,
+    reduction = reduction,
 )
 
 /** A first join (config absent) whose details load succeeds — the gate the explainer is decided in. */
@@ -356,6 +361,16 @@ private fun TestScope.firstJoinGate(
 )
 
 class StatusContainerHostTest {
+
+    // The pin (`docs/architecture.md`, "Concurrency and failure"): Orbit's event loop runs on the lane the composition
+    // names, never on Orbit's own default — which an upgrade could change, and which a host that must see every task
+    // could not see.
+    @Test
+    fun `the container reduces on the lane the composition names`() = runTest {
+        val lane = Dispatchers.Default.limitedParallelism(1)
+        val host = host(FakeSyncStatusSource(SyncStatus.Loading), backgroundScope, reduction = lane)
+        assertSame(lane, host.container.scope.coroutineContext[ContinuationInterceptor])
+    }
 
     // The create layer is the top rung: config absent, reduced from the creation status.
     private fun createHost(
@@ -390,6 +405,7 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
     }
 
@@ -485,6 +501,7 @@ class StatusContainerHostTest {
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         host.testWithInternalState(this) {
             runOnCreate()
@@ -567,6 +584,7 @@ class StatusContainerHostTest {
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
     }
 
@@ -765,6 +783,7 @@ class StatusContainerHostTest {
             },
             cutoffFormatter = fixedCutoffFormatter(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         host.testWithInternalState(this) {
             runOnCreate()
@@ -813,6 +832,7 @@ class StatusContainerHostTest {
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         host.testWithInternalState(this) {
             runOnCreate()
@@ -1702,6 +1722,7 @@ class StatusContainerHostTest {
             diagnostics = testDiagnostics(log = { logged.trySend(it) }),
             commands = testCommands(),
             inviteLinkHints = InviteLinkHints.Honoured,
+            reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
             runOnCreate()
@@ -1731,6 +1752,7 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             diagnostics = testDiagnostics(log = { logged.trySend(it) }),
             commands = testCommands(),
+            reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
             runOnCreate()
@@ -1913,6 +1935,7 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
             containerHost.onLeaveEvent()
@@ -1940,6 +1963,7 @@ class StatusContainerHostTest {
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         val invite = (host.screen.value.layer as Layer.Joined).inviteUrl!!
         assertEquals(encodeEventUrl(EventLinkPayload(testEventId(EVENT_ID))), invite)
@@ -1958,6 +1982,7 @@ class StatusContainerHostTest {
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         // The invite URL has no home outside the joined state now, so "no event" IS "no invite URL":
         // there is no state that could carry one, rather than a state carrying a null (capability
@@ -2002,6 +2027,7 @@ class StatusContainerHostTest {
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         // One name, one source: the heading, the rename prefill and the reconfigure header all read
         // this membership, so there is no second event-name value to drift from it.
@@ -2019,6 +2045,7 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
             containerHost.onShareInvite()
@@ -2039,6 +2066,7 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
             containerHost.onShareInvite()
@@ -2560,6 +2588,7 @@ class StatusContainerHostJoinGateTest {
                     cutoffFormatter = fixedCutoffFormatter(),
                     diagnostics = testDiagnostics(onIntentError = { reported.complete(it) }),
                     queries = noQueries,
+                    reduction = Dispatchers.Default,
                 )
 
                 host.onLeaveEvent()
@@ -2680,6 +2709,7 @@ class StatusContainerHostJoinedFactsTest {
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         fun settled(timing: EventTiming) =
             joined(SyncHealth.InSync, config = running, counts = counts(3 to 3), timing = timing)
@@ -2714,6 +2744,7 @@ class StatusContainerHostJoinedFactsTest {
             queries = noQueries,
             commands = testCommands(),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         ).testWithInternalState(this) {
             runOnCreate()
             source.value = snapshot(completed = 12, total = 15)
@@ -2770,6 +2801,7 @@ class StatusContainerHostRefusalTest {
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
     }
 

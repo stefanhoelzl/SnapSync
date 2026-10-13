@@ -57,6 +57,9 @@ import kotlinx.datetime.LocalDateTime
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import kotlin.time.Duration.Companion.seconds
+import app.snapsync.jvm.JvmLanes
+import app.snapsync.logging.JvmThreadLabel
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The single mutation path for the full-stack world harness (test equipment — no tests): every inspector control
@@ -142,7 +145,8 @@ class WorldInspectorController(
      * backend send, whose receiver is the download reconcile.
      */
     fun invokeExtension() = launchMutation {
-        val result = mocks.extensionHost.operator.process()
+        // On a thread of its own, as the operating system invokes it: the answer blocks that thread until the cycle ran.
+        val result = mocks.extensionHost.operator.process(Dispatchers.Default)
         appendConsole("invoke: upload cycle → $result")
         joinedEventId()?.let { event ->
             mocks.pushService.operator.deliverMessage(mapOf("eventId" to event), Completion.None)
@@ -343,7 +347,15 @@ class WorldInspectorController(
             pushEnvironment = "sandbox",
         )
         val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Ignored, network = null)
-        return JvmApp(scope, lane, mocks) { device ->
+        // Real threads and real time, as on a phone: the operator plays the OS here, and nothing moves a clock for it.
+        val lanes = JvmLanes(
+            composition = lane,
+            reduction = Dispatchers.Default,
+            extension = Dispatchers.Default,
+            extensionAnswers = null,
+            threadLabel = ::JvmThreadLabel,
+        )
+        return JvmApp(scope, lanes, mocks) { device ->
             device.adapters(
                 build,
                 attests = true,

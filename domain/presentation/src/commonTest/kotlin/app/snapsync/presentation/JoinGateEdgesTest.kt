@@ -139,6 +139,7 @@ class JoinGateEdgesTest {
         ),
         diagnostics = testDiagnostics(log = { world.logged += it }, onIntentError = { world.errors += it }),
         inviteLinkHints = hints,
+        reduction = Dispatchers.Default,
     )
 
     private suspend fun TestScope.settle(job: Job) {
@@ -238,6 +239,7 @@ class JoinGateEdgesTest {
                 },
             ),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
 
         settle(host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT_ID), key = LINK_KEY))))

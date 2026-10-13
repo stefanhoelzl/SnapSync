@@ -21,7 +21,13 @@ import kotlinx.serialization.serializer
 internal class ServiceCommands(val service: LeverService<*>) {
     val name: String get() = service.name
 
-    val methods: List<MethodCommand> = service.descriptor.callables.values.map { MethodCommand(service, it) }
+    /**
+     * Every one-shot method: a stream (`world`'s events — kRPC's one kind of non-suspend method) has no answer a shell
+     * could print and exit on.
+     */
+    val methods: List<MethodCommand> = service.descriptor.callables.values
+        .filterNot { it.isNonSuspendFunction }
+        .map { MethodCommand(service, it) }
 
     /** A method by its declared name (`failListing`) or its spelling as a command (`fail-listing`). */
     fun method(name: String): MethodCommand? = methods.firstOrNull { it.name == name || it.declared == name }

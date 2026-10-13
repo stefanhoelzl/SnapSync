@@ -33,6 +33,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 /**
  * A device that lost the joined event's key (capabilities `sync-status`, `join-event`): the status line asks for the
@@ -68,6 +69,7 @@ class KeyLostTest {
         },
         cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
         diagnostics = testDiagnostics(),
+        reduction = Dispatchers.Default,
     )
 
     /** The inert bundle, with [restore] for the reopened invite's key. */
@@ -172,6 +174,7 @@ class KeyLostTest {
             commands = sharingCommands { url -> shared += url },
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
             diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
         )
         driving(host) {
             val joined = { host.screen.value.layer as Layer.Joined }

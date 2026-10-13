@@ -150,6 +150,7 @@ class StatusContainerHostSurfacesTest {
         diagnostics = testDiagnostics(),
         reportDestination = reportDestination,
         albumKind = albumKind,
+        reduction = Dispatchers.Default,
     )
 
     /** Await the first state satisfying [predicate] — failing loudly rather than hanging if none comes. */

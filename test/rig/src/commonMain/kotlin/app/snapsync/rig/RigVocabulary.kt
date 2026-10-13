@@ -150,20 +150,22 @@ object RigVocabulary {
 
 /** Classify this host's hooks against [RigVocabulary]. */
 internal fun RigHooks.advertise(host: String, readsHonoured: Boolean = true): DeviceAdvertisement {
+    // The world's events are the host's own service: refused, each of its methods says why.
+    val refused = refusals + world.refusal?.let { why -> world.service.entries.associateWith { why } }.orEmpty()
     val wired = buildSet {
         triggerGroups.forEach { (root, group) -> group.wired.keys.forEach { add("os/$root/$it") } }
         deviceCommands.keys.forEach { add("device/$it") }
         if (readsHonoured) addAll(RigVocabulary.reads)
-        if (RigVocabulary.CONTRACT !in refusals) add(RigVocabulary.CONTRACT)
+        if (RigVocabulary.CONTRACT !in refused) add(RigVocabulary.CONTRACT)
         // Every typed service is registered on every host — a refused one answers each call with its reason.
         addAll(RigVocabulary.serviceVerbs)
     }
-    val honoured = wired.intersect(RigVocabulary.entries).minus(refusals.keys)
+    val honoured = wired.intersect(RigVocabulary.entries).minus(refused.keys)
     return DeviceAdvertisement(
         host = host,
         honoured = honoured.sorted(),
-        refused = refusals.entries.sortedBy { it.key }.associate { it.key to it.value },
-        unclassified = (RigVocabulary.entries - wired - refusals.keys).sorted(),
+        refused = refused.entries.sortedBy { it.key }.associate { it.key to it.value },
+        unclassified = (RigVocabulary.entries - wired - refused.keys).sorted(),
         outsideVocabulary = (wired - RigVocabulary.entries).sorted(),
     )
 }

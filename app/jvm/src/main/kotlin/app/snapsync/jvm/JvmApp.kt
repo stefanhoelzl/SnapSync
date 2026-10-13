@@ -9,11 +9,11 @@ import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.identity.NoPlatformDeviceId
-import app.snapsync.logging.JvmThreadLabel
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Files
 import app.snapsync.ports.LogSink
+import app.snapsync.ports.ThreadLabel
 import app.snapsync.presentation.CutoffFormatter
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -39,8 +39,8 @@ import kotlinx.coroutines.cancelAndJoin
 class JvmApp<D>(
     /** The caller's scope, which owns every launch's work: the app runs under a child job of it. */
     private val scope: CoroutineScope,
-    /** The composition lane [scope] runs on — the caller's, as a device root names its own. */
-    private val lane: CoroutineDispatcher,
+    /** The lanes both processes run on — the caller's, as a device root names its own. */
+    private val lanes: JvmLanes,
     /** What survives the app's process — handed to [adapters] at every launch. */
     val durable: D,
     /** One launch's adapters over [durable]. */
@@ -128,7 +128,8 @@ class JvmApp<D>(
 
         val composed: ComposedApp = snapSyncHost(
             appScope,
-            lane,
+            lanes.composition,
+            lanes.reduction,
             app.appPorts(
                 processPorts(app.crashReporter, app.files, app.clock, app.crypto, ports.device.logSinks),
                 ports.entries.devControls,
@@ -151,6 +152,8 @@ class JvmApp<D>(
                     ),
                     ports.entries.extensionHost,
                 ),
+                lane = lanes.extension,
+                answerOn = lanes.extensionAnswers,
             )
         }
 
@@ -167,7 +170,7 @@ class JvmApp<D>(
             files = files.value,
             clock = clock.value,
             crypto = crypto.value,
-            threadLabel = JvmThreadLabel(),
+            threadLabel = lanes.threadLabel(),
             build = ports.build.port(),
         )
 
@@ -176,3 +179,24 @@ class JvmApp<D>(
             CutoffFormatter(now = ports.device.clock::now, zone = ports.device.clock.timeZone())
     }
 }
+
+/**
+ * The lanes a JVM launch runs on (`docs/architecture.md`, "Concurrency and failure") — the caller's to name, as a phone's
+ * root names its own. None has a default: a default would hand the world harness a clock that never moves, or the control
+ * channel's host a thread it cannot see.
+ */
+class JvmLanes(
+    /** The composition lane the caller's scope runs on. */
+    val composition: CoroutineDispatcher,
+    /** The CPU lane presentation reduces on. */
+    val reduction: CoroutineDispatcher,
+    /** The upload extension's lane: its detached work and its expiry grace. */
+    val extension: CoroutineDispatcher,
+    /**
+     * Where the extension's `process()` runs its work while the operating system's thread waits for the answer: `null`
+     * on that thread, as on the phone.
+     */
+    val extensionAnswers: CoroutineDispatcher?,
+    /** Each process's per-thread label, which the runtime writes each task's trigger into. */
+    val threadLabel: () -> ThreadLabel,
+)

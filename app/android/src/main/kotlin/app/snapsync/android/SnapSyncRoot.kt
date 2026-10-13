@@ -187,6 +187,8 @@ class SnapSyncRoot(internal val application: Application) {
         snapSyncHost(
             scope = scope,
             lane = Dispatchers.Main,
+            // The CPU lane: presentation reduces on the platform's pool, off the composition lane.
+            reduction = Dispatchers.Default,
             cutoffFormatter = cutoffFormatter,
             // The app's uploader transport is the only uploader Android has (no OS-driven tier).
             ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),

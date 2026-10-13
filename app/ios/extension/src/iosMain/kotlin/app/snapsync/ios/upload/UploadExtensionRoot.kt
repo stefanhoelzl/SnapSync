@@ -28,6 +28,7 @@ import app.snapsync.preferences.IosPreferences
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The extension process's composition root — WIRING ONLY: it constructs this process's adapters
@@ -133,6 +134,9 @@ object UploadExtensionRoot {
             ),
             host = extensionHost(host),
         ),
+        // The extension's lane: the pooled threads its detached work and the expiry grace have always run on; the cycle
+        // itself runs on the operating system's thread, which `process()` blocks until it answers.
+        lane = Dispatchers.Default,
     )
 
     init {

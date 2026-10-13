@@ -27,6 +27,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The version gate on the SCREEN (capability `app-update-required`): a backend refusal of this build
@@ -189,4 +190,5 @@ private fun gateHost(
     cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
     queries = noQueries,
     diagnostics = testDiagnostics(),
+    reduction = Dispatchers.Default,
 )

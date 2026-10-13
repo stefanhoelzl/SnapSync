@@ -32,6 +32,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The range calendars' intents (capabilities `create-event`, `join-event`): each gesture reaches the open calendar, or
@@ -317,6 +318,7 @@ class RangeIntentsTest {
             )
         },
         diagnostics = testDiagnostics(),
+        reduction = Dispatchers.Default,
     )
 
     private companion object {

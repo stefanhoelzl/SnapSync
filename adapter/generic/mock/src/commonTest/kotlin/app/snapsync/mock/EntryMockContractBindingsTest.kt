@@ -39,6 +39,7 @@ import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The entry ports' mocks held to the contracts their real adapters pass (`docs/testing.md`, "Mocks"): each driven
@@ -151,7 +152,7 @@ class EntryMockContractBindingsTest {
                     mock.port().recorded(log),
                     invoke = {
                         var answered: ProcessingAnswer? = null
-                        runEntry { answered = mock.operator.process() }
+                        runEntry { answered = mock.operator.process(Dispatchers.Default) }
                         checkNotNull(answered).ordinal
                     },
                     end = { mock.operator.terminate() },

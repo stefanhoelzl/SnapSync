@@ -106,6 +106,7 @@ class StatusContainerHostMenuTest {
                     queries = noQueries,
                     diagnostics = testDiagnostics(),
                     build = BuildLabel("0.12", "2140"),
+                    reduction = Dispatchers.Default,
                 )
                 body(host, world)
             } finally {

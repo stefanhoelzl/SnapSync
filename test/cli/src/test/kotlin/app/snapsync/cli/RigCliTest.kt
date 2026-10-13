@@ -23,10 +23,11 @@ import kotlin.test.assertTrue
 class RigCliTest {
 
     @Test
-    fun every_declared_method_is_a_command() {
+    fun every_declared_one_shot_method_is_a_command() {
         LEVER_SERVICES.forEach { service ->
             val commands = checkNotNull(serviceCommands(service.name)) { "no command group for ${service.name}" }
-            assertEquals(service.descriptor.callables.keys.toList(), commands.methods.map { it.declared })
+            val oneShot = service.descriptor.callables.values.filterNot { it.isNonSuspendFunction }.map { it.name }
+            assertEquals(oneShot, commands.methods.map { it.declared })
             commands.methods.forEach { assertEquals(it, commands.method(it.name)) }
         }
     }
@@ -122,11 +123,12 @@ class RigCliTest {
     fun an_unknown_command_names_what_there_is() {
         val service = rig("--url", "http://127.0.0.1:1", "backnd", "offline")
         assertEquals(EXIT_USAGE, service.code)
-        assertMentions(service.err, "services: rig, backend, public-backend")
+        assertMentions(service.err, "services: rig, world, backend, public-backend")
         val method = rig("--url", "http://127.0.0.1:1", "backend", "offlin")
         assertEquals(EXIT_USAGE, method.code)
         assertMentions(method.err, "methods: offline, fail-listing")
         assertEquals(EXIT_USAGE, rig("backend", "offline", "--on").code, "a call names its host")
+        assertEquals(EXIT_USAGE, rig("--url", "http://127.0.0.1:1", "world", "events").code, "a stream is no command")
     }
 
     @Test
