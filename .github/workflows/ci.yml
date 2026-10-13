@@ -679,6 +679,50 @@ jobs:
         uses: ./.github/actions/konan-restore
         with:
           family: sim-journeys
+      # The simulator, already past its first boot: the image's iPhone 17 (`scripts/lib/sim.sh`), its device directory
+      # cached as `scripts/sim-settle` leaves it — booted, the unneeded daemons disabled, Photos' library created, shut
+      # down clean, no app and no photo. A first boot on the runner otherwise spent ~4.5 min at a load of 100-480
+      # booting and installing (run 38393803729). Keyed on the image version, the device and the settle scripts. On a
+      # miss the device is settled and saved on main only; anywhere else the image's own directory is put back.
+      - name: Find the image's simulator
+        id: sim
+        if: matrix.platform == 'ios'
+        run: |
+          . scripts/lib/sim.sh
+          UDID="$(image_iphone)"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+          [ -z "$UDID" ] || mv "$HOME/Library/Developer/CoreSimulator/Devices/$UDID" "$HOME/Library/Developer/CoreSimulator/Devices/$UDID.image"
+      - name: Restore the settled simulator
+        id: sim-restore
+        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
+          key: sim-settled-${{ steps.sim.outputs.image }}-${{ steps.sim.outputs.udid }}-${{ hashFiles('scripts/sim-settle', 'scripts/lib/sim.sh') }}
+      - name: Settle the simulator
+        id: sim-settle
+        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+          HIT: ${{ steps.sim-restore.outputs.cache-hit }}
+          SETTLE: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci-build-times' }}
+        run: |
+          D="$HOME/Library/Developer/CoreSimulator/Devices/$UDID"
+          if [ "$HIT" = true ]; then
+            rm -rf "$D.image"; echo "restored the settled simulator ($(du -sh "$D" | cut -f1))"
+          else
+            rm -rf "$D"; mv "$D.image" "$D"
+            if [ "$SETTLE" = true ]; then scripts/sim-settle "$UDID" && echo "save=true" >> "$GITHUB_OUTPUT"; fi
+          fi
+          # CoreSimulatorService read the device set before its directory moved; the next simctl starts it afresh.
+          killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+      - name: Save the settled simulator
+        if: steps.sim-settle.outputs.save == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
+          key: ${{ steps.sim-restore.outputs.cache-primary-key }}
       - name: Run the simulator app's port contracts and the journeys
         if: matrix.platform == 'ios'
         # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed `snapsync.rig=true`
