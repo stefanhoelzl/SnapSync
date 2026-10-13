@@ -41,6 +41,9 @@ enum class BackendState {
     /** An event that exists, and a credential the backend never issued. */
     FOREIGN_TOKEN,
 
+    /** An event that exists, and a client holding no credential at all. */
+    NO_TOKEN,
+
     /** An event whose range has ENDED, and the one device that joined it — nobody has settled yet. */
     ENDED_MEMBER,
 
@@ -122,11 +125,15 @@ object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Bac
         BackendState.ENDED_FOR_GOOD,
         BackendState.CLOSED_BEFORE_OPEN_UNTIL,
         BackendState.ATTESTABLE,
-        -> Seeded(
-            eventId = setup.freshId(),
-            deviceId = setup.freshId(),
-        )
+        -> unseeded(state, setup)
         else -> seedEvent(state, clauseId, setup)
+    }
+
+    /** A state with no event: fresh addresses, and the fresh device's token — but where the clause attests for itself. */
+    private suspend fun unseeded(state: BackendState, setup: BackendSetup): Seeded {
+        val device = setup.freshId()
+        val token = if (state == BackendState.ATTESTABLE) null else setup.tokenFor(device)
+        return Seeded(setup.freshId(), device, identity = ClientIdentity(SERVED_APP_VERSION, token))
     }
 
     private suspend fun seedEvent(state: BackendState, clauseId: String, setup: BackendSetup): Seeded {
@@ -136,7 +143,8 @@ object BackendContract : Contract<BackendState, EdgeSubject<BackendClient>>("Bac
         val identity = when (state) {
             BackendState.VERSION_REFUSED -> ClientIdentity(REFUSED_APP_VERSION, token = null)
             BackendState.FOREIGN_TOKEN -> ClientIdentity(SERVED_APP_VERSION, FOREIGN_TOKEN)
-            else -> ClientIdentity.SERVED
+            BackendState.NO_TOKEN -> ClientIdentity(SERVED_APP_VERSION, token = null)
+            else -> ClientIdentity(SERVED_APP_VERSION, setup.tokenFor(device))
         }
         val asset = when (state) {
             BackendState.UNION_COMPLETE_ASSET -> COMPLETE

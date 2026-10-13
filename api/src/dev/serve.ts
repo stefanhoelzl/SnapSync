@@ -8,38 +8,21 @@
 // deployed bundle at `main.ts`, and `main.ts` reaches nothing under `src/dev/`, none of this can ship —
 // structurally, with no flag and no build-time exclusion to get wrong.
 //
-// It wraps the app with exactly two behaviors, both of which exist so the rig is usable without changing
-// a line of `app.ts`:
+// It wraps the app with one behavior, so the rig is usable without changing a line of `app.ts`:
 //
-//  1. PRESIGNED DOWNLOADS. `s3Host` and `s3Scheme` are the rig's own origin, so `presignDownloadUrl`
-//     mints a real SigV4 URL of the identical production shape pointed home — and pointed at a scheme
-//     this server actually speaks, so a device can follow it. Requests under `/<zone>/` are served off
-//     disk with the signature IGNORED — bunny's exact acceptance semantics are not reproducible, so
-//     validating locally would pin our guess rather than their behavior.
+//  PRESIGNED DOWNLOADS. `s3Host` and `s3Scheme` are the rig's own origin, so `presignDownloadUrl`
+//  mints a real SigV4 URL of the identical production shape pointed home — and pointed at a scheme
+//  this server actually speaks, so a device can follow it. Requests under `/<zone>/` are served off
+//  disk with the signature IGNORED — bunny's exact acceptance semantics are not reproducible, so
+//  validating locally would pin our guess rather than their behavior.
 //
-//  2. FALLBACK BEARER. The attestation gate stays fully ON. A request that arrives with NO
-//     `authorization` header gets a dev token attached (minted for the device its path names, since a
-//     token acts only for its own device) — the same trick `test/app.test.ts` uses to avoid threading a
-//     header through ~100 call sites — so a bare `curl` works. A request carrying its
-//     OWN token is untouched, including an expired or foreign one: it 401s exactly as deployed, and
-//     `DeviceAttestation.rejected()` on the device then drops it and re-attests, so crossing backends
-//     heals the credential with no operator action. `/attest/*` is ungated either way, so the device's
-//     REAL attestation flow runs for real against the rig.
-//
-//     THE FALLBACK ALSO FILLS AN ABSENT ENROLMENT, and must. A `devices` row is created only by
-//     `POST /attest/token` (capability `privacy-security`: a row exists iff the device has attested),
-//     and `PUT /api/v2/devices/<id>` — the push registration — now UPDATEs that row and answers 401 when
-//     there is none. On a SIMULATOR that is unrecoverable rather than a first-launch round-trip: App
-//     Attest does not exist there (`DCAppAttestService.isSupported` is false), so the app never attests,
-//     `DeviceAttestation.refresh` returns early without trying, and the registration would 401 forever.
-//     Supplying a credential without the enrolment it implies is half a credential, so the fallback
-//     supplies both. A caller with its own token is untouched here too — a real device attests for real.
+// The attestation gate is the deployed one, unwrapped: a request without a token is refused exactly as
+// deployed. Every caller attests for real — a phone with App Attest or its Keystore, and a simulator, an
+// emulator, a JVM test host or a script with a software Android key, which this deployment's `any` trust
+// accepts (`androidAttestationTrust`).
 
 import { createApp } from "../app.ts";
-import { mintToken } from "../attest.ts";
-import { putAttestation } from "../db.ts";
-import { DEV_ATTEST_TTL_MS, deviceNamedBy, enrolmentTarget } from "./fallback.ts";
-import { DEV_TOKEN_DEVICE_ID, devConfig } from "./config.ts";
+import { devConfig } from "./config.ts";
 import { sqliteDb } from "./db-sqlite.ts";
 import { storeSink } from "../request-log-store.ts";
 import { replay } from "./replay.ts";
@@ -125,16 +108,6 @@ const app = createApp({
   logSink: storeSink(db),
 });
 
-// Unauthenticated callers get a token minted for the device the PATH names, because the app refuses a
-// token on any other device's route (`actsFor`, 403) — so a curl, a simulator (no App Attest) and the
-// live contract bindings can still act as any device, one request at a time. A path naming no device gets
-// the fixed dev id's token, minted once.
-const devToken = await mintToken(config, DEV_TOKEN_DEVICE_ID, Date.now());
-const devTokenFor = async (path: string) => {
-  const named = deviceNamedBy(path);
-  return named === null ? devToken : await mintToken(config, named, Date.now());
-};
-
 const presignPrefix = `/${config.zone}/`;
 
 async function handler(request: Request): Promise<Response> {
@@ -149,27 +122,6 @@ async function handler(request: Request): Promise<Response> {
     });
   }
 
-  if (!request.headers.get("authorization")) {
-    // The push registration is the one route that needs an enrolment as well as a token. Enrol exactly
-    // the device the path names — not a fixed dev id — because the route reads the row by that id.
-    const enrol = enrolmentTarget(request.method, path);
-    if (enrol) {
-      await putAttestation(
-        db,
-        enrol,
-        {
-          publicKey: "dev-rig-not-a-real-attestation",
-          platform: "ios",
-          environment: "development",
-        },
-        new Date().toISOString(),
-        new Date(Date.now() + DEV_ATTEST_TTL_MS).toISOString(),
-      );
-    }
-    const headers = new Headers(request.headers);
-    headers.set("authorization", `Bearer ${await devTokenFor(path)}`);
-    request = new Request(request, { headers });
-  }
   return await app.fetch(request);
 }
 

@@ -53,6 +53,14 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.membershipClau
     }
 
     clause(
+        "A_GATED_ROUTE_REFUSES_A_REQUEST_WITHOUT_A_TOKEN",
+        BackendState.NO_TOKEN,
+        covers = cells { backend(Routes.JoinEvent.ID, Unauthorized::class) },
+    ) { s ->
+        assertAnswer<Unauthorized>(s.join(), "a request carrying no credential joins nothing")
+    }
+
+    clause(
         "MANIFEST_A_MEMBER_PUBLISH_IS_ACCEPTED",
         BackendState.MEMBER,
         covers = cells { backend(Routes.PublishManifest.ID, PublishManifestReply.Published::class) },

@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
@@ -57,14 +58,10 @@ const val SEEDED_ENDED_ENDS_AT = "2026-01-05T00:00:00Z"
 
 /**
  * What the app declares about itself in a clause's state: the build version (the version header every request
- * carries) and the token the gateway attaches to the gated routes — `null` for none, which the dev edge's fallback
- * bearer serves (`api/src/dev/serve.ts`).
+ * carries) and the token the gateway attaches to the gated routes — `null` for none, which every backend refuses on a
+ * gated route.
  */
-class ClientIdentity(val appVersion: String, val token: String?) {
-    companion object {
-        val SERVED = ClientIdentity(SERVED_APP_VERSION, token = null)
-    }
-}
+class ClientIdentity(val appVersion: String, val token: String?)
 
 /** An event [EdgeSetup] created, as the edge answered the create. */
 class CreatedEvent(val eventId: String, val name: String, val createdAt: String)
@@ -77,7 +74,7 @@ class Seeded(
     val eventId: String,
     val deviceId: String,
     val event: CreatedEvent? = null,
-    val identity: ClientIdentity = ClientIdentity.SERVED,
+    val identity: ClientIdentity = ClientIdentity(SERVED_APP_VERSION, token = null),
     val asset: SeededAsset? = null,
 )
 
@@ -154,6 +151,9 @@ interface Attester {
 interface BackendSetup {
     fun freshId(): String
 
+    /** [deviceId]'s token, minted as a device mints one — what the client under contract carries for that device. */
+    suspend fun tokenFor(deviceId: String): String
+
     /** Create an event — one whose range has already [ended] when asked. */
     suspend fun createEvent(name: String, ended: Boolean = false): CreatedEvent
     suspend fun join(eventId: String, deviceId: String)
@@ -184,14 +184,20 @@ const val SEEDED_PART = 12L
 
 /**
  * [BackendSetup] over the backend's public HTTP surface — the real `api/`'s or the backend mock's, the one [transport]
- * reaches at [base]. Setup is not under contract: it sends no token (the dev edge's fallback bearer serves it, as the
- * mock's does), and every step checks its own answer so a setup failure names the step, not the clause.
+ * reaches at [base]. Setup is not under contract: each step carries the token of the device it acts for, minted
+ * through [tokens] as a device mints one (an event is created by a device of the setup's own), and checks its own
+ * answer, so a setup failure names the step, not the clause.
  */
-class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSetup {
+class EdgeSetup(private val transport: HttpTransport, base: String, private val tokens: DeviceTokens) : BackendSetup {
     private val base = base.trimEnd('/')
+
+    /** The device the setup creates events as. */
+    private val creator = freshId()
 
     @OptIn(ExperimentalUuidApi::class)
     override fun freshId(): String = Uuid.random().toString()
+
+    override suspend fun tokenFor(deviceId: String): String = tokens.tokenFor(deviceId)
 
     override suspend fun createEvent(name: String, ended: Boolean): CreatedEvent {
         val body = EventCreate(
@@ -199,25 +205,25 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
             startsAt = if (ended) SEEDED_ENDED_STARTS_AT else SEEDED_STARTS_AT,
             endsAt = if (ended) SEEDED_ENDED_ENDS_AT else SEEDED_ENDS_AT,
         )
-        val reply = send(Routes.CreateEvent.request(body))
+        val reply = send(Routes.CreateEvent.request(body), creator)
         val created = (reply as? CreateEventReply.Created ?: refused("create event", reply)).event
         return CreatedEvent(created.eventId, created.name, created.createdAt)
     }
 
     override suspend fun join(eventId: String, deviceId: String) {
-        val reply = send(Routes.JoinEvent.request(eventId, deviceId))
+        val reply = send(Routes.JoinEvent.request(eventId, deviceId), deviceId)
         if (reply != JoinEventReply.Joined) refused("join $deviceId", reply)
     }
 
     override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean) {
         val manifest = manifestOf(deviceId, assets, version = 0, final = final)
-        val reply = send(Routes.PublishManifest.request(eventId, deviceId, manifest))
+        val reply = send(Routes.PublishManifest.request(eventId, deviceId, manifest), deviceId)
         if (reply != PublishManifestReply.Published) refused("publish manifest", reply)
     }
 
     /** The asset ids the event's union serves — a read of the backend's public surface, as a member makes it. */
     override suspend fun unionAssetIds(eventId: String): Set<AssetId> {
-        val reply = send(Routes.EventFiles.request(eventId))
+        val reply = send(Routes.EventFiles.request(eventId), deviceId = null)
         val page = reply as? EventFilesReply.Page ?: refused("read the union", reply)
         return page.items.mapTo(mutableSetOf()) { AssetId(it.assetId) }
     }
@@ -227,6 +233,7 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
         val path = Routes.UploadResource.path(eventId, deviceId, asset.assetId.value, role.wire, asset.filename)
         val headers = mapOf(
             Limits.VERSION_HEADER to SERVED_APP_VERSION,
+            AUTHORIZATION to "Bearer ${tokens.tokenFor(deviceId)}",
             "Content-Type" to "image/jpeg",
             // Declared, as the app declares a file it can resume, so the upload state can answer for it.
             Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256 to SEEDED_SHA256,
@@ -241,6 +248,7 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
         val path = Routes.UploadResource.path(eventId, deviceId, asset.assetId.value, role.wire, asset.filename)
         val headers = mapOf(
             Limits.VERSION_HEADER to SERVED_APP_VERSION,
+            AUTHORIZATION to "Bearer ${tokens.tokenFor(deviceId)}",
             "Content-Type" to "image/jpeg",
             Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256 to SEEDED_PART_SHA256,
             Routes.UploadResource.HEADER_CONTENT_RANGE to "bytes 0-${SEEDED_SIZE - 1}/$SEEDED_SIZE",
@@ -253,9 +261,11 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
         }
     }
 
-    private suspend fun <R : Reply> send(request: GatedRequest<R>): R {
+    /** [request], carrying [deviceId]'s token — or none, for a route a token is optional on. */
+    private suspend fun <R : Reply> send(request: GatedRequest<R>, deviceId: String?): R {
         val wire = request.wire
-        val headers = wire.headers + (Limits.VERSION_HEADER to SERVED_APP_VERSION)
+        val headers = wire.headers + (Limits.VERSION_HEADER to SERVED_APP_VERSION) +
+            listOfNotNull(deviceId?.let { AUTHORIZATION to "Bearer ${tokens.tokenFor(it)}" })
         return when (val result = transport.send(HttpRequest(wire.method, base + wire.path, headers, wire.body))) {
             is HttpResult.Response -> request.decide(WireResponse(result.status, result.headers, result.body))
             is HttpResult.Unreachable -> request.unreachable(result.reason)
@@ -272,6 +282,7 @@ class EdgeSetup(private val transport: HttpTransport, base: String) : BackendSet
 
     private companion object {
         val SUCCESS = 200..299
+        const val AUTHORIZATION = "Authorization"
 
         /** A body for a route that stores whatever it is sent: setup never reads the bytes back. */
         const val BAD_REQUEST = 400

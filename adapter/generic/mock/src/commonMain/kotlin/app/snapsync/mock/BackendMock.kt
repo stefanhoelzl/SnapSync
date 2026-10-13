@@ -146,10 +146,6 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
         state.failUnion = on
     }
 
-    override suspend fun fallbackBearer(on: Boolean) {
-        state.fallbackBearer = on
-    }
-
     override suspend fun minAppVersion(minimum: String?) {
         state.minAppVersion = minimum
     }
@@ -208,7 +204,6 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
             offline = state.offline,
             failListing = state.failDeviceListing,
             failUnion = state.failUnion,
-            fallbackBearer = state.fallbackBearer,
             minAppVersion = state.minAppVersion,
             refusingAttestation = state.refuseAttestation?.let { AttestationRefusal.valueOf(it.name) },
             held = BackendCall.entries.filter { it in state.holds },
@@ -403,8 +398,6 @@ internal class BackendState(
 
     @Volatile var refuseNextCredential = false
 
-    @Volatile var fallbackBearer = true
-
     @Volatile var refuseAttestation: DeviceRefusal? = null
 
     @Volatile var refuseAttestationDetail: String? = null
@@ -442,9 +435,12 @@ internal class BackendState(
 
     fun issueChallenge(): String = "in-memory-challenge-${challenges.size + 1}".also { challenges += it }
 
-    /** A well-formed token, distinct per mint: its signature is the challenge it was minted over. */
+    /**
+     * A well-formed token, distinct per mint — `<deviceId>.<expiry>.<signature>`, as the real backend's — that lives
+     * [TOKEN_LIFETIME_SECONDS] from now on this backend's clock; its signature is the challenge it was minted over.
+     */
     fun mint(deviceId: String, challenge: String): String =
-        "$deviceId.$TOKEN_EXPIRES_AT_EPOCH_SECONDS.$challenge".also { minted += it }
+        "$deviceId.${now().epochSeconds + TOKEN_LIFETIME_SECONDS}.$challenge".also { minted += it }
 
     /** The minimum a build declaring [declared] falls short of, or null while the gate is off or the build is new enough. */
     fun minimumRefusing(declared: String?): String? {
@@ -633,6 +629,11 @@ internal class BackendState(
         if (segments.size != 3 || role == null || !AssetId.isCanonical(segments[1]) || filename.isNullOrEmpty()) return BAD_REQUEST
         if (offline) return BAD_GATEWAY
         val deviceId = segments[0]
+        // The byte route is gated like every other: a token this backend minted, unexpired, for the device it names.
+        val token = headers.entries.firstOrNull { it.key.equals(AUTHORIZATION, ignoreCase = true) }?.value
+            ?.removePrefix("Bearer ")?.trim()
+        if (token == null || !authorizes(token)) return UNAUTHORIZED
+        if (token.substringBefore('.') != deviceId) return FORBIDDEN
         val eventId = when (named) {
             // Only a member still in the event writes into it.
             null -> presentEventOf(deviceId) ?: return CONFLICT
@@ -683,8 +684,11 @@ internal class BackendState(
         const val UPGRADE_REQUIRED = 426
         const val BAD_GATEWAY = 502
 
-        /** Epoch seconds a minted token expires at: 90 days, which outlives any test's pinned clock. */
-        const val TOKEN_EXPIRES_AT_EPOCH_SECONDS: Long = 90L * 24 * 60 * 60
+        const val UNAUTHORIZED = 401
+        const val AUTHORIZATION = "Authorization"
+
+        /** How long a minted token lives: 30 days, the real backend's lifetime. */
+        const val TOKEN_LIFETIME_SECONDS: Long = 30L * 24 * 60 * 60
     }
 }
 
@@ -770,3 +774,10 @@ internal fun deviceIdOf(text: String): DeviceId = requireNotNull(DeviceId.parse(
 fun interface BackendWatcher {
     fun told(event: WorldEvent.Backend)
 }
+
+/**
+ * Whether [token] authorizes a request now, as the real gate judges one: minted here, and not past its expiry (valid
+ * while `now <= expiry`). The device it acts for rides inside it.
+ */
+internal fun BackendState.authorizes(token: String): Boolean =
+    token in minted && (token.split('.').getOrNull(1)?.toLongOrNull() ?: 0) >= now().epochSeconds

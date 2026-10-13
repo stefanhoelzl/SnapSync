@@ -65,7 +65,7 @@ class ProxyRenderingTest {
         BackendClient(
             backend,
             "https://backend.test/api/v2",
-            ClientIdentity.SERVED,
+            ClientIdentity(SERVED_APP_VERSION, token = null),
             log,
         ).send(Routes.Challenge.request())
         object : PlatformDeviceId {

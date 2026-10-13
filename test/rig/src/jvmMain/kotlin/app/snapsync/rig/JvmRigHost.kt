@@ -133,9 +133,9 @@ class JvmRigHost private constructor(
             val app = JvmApp(scope, threads.lanes, mocks) { device ->
                 device.adapters(
                     build,
-                    attests = backend.attests,
                     http = threads.counted(backend.port(device)),
                     logSinks = listOf(log),
+                    integrity = backend.integrity(device),
                 )
             }
             val network = threads.network ?: mocks.backend.byteRoute
@@ -146,7 +146,16 @@ class JvmRigHost private constructor(
                 log,
                 threads,
                 scope,
-                BackendReach(backend.base, backend.name, backend.port(mocks), network, version),
+                BackendReach(
+                    backend.base,
+                    backend.name,
+                    backend.port(mocks),
+                    network,
+                    version,
+                    backend::attester,
+                ) { device ->
+                    heldToken(mocks.keychain.port(), device.takeIf { it == mocks.ownDeviceId })
+                },
                 PlayedOs(mocks),
             )
             rig.showScreen()

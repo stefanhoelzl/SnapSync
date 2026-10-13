@@ -93,7 +93,7 @@ class DeviceIntegrityMock {
     internal val keys = EnclaveKeys()
 
     /** A process's face; a simulator has no App Attest: `available = false`. */
-    fun port(available: Boolean): DeviceIntegrity = InMemoryDeviceIntegrity(available, keys)
+    fun port(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available, keys)
 }
 
 /**

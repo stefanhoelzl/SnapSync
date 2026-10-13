@@ -87,7 +87,8 @@ class RigLaunch internal constructor(
  * operating system stops waking a run whose wakes the channel plays.
  */
 @OptIn(CompositionOnly::class)
-fun rigLaunch(real: AppDevicePorts): RigLaunch {
+fun rigLaunch(platform: AppDevicePorts): RigLaunch {
+    val real = attestable(platform)
     val launch = LaunchAdapters.load(
         real.files.value,
         AdapterProcess.APP,
@@ -236,3 +237,10 @@ private object QuietWake : Granted<WakeId> {
         override fun expire() = Unit
     }
 }
+
+/**
+ * The real adapters a rig build's app attests with: the platform's own on a phone, whose App Attest the local backend
+ * verifies; on a simulator, which has none, the platform's own but for a software Android key the local backend's `any`
+ * trust accepts — so a simulator app holds a real token, as every caller of the backend must.
+ */
+internal expect fun attestable(real: AppDevicePorts): AppDevicePorts

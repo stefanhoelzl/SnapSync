@@ -249,11 +249,14 @@ edge :test:feature :domain:ports
 edge :test:feature :domain:scheduling
 edge :test:feature :domain:services
 edge :test:harness-driver :app:desktop
+edge :test:integration :adapter:generic:app
 edge :test:integration :domain:domain
 edge :test:integration :domain:feature
 edge :test:integration :domain:model
+edge :test:integration :domain:ports
 edge :test:integration :domain:presentation
 edge :test:integration :domain:wire
+edge :test:integration :test:contracts
 edge :test:integration :test:control
 edge :test:integration :ui:state
 edge :test:launch-adapters :adapter:generic:mock

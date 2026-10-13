@@ -671,9 +671,9 @@ build the same classes over caller-held cells.
   `HttpTransport` port (`BackendRouter`): it routes each request on the generated templates and answers the statuses,
   texts and JSON bodies `api/openapi.yaml` declares, so the app's real gateway, routes and replies run over it. The
   version a request declares is its own header — `BuildInfoMock`'s cell, which an operator may change to play an
-  update in place (`port(declared)` plays it for a baked build). It serves a request with no `Authorization` as the
-  dev server's fallback bearer does (`fallbackBearer`, on by default), checks a token it is sent, refuses one minted
-  for another device than the path names, and its operator can make any operation answer a fault before it runs
+  update in place (`port(declared)` plays it for a baked build). It refuses a gated request with no `Authorization`, as every
+  backend does, checks a token it is sent — minted here and unexpired on the device's clock (30 days, as deployed) —
+  on the byte routes too, refuses one minted for another device than the path names, and its operator can make any operation answer a fault before it runs
   (`fail(operationId, BackendFault, times)` — a failing store, a maintenance window, no answer, a malformed body). It holds the real backend's rules the contract checks and the ones it does not: membership is
   one record with an active/departed state (the real backend's `done`/`left` split is observable through no route,
   so the mock keeps none), the union spans departed members, nothing closes an event (an event is open until its

@@ -5,6 +5,7 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.InviteLinkHints
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.LogSink
 
@@ -19,15 +20,16 @@ class JvmMocks(
 ) : MockDevice(ownDeviceId, inviteLinkHints, network) {
 
     /**
-     * One launch's adapters over these mocks. [attests] is whether the app process has App Attest (a simulator has
-     * not); [http] is the device API's transport — the backend mock's own face, or one reaching the real `api/`;
-     * [logSinks] where the app process's log lines go (see [JvmDevice.logSinks]).
+     * One launch's adapters over these mocks. [http] is the device API's transport — the backend mock's own face, or one
+     * reaching the real `api/`; [integrity] the device-integrity service the app proves with — the in-memory one
+     * ([enclave]'s) for the backend mock; [logSinks] where the app process's log lines go (see
+     * [JvmDevice.logSinks]).
      */
     fun adapters(
         build: BuildInfoMock,
-        attests: Boolean,
         http: HttpTransport,
         logSinks: List<LogSink>,
+        integrity: DeviceIntegrity,
     ): JvmAdapters =
         JvmAdapters(
             build = build,
@@ -41,7 +43,7 @@ class JvmMocks(
                 databases = databases.port(),
                 preferences = preferences.port(),
                 secureStore = keychain.port(),
-                integrity = enclave.port(available = attests),
+                integrity = integrity,
                 processInfo = processInfo.port(),
                 network = connectivity.port(),
                 deviceConditions = deviceConditions.port(),

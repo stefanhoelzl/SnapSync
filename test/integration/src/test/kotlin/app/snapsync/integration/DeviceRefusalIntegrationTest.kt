@@ -109,8 +109,10 @@ class DeviceRefusalIntegrationTest {
     fun a_joined_phone_the_service_comes_to_refuse_is_told_the_cause_on_its_status_line() = rigTest {
         createAndJoin()
         refuse(DeviceRefusal.DEVICE_MODIFIED)
-        // A gated call is refused for its token; recovering, the app re-attests and is refused as not genuine.
-        reconcile()
+        // The member's next photo is shared — gated calls, refused for the token the phone holds; recovering, the app
+        // re-attests and is refused as not genuine. (A read of the event carries no token, so it would show nothing.)
+        addPhoto("P1")
+        foreground()
         awaitState {
             ((it.ui.layer as? Layer.Joined)?.health as? SyncHealth.Unattested)?.refusal == RefusalCause.DEVICE_MODIFIED
         }

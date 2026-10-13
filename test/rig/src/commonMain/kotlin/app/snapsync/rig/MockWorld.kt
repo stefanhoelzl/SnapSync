@@ -1,5 +1,8 @@
 package app.snapsync.rig
 
+import app.snapsync.contracts.Attester
+import app.snapsync.contracts.SERVED_APP_VERSION
+import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.mock.DeclaredVersion
@@ -13,10 +16,14 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionResource
 import app.snapsync.model.UnionTrigger
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
+import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.services.secure.SecureSlots
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.DeviceFilesReply
 import app.snapsync.wire.api.EventFilesReply
@@ -85,8 +92,12 @@ class MockWorld(
 
 /**
  * The backend as another member, or its operator's seeding, reaches it: its public surface only — the device API over
- * [transport], credential free (the dev server's fallback bearer serves it, as the mock's does), and the byte route an
- * OS upload crosses. Written once for every backend a host may serve.
+ * [transport] and the byte route an OS upload crosses. Written once for every backend a host may serve.
+ *
+ * Every request carries the token of the device its path names, as that device would send it: a played member's is
+ * minted for it through [attester]'s keys, as a device mints one, while this app's own device ([ownToken]) carries the
+ * token the app holds — minting one for it would replace the app's own enrolment. A request naming no device is made
+ * by a device of the reach's own.
  */
 class BackendReach(
     /** The device-facing base, carrying exactly one version prefix. */
@@ -96,7 +107,16 @@ class BackendReach(
     private val transport: HttpTransport,
     private val network: UploadNetwork,
     private val declared: DeclaredVersion,
+    attester: () -> Attester,
+    /** The token the app holds when [deviceId] is its own device, else `null`. */
+    private val ownToken: suspend (deviceId: String) -> String?,
 ) {
+    private val tokens = DeviceTokens(transport, base, attester, { declared.value ?: SERVED_APP_VERSION })
+
+    /** [deviceId]'s token, or `null` where the backend will not mint one (a refused build, a refused phone). */
+    private suspend fun tokenFor(deviceId: String): String? =
+        ownToken(deviceId) ?: runCatchingCancellable { tokens.tokenFor(deviceId) }.getOrNull()
+
     /** The object keys the backend lists for [deviceId] in [eventId] — each event holds its own. */
     suspend fun objectsOf(eventId: String, deviceId: String): Set<String> {
         val reply = send(Routes.DeviceFiles.request(eventId, deviceId))
@@ -109,7 +129,10 @@ class BackendReach(
      * read (decision record `changes/incremental-union`, D5), like a browser's.
      */
     suspend fun unionOf(eventId: String): List<UnionAsset> {
-        val reply = send(Routes.EventFiles.request(eventId, snapSyncTrigger = UnionTrigger.FOREGROUND.wire))
+        val reply = send(
+            Routes.EventFiles.request(eventId, snapSyncTrigger = UnionTrigger.FOREGROUND.wire),
+            anonymous = true,
+        )
         val page = reply as? EventFilesReply.Page ?: refused("the union", reply)
         return page.items.map { asset ->
             UnionAsset(
@@ -126,7 +149,7 @@ class BackendReach(
     /** The event's name, or `null` for an event the backend does not hold (a `404`). */
     suspend fun eventOf(
         eventId: String,
-    ): Pair<Boolean, String?> = when (val reply = send(Routes.GetEvent.request(eventId))) {
+    ): Pair<Boolean, String?> = when (val reply = send(Routes.GetEvent.request(eventId), anonymous = true)) {
         is GetEventReply.Found -> true to reply.eventDetails.name
         EventNotFound -> false to null
         else -> error("the event details route answered $reply for $eventId")
@@ -137,7 +160,7 @@ class BackendReach(
      * serves none, and for an event the backend does not hold.
      */
     suspend fun closedAtOf(eventId: String): String? =
-        (send(Routes.GetEvent.request(eventId)) as? GetEventReply.Found)?.eventDetails?.closedAt
+        (send(Routes.GetEvent.request(eventId), anonymous = true) as? GetEventReply.Found)?.eventDetails?.closedAt
 
     /** `POST /events` — an event the backend mints. */
     suspend fun createEvent(name: String, startsAt: String): String {
@@ -160,7 +183,10 @@ class BackendReach(
      * what a current build says once its downloads are all in its library.
      */
     suspend fun reportReceived(eventId: String, deviceId: String) {
-        val page = send(Routes.EventFiles.request(eventId, snapSyncTrigger = UnionTrigger.FOREGROUND.wire))
+        val page = send(
+            Routes.EventFiles.request(eventId, snapSyncTrigger = UnionTrigger.FOREGROUND.wire),
+            anonymous = true,
+        )
         val position = (page as? EventFilesReply.Page ?: refused("the union", page)).snapSyncCursor.toLong()
         val reply = send(Routes.ReportReceived.request(eventId, deviceId, Received(position)))
         if (reply != ReportReceivedReply.Recorded) refused("$deviceId's received report", reply)
@@ -186,21 +212,33 @@ class BackendReach(
         val role = resource.role.wire
         val path = eventId?.let { Routes.UploadResource.path(it, deviceId, assetId.value, role, resource.filename) }
             ?: Routes.UploadResourceEventless.path(deviceId, assetId.value, role, resource.filename)
-        val status = network.put(base + path, versionHeaders() + (CONTENT_TYPE to JPEG), bytes)
+        val status = network.put(
+            base + path,
+            versionHeaders() + authorization(deviceId) + (CONTENT_TYPE to JPEG),
+            bytes,
+        )
         check(status != null && status in SUCCESS) {
             "upload ${resource.key} for $deviceId was answered $status by the $name backend"
         }
     }
 
-    /** [request], sent as the gateway would send it without a credential: the declared version, no token. */
-    private suspend fun <R : Reply> send(request: GatedRequest<R>): R {
+    /**
+     * [request], sent as the gateway sends it: the declared version and the token of the device its path names — or, on
+     * a route a token is optional on, none ([anonymous]), so the backend reads it as nobody's.
+     */
+    private suspend fun <R : Reply> send(request: GatedRequest<R>, anonymous: Boolean = false): R {
         val wire = request.wire
-        val sent = HttpRequest(wire.method, base + wire.path, wire.headers + versionHeaders(), wire.body)
+        val acting = DEVICE_IN_PATH.find(wire.path)?.groupValues?.get(1) ?: REACH_DEVICE
+        val credential = if (anonymous) emptyMap() else authorization(acting)
+        val sent = HttpRequest(wire.method, base + wire.path, wire.headers + versionHeaders() + credential, wire.body)
         return when (val result = transport.send(sent)) {
             is HttpResult.Response -> request.decide(WireResponse(result.status, result.headers, result.body))
             is HttpResult.Unreachable -> request.unreachable(result.reason)
         }
     }
+
+    private suspend fun authorization(deviceId: String): Map<String, String> =
+        tokenFor(deviceId)?.let { mapOf(AUTHORIZATION to "Bearer $it") }.orEmpty()
 
     private fun versionHeaders(): Map<String, String> =
         declared.value?.let { mapOf(Limits.VERSION_HEADER to it) }.orEmpty()
@@ -211,6 +249,11 @@ class BackendReach(
 
     private companion object {
         const val CONTENT_TYPE = "Content-Type"
+        const val AUTHORIZATION = "Authorization"
+
+        /** The device the reach creates events as. */
+        const val REACH_DEVICE = "5eed0000-0000-4000-8000-000000000001"
+        val DEVICE_IN_PATH = Regex("/devices/([^/?]+)")
         const val JPEG = "image/jpeg"
         val SUCCESS = 200..299
         val SEEDED_BYTES = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
@@ -239,3 +282,10 @@ private fun DeviceManifest.onWire(): Manifest = Manifest(
     version = version ?: 0L,
     `final` = final,
 )
+
+/**
+ * The token the app holds in [store], when [deviceId] is the app's own device (`null` otherwise, or when the app holds
+ * none) — what a reach sends for the app's own device, whose enrolment a fresh mint would replace.
+ */
+fun heldToken(store: SecureStore, deviceId: String?): String? =
+    deviceId?.let { (store.read(SecureSlots.ATTEST_TOKEN) as? SecureStoreRead.Found)?.value }

@@ -62,10 +62,8 @@ import kotlin.uuid.Uuid
  *   is older, absent or unparseable is answered `426` naming the minimum — on every route.
  * - **The token gate:** a gated operation refuses a token this backend did not mint as `401 unattested`, and one
  *   minted for another device than its path names as `403 not this device`; the two legacy optional reads
- *   (`getEvent`, `eventFiles`) check only a token they are sent. A request with NO `Authorization` header is served
- *   as the local dev server serves it ([BackendState.fallbackBearer], on by default — `api/src/dev/serve.ts`'s
- *   fallback bearer, which the rig and the simulator stand on); with the lever off it is `401 unattested`, as
- *   deployed.
+ *   (`getEvent`, `eventFiles`) check only a token they are sent. A request with NO `Authorization` header is
+ *   `401 unattested`, as deployed; so is a token past its expiry on this backend's clock.
  * - **Events** get UUID ids it mints, with the real window rules: a blank name, or one longer than
  *   [Limits.EVENT_NAME_MAX_LENGTH] trimmed, is refused; an end before the start or more than 30 days after it is
  *   refused, an absent end is `start + 30 days`, an open-until date is the end or at most 30 days after the later
@@ -112,7 +110,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
             Access.OPTIONAL -> if (token == null) null else credentialRefusal(token)
             Access.GATED -> when {
                 state.refuseAttestation != null -> unattested()
-                token == null -> if (state.fallbackBearer) null else unattested()
+                token == null -> unattested()
                 else -> credentialRefusal(token)
             }
         } ?: call.paramOrNull("deviceId")
@@ -125,7 +123,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
             state.refuseNextCredential = false
             unattested()
         }
-        token !in state.minted -> unattested()
+        !state.authorizes(token) -> unattested()
         else -> null
     }
 
@@ -351,6 +349,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
             BAD_REQUEST -> text(BAD_REQUEST, "invalid upload")
             FORBIDDEN -> text(FORBIDDEN, "not a member")
             CONFLICT -> text(CONFLICT, "no event")
+            UNAUTHORIZED -> unattested()
             else -> text(status, "offline")
         }
     }

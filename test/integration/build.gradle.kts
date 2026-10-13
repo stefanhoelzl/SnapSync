@@ -75,6 +75,10 @@ dependencies {
     "journeysImplementation"(libs.coroutines.core)
     "journeysImplementation"(libs.kotlinx.serialization.json)
     "journeysImplementation"(libs.ktor.client.cio)
+    // The member attests as a device does, with the software key the local backend's `any` trust accepts.
+    "journeysImplementation"(project(":test:contracts"))
+    "journeysImplementation"(project(":domain:ports"))
+    "journeysImplementation"(project(":adapter:generic:app"))
 }
 tasks.register<Test>("journeys") {
     description = "The all-real journeys against one simulator or emulator app and a local backend (CI journeys only)."

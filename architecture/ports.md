@@ -33,7 +33,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CrashReporter` | `:domain:ports` | `:adapter:generic:mock` InMemoryCrashReporter, Recording; `:adapter:generic:sentry` SentryCrashReporter, SettledStart; `:test:contracts` CrashReporterProxy | yes |
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient, Unverified | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
-| `Credential` | `:domain:services` | `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential; `:test:contracts` HeldToken | yes |
+| `Credential` | `:domain:services` | `:adapter:generic:mock` Held; `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential; `:test:contracts` HeldToken | yes |
 | `Crypto` | `:domain:ports` | `:adapter:android` AndroidCrypto; `:adapter:generic:app` JcaCrypto; `:adapter:generic:mock` FakeCrypto; `:adapter:ios:ext-safe` IosCrypto; `:domain:services` Hash; `:test:contracts` CryptoProxy | yes |
 | `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Paused, Run, Skip, Withheld | no |
 | `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Enumerated, NotJoined, Paused, Unreadable, Withheld | no |
@@ -48,7 +48,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` ManifestDeviceEnroller; `:test:feature` FakeEnroller | yes |
 | `DeviceFilesSource` | `:domain:services` | `:domain:services` BackendDeviceFilesSource; `:test:feature` FakeFiles | yes |
 | `DeviceIdResult` | `:domain:model` | `:domain:model` AbsentNotMintable, Id, Unavailable | no |
-| `DeviceIntegrity` | `:domain:ports` | `:adapter:android` AndroidDeviceIntegrity; `:adapter:generic:mock` FakeKey, InMemoryDeviceIntegrity; `:adapter:ios:ext-safe` IosDeviceIntegrity; `:test:contracts` DeviceIntegrityProxy | yes |
+| `DeviceIntegrity` | `:domain:ports` | `:adapter:android` AndroidDeviceIntegrity; `:adapter:generic:mock` FakeKey, InMemoryDeviceIntegrity; `:adapter:ios:ext-safe` IosDeviceIntegrity; `:test:contracts` DeviceIntegrityProxy, SoftwareKeyIntegrity | yes |
 | `Download` | `:domain:ports` | `:adapter:android` AndroidDownload; `:adapter:generic:mock` Face, NetworkedDownload; `:adapter:ios:app-only` IosDownload; `:domain:services` FakeDownload; `:test:contracts` DownloadProxy; `:test:feature` RecordingDownload | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` StoreDownloadStatusSource | no |
 | `DumpHandOff` | `:domain:model` | `:domain:model` NotSent, Queued | no |
