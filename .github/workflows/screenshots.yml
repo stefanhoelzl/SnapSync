@@ -38,7 +38,7 @@
 # as the others. The one residue is the simulator's anti-aliasing of the Dynamic Island's rim (≤~120 pixels, each
 # ≤2/255), which is noise: never commit a raw whose only diff is that.
 #
-# WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 17 Pro Max, 1320x2868)
+# WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 16 Pro Max, 1320x2868)
 # and App Store Connect auto-scales it down to the 6.5"/6.7" listings. Older classes and iPad are not
 # required (SnapSync is iPhone-only) and are deliberately omitted.
 #
@@ -134,37 +134,17 @@ jobs:
           ./gradlew -q --stop
           pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' || true
 
-      # Boot a 6.9" iPhone and install. REUSE the runner image's own iPhone 17 Pro Max on its newest iOS runtime rather
-      # than `simctl create`: the image booted it once when it was built, so it skips the first-boot data-container
-      # migration a created device pays — 209-224 s measured, longer than capturing all six screenshots. (That
-      # fresh-device onboarding is also what fires the "Ready for Apple Intelligence" banner which contaminated a
-      # capture.) The model is the image's: macos-26 carries no iPhone 16, which made this step create a device on every
-      # run from the image switch until 2026-10 unnoticed — so the lookup prints what it found either way. Right after
-      # boot the simulator's daemons nothing here needs are stopped (`scripts/lib/sim.sh`, measured for journeys (ios)).
+      # Boot a 6.9" iPhone and install: a created iPhone 16 Pro Max, the device every committed raw came from. Its first
+      # boot spends ~1:50 "Waiting on Data Migration" (209-224 s for the whole step). Reusing an image device does NOT
+      # skip that on macos-26 — the image carries no iPhone 16, and its own iPhone 17 Pro Max, never booted, paid the
+      # same 1:49 (run 38458729276) — so this creates rather than looks. Skipping it would take a cached, settled device,
+      # as journeys (ios) keeps one (`scripts/sim-settle`).
       - name: Boot the 6.9" simulator and install
         run: |
-          . scripts/lib/sim.sh
-          DEVICE="$(xcrun simctl list -j devices available | python3 -c '
-          import json, sys
-          runtimes = json.load(sys.stdin)["devices"]
-          ios = sorted((r for r in runtimes if ".SimRuntime.iOS-" in r),
-                       key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
-          for r in ios:
-              for d in runtimes[r]:
-                  if d["name"] == "iPhone 17 Pro Max":
-                      print(d["udid"]); sys.exit(0)
-          ')"
-          if [ -n "$DEVICE" ]; then
-            echo "reusing the image's iPhone 17 Pro Max $DEVICE"
-          else
-            echo "::warning::the image carries no iPhone 17 Pro Max — creating one (a first boot costs minutes)"
-            xcrun simctl list devices available
-            DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 17 Pro Max')"
-          fi
+          DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 16 Pro Max')"
           echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
-          xcrun simctl boot "$DEVICE" 2>/dev/null || true   # already-booted is fine
+          xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
-          stop_daemons "$DEVICE"
           xcrun simctl install "$DEVICE" "$APP_PATH"
 
       # The clean App Store status bar: 9:41, full battery (charged), full signal. Persists per device
