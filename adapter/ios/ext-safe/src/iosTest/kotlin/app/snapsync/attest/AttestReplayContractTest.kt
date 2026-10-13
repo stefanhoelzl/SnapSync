@@ -14,6 +14,7 @@ import app.snapsync.contracts.verify
 import app.snapsync.keychain.contract.RECORDINGS
 import app.snapsync.ports.DeviceIntegrity
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * App Attest on an entitled device, REPLAYED (`docs/architecture.md`): the CURRENT [IosDeviceIntegrity] runs against
@@ -42,6 +43,37 @@ class AttestReplayContractTest {
             }
         }
     }
+
+    /**
+     * The same service on a phone taken offline, replayed from its own recording. App Attest never answered there, so
+     * the replay waits out a bound shortened from the composition's minute: the refusal is the bound's, whatever its length.
+     */
+    private val offline = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
+        override val host = Host.IOS_DEVICE_APP
+        override val kind = BindingKind.Replay
+        override val adapter = IosDeviceIntegrity::class
+        override val precondition = "OFFLINE"
+        override val reaches = setOf(DeviceIntegrityState.VENDOR_UNREACHABLE)
+
+        override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> {
+            if (state !in reaches) return Entered.Unreachable("this recording holds a phone offline")
+            return replayerFor(RECORDINGS, "$KEY.OFFLINE", clauseId) { replayer ->
+                integrityInState(
+                    ReplayingAppAttestApi(replayer),
+                    state,
+                    log,
+                    answerWithin = 1.seconds,
+                    afterDispose = replayer::assertExhausted,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the recorded offline device satisfies the DeviceIntegrity contract`() = verify(
+        DeviceIntegrityContract,
+        offline,
+    )
 
     @Test
     fun `the recorded device App Attest satisfies the DeviceIntegrity contract`() = verify(DeviceIntegrityContract, key)

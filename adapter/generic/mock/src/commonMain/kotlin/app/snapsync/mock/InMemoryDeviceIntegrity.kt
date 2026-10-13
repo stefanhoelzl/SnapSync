@@ -28,6 +28,8 @@ internal class InMemoryDeviceIntegrity(
     private val keys: EnclaveKeys = EnclaveKeys(),
     /** Handles of keys the enclave holds but will not sign with. */
     private val unusable: Set<String> = emptySet(),
+    /** Whether the vendor that vouches for a fresh key can be reached — not on a device that is offline. */
+    private val vendorReachable: Boolean = true,
 ) : DeviceIntegrity {
 
     // Refusals are values, as the real service's are (`DeviceIntegrityContract`): an unavailable process has no
@@ -36,6 +38,9 @@ internal class InMemoryDeviceIntegrity(
         !available -> ProveResult.Refused.NotAvailable("App Attest: unsupported in this process")
         handle != null && handle in unusable ->
             ProveResult.Refused.Failed("App Attest generateAssertion: the Secure Enclave will not use $handle")
+        handle == null && !vendorReachable -> ProveResult.Refused.Failed(
+            "App Attest attestKey: the server is unavailable",
+        )
         handle == null -> keys.create().let { key ->
             ProveResult.Ok(
                 Proof(key, ProofFormat.APP_ATTEST, "attestation:$key:$challenge".encodeToByteArray(), MOCK_CHAIN),

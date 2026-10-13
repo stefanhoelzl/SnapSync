@@ -199,6 +199,19 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
         }
 
         clause(
+            "OWN_BYTES_A_DIGEST_IS_OF_THE_BYTES_HOWEVER_CHUNKED",
+            CryptoState.OWN_BYTES,
+            covers = cells { on<Crypto>().answers(Crypto::sha256).returns() },
+        ) { crypto ->
+            val digest = crypto.sha256(sequenceOf(GCM_PLAIN))
+            assertEquals(32, digest.size, "a SHA-256 is 32 bytes")
+            val cut = sequenceOf(GCM_PLAIN.copyOf(5), ByteArray(0), GCM_PLAIN.copyOfRange(5, GCM_PLAIN.size))
+            assertContentEquals(digest, crypto.sha256(cut), "cut anywhere, an empty chunk included, the same digest")
+            val other = crypto.sha256(sequenceOf(GCM_PLAIN.copyOf(5)))
+            assertFalse(digest.contentEquals(other), "other bytes, another one")
+        }
+
+        clause(
             "OWN_BYTES_RANDOM_BYTES_ARE_FRESH",
             CryptoState.OWN_BYTES,
             covers = cells { on<Crypto>().answers(Crypto::randomBytes).returns() },

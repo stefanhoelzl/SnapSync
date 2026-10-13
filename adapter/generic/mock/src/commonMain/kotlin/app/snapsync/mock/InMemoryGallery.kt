@@ -106,7 +106,11 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         // The library takes a staged file as it ingests it, before decoding it: an undecodable one is gone either way.
         if (state.undecodable) {
             return settle(
-                ImportOutcome.Failed("the staged file cannot be decoded", consumedResources = true, placeholder = createdLocalId),
+                ImportOutcome.Failed(
+                    "the staged file cannot be decoded",
+                    consumedResources = true,
+                    placeholder = createdLocalId,
+                ),
             )
         }
         state.answers.beforeCommit(correlation)?.let {

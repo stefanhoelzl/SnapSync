@@ -1,0 +1,17 @@
+# contract: DeviceIntegrity
+# host: IOS_DEVICE_APP
+# file: DeviceIntegrity@IOS_DEVICE_APP.OFFLINE.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-13T09:04:09Z
+# live AN_UNAVAILABLE_SERVICE_REFUSES_A_FRESH_PROOF: NotRunHere(this run records a phone offline; UNAVAILABLE is the online run's)
+# live AN_UNAVAILABLE_SERVICE_REFUSES_A_RENEWAL_PROOF: NotRunHere(this run records a phone offline; UNAVAILABLE is the online run's)
+# live A_FRESH_PROOF_NAMES_A_KEY_THAT_THEN_SIGNS: NotRunHere(this run records a phone offline; AVAILABLE is the online run's)
+# live AN_UNKNOWN_KEY_CANNOT_SIGN: NotRunHere(this run records a phone offline; AVAILABLE is the online run's)
+# live A_KEY_THE_PLATFORM_WILL_NOT_USE_IS_REFUSED: NotRunHere(this run records a phone offline; UNUSABLE_KEY is the online run's)
+# live VENDOR_UNREACHABLE_A_FRESH_PROOF_IS_REFUSED: Passed
+[VENDOR_UNREACHABLE_A_FRESH_PROOF_IS_REFUSED]
+generateKey() -> keyId=<masked>
+attestKey(keyId=<masked> clientDataHash=02738b1370918f188e6be4598e176eb39789bd539724ea0b85c242440c1a3b55) -> no answer

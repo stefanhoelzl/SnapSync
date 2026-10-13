@@ -4,6 +4,8 @@ package app.snapsync.ios.urlsession
 
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.upload.uploadUrlRequest
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.FinishedTransfer
 import app.snapsync.ports.SessionDrain
@@ -13,8 +15,6 @@ import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError

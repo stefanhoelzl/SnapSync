@@ -61,6 +61,8 @@ class AndroidDeviceIntegrityContractTest {
                 }
                 DeviceIntegrityState.UNAVAILABLE ->
                     Entered.Unreachable("key attestation exists in the one process Android has")
+                DeviceIntegrityState.VENDOR_UNREACHABLE ->
+                    Entered.Unreachable("the Keystore attests a key itself: there is no vendor to reach")
             }
 
         /** An EC key under [alias] the Keystore holds but may only VERIFY with: present, and refused for signing. */

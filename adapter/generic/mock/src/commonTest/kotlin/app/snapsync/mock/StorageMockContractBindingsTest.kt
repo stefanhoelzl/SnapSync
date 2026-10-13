@@ -47,7 +47,9 @@ class StorageMockContractBindingsTest {
                     ).recorded(log),
                 )
                 FilesState.UNAVAILABLE -> Entered.Ready(inMemoryFiles(shared = null).recorded(log))
-                FilesState.DENIED_SUBDIRECTORY -> Entered.Unreachable("the double holds no directories inside directories")
+                FilesState.DENIED_SUBDIRECTORY -> Entered.Unreachable(
+                    "the double holds no directories inside directories",
+                )
                 FilesState.DENIED_DIRECTORY,
                 FilesState.READ_ONLY_DIRECTORY,
                 FilesState.UNSEARCHABLE_DIRECTORY,

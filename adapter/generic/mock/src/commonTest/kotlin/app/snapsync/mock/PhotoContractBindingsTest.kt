@@ -2,10 +2,10 @@
 
 package app.snapsync.mock
 
-import app.snapsync.contracts.ClauseFiles
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
+import app.snapsync.contracts.ClauseFiles
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FolderAlbumContract
 import app.snapsync.contracts.FolderAlbumState
@@ -65,7 +65,13 @@ class PhotoContractBindingsTest {
 
     /** A library holding [library] under [grant] — which a request answers with too — its levers the clause's to set. */
     private fun library(library: MutableStateFlow<List<GalleryAssetResources>>, grant: LibraryGrant) =
-        LibraryState(library, MutableStateFlow(grant), MutableStateFlow(emptyMap()), grant, LibraryChangeAnswers.Ordinary)
+        LibraryState(
+            library,
+            MutableStateFlow(grant),
+            MutableStateFlow(emptyMap()),
+            grant,
+            LibraryChangeAnswers.Ordinary,
+        )
 
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = currentHost
@@ -91,18 +97,27 @@ class PhotoContractBindingsTest {
                         GalleryReaderState.PARTIAL -> LibraryGrant.LIMITED
                         else -> LibraryGrant.NOT_DETERMINED
                     }
-                    return Entered.Ready(SeededLibrary(InMemoryGallery(library(MutableStateFlow(emptyList()), grant)).recorded(log)))
+                    return Entered.Ready(
+                        SeededLibrary(InMemoryGallery(library(MutableStateFlow(emptyList()), grant)).recorded(log)),
+                    )
                 }
                 GalleryReaderState.GRANTED_SEEDED_EXPORTING -> {
                     val seeded = seededLibrary(GalleryReaderContract.name, clauseId)
                     val held = library(seeded, LibraryGrant.GRANTED)
                     val files = ClauseFiles(pathOf = { "mem:/clause/$clauseId/$it" }, read = { held.exported[it] })
                     return Entered.Ready(
-                        SeededLibrary(InMemoryGallery(held).recorded(log), seeded.value.mapTo(linkedSetOf()) { it.id }, files),
+                        SeededLibrary(
+                            InMemoryGallery(held).recorded(log),
+                            seeded.value.mapTo(linkedSetOf()) { it.id },
+                            files,
+                        ),
                     )
                 }
                 GalleryReaderState.REFUSING_WRITES -> {
-                    val held = library(MutableStateFlow(emptyList()), LibraryGrant.GRANTED).apply { refusesWrites = true }
+                    val held = library(
+                        MutableStateFlow(emptyList()),
+                        LibraryGrant.GRANTED,
+                    ).apply { refusesWrites = true }
                     return Entered.Ready(SeededLibrary(InMemoryGallery(held).recorded(log)))
                 }
                 else -> Unit
@@ -242,7 +257,13 @@ class PhotoContractBindingsTest {
                     withholdsToken = state == GalleryState.TOKEN_WITHHELD
                     if (state == GalleryState.PARTIAL) selection.value = library.value
                 }
-                val selected = if (state == GalleryState.PARTIAL) library.value.mapTo(mutableSetOf()) { it.id } else emptySet()
+                val selected = if (state == GalleryState.PARTIAL) {
+                    library.value.mapTo(
+                        mutableSetOf(),
+                    ) { it.id }
+                } else {
+                    emptySet()
+                }
                 return Entered.Ready(GalleryChange(InMemoryGallery(held).recorded(log), selected) {})
             }
             val added = LibraryAssets.photo(

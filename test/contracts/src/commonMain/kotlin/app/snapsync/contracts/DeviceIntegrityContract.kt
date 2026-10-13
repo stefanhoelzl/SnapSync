@@ -19,6 +19,12 @@ enum class DeviceIntegrityState {
      * entered by the binding, through the platform, before the clause runs.
      */
     UNUSABLE_KEY,
+
+    /**
+     * An available service whose vendor cannot be reached — the device offline — on a platform whose fresh attestation
+     * is the vendor's to issue (Apple's App Attest server).
+     */
+    VENDOR_UNREACHABLE,
 }
 
 /**
@@ -106,6 +112,18 @@ object DeviceIntegrityContract : Contract<DeviceIntegrityState, DeviceIntegrity>
             val id = "A_KEY_THE_PLATFORM_WILL_NOT_USE_IS_REFUSED"
             // A key that is there but refused is not an unknown one: the platform's own refusal, carried for the log.
             val refused = assertIs<ProveResult.Refused.Failed>(integrity.prove(challenge(id), unusableHandle(id)))
+            assertTrue(refused.reason.isNotBlank(), "a refusal carries a diagnosis")
+        }
+
+        clause(
+            "VENDOR_UNREACHABLE_A_FRESH_PROOF_IS_REFUSED",
+            DeviceIntegrityState.VENDOR_UNREACHABLE,
+            covers = cells {
+                on<DeviceIntegrity>().answers(DeviceIntegrity::prove).with(ProveResult.Refused.Failed::class)
+            },
+        ) { integrity ->
+            // The service is there and the key is new; only the vendor that vouches for it cannot be asked.
+            val refused = assertIs<ProveResult.Refused.Failed>(integrity.prove(challenge("VENDOR_UNREACHABLE"), null))
             assertTrue(refused.reason.isNotBlank(), "a refusal carries a diagnosis")
         }
     }

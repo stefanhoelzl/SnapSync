@@ -66,7 +66,33 @@ internal class DeviceIntegrityBinding(private val recorder: Recorder) : Binding<
     override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> {
         if (state !in reaches) return integrityInState(SystemAppAttestApi, state, log)
         recorder.open(clauseId)
-        return integrityInState(RecordingAppAttestApi(SystemAppAttestApi, recorder), state, log)
+        val api = RecordingAppAttestApi(SystemAppAttestApi, recorder)
+        return integrityInState(api, state, log, afterDispose = api::recordUnanswered)
+    }
+}
+
+/** How the offline recording is named: `DeviceIntegrity@IOS_DEVICE_APP.OFFLINE`. */
+internal const val OFFLINE = "OFFLINE"
+
+/**
+ * The real [app.snapsync.attest.IosDeviceIntegrity] in the app process on a phone a person took offline (airplane
+ * mode, Wi-Fi off): a fresh key's attestation is Apple's server's to issue, and App Attest never answers it — the
+ * adapter's own bound refuses it, and the call is recorded as unanswered. Replayed by `AttestReplayContractTest`.
+ */
+internal class DeviceOfflineIntegrityBinding(
+    private val recorder: Recorder,
+) : Binding<DeviceIntegrityState, DeviceIntegrity> {
+    override val host = Host.IOS_DEVICE_APP
+    override val kind = BindingKind.Live
+    override val adapter = IosDeviceIntegrity::class
+    override val precondition = "OFFLINE"
+    override val reaches = setOf(DeviceIntegrityState.VENDOR_UNREACHABLE)
+
+    override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> {
+        if (state !in reaches) return Entered.Unreachable("this run is offline; $state is the online run's")
+        recorder.open(clauseId)
+        val api = RecordingAppAttestApi(SystemAppAttestApi, recorder)
+        return integrityInState(api, state, log, afterDispose = api::recordUnanswered)
     }
 }
 
@@ -82,8 +108,13 @@ fun deviceContracts(): List<InAppContract> = listOf(
     InAppContract(SecureStoreContract.name, Host.IOS_DEVICE_APP) {
         recordOnDevice(SecureStoreContract) { DeviceKeychainBinding(it) }
     },
-    InAppContract(DeviceIntegrityContract.name, Host.IOS_DEVICE_APP) {
-        recordOnDevice(DeviceIntegrityContract) { DeviceIntegrityBinding(it) }
+    InAppContract(DeviceIntegrityContract.name, Host.IOS_DEVICE_APP) { params ->
+        // The condition is the person's to set and to state: the run never reads it from the adapter under test.
+        if (params["network"] == "offline") {
+            recordOnDevice(DeviceIntegrityContract, OFFLINE) { DeviceOfflineIntegrityBinding(it) }
+        } else {
+            recordOnDevice(DeviceIntegrityContract) { DeviceIntegrityBinding(it) }
+        }
     },
 )
 
@@ -97,7 +128,11 @@ fun deviceContracts(): List<InAppContract> = listOf(
  * 2026-09-22, iOS 26.2), and it has no App Attest at all. A recording taken there would file simulator
  * answers under the device's name — the host confusion the `-25291`/`-34018` pair exists to prevent.
  */
-private fun <K : Enum<K>, T> recordOnDevice(contract: Contract<K, T>, binding: (Recorder) -> Binding<K, T>): String {
+private fun <K : Enum<K>, T> recordOnDevice(
+    contract: Contract<K, T>,
+    precondition: String? = null,
+    binding: (Recorder) -> Binding<K, T>,
+): String {
     if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
         return CONTRACT_REFUSED +
             "this process is a simulator app, not ${Host.IOS_DEVICE_APP}. Its Keychain answers -34018 " +
@@ -110,6 +145,7 @@ private fun <K : Enum<K>, T> recordOnDevice(contract: Contract<K, T>, binding: (
     val header = listOf(
         "contract" to contract.name,
         "host" to Host.IOS_DEVICE_APP.name,
+    ) + listOfNotNull(precondition?.let { "file" to "${contract.name}@${Host.IOS_DEVICE_APP.name}.$it.rec" }) + listOf(
         "device" to env.deviceModel,
         "os" to env.osVersion,
         "build" to env.buildNumber,

@@ -72,7 +72,12 @@ internal object NeverAnswersCheck {
                 val own = (cls.funs + base.funs.values.filter { it.owner.startsWith("${cls.fqn}.") || it.owner == cls.fqn })
                     .distinctBy { it.key }
                     .filterNot { it.inherited || it.abstract }
-                val callers = entriesReaching(base, own, own.filter { f -> f.facts.calls.any { isHandlerRead(it, claim.handler) } }, claim.answer.fqn)
+                val callers = entriesReaching(
+                    base,
+                    own,
+                    own.filter { f -> f.facts.calls.any { isHandlerRead(it, claim.handler) } },
+                    claim.answer.fqn,
+                )
                 Walk(base, callers).find { facts, fn -> answerSign(base, facts, fn, claim.answer) }
             }
         }
@@ -84,7 +89,12 @@ internal object NeverAnswersCheck {
      * parameters are its callers' values, so starting there lets the walk see what they are; a function nothing here
      * calls stays open, as it must.
      */
-    private fun entriesReaching(base: CodeBase, own: List<CodeFun>, targets: List<CodeFun>, answer: String): List<CodeFun> {
+    private fun entriesReaching(
+        base: CodeBase,
+        own: List<CodeFun>,
+        targets: List<CodeFun>,
+        answer: String,
+    ): List<CodeFun> {
         val out = linkedMapOf<String, CodeFun>()
         val seen = mutableSetOf<String>()
         val todo = ArrayDeque(targets)

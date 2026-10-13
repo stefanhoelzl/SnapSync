@@ -14,12 +14,17 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.CoreCrypto.CC_SHA256
 import platform.CoreCrypto.CC_SHA256_DIGEST_LENGTH
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.create
 import platform.posix.memcpy
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The real [DeviceIntegrity], over Apple's `DCAppAttestService`: a fresh proof is `generateKey` then `attestKey`
@@ -38,11 +43,17 @@ import platform.posix.memcpy
  * `featureUnsupported` — measured in CI, so the platform's own `isSupported` decides); anything else
  * [ProveResult.Refused.Failed]. `isSupported` is asked only after a refusal that is not `invalidKey`, so the ceremony
  * and an unknown key ask App Attest exactly what the device recording holds.
+ *
+ * **A call App Attest never answers is refused too.** Offline, a fresh proof gets no completion at all — no error,
+ * however long it waits (measured on the SE2, iOS 26.6.2, airplane mode: nothing within five minutes) — so each call
+ * is bounded by [answerWithin], in real time, and one left unanswered is [ProveResult.Refused.Failed].
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosDeviceIntegrity internal constructor(
     /** Where the App Attest calls go: the real service, or — in a contract run — a recording. */
     private val service: AppAttestApi,
+    /** How long one App Attest call may stay unanswered; a contract replay shortens it, never a composition. */
+    private val answerWithin: Duration = ANSWER_BOUND,
 ) : DeviceIntegrity {
 
     constructor() : this(SystemAppAttestApi)
@@ -74,13 +85,15 @@ class IosDeviceIntegrity internal constructor(
 
     // Each completion is what Objective-C calls (through SystemAppAttestApi): contained, like every such block, and it
     // answers its caller with a value either way.
-    private suspend fun generateKey(): Step<String> = objcCallback(log, "generateKey.completion") { done ->
-        service.generateKey { keyId, error ->
-            objcBoundary(done) { keyId?.let { Step.Got(it) } ?: Step.Refused(refused("generateKey", error)) }
+    private suspend fun generateKey(): Step<String> = bounded("generateKey") {
+        objcCallback(log, "generateKey.completion") { done ->
+            service.generateKey { keyId, error ->
+                objcBoundary(done) { keyId?.let { Step.Got(it) } ?: Step.Refused(refused("generateKey", error)) }
+            }
         }
     }
 
-    private suspend fun attest(keyId: String, challenge: String): Step<ByteArray> =
+    private suspend fun attest(keyId: String, challenge: String): Step<ByteArray> = bounded("attestKey") {
         objcCallback(log, "attestKey.completion") { done ->
             service.attestKey(keyId, sha256(challenge)) { data, error ->
                 objcBoundary(
@@ -88,8 +101,9 @@ class IosDeviceIntegrity internal constructor(
                 ) { data?.let { Step.Got(it.toByteArray()) } ?: Step.Refused(refused("attestKey", error)) }
             }
         }
+    }
 
-    private suspend fun assert(keyId: String, challenge: String): Step<ByteArray> =
+    private suspend fun assert(keyId: String, challenge: String): Step<ByteArray> = bounded("generateAssertion") {
         objcCallback(log, "generateAssertion.completion") { done ->
             service.generateAssertion(keyId, sha256(challenge)) { data, error ->
                 objcBoundary(done) {
@@ -97,6 +111,15 @@ class IosDeviceIntegrity internal constructor(
                 }
             }
         }
+    }
+
+    /**
+     * [call], or its refusal once [answerWithin] passed without an answer. Waited on [Dispatchers.Default], so the
+     * bound is real time wherever the caller runs — a test's virtual clock would expire it before App Attest answers.
+     */
+    private suspend fun <T> bounded(step: String, call: suspend () -> Step<T>): Step<T> =
+        withContext(Dispatchers.Default) { withTimeoutOrNull(answerWithin) { call() } }
+            ?: Step.Refused(ProveResult.Refused.Failed("App Attest $step: no answer within $answerWithin"))
 
     /** What App Attest's [error] for [step] amounts to; a call that answered neither value nor error is refused too. */
     private fun refused(step: String, error: NSError?): ProveResult.Refused {
@@ -132,6 +155,9 @@ private fun NSData.toByteArray(): ByteArray {
     out.usePinned { memcpy(it.addressOf(0), bytes, length) }
     return out
 }
+
+/** How long a composed adapter waits for one App Attest answer: online, the slowest call (`attestKey`) takes seconds. */
+internal val ANSWER_BOUND: Duration = 60.seconds
 
 /** The `DCError` codes a refusal is told apart by (`DCError.h`). */
 private const val DEVICE_CHECK_DOMAIN = "com.apple.devicecheck.error"

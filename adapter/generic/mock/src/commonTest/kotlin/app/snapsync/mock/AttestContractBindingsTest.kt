@@ -35,13 +35,19 @@ class AttestContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val adapter = InMemoryDeviceIntegrity::class
-        override val reaches = setOf(DeviceIntegrityState.UNAVAILABLE, DeviceIntegrityState.AVAILABLE, DeviceIntegrityState.UNUSABLE_KEY)
+        override val reaches = setOf(
+            DeviceIntegrityState.UNAVAILABLE,
+            DeviceIntegrityState.AVAILABLE,
+            DeviceIntegrityState.UNUSABLE_KEY,
+            DeviceIntegrityState.VENDOR_UNREACHABLE,
+        )
 
         override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =
             Entered.Ready(
                 inMemoryDeviceIntegrity(
                     available = state != DeviceIntegrityState.UNAVAILABLE,
                     unusable = setOf(DeviceIntegrityContract.unusableHandle(clauseId)),
+                    vendorReachable = state != DeviceIntegrityState.VENDOR_UNREACHABLE,
                 ).recorded(log),
             )
     }
