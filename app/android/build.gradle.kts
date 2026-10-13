@@ -118,6 +118,9 @@ android {
         abortOnError = true
         // targetSdk deliberately tracks Play's current requirement (`libs.versions.toml`), not the newest SDK.
         disable += "OldTargetApi"
+        // No lint-vital pass on assembling the release: its fatal checks are a subset of `lintRelease`, which `check`
+        // runs over the same variant with every warning failing (24 s of every build, 2026-10-13).
+        checkReleaseBuilds = false
     }
     // ---- The control channel (`:test:rig`), contained at COMPILE TIME --------------------------------------------
     //
@@ -180,5 +183,11 @@ dependencies {
     }
 }
 
-// The lint gate above runs with the canonical check, over the release variant — the one the store receives.
-tasks.named("check") { dependsOn("lintRelease") }
+// The lint gate above runs with the canonical check, over the release variant — the one the store receives — and
+// ONLY over it: AGP also hangs its default `lint` (the debug variant, with its unit and device test sources) on
+// `check`, and this app has no debug-only or test source, so that pass re-read what `lintRelease` gates (~40 s,
+// 2026-10-13).
+tasks.named("check") {
+    dependsOn("lintRelease")
+    setDependsOn(dependsOn.filterNot { it == "lint" || (it as? Named)?.name == "lint" })
+}
