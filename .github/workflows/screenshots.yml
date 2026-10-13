@@ -38,7 +38,7 @@
 # as the others. The one residue is the simulator's anti-aliasing of the Dynamic Island's rim (≤~120 pixels, each
 # ≤2/255), which is noise: never commit a raw whose only diff is that.
 #
-# WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 16 Pro Max, 1320x2868)
+# WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 17 Pro Max, 1320x2868)
 # and App Store Connect auto-scales it down to the 6.5"/6.7" listings. Older classes and iPad are not
 # required (SnapSync is iPhone-only) and are deliberately omitted.
 #
@@ -93,10 +93,21 @@ jobs:
           python3 scripts/resolve-deployment.py prod
           echo "GRADLE_OPTS=-Dorg.gradle.project.snapsync.deployment=prod" >> "$GITHUB_ENV"
 
+      # The SwiftPM checkout (sentry-cocoa) ios-build's archive restores and main saves (`.github/actions/ios-archive`
+      # says why the key is the pbxproj), read only as journeys (ios) reads it: without it every run fetched sentry-cocoa
+      # from GitHub (~45 s).
+      - name: Restore the resolved SwiftPM checkout
+        uses: actions/cache/restore@v6
+        with:
+          path: build/ios/SourcePackages
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
+
       # The RIG build of the real app for the simulator SDK (`-Psnapsync.rig=true`, in ~/.gradle and never in the
       # repo's gradle.properties — exactly as journeys (ios) builds it). Debug so the Kotlin/Native framework link
       # skips the LLVM optimizer. Built unsigned, then AD-HOC signed: an unsigned simulator app has no App Group,
-      # and the launch adapters' choice and the mocked systems' state live there (`scripts/sim-sign`).
+      # and the launch adapters' choice and the mocked systems' state live there (`scripts/sim-sign`). arm64 only, as
+      # `scripts/sim-contracts` builds it: the generic destination also builds an x86_64 slice an Apple-silicon simulator
+      # never loads.
       - name: Build the rig app for the iOS simulator
         run: |
           mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
@@ -108,6 +119,7 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 \
             build
           APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
           if [ -z "$APP" ]; then echo "::error::no simulator .app produced"; exit 1; fi
@@ -122,24 +134,37 @@ jobs:
           ./gradlew -q --stop
           pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' || true
 
-      # Boot a 6.9" iPhone and install. REUSE the runner image's pre-created device rather than
-      # `simctl create`: a brand-new device pays a first-boot data-container migration that measured
-      # 209-224s — longer than capturing all six screenshots. A device the image already booted skips it.
-      # (It is also the fresh-device onboarding that fires the "Ready for Apple Intelligence" banner which
-      # contaminated a capture, so reusing one should make that rarer too.)
-      # Falls back to creating one if the image ever ships without it.
+      # Boot a 6.9" iPhone and install. REUSE the runner image's own iPhone 17 Pro Max on its newest iOS runtime rather
+      # than `simctl create`: the image booted it once when it was built, so it skips the first-boot data-container
+      # migration a created device pays — 209-224 s measured, longer than capturing all six screenshots. (That
+      # fresh-device onboarding is also what fires the "Ready for Apple Intelligence" banner which contaminated a
+      # capture.) The model is the image's: macos-26 carries no iPhone 16, which made this step create a device on every
+      # run from the image switch until 2026-10 unnoticed — so the lookup prints what it found either way. Right after
+      # boot the simulator's daemons nothing here needs are stopped (`scripts/lib/sim.sh`, measured for journeys (ios)).
       - name: Boot the 6.9" simulator and install
         run: |
-          DEVICE="$(xcrun simctl list devices available | grep -m1 'iPhone 16 Pro Max' | grep -oE '[0-9A-F-]{36}' || true)"
+          . scripts/lib/sim.sh
+          DEVICE="$(xcrun simctl list -j devices available | python3 -c '
+          import json, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in runtimes if ".SimRuntime.iOS-" in r),
+                       key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
+          for r in ios:
+              for d in runtimes[r]:
+                  if d["name"] == "iPhone 17 Pro Max":
+                      print(d["udid"]); sys.exit(0)
+          ')"
           if [ -n "$DEVICE" ]; then
-            echo "reusing pre-created device $DEVICE"
+            echo "reusing the image's iPhone 17 Pro Max $DEVICE"
           else
-            echo "no pre-created iPhone 16 Pro Max — creating one"
-            DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 16 Pro Max')"
+            echo "::warning::the image carries no iPhone 17 Pro Max — creating one (a first boot costs minutes)"
+            xcrun simctl list devices available
+            DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 17 Pro Max')"
           fi
           echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
           xcrun simctl boot "$DEVICE" 2>/dev/null || true   # already-booted is fine
           xcrun simctl bootstatus "$DEVICE" -b
+          stop_daemons "$DEVICE"
           xcrun simctl install "$DEVICE" "$APP_PATH"
 
       # The clean App Store status bar: 9:41, full battery (charged), full signal. Persists per device
