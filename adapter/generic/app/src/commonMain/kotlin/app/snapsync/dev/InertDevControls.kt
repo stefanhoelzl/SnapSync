@@ -24,6 +24,7 @@ import app.snapsync.ports.DevHandlers
     Never(member = "createsPlainEvents", answer = "false"),
     Never(member = "inviteLinkHints", answer = "InviteLinkHints.Honoured"),
     Never(member = "uploaderPin", answer = "returns"),
+    Never(member = "networkGraceMillis", answer = "returns"),
     Never(handler = "onReset"),
 )
 object InertDevControls : DevControls {
