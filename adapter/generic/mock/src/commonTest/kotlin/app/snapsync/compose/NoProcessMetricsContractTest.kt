@@ -21,6 +21,7 @@ class NoProcessMetricsContractTest {
     private val binding = object : Binding<ProcessMetricsState, ProcessMetrics> {
         override val host = currentHost
         override val kind = BindingKind.Live
+        override val adapter = NoProcessMetrics::class
         override val reaches = setOf(ProcessMetricsState.NO_PROVIDER)
         override fun create(state: ProcessMetricsState, clauseId: String, log: CallLog): Entered<ProcessMetrics> =
             if (state in reaches) {

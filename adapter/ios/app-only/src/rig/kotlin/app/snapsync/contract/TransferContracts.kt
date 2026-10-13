@@ -147,6 +147,7 @@ private fun seedOne(contract: String, clauseId: String): PHAssetResource = memSc
 class SimAppSessionBinding : Binding<TransferSessionState, SessionUnderTest>, RunParameters {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosUrlSessionUploadPlatform::class
 
     // A URLSession uploader takes a file and reports each end as it happens: those states are IDLE as this platform is.
     override val reaches = setOf(
@@ -229,7 +230,8 @@ class SimAppSessionBinding : Binding<TransferSessionState, SessionUnderTest>, Ru
 class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunParameters {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(DownloadState.READY)
+    override val adapter = IosDownload::class
+    override val reaches = setOf(DownloadState.READY, DownloadState.REFUSES_MALFORMED)
 
     private val fixture = FixtureAddress()
 

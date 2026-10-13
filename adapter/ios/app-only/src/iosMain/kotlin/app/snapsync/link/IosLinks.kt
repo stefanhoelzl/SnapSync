@@ -3,6 +3,8 @@ package app.snapsync.link
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.PlatformEntry
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
@@ -19,6 +21,7 @@ import platform.Foundation.NSUserActivity
  * each named by the [LinkDelivery.hook] that brought it, so a device log records which of UIKit's paths ran. Whether
  * a link is an event link, and what opening one does, is the core's.
  */
+@NeverAnswers(Never(handler = "onLink", answer = "LinkDelivery.InstallReferrer"))
 class IosLinks(private val log: Logger) : Links {
     private val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Logged(log))
 

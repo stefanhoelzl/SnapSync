@@ -67,6 +67,7 @@ class AndroidDownloadContractTest {
     private val download = object : Binding<DownloadState, DownloadUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidDownload::class
         override val reaches =
             setOf(
                 DownloadState.READY,

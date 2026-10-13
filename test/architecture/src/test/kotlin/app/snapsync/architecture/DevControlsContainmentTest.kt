@@ -19,13 +19,16 @@ import kotlin.test.assertTrue
  *    code can answer it.
  *
  * Production source here: `:domain`, `:adapter`, `:app` and `:ui` main source sets, never their tests and never an
- * adapter's rig-gated `src/rig`. The rig's own hook directories live under `test/` and are out of scope by path.
+ * adapter's rig-gated `src/rig`. The rig's own hook directories live under `test/` and are out of scope by path. The
+ * mocks (`:adapter:generic:mock`) are not production either: `MockContainmentTest` keeps every shipped root from
+ * linking them. A `@NeverAnswers` claim names an answer the code is proven NOT to give, so its text is no naming.
  */
 class DevControlsContainmentTest {
 
     private val production by lazy {
         SourceScan.kotlinFiles().filter { src ->
             listOf("/domain/", "/adapter/", "/app/", "/ui/").any { src.path.startsWith(it) } &&
+                !src.path.startsWith("/adapter/generic/mock/") &&
                 !Regex("""/src/(\w*[Tt]est|rig)/""").containsMatchIn(src.path)
         }
     }
@@ -46,7 +49,7 @@ class DevControlsContainmentTest {
     @Test
     fun `honoured invite-link hints are only ever read in production`() {
         val naming = production
-            .filter { "InviteLinkHints.Honoured" in ZoneGates.stripComments(it.text) }
+            .filter { "InviteLinkHints.Honoured" in ZoneGates.stripComments(it.text).replace(CLAIM, "") }
             .map { it.path }
         assertEquals(
             listOf("/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/StatusContainerHost.kt"),
@@ -63,6 +66,9 @@ class DevControlsContainmentTest {
 
     private companion object {
         /** A class or object header naming `DevControls` among its supertypes (a parameter typed so does not). */
+        /** One `Never(…)` claim of a `@NeverAnswers`. */
+        val CLAIM = Regex("""\bNever\([^)]*\)""")
+
         val IMPLEMENTS = Regex("""\b(?:class|object)\s+\w+\s*(?:\([^)]*\))?\s*:\s*[\w\s,<>.]*\bDevControls\b""")
     }
 }

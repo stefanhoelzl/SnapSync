@@ -287,6 +287,7 @@ internal class DeviceRelaunchedUploadBinding(
 ) : Binding<TransferSessionState, SessionUnderTest> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosUrlSessionUploadPlatform::class
     override val reaches = setOf(TransferSessionState.RELAUNCHED_WITH_EVENTS)
 
     override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
@@ -332,6 +333,7 @@ internal class ReplayingShareSheetApi(private val replayer: Replayer) : ShareShe
 internal class DeviceNoWindowShareBinding(private val recorder: Recorder) : Binding<SharePresenterState, SystemUi> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosSystemUi::class
     override val reaches = setOf(SharePresenterState.NO_WINDOW)
 
     override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> {

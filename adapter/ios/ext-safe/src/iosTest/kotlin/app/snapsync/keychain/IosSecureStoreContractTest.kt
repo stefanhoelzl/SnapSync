@@ -26,6 +26,7 @@ class IosSecureStoreContractTest {
     private val binding = object : Binding<SecureStoreState, SecureStore> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosSecureStore::class
         override val reaches = setOf(SecureStoreState.INACCESSIBLE)
 
         override fun create(state: SecureStoreState, clauseId: String, log: CallLog): Entered<SecureStore> =

@@ -116,6 +116,7 @@ internal class ReplayingNetworkPathApi(private val replayer: Replayer) : Network
 class SimAppNetworkMonitorBinding : Binding<NetworkState, NetworkMonitor> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosNetworkMonitor::class
     override val reaches = setOf(NetworkState.ONLINE)
 
     override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> =
@@ -130,6 +131,7 @@ class SimAppNetworkMonitorBinding : Binding<NetworkState, NetworkMonitor> {
 internal class DeviceNetworkOnlineBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosNetworkMonitor::class
     override val reaches = setOf(NetworkState.ONLINE)
     override val precondition = "ONLINE"
 
@@ -144,6 +146,7 @@ internal class DeviceNetworkOnlineBinding(private val recorder: Recorder) : Bind
 internal class DeviceNetworkRestrictedBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosNetworkMonitor::class
     override val reaches = setOf(NetworkState.RESTRICTED)
     override val precondition = "RESTRICTED"
 
@@ -155,6 +158,7 @@ internal class DeviceNetworkRestrictedBinding(private val recorder: Recorder) : 
 internal class DeviceNetworkOfflineBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosNetworkMonitor::class
     override val reaches = setOf(NetworkState.OFFLINE)
     override val precondition = "OFFLINE"
 
@@ -169,6 +173,7 @@ internal class DeviceNetworkOfflineBinding(private val recorder: Recorder) : Bin
 internal class DeviceNetworkBlockedBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosNetworkMonitor::class
     override val reaches = setOf(NetworkState.BLOCKED)
     override val precondition = "BLOCKED"
 

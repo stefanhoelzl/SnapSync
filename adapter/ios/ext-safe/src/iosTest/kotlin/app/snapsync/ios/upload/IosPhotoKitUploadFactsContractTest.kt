@@ -25,6 +25,7 @@ class IosPhotoKitUploadFactsContractTest {
     private val binding = object : Binding<OsUploadQueueState, QueueUnderTest> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosPhotoKitUploadPlatform::class
         override val reaches = setOf(OsUploadQueueState.ANY)
 
         override fun create(state: OsUploadQueueState, clauseId: String, log: CallLog): Entered<QueueUnderTest> {

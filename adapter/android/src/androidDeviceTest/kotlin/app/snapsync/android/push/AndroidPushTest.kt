@@ -65,11 +65,12 @@ class AndroidPushTest {
     private val processInfo = object : Binding<ProcessInfoState, ProcessInfo> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidProcessInfo::class
         override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_NOT_ACCOUNTED)
 
         override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> = when (state) {
             ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_NOT_ACCOUNTED -> Entered.Ready(
-                AndroidProcessInfo(context).recorded(log),
+                AndroidProcessInfo().recorded(log),
             )
             ProcessInfoState.MEMORY_ACCOUNTED ->
                 Entered.Unreachable(
@@ -90,6 +91,7 @@ class AndroidPushTest {
     private val push = object : Binding<PushState, PushUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidPushNotifications::class
         override val reaches = setOf(PushState.NO_PUSH_PROJECT, PushState.DELIVERING)
         override fun create(state: PushState, clauseId: String, log: CallLog): Entered<PushUnderTest> {
             val push = AndroidPushNotifications(context, FirebaseConfig("", "", "", "")).recorded(log)

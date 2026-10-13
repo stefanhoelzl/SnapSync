@@ -7,12 +7,13 @@ import app.snapsync.ports.Crypto
 /**
  * A stand-in [Crypto] for common code, where no platform's primitives are reachable — **not cryptography**, and never
  * shipped (a shipped root links no mock). Honest in what a test can observe: the same key and nonce always seal to
- * the same bytes, a seal opens only under its own key and nonce and unchanged, and every draw of "random" bytes is
- * new. The real primitives are bound to the `Crypto` contract on every platform; this one deliberately is not.
+ * the same bytes, a seal opens only under its own key and nonce and unchanged, a key that is not 256 bits is refused,
+ * and every draw of "random" bytes is new. It is bound to the `Crypto` contract's `OWN_BYTES` state, which holds
+ * exactly those properties; the real primitives are bound to its known answers on every platform.
  */
 fun fakeCrypto(): Crypto = FakeCrypto()
 
-private class FakeCrypto : Crypto {
+internal class FakeCrypto : Crypto {
     private var draws = 0L
 
     override fun randomBytes(count: Int): ByteArray = stream(longArrayOf(++draws, 0x5eed), count)
@@ -88,5 +89,6 @@ private class FakeCrypto : Crypto {
     private companion object {
         const val HASH_LENGTH = 32
         const val TAG_LENGTH = 16
+        const val AES_256_KEY = 32
     }
 }

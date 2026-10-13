@@ -1,5 +1,9 @@
 package app.snapsync.permission
 
+import app.snapsync.ports.GalleryReader
+import app.snapsync.contracts.SeededLibrary
+import app.snapsync.contracts.GalleryReaderState
+import app.snapsync.contracts.GalleryReaderContract
 import app.snapsync.contract.photoAccessGallery
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -39,6 +43,7 @@ class PhotoKitNoGrantContractTest {
     private val photoAccess = object : Binding<PhotoAccessState, PhotoAccess> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosGallery::class
 
         // This process reads refused, as one the member refused does (the Gallery binding's TOKEN_WITHHELD rests on it).
         override val reaches = setOf(PhotoAccessState.NO_GRANT, PhotoAccessState.REFUSED)
@@ -59,6 +64,7 @@ class PhotoKitNoGrantContractTest {
     private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosGallery::class
         override val reaches = setOf(GalleryState.TOKEN_WITHHELD)
 
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
@@ -72,6 +78,25 @@ class PhotoKitNoGrantContractTest {
             return Entered.Ready(GalleryChange(gallery.recorded(log)) {})
         }
     }
+
+    /** The app's gallery read as a [GalleryReader] in a process refused photo access: its own grant read answers denied. */
+    private val access = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
+        override val host = Host.IOS_SIM_KEXE
+        override val kind = BindingKind.Live
+        override val adapter = IosGallery::class
+        override val reaches = setOf(GalleryReaderState.REFUSED)
+
+        override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
+            if (state !in reaches || currentPhotoPermission() != LibraryGrant.DENIED) return Entered.Unreachable(unreachable)
+            val reader = IosGalleryReader(Logger.withTag("contract"))
+            val gallery = IosGallery(reader, PhotoLibraryPermission(), CoroutineScope(Dispatchers.Default))
+            return Entered.Ready(SeededLibrary(gallery.recorded(log)))
+        }
+    }
+
+    @Test
+    fun `the gallery's grant read satisfies the GalleryReader contract on this host`() =
+        verify(GalleryReaderContract, access)
 
     @Test
     fun `PhotoLibraryPermission satisfies the PhotoAccess contract on this host`() =

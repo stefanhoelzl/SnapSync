@@ -18,8 +18,10 @@ class AndroidCryptoContractTest {
     private val binding = object : Binding<CryptoState, Crypto> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(CryptoState.READY)
+        override val adapter = AndroidCrypto::class
+        override val reaches = setOf(CryptoState.READY, CryptoState.OWN_BYTES)
         override fun create(state: CryptoState, clauseId: String, log: CallLog): Entered<Crypto> =
+            // The standard algorithms answer the published vectors and keep every property a stand-in keeps.
             Entered.Ready(AndroidCrypto().recorded(log))
     }
 

@@ -508,6 +508,20 @@ private class BackendLeversDto(
     }
 }
 
+/** The backend's attestation: the challenges it issued, the tokens it minted, the key each device attested with. */
+@Serializable
+private class AttestDto(
+    val challenges: List<String> = emptyList(),
+    val minted: List<String> = emptyList(),
+    val attestedKeys: Map<String, String> = emptyMap(),
+) {
+    fun into(state: BackendState) {
+        state.challenges.addAll(challenges)
+        state.minted.addAll(minted)
+        state.attestedKeys.putAll(attestedKeys)
+    }
+}
+
 @Serializable
 private class BackendDto(
     val storedFiles: Map<String, List<StoredFileDto>>,
@@ -517,9 +531,9 @@ private class BackendDto(
     val deviceConfigWrites: Map<String, Int>,
     val publishes: List<CountDto>,
     val pushes: List<Triple<String, String, String>>,
-    val challenges: List<String>,
-    val minted: List<String>,
     val levers: BackendLeversDto,
+    /** The attestation the backend holds; defaulted, so a state saved before it loads (its tokens then re-minted). */
+    val attest: AttestDto = AttestDto(),
     // The union log and its counter (decision record `changes/incremental-union`, D4): a device keeps its cursor across
     // a relaunch, so the positions it points into must survive one too. Defaulted, so a state saved before them loads.
     val unionLog: List<UnionChangeDto> = emptyList(),
@@ -569,8 +583,7 @@ private class BackendDto(
         fetches.forEach { (event, list) ->
             state.fetches[event] = list.mapTo(mutableListOf()) { UnionFetch(it.device, it.trigger, it.from, it.to, it.served) }
         }
-        state.challenges.addAll(challenges)
-        state.minted.addAll(minted)
+        attest.into(state)
     }
 
     companion object {
@@ -621,8 +634,7 @@ private class BackendDto(
             fetches = state.fetches.mapValues { (_, list) ->
                 list.map { UnionFetchDto(it.deviceId, it.trigger, it.from, it.to, it.served) }
             },
-            challenges = state.challenges.toList(),
-            minted = state.minted.toList(),
+            attest = AttestDto(state.challenges.toList(), state.minted.toList(), state.attestedKeys.toMap()),
             levers = BackendLeversDto(
                 offline = state.offline,
                 failDeviceListing = state.failDeviceListing,

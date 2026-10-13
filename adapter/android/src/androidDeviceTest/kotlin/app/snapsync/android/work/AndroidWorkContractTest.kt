@@ -2,12 +2,16 @@
 
 package app.snapsync.android.work
 
+import android.app.job.JobInfo
+import android.app.job.JobScheduler
+import android.content.ComponentName
 import android.content.ContentUris
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.snapsync.android.gallery.MediaStoreResource
+import androidx.work.impl.background.systemjob.SystemJobService
 import app.snapsync.android.gallery.MediaStoreSeeder
 import app.snapsync.android.network.MeteredWifi
 import app.snapsync.android.network.awaitUnrestrictedNetwork
@@ -90,17 +94,23 @@ class AndroidWorkContractTest {
     private val wake = object : Binding<WakeState, ScheduledWakes> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(WakeState.EMPTY, WakeState.DELIVERING)
+        override val adapter = AndroidWake::class
+        override val reaches =
+            setOf(WakeState.EMPTY, WakeState.DELIVERING, WakeState.DELIVERING_LIBRARY_CHANGES, WakeState.REFUSING)
 
         override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
-            if (state !in reaches) {
-                return Entered.Unreachable(
-                    "Android has both wakes, and WorkManager refuses no request",
-                )
-            }
+            if (state !in reaches) return Entered.Unreachable("Android has the library-change wake")
             val bare = AndroidWake(context)
             val adapter = bare.recorded(log)
             WakeId.entries.forEach(bare::cancel)
+            if (state == WakeState.REFUSING) {
+                // The job scheduler refuses an app its 151st job, and WorkManager's enqueue reports that (measured, API 36).
+                val quota = JobQuota.fill()
+                return Entered.Ready(ScheduledWakes(adapter) { pending(AndroidWake.nameOf(WakeId.Heartbeat)) }) {
+                    quota.release()
+                    WakeId.entries.forEach(bare::cancel)
+                }
+            }
             val name = AndroidWake.nameOf(WakeId.Heartbeat)
             val seeded = mutableSetOf<PlatformAssetId>()
             // A new photo in the default gallery changes the library; the job scheduler's timeout is the system's end.
@@ -112,7 +122,7 @@ class AndroidWorkContractTest {
                 endRunningWake = { Airplane.enter() },
             )
             return Entered.Ready(
-                ScheduledWakes(adapter, os.takeIf { state == WakeState.DELIVERING }) { pending(name) },
+                ScheduledWakes(adapter, os.takeIf { state != WakeState.EMPTY }) { pending(name) },
             ) {
                 // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.
                 WakeId.entries.forEach(bare::cancel)
@@ -125,6 +135,7 @@ class AndroidWorkContractTest {
     private val backgroundTime = object : Binding<BackgroundTimeState, BackgroundTime> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidBackgroundTime::class
         override val reaches = setOf(BackgroundTimeState.TIME_REMAINS, BackgroundTimeState.TIME_RUNS_OUT)
         override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> {
             val adapter = AndroidBackgroundTime(context).recorded(log)
@@ -155,6 +166,7 @@ class AndroidWorkContractTest {
     private val upload = object : Binding<TransferSessionState, SessionUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidUpload::class
         override val reaches = setOf(
             TransferSessionState.IDLE,
             TransferSessionState.AT_CAP,
@@ -436,5 +448,37 @@ class AndroidWorkContractTest {
 
         /** How often the end of a hold looks for a running hold to stop. */
         const val POLL_MILLIS = 250L
+    }
+}
+
+/** This app's job-scheduler quota, filled with inert jobs of its own so the next schedule is refused. */
+private class JobQuota private constructor(private val ids: List<Int>) {
+    fun release() {
+        val jobs = context.getSystemService(JobScheduler::class.java)
+        ids.forEach(jobs::cancel)
+    }
+
+    companion object {
+        private const val FIRST_ID = 900_000
+        private const val BOUND = 1_000
+        private val DAY = 24.hours.inWholeMilliseconds
+
+        fun fill(): JobQuota {
+            val jobs = context.getSystemService(JobScheduler::class.java)
+            val service = ComponentName(context, SystemJobService::class.java)
+            val ids = mutableListOf<Int>()
+            try {
+                // The quota is about 150 (measured: 151 went in on API 36), WorkManager's own jobs counted: fill until the
+                // scheduler says no.
+                repeat(BOUND) { i ->
+                    jobs.schedule(JobInfo.Builder(FIRST_ID + i, service).setMinimumLatency(DAY).build())
+                    ids += FIRST_ID + i
+                }
+                error("the job scheduler took $BOUND jobs and refused none")
+            } catch (_: IllegalStateException) {
+                // Full.
+            }
+            return JobQuota(ids)
+        }
     }
 }

@@ -1,6 +1,8 @@
 package app.snapsync.android.buildinfo
 
 import android.os.Build
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.Platform
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
@@ -15,6 +17,10 @@ import app.snapsync.ports.BuildInfo
  * Its store is Google Play — known only once the deployment names the listing's page. Where it reports crashes to is
  * `BuildConfig`'s too — present only on a distributed build.
  */
+@NeverAnswers(
+    Never(member = "platform", answer = "Platform.IOS"),
+    Never(member = "processId", answer = "null"),
+)
 class AndroidBuildInfo(
     override val appVersion: String,
     /** The build's version code. */

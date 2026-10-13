@@ -79,8 +79,9 @@ enum class BackendState {
     CLOSED_BEFORE_OPEN_UNTIL,
 
     /**
-     * A backend that accepts a software Android key attestation (the local rig's `any` policy), and a key the binding
-     * can attest and sign with ([EdgeSubject.attester]).
+     * A backend that accepts the binding's attestations, and a key the binding can attest and sign with
+     * ([EdgeSubject.attester]): a software Android key for the real `api/` (the local rig's `any` policy), the in-memory
+     * integrity's proofs for the backend mock.
      */
     ATTESTABLE,
 }

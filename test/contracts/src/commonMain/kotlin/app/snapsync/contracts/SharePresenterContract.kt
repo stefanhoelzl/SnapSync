@@ -16,6 +16,9 @@ enum class SharePresenterState {
      * in the foreground.
      */
     NO_WINDOW,
+
+    /** No app on the device presents the share sheet: the system's chooser is disabled. */
+    NO_SHEET,
 }
 
 /**
@@ -53,6 +56,17 @@ object SharePresenterContract : Contract<SharePresenterState, SystemUi>("SharePr
         ) { presenter ->
             val answer = withinRealTime(HANDOFF_ANSWER_MILLIS) { presenter.share(TEXT, TITLE) }
             assertIs<Handoff.Refused>(answer, "with nowhere to present from, the share is refused, never claimed shown")
+        }
+
+        clause(
+            "NO_SHEET_SHARE_IS_REFUSED",
+            SharePresenterState.NO_SHEET,
+            covers = cells {
+                on<SystemUi>().answers(SystemUi::share).with(Handoff.Refused::class)
+            },
+        ) { presenter ->
+            val answer = withinRealTime(HANDOFF_ANSWER_MILLIS) { presenter.share(TEXT, TITLE) }
+            assertIs<Handoff.Refused>(answer, "with no sheet to present, the share is refused, never claimed shown")
         }
     }
 }

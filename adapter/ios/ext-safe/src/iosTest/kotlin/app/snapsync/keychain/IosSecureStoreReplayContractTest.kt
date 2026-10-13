@@ -31,6 +31,7 @@ class IosSecureStoreReplayContractTest {
     private val binding = object : Binding<SecureStoreState, SecureStore> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosSecureStore::class
         override val reaches = setOf(
             SecureStoreState.EMPTY,
             SecureStoreState.HOLDING_BACKGROUND_READABLE,

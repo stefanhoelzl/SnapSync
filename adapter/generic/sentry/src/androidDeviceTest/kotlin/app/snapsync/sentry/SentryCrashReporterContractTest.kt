@@ -51,6 +51,7 @@ class SentryCrashReporterContractTest {
     private val binding = object : Binding<CrashReporterState, CrashReporterSubject> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = SentryCrashReporter::class
         override val reaches = setOf(
             CrashReporterState.NOT_STARTED,
             CrashReporterState.STARTED,
@@ -65,7 +66,7 @@ class SentryCrashReporterContractTest {
             val restart = CrashRestart {
                 resetChannel(wipeCache = false)
                 ingest.open()
-                SettledStart(SentryCrashReporter()).recorded(log)
+                SettledStart(SentryCrashReporter().recorded(log))
             }
             if (state != CrashReporterState.ACROSS_A_RESTART) ingest.open()
             val observe = object : CrashObservation {
@@ -82,7 +83,7 @@ class SentryCrashReporterContractTest {
                 }
             }
             val subject = CrashReporterSubject(
-                SettledStart(SentryCrashReporter()).recorded(log),
+                SettledStart(SentryCrashReporter().recorded(log)),
                 CrashOptions(ingest.dsn),
                 observe,
                 restart.takeIf { state == CrashReporterState.ACROSS_A_RESTART },

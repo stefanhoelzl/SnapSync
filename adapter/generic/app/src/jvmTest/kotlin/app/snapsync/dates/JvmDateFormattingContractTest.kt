@@ -18,6 +18,7 @@ class JvmDateFormattingContractTest {
     private val binding = object : Binding<DateFormattingState, DateFormatting> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = JvmDateFormatting::class
         override val reaches = setOf(DateFormattingState.PLATFORM)
         override fun create(state: DateFormattingState, clauseId: String, log: CallLog): Entered<DateFormatting> =
             Entered.Ready(JvmDateFormatting().recorded(log))

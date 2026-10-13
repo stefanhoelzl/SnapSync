@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.contracts.Attester
 import app.snapsync.contracts.BackendClient
 import app.snapsync.contracts.BackendContract
 import app.snapsync.contracts.BackendState
@@ -14,7 +15,11 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.wire.api.Routes
+import app.snapsync.wire.models.AppleAppAttestProof
+import app.snapsync.wire.models.Proof
 import kotlinx.coroutines.runBlocking
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 
 /**
@@ -30,6 +35,7 @@ class BackendContractBindingTest {
     private val backend = object : Binding<BackendState, EdgeSubject<BackendClient>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = BackendRouter::class
         override val reaches = setOf(
             BackendState.SERVING,
             BackendState.EVENT_EXISTS,
@@ -46,6 +52,11 @@ class BackendContractBindingTest {
             BackendState.ENDED_BESIDE_A_SETTLED_MEMBER,
             BackendState.SERVER_FAILING,
             BackendState.IN_MAINTENANCE,
+            BackendState.ENDED_FOR_GOOD,
+            BackendState.CLOSED_BEFORE_OPEN_UNTIL,
+            BackendState.NO_BACKEND,
+            BackendState.UNREADABLE_SUCCESS,
+            BackendState.ATTESTABLE,
         )
 
         override fun create(state: BackendState, clauseId: String, log: CallLog): Entered<EdgeSubject<BackendClient>> =
@@ -67,7 +78,10 @@ class BackendContractBindingTest {
                 val client = { identity: ClientIdentity ->
                     BackendClient(transport.recorded(log), BASE, identity, log)
                 }
-                Entered.Ready(EdgeSubject(client(seeded.identity), seeded, setup, reidentify = client))
+                val attester = InMemoryAttester.takeIf { state == BackendState.ATTESTABLE }
+                Entered.Ready(
+                    EdgeSubject(client(seeded.identity), seeded, setup, attester = attester, reidentify = client),
+                )
             }
     }
 
@@ -75,6 +89,10 @@ class BackendContractBindingTest {
     private fun faultOf(state: BackendState): BackendFault? = when (state) {
         BackendState.SERVER_FAILING -> BackendFault.SERVER_ERROR
         BackendState.IN_MAINTENANCE -> BackendFault.MAINTENANCE
+        BackendState.NO_BACKEND -> BackendFault.UNREACHABLE
+        BackendState.UNREADABLE_SUCCESS -> BackendFault.MALFORMED
+        BackendState.ENDED_FOR_GOOD -> BackendFault.ENDED_FOR_GOOD
+        BackendState.CLOSED_BEFORE_OPEN_UNTIL -> BackendFault.CLOSED
         else -> null
     }
 
@@ -95,4 +113,18 @@ class BackendContractBindingTest {
         /** Any X.Y a refusal can name — the deployed edge's minimum (`api/src/config.ts`). */
         const val DEPLOYED_MINIMUM = "0.4"
     }
+}
+
+/**
+ * A key in the in-memory integrity's own proofs — `attestation:<key>:<challenge>`, `assertion:<key>:<challenge>` — the ones
+ * the backend mock verifies, as the device-integrity double it stands beside produces them.
+ */
+@OptIn(ExperimentalEncodingApi::class)
+private object InMemoryAttester : Attester {
+    private const val KEY = "contract-key"
+
+    override fun proof(challenge: String): Proof =
+        AppleAppAttestProof(KEY, Base64.encode("attestation:$KEY:$challenge".encodeToByteArray()))
+
+    override fun sign(challenge: String): ByteArray = "assertion:$KEY:$challenge".encodeToByteArray()
 }

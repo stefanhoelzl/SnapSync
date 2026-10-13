@@ -21,10 +21,11 @@ class IosCryptoContractTest {
     private val binding = object : Binding<CryptoState, Crypto> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
-        override val reaches = setOf(CryptoState.READY)
-        override fun create(state: CryptoState, clauseId: String, log: CallLog): Entered<Crypto> = Entered.Ready(
-            IosCrypto().recorded(log),
-        )
+        override val adapter = IosCrypto::class
+        override val reaches = setOf(CryptoState.READY, CryptoState.OWN_BYTES)
+        override fun create(state: CryptoState, clauseId: String, log: CallLog): Entered<Crypto> =
+            // The standard algorithms answer the published vectors and keep every property a stand-in keeps.
+            Entered.Ready(IosCrypto().recorded(log))
     }
 
     @Test

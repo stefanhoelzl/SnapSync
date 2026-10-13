@@ -23,6 +23,7 @@ class BackgroundTimeContractBindingTest {
     private val binding = object : Binding<BackgroundTimeState, BackgroundTime> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = InMemoryBackgroundTime::class
         override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
 
         override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =

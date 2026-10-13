@@ -18,7 +18,8 @@ import kotlin.concurrent.Volatile
  *
  * Licensed by `CrashReporterContract` (`:test:contracts`) up to its `STARTED` state. What leaves a device — automatic
  * capture, breadcrumbs riding the next event, contexts, the SDK's install id — is the SDK's and the adapter's, and
- * this fake does not model it: [capture], [breadcrumb] and [setContext] transmit nothing here.
+ * this fake does not model it: [capture], [breadcrumb] and [setContext] transmit nothing here — though a running channel
+ * shapes each event and crumb through the registered handlers, as the real one does before anything leaves.
  */
 internal class InMemoryCrashReporter(
     private val started: MutableStateFlow<Boolean>,
@@ -37,9 +38,13 @@ internal class InMemoryCrashReporter(
         started.value = true
     }
 
-    override fun capture(event: CrashEvent) = Unit
+    override fun capture(event: CrashEvent) {
+        if (started.value) handlers?.onEvent?.invoke(event)
+    }
 
-    override fun breadcrumb(crumb: Crumb) = Unit
+    override fun breadcrumb(crumb: Crumb) {
+        if (started.value) handlers?.onBreadcrumb?.invoke(crumb)
+    }
 
     override fun setContext(name: String, fields: Map<String, String>) = Unit
 

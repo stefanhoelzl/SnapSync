@@ -1,5 +1,6 @@
 package app.snapsync.scene
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -91,10 +92,18 @@ class IosUi(
         return placeholder
     }
 
-    private fun liveScreen(registered: UiHandlers<UiState, UiIntent>): UIViewController {
+    private fun liveScreen(registered: UiHandlers<UiState, UiIntent>): UIViewController = ComposeUIViewController(
+        content = content(registered),
+    )
+
+    /** The live screen's content, as [viewController]'s controller hosts it — and as the contract binding's UI test does. */
+    internal fun liveContent(): @Composable () -> Unit = content(handlers.require("a live screen"))
+
+    /** The core told the screen is live, then the status screen over the latest state shown. */
+    private fun content(registered: UiHandlers<UiState, UiIntent>): @Composable () -> Unit {
         shown.value = registered.onLive.deliver(Unit)
         val actions = statusActions(registered.onIntent::deliver)
-        return ComposeUIViewController {
+        return {
             val state by shown.collectAsState()
             CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
                 state?.let {

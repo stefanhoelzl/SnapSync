@@ -447,8 +447,9 @@ class RigServer(
     }
 
     /**
-     * `GET /contract[?grant=<GRANT>]` — the names of the contracts registered for the host this process is, under the
-     * default photo grant or the one named, one per line. The `journeys (ios)` job runs exactly these lists, so a
+     * `GET /contract[?grant=<GRANT>][&precondition=<PRECONDITION>]` — the names of the contracts registered for the host
+     * this process is, under the default photo grant or the one named, and with no precondition or the one named, one
+     * per line. The `journeys (ios)` job runs exactly these lists, so a
      * contract registered for the simulator app is run on every push, and one registered for nothing is run by nobody
      * (`docs/architecture.md`).
      */
@@ -457,7 +458,10 @@ class RigServer(
         // can never pass vacuously against it (`docs/architecture.md`).
         if (respondIfRefused(RigVocabulary.CONTRACT, marker = CONTRACT_REFUSED)) return
         val grant = request.queryParameters["grant"]
-        val listed = hooks.contracts.filter { it.host == currentHost && it.grant?.name == grant }
+        val precondition = request.queryParameters["precondition"]
+        val listed = hooks.contracts.filter {
+            it.host == currentHost && it.grant?.name == grant && it.precondition == precondition
+        }
         respondText(listed.joinToString("") { it.name + "\n" })
     }
 

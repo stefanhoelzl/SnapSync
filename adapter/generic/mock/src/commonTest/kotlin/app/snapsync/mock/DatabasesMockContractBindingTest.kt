@@ -19,6 +19,7 @@ class DatabasesMockContractBindingTest {
     private val binding = object : Binding<DatabasesState, DatabasesSubject> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = Process::class
         override val reaches =
             setOf(
                 DatabasesState.ABSENT,

@@ -5,6 +5,8 @@ package app.snapsync.background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Running
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
@@ -17,7 +19,6 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.BackgroundTasks.BGAppRefreshTaskRequest
 import platform.BackgroundTasks.BGProcessingTaskRequest
-import platform.BackgroundTasks.BGTask
 import platform.Foundation.NSDate
 import platform.Foundation.dateWithTimeIntervalSinceNow
 import kotlin.concurrent.atomics.AtomicBoolean
@@ -57,6 +58,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * no simulator host binds it. ⏰ Re-measure at the next iOS major.
  */
 @OptIn(ExperimentalForeignApi::class)
+@NeverAnswers(Never(handler = "onWake", answer = "WakeId.LibraryChanged"))
 class IosWake internal constructor(
     private val log: Logger,
     // The operating-system boundary, so a recording taken on a device can replay against this code (`WakeContract`).
@@ -76,7 +78,7 @@ class IosWake internal constructor(
         registered(IDLE_TASK_IDENTIFIER, tasks.register(IDLE_TASK_IDENTIFIER) { launched(it) })
     }.also { log.i { "wake.inbound" } }
 
-    private fun launched(task: BGTask) {
+    private fun launched(task: LaunchedTask) {
         val completion = TaskCompletion(task, log)
         onTaskLaunched(task.identifier, completion)?.let(completion::ran)
     }
@@ -179,14 +181,14 @@ class IosWake internal constructor(
  * the run the task started — also when the expiry came before the run did ([ran]).
  */
 @OptIn(ExperimentalForeignApi::class)
-private class TaskCompletion(private val task: BGTask, private val log: Logger) : Completion {
+private class TaskCompletion(private val task: LaunchedTask, private val log: Logger) : Completion {
     private val completed = AtomicBoolean(false)
     private val expired = AtomicBoolean(false)
     private val expiredRun = AtomicBoolean(false)
     private val run = AtomicReference<Running?>(null)
 
     init {
-        task.expirationHandler = {
+        task.onExpiry {
             objcBoundary(log, "bgTask.expirationHandler(${task.identifier})") {
                 expired.store(true)
                 run.load()?.let(::expireOnce)
@@ -195,7 +197,7 @@ private class TaskCompletion(private val task: BGTask, private val log: Logger) 
     }
 
     override fun complete() {
-        if (completed.compareAndSet(expectedValue = false, newValue = true)) task.setTaskCompletedWithSuccess(true)
+        if (completed.compareAndSet(expectedValue = false, newValue = true)) task.complete()
     }
 
     /** The task started [running]: the run its expiry expires. */

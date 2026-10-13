@@ -3,6 +3,8 @@ package app.snapsync.android.storage
 import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.PlatformDeviceId
 import java.nio.ByteBuffer
 import java.security.MessageDigest
@@ -19,17 +21,21 @@ import java.util.UUID
  * photos. It is not linkable across apps (another signing key sees another value), and the id the backend sees is a
  * digest of it, not the value.
  *
- * `null` when the platform answers nothing — the identity service then mints a random id, as on iOS.
+ * Never `null`: since Android 8 every app is given its own `ANDROID_ID` at install (minSdk is 30), so a missing one
+ * is a broken platform, failed loudly — not a device without an id, which would mint a random one and lose the
+ * reinstall lifetime above unnoticed.
  */
-class AndroidPlatformDeviceId(private val androidId: () -> String?) : PlatformDeviceId {
+@NeverAnswers(Never(member = "stableId", answer = "null"))
+class AndroidPlatformDeviceId(context: Context) : PlatformDeviceId {
 
-    /** Production: the platform's value for this app (a secondary constructor, not a default). */
+    private val resolver = context.contentResolver
+
     @SuppressLint("HardwareIds") // the identity this is for: see the class comment
-    constructor(
-        context: Context,
-    ) : this({ Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) })
-
-    override fun stableId(): String? = androidId()?.trim()?.takeIf { it.isNotEmpty() }?.let { deviceIdFor(it) }
+    override fun stableId(): String {
+        val androidId = Settings.Secure.getString(resolver, Settings.Secure.ANDROID_ID)?.trim()
+        check(!androidId.isNullOrEmpty()) { "the platform gave this app no ANDROID_ID" }
+        return deviceIdFor(androidId)
+    }
 
     companion object {
         /**

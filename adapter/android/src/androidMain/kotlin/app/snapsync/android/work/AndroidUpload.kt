@@ -9,6 +9,8 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Running
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.logAt
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundTime
@@ -79,6 +81,11 @@ import java.util.concurrent.TimeUnit
  * inside it, so a transfer cancelled before its coroutine ever ran (a leave right after a create, on a busy device)
  * or ended by an exception nothing expected is still reported, and frees its slot and the hold.
  */
+@NeverAnswers(
+    Never(handler = "onBackgroundEvents"),
+    Never(handler = "onEventsDrained"),
+    Never(member = "takesResources", answer = "false"),
+)
 class AndroidUpload(
     context: Context,
     private val time: BackgroundTime,

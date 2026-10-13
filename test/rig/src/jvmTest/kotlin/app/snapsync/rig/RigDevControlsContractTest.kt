@@ -21,6 +21,7 @@ class RigDevControlsContractTest {
     private val binding = object : Binding<DevControlsState, DevControlsUnderTest> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = RigDevControls::class
         override val reaches = setOf(DevControlsState.SWITCHED)
         override fun create(state: DevControlsState, clauseId: String, log: CallLog): Entered<DevControlsUnderTest> {
             if (state !in reaches) return Entered.Unreachable("a rig build's controls are the channel's to set")

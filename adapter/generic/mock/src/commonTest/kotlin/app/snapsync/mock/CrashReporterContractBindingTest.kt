@@ -28,6 +28,7 @@ class CrashReporterContractBindingTest {
     private val binding = object : Binding<CrashReporterState, CrashReporterSubject> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = InMemoryCrashReporter::class
         override val reaches = setOf(CrashReporterState.NOT_STARTED, CrashReporterState.STARTED)
 
         override fun create(state: CrashReporterState, clauseId: String, log: CallLog): Entered<CrashReporterSubject> {

@@ -473,6 +473,54 @@ The one reading of "covered" is `ContractCoverage.coveredCells`, so a rule that 
 changes that function only. A renamed port member moves its cells, so it fails twice: its old cells are
 declared by clauses but no longer in the grid, and its new cells are uncovered.
 
+### Every adapter is covered
+
+A cell covered by one adapter says nothing about a port's other adapters. `AdapterCoverageTest`
+(`:test:architecture`) holds every **adapter** to its own cells. It reads the compiled code of every target (JVM
+and Android bytecode through ASM, the iOS klibs through `klib dump-ir`), so its facts are the compiler's, not a
+reading of source text.
+
+- **The adapters are derived.** An adapter is every production class, in any zone, that implements a grid port.
+  Rig code, `:test:*` modules and the mocks are not adapters (the mocks are held below).
+- **Each binding names the class it proves:** `override val adapter = IosFiles::class`. The runner checks it at
+  run time. Each recording proxy notes the class it wraps (`CallLog.wraps`), and a clause whose binding wrapped
+  anything else fails. A wrapper the binding needs (a composition, a decorator) makes the wrapper the adapter.
+- **What an adapter owes** is each grid cell of each port it implements. A cell is owed by, and credited to, the
+  class whose code answers it: an inherited member is the superclass's, and a delegated one is the delegate's.
+- **A cell is covered for an adapter** when a real binding of that adapter (`ContractCoverage`'s reading:
+  `Live` on a host CI runs, or `Replay` through its recording) reaches a clause that declares it. The one
+  exception is the backend's `Backend.*` cells, which any real binding covers.
+- **A cell the code cannot answer is claimed, never listed.** `@NeverAnswers` (`:domain:model`) on the
+  adapter class names the member (or `handler`) and the answer, typed as the grid writes it:
+
+  ```kotlin
+  @NeverAnswers(
+      Never(member = "schedule", answer = "ScheduleResult.Unsupported"),
+      Never(handler = "onBackgroundEvents"),
+  )
+  class AndroidWake(…) : Wake
+  ```
+
+  The gate checks every claim against the compiled code, and fails closed. An answer claim holds only when no
+  return path of the member can produce that variant. Every value it returns is followed through locals,
+  fields, casts and calls into the same target's production code. A call it cannot follow (an SDK, a
+  lambda) refuses the claim if its return type could carry the answer. A constant claim (`null`, `true`,
+  an enum entry) holds only when every return is the opposite literal; for `null` that means a non-null
+  declared return type. A handler claim holds only when no code of the adapter calls that handler. A claim
+  that names no owed cell is refused too.
+- **A simulator substitute is a regular adapter.** `SimulatorSecureStore`, `SimulatorUploadJobQueue` and
+  `SimulatorExtensionRegistry` stand in on `iosSimulatorArm64` for what the simulator lacks. They are paired
+  with their iPhone counterpart through the same `expect`/`actual` factory. Each must also answer every
+  cell its counterpart is proven to answer.
+- **The mocks answer what the real system answers.** Every named mock class that implements a grid port
+  has a binding (its `Face`, not an anonymous object). For each port a mock binding covers, the mocks
+  together answer every cell any real adapter of that port is proven to answer, on any platform.
+
+It writes `build/reports/port-grid/adapters.txt`: each adapter with its targets, what it owes, its claims and
+what it leaves uncovered. A new adapter, a new port member or a new variant therefore needs one of three
+things in the same change: a binding that proves it, a claim the code supports, or a port that no longer
+asks for it.
+
 ### Hosts
 
 A `Host` is identity that changes which states are reachable: platform × process kind × entitlements. OS

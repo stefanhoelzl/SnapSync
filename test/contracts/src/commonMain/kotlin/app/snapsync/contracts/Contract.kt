@@ -3,6 +3,7 @@ package app.snapsync.contracts
 import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlin.reflect.KClass
 
 /**
  * One obligation of a port, conditioned on the state of the system behind it.
@@ -82,6 +83,14 @@ interface Binding<K : Enum<K>, T> {
     val host: Host
     val kind: BindingKind
     val reaches: Set<K>
+
+    /**
+     * The ONE class this binding proves (`docs/testing.md`, "Every adapter is covered"): the adapter it wraps in the
+     * port's recording proxy. It MUST be written as `override val adapter = X::class` — the per-adapter gate reads it from
+     * source to credit the clauses this binding runs to X. The runner checks it on every run: the proxies the binding
+     * built must wrap exactly one class, and it must be this one.
+     */
+    val adapter: KClass<*>
 
     /**
      * The photo grant this binding runs under, or `null` where the port does not depend on one (capability

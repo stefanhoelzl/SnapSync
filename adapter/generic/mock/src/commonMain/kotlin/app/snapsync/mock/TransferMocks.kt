@@ -105,7 +105,10 @@ class UploadQueueMock(
 
     @Volatile internal var failCreate = false
 
-    private val face: OsUploadQueue = object : OsUploadQueue {
+    private val face: OsUploadQueue = Face()
+
+    /** The port face: one for every process, as the OS holds one queue for the app. */
+    internal inner class Face : OsUploadQueue {
         override suspend fun retryOffered(): List<OsUploadJob> = locked {
             jobs.filter { it.state == UploadJobState.FAILED && !it.retriedOnce }.map { it.view() }
         }
@@ -238,6 +241,8 @@ class UploadSessionMock(
     internal val network: UploadNetwork,
     /** Whether the device's network holds a transfer created under this rule. */
     internal val held: (TransferNetwork) -> Boolean,
+    /** Whether the session also sends a library resource, as Android's in-process session does; a file otherwise. */
+    private val sendsResources: Boolean = false,
 ) {
     /** One live transfer — [from] is the first byte of its file it sends (a resumed upload sends the rest). */
     internal class Live(val tag: String, val target: UploadTarget, val from: Long = 0) : TransferHandle
@@ -257,8 +262,11 @@ class UploadSessionMock(
     internal val live = mutableListOf<Live>()
     internal val created = mutableListOf<String>()
 
-    fun port(): TransferSession = object : TransferSession {
-        override val takesResources: Boolean = false
+    fun port(): TransferSession = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : TransferSession {
+        override val takesResources: Boolean = sendsResources
 
         @CompositionOnly
         override fun inbound(handlers: TransferHandlers) {
@@ -266,10 +274,12 @@ class UploadSessionMock(
         }
 
         override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
-            if (source !is TransferSource.File) return CreateOutcome.FAILED
+            if (source !is TransferSource.File && !(sendsResources && source is TransferSource.Resource)) {
+                return CreateOutcome.FAILED
+            }
             return locked {
                 if (live.size >= LIVE_CAP) return@locked CreateOutcome.LIMIT_EXCEEDED
-                live += Live(tag, target, source.from)
+                live += Live(tag, target, (source as? TransferSource.File)?.from ?: 0)
                 created += tag
                 CreateOutcome.CREATED
             }
@@ -373,6 +383,10 @@ fun interface TemporaryFiles {
  */
 class DownloadSessionMock(
     private val temporaryFiles: TemporaryFiles? = null,
+    /** Whether the queue refuses, as it is asked, a URL it cannot fetch — Android's `DownloadManager` takes http(s) only. */
+    private val refusesUnfetchable: Boolean = false,
+    /** Whether a URL a parser cannot read — an IPv6 host never closed — is refused as it is asked, as iOS's `NSURL` does. */
+    private val refusesMalformed: Boolean = false,
     /** Whether the device's network holds a transfer started under this rule. */
     internal val held: (TransferNetwork) -> Boolean,
     /**
@@ -417,6 +431,8 @@ class DownloadSessionMock(
         override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
             realized = true
             if (url.isBlank()) return StartResult.NotStarted
+            if (refusesUnfetchable && !url.startsWith("http://") && !url.startsWith("https://")) return StartResult.NotStarted
+            if (refusesMalformed && '[' in url && ']' !in url) return StartResult.NotStarted
             locked { started += Started(url, tag, network) }
             return StartResult.Started
         }

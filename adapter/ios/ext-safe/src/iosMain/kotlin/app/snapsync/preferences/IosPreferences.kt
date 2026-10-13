@@ -1,6 +1,8 @@
 package app.snapsync.preferences
 
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.PrefRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
@@ -20,6 +22,10 @@ import platform.Foundation.NSUserDefaults
  *
  * [suiteName] is the App Group in production; a test passes a suite of its own.
  */
+@NeverAnswers(
+    Never(member = "set", answer = "WriteOutcome.Failed"),
+    Never(member = "remove", answer = "WriteOutcome.Failed"),
+)
 class IosPreferences(suiteName: String) : Preferences {
 
     /** Production: the App Group's suite (a secondary constructor, not a default — `docs/architecture.md`). */

@@ -394,6 +394,11 @@ system it stands in for. The contract code **is** the specification of a port's 
 - **Every grid cell is covered**: declared outright by a clause that runs against something real, with no list
   of exceptions. `ClauseCoversTest` enforces this too, so new port surface without a clause fails the build
   (`docs/testing.md`, "Every cell is covered").
+- **Every adapter is covered**: every production class implementing a grid port has a real binding that names it,
+  and every cell it owes is proven by one, or claimed in a `@NeverAnswers` the compiled code is checked to support.
+  The mocks and the simulator substitutes answer what the real adapters they stand in for are proven to answer.
+  `AdapterCoverageTest` enforces this, reading the compiled code of every target (`docs/testing.md`, "Every adapter
+  is covered").
 - **A declared cell must occur.** Each binding wraps its implementation in the port's recording proxy, and
   the runner fails a clause whose declared cell never occurred during its body, on every host it runs.
   `ProxyCompletenessTest` holds every proxy to the grid (`docs/testing.md`, "A declared cell must occur").

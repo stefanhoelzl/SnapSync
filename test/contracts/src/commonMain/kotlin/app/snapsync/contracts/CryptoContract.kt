@@ -9,9 +9,17 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
-/** The primitives keep no state, so there is one: the platform's own implementation, ready. */
+/** The primitives keep no state; what differs is whose bytes they produce. */
 enum class CryptoState {
+    /** The platform's own implementation of the standard algorithms: its answers are the published vectors. */
     READY,
+
+    /**
+     * Any implementation, a stand-in whose bytes are its own included: only what every implementation keeps is asked of
+     * it — a seal opens under its own key and nonce, a changed one never does, a MAC is keyed and repeatable, random
+     * bytes are fresh.
+     */
+    OWN_BYTES,
 }
 
 /**
@@ -158,6 +166,46 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
                 crypto.sha256(generateSequence { ByteArray(1000) { 'a'.code.toByte() } }.take(1000)),
                 "a million 'a's, a thousand chunks",
             )
+        }
+
+        clause(
+            "OWN_BYTES_A_SEAL_OPENS_UNDER_ITS_KEY_AND_A_CHANGED_ONE_NEVER_DOES",
+            CryptoState.OWN_BYTES,
+            covers = cells {
+                on<Crypto> {
+                    answers(Crypto::aesGcmSeal).returns()
+                    answers(Crypto::aesGcmOpen).returns()
+                    answers(Crypto::aesGcmOpen).with(null)
+                }
+            },
+        ) { crypto ->
+            val sealed = crypto.aesGcmSeal(GCM_KEY, GCM_NONCE, GCM_PLAIN)
+            assertContentEquals(GCM_PLAIN, crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, sealed), "it opens to what was sealed")
+            val changed = sealed.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }
+            assertNull(crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, changed), "a changed seal never opens")
+            assertNull(crypto.aesGcmOpen(ZERO_KEY, GCM_NONCE, sealed), "nor under another key")
+        }
+
+        clause(
+            "OWN_BYTES_A_MAC_IS_KEYED_AND_REPEATABLE",
+            CryptoState.OWN_BYTES,
+            covers = cells { on<Crypto>().answers(Crypto::hmacSha256).returns() },
+        ) { crypto ->
+            val macKey = ByteArray(32) { it.toByte() }
+            val mac = crypto.hmacSha256(macKey, GCM_PLAIN)
+            assertEquals(32, mac.size, "an HMAC-SHA256 is 32 bytes")
+            assertContentEquals(mac, crypto.hmacSha256(macKey, GCM_PLAIN), "the same key and message, the same MAC")
+            assertFalse(mac.contentEquals(crypto.hmacSha256(ByteArray(32), GCM_PLAIN)), "another key, another MAC")
+        }
+
+        clause(
+            "OWN_BYTES_RANDOM_BYTES_ARE_FRESH",
+            CryptoState.OWN_BYTES,
+            covers = cells { on<Crypto>().answers(Crypto::randomBytes).returns() },
+        ) { crypto ->
+            assertEquals(7, crypto.randomBytes(7).size)
+            val draws = List(8) { crypto.randomBytes(32).toList() }
+            assertEquals(draws.size, draws.toSet().size, "no 32-byte draw repeats")
         }
 
         clause(

@@ -30,6 +30,9 @@ enum class GalleryReaderState {
     /** No grant, and the process asked and was refused — on a platform that keeps its own record of having asked. */
     REFUSED,
 
+    /** A partial grant: the member picked a selection, and the platform reads it as such. */
+    PARTIAL,
+
     /** A full grant, and [SEED_COUNT] assets seeded in the clause's window. */
     GRANTED_SEEDED,
 
@@ -143,6 +146,16 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             },
         ) { seeded ->
             assertEquals(LibraryGrant.DENIED, seeded.port.access(), "asked and refused is denied")
+        }
+
+        clause(
+            "PARTIAL_READS_LIMITED",
+            GalleryReaderState.PARTIAL,
+            covers = cells {
+                on<GalleryReader>().answers(GalleryReader::access).with(LibraryGrant.LIMITED)
+            },
+        ) { seeded ->
+            assertEquals(LibraryGrant.LIMITED, seeded.port.access(), "a picked selection is a limited grant")
         }
 
         clause(

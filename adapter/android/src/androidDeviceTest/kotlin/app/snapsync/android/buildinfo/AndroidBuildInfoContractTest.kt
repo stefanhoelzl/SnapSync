@@ -33,6 +33,7 @@ class AndroidBuildInfoContractTest {
     private val binding = object : Binding<BuildInfoState, BuildInfo> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidBuildInfo::class
         override val reaches = setOf(
             BuildInfoState.REPORTING_AND_LISTED,
             BuildInfoState.BUNDLED,

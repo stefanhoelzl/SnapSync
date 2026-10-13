@@ -18,6 +18,7 @@ class AndroidDateFormattingContractTest {
     private val binding = object : Binding<DateFormattingState, DateFormatting> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidDateFormatting::class
         override val reaches = setOf(DateFormattingState.PLATFORM)
         override fun create(state: DateFormattingState, clauseId: String, log: CallLog): Entered<DateFormatting> =
             Entered.Ready(AndroidDateFormatting().recorded(log))

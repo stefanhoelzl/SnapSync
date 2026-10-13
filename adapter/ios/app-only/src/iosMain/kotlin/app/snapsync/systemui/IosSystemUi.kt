@@ -122,11 +122,13 @@ class IosSystemUi internal constructor(
         return if (opened) Handoff.Accepted else Handoff.Refused("iOS did not open $url")
     }
 
-    /** Opens this app's page in the Settings app — the `DENIED` affordance. */
+    /**
+     * Opens this app's page in the Settings app — the `DENIED` affordance — through the same `openURL` call [openUrl]
+     * makes. Nothing is answered: iOS leaves the app for Settings, and a refusal is only logged. `AppSettingsContract`'s
+     * device recording pins the call.
+     */
     override fun openSettings() {
         val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
-        onQueue(dispatch_get_main_queue(), settingsLog, "openSettings") {
-            UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
-        }
+        urls.open(url) { opened -> if (!opened) settingsLog.w { "iOS did not open this app's Settings page" } }
     }
 }

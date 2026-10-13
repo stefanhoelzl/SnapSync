@@ -39,6 +39,7 @@ class AndroidNetworkMonitorContractTest {
     private val binding = object : Binding<NetworkState, NetworkMonitor> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidNetworkMonitor::class
         override val reaches = setOf(
             NetworkState.ONLINE,
             NetworkState.RESTRICTED,

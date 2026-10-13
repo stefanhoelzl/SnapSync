@@ -31,6 +31,7 @@ class HttpTransportContractTest {
     private val cio = object : Binding<HttpTransportState, TransportUnderTest> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = KtorHttpTransport::class
         override val reaches = setOf(HttpTransportState.PEER, HttpTransportState.NO_PEER)
 
         override fun create(state: HttpTransportState, clauseId: String, log: CallLog) =
@@ -40,6 +41,7 @@ class HttpTransportContractTest {
     private val okHttp = object : Binding<HttpTransportState, TransportUnderTest> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = KtorHttpTransport::class
         override val reaches = setOf(HttpTransportState.PEER, HttpTransportState.NO_PEER)
 
         override fun create(state: HttpTransportState, clauseId: String, log: CallLog) =

@@ -52,6 +52,7 @@ class PhotoKitExtensionRegistryReplayContractTest {
     private val granted = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = PhotoKitExtensionRegistry::class
         override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(ExtensionRegistryState.RECORD_ABSENT, ExtensionRegistryState.RECORD_PRESENT)
 
@@ -71,6 +72,7 @@ class PhotoKitExtensionRegistryReplayContractTest {
     private val limited = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = PhotoKitExtensionRegistry::class
         override val grant = LibraryGrant.LIMITED
         override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
 
@@ -91,6 +93,7 @@ class PhotoKitExtensionRegistryReplayContractTest {
     private val noMechanism = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = PhotoKitExtensionRegistry::class
         override val precondition = "BELOW_IOS_26_1"
         override val reaches = setOf(ExtensionRegistryState.NO_MECHANISM)
 

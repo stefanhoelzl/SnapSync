@@ -19,6 +19,7 @@ class AndroidPlatformDeviceIdContractTest {
     private val binding = object : Binding<PlatformDeviceIdState, PlatformDeviceId> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidPlatformDeviceId::class
         override val reaches = setOf(PlatformDeviceIdState.ANSWERING)
 
         override fun create(state: PlatformDeviceIdState, clauseId: String, log: CallLog): Entered<PlatformDeviceId> =

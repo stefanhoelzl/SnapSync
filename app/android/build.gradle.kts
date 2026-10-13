@@ -192,3 +192,27 @@ tasks.named("check") {
     dependsOn("lintRelease")
     setDependsOn(dependsOn.filterNot { it == "lint" || (it as? Named)?.name == "lint" })
 }
+
+// No component of the merged app starts before the device's first unlock (`AndroidManifest.xml`): the `ProcessInfo`
+// adapter answers protected data available on that ground, so a library update that brings a direct-boot-aware
+// component back must fail here rather than make that answer untrue.
+val verifyNoDirectBoot = tasks.register("verifyNoDirectBoot") {
+    group = "verification"
+    description = "Fails when the merged release manifest declares a direct-boot-aware component."
+    val merged = layout.buildDirectory.file(
+        "intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml",
+    )
+    dependsOn("processReleaseMainManifest")
+    inputs.file(merged)
+    doLast {
+        val text = merged.get().asFile.readText()
+        val aware = Regex("""<(\w+)\b[^>]*android:name="([^"]+)"[^>]*android:directBootAware="true"""")
+            .findAll(text).map { "${it.groupValues[1]} ${it.groupValues[2]}" }.toList()
+        check(aware.isEmpty()) {
+            "the merged manifest declares direct-boot-aware components; declare each otherwise in " +
+                "AndroidManifest.xml:\n  " +
+                aware.joinToString("\n  ")
+        }
+    }
+}
+tasks.named("check") { dependsOn(verifyNoDirectBoot) }

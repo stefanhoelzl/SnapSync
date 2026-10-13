@@ -19,6 +19,7 @@ class IosPreferencesContractTest {
     private val binding = object : Binding<PreferencesState, Preferences> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosPreferences::class
         override val reaches = setOf(PreferencesState.EMPTY, PreferencesState.HOLDING, PreferencesState.FOREIGN)
 
         override fun create(state: PreferencesState, clauseId: String, log: CallLog): Entered<Preferences> {

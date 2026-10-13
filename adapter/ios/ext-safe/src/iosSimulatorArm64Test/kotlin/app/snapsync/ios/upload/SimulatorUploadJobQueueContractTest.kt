@@ -50,7 +50,10 @@ class SimulatorUploadJobQueueContractTest {
 
     private val binding = object : Binding<OsUploadQueueState, QueueUnderTest> {
         override val host = Host.IOS_SIM_KEXE
-        override val kind = BindingKind.Fake
+
+        // The code the simulator app runs, so its run is a Live one (`docs/testing.md`, "Every adapter is covered").
+        override val kind = BindingKind.Live
+        override val adapter = SimulatorUploadJobQueue::class
         override val reaches = setOf(
             OsUploadQueueState.IDLE,
             OsUploadQueueState.AT_CAP,
@@ -65,7 +68,9 @@ class SimulatorUploadJobQueueContractTest {
             if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
             val jobs = SimulatorJobSets()
             val queue = SimulatorUploadJobQueue(Logger.withTag("contract"), jobs, payloadType = StandInPhoto::class)
-            val os = PlayedOs(queue, jobs)
+            // The played OS settles what the substitute creates; it wraps the substitute's proxy, so what the clause
+            // sees through it is recorded as the substitute's own answers.
+            val os = PlayedOs(queue.recorded(log), jobs)
             if (state == OsUploadQueueState.AT_CAP) {
                 runEntry {
                     jobs.beginCycle(emptyList(), jobLimit = CAP)
@@ -80,8 +85,7 @@ class SimulatorUploadJobQueueContractTest {
             if (state in OsUploadQueueContract.PRESENTED) runEntry { presentPrepared(state, clauseId, jobs, os) }
             return Entered.Ready(
                 QueueUnderTest(
-                    // The played OS is the system behind the queue; the clause sees the queue through its proxy.
-                    queue = os.recorded(log),
+                    queue = os,
                     base = BASE,
                     usable = { StandInPhoto },
                     unusable = { NotAPhoto },

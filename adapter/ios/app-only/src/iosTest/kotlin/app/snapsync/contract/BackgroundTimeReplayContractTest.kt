@@ -26,6 +26,7 @@ class BackgroundTimeReplayContractTest {
     private val binding = object : Binding<BackgroundTimeState, BackgroundTime> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosBackgroundTime::class
         override val reaches = setOf(BackgroundTimeState.TIME_RUNS_OUT)
 
         override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> {

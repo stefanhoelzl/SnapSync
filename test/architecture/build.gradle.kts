@@ -1,4 +1,6 @@
 import org.gradle.api.tasks.PathSensitivity
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -67,10 +69,51 @@ dependencies {
     testImplementation(project(":test:contracts")) {
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-test-junit")
     }
+    // The per-adapter gate reads the production code's compiled classes, as the coverage-zero gate in build-logic does:
+    // ASM for the bytecode and the sources of each value a cast takes, Kotlin's metadata for what bytecode erases (a
+    // suspend function's declared answer). Versioned by ASM's pin and by the Kotlin plugin.
+    testImplementation(libs.asm.tree)
+    testImplementation(libs.asm.analysis)
+    testImplementation(libs.kotlin.metadata.jvm)
+}
+
+// The per-adapter gate's subject (`docs/testing.md`, "Every adapter is covered"): every production module's compiled
+// code, per target — JVM and Android classes, iOS klibs. Production is derived, never listed: every module but the
+// test-only ones (`:test:*`, `:tools:*`), the mocks, and the desktop harness, which is test equipment. A module that
+// gains a target is read the day it does. Resolved when the task graph is built, so every project has registered
+// its tasks by then.
+val codeModules = rootProject.subprojects.filter { p ->
+    p.buildFile.exists() && !p.path.startsWith(":test:") && !p.path.startsWith(":tools:") &&
+        p.path != ":adapter:generic:mock" && p.path != ":app:desktop"
+}
+val compiledCode = mapOf(
+    "jvm" to listOf("compileKotlinJvm", "compileKotlin"),
+    "android" to listOf("compileAndroidMain", "compileReleaseKotlin"),
+    "iosArm64" to listOf("compileKotlinIosArm64"),
+    "iosSimulatorArm64" to listOf("compileKotlinIosSimulatorArm64"),
+).mapValues { (_, names) ->
+    val compilations = provider { codeModules.flatMap { p -> names.mapNotNull { p.tasks.findByName(it) } } }
+    files(
+        provider {
+            compilations.get().map { task ->
+                when (task) {
+                    is KotlinNativeCompile -> task.outputFile
+                    is KotlinJvmCompile -> task.destinationDirectory
+                    else -> error("${task.path} is neither a JVM nor a native Kotlin compilation")
+                }
+            }
+        },
+    ).builtBy(compilations)
 }
 
 tasks.test {
     useJUnitPlatform()
+    compiledCode.forEach { (target, code) ->
+        inputs.files(code).withPropertyName("compiledCode.$target").withPathSensitivity(PathSensitivity.RELATIVE)
+        jvmArgumentProviders += CommandLineArgumentProvider {
+            listOf("-Dsnapsync.code.$target=" + code.files.joinToString(File.pathSeparator) { it.absolutePath })
+        }
+    }
     // The guards read the repository's SOURCE and entitlements, so they must re-run whenever those
     // change — a guard that goes stale is a guard that fails open.
     //

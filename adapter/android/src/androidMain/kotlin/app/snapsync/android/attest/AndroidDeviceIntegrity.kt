@@ -2,6 +2,8 @@ package app.snapsync.android.attest
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
@@ -40,6 +42,7 @@ import java.util.UUID
  * [ProveResult.Refused.Failed]. Key attestation exists on every Android this app runs on (minSdk 30), so it never
  * answers [ProveResult.Refused.NotAvailable].
  */
+@NeverAnswers(Never(member = "prove", answer = "ProveResult.Refused.NotAvailable"))
 class AndroidDeviceIntegrity : DeviceIntegrity {
 
     private fun keyStore(): KeyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }

@@ -119,6 +119,7 @@ class AndroidImportContractTest {
     private val importer = object : Binding<GalleryImportState, StagedImport> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGallery::class
         override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(GalleryImportState.GRANTED_VALID_STAGED, GalleryImportState.GRANTED_INVALID_STAGED)
 

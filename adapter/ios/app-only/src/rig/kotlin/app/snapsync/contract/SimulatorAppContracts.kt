@@ -39,6 +39,7 @@ import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
+import app.snapsync.contracts.PushNotificationsContract
 import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.SharePresenterContract
@@ -108,7 +109,7 @@ import platform.Photos.PHPhotoLibrary
  * PhotoKit's own creation API. Deleting would raise a system confirmation someone has to tap, and the CI job
  * starts every run from a fresh simulator.
  */
-fun simulatorAppContracts(): List<InAppContract> = listOf(
+fun simulatorAppContracts(push: AppPush): List<InAppContract> = listOf(
     simulatorAppContract(GalleryReaderContract, SimAppGalleryReaderBinding(), ::refusal),
     simulatorAppContract(GalleryContract, SimAppGalleryBinding(), ::refusal),
     simulatorAppContract(PhotoAccessContract, SimAppPhotoAccessBinding(), ::refusal),
@@ -123,6 +124,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(DownloadContract, SimAppDownloadBinding(), ::hostRefusal),
     simulatorAppContract(BackgroundTimeContract, SimAppBackgroundTimeBinding(), ::hostRefusal),
     simulatorAppContract(BuildInfoContract, SimAppBuildInfoBinding(), ::hostRefusal),
+    simulatorAppContract(PushNotificationsContract, SimAppPushBinding(push), ::hostRefusal),
     simulatorAppContract(DatabasesContract, SimAppDatabasesBinding(), ::hostRefusal),
 ) + otherGrantContracts()
 
@@ -181,6 +183,7 @@ private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.
 class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGalleryReader::class
     override val reaches = setOf(
         GalleryReaderState.GRANTED_SEEDED,
         GalleryReaderState.GRANTED_EMPTY_WINDOW,
@@ -197,7 +200,7 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
             GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES -> return Entered.Unreachable(
                 UNREACHABLE_NO_GRANT,
             )
-            GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED -> return Entered.Unreachable(
+            GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED, GalleryReaderState.PARTIAL -> return Entered.Unreachable(
                 "PhotoKit keeps the record of having asked; a simulator granted access holds the full grant",
             )
             GalleryReaderState.GRANTED_SEEDED,
@@ -227,6 +230,7 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
 class SimAppGalleryBinding : Binding<GalleryState, GalleryChange> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
     override val reaches = setOf(GalleryState.GRANTED)
 
     override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
@@ -239,6 +243,7 @@ class SimAppGalleryBinding : Binding<GalleryState, GalleryChange> {
 class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
     override val reaches = setOf(PhotoAccessState.GRANTED)
 
     override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
@@ -252,6 +257,7 @@ class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
 class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
     override val reaches = setOf(
         GalleryImportState.GRANTED_VALID_STAGED,
         GalleryImportState.GRANTED_INVALID_STAGED,
@@ -297,6 +303,7 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
 class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImport> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
     override val reaches = setOf(
         LivePhotoImportState.GRANTED_MOTION_PHOTO_STAGED,
         LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED,
@@ -360,6 +367,7 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
 class SimAppBuildInfoBinding : Binding<BuildInfoState, BuildInfo> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosBuildInfo::class
     override val reaches = setOf(BuildInfoState.BUNDLED, BuildInfoState.ON_IOS)
 
     override fun create(state: BuildInfoState, clauseId: String, log: CallLog): Entered<BuildInfo> =
@@ -373,6 +381,7 @@ class SimAppBuildInfoBinding : Binding<BuildInfoState, BuildInfo> {
 class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosProcessInfo::class
     override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
 
     override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
@@ -391,6 +400,7 @@ class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
 class SimAppDeviceConditionsBinding : Binding<DeviceConditionsState, DeviceConditions> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosDeviceConditions::class
     override val reaches = setOf(DeviceConditionsState.IPHONE)
 
     override fun create(state: DeviceConditionsState, clauseId: String, log: CallLog): Entered<DeviceConditions> =
@@ -408,6 +418,7 @@ class SimAppDeviceConditionsBinding : Binding<DeviceConditionsState, DeviceCondi
 class SimAppBackgroundTimeBinding : Binding<BackgroundTimeState, BackgroundTime> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosBackgroundTime::class
     override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
 
     override fun create(state: BackgroundTimeState, clauseId: String, log: CallLog): Entered<BackgroundTime> =

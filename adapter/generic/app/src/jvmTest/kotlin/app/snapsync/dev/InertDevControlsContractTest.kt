@@ -18,6 +18,7 @@ class InertDevControlsContractTest {
     private val binding = object : Binding<DevControlsState, DevControlsUnderTest> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = InertDevControls::class
         override val reaches = setOf(DevControlsState.SHIPPED)
         override fun create(state: DevControlsState, clauseId: String, log: CallLog): Entered<DevControlsUnderTest> =
             if (state in reaches) {

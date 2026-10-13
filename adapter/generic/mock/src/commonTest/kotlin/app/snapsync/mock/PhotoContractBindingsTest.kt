@@ -2,6 +2,7 @@
 
 package app.snapsync.mock
 
+import app.snapsync.contracts.ClauseFiles
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -62,33 +63,56 @@ class PhotoContractBindingsTest {
     private fun access(granted: Boolean): MutableStateFlow<LibraryGrant> =
         MutableStateFlow(if (granted) LibraryGrant.GRANTED else LibraryGrant.NOT_DETERMINED)
 
+    /** A library holding [library] under [grant] — which a request answers with too — its levers the clause's to set. */
+    private fun library(library: MutableStateFlow<List<GalleryAssetResources>>, grant: LibraryGrant) =
+        LibraryState(library, MutableStateFlow(grant), MutableStateFlow(emptyMap()), grant, LibraryChangeAnswers.Ordinary)
+
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = InMemoryGallery::class
         override val reaches = setOf(
             GalleryReaderState.NO_GRANT,
+            GalleryReaderState.NEVER_ASKED,
+            GalleryReaderState.REFUSED,
+            GalleryReaderState.PARTIAL,
             GalleryReaderState.GRANTED_SEEDED,
             GalleryReaderState.GRANTED_EMPTY_WINDOW,
             GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            GalleryReaderState.GRANTED_SEEDED_EXPORTING,
+            GalleryReaderState.REFUSING_WRITES,
         )
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
-            if (state == GalleryReaderState.GRANTED_SEEDED_EXPORTING) {
-                return Entered.Unreachable("an in-memory library holds no bytes to export")
-            }
-            if (state == GalleryReaderState.REFUSING_WRITES) {
-                return Entered.Unreachable("the double takes every write")
+            when (state) {
+                GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED, GalleryReaderState.PARTIAL -> {
+                    val grant = when (state) {
+                        GalleryReaderState.REFUSED -> LibraryGrant.DENIED
+                        GalleryReaderState.PARTIAL -> LibraryGrant.LIMITED
+                        else -> LibraryGrant.NOT_DETERMINED
+                    }
+                    return Entered.Ready(SeededLibrary(InMemoryGallery(library(MutableStateFlow(emptyList()), grant)).recorded(log)))
+                }
+                GalleryReaderState.GRANTED_SEEDED_EXPORTING -> {
+                    val seeded = seededLibrary(GalleryReaderContract.name, clauseId)
+                    val held = library(seeded, LibraryGrant.GRANTED)
+                    val files = ClauseFiles(pathOf = { "mem:/clause/$clauseId/$it" }, read = { held.exported[it] })
+                    return Entered.Ready(
+                        SeededLibrary(InMemoryGallery(held).recorded(log), seeded.value.mapTo(linkedSetOf()) { it.id }, files),
+                    )
+                }
+                GalleryReaderState.REFUSING_WRITES -> {
+                    val held = library(MutableStateFlow(emptyList()), LibraryGrant.GRANTED).apply { refusesWrites = true }
+                    return Entered.Ready(SeededLibrary(InMemoryGallery(held).recorded(log)))
+                }
+                else -> Unit
             }
             val library = when (state) {
                 GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
                     seededLibrary(GalleryReaderContract.name, clauseId)
                 GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER, GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->
                     return Entered.Unreachable("the in-memory library has no folders: all of it is the default gallery")
-                GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED ->
-                    return Entered.Unreachable("the double keeps no record of having asked")
-                GalleryReaderState.NO_GRANT, GalleryReaderState.GRANTED_EMPTY_WINDOW, GalleryReaderState.REFUSING_WRITES -> MutableStateFlow(
-                    emptyList(),
-                )
+                else -> MutableStateFlow(emptyList())
             }
             val gallery = inMemoryGallery(library, access(state != GalleryReaderState.NO_GRANT)).recorded(log)
             return Entered.Ready(SeededLibrary(gallery, library.value.mapTo(linkedSetOf()) { it.id }))
@@ -98,12 +122,23 @@ class PhotoContractBindingsTest {
     private val photoAccess = object : Binding<PhotoAccessState, PhotoAccess> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(PhotoAccessState.NO_GRANT, PhotoAccessState.GRANTED)
+        override val adapter = InMemoryGallery::class
+        override val reaches = setOf(
+            PhotoAccessState.NO_GRANT,
+            PhotoAccessState.NEVER_ASKED,
+            PhotoAccessState.REFUSED,
+            PhotoAccessState.GRANTED,
+            PhotoAccessState.PARTIAL,
+        )
 
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
-            if (state !in reaches) return Entered.Unreachable("the double plays no partial grant here")
             val cell = MutableStateFlow(
-                if (state == PhotoAccessState.GRANTED) LibraryGrant.GRANTED else LibraryGrant.NOT_DETERMINED,
+                when (state) {
+                    PhotoAccessState.GRANTED -> LibraryGrant.GRANTED
+                    PhotoAccessState.PARTIAL -> LibraryGrant.LIMITED
+                    PhotoAccessState.REFUSED -> LibraryGrant.DENIED
+                    PhotoAccessState.NO_GRANT, PhotoAccessState.NEVER_ASKED -> LibraryGrant.NOT_DETERMINED
+                },
             )
             return Entered.Ready(
                 PhotoAccess(inMemoryGallery(MutableStateFlow(emptyList()), access = cell).recorded(log)),
@@ -114,15 +149,16 @@ class PhotoContractBindingsTest {
     private val importer = object : Binding<GalleryImportState, StagedImport> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(GalleryImportState.GRANTED_VALID_STAGED)
+        override val adapter = InMemoryGallery::class
+        override val reaches = setOf(GalleryImportState.GRANTED_VALID_STAGED, GalleryImportState.GRANTED_INVALID_STAGED)
 
         override fun create(state: GalleryImportState, clauseId: String, log: CallLog): Entered<StagedImport> {
-            if (state == GalleryImportState.GRANTED_INVALID_STAGED) {
-                return Entered.Unreachable("an in-memory library holds no bytes, so it cannot find one undecodable")
-            }
             val library = MutableStateFlow<List<GalleryAssetResources>>(emptyList())
             val deliveries = ImportDeliveries()
-            val importer = inMemoryGallery(library).recorded(log).apply { inbound(deliveries.handlers) }
+            val held = library(library, LibraryGrant.GRANTED).apply {
+                undecodable = state == GalleryImportState.GRANTED_INVALID_STAGED
+            }
+            val importer = InMemoryGallery(held).recorded(log).apply { inbound(deliveries.handlers) }
             val observed = object : ImportedLibrary {
                 override suspend fun captureDate(id: PlatformAssetId): String? =
                     library.value.firstOrNull { it.id == id }?.asset?.created?.toString()
@@ -151,6 +187,7 @@ class PhotoContractBindingsTest {
     private val folderAlbums = object : Binding<FolderAlbumState, FolderAlbums> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = InMemoryGallery::class
         override val reaches = setOf(FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED)
 
         override fun create(state: FolderAlbumState, clauseId: String, log: CallLog): Entered<FolderAlbums> {
@@ -183,11 +220,31 @@ class PhotoContractBindingsTest {
     private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(GalleryState.GRANTED)
+        override val adapter = InMemoryGallery::class
+        override val reaches = setOf(
+            GalleryState.NEVER_ASKED,
+            GalleryState.REFUSED,
+            GalleryState.PARTIAL,
+            GalleryState.GRANTED,
+            GalleryState.TOKEN_WITHHELD,
+        )
 
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
-            if (state !in reaches) return Entered.Unreachable("the double plays the full grant here")
             val library = seededLibrary(GalleryContract.name, clauseId)
+            if (state != GalleryState.GRANTED) {
+                val grant = when (state) {
+                    GalleryState.NEVER_ASKED -> LibraryGrant.NOT_DETERMINED
+                    GalleryState.REFUSED -> LibraryGrant.DENIED
+                    GalleryState.PARTIAL -> LibraryGrant.LIMITED
+                    else -> LibraryGrant.GRANTED
+                }
+                val held = library(library, grant).apply {
+                    withholdsToken = state == GalleryState.TOKEN_WITHHELD
+                    if (state == GalleryState.PARTIAL) selection.value = library.value
+                }
+                val selected = if (state == GalleryState.PARTIAL) library.value.mapTo(mutableSetOf()) { it.id } else emptySet()
+                return Entered.Ready(GalleryChange(InMemoryGallery(held).recorded(log), selected) {})
+            }
             val added = LibraryAssets.photo(
                 "contract-$clauseId-change",
                 PhotoLibrary.window(GalleryContract.name, clauseId).seedDate,

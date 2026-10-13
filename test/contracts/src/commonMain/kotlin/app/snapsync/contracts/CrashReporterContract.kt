@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalAtomicApi::class)
+
 package app.snapsync.contracts
 
 import app.snapsync.model.BREADCRUMB_TEXT_BYTES
@@ -17,6 +19,9 @@ import app.snapsync.model.scrubbedCrumb
 import app.snapsync.model.scrubbedEvent
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.update
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -212,7 +217,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             "NOT_STARTED_IS_INERT",
             CrashReporterState.NOT_STARTED,
             covers = cells {
-                on<CrashReporter>().answers(CrashReporter::sendDump).with(DumpResult.NotSent::class)
+                on<CrashReporter> {
+                    answers(CrashReporter::listen).returns()
+                    answers(CrashReporter::capture).returns()
+                    answers(CrashReporter::breadcrumb).returns()
+                    answers(CrashReporter::setContext).returns()
+                    answers(CrashReporter::sendDump).with(DumpResult.NotSent::class)
+                }
             },
         ) { s ->
             s.reporter.listen(PASS_THROUGH)
@@ -238,6 +249,31 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             s.startListening()
             s.reporter.start(s.options)
             assertTrue(s.observe.channelRunning(), "a start runs the channel, and a second keeps it running")
+        }
+
+        clause(
+            "STARTED_THE_HANDLERS_SHAPE_EVERY_EVENT_AND_CRUMB",
+            CrashReporterState.STARTED,
+            covers = cells {
+                on<CrashReporter> {
+                    calls(CrashHandlers::onEvent, CrashEvent::class)
+                    calls(CrashHandlers::onBreadcrumb, Crumb::class)
+                }
+            },
+        ) { s ->
+            val id = "STARTED_THE_HANDLERS_SHAPE_EVERY_EVENT_AND_CRUMB"
+            val events = AtomicReference<List<String?>>(emptyList())
+            val crumbs = AtomicReference<List<String?>>(emptyList())
+            s.startListening(
+                CrashHandlers(
+                    // A captured message's text reaches the handler as the SDK's formatted text (`CrashEvent.formatted`).
+                    onEvent = { event -> event.also { events.update { seen -> seen + (it.formatted ?: it.message) } } },
+                    onBreadcrumb = { crumb -> crumb.also { crumbs.update { seen -> seen + it.message } } },
+                ),
+            )
+            s.reporter.breadcrumb(Crumb(CrashLevel.INFO, id))
+            s.reporter.capture(CrashEvent(message = id))
+            awaitWithin { id in crumbs.load() && id in events.load() }
         }
 
         clause(

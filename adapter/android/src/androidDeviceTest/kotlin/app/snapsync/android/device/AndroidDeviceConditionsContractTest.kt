@@ -23,6 +23,7 @@ class AndroidDeviceConditionsContractTest {
     private val binding = object : Binding<DeviceConditionsState, DeviceConditions> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidDeviceConditions::class
         override val reaches = setOf(DeviceConditionsState.ANDROID)
 
         override fun create(state: DeviceConditionsState, clauseId: String, log: CallLog): Entered<DeviceConditions> = when (state) {

@@ -9,6 +9,8 @@ import android.database.sqlite.SQLiteException
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AssetFilter
@@ -56,6 +58,9 @@ import kotlin.time.Instant
  * Reads answer [GalleryRead.NotReadable] without querying unless [access] allows one, and hop to [Dispatchers.IO]:
  * every query is a synchronous binder round-trip into the media provider.
  */
+@NeverAnswers(
+    Never(member = "albumKind", answer = "LibraryAlbumKind.COLLECTION"),
+)
 open class AndroidGalleryReader(
     context: Context,
     private val access: () -> LibraryGrant,

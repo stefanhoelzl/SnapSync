@@ -36,7 +36,13 @@ object SimulatorExtensionRecord : SimulatorRecord()
  * in the state the clause needs, so no clause inherits another's record (`docs/architecture.md`, "Clauses
  * are conditioned on states that bindings enter at construction").
  */
-open class SimulatorRecord(registered: Boolean = false) {
+open class SimulatorRecord(
+    registered: Boolean = false,
+    /** Whether the OS carries the mechanism at all — `false` plays an iOS below 26.1, which answers `Unsupported`. */
+    val mechanism: Boolean = true,
+    /** Whether the photo grant is partial — every change is refused (`3311`) while it is, as on a device. */
+    val partialGrant: Boolean = false,
+) {
 
     /** Whether a configuration record currently exists. */
     var registered: Boolean = registered
@@ -77,11 +83,12 @@ internal class SimulatorExtensionRegistry(
     private val record: SimulatorRecord = SimulatorExtensionRecord,
 ) : ExtensionRegistry {
 
-    /** The simulator runs an iOS that carries the mechanism; its record is held here instead (see the class). */
-    override val supported: Boolean = true
+    /** Whether the iOS it plays carries the mechanism — the simulator's does; its record is held here (see the class). */
+    override val supported: Boolean get() = record.mechanism
 
     override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
-        val forced = record.consumeFailure()
+        if (!record.mechanism) return RegistrationAnswer.Unsupported
+        val forced = record.consumeFailure() ?: PHOTOS_ACCESS_USER_DENIED.takeIf { record.partialGrant }
         // A disable against no record is a genuine failure on a real device (`3201`), not a courtesy
         // success — and the ritual's leading disable relies on exactly that outcome being classified as
         // expected. Reproducing it is what makes a clean-device join look here as it does there.
@@ -92,8 +99,11 @@ internal class SimulatorExtensionRegistry(
         return RegistrationAnswer.Answered(ok = code == null, domain = code?.let { PHOTOS_ERROR_DOMAIN }, code = code)
     }
 
-    override fun isEnabled(): RegistrationState =
-        if (record.registered) RegistrationState.REGISTERED else RegistrationState.NOT_REGISTERED
+    override fun isEnabled(): RegistrationState = when {
+        !record.mechanism -> RegistrationState.UNSUPPORTED
+        record.registered -> RegistrationState.REGISTERED
+        else -> RegistrationState.NOT_REGISTERED
+    }
 }
 
 /** Apple's own domain string, so a rendered outcome reads identically to a device's. */
@@ -101,3 +111,6 @@ private const val PHOTOS_ERROR_DOMAIN: String = "PHPhotosErrorDomain"
 
 /** `PHPhotosErrorIdentifierNotFound` — "Unable to find the configuration", the clean-device disable. */
 private const val PHOTOS_IDENTIFIER_NOT_FOUND: Long = 3201L
+
+/** `PHPhotosErrorAccessUserDenied` — every change under a partial grant, in both directions (measured, SE2/26.6). */
+private const val PHOTOS_ACCESS_USER_DENIED: Long = 3311L

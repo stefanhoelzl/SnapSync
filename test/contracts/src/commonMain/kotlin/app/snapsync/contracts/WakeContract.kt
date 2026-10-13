@@ -30,10 +30,13 @@ enum class WakeState {
     EMPTY,
 
     /**
-     * No wake is pending, and the binding can let the operating system deliver what is due, change the photo library and
-     * end a running wake ([ScheduledWakes.os]).
+     * No wake is pending, and the binding can let the operating system deliver what is due and end a running wake
+     * ([ScheduledWakes.os]).
      */
     DELIVERING,
+
+    /** As [DELIVERING], on a platform with a library-change wake, which the binding can raise by changing the library. */
+    DELIVERING_LIBRARY_CHANGES,
 
     /** On a platform that has no library-change wake (iOS). */
     NO_LIBRARY_WAKE,
@@ -58,7 +61,7 @@ class WakeOs(
  */
 class ScheduledWakes(
     val wake: Wake,
-    /** The system's side of a wake; required of a binding that reaches [WakeState.DELIVERING]. */
+    /** The system's side of a wake; required of a binding that reaches a delivering state. */
     val os: WakeOs? = null,
     val pendingWakes: suspend () -> Int,
 )
@@ -140,8 +143,8 @@ object WakeContract : Contract<WakeState, ScheduledWakes>("BackgroundScheduler")
         }
 
         clause(
-            "DELIVERING_A_LIBRARY_CHANGE_WAKES_THE_APP",
-            WakeState.DELIVERING,
+            "DELIVERING_LIBRARY_CHANGES_A_LIBRARY_CHANGE_WAKES_THE_APP",
+            WakeState.DELIVERING_LIBRARY_CHANGES,
             covers = cells {
                 on<Wake> {
                     answers(Wake::schedule).with(ScheduleResult.Scheduled::class)

@@ -1,11 +1,15 @@
 # contract: BackgroundScheduler
 # host: IOS_DEVICE_APP
-# file: BackgroundScheduler@IOS_DEVICE_APP.rec
 # device: iPhone12,8
 # os: Version 26.6.2 (Build 23G90)
 # build: 1
 # kotlin: 2.4.20
-# recorded: 2026-09-30T15:00:42Z
+# recorded: 2026-10-13T00:38:20Z
+# live DELIVERING_A_DUE_WAKE_IS_DELIVERED_AND_RELEASED: Passed
+# live DELIVERING_LIBRARY_CHANGES_A_LIBRARY_CHANGE_WAKES_THE_APP: NotRunHere(DELIVERING_LIBRARY_CHANGES is not a state this host presents)
+# live DELIVERING_A_WAKE_THE_SYSTEM_ENDS_RUNS_ITS_EXPIRY: Passed
+# live NO_LIBRARY_WAKE_IS_UNSUPPORTED: NotRunHere(NO_LIBRARY_WAKE is not a state this host presents)
+# live REFUSING_A_REFUSED_REQUEST_IS_REFUSED: NotRunHere(REFUSING is not a state this host presents)
 # live SCHEDULE_ARMS_ONE: Passed
 # live SCHEDULE_IS_IDEMPOTENT: Passed
 # live CANCEL_CLEARS: Passed
@@ -50,6 +54,32 @@ cancel(id=app.snapsync.heartbeat.idle) -> done
 cancel(id=app.snapsync.upload.heartbeat) -> done
 cancel(id=app.snapsync.heartbeat.idle) -> done
 pending() -> []
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+[DELIVERING_A_DUE_WAKE_IS_DELIVERED_AND_RELEASED]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+register(id=app.snapsync.upload.heartbeat) -> true
+register(id=app.snapsync.heartbeat.idle) -> true
+cancel(id=app.snapsync.heartbeat.idle) -> done
+submit(id=app.snapsync.upload.heartbeat network=true power=false begin=<masked>) -> accepted
+<- launched(id=app.snapsync.upload.heartbeat)
+expirationHandler(id=app.snapsync.upload.heartbeat) -> set
+complete(id=app.snapsync.upload.heartbeat) -> done
+pending() -> []
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+[DELIVERING_A_WAKE_THE_SYSTEM_ENDS_RUNS_ITS_EXPIRY]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+register(id=app.snapsync.upload.heartbeat) -> true
+register(id=app.snapsync.heartbeat.idle) -> true
+cancel(id=app.snapsync.heartbeat.idle) -> done
+submit(id=app.snapsync.upload.heartbeat network=true power=false begin=<masked>) -> accepted
+<- launched(id=app.snapsync.upload.heartbeat)
+expirationHandler(id=app.snapsync.upload.heartbeat) -> set
+<- expired(id=app.snapsync.upload.heartbeat)
+complete(id=app.snapsync.upload.heartbeat) -> done
 cancel(id=app.snapsync.upload.heartbeat) -> done
 cancel(id=app.snapsync.heartbeat.idle) -> done
 [IDLE_ARMS_ONE]

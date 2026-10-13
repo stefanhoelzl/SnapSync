@@ -192,7 +192,10 @@ git diff test/contracts/recordings/        # review it like code, then commit it
 - `404` means this build has no such contract — check the build carries `-Psnapsync.rig=true`.
 - **`BackgroundScheduler`** records the same way (`…/contract/BackgroundScheduler > test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`),
   with **Background App Refresh ON**: with it off, iOS accepts every request and keeps none (measured, SE2 / 26.6.2),
-  so every clause expecting a pending wake would fail — the verb refuses (`409`) and says so. It runs against the production heartbeat
+  so every clause expecting a pending wake would fail — the verb refuses (`409`) and says so. Its delivering clauses take over
+  the app's own launch registration for the clause (a rig build's root wake is tappable — `rootWake`) and ask iOS to launch and
+  expire the task through `BGTaskScheduler`'s debugging calls, which work from inside the app (measured, SE2 / 26.6.2,
+  2026-10-13); the launch and the expiry are recorded as event lines. It runs against the production heartbeat
   identifiers (`BGTaskScheduler` accepts only identifiers the plist lists), so ⚠️ **the run leaves the rig build's
   heartbeat CANCELLED** — the app's next trigger (a foreground, a completed cycle) re-arms it. Its volatile key
   (`begin`, the absolute earliest-begin date) is masked in `adapter/ios/app-only/src/rig/kotlin/…/SchedulerContracts.kt`.
@@ -214,6 +217,8 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   USB, so it keeps answering offline. A `# live …: Failed` line means the phone was not in the stated condition — do
   not commit that run.
 
+- **`AppSettings`**: start the run (background), and when Settings shows SnapSync's page, tap back into the app — the run
+  records iOS's answer to the `openURL` and the app leaving the front, and ends once the app is in front again.
 - **Runs that wait for the phone to leave your hands.** Each holds background time and waits, reading the app's own
   state, for the person to put the phone there — so START the run first (in the background, no `--max-time`), confirm
   `→ /contract/<name>` in `/device/logs`, and only then ask for the step. Every run also keeps its recording in the
@@ -253,6 +258,9 @@ curl -s --max-time 120 -X POST "$B/contract/OsUploadQueue?host=IOS_DEVICE_PHOTOK
   refused (`409`). Revert `deployments/local.json` before committing.
 - Preconditions: full photo grant, no membership (`409` names the fix), and at least one photo in the library (a
   usable resource is the newest photo; the run seeds none).
+- It records every clause of the states one call can hold — the presented ones, prepared across calls, a transfer held
+  until the call returns, and the queue at its cap (the run creates `PHAssetResourceUploadJob.jobLimit` jobs first: 200 on
+  the SE2, 2026-10-13) — one OS invocation each, about twenty minutes in all.
 - `504` means no result within 90 s. Its body says which half failed: the OS never invoked the extension — it
   **backs off 6–11 min after a call it killed**, and ignores triggers meanwhile — or the run was taken and killed
   at the ~60 s budget. Wait out a backoff; do not hammer it.

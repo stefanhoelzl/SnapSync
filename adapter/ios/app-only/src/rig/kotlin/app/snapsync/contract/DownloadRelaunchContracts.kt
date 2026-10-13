@@ -251,6 +251,7 @@ internal class DeviceRelaunchedDownloadBinding(
 ) : Binding<DownloadState, DownloadUnderTest> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosDownload::class
     override val reaches = setOf(DownloadState.RELAUNCHED_WITH_EVENTS)
 
     override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {

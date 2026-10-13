@@ -30,6 +30,7 @@ class IosLinkOpenerReplayContractTest {
     private val binding = object : Binding<LinkOpenerState, SystemUi> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosSystemUi::class
         override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
 
         override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> {

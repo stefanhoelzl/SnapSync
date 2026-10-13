@@ -123,17 +123,18 @@ class PortsHoldInterfacesOnlyTest {
                 override fun toString(): String = "Range"
             }
             enum class Kind { A, B }
+            annotation class Marker
         """.trimIndent()
         assertTrue(
-            declarations(sample).toSet() == setOf("Helper", "helper", "Port.None"),
-            "the scan reads a helper, a nested implementation and nothing else — data passes: ${declarations(sample)}",
+            declarations(sample).toSet() == setOf("Helper", "helper", "Marker", "Port.None"),
+            "the scan reads a helper, an annotation, a nested implementation and nothing else — data passes: ${declarations(sample)}",
         )
     }
 
     private companion object {
         val TOP_LEVEL = Regex(
             """^(?:@JvmInline\s+)?(?:public |internal |private )?(?:inline |suspend )*""" +
-                """(data class|enum class|value class|sealed class|abstract class|open class|class|object|fun(?!\s+interface)|val|var|""" +
+                """(annotation class|data class|enum class|value class|sealed class|abstract class|open class|class|object|fun(?!\s+interface)|val|var|""" +
                 """typealias|const val)\s+(?:<[^>]*>\s*)?(?:\w+\.)?(\w+)""",
             RegexOption.MULTILINE,
         )

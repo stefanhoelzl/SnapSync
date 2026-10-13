@@ -32,6 +32,7 @@ class IosFilesContractTest {
     private val binding = object : Binding<FilesState, Files> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosFiles::class
         override val reaches = setOf(
             FilesState.EMPTY,
             FilesState.HOLDING,

@@ -25,6 +25,7 @@ class AttestContractTest {
     private val key = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosDeviceIntegrity::class
         override val reaches = setOf(DeviceIntegrityState.UNAVAILABLE)
 
         override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =

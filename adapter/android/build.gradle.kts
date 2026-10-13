@@ -52,6 +52,8 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.ktor.client.okhttp)
         }
+        // The status screen's tour, shared with the iOS Ui adapter's binding (`test/ui-tour`).
+        getByName("androidDeviceTest").kotlin.srcDir("../../test/ui-tour/kotlin")
         getByName("androidDeviceTest").dependencies {
             implementation(project(":test:contracts"))
             // The `HttpTransport` contract binds `KtorHttpTransport` over this module's client (`androidHttpClient`).

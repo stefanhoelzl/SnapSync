@@ -20,6 +20,7 @@ class AndroidPreferencesContractTest {
     private val binding = object : Binding<PreferencesState, Preferences> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidPreferences::class
         override val reaches = setOf(
             PreferencesState.EMPTY,
             PreferencesState.HOLDING,

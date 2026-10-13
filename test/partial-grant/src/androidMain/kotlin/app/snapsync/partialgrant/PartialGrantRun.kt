@@ -1,5 +1,10 @@
 package app.snapsync.partialgrant
 
+import app.snapsync.ports.GalleryReader
+import app.snapsync.contracts.SeededLibrary
+import app.snapsync.contracts.GalleryReaderState
+import app.snapsync.contracts.GalleryReaderContract
+import app.snapsync.android.gallery.AndroidGalleryReader
 import android.Manifest
 import android.app.Application
 import android.content.ContentValues
@@ -46,6 +51,7 @@ internal class PartialGrantRun {
     private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGallery::class
         override val reaches = setOf(GalleryState.PARTIAL)
 
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
@@ -61,6 +67,7 @@ internal class PartialGrantRun {
     private val photoAccess = object : Binding<PhotoAccessState, PhotoAccess> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGallery::class
         override val reaches = setOf(PhotoAccessState.PARTIAL)
 
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {
@@ -70,10 +77,24 @@ internal class PartialGrantRun {
         }
     }
 
+    /** The library reader over the same grant read the composition hands it: the permission adapter's. */
+    private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
+        override val host = Host.ANDROID_EMU
+        override val kind = BindingKind.Live
+        override val adapter = AndroidGalleryReader::class
+        override val reaches = setOf(GalleryReaderState.PARTIAL)
+
+        override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
+            if (state !in reaches) return Entered.Unreachable("this APK holds a partial grant, and only that")
+            return Entered.Ready(SeededLibrary(AndroidGalleryReader(context, permission()::current).recorded(log)))
+        }
+    }
+
     fun run() {
         try {
             verify(GalleryContract, gallery)
             verify(PhotoAccessContract, photoAccess)
+            verify(GalleryReaderContract, galleryReader)
         } finally {
             seeded.forEach { id ->
                 context.contentResolver.delete(

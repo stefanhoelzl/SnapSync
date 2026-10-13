@@ -32,6 +32,7 @@ class AttestReplayContractTest {
     private val key = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosDeviceIntegrity::class
         override val reaches = setOf(DeviceIntegrityState.AVAILABLE)
 
         override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> {

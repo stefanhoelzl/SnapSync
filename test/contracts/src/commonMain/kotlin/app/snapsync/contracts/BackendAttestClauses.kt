@@ -54,7 +54,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.attestClauses(
     }
 
     clause(
-        "ATTESTABLE_A_SOFTWARE_KEY_ATTESTATION_MINTS_AND_ITS_KEY_RENEWS",
+        "ATTESTABLE_AN_ATTESTATION_MINTS_AND_ITS_KEY_RENEWS",
         BackendState.ATTESTABLE,
         covers = cells {
             backend(Routes.Challenge.ID, ChallengeReply.Issued::class)
@@ -62,7 +62,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.attestClauses(
             backend(Routes.RenewToken.ID, RenewTokenReply.Renewed::class)
         },
     ) { s ->
-        val minted = s.mintWithSoftwareKey()
+        val minted = s.mintWithOwnKey()
         assertTrue(minted.isNotBlank())
         val key = s.attester!!
         val challenge = s.challenge()
@@ -83,7 +83,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.attestClauses(
             backend(Routes.RenewToken.ID, RenewTokenReply.AssertionRejected::class)
         },
     ) { s ->
-        s.mintWithSoftwareKey()
+        s.mintWithOwnKey()
         // The challenge is stateless — two issued within one second are one — so the signature is over other text.
         val signed = s.attester!!.sign("not the challenge")
         assertAnswer<RenewTokenReply.AssertionRejected>(
@@ -102,7 +102,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.attestClauses(
             backend(Routes.PutDevice.ID, NotThisDevice::class)
         },
     ) { s ->
-        val holder = s.declaring(ClientIdentity(SERVED_APP_VERSION, s.mintWithSoftwareKey()))
+        val holder = s.declaring(ClientIdentity(SERVED_APP_VERSION, s.mintWithOwnKey()))
         val config = DeviceConfig(PushRegistration("fcm", "a-token", "production"))
         assertAnswer<PutDeviceReply.Recorded>(
             holder.send(Routes.PutDevice.request(s.seeded.deviceId, config)),
@@ -175,23 +175,23 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.attestClauses(
     }
 }
 
-internal const val KEY_ID = "contract-key"
-
 /** A challenge the backend issues. */
 private suspend fun EdgeSubject<BackendClient>.challenge(): String =
     assertAnswer<ChallengeReply.Issued>(port.send(Routes.Challenge.request())).challenge.challenge
 
-/** This state's device attested with the binding's software key: the token minted for it. */
+/** This state's device attested with the binding's own key: the token minted for it. */
 @OptIn(ExperimentalEncodingApi::class)
-private suspend fun EdgeSubject<BackendClient>.mintWithSoftwareKey(): String {
+private suspend fun EdgeSubject<BackendClient>.mintWithOwnKey(): String {
     val key = assertNotNull(attester, "a binding that reaches this state attests with a key of its own")
     val challenge = challenge()
-    val proof = AndroidKeyProof(key.attest(challenge).map(::b64))
+    val proof = key.proof(challenge)
     return assertAnswer<MintTokenReply.Minted>(
         port.send(Routes.MintToken.request(MintRequest(seeded.deviceId, challenge, proof))),
         "an attestation over a challenge the backend issued mints a token",
     ).token.token
 }
+
+internal const val KEY_ID = "contract-key"
 
 @OptIn(ExperimentalEncodingApi::class)
 private fun b64(bytes: ByteArray): String = Base64.encode(bytes)

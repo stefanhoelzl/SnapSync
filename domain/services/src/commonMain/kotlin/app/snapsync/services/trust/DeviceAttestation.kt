@@ -240,7 +240,7 @@ class DeviceAttestation(
      * (`SyncHealth.Unattested`).
      *
      * A **derived cache of the last refresh**, never authority: authority is the token itself, in the
-     * `AttestStore` behind the port (law "State and authority"). Kill the process and this is rebuilt
+     * [AttestStore] over the `SecureStore` port (law "State and authority"). Kill the process and this is rebuilt
      * from the store by the first refresh; nothing durable depends on it.
      *
      * `false` means what it says: the token is **unusable** ([isUnusable] — absent, unreadable, or

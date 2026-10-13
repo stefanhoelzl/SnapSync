@@ -23,6 +23,7 @@ class IosExtensionHostContractTest {
     private val binding = object : Binding<ExtensionHostState, ExtensionHostUnderTest> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosExtensionHost::class
         override val reaches = setOf(ExtensionHostState.INVOKABLE)
         override fun create(
             state: ExtensionHostState,

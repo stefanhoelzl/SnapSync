@@ -29,7 +29,10 @@ class BuildInfoMock(
     /** The process's own identifier, or `null` for none. */
     val processId: String? = null,
 ) {
-    fun port(): BuildInfo = object : BuildInfo {
+    fun port(): BuildInfo = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : BuildInfo {
         override val appVersion: String get() = declaredVersion.value.orEmpty()
         override val uploadHost: String = this@BuildInfoMock.uploadHost
         override val store: StoreLink? = this@BuildInfoMock.store

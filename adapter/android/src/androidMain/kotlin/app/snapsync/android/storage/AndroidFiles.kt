@@ -6,6 +6,8 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.Files
 import java.io.File
 import java.io.IOException
@@ -35,6 +37,9 @@ import java.nio.file.Files as Nio
  * Writes are atomic (a temp file beside the target, then a rename) and create missing parent directories. There is no
  * locked-device read to arrange: the app is not direct-boot aware, so no code of it runs before the first unlock.
  */
+@NeverAnswers(
+    Never(answer = "FileResult.AreaUnavailable"),
+)
 class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) : Files {
 
     /** Production: the two areas under the app's `filesDir` (a secondary constructor, not defaults). */

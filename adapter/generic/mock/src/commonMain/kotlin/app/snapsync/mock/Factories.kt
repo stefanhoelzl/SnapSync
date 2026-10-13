@@ -23,7 +23,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * A factory needing operator-visible state takes that state as a **parameter**: the caller keeps its own reference
  * and observes it there.
  */
-fun inMemoryDeviceIntegrity(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available)
+fun inMemoryDeviceIntegrity(available: Boolean = true, unusable: Set<String> = emptySet()): DeviceIntegrity =
+    InMemoryDeviceIntegrity(available, unusable = unusable)
 
 fun inMemoryCrashReporter(
     started: MutableStateFlow<Boolean>,

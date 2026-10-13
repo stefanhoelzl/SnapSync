@@ -44,6 +44,7 @@ class SentryCrashReporterContractTest {
     private val binding = object : Binding<CrashReporterState, CrashReporterSubject> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = SentryCrashReporter::class
 
         // Not `ACROSS_A_RESTART`: its clause holds a build number given at start to the build the report was captured
         // under, and sentry-cocoa re-stamps the dist at SEND — so iOS is given none (`model/`'s `crashDist`), and the

@@ -26,6 +26,7 @@ class AndroidHttpTransportContractTest {
     private val transport = object : Binding<HttpTransportState, TransportUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = KtorHttpTransport::class
         override val reaches = setOf(HttpTransportState.PEER, HttpTransportState.NO_PEER)
 
         override fun create(state: HttpTransportState, clauseId: String, log: CallLog): Entered<TransportUnderTest> {

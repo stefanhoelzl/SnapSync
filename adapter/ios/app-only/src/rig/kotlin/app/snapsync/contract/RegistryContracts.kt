@@ -96,6 +96,7 @@ internal class DeviceRegistryGrantedBinding(private val recorder: Recorder) :
     Binding<ExtensionRegistryState, ExtensionRegistry> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = PhotoKitExtensionRegistry::class
     override val grant = LibraryGrant.GRANTED
     override val reaches = setOf(ExtensionRegistryState.RECORD_ABSENT, ExtensionRegistryState.RECORD_PRESENT)
 
@@ -115,6 +116,7 @@ internal class DeviceRegistryLimitedBinding(private val recorder: Recorder) :
     Binding<ExtensionRegistryState, ExtensionRegistry> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = PhotoKitExtensionRegistry::class
     override val grant = LibraryGrant.LIMITED
     override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
 
@@ -159,6 +161,7 @@ internal class DeviceRegistryNoMechanismBinding(private val recorder: Recorder) 
     Binding<ExtensionRegistryState, ExtensionRegistry> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = PhotoKitExtensionRegistry::class
     override val precondition = "BELOW_IOS_26_1"
     override val reaches = setOf(ExtensionRegistryState.NO_MECHANISM)
 

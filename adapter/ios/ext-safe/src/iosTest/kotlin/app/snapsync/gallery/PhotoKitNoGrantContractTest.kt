@@ -35,6 +35,7 @@ class PhotoKitNoGrantContractTest {
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosGalleryReader::class
 
         // With no grant, the library refuses this process's writes too (measured on this host: `createAlbum` → null).
         // This process reads refused, as one the member refused does (the Gallery binding's TOKEN_WITHHELD rests on it).

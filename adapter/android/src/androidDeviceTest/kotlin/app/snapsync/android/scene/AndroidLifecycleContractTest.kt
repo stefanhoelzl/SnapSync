@@ -28,12 +28,13 @@ class AndroidLifecycleContractTest {
     private val binding = object : Binding<LifecycleState, LifecycleUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidLifecycle::class
         override val reaches = setOf(LifecycleState.MOVABLE)
         override fun create(state: LifecycleState, clauseId: String, log: CallLog): Entered<LifecycleUnderTest> {
             val lifecycle = AndroidLifecycle(Logger.withTag("contract"))
             return Entered.Ready(
                 LifecycleUnderTest(
-                    MainThreadListen(lifecycle).recorded(log),
+                    MainThreadListen(lifecycle.recorded(log)),
                     becomeActive = { lifecycle.deliverForeground() },
                     resignActive = { lifecycle.deliverBackground() },
                 ),
@@ -44,8 +45,11 @@ class AndroidLifecycleContractTest {
     @Test
     fun `the process lifecycle satisfies the Lifecycle contract`() = verify(LifecycleContract, binding)
 
-    /** [lifecycle], listened to on the main thread, where the process lifecycle takes observers — as the root does. */
-    private class MainThreadListen(private val lifecycle: AndroidLifecycle) : Lifecycle by lifecycle {
+    /**
+     * [lifecycle], listened to on the main thread, where the process lifecycle takes observers — as the root does. It wraps
+     * the adapter's recording proxy, so the binding proves [AndroidLifecycle] itself.
+     */
+    private class MainThreadListen(private val lifecycle: Lifecycle) : Lifecycle by lifecycle {
         @CompositionOnly
         override fun inbound(handlers: LifecycleHandlers) =
             InstrumentationRegistry.getInstrumentation().runOnMainSync { lifecycle.inbound(handlers) }

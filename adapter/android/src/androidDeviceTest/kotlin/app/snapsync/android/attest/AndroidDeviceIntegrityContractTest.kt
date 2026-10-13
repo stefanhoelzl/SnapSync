@@ -48,6 +48,7 @@ class AndroidDeviceIntegrityContractTest {
     private val binding = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidDeviceIntegrity::class
         override val reaches = setOf(DeviceIntegrityState.AVAILABLE, DeviceIntegrityState.UNUSABLE_KEY)
 
         override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =

@@ -27,3 +27,16 @@ internal fun appInBackground(): Boolean =
 
 /** Whether the app's protected data is readable: not while the phone is locked, with a passcode set. */
 internal fun protectedDataReadable(): Boolean = onMain { UIApplication.sharedApplication.isProtectedDataAvailable() }
+
+/** Background time the run holds while the app is behind another, so it is not suspended meanwhile. */
+internal fun holdBackgroundTime(): ULong = onMain {
+    var hold = 0uL
+    // Ended at expiry: a hold iOS finds still open when its time is up costs the process its life.
+    hold = UIApplication.sharedApplication.beginBackgroundTaskWithExpirationHandler {
+        UIApplication.sharedApplication.endBackgroundTask(hold)
+    }
+    hold
+}
+
+/** The hold [holdBackgroundTime] answered, released. */
+internal fun releaseBackgroundTime(hold: ULong) = onMain { UIApplication.sharedApplication.endBackgroundTask(hold) }

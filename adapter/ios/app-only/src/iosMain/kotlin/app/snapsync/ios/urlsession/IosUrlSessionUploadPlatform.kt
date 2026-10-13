@@ -13,6 +13,8 @@ import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
@@ -40,6 +42,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * app.
  */
 @OptIn(ExperimentalForeignApi::class)
+@NeverAnswers(Never(member = "takesResources", answer = "true"))
 class IosUrlSessionUploadPlatform internal constructor(
     private val log: Logger,
     sessionIdentifier: String,

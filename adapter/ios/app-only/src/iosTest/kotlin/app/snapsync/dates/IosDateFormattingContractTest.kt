@@ -18,6 +18,7 @@ class IosDateFormattingContractTest {
     private val binding = object : Binding<DateFormattingState, DateFormatting> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosDateFormatting::class
         override val reaches = setOf(DateFormattingState.PLATFORM)
         override fun create(state: DateFormattingState, clauseId: String, log: CallLog): Entered<DateFormatting> =
             Entered.Ready(IosDateFormatting().recorded(log))

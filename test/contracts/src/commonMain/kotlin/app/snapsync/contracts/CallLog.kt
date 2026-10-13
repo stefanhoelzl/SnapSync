@@ -3,6 +3,7 @@ package app.snapsync.contracts
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.reflect.KClass
 
 /**
  * The port-grid cells that actually occurred while one clause ran (`docs/testing.md`, "A declared cell must occur").
@@ -32,6 +33,22 @@ class CallLog {
             if (entries.compareAndSet(now, now + cell)) return
         }
     }
+
+    private val wrappedClasses = AtomicReference<Set<KClass<*>>>(emptySet())
+
+    /**
+     * Notes the class a recording proxy wraps, whenever the proxy is built — what the runner holds to the binding's
+     * declared [Binding.adapter]. Not windowed: a binding builds its proxies while it enters the state.
+     */
+    fun <T : Any> wraps(adapter: T): T {
+        while (true) {
+            val now = wrappedClasses.load()
+            if (wrappedClasses.compareAndSet(now, now + adapter::class)) return adapter
+        }
+    }
+
+    /** Every class a proxy over this log wrapped. */
+    val wrapped: Set<KClass<*>> get() = wrappedClasses.load()
 
     /** Every cell recorded inside the window. */
     val cells: Set<String> get() = entries.load().toSet()
