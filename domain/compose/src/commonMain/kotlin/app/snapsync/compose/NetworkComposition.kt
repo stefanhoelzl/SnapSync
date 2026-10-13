@@ -4,6 +4,7 @@ import app.snapsync.feature.status.ForegroundWatches
 import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
+import app.snapsync.ports.DevControls
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.services.network.NetworkReadings
 import kotlinx.coroutines.CoroutineScope
@@ -21,9 +22,17 @@ class AppNetwork internal constructor(
     scope: CoroutineScope,
     monitor: NetworkMonitor,
     statusPoller: StatusCountsPoller,
+    controls: DevControls,
 ) {
-    /** Follows the network only while started — the platform's monitor runs only while the app is in front. */
-    internal val watch: NetworkWatch = NetworkWatch(scope, NetworkReadings(monitor))
+    /**
+     * Follows the network only while started — the platform's monitor runs only while the app is in front — after the
+     * watch's own grace, unless the build's development controls shorten it (a test host; never a shipped build).
+     */
+    internal val watch: NetworkWatch = NetworkWatch(
+        scope,
+        NetworkReadings(monitor),
+        NetworkWatch.graceFor(controls.networkGraceMillis()),
+    )
 
     /** What runs only while the screen is visible — started by `OnForeground`'s work, stopped by `OnBackground`. */
     internal val watches: ForegroundWatches = ForegroundWatches(statusPoller, watch)

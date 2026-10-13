@@ -112,6 +112,9 @@ class JvmRigHost private constructor(
             // Invite-link hints honoured, as the rig's development controls answer them on a device: this host IS the
             // control channel, whose callers join headlessly with `autoJoin`.
             val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Honoured, network = backend.network)
+            // A missing network is told after a short grace here, not the phone's five seconds: the rule (slow to warn,
+            // instant to clear) is the watch's own suite's, and a test of what the screen says need not wait it out.
+            mocks.devControls.operator.networkGraceMillis = NETWORK_GRACE_MILLIS
             val version = DeclaredVersion(SERVED_VERSION)
             val log = RecordedLog()
             val build = BuildInfoMock(
@@ -212,6 +215,12 @@ class JvmRigHost private constructor(
 
         /** The App Store page the host's build names — the update-required screen's one remedy. */
         private const val APP_STORE_URL = "https://apps.apple.com/app/id0000000000"
+
+        /**
+         * How long a missing network must last before this host's app tells the member — the network tests in
+         * `:test:integration` and `:test:control` wait a few multiples of it.
+         */
+        private const val NETWORK_GRACE_MILLIS = 200L
     }
 }
 

@@ -10,12 +10,12 @@ import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
-import kotlinx.coroutines.delay
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /** The states the app's [Gallery] can be found in, as far as a clause cares. */
 enum class GalleryState {
@@ -235,14 +235,17 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
         }
     }
 
-    /** Two reads [QUIET_GAP_MILLIS] apart, and whether they compared equal — distinct objects, equal by value. */
+    /**
+     * Two reads [QUIET_GAP] apart, and whether they compared equal — distinct objects, equal by value. No gap against a
+     * fake ([pause]), whose token moves only when it is written.
+     */
     private suspend fun quietGap(gallery: Gallery): Boolean {
         val first: LibraryChangeToken = assertNotNull(gallery.changeToken())
-        delay(QUIET_GAP_MILLIS)
+        pause(QUIET_GAP)
         val second: LibraryChangeToken = assertNotNull(gallery.changeToken())
         return second.sameLibraryAs(first)
     }
 
-    private const val QUIET_GAP_MILLIS = 1_000L
+    private val QUIET_GAP = 1.seconds
     private const val QUIET_WITHIN_MILLIS = 30_000L
 }

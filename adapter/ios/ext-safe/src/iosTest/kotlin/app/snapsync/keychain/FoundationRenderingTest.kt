@@ -1,5 +1,7 @@
-package app.snapsync.contracts
+package app.snapsync.keychain
 
+import app.snapsync.contracts.parseAttributes
+import app.snapsync.contracts.renderAttributes
 import platform.Foundation.NSData
 import platform.Foundation.NSNumber
 import platform.Foundation.numberWithLongLong
@@ -7,6 +9,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
+/**
+ * The text the Keychain's recordings are written in (`KeychainTape`): `:test:contracts`' Foundation rendering, tested
+ * here, beside the one tape that reads and writes it — so `:test:contracts` keeps no iOS test of its own and its
+ * shared tests run once, on the JVM.
+ */
 class FoundationRenderingTest {
 
     @Test

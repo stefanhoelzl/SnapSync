@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -37,6 +38,12 @@ class NetworkWatchTest {
             backgroundScope.launch { watch.returned.collect { seen += it } }
             runCurrent()
         }
+
+    @Test
+    fun the_grace_is_the_watch_s_own_unless_the_build_shortens_it() {
+        assertEquals(NetworkWatch.DEFAULT_GRACE, NetworkWatch.graceFor(null), "a shipped build's controls answer null")
+        assertEquals(200.milliseconds, NetworkWatch.graceFor(200L), "a test host's shortened grace")
+    }
 
     @Test
     fun a_two_second_drop_publishes_nothing() = runTest {

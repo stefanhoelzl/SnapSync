@@ -18,7 +18,9 @@ import kotlin.time.Duration.Companion.seconds
  *
  * The operator plays both halves of a network going away: what the operating system reports to the app (the network
  * lever) and that the backend cannot be reached (the backend mock's offline lever) — on a phone they are one event.
- * Every wait for a notice is longer than the watch's grace, which is real time on this host.
+ * Every wait for a notice is longer than the watch's grace, which is real time on this host — shortened there to a
+ * fraction of a second (`JvmRigHost`'s `NETWORK_GRACE_MILLIS`, through the build's development controls), so a wait
+ * that a notice would have had time to appear in costs a second, not seven.
  */
 class NetworkIntegrationTest {
 
@@ -144,7 +146,7 @@ class NetworkIntegrationTest {
         /** Longer than the watch's grace, with room for a loaded runner. */
         val NOTICE = 20.seconds
 
-        /** A wait that a notice would have had time to appear in. */
-        val GRACE_PASSED = 7.seconds
+        /** A wait that a notice would have had time to appear in: five times the host's grace. */
+        val GRACE_PASSED = 1.seconds
     }
 }

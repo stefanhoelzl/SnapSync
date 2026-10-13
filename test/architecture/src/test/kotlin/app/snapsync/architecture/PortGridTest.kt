@@ -23,6 +23,8 @@ import kotlin.test.assertTrue
  *
  * Variants: a sealed type → each leaf subtype (`Reply.Ok`; the OUTER type of a generic only); an enum → each entry;
  * `Boolean` → `true`/`false`; a `Flow<T>` → T's; anything else → one `returns` cell, or its type name as an argument.
+ * A handler argument typed by a generic port's type parameter ([app.snapsync.ports.Ui]'s intent) is one cell, named
+ * by the type the composition binds it to: the adapter carries that vocabulary through and never chooses its variant.
  * A nullable type adds `null`. A throw is never a cell: a port answers every expected failure as a value, and no port
  * member declares a throw (`@Throws`) — the one assertion this report makes beyond its own scan. A member
  * the interface itself implements (a default body) is not the adapter's answer and is not a cell; a member inherited
@@ -104,7 +106,7 @@ class PortGridTest {
     }
 
     @Test
-    fun `the grid expands a generic sealed return, an enum, a nullable and a handle`() {
+    fun `the grid expands a generic sealed return, an enum, a nullable and a handle — and keeps a bound parameter whole`() {
         val texts = cells.map { it.text }.toSet()
         val canaries = listOf(
             "Backend.challenge → Issued",
@@ -114,6 +116,8 @@ class PortGridTest {
             "Wake.Completion.complete → returns",
             "Wake.Running.expire → returns",
             "DeviceIntegrity.prove → ProveResult.Refused.Failed",
+            // A generic port's type parameter is one opaque variant, named by what the composition binds it to.
+            "Ui.handlers.onIntent(UiIntent)",
         )
         val missing = canaries - texts
         assertTrue(missing.isEmpty(), "port grid: expected cells are missing, so the variant expansion broke: $missing")

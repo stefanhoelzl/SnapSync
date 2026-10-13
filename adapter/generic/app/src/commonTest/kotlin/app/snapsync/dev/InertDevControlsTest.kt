@@ -38,6 +38,7 @@ class InertDevControlsTest {
             InertDevControls.createsPlainEvents(),
             "a shipped build creates plain events, whose invite every app opens",
         )
+        assertNull(InertDevControls.networkGraceMillis(), "a shipped build waits the watch's own grace")
         assertEquals(0, resets, "registering runs nothing, and nothing ever delivers")
     }
 }
