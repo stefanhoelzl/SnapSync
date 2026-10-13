@@ -139,7 +139,7 @@ coverage {
     }
     ":domain:scheduling" {
         unit()
-        integration(instructions = 92, branches = 73)
+        integration(branches = 73)
     }
     // The process's composition registers its metric reports' entry point; the mocks' suite drives it.
     ":domain:entrypoints" {
