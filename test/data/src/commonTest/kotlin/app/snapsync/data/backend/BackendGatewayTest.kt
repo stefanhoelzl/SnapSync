@@ -5,7 +5,6 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.ports.HttpResult
 import app.snapsync.wire.api.EventFilesReply
 import app.snapsync.wire.api.EventNotFound
-import app.snapsync.wire.api.JoinEventReply
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.Malformed
 import app.snapsync.wire.api.NoAnswer
@@ -262,7 +261,7 @@ class BackendGatewayTest {
     }
 
     @Test
-    fun a_426_on_any_route_refuses_this_build_and_any_success_clears_it() = runTest {
+    fun a_426_on_any_route_refuses_this_build_and_any_answer_past_the_version_check_clears_it() = runTest {
         val gate = AppVersionGate()
         var reply: HttpResult = appTooOld("0.5")
         val gateway = BackendGateway(exchangeOver(ScriptedTransport { reply }, gate), ScriptedCredential("T1"))
@@ -274,17 +273,13 @@ class BackendGatewayTest {
             "the public read learns it too — the gate precedes every route",
         )
 
+        reply = HttpResult.Unreachable("offline")
+        gateway.send(join())
+        assertEquals(VersionRefusal("0.5"), gate.refusal.value, "no answer says nothing about this build")
+
         reply = text(404, "event not found")
         gateway.send(join())
-        assertEquals(
-            VersionRefusal("0.5"),
-            gate.refusal.value,
-            "an answer that is not success says nothing about this build",
-        )
-
-        reply = ok()
-        assertEquals(JoinEventReply.Joined, gateway.send(join()))
-        assertNull(gate.refusal.value, "a served request heals the screen — nothing else has to remember to")
+        assertNull(gate.refusal.value, "a 404 came from past the version check — the screen heals")
     }
 
     @Test
