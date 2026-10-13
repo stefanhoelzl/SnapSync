@@ -247,6 +247,22 @@ class EntryIntegrationTest {
     }
 
     @Test
+    fun an_upload_that_ends_fills_its_freed_slot() = rigTest {
+        createAndJoin()
+        repeat(6) { addPhoto("P$it") } // more than the session holds live at once
+        foreground()
+        val live = awaitAppUploads(4)
+        awaitOs { it.backgroundTimeHolds.isEmpty() }
+
+        completeAppUploads(live.live.first())
+
+        // The freed slot is filled from the backlog, by work the end starts and does not await: awaited to its end.
+        eventually(read = { appUploads().created }) { it == live.created + 1 }
+        awaitOs { it.backgroundTimeHolds.isEmpty() }
+        assertEquals(live.created + 1, appUploads().created, "one end fills one slot")
+    }
+
+    @Test
     fun an_upload_that_ends_while_the_app_may_not_create_fills_no_slot() = rigTest {
         createAndJoin()
         repeat(6) { addPhoto("P$it") } // more than the session holds live at once

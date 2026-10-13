@@ -166,6 +166,7 @@ class OsCompletionIntegrationTest {
         // A recorded staging requests its own tail at once, and that import would take the bytes out of staging before
         // the release is read. Failing it keeps them, so the count at the release reads the wake's work alone.
         device("import/fail-next")
+        val armed = osRecord().heartbeatsScheduled
 
         val atRelease = coroutineScope {
             val wake = async { os("app", "onBackgroundTransfers", DOWNLOAD_SESSION) }
@@ -175,6 +176,9 @@ class OsCompletionIntegrationTest {
         }
 
         assertTrue(atRelease.stagedFiles > 0, "the stagings the wake delivered were recorded before the release")
+        // The wake's work follows the release, under the process's background time: awaited to its end, or the test
+        // could end before it ever started.
+        awaitOs { it.heartbeatsScheduled > armed && it.backgroundTimeHolds.isEmpty() }
     }
 
     // ---- the silent push's tail -----------------------------------------------------------------------------------
