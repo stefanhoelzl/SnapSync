@@ -248,13 +248,17 @@ class ReinstallIntegrationTest {
         eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == ids.toSet() }
     }
 
-    /** The rejoin of [rejoin], when its recognition cannot read the event: nothing to wait for but the join itself. */
+    /**
+     * The rejoin of [rejoin], when its recognition cannot read the event. The foreground's tail is awaited: its import
+     * asks for recognition too, and one still running when a test lets the event be read again would recognise the
+     * photos itself — leaving the pass the test triggers next nothing to do.
+     */
     private suspend fun Rig.rejoinUnrecognised(event: String) {
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join()
         permission("GRANTED")
-        os("app", "onForeground")
+        foreground()
         eventually(read = { UNRECOGNISED.findAll(client.logs()).count() }) { it >= 1 }
     }
 
