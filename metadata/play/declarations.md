@@ -95,6 +95,7 @@ Instructions, the Android wording of `metadata/review/notes.md`:
 |---|---|---|---|---|
 | Photos and videos → **Photos** | Yes | No | Yes: joining with sharing off sends none | App functionality |
 | Photos and videos → **Videos** | Yes | No | Yes: joining with sharing off sends none | App functionality |
+| Device or other IDs → **Device or other IDs** | Yes | No | No | App functionality |
 | App info and performance → **Crash logs** | Yes | No | No | Analytics (app stability) |
 | App info and performance → **Diagnostics** | Yes | No | as set in the Console | as set in the Console |
 | App info and performance → **Other app performance data** | Yes | No | as set in the Console | as set in the Console |
@@ -102,14 +103,17 @@ Instructions, the Android wording of `metadata/review/notes.md`:
 - **"Shared: No".** Play's definition of sharing excludes a transfer the user initiates and expects. Photos reach
   the event's members because the user joined that event with sharing on.
 - **Videos are declared in their own right:** the app shares videos as well as photos (capability `photo-sharing`).
+- **The device ID is declared in its own right** (declared in the Console, recorded here 2026-10-13): on Android it
+  is derived from the identifier Android gives the app (`ANDROID_ID`, scoped to the signing key and user), which Play's
+  data types name under *Device or other IDs*. It tells devices apart within an event, stays the same across a
+  reinstall and ends with a factory reset (capability `privacy-security`, change `correct-device-identity-wording`).
 - **Processed ephemerally: No** for every type: photos and videos are stored until the event's photos are deleted,
   crash reports in Bugsink.
 - **What the minimal form treats as part of those types, rather than declaring separately:**
   - a photo's **location** (its metadata, when the camera recorded it), as part of the photo;
-  - the random **install ID** and the **push token**: they exist only to move the event's photos (telling devices
-    apart, waking a device for new photos), so they are part of providing the photos;
+  - the **push token**: it exists only to wake a device for new photos, so it is part of providing the photos;
   - the **bug report** a user sends by hand, and the activity logs it carries: part of crash logs;
-  - the random **install, event and photo IDs** an automatic crash report may carry (never an event's key — capability
+  - the **device, event and photo IDs** an automatic crash report may carry (never an event's key — capability
     `privacy-security`): part of crash logs, so the operator can find what a failure affected;
   - the **read record** of an event's photo list (which install read it, why, when, how many photos it was given;
     browsers anonymously; deleted with the event's photos — capability `privacy-security`): **diagnostics**, covered by
@@ -126,7 +130,7 @@ Instructions, the Android wording of `metadata/review/notes.md`:
   once everyone has them, never later than 30 days after the event is created or starts.
 - **Accounts:** none; the app has no account creation.
 
-**Reopen** if Play's review says this is under-declared (location, or the device or other IDs, crash logs' included). Then
+**Reopen** if Play's review says this is under-declared (location, or the IDs crash logs carry). Then
 declare the named type with its purpose and change the content rating's location answer in the same step. The Privacy
 Policy already names all of them, so only the form would change.
 
