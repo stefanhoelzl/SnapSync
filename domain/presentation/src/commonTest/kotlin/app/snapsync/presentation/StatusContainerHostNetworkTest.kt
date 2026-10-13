@@ -29,6 +29,7 @@ import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.SyncHealth
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +44,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Instant
-import kotlinx.coroutines.Dispatchers
 
 /**
  * The network notice in the reduction (capabilities `sync-status`, `create-event`, `join-event`; decision record

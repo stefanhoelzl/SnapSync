@@ -150,7 +150,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, FixedSync, IdleSync, MenuTestSync, Sync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosSystemUi; `:test:contracts` SystemUiProxy | no |
-| `ThreadLabel` | `:domain:ports` | `:adapter:android` AndroidThreadLabel; `:adapter:generic:app` JvmThreadLabel; `:adapter:generic:mock` Labelled, ThreadLabelMock; `:adapter:ios:ext-safe` IosThreadLabel; `:domain:scheduling` FakeThreadLabel; `:test:contracts` ThreadLabelProxy | yes |
+| `ThreadLabel` | `:domain:ports` | `:adapter:android` AndroidThreadLabel; `:adapter:generic:app` JvmThreadLabel; `:adapter:generic:mock` Labelled, ThreadLabelMock; `:adapter:ios:ext-safe` IosThreadLabel; `:domain:scheduling` FakeThreadLabel; `:test:contracts` ThreadLabelProxy; `:test:rig` CheckedThreadLabel | yes |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, ProofFailed, Refused, Unreachable | no |
 | `TransferHandle` | `:domain:ports` | `:adapter:android` Live; `:adapter:generic:mock` Live; `:domain:services` Handle | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |

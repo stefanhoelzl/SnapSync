@@ -54,7 +54,9 @@ suspend fun Given.inviteFor(eventId: String): String =
 
 /** [eventId]'s invite, as the device that created it shares it. */
 suspend fun Acts.inviteLink(eventId: String): String {
-    val invite = Json.parseToJsonElement(device("invite", "event" to eventId)).jsonObject["invite"]!!.jsonPrimitive.content
+    val invite = Json.parseToJsonElement(
+        device("invite", "event" to eventId),
+    ).jsonObject["invite"]!!.jsonPrimitive.content
     val key = (decodeEventUrl(invite) as ConfigDecodeResult.Success).payload.key
     return encodeEventUrl(EventLinkPayload(testEventId(eventId), autoJoin = false, minPhotoDate = null, key = key))
 }

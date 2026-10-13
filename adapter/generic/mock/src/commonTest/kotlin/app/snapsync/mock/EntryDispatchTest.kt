@@ -24,11 +24,11 @@ import app.snapsync.ports.UploadTarget
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
-import kotlinx.coroutines.Dispatchers
 
 /**
  * The event ports' dispatch (`docs/testing.md`, "Mocks"): what the platform reports reaches the ONE handler of the

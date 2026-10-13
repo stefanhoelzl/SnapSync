@@ -9,9 +9,11 @@ import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.inbound.Completion
 import app.snapsync.jvm.JvmApp
+import app.snapsync.jvm.JvmLanes
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.BackendCall
+import app.snapsync.logging.JvmThreadLabel
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
@@ -48,6 +50,7 @@ import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -57,9 +60,6 @@ import kotlinx.datetime.LocalDateTime
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import kotlin.time.Duration.Companion.seconds
-import app.snapsync.jvm.JvmLanes
-import app.snapsync.logging.JvmThreadLabel
-import kotlinx.coroutines.Dispatchers
 
 /**
  * The single mutation path for the full-stack world harness (test equipment — no tests): every inspector control

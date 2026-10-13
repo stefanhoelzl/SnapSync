@@ -68,7 +68,7 @@ class BackendMock internal constructor(internal val state: BackendState) {
      * hold parks — on the requesting thread, so it is told before the request goes on. One listener: the control
      * channel's event stream (`docs/testing.md`, "How a test waits").
      */
-    fun watch(listener: (WorldEvent.Backend) -> Unit) {
+    fun watch(listener: BackendWatcher) {
         state.watcher = listener
     }
 
@@ -432,16 +432,13 @@ internal class BackendState(
     /** Wait while an operator holds [call] — outside the lock, which the operator's release needs. */
     suspend fun awaitRelease(call: BackendCall) {
         locked { holds[call] }?.let { hold ->
-            told(WorldEvent.BackendHeld(call))
+            watcher.told(WorldEvent.BackendHeld(call))
             hold.await()
         }
     }
 
     /** Who is told what this backend records, as it records it — the control channel's event stream, or no one. */
-    @Volatile var watcher: (WorldEvent.Backend) -> Unit = {}
-
-    /** Tells the [watcher] of [event], on the requesting thread, before the request goes on. */
-    fun told(event: WorldEvent.Backend) = watcher(event)
+    @Volatile var watcher: BackendWatcher = BackendWatcher {}
 
     fun issueChallenge(): String = "in-memory-challenge-${challenges.size + 1}".also { challenges += it }
 
@@ -768,3 +765,8 @@ internal fun BackendState.closedForOldBuilds(eventId: String): Boolean {
 
 /** A device id the backend holds, as the app reads it — every one is a canonical UUID, as the routes accept no other. */
 internal fun deviceIdOf(text: String): DeviceId = requireNotNull(DeviceId.parse(text)) { "not a device id: '$text'" }
+
+/** Told what the backend records, on the requesting thread, before the request goes on. */
+fun interface BackendWatcher {
+    fun told(event: WorldEvent.Backend)
+}

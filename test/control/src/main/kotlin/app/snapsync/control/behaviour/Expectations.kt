@@ -19,11 +19,14 @@ class Expectations internal constructor() {
 
     /** The app shows a screen whose layer is an [L] satisfying [that] — the first such layer, once the `then` holds. */
     inline fun <reified L : Layer> screen(noinline that: (L) -> Boolean = { true }): Seen<L> = Seen<L>().also { seen ->
-        expect(Expectation.Positive("screen<${L::class.simpleName}>", screenMatch(that)) { seen.take((it as WorldEvent.UiChanged).ui.layer as L) })
+        val keep: (WorldEvent) -> Unit = { seen.take((it as WorldEvent.UiChanged).ui.layer as L) }
+        expect(Expectation.Positive("screen<${L::class.simpleName}>", screenMatch(that), keep))
     }
 
     /** An event of type [E] satisfying [that] happens — the first such event, once the `then` holds. */
-    inline fun <reified E : WorldEvent> event(noinline that: (E) -> Boolean = { true }): Seen<E> = Seen<E>().also { seen ->
+    inline fun <reified E : WorldEvent> event(
+        noinline that: (E) -> Boolean = { true },
+    ): Seen<E> = Seen<E>().also { seen ->
         expect(Expectation.Positive("event<${E::class.simpleName}>", eventMatch(that)) { seen.take(it as E) })
     }
 
@@ -167,14 +170,18 @@ internal class Judge(
                             if (at + 1 == expectation.steps.size) matchedAt[expectation] = i
                         }
                     }
-                    is Expectation.Times -> if (expectation.step.matches(event)) counts[expectation] = (counts[expectation] ?: 0) + 1
+                    is Expectation.Times -> if (expectation.step.matches(event)) {
+                        counts[expectation] = (counts[expectation] ?: 0) + 1
+                    }
                     is Expectation.SettledWith -> Unit
                 }
             }
         }
 
         fun keep(events: List<WorldEvent>) {
-            expectations.filterIsInstance<Expectation.Positive>().forEach { p -> matchedAt[p]?.let { p.keep(events[it]) } }
+            expectations.filterIsInstance<Expectation.Positive>().forEach { positive ->
+                matchedAt[positive]?.let { at -> positive.keep(events[at]) }
+            }
         }
 
         fun settle(i: Int, event: WorldEvent.Settled) {

@@ -24,6 +24,7 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.Ui
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -32,7 +33,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Instant
-import kotlinx.coroutines.Dispatchers
 
 /**
  * What a process launches with (`docs/testing.md`, "Launch-time adapters"): the adapters file read through the real files

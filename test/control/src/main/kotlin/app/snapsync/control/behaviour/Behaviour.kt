@@ -110,7 +110,11 @@ class Behaviour internal constructor(
         val judge = Judge(Expectations().apply(expect).all, settlesFrom = last)
         val decided = seen.first { list -> judge.verdict(list.subList(from, list.size)) != Verdict.Pending }
         val events = decided.subList(from, decided.size)
-        if (judge.verdict(events) == Verdict.Failed) throw AssertionError("$name, after $current:\n${judge.report(events)}")
+        if (judge.verdict(events) == Verdict.Failed) {
+            throw AssertionError(
+                "$name, after $current:\n${judge.report(events)}",
+            )
+        }
         judge.keep(events)
     }
 
@@ -147,7 +151,10 @@ class Acts internal constructor(private val client: RigClient) {
     private val world: WorldLevers = client.levers(WorldLevers)
 
     /** A person's command, which must be accepted. */
-    suspend fun user(name: String, vararg params: Pair<String, String>): String = client.user(name, mapOf(*params)).done()
+    suspend fun user(name: String, vararg params: Pair<String, String>): String = client.user(
+        name,
+        mapOf(*params),
+    ).done()
 
     /** A person's command, answered however the host answers it. */
     suspend fun userReply(name: String, vararg params: Pair<String, String>): Reply = client.user(name, mapOf(*params))

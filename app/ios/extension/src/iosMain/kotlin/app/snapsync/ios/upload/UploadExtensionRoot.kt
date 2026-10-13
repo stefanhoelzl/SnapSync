@@ -137,6 +137,7 @@ object UploadExtensionRoot {
         // The extension's lane: the pooled threads its detached work and the expiry grace have always run on; the cycle
         // itself runs on the operating system's thread, which `process()` blocks until it answers.
         lane = Dispatchers.Default,
+        answerOn = null,
     )
 
     init {

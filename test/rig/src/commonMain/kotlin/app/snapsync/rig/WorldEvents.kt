@@ -69,3 +69,14 @@ interface RigActs {
         override suspend fun <T> read(block: suspend () -> T): T = block()
     }
 }
+
+/**
+ * The world a host serves its callers' acts in: the world service — its events and clock, served by a host whose loop
+ * knows when the app is settled, refused by one that cannot — and how each act runs.
+ */
+class HostWorld(val service: ServedService, val acts: RigActs) {
+    companion object {
+        /** A device host: the world's events refused, every act run where its request arrived. */
+        val ON_A_DEVICE = HostWorld(servedWorld(null, WORLD_REFUSED_ON_A_DEVICE), RigActs.Direct)
+    }
+}

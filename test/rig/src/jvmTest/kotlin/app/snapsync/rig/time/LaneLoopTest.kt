@@ -132,7 +132,9 @@ class LaneLoopTest {
         val loop = loop()
         val lane = loop.lane("composition", checked = false)
         val answer = CompletableDeferred<String?>()
-        CoroutineScope(lane).launch { answer.complete(withTimeoutOrNull(15.seconds) { CompletableDeferred<String>().await() }) }
+        CoroutineScope(
+            lane,
+        ).launch { answer.complete(withTimeoutOrNull(15.seconds) { CompletableDeferred<String>().await() }) }
         assertEquals(start + 15.seconds, nextSettled().nextTimer, "the timeout is the next timer")
         loop.advance(15.seconds)
         assertNull(answer.await())
@@ -155,7 +157,10 @@ class LaneLoopTest {
         loop.outside("the test reaching the app") { withContext(lane) {} }
         nextSettled()
         val release = CompletableDeferred<Unit>()
-        val call = launch(start = CoroutineStart.UNDISPATCHED) { loop.outside("a request the backend answers") { release.await() } }
+        val call =
+            launch(
+                start = CoroutineStart.UNDISPATCHED,
+            ) { loop.outside("a request the backend answers") { release.await() } }
         assertNull(settled.poll(100, TimeUnit.MILLISECONDS), "settled while outside work ran")
         assertTrue("a request the backend answers" in loop.report())
         release.complete(Unit)
@@ -218,8 +223,14 @@ class LaneLoopTest {
     fun parallel_lanes_run_at_the_same_time() = runBlocking {
         val loop = loop(interleaving = Interleaving.Parallel)
         val both = CountDownLatch(2)
-        val a = CoroutineScope(loop.lane("a", checked = false)).launch { both.countDown(); both.await(5, TimeUnit.SECONDS) }
-        val b = CoroutineScope(loop.lane("b", checked = false)).launch { both.countDown(); both.await(5, TimeUnit.SECONDS) }
+        val a = CoroutineScope(loop.lane("a", checked = false)).launch {
+            both.countDown()
+            both.await(5, TimeUnit.SECONDS)
+        }
+        val b = CoroutineScope(loop.lane("b", checked = false)).launch {
+            both.countDown()
+            both.await(5, TimeUnit.SECONDS)
+        }
         a.join()
         b.join()
         assertEquals(0, both.count, "the two lanes never ran at once")

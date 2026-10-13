@@ -163,13 +163,8 @@ class RigHooks(
      * refusal on this host, if it has one. Empty only where nothing is composed.
      */
     val services: List<ServedService> = emptyList(),
-    /**
-     * The world's events and clock (`docs/testing.md`, "How a test waits"): served by the JVM host, whose loop knows when
-     * its app is settled; refused by a device host, whose operating system runs work the channel cannot see.
-     */
-    val world: ServedService = servedWorld(null, WORLD_REFUSED_ON_A_DEVICE),
-    /** How every act a caller makes is run — on the JVM host, as a task of its loop, announced first. */
-    val acts: RigActs = RigActs.Direct,
+    /** The world this host serves its callers' acts in (`docs/testing.md`, "How a test waits"). */
+    val world: HostWorld = HostWorld.ON_A_DEVICE,
 ) {
 
     /**

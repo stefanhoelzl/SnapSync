@@ -202,7 +202,7 @@ class ScreenMock {
     internal val shown = MutableStateFlow<UiState?>(null)
 
     /** Who is told each state the app shows, as it shows it — the control channel's event stream, or no one. */
-    @Volatile private var watcher: (UiState) -> Unit = {}
+    @Volatile private var watcher: ScreenWatcher = ScreenWatcher {}
 
     fun port(): Ui<UiState, UiIntent> = Face()
 
@@ -210,13 +210,13 @@ class ScreenMock {
      * Tells [listener] every state the app shows, on the showing thread, as it shows it — each one, where [ScreenOperator.shown]
      * keeps only the last. One listener: the control channel's event stream (`docs/testing.md`, "How a test waits").
      */
-    fun watch(listener: (UiState) -> Unit) {
+    fun watch(listener: ScreenWatcher) {
         watcher = listener
     }
 
     internal fun show(state: UiState) {
         shown.value = state
-        watcher(state)
+        watcher.shown(state)
     }
 
     /** The port face a process is handed. */
@@ -234,6 +234,11 @@ class ScreenMock {
     }
 
     val operator: ScreenOperator = ScreenOperator(this)
+}
+
+/** Told each state the app shows, on the showing thread. */
+fun interface ScreenWatcher {
+    fun shown(state: UiState)
 }
 
 class ScreenOperator internal constructor(private val mock: ScreenMock) {

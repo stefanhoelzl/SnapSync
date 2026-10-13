@@ -59,7 +59,12 @@ internal class HostThreads private constructor(
 
     /** The operating system's thread the extension's `process()` is invoked on. */
     val osThread: ExecutorCoroutineDispatcher =
-        Executors.newSingleThreadExecutor { Thread(it, "os-extension").apply { isDaemon = true } }.asCoroutineDispatcher()
+        Executors.newSingleThreadExecutor {
+            Thread(
+                it,
+                "os-extension",
+            ).apply { isDaemon = true }
+        }.asCoroutineDispatcher()
 
     /** The lanes the JVM root composes both processes on. */
     val lanes = JvmLanes(
@@ -80,7 +85,15 @@ internal class HostThreads private constructor(
      * the mock, which answers on the requesting lane: a request it holds is parked, not in flight.
      */
     fun counted(transport: HttpTransport): HttpTransport =
-        if (answersOnTheLoop) transport else HttpTransport { request -> loop.outside("a request to the backend") { transport.send(request) } }
+        if (answersOnTheLoop) {
+            transport
+        } else {
+            HttpTransport { request ->
+                loop.outside(
+                    "a request to the backend",
+                ) { transport.send(request) }
+            }
+        }
 
     override fun close() {
         loop.close()
@@ -94,7 +107,9 @@ internal class HostThreads private constructor(
             // An OS upload's request to a real backend crosses its network off the loop, so the loop waits on it.
             val network = backend.network?.let { network ->
                 UploadNetwork { url, headers, bytes ->
-                    checkNotNull(opened).loop.outside("an operating-system upload's request") { network.put(url, headers, bytes) }
+                    checkNotNull(
+                        opened,
+                    ).loop.outside("an operating-system upload's request") { network.put(url, headers, bytes) }
                 }
             }
             // Invite-link hints honoured, as the rig's development controls answer them on a device: this host IS the
@@ -115,9 +130,17 @@ internal class HostThreads private constructor(
                     events.tell(WorldEvent.LaneViolation(it))
                 },
             )
-            mocks.backend.watch(events::tell)
+            mocks.backend.watch { events.tell(it) }
             mocks.screen.watch { events.tell(WorldEvent.UiChanged(it)) }
-            return HostThreads(time, mocks, loop, events, network, backend.answersOnTheLoop, violations).also { opened = it }
+            return HostThreads(
+                time,
+                mocks,
+                loop,
+                events,
+                network,
+                backend.answersOnTheLoop,
+                violations,
+            ).also { opened = it }
         }
 
         /** The system property naming how the lanes take turns (`turns` · `shuffled:<seed>` · `parallel`). */
@@ -145,7 +168,9 @@ internal class JvmWorld(private val threads: HostThreads) : WorldLevers {
 
     override suspend fun advance(millis: Long) {
         if (threads.time != LoopTime.MOCKED) {
-            throw LeverRefused("world.advance is refused here: this host's timers run on the wall clock, which nothing advances")
+            throw LeverRefused(
+                "world.advance is refused here: this host's timers run on the wall clock, which nothing advances",
+            )
         }
         threads.acts.act("world.advance") { threads.loop.advance(millis.milliseconds) }
     }

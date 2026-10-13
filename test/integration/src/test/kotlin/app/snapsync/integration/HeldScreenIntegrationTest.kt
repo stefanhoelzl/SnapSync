@@ -1,14 +1,14 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.BackendCall
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import app.snapsync.control.behaviour.behaviour
-import app.snapsync.levers.WorldEvent
 
 /**
  * The screens the app shows only while it waits (`docs/testing.md`, "Every reviewed state is reachable"): each is

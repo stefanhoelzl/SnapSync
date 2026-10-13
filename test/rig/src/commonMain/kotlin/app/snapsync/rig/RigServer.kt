@@ -209,7 +209,8 @@ class RigServer(
         routing {
             rpc(RPC_PATH) {
                 rpcConfig { serialization { json() } }
-                (hooks.services + servedRig { hooks.advertise(currentHost.name) } + hooks.world).forEach { register(it) }
+                val served = hooks.services + servedRig { hooks.advertise(currentHost.name) } + hooks.world.service
+                served.forEach { register(it) }
             }
             get("/health") { call.traced { call.respondText(hooks.health(boundPort)) } }
             // What this host honours and refuses of the shared vocabulary (`docs/testing.md`,
@@ -249,7 +250,11 @@ class RigServer(
         val mark = TimeSource.Monotonic.markNow()
         try {
             // A request that moves the device is an act; one that reads it is not (`docs/testing.md`, "How a test waits").
-            if (request.httpMethod == HttpMethod.Post) hooks.acts.act(request.uri) { block() } else hooks.acts.read { block() }
+            if (request.httpMethod == HttpMethod.Post) {
+                hooks.world.acts.act(request.uri) { block() }
+            } else {
+                hooks.world.acts.read { block() }
+            }
         } catch (t: Throwable) {
             log.w(t) { "request failed: ${request.uri}" }
             respondText("rig error: ${t.message ?: t}\n", status = HttpStatusCode.InternalServerError)

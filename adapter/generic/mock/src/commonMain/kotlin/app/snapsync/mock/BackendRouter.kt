@@ -83,7 +83,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
 
     override suspend fun send(request: HttpRequest): HttpResult {
         val call = Call.of(request) ?: return text(NOT_FOUND, "not found")
-        state.told(WorldEvent.BackendReceived(call.route.id))
+        state.watcher.told(WorldEvent.BackendReceived(call.route.id))
         state.locked { state.takeFault(call.route.id) }?.let { return it.answer() }
         state.locked { refusal(call) }?.let { return it }
         val hold = call.route.hold

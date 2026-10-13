@@ -19,6 +19,7 @@ import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -32,7 +33,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
-import kotlinx.coroutines.Dispatchers
 
 /**
  * The range calendars' intents (capabilities `create-event`, `join-event`): each gesture reaches the open calendar, or

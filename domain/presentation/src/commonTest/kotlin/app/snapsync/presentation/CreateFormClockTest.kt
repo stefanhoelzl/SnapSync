@@ -10,6 +10,7 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +25,6 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
-import kotlinx.coroutines.Dispatchers
 
 /**
  * The create draft against the clock and the app's foreground life (capability `create-event`): its start follows the clock
