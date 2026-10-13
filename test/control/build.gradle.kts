@@ -26,7 +26,7 @@ kotlin {
 dependencies {
     // The wire types (and, for the tests, the JVM host they start).
     api(project(":test:rig"))
-    // The typed services (`LeverClient.kt`): what a test calls instead of a string verb.
+    // The typed services (`RigClient.levers`): what a test calls instead of a string verb.
     api(project(":test:levers"))
     // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
     api(project(":domain:model"))
@@ -35,6 +35,9 @@ dependencies {
     api(project(":domain:feature"))
     api(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
+    // The typed services' transport: kRPC's generated client over a Ktor WebSocket.
+    implementation(libs.kotlinx.rpc.krpc.ktor.client)
+    implementation(libs.kotlinx.rpc.krpc.serialization.json)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coroutines.core)
 

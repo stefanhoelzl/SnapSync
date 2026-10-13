@@ -3,7 +3,6 @@ package app.snapsync.integration
 import app.snapsync.control.Reply
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
-import app.snapsync.control.levers
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.PublicBackendLevers

@@ -163,7 +163,7 @@ module.** The one exception is a source set that a build script adds only under 
 |---|---|
 | `:test:contracts` | the contract mechanism and every port contract (section 4). The only module whose **main** code depends on `kotlin-test`. Links into the app only under the rig property. |
 | `:test:rig` | the control channel: one HTTP protocol served by an iOS app host and a JVM host (section 6). The only module allowed `ktor-server-*`. |
-| `:test:control` | the typed JVM client of that protocol (`RigClient`, and `levers(…)` for the typed services), plus the JVM host's own tests. |
+| `:test:control` | the typed JVM client of that protocol (`RigClient`, and `levers(…)` — kRPC's generated client — for the typed services), plus the JVM host's own tests. |
 | `:test:levers` | the operator faces' typed interfaces and their value types (section 6, "Typed services"). The mocks implement them and a test calls them; neither sees the other. The only module the kotlinx-rpc compiler plugin runs on. Links into the app only through the mocks and the rig, so only under the rig property. |
 | `:test:integration` | the seam → UI-state integration suite, driven only over the protocol (section 7). Also the `journeys` source set. |
 | `:test:edge` | `LiveEdge`: the real `api/` as a local Deno process, one per test JVM. Used by the backend contracts' Live bindings and the rig's JVM host's second backend. |
@@ -834,7 +834,7 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
 ### Typed services
 
 A mock's operator face becomes a **typed service**: a Kotlin interface in `:test:levers`, annotated `@Rpc`, whose
-companion object names the service once — its route name and what a host must offer before any of its methods is
+companion object names the service once — its name and what a host must offer before any of its methods is
 honoured (`LeverNeed`: the backend mocked, the backend reachable). The mock's operator implements the interface; a test
 calls the same interface. A method's return type is its reply: `Unit` for a lever, the value for a read. Nothing is
 echoed back. The backend is the first face to move, as two services:
@@ -846,36 +846,44 @@ echoed back. The backend is the first face to move, as two services:
   It needs only the backend reachable, so it holds against the real `api/` too. Each method names the operator members
   it stands in for (`@StandsInFor`).
 
-**Every method is a verb**, derived from the descriptor the kotlinx-rpc compiler plugin generates and never listed:
-`/device/<service>/<method-in-kebab>` — `backend/refuse-next-credential`, `public-backend/foreign-device-leave`. The
-rig dispatches each onto the service's implementation through the descriptor's invoker (`LeverDispatch.kt`), and
-`RigVocabulary` lists the verbs from the same source, so `GET /device` classifies them like every other entry and a
-host that cannot meet a service's needs refuses all its methods with a `409`.
+**They are served over kRPC**, kotlinx-rpc's protocol, on a WebSocket at `ws://<host>:<port>/rpc` beside the rig's
+HTTP routes. The plugin generates the client a test calls (`client.levers(BackendLevers).offline(true)`,
+`:test:control`) and the stub the rig registers the implementation under, so no message format, route or dispatch is
+written by hand. There is no readable HTTP form of a typed service: curl drives the string verbs not yet migrated, and
+a generated CLI (a later phase) will drive the typed ones.
 
-- **curl** sends the arguments in the query, each read by its parameter's type: text for a string or an enum (an
-  enum by its serial name: `call=leave`, `reason=device-modified`), `true`/`3` for a boolean or a number, `A,B` for a
-  list. An argument the method does not take, a missing required one, or a value its type does not accept answers
-  `400` naming what was wrong and what is accepted.
-- **The typed client** (`client.levers(BackendLevers)`, `:test:control`) is generated from the same descriptor. It
-  posts the same verb with the arguments as one JSON object in the body, each encoded by its parameter's serializer,
-  and decodes the reply by the return type's. A refusal throws `LeverRefused` with the host's reason. The transport is
-  the readable verb itself — kotlinx-rpc's own wire protocol (kRPC, over a WebSocket) is not used — so a test drives
-  exactly what curl drives, and the app hosts need no WebSocket server.
-- **An omitted argument is `null`.** The descriptor carries the interface's types but not its default values, so a
-  parameter may be omitted only when it is nullable, and the method says what `null` means (`fail`'s `times`: once).
-  An omitted `event` marked `@JoinedEvent` is the event this device is joined to — `400` when it is joined to none —
-  and an omitted `device` marked `@ThisDevice` is this device; the channel resolves both before the call.
+- **The rig registers every declared service on every host** (`LeverDispatch.kt`), each behind one wrapper written
+  for all of them. The wrapper refuses every method with `LeverRefused` and the reason when the host cannot meet the
+  service's needs — kRPC rebuilds the exception on the client by its class name, so a caller tells a refusal by its
+  type — and otherwise calls the implementation through the descriptor's invoker. A service left unregistered would
+  not be refused: kRPC's client waits for it.
+- **An omitted argument is `null`.** The interface's default values live in the caller's compiled code; the rig
+  sees only what arrived. A parameter may be omitted only when it is nullable, and the method says what `null` means
+  (`fail`'s `times`: once). An omitted `event` marked `@JoinedEvent` is the event this device is joined to — an
+  `IllegalArgumentException` when it is joined to none — and an omitted `device` marked `@ThisDevice` is this device;
+  the wrapper resolves both before the call reaches the implementation, which never sees a `null` there.
+- **The advertisement is a typed service too** (`RigLevers.advertise()`): every typed service's methods as
+  `<service>.<method>` entries, honoured or refused with the reason, beside every string verb. `GET /device` answers
+  the same document, for the string verbs' callers.
+- An argument an implementation refuses (an `operationId` the device API does not declare) reaches the client with
+  its message naming what is accepted — as the `IllegalArgumentException` it threw from a JVM or Android host, and as
+  kRPC's stand-in exception from an iOS host, since a Kotlin/Native class name (`kotlin.IllegalArgumentException`)
+  names no JVM class. `LeverRefused`, declared in `:test:levers`, arrives as itself from every host.
+- **Measured on every host, 2026-10-13:** the JVM host (both backends), the Android rig release (R8) on the emulator
+  and on the A40 over `adb forward`, the iOS simulator over its loopback, and the SE2 over `usbmux forward` — the
+  advertisement, levers, reads, an implementation's refusal and a host's refusal each crossed.
 
 **The gate** (`LeverFacesTest`, `:test:architecture`) derives the faces from `MockDevice`'s mocks — each one's
 `operator` — and holds every face that implements a declared service to it: each public member is a method of its
 interface or is named by a public-route method's `@StandsInFor`. Nothing else excuses a member; plumbing between mocks
 (the byte route an OS upload lands on, the pushes the played OS delivers) lives on the mock, not its face. The faces
-not yet migrated sit in a list that may only shrink. The same test holds the curl rule (an omittable parameter is
+not yet migrated sit in a list that may only shrink. The same test holds the null rule (an omittable parameter is
 nullable) and that every `@Rpc` interface is declared in `LEVER_SERVICES`.
 
 The plugin is experimental and must list the Kotlin version in `gradle/libs.versions.toml` (its versions page): a
-Kotlin bump waits for a kotlinx-rpc release that supports it. It runs on `:test:levers` alone; the descriptor and the
-generated client are its only API the rest of the build uses (`@ExperimentalRpcApi`). On the JVM and Android the
+Kotlin bump waits for a kotlinx-rpc release that supports it. It runs on `:test:levers` alone; the rest of the build
+uses its descriptors (`@ExperimentalRpcApi`) and kRPC's Ktor modules, which are built against an older Ktor than ours
+(3.3.0 against 3.6.0, measured working on the JVM host, the Android emulator and the iOS simulator). On the JVM and Android the
 descriptor is found by NAME — `<interface>$$rpcServiceStub`, read through kotlin-reflect — so `:test:levers` publishes
 R8 rules that keep the stubs and the names of their interfaces. Without the second, the Android rig release crashed at
 start (`Unable to find a service descriptor of the class jv`: R8 had renamed the interface, measured 2026-10-13); the

@@ -158,6 +158,11 @@ class RigHooks(
      * that believed itself mocked.
      */
     val uncomposed: String? = null,
+    /**
+     * The typed services (`LeverDispatch.kt`) — every declared one, each with the wrapper the kRPC route registers and its
+     * refusal on this host, if it has one. Empty only where nothing is composed.
+     */
+    val services: List<ServedService> = emptyList(),
 ) {
 
     /**

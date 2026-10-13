@@ -150,6 +150,7 @@ class JvmRigHost private constructor(
             val mocks = rig.mocks
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
+                services = rig.world.servedServices(),
                 uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",

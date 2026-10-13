@@ -77,7 +77,10 @@ internal sealed interface Need {
 internal class Lever(val needs: List<Need>, val command: RigCommand)
 
 /** Why [name] cannot be honoured in this world, or `null` when every need is met. */
-private fun MockWorld.refusalOf(name: String, lever: Lever): String? = lever.needs.firstNotNullOfOrNull { need ->
+private fun MockWorld.refusalOf(name: String, lever: Lever): String? = refusalFor(lever.needs, name)
+
+/** Why something needing [needs] — named [name] in the refusal — cannot be honoured here, or `null`. */
+internal fun MockWorld.refusalFor(needs: List<Need>, name: String): String? = needs.firstNotNullOfOrNull { need ->
     when (need) {
         is Need.Mocked -> refusalFor(need.system)
         Need.Reach -> reachRefusal.takeIf { reach == null }
@@ -95,7 +98,11 @@ fun MockWorld.honouredLevers(): Map<String, RigCommand> =
 
 /** The levers this world refuses, by vocabulary entry (`device/<name>`), each with its reason. */
 fun MockWorld.leverRefusals(): Map<String, String> =
-    levers().mapNotNull { (name, lever) -> refusalOf(name, lever)?.let { "device/$name" to it } }.toMap()
+    levers().mapNotNull { (name, lever) ->
+        refusalOf(name, lever)?.let {
+            "device/$name" to it
+        }
+    }.toMap() + serviceRefusals()
 
 private fun needs(vararg needs: Need, command: RigCommand) = Lever(needs.toList(), command)
 
@@ -103,7 +110,7 @@ private fun mocked(system: MockedSystem, command: RigCommand) = Lever(listOf(Nee
 
 /** The whole table, bound to this world. */
 internal fun MockWorld.levers(): Map<String, Lever> {
-    return serviceLevers() + reporterReads() + versionLevers() + transferLevers() + libraryLevers() + deviceLevers() +
+    return reporterReads() + versionLevers() + transferLevers() + libraryLevers() + deviceLevers() +
         deviceFacts()
 }
 

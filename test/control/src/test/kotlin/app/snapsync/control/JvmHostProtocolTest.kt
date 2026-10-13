@@ -4,7 +4,9 @@ import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.RigLevers
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import app.snapsync.ui.state.Layer
@@ -135,54 +137,53 @@ class JvmHostProtocolTest {
 
     /** The backend refusing this phone as not genuine, for a reason the app tells (capability `privacy-security`). */
     @Test
-    fun the_attestation_refusal_lever_takes_a_reason_and_refuses_any_other() = onHost { client ->
-        assertTrue("device/backend/refuse-attestation" in client.device().honoured)
+    fun the_attestation_refusal_lever_takes_a_reason_and_none_lifts_it() = onHost { client ->
+        assertTrue("backend.refuseAttestation" in client.device().honoured)
         val backend = client.levers(BackendLevers)
-        // The readable verb, as curl sends it: the reason by its wire name.
-        client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "device-modified")).done()
+        backend.refuseAttestation(AttestationRefusal.DEVICE_MODIFIED)
         assertEquals(AttestationRefusal.DEVICE_MODIFIED, backend.switches().refusingAttestation)
         // Without one, the phone is genuine again.
-        client.deviceVerb("backend/refuse-attestation").done()
+        backend.refuseAttestation()
         assertEquals(null, backend.switches().refusingAttestation)
-        val bad = assertIs<Reply.Failed>(client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "tampered")))
-        assertEquals(400, bad.status)
-        assertTrue("device-unverifiable" in bad.body, bad.body)
     }
 
     @Test
     fun a_backend_lever_the_real_backend_cannot_honour_is_refused() = onHost("deno") { client ->
-        val offline = assertIs<Reply.Refused>(client.deviceVerb("backend/offline", mapOf("on" to "true")))
-        assertTrue("unavailable on this backend" in offline.reason, offline.reason)
-        val typed = assertFailsWith<LeverRefused> { client.levers(BackendLevers).offline(true) }
-        assertEquals(offline.reason, typed.reason, "the typed client is refused for the same reason")
-        assertTrue("device/backend/offline" in client.device().refused, "and the host advertises the refusal")
+        val refused = assertFailsWith<LeverRefused> { client.levers(BackendLevers).offline(true) }
+        assertTrue("unavailable on this backend" in refused.message.orEmpty(), refused.message)
+        val ad = client.levers(RigLevers).advertise()
+        assertTrue("backend.offline" in ad.refused, "and the host advertises the refusal: ${ad.refused.keys}")
+        assertTrue(
+            "publicBackend.union" !in ad.refused && "public-backend.union" in ad.honoured,
+            "the public surface is served",
+        )
     }
 
     /**
-     * Every typed service's method is a verb the host classifies — derived from its interface, never listed — and the
-     * curl form reads its arguments from the query by the parameter's type (`docs/testing.md`, "The control channel").
+     * Every typed service's method is an entry the host classifies — derived from its interface, never listed — served
+     * over kRPC (`docs/testing.md`, "Typed services"); the advertisement is itself a typed service, and `GET /device`
+     * answers the same.
      */
     @Test
-    fun the_typed_services_are_verbs_with_typed_arguments() = onHost { client ->
-        val ad = client.device()
-        assertTrue("device/backend/refuse-next-credential" in ad.honoured, "a method's verb is its kebab-case name")
-        assertTrue("device/public-backend/foreign-device-leave" in ad.honoured)
-        val wrong = assertIs<Reply.Failed>(client.deviceVerb("backend/hold", mapOf("call" to "leave", "on" to "true")))
-        assertTrue("unknown: [on]" in wrong.body, "an argument the method does not take is a 400: ${wrong.body}")
-        val missing = assertIs<Reply.Failed>(client.deviceVerb("backend/hold"))
-        assertTrue("call is required" in missing.body, missing.body)
-        val bad = assertIs<Reply.Failed>(client.deviceVerb("backend/hold", mapOf("call" to "rename")))
-        assertTrue("event|create|join|leave" in bad.body, "an enum's 400 names its values: ${bad.body}")
-
-        client.deviceVerb("backend/hold", mapOf("call" to "leave")).done()
+    fun the_typed_services_are_advertised_and_resolve_the_joined_event() = onHost { client ->
+        val ad = client.levers(RigLevers).advertise()
+        assertEquals(client.device(), ad, "GET /device and the typed advertisement agree")
         assertTrue(
-            "\"held\":[\"leave\"]" in client.deviceVerb("backend/switches").done(),
-            "a read answers its value as JSON",
+            "backend.refuseNextCredential" in ad.honoured,
+            "an entry is the service and the method: ${ad.honoured}",
         )
-        client.levers(BackendLevers).release(BackendCall.LEAVE)
-        assertEquals(false, BackendCall.LEAVE in client.levers(BackendLevers).switches().held)
-        val unjoined = assertIs<Reply.Failed>(client.deviceVerb("backend/membership"))
-        assertTrue("no joined event" in unjoined.body, "an omitted event is the joined one: ${unjoined.body}")
+        assertTrue("public-backend.foreignDeviceLeave" in ad.honoured)
+
+        val backend = client.levers(BackendLevers)
+        backend.hold(BackendCall.LEAVE)
+        assertEquals(listOf(BackendCall.LEAVE), backend.switches().held)
+        backend.release(BackendCall.LEAVE)
+        assertEquals(emptyList(), backend.switches().held)
+        val unjoined = assertFailsWith<IllegalArgumentException> { backend.membership() }
+        assertTrue(
+            "no joined event" in unjoined.message.orEmpty(),
+            "an omitted event is the joined one: ${unjoined.message}",
+        )
     }
 
     /**
@@ -193,7 +194,8 @@ class JvmHostProtocolTest {
     @Test
     fun a_route_fault_reaches_the_screen_once() = onHost { client ->
         val backend = client.levers(BackendLevers)
-        val unknown = assertFailsWith<IllegalStateException> { backend.fail("createEvents", BackendFault.MAINTENANCE) }
+        val unknown =
+            assertFailsWith<IllegalArgumentException> { backend.fail("createEvents", BackendFault.MAINTENANCE) }
         assertTrue("createEvent" in unknown.message.orEmpty(), unknown.message)
 
         backend.fail("createEvent", BackendFault.MAINTENANCE)
@@ -255,11 +257,6 @@ class JvmHostProtocolTest {
         assertTrue(
             union.any { "primary" in it.roles },
             "the second cycle published the photo, and the event serves it: $union",
-        )
-        // The same read as curl sends it: the reply is the return value, JSON.
-        assertEquals(
-            objects.joinToString(",", "[", "]") { "\"$it\"" },
-            client.deviceVerb("public-backend/objects").done(),
         )
     }
 

@@ -8,6 +8,8 @@ import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.currentHost
+import app.snapsync.levers.DeviceAdvertisement
+import app.snapsync.levers.LeverService
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
@@ -15,6 +17,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.connector
@@ -41,6 +44,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.withContext
+import kotlinx.rpc.krpc.ktor.server.Krpc
+import kotlinx.rpc.krpc.ktor.server.KrpcRoute
+import kotlinx.rpc.krpc.ktor.server.rpc
+import kotlinx.rpc.krpc.serialization.json.json
 import kotlinx.serialization.json.Json
 import kotlin.time.TimeSource
 
@@ -189,6 +196,9 @@ class RigServer(
     }
 
     private fun Application.routes() {
+        // The typed services (`docs/testing.md`, "Typed services"), over kRPC: one WebSocket per client, every declared
+        // service registered on it — a refused one answers each call with its reason.
+        install(Krpc)
         // Namespaced by WHO is on the other side of the call: `/os` is what the platform invokes, `/user`
         // is what a finger reaches, `/device` is the machine under test. That is not taxonomy for its own
         // sake — it decides how each namespace can be held honest. `/os` and `/user` have populations
@@ -196,6 +206,10 @@ class RigServer(
         // lists are meant to cover — by review since the deriving guard was retired, so a hand-picked list can
         // rot unnoticed. `/device` has no population at all.
         routing {
+            rpc(RPC_PATH) {
+                rpcConfig { serialization { json() } }
+                (hooks.services + servedRig { hooks.advertise(currentHost.name) }).forEach { register(it) }
+            }
             get("/health") { call.traced { call.respondText(hooks.health(boundPort)) } }
             // What this host honours and refuses of the shared vocabulary (`docs/testing.md`,
             // "One control protocol, served by two hosts").
@@ -580,12 +594,22 @@ class RigServer(
      * the caller who asked for that member. An inventory would have been a third copy of a list that the
      * runbook already holds and a guard already pins to source, and the only copy nothing could hold.
      */
+    /** One served service on a client's kRPC session. */
+    private fun KrpcRoute.register(served: ServedService) {
+        @Suppress("UNCHECKED_CAST")
+        val service = served.service as LeverService<Any>
+        registerService(service.type) { served.wrapper }
+    }
+
     private fun excludedOrUnknown(name: String, excluded: Map<String, String>, kind: String): String =
         excluded[name]
             ?.let { "$kind '$name' is deliberately NOT wired: $it\n" }
             ?: "unknown $kind '$name' — see the `rig-channel` skill for what is driveable\n"
 
     private companion object {
+        /** The kRPC route the typed services are served on (`ws://<host>:<port>/rpc`). */
+        const val RPC_PATH = "/rpc"
+
         /** ~200 KB: comfortably more than a single cycle's lines, well under the port's 10 MB roll cap. */
         const val DEFAULT_LOG_BYTES = 200_000
         val LOG_PROCESSES = mapOf(

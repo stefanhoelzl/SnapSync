@@ -1,6 +1,7 @@
 package app.snapsync.control
 
-import app.snapsync.rig.DeviceAdvertisement
+import app.snapsync.levers.DeviceAdvertisement
+import app.snapsync.levers.LeverService
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.RigState
 import io.ktor.client.HttpClient
@@ -15,6 +16,11 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.rpc.krpc.ktor.client.installKrpc
+import kotlinx.rpc.krpc.ktor.client.rpc
+import kotlinx.rpc.krpc.ktor.client.rpcConfig
+import kotlinx.rpc.krpc.serialization.json.json
+import kotlinx.rpc.withService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -73,6 +79,20 @@ class RigClient(
 ) : AutoCloseable {
 
     private val base = baseUrl.trimEnd('/')
+
+    /** The typed services' kRPC session (`docs/testing.md`, "Typed services") — opened by the first call, on its own client. */
+    private val rpcHttp = lazy { HttpClient(CIO) { installKrpc() } }
+    private val rpc = lazy {
+        rpcHttp.value.rpc("ws${base.removePrefix("http")}$RPC_PATH") { rpcConfig { serialization { json() } } }
+    }
+
+    /**
+     * A typed service — `client.levers(BackendLevers).offline(true)` — through the client kotlinx-rpc generates from its
+     * interface, over the host's kRPC route. A method answers its value, or throws: `LeverRefused` when this host
+     * refuses the service, with its reason; otherwise the exception the implementation threw — rebuilt as its own class
+     * from a JVM or Android host, as kRPC's stand-in carrying its message from an iOS host.
+     */
+    fun <T : Any> levers(service: LeverService<T>): T = rpc.value.withService(service.type)
 
     /** `GET /health`. */
     suspend fun health(): String = http.get("$base/health").bodyAsText()
@@ -153,7 +173,11 @@ class RigClient(
     suspend fun contract(name: String, params: Map<String, String> = emptyMap()): Reply =
         http.post("$base/contract/$name") { params.forEach { (k, v) -> parameter(k, v) } }.reply()
 
-    override fun close() = http.close()
+    override fun close() {
+        if (rpc.isInitialized()) rpc.value.close()
+        if (rpcHttp.isInitialized()) rpcHttp.value.close()
+        http.close()
+    }
 
     private suspend fun HttpResponse.reply(): Reply {
         val text = bodyAsText()
@@ -177,3 +201,6 @@ class RigClient(
         const val CONTRACT_MARKER = "refused: "
     }
 }
+
+/** The rig's kRPC route (`RigServer`). */
+private const val RPC_PATH = "/rpc"

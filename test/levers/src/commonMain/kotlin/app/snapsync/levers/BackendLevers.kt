@@ -93,6 +93,7 @@ interface BackendLevers {
 
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<BackendLevers>(
+        BackendLevers::class,
         "backend",
         setOf(LeverNeed.BACKEND_MOCKED),
         { serviceDescriptorOf() },
