@@ -725,6 +725,14 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=sim-settled-" \
             --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
             while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
+      # The SwiftPM checkout (sentry-cocoa) ios-build's archive restores and main saves (`.github/actions/ios-archive`
+      # says why the key is the pbxproj): the same directory under the same derived-data path, read only here.
+      - name: Restore the resolved SwiftPM checkout
+        if: matrix.platform == 'ios'
+        uses: actions/cache/restore@v6
+        with:
+          path: build/ios/SourcePackages
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
       - name: Run the simulator app's port contracts and the journeys
         if: matrix.platform == 'ios'
         # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed `snapsync.rig=true`
