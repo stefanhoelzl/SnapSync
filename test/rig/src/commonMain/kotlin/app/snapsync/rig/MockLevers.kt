@@ -821,8 +821,8 @@ private fun MockWorld.deviceFacts(): Map<String, Lever> = mapOf(
             )
         },
     ),
-    // Every album this app created, with the assets in it: under `collection` those placed, in order; under `folder`
-    // the photos its folder holds now.
+    // Every album this app created, with the photos it holds now, each once — what a person sees in it, not how often
+    // the app asked (adding a member again is a no-op on the platform).
     "album/contents" to mocked(
         MockedSystem.LIBRARY,
         RigCommand { _, _ ->

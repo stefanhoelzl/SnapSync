@@ -65,28 +65,30 @@ class LostUploadAckIntegrationTest {
     fun a_platform_that_reports_within_the_cycle_settles_in_that_same_cycle_and_places_once() = rigTest {
         extensionUploadsOnly()
         // The PhotoKit tier's shape: that tier has no callback outside the cycle — its adapter fetches the
-        // finished jobs, records them settled and acknowledges in place. The album placement is not waiting for
-        // that: it happened when the upload was first enqueued, so the completion adds nothing to the album and
-        // nothing to do.
+        // finished jobs, records them settled and acknowledges in place. The album is not waiting for that: the photo
+        // is placed when its upload is first enqueued, so the completion changes nothing about the album.
         val event = createAndJoin("saveToAlbum" to "true")
         awaitAlbum() // a cycle places only into an album that exists
         addPhoto("A")
 
         cycle() // places, then creates the job
-        assertEquals(listOf("A"), albumAssets(), "placed when the upload was enqueued, before any byte moved")
+        assertTrue(primaryKey("A") !in objects(), "precondition: no byte has reached the backend yet")
+        assertEquals(listOf("A"), albumAssets(), "in the album as soon as its upload is queued, before any byte moved")
         completeJobs() // the "OS" finished it while we were away
 
         // ONE cycle: the drain records the completion, and the manifest publishes it.
         cycle()
 
-        assertEquals(listOf("A"), albumAssets(), "placed in the event album exactly once")
+        // What the album HOLDS, never how often the app asked: a repeated add is a no-op on the platform (the
+        // GalleryReader contract's A_REPEATED_ADD_IS_A_NO_OP), and the join's album gather may place A again.
+        assertEquals(listOf("A"), albumAssets(), "the event album holds the photo once")
         // The announcement IS the manifest write: on the versioned device API there is no notify route, so
         // publishing the device's asset set is the only thing that tells the event anything happened.
         assertEquals(setOf("A"), manifest(event)?.keys, "the settled upload reached the published manifest")
         assertEquals(1, jobs().created)
     }
 
-    /** Every asset placed in any album this app created, in order. */
+    /** Every photo the albums this app created hold now, album by album. */
     private suspend fun Rig.albumAssets(): List<String> =
         deviceJson("album/contents").getValue("albums").jsonArray.flatMap { album ->
             album.jsonObject.getValue("assets").jsonArray.map { it.jsonPrimitive.content }

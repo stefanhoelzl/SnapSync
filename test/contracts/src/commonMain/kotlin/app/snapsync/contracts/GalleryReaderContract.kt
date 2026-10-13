@@ -444,6 +444,33 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.assetsById(seeded.ids))
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.resources(seeded.ids))
         }
+
+        // Appended, so no clause above changes its capture-date window.
+        clause(
+            "A_REPEATED_ADD_IS_A_NO_OP",
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Ok::class)
+                    answers(GalleryReader::albumMembers).withGenericLeaf(GalleryRead.Read::class)
+                }
+            },
+        ) { seeded ->
+            val clauseId = "A_REPEATED_ADD_IS_A_NO_OP"
+            val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
+            assertEquals(WriteOutcome.Ok, seeded.port.addToAlbum(album, seeded.ids))
+            assertEquals(
+                WriteOutcome.Ok,
+                seeded.port.addToAlbum(album, seeded.ids),
+                "adding a member again is no failure",
+            )
+            assertEquals(
+                GalleryRead.Read(seeded.ids),
+                seeded.port.albumMembers(album, Instant.parse(window(clauseId).start)),
+                "a repeated add changes nothing: the cycle and the album gather both place, and neither keeps a record",
+            )
+        }
     }
 
     private fun GalleryReader.assetIdsOf(read: GalleryRead.Read<*>): Set<PlatformAssetId> =
