@@ -28,6 +28,7 @@ class OsCompletionIntegrationTest {
         val event = createAndJoin()
         foreignDevice("DEV-F", "FQ")
         reconcile()
+        awaitDownloadQueued()
         device("import/fail-next")
         stage()
         assertTrue(osRecord().stagedFiles > 0, "precondition: the failed import kept its bytes for the retry")

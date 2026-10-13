@@ -167,6 +167,7 @@ class InterruptedImportIntegrationTest {
         // Park BEFORE the commit: the library will answer *absent* about a transaction that is alive.
         device("import/suspend-next")
         reconcile()
+        awaitDownloadQueued()
         stage(wait = false)
         device("import/await-parked")
         assertEquals(galleryBefore, libraryTotal(), "precondition: the commit has not landed")
@@ -279,6 +280,7 @@ class InterruptedImportIntegrationTest {
         val before = libraryTotal()
         device("import/suspend-next", "afterCommit" to "true")
         reconcile()
+        awaitDownloadQueued()
         // The import fires from the staged-resource callback, so THAT is what parks.
         stage(wait = false)
         device("import/await-parked")
