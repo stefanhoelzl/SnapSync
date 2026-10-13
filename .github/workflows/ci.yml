@@ -502,7 +502,8 @@ jobs:
       # against the same `prod` deployment, so `screenshots.yml`, which restores this job's cache, finds them. Nothing
       # else ever cached them: journeys (ios) saves nothing, and its `local` deployment changes `domain:model`, so its
       # outputs would not match anyway. The library modules' keys are the same with or without the rig flag, so those
-      # stay UP-TO-DATE here. Main only: no other ref saves the cache. ~TODO measured.
+      # stay UP-TO-DATE here. Main only: no other ref saves the cache. 3.5 min from a cache 17 commits stale, after which
+      # the screenshots build's two Gradle runs took 16 s and 11 s with both links UP-TO-DATE (run 38470210476).
       - name: Seed the Gradle cache with the rig simulator app
         if: github.ref == 'refs/heads/main'
         run: |
