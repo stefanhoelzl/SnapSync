@@ -20,8 +20,9 @@
 #                   contract bindings on the test executable, the native SQLite drivers)
 #   android-build   the plain RELEASE build, the store's — R8 and resource shrinking over its whole graph, its R8 mapping
 #                   in app/android/build/outputs/mapping/release/, and on a delivering run the BUNDLE Play receives
-#                   (the delivery source, as ios-build's archive is) — then the platform-bound tests,
-#                   `./gradlew androidPlatformTest` on a Gradle-managed emulator (the Android adapters' contract bindings)
+#                   (the delivery source, as ios-build's archive is; on a PR `build` already builds it, so only a
+#                   delivering run does) — then the platform-bound tests, every module's `connectedAndroidDeviceTest`
+#                   on one emulator (the Android adapters' contract bindings)
 #
 #                   Build and tests share a runner because together they stay under the journeys (measured: ~8 min
 #                   on iOS against ~10): the critical path does not move, and a push holds one macOS runner fewer —
@@ -94,6 +95,10 @@ jobs:
 
   build:
     runs-on: ubuntu-26.04
+    # `actions: write`: on main the `-linux-` ~/.konan save reclaims the entries it supersedes.
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v6
@@ -101,14 +106,28 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
+      # The Linux build compiles every module's iOS main klibs (the iOS proxy), and without ~/.konan it first downloads
+      # the toolchain and commonizes the platform libraries (~95 s of `commonizeNativeDistribution`) on every run.
+      - name: Restore Kotlin/Native (~/.konan)
+        id: konan
+        uses: ./.github/actions/konan-restore
+        with:
+          family: linux
       # `./gradlew build` launches the REAL backend: `:adapter:generic:app`'s jvmTest runs the backend port contracts'
       # live bindings against `api/src/dev/serve.ts --ephemeral` (loopback only, filesystem store). Without Deno they
       # FAIL naming it; they never skip. Same pin as api-test, so both run the backend under one Deno.
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+          cache: true
       # Compose Desktop UI tests render offscreen under -Djava.awt.headless=true, so no X server is needed.
       - run: ./gradlew build
+      - name: Save Kotlin/Native (~/.konan)
+        if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/konan-save
+        with:
+          family: linux
+          key: ${{ steps.konan.outputs.key }}
       # A red test's whole record: the log prints each failure's message and stack (FULL, set in the root build), the
       # XML results add its standard streams — the rig host's log lines leading up to it — and the HTML reports the rest.
       - name: Keep the test results
@@ -552,7 +571,10 @@ jobs:
       # delivering run also builds the BUNDLE Play receives — from this same R8 run, so the mapping kept for it is the
       # bundle's — marked distributed so the resolver bakes the crash-reporting DSN (`docs/deployment.md`). The channel
       # and the DSN are this STEP's only, so the platform tests below resolve the ordinary dev channel.
+      # Delivering runs only: on a PR this is the same `:app:android:assembleRelease` (dev channel, version floor, R8,
+      # lint) that `build` runs, so it would gate nothing `build` does not.
       - name: Build the store release
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
         env:
           SNAPSYNC_CHANNEL: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && 'release' || 'dev' }}
           SENTRY_DSN: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
@@ -591,25 +613,21 @@ jobs:
           # A build intermediate for the next job of this run: one day, then gone.
           retention-days: 1
           if-no-files-found: error
-      # The platform-bound tests, on this same runner after the build: `:adapter:android`'s device tests on a
-      # Gradle-managed Pixel 6 / API 36 emulator, with the upload contract's transfer fixture served on the host by
-      # the build. The hosted runner exposes /dev/kvm to root only; the managed emulator needs it.
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      # From emulator 37.2 the guest's Wi-Fi is served by netsimd (feature WiFiPacketStream), and ~1 boot in 10 here
-      # came up with an access point that never answered: no Wi-Fi for the whole run, so every metered-Wi-Fi clause
-      # timed out and the Keystore could not provision an attestation key. This user-level override (the managed
-      # emulator takes no extra flags, but reads ~/.android/advancedFeatures.ini) puts the emulator's own virtio-wifi
-      # back in the path; only the keys it names are overridden.
-      - name: Keep the emulator's Wi-Fi off netsim
-        run: |
-          mkdir -p ~/.android
-          printf 'WiFiPacketStream = off\n' > ~/.android/advancedFeatures.ini
-      - name: Platform tests on the managed emulator
-        run: ./gradlew androidPlatformTest
+      # The platform-bound tests, on this same runner after the build: every module's device tests on ONE emulator
+      # (`.github/actions/android-emulator`: Pixel 6 / API 36, the cached system image, animations off), with the upload
+      # contract's transfer fixture served on the host by the build. One boot for all four APKs, not a Gradle-managed
+      # device per module: each managed run booted its own (~1 min apiece, for 1-43 s of tests in three of them). The
+      # APKs are built before the emulator boots, so the two never compete for the runner. The modules that test a
+      # grant short of full run first, on the clean device, before `:adapter:android`'s seed the library; each APK
+      # still holds only the runtime permissions it declares, granted at its install.
+      - name: Build the device tests
+        run: ./gradlew assembleAndroidDeviceTest
+      - name: Platform tests on the emulator
+        uses: ./.github/actions/android-emulator
+        with:
+          script: |
+            ./gradlew :test:no-grant:connectedAndroidDeviceTest :test:partial-grant:connectedAndroidDeviceTest
+            ./gradlew :adapter:android:connectedAndroidDeviceTest :adapter:generic:sentry:connectedAndroidDeviceTest
       - name: Keep the reports
         if: always()
         uses: actions/upload-artifact@v7.0.2

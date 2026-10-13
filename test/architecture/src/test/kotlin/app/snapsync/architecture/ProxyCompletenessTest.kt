@@ -422,6 +422,8 @@ class ProxyCompletenessTest {
                 proxied && k != null && k.isValue -> returned(type)
                 variant == "true" || variant == "false" -> variant.toBoolean()
                 k != null && k.java.isEnum -> k.java.enumConstants.first { "${k.simpleName}.${(it as Enum<*>).name}" == variant }
+                // A generic port's bound parameter: one variant named by its type, so any value of it.
+                k != null && k.isSealed && variant == k.simpleName -> dummy(type)
                 k != null && k.isSealed -> PortGrid.leaves(
                     k,
                 ).first { PortGrid.relativeName(it) == variant }.let(::instance)

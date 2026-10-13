@@ -32,7 +32,7 @@ private fun <K : Enum<K>, T> runOne(clause: Clause<K, T>, binding: Binding<K, T>
         is Entered.Ready -> {
             log.open()
             val outcome = if (declared) {
-                execute(clause, entered.subject)
+                execute(clause, entered.subject, binding.kind)
             } else {
                 Outcome.Failed("the binding produced ${clause.state}, which it does not declare reachable")
             }
@@ -80,12 +80,12 @@ private inline fun classify(block: () -> Unit): Outcome =
         Outcome.Failed("${t::class.simpleName}: ${t.message}")
     }
 
-private fun <K : Enum<K>, T> execute(clause: Clause<K, T>, subject: T): Outcome =
-    classify { runTest(timeout = CLAUSE_BOUND) { clause.body(this, subject) } }
+private fun <K : Enum<K>, T> execute(clause: Clause<K, T>, subject: T, kind: BindingKind): Outcome =
+    classify { runTest(RunningBinding(kind), timeout = CLAUSE_BOUND) { clause.body(this, subject) } }
 
 /**
  * How long one clause may take in all. Longer than `runTest`'s minute because a clause may drive a real platform
- * surface end to end — the Ui contract tours every control of a screen an emulator renders in software — while every
+ * surface end to end on a slow emulator or simulator — a screen rendered in software, an OS's own scheduling — while every
  * wait on an operating-system callback inside it keeps its own real-time bound (`NotWithin`).
  */
 private val CLAUSE_BOUND = 5.minutes

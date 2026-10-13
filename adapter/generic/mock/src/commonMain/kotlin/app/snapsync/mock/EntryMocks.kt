@@ -246,6 +246,8 @@ class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Igno
 
     @Volatile internal var encrypts: Boolean = true
 
+    @Volatile internal var networkGraceMillis: Long? = null
+
     fun port(): DevControls = Face()
 
     /** The port face a process is handed. */
@@ -260,6 +262,8 @@ class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Igno
         override fun inviteLinkHints(): InviteLinkHints = hints
 
         override fun createsPlainEvents(): Boolean = !encrypts
+
+        override fun networkGraceMillis(): Long? = this@DevControlsMock.networkGraceMillis
     }
 
     val operator: DevControlsOperator = DevControlsOperator(this)
@@ -280,6 +284,14 @@ class DevControlsOperator internal constructor(private val mock: DevControlsMock
     var encryptsNewEvents: Boolean
         get() = mock.encrypts
         set(value) { mock.encrypts = value }
+
+    /**
+     * How long a missing network must last before the member is told, in milliseconds — `null`, the app's own grace as
+     * on every shipped build, unless a test host shortens it. Read as the app composes its network watch.
+     */
+    var networkGraceMillis: Long?
+        get() = mock.networkGraceMillis
+        set(value) { mock.networkGraceMillis = value }
 
     /** The channel's reset; returns once the device's state is void. */
     suspend fun reset() {

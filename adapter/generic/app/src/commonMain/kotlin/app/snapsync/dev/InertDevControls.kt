@@ -36,4 +36,6 @@ object InertDevControls : DevControls {
     override fun inviteLinkHints(): InviteLinkHints = InviteLinkHints.Ignored
 
     override fun createsPlainEvents(): Boolean = true
+
+    override fun networkGraceMillis(): Long? = null
 }

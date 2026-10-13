@@ -58,6 +58,9 @@ class RigDevControls : DevControls {
     /** Whether an event this device creates is encrypted; `true`, as a shipped build, until the channel sets it. */
     var encrypts: Boolean = true
 
+    /** How long a missing network must last before the member is told; `null` (the app's own grace) unless set. */
+    var networkGraceMillis: Long? = null
+
     @CompositionOnly
     override fun inbound(handlers: DevHandlers) {
         this.handlers = handlers
@@ -68,6 +71,8 @@ class RigDevControls : DevControls {
     override fun inviteLinkHints(): InviteLinkHints = hints
 
     override fun createsPlainEvents(): Boolean = !encrypts
+
+    override fun networkGraceMillis(): Long? = networkGraceMillis
 
     /** `/device/reset`: void this device's durable sync state; returns once it is void. */
     suspend fun reset() {

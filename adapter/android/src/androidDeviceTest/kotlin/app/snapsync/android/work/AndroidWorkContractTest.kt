@@ -440,8 +440,13 @@ class AndroidWorkContractTest {
         /** How long a wake the operating system owes is waited for: a library change is due within its 1 s delay. */
         const val WAIT_MILLIS = 60_000L
 
-        /** How long an unrestricted wake must stay unrun on a metered network — beyond a constraint-free wake's start. */
-        const val HELD_MILLIS = 10_000L
+        /**
+         * How long an unrestricted wake must stay unrun on a metered network — beyond a constraint-free wake's start. A
+         * zero-delay wake whose constraints hold is handed to JobScheduler at once and runs well inside a second on an
+         * idle emulator, so three seconds of not running is the constraint holding it, not a slow start; and the second
+         * half of the test (it runs once the network is unmetered) would fail a wake that never runs at all.
+         */
+        const val HELD_MILLIS = 3_000L
 
         /** Long enough for a REPLACE to have cancelled a running wake, and for its re-arm to be recorded. */
         const val REPLACE_WINDOW_MILLIS = 1_000L

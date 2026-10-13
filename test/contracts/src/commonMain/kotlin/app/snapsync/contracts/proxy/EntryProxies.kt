@@ -65,6 +65,7 @@ internal class DevControlsProxy(private val inner: DevControls, log: CallLog) : 
     override fun uploaderPin() = r.returns("uploaderPin", inner.uploaderPin())
     override fun inviteLinkHints() = r.answer("inviteLinkHints", inner.inviteLinkHints())
     override fun createsPlainEvents() = r.answer("createsPlainEvents", inner.createsPlainEvents())
+    override fun networkGraceMillis() = r.returns("networkGraceMillis", inner.networkGraceMillis())
 
     @CompositionOnly
     override fun inbound(handlers: DevHandlers) = r.returns(
@@ -169,7 +170,7 @@ internal class UiProxy(private val inner: Ui<UiState, UiIntent>, log: CallLog) :
     override fun inbound(handlers: UiHandlers<UiState, UiIntent>) = r.returns(
         "inbound",
         inner.inbound(
-            UiHandlers(InboundProxy(handlers.onIntent, r, "onIntent"), InboundProxy(handlers.onLive, r, "onLive")),
+            UiHandlers(InboundProxy(handlers.onIntent, r, "onIntent", plain = "UiIntent"), InboundProxy(handlers.onLive, r, "onLive")),
         ),
     )
 }

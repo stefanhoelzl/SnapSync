@@ -9,7 +9,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The control protocol's JVM host, driven the way any caller drives either host: through [RigClient] and nothing
@@ -74,13 +73,14 @@ class JvmHostProtocolTest {
 
     /**
      * The network lever moves what the screen says, through the network the app watches while in front (capability
-     * `sync-status`): every value reaches the reduced state, a missing network after the watch's grace.
+     * `sync-status`): every value reaches the reduced state, a missing network after the watch's grace (the host's short
+     * one, `JvmRigHost`'s `NETWORK_GRACE_MILLIS`).
      */
     @Test
     fun the_network_lever_reaches_the_screen_in_every_value() = onHost { client ->
         client.os("app", "onForeground").done()
         client.deviceVerb("network", mapOf("access" to "offline")).done()
-        client.awaitState(15.seconds) { (it.ui.layer as? Layer.CreateEvent)?.network == NetworkNotice.OFFLINE }
+        client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.network == NetworkNotice.OFFLINE }
         client.deviceVerb("network", mapOf("access" to "blocked")).done()
         client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.network == NetworkNotice.BLOCKED }
         client.deviceVerb("network", mapOf("access" to "online")).done()
