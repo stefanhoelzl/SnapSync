@@ -20,7 +20,11 @@ import kotlin.test.assertTrue
 class FlexibleShareRangeIntegrationTest {
 
     @Test
-    @Verifies(spec = "photo-sharing", requirement = "Nothing is shared before the event starts")
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Nothing is shared before the event starts",
+        scenario = "Photos from before the start wait for it",
+    )
     fun photos_from_before_the_start_wait_for_it_and_are_shared_once_it_has_passed() = rigTest {
         extensionUploadsOnly()
         device("clock/advance", "to" to BEFORE_THE_START)
@@ -38,6 +42,11 @@ class FlexibleShareRangeIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "A member's share is settled only after their own range has ended",
+        scenario = "A range that ends after the event keeps it unfinished",
+    )
     fun a_range_ending_after_the_event_is_settled_at_its_own_end() = rigTest {
         extensionUploadsOnly()
         device("clock/advance", "to" to DURING)
@@ -53,6 +62,7 @@ class FlexibleShareRangeIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after their own range has ended")
     fun a_range_ending_before_the_event_is_settled_before_the_event_ends() = rigTest {
         extensionUploadsOnly()
         device("clock/advance", "to" to DURING)

@@ -19,22 +19,32 @@ Decision record: changes/archive/2026-07-15-add-photo-selection-policy
 
 ## Requirements
 
-### Requirement: Only photos taken inside the member's capture range are shared
+### Requirement: Only photos inside the range the member chose are shared
 
 A member SHALL share only photos whose capture date lies inside their membership's capture range, both
-ends inclusive. The range SHALL always have a start and an end — no membership shares a whole camera roll
-— and it SHALL never extend before the event's start date or after its end date, whatever the member
-chose or an invite link carried; the member MAY narrow it at either end (chosen at join, capability
-`join-event`; changed later, capability `manage-membership`). A photo with no capture date SHALL NOT be
+ends inclusive. The range SHALL always have a start and an end, and SHALL be the range the member chose —
+by default the event's own dates (chosen at join, capability `join-event`; changed later, capability
+`manage-membership`). No membership shares a whole camera roll: the range SHALL be at most 30 days long and
+SHALL overlap the event's dates. It MAY reach before the event's start or after its end only as far as the
+member chose; neither the host nor an invite link can widen it. A photo with no capture date SHALL NOT be
 shared.
 
 #### Scenario: A photo from before the range stays private
 - **WHEN** a member joins an event and their library holds photos taken before the start of their range
 - **THEN** none of those photos is uploaded, listed to other members, or counted as shareable
 
-#### Scenario: A photo from after the event's end stays private
-- **WHEN** a member takes a photo after the event's end date
+#### Scenario: A photo from after the range's end stays private
+- **WHEN** a member whose range ends with the event takes a photo after the event's end date
 - **THEN** it is not shared, even though the member is still joined
+
+#### Scenario: A photo after the event inside the member's range is shared
+- **WHEN** a member chose a range ending two days after the event's end, and takes a photo the day after the
+  event's end
+- **THEN** it is shared to the event, like any photo inside their range
+
+#### Scenario: A photo before the event inside the member's range is shared
+- **WHEN** a member chose a range starting the evening before the event's start, and took photos that evening
+- **THEN** those photos are shared to the event
 
 #### Scenario: A photo taken exactly at the end is shared
 - **WHEN** a photo's capture time equals the end of the member's range
@@ -44,9 +54,9 @@ shared.
 - **WHEN** the member picks a later start and an earlier end than the event's dates
 - **THEN** only photos inside the member's own narrower range are shared
 
-#### Scenario: A link cannot reach before the event
-- **WHEN** an invite link carries a start earlier than the event's start date
-- **THEN** the membership still shares nothing taken before the event's start
+#### Scenario: A link cannot widen a member's range
+- **WHEN** an invite link carries a range of capture dates
+- **THEN** the membership shares only the range the member chose on the join screen
 
 #### Scenario: An undated photo is not shared
 - **WHEN** a photo in the library carries no capture date
@@ -74,6 +84,11 @@ start date (capability `receiving-photos`).
 #### Scenario: Sharing begins after the start
 - **WHEN** the start date passes and the member then takes a photo or opens the app
 - **THEN** every photo inside the member's range starts to be shared
+
+#### Scenario: Photos from before the start wait for it
+- **WHEN** a member joins an event that has not started, with a range starting two days before the event's
+  start, and holds photos from those two days
+- **THEN** none of them is uploaded before the event's start, and they are shared once it has passed
 
 ### Requirement: Media that is certainly not an event photo is excluded
 

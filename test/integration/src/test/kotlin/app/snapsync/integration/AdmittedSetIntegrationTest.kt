@@ -37,8 +37,8 @@ class AdmittedSetIntegrationTest {
     @Test
     @Verifies(
         spec = "photo-sharing",
-        requirement = "Only photos taken inside the member's capture range are shared",
-        scenario = "A photo from after the event's end stays private",
+        requirement = "Only photos inside the range the member chose are shared",
+        scenario = "A photo from after the range's end stays private",
     )
     fun a_post_ceiling_photo_reaches_no_consumer() = rigTest {
         extensionUploadsOnly()

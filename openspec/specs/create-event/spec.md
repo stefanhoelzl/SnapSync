@@ -71,7 +71,8 @@ into the event) or in the future (to create an event ahead of time); the start a
 day. The screen SHALL prevent a range whose start is not before its end and a range longer than 30 days.
 While Create is disabled, the screen SHALL name the next thing the host still has to do: the name, then the
 end time. Once the range is complete, the screen SHALL show how long it lasts. The screen SHALL state that
-only photos taken during this window are shared.
+photos taken between these dates are shared, and that each member can widen or narrow their own range
+(capability `join-event`).
 
 #### Scenario: The start is preset to now
 - **WHEN** the create screen opens at 18:04
@@ -123,7 +124,7 @@ only photos taken during this window are shared.
 
 #### Scenario: The duration and the consequence are stated
 - **WHEN** the host completes a range that spans five days
-- **THEN** the screen reads that the event lasts 5 days, beside the statement that only photos taken during the window are shared
+- **THEN** the screen reads that the event lasts 5 days, beside the statement that photos taken between these dates are shared and that each member can widen or narrow their own range
 
 ### Requirement: The start follows the clock until the host chooses the range
 While the host has chosen nothing in the range (no day, no end hour or minute, no change to the start), the
@@ -201,17 +202,17 @@ dealt with after joining (capability `photo-access`).
 ### Requirement: The creator joins through the same join screen as every guest
 While the event is being created the screen SHALL show that it is working, keeping the host in place.
 On success the host SHALL be taken to the join screen for the new event (capability `join-event`) with
-its date range preselected as the full event window, and SHALL become a member only by confirming
-there. The host SHALL be bound by the event's window exactly like any guest. Abandoning that join SHALL
+the event's own dates preselected as the range they share, and SHALL become a member only by confirming
+there. The host SHALL be bound by the same range rule as any guest (capability `join-event`). Abandoning that join SHALL
 leave the host in no event; the unused event is removed with its lifetime (capability `event-lifetime`).
 
 #### Scenario: A created event opens its join screen
 - **WHEN** the host taps Create and the event is created
-- **THEN** the join screen for that event opens with its name and the full event window preselected, and the host is not a member until they tap Join
+- **THEN** the join screen for that event opens with its name and the event's own dates preselected, and the host is not a member until they tap Join
 
 #### Scenario: The host gets no exemption from the window
-- **WHEN** the host, on the join screen of the event they just created, tries to share from before the event's start or until after its end
-- **THEN** the shared range is held to the event's start and end exactly as for any guest
+- **WHEN** the host, on the join screen of the event they just created, tries to share a range longer than 30 days or one that does not overlap the event's dates
+- **THEN** the calendar does not allow it, exactly as for any guest
 
 #### Scenario: Cancelling after creating leaves the host in no event
 - **WHEN** the host cancels on the join screen of the event they just created

@@ -187,6 +187,16 @@ and a photo received in a different event than the one the member joins.
 - **THEN** none of the album's photos that carry the SnapSync mark is shared as theirs — kept out as on iPhone,
   not by their folder
 
+#### Scenario: A received photo from before the event is recognised after a reinstall
+- **WHEN** another member shared photos from the day before the event's start, this member received them, and
+  then reinstalls the app and rejoins with a range that also starts the day before
+- **THEN** those received photos are not shared as theirs, and no other member receives them a second time
+
+#### Scenario: A received photo from before the event added to a limited selection is not shared back
+- **WHEN** a member whose photo access is limited to a selection reinstalls the app, rejoins, and later adds to
+  their selection a received photo dated before the event's start that carries the SnapSync mark
+- **THEN** it is not shared as theirs, whatever its date
+
 #### Scenario: A rejoin that cannot reach the event shares nothing yet
 - **WHEN** a member reinstalls the app and joins the same event again while the event's photos cannot be read
 - **THEN** none of their photos is shared until the event's photos have been read, and once they have, the

@@ -264,7 +264,8 @@ class JoinGateIntegrationTest {
     @Test
     @Verifies(
         spec = "join-event",
-        requirement = "The shared capture range always has a lower bound inside the event window",
+        requirement = "The shared capture range is always bounded and chosen by the member",
+        scenario = "A range that breaks the rules is refused",
     )
     fun a_hostile_autoJoin_deeplink_cannot_widen_the_membership_below_the_event_start() = rigTest {
         // THE attack the old floor closed, proven end-to-end through the real stack.
