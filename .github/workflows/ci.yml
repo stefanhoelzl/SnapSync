@@ -644,10 +644,15 @@ jobs:
           - platform: android
             runs-on: ubuntu-26.04
     runs-on: ${{ matrix.runs-on }}
-    # `actions: write`: on main the iOS cell reclaims its superseded ~/.konan and settled-simulator entries.
+    # `actions: write`: on main the iOS cell reclaims its superseded settled-simulator entries.
     permissions:
       contents: read
       actions: write
+    # Gradle's cache: the build job's of the same OS — `ios-build`'s on macOS, `build`'s on Linux — read only. Each cell
+    # resolves nearly the same dependencies and transforms as that job, and a writer of its own would only store a
+    # second copy (~1.4 GB per cell of the repository's 10 GB, whose eviction then took the settled simulator).
+    env:
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: ${{ matrix.platform == 'ios' && 'ios-build' || 'build' }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v6
@@ -655,6 +660,8 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
       # The real backend the journeys run against, served locally on the address the `local` deployment bakes in.
       - uses: denoland/setup-deno@v2
         with:
@@ -663,12 +670,13 @@ jobs:
       # iOS: first the port contracts whose bindings live in the APP — the simulator app is the only simulator process
       # `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real full grant
       # (IOS_SIM_APP) — then the journeys, on the same app (`scripts/sim-contracts`, which builds, boots and runs).
+      # ios-build's family, read only: its simulator tests build the iosSimulatorArm64 library caches this build links
+      # against, so a family of its own would be a second ~0.9 GB copy.
       - name: Restore Kotlin/Native (~/.konan)
-        id: konan
         if: matrix.platform == 'ios'
         uses: ./.github/actions/konan-restore
         with:
-          family: sim-journeys
+          family: device
       # The simulator, already past its first boot: the image's iPhone 17 (`scripts/lib/sim.sh`), its device directory
       # cached as `scripts/sim-settle` leaves it — booted, the unneeded daemons disabled, Photos' library created, shut
       # down clean, no app and no photo. A first boot on the runner otherwise spent ~4.5 min at a load of 100-480
@@ -743,12 +751,6 @@ jobs:
           mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
           sudo mdutil -a -i off >/dev/null || true
           scripts/sim-contracts
-      - name: Save Kotlin/Native (~/.konan)
-        if: matrix.platform == 'ios' && github.ref == 'refs/heads/main'
-        uses: ./.github/actions/konan-save
-        with:
-          family: sim-journeys
-          key: ${{ steps.konan.outputs.key }}
 
       # Android: the rig RELEASE build (R8 as the store build runs it, so every journey exercises R8 output) baked for
       # the local backend, and the journeys' classpath, built BEFORE the emulator boots and with the daemons stopped
