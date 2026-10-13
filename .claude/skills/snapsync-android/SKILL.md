@@ -202,7 +202,7 @@ of `ci.yml`:
 ./gradlew androidPlatformTest            # boots its OWN managed emulator (pixel6, API 36), runs, tears it down
 ANDROID_SERIAL=emulator-5554 ./gradlew :adapter:android:connectedAndroidDeviceTest   # on the emulator you booted
 # reports: adapter/android/build/reports/androidTests/ ; either way the build serves scripts/transfer-fixture.py
-# on the host (build/transfer-fixture.log), reached from the emulator as http://10.0.2.2:8123
+# on the host (build/transfer-fixture.log), reached from the emulator as http://10.0.2.2:<a port each build chooses>
 
 ./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
     -Psnapsync.rig=true -Psnapsync.deployment=local && ./gradlew --stop

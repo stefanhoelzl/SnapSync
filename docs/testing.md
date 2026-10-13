@@ -901,8 +901,9 @@ ASCII apostrophe or a comma in a backtick name is never representable in DEX: wr
 them on a Gradle-managed Pixel 6 / API 36 emulator it boots and tears down itself (`snapsync.android`,
 `android.testoptions.manageddevices.emulator.gpu=swangle_indirect`); `./gradlew connectedAndroidDeviceTest` on an
 emulator you booted. Either way the build serves `scripts/transfer-fixture.py` on the host for the run and passes the
-address an emulator reaches it at (`http://10.0.2.2:8123`) as the `fixture` instrumentation argument the upload
-contract needs.
+address an emulator reaches it at (`http://10.0.2.2:<port>`) as the `fixture` instrumentation argument the upload
+contract needs. The port is a free one each build chooses, never a fixed one: every checkout on a host shares its
+loopback, and a fixed port let one build's device tests exchange with another build's fixture until that build ended.
 
 **A force-stop is checked from outside the process** (`scripts/android-force-stop-check`, non-gating — no CI job runs
 it): a contract clause runs inside the app, and a force-stop kills the process that would observe it. The script
