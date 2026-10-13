@@ -1,5 +1,6 @@
 package app.snapsync.keychain.contract
 
+import app.snapsync.attest.IosDeviceIntegrity
 import app.snapsync.attest.SystemAppAttestApi
 import app.snapsync.attest.contract.RecordingAppAttestApi
 import app.snapsync.attest.contract.integrityInState
@@ -19,6 +20,7 @@ import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
+import app.snapsync.keychain.IosSecureStore
 import app.snapsync.keychain.SystemKeychainApi
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.SecureStore
@@ -34,6 +36,7 @@ import platform.Foundation.NSProcessInfo
 internal class DeviceKeychainBinding(private val recorder: Recorder) : Binding<SecureStoreState, SecureStore> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosSecureStore::class
     override val reaches = setOf(
         SecureStoreState.EMPTY,
         SecureStoreState.HOLDING_BACKGROUND_READABLE,
@@ -57,6 +60,7 @@ internal class DeviceKeychainBinding(private val recorder: Recorder) : Binding<S
 internal class DeviceIntegrityBinding(private val recorder: Recorder) : Binding<DeviceIntegrityState, DeviceIntegrity> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosDeviceIntegrity::class
     override val reaches = setOf(DeviceIntegrityState.AVAILABLE)
 
     override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> {

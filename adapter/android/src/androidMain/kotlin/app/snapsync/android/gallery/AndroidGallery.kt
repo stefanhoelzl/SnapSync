@@ -10,6 +10,8 @@ import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
@@ -45,6 +47,7 @@ import kotlinx.coroutines.withContext
  * - **Imports** rebuild a foreign photo in the event album's folder, or the camera folder when there is none
  *   ([MediaStoreImport]): pending, recorded, written, published.
  */
+@NeverAnswers(Never(member = "changeToken", answer = "null"))
 class AndroidGallery(
     context: Context,
     private val permission: AndroidPhotoPermission,
@@ -98,14 +101,19 @@ class AndroidGallery(
         return result
     }
 
-    override suspend fun changeToken(): LibraryChangeToken? = withContext(Dispatchers.IO) {
-        runCatchingCancellable {
-            VolumeGenerations(
-                MediaStore.getExternalVolumeNames(appContext).sorted().associateWith { volume ->
-                    MediaStore.getVersion(appContext, volume) to MediaStore.getGeneration(appContext, volume)
-                },
-            )
-        }.onFailure { log.w(it) { "the media provider gave no change token" } }.getOrNull()
+    /**
+     * Never `null`: a volume the media provider cannot read — unmounted between being listed and read — is left out, so
+     * the token differs from the last one and the caller re-walks, as after any change.
+     */
+    override suspend fun changeToken(): LibraryChangeToken = withContext(Dispatchers.IO) {
+        VolumeGenerations(
+            MediaStore.getExternalVolumeNames(appContext).sorted().mapNotNull { volume ->
+                runCatchingCancellable {
+                    volume to (MediaStore.getVersion(appContext, volume) to MediaStore.getGeneration(appContext, volume))
+                }
+                    .onFailure { log.w(it) { "the media provider gave no generation for $volume" } }.getOrNull()
+            }.toMap(),
+        )
     }
 
     /** Open the observer while observation is on and the grant is partial; close it otherwise. */

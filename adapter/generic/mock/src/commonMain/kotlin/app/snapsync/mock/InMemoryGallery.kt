@@ -103,6 +103,12 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         val suffix = if (attempt == 1) "" else "-$attempt"
         val createdLocalId = PlatformAssetId("imported-${correlation.replace('/', '-')}$suffix")
         handlers.onImportPlaceholder.deliver(ImportPlaceholder(correlation, createdLocalId))
+        // The library takes a staged file as it ingests it, before decoding it: an undecodable one is gone either way.
+        if (state.undecodable) {
+            return settle(
+                ImportOutcome.Failed("the staged file cannot be decoded", consumedResources = true, placeholder = createdLocalId),
+            )
+        }
         state.answers.beforeCommit(correlation)?.let {
             return settle(ImportOutcome.Failed(it, placeholder = createdLocalId))
         }
@@ -123,12 +129,14 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     override fun access(): LibraryGrant = state.access.value
 
     /**
-     * An in-memory library holds no bytes and there is no file to write, so an export of a resource it still holds is
-     * answered as done and one it no longer holds as failed — the platform's answers, with nothing on a disk.
+     * An export of a resource the library still holds, by its own handle, writes that resource's bytes to [to] — the
+     * stand-in bytes an in-memory library keeps, its file name — kept in [LibraryState.exported]. Any other
+     * handle, or a resource no longer held, cannot be produced, and nothing is written.
      */
     override suspend fun export(resource: GalleryResourceHandle, to: String): WriteOutcome {
         val asset = (resource as? InMemoryResource)?.asset ?: return WriteOutcome.Failed("$resource is not this library's")
         return if (state.library.value.any { it.id == asset }) {
+            state.exported += to to asset.value.encodeToByteArray()
             WriteOutcome.Ok
         } else {
             WriteOutcome.Failed("$asset is no longer in the library")
@@ -179,6 +187,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override suspend fun createAlbum(title: String): PlatformAlbumId? {
+        if (state.refusesWrites) return null
         return state.locked {
             val id = "album-${state.albumCounter++}"
             state.created[id] = LibraryState.Album(title)
@@ -215,7 +224,13 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         return state.access.value
     }
 
-    override suspend fun changeToken(): LibraryChangeToken = Token(state.library.value)
+    override suspend fun changeToken(): LibraryChangeToken? = if (state.withholdsToken) {
+        null
+    } else {
+        Token(
+            state.library.value,
+        )
+    }
 
     private fun allAlbums(): List<Pair<GalleryAlbum, Set<PlatformAssetId>>> = createdAlbums() +
         state.userAlbums.value.map { (title, members) -> GalleryAlbum(PlatformAlbumId("user-album:$title"), title) to members }

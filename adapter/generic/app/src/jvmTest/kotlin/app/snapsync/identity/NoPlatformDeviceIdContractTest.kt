@@ -18,6 +18,7 @@ class NoPlatformDeviceIdContractTest {
     private val binding = object : Binding<PlatformDeviceIdState, PlatformDeviceId> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = NoPlatformDeviceId::class
         override val reaches = setOf(PlatformDeviceIdState.SILENT)
         override fun create(state: PlatformDeviceIdState, clauseId: String, log: CallLog): Entered<PlatformDeviceId> =
             if (state == PlatformDeviceIdState.SILENT) {

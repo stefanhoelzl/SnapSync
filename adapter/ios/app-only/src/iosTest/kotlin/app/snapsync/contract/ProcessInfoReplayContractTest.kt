@@ -26,6 +26,7 @@ class ProcessInfoReplayContractTest {
     private val locked = object : Binding<ProcessInfoState, ProcessInfo> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosProcessInfo::class
         override val reaches = setOf(ProcessInfoState.LOCKED)
         override val precondition = "LOCKED"
 

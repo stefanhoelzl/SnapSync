@@ -26,12 +26,16 @@ internal class InMemoryDeviceIntegrity(
     private val available: Boolean = true,
     /** The keys the device's Secure Enclave holds — shared by every process face of one device. */
     private val keys: EnclaveKeys = EnclaveKeys(),
+    /** Handles of keys the enclave holds but will not sign with. */
+    private val unusable: Set<String> = emptySet(),
 ) : DeviceIntegrity {
 
     // Refusals are values, as the real service's are (`DeviceIntegrityContract`): an unavailable process has no
     // App Attest to prove WITH, and no key but one this service created can sign.
     override suspend fun prove(challenge: String, handle: String?): ProveResult = when {
         !available -> ProveResult.Refused.NotAvailable("App Attest: unsupported in this process")
+        handle != null && handle in unusable ->
+            ProveResult.Refused.Failed("App Attest generateAssertion: the Secure Enclave will not use $handle")
         handle == null -> keys.create().let { key ->
             ProveResult.Ok(
                 Proof(key, ProofFormat.APP_ATTEST, "attestation:$key:$challenge".encodeToByteArray(), MOCK_CHAIN),

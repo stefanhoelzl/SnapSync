@@ -23,6 +23,7 @@ import app.snapsync.wire.models.EventCreate
 import app.snapsync.wire.models.Manifest
 import app.snapsync.wire.models.ManifestAsset
 import app.snapsync.wire.models.ManifestResource
+import app.snapsync.wire.models.Proof
 import app.snapsync.wire.models.Role
 import app.snapsync.wire.runtime.WireResponse
 import kotlin.reflect.KClass
@@ -90,7 +91,7 @@ class EdgeSubject<P>(
      */
     private val edge: BackendSetup? = null,
     /** A key the binding attests with; required of a binding that reaches [BackendState.ATTESTABLE]. */
-    val attester: SoftwareAttester? = null,
+    val attester: Attester? = null,
     /** The client under contract as another [ClientIdentity] declares itself — a token a clause obtained, say. */
     private val reidentify: ((ClientIdentity) -> P)? = null,
 ) {
@@ -137,14 +138,15 @@ fun backendCell(operationId: String, outcome: KClass<out Reply>): String {
 }
 
 /**
- * A key the binding attests with as an Android device's KeyMint does in software — what the local rig's `any` policy
- * accepts, and what proves the route and its verifier, never hardware trust.
+ * A key the binding attests with, in the proofs its backend verifies: an Android device's software KeyMint attestation
+ * for the real `api/` (what the local rig's `any` policy accepts — the route and its verifier, never hardware trust), or
+ * the in-memory integrity's proofs for the backend mock.
  */
-interface SoftwareAttester {
-    /** The key's attestation chain over [challenge], leaf first, each certificate DER — what an Android device mints with. */
-    fun attest(challenge: String): List<ByteArray>
+interface Attester {
+    /** The key's proof over [challenge] — what a mint sends. */
+    fun proof(challenge: String): Proof
 
-    /** The key's ECDSA P-256 signature over [challenge]'s UTF-8 bytes, DER — what a renewal sends. */
+    /** The key's signature over [challenge] — what a renewal sends, base64-encoded. */
     fun sign(challenge: String): ByteArray
 }
 

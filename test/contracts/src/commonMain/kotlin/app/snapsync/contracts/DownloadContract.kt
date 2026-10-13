@@ -42,6 +42,9 @@ enum class DownloadState {
     /** Any network, on a platform whose queue refuses, as it is asked, a URL it cannot fetch (Android's DownloadManager). */
     REFUSES_UNFETCHABLE,
 
+    /** Any network, on a platform whose URL parser refuses, as it is asked, a URL it cannot parse (iOS's `NSURL`). */
+    REFUSES_MALFORMED,
+
     /**
      * A transfer that ended while the app was gone, whose end the operating system relaunched the app to deliver — the
      * relaunch held by the binding ([DownloadUnderTest.relaunch]). A device's, recorded across the two processes: no CI
@@ -403,6 +406,27 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
                 StartResult.NotStarted,
                 download.start("ftp://contract.invalid/$id", NO_HEADERS, "d-$id", TransferNetwork.ANY),
                 "a scheme the queue cannot fetch is refused as it is asked, never started to fail later",
+            )
+            transferSettle()
+            assertEquals(emptyList(), owner.events, "a transfer never started tells its owner nothing")
+        }
+
+        clause(
+            "A_MALFORMED_URL_IS_NOT_STARTED",
+            DownloadState.REFUSES_MALFORMED,
+            covers = cells {
+                on<Download>().answers(Download::start).with(StartResult.NotStarted)
+            },
+        ) { subject ->
+            val id = "A_MALFORMED_URL_IS_NOT_STARTED"
+            val owner = ClauseDownloadHandlers(subject.readTemp)
+            val download = subject.open()
+            download.listen(owner.handlers)
+            assertEquals(
+                StartResult.NotStarted,
+                // An unbalanced bracket opens an IPv6 host that never closes: no parser makes a request of it.
+                download.start("http://[$id", NO_HEADERS, "d-$id", TransferNetwork.ANY),
+                "a URL the platform cannot parse is refused as it is asked, never started to fail later",
             )
             transferSettle()
             assertEquals(emptyList(), owner.events, "a transfer never started tells its owner nothing")

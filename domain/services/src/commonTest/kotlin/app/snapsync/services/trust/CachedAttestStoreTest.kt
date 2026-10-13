@@ -10,8 +10,7 @@ import kotlin.test.assertTrue
 /**
  * The in-memory token copy (capability `privacy-security`): what it saves, and — the part that matters —
  * that it never serves a token this process has replaced, and that a write by the OTHER process is seen at
- * every re-read. The contract clauses themselves (read-back, clear keeps the keyId) are run against the
- * cached composition in `AttestContractBindingsTest`.
+ * every re-read — and that it keeps every promise of the store it fronts: a write reads back, a clear keeps the keyId.
  */
 class CachedAttestStoreTest {
 
@@ -123,6 +122,16 @@ class CachedAttestStoreTest {
 
         assertNull(item.held)
         assertNull(cached.token())
+    }
+
+    @Test
+    fun `clearing the token keeps the keyId`() {
+        val item = SharedItem(held = "T1", heldKeyId = "k1")
+        val cached = CachedAttestStore(item)
+
+        cached.clearToken()
+        assertNull(cached.token(), "a rejected token is gone")
+        assertEquals("k1", cached.keyId(), "the key renews it")
     }
 
     @Test

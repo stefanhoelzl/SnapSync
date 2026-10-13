@@ -41,6 +41,7 @@ private class ToyBinding(
 ) : Binding<Toy, Switch> {
     override val host = Host.JVM
     override val kind = BindingKind.Fake
+    override val adapter = FixedClock::class
     override fun create(state: Toy, clauseId: String, log: CallLog) = answer(state, log)
 }
 
@@ -112,6 +113,7 @@ class RunnerTest {
             override val host = Host.IOS_DEVICE_APP
             override val kind = BindingKind.Replay
             override val reaches = setOf(Toy.ON)
+            override val adapter = Replayer::class
             override fun create(
                 state: Toy,
                 clauseId: String,
@@ -157,12 +159,39 @@ class RunnerTest {
 
     @Test
     fun `a declared cell that never occurred is Failed naming it`() {
-        val bare = unrecorded(setOf(Toy.ON, Toy.OFF)) { s -> Entered.Ready(Switch(s == Toy.ON)) }
+        // The proxy is built, so the binding wraps what it declares; the clause reads the bare clock beside it.
+        val bare = ToyBinding(setOf(Toy.ON, Toy.OFF)) { s, log ->
+            FixedClock.recorded(log)
+            Entered.Ready(Switch(s == Toy.ON))
+        }
         val results = run(ToyContract, bare)
         assertTrue(
             results.all { it.outcome == Outcome.Failed("declared Clock.now → returns never occurred") },
             results.table(),
         )
+    }
+
+    @Test
+    fun `a binding that wraps no adapter is Failed`() {
+        val bare = unrecorded(setOf(Toy.ON, Toy.OFF)) { s -> Entered.Ready(Switch(s == Toy.ON)) }
+        val results = run(ToyContract, bare)
+        val expected = Outcome.Failed("the binding declares adapter FixedClock but its proxies wrapped []")
+        assertTrue(results.all { it.outcome == expected }, results.table())
+    }
+
+    @Test
+    fun `a binding that wraps another class than it declares is Failed`() {
+        val other = object : Clock by FixedClock {}
+        val impostor = ToyBinding(setOf(Toy.ON, Toy.OFF)) { s, log ->
+            Entered.Ready(Switch(s == Toy.ON, other.recorded(log)))
+        }
+        val results = run(ToyContract, impostor)
+        val named = { o: Outcome ->
+            (o as? Outcome.Failed)?.message?.startsWith(
+                "the binding declares adapter FixedClock",
+            )
+        }
+        assertTrue(results.all { named(it.outcome) == true }, results.table())
     }
 
     @Test

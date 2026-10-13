@@ -32,6 +32,7 @@ class IosPhotoKitUploadReplayContractTest {
     private val binding = object : Binding<OsUploadQueueState, QueueUnderTest> {
         override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
         override val kind = BindingKind.Replay
+        override val adapter = IosPhotoKitUploadPlatform::class
         override val reaches = setOf(
             OsUploadQueueState.IDLE,
             OsUploadQueueState.AT_CAP,

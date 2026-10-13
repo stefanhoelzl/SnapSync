@@ -32,7 +32,7 @@ internal class CompletionProxy(private val inner: Completion, private val r: Rec
 }
 
 /** [Download] as its clause's [CallLog] sees it. */
-fun Download.recorded(log: CallLog): Download = DownloadProxy(this, log)
+fun Download.recorded(log: CallLog): Download = DownloadProxy(log.wraps(this), log)
 
 internal class DownloadProxy(private val inner: Download, log: CallLog) : Download {
     private val r = log.recorder("Download")
@@ -58,7 +58,7 @@ internal class DownloadProxy(private val inner: Download, log: CallLog) : Downlo
 }
 
 /** [OsUploadQueue] as its clause's [CallLog] sees it. */
-fun OsUploadQueue.recorded(log: CallLog): OsUploadQueue = OsUploadQueueProxy(this, log)
+fun OsUploadQueue.recorded(log: CallLog): OsUploadQueue = OsUploadQueueProxy(log.wraps(this), log)
 
 internal class OsUploadQueueProxy(private val inner: OsUploadQueue, log: CallLog) : OsUploadQueue {
     private val r = log.recorder("OsUploadQueue")
@@ -72,7 +72,7 @@ internal class OsUploadQueueProxy(private val inner: OsUploadQueue, log: CallLog
 }
 
 /** [TransferSession] as its clause's [CallLog] sees it. */
-fun TransferSession.recorded(log: CallLog): TransferSession = TransferSessionProxy(this, log)
+fun TransferSession.recorded(log: CallLog): TransferSession = TransferSessionProxy(log.wraps(this), log)
 
 internal class TransferSessionProxy(private val inner: TransferSession, log: CallLog) : TransferSession {
     private val r = log.recorder("TransferSession")
@@ -97,7 +97,7 @@ internal class TransferSessionProxy(private val inner: TransferSession, log: Cal
 }
 
 /** [Wake] as its clause's [CallLog] sees it. */
-fun Wake.recorded(log: CallLog): Wake = WakeProxy(this, log)
+fun Wake.recorded(log: CallLog): Wake = WakeProxy(log.wraps(this), log)
 
 internal class WakeProxy(private val inner: Wake, log: CallLog) : Wake {
     private val r = log.recorder("Wake")
@@ -113,7 +113,7 @@ internal class WakeProxy(private val inner: Wake, log: CallLog) : Wake {
 }
 
 /** [BackgroundTime] as its clause's [CallLog] sees it. */
-fun BackgroundTime.recorded(log: CallLog): BackgroundTime = BackgroundTimeProxy(this, log)
+fun BackgroundTime.recorded(log: CallLog): BackgroundTime = BackgroundTimeProxy(log.wraps(this), log)
 
 internal class BackgroundTimeProxy(private val inner: BackgroundTime, log: CallLog) : BackgroundTime {
     private val r = log.recorder("BackgroundTime")
@@ -129,7 +129,7 @@ internal class BackgroundTimeProxy(private val inner: BackgroundTime, log: CallL
 }
 
 /** [ExtensionRegistry] as its clause's [CallLog] sees it. */
-fun ExtensionRegistry.recorded(log: CallLog): ExtensionRegistry = ExtensionRegistryProxy(this, log)
+fun ExtensionRegistry.recorded(log: CallLog): ExtensionRegistry = ExtensionRegistryProxy(log.wraps(this), log)
 
 internal class ExtensionRegistryProxy(private val inner: ExtensionRegistry, log: CallLog) : ExtensionRegistry {
     private val r = log.recorder("ExtensionRegistry")

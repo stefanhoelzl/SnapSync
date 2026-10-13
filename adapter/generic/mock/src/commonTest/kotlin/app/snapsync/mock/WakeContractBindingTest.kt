@@ -21,6 +21,7 @@ class WakeContractBindingTest {
     private val binding = object : Binding<WakeState, ScheduledWakes> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = InMemoryWake::class
         override val reaches = setOf(WakeState.EMPTY)
 
         override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {

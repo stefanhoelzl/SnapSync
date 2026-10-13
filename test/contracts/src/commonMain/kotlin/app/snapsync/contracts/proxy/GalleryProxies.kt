@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
 
 /** [GalleryReader] as its clause's [CallLog] sees it. */
-fun GalleryReader.recorded(log: CallLog): GalleryReader = GalleryReaderProxy(this, log)
+fun GalleryReader.recorded(log: CallLog): GalleryReader = GalleryReaderProxy(log.wraps(this), log)
 
 internal class GalleryReaderProxy(private val inner: GalleryReader, log: CallLog) : GalleryReader {
     private val r = log.recorder("GalleryReader")
@@ -47,7 +47,9 @@ internal class GalleryReaderProxy(private val inner: GalleryReader, log: CallLog
 }
 
 /** [LibraryChangeTokenRead] as its clause's [CallLog] sees it. */
-fun LibraryChangeTokenRead.recorded(log: CallLog): LibraryChangeTokenRead = LibraryChangeTokenReadProxy(this, log)
+fun LibraryChangeTokenRead.recorded(
+    log: CallLog,
+): LibraryChangeTokenRead = LibraryChangeTokenReadProxy(log.wraps(this), log)
 
 internal class LibraryChangeTokenReadProxy(private val inner: LibraryChangeTokenRead, log: CallLog) :
     LibraryChangeTokenRead {
@@ -64,7 +66,7 @@ internal class LibraryChangeTokenReadProxy(private val inner: LibraryChangeToken
 }
 
 /** [GalleryImport] as its clause's [CallLog] sees it. */
-fun GalleryImport.recorded(log: CallLog): GalleryImport = GalleryImportProxy(this, log)
+fun GalleryImport.recorded(log: CallLog): GalleryImport = GalleryImportProxy(log.wraps(this), log)
 
 internal class GalleryImportProxy(private val inner: GalleryImport, log: CallLog) : GalleryImport {
     private val r = log.recorder("GalleryImport")
@@ -76,7 +78,7 @@ internal class GalleryImportProxy(private val inner: GalleryImport, log: CallLog
  * [Gallery] as its clause's [CallLog] sees it. A member it inherits from another port is recorded under THAT port, as
  * the grid counts it — so it delegates to those ports' own proxies.
  */
-fun Gallery.recorded(log: CallLog): Gallery = GalleryProxy(this, log)
+fun Gallery.recorded(log: CallLog): Gallery = GalleryProxy(log.wraps(this), log)
 
 internal class GalleryProxy(private val inner: Gallery, log: CallLog) :
     Gallery,

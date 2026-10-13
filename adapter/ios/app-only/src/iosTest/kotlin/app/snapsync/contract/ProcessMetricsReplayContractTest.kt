@@ -25,6 +25,7 @@ class ProcessMetricsReplayContractTest {
     private val binding = object : Binding<ProcessMetricsState, ProcessMetrics> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = MetricKitProcessMetrics::class
         override val reaches = setOf(ProcessMetricsState.PROVIDER_DELIVERS)
 
         override fun create(state: ProcessMetricsState, clauseId: String, log: CallLog): Entered<ProcessMetrics> {

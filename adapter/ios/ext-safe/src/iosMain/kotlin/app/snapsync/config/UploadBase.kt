@@ -24,4 +24,6 @@ package app.snapsync.config
  * `buildUploadConfig` treats a blank host exactly as it treats an absent one — nothing to do — so a
  * misconfigured build uploads nowhere rather than somewhere unintended.
  */
-fun bakedUploadBase(): String = deploymentValue("uploadBase") ?: ""
+fun bakedUploadBase(
+    deployment: DeploymentValues = DeploymentValues.main,
+): String = deploymentValue("uploadBase", deployment) ?: ""

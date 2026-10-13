@@ -3,6 +3,8 @@
 package app.snapsync.config
 
 import app.snapsync.logging.appMarketingVersion
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.Platform
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
@@ -21,14 +23,21 @@ import platform.posix.utsname
  * The [BuildInfo] port over THIS process's bundle — the generated `Deployment.plist` both bundles carry, the bundle's
  * own version — and the running OS and device. Each process builds its own: the app and the upload extension read
  * their own bundle, so neither can bind the other's answer. Every value is read on first use, once, as a constant of
- * the running build.
+ * the running build. [bundle] is this process's own, the main bundle, everywhere but a contract binding, which hands in a
+ * bundle it built.
  */
-class IosBuildInfo : BuildInfo {
+@NeverAnswers(
+    Never(member = "platform", answer = "Platform.ANDROID"),
+)
+class IosBuildInfo(private val bundle: NSBundle = NSBundle.mainBundle) : BuildInfo {
+    private val deployment by lazy {
+        if (bundle == NSBundle.mainBundle) DeploymentValues.main else DeploymentValues.of(bundle)
+    }
     override val appVersion: String by lazy { appMarketingVersion() }
     override val buildNumber: String by lazy { bundleValue("CFBundleVersion") }
-    override val uploadHost: String by lazy { bakedUploadBase() }
-    override val store: StoreLink? by lazy { bakedAppStoreUrl()?.let { StoreLink(it, StoreKind.APP_STORE) } }
-    override val pushEnvironment: String by lazy { bakedApnsEnv() }
+    override val uploadHost: String by lazy { bakedUploadBase(deployment) }
+    override val store: StoreLink? by lazy { bakedAppStoreUrl(deployment)?.let { StoreLink(it, StoreKind.APP_STORE) } }
+    override val pushEnvironment: String by lazy { bakedApnsEnv(deployment) }
     override val osVersion: String by lazy { NSProcessInfo.processInfo.operatingSystemVersionString }
     override val deviceModel: String by lazy { hardwareModel() }
 
@@ -36,12 +45,12 @@ class IosBuildInfo : BuildInfo {
      * `?` deliberately, never a guess: the value is absent only on a build with no readable deployment, which also
      * carries no DSN (the resolver derives both from one channel), so no report is ever filed under it.
      */
-    override val reporterEnvironment: String by lazy { deploymentValue("sentryEnvironment") ?: "?" }
-    override val dsn: String? by lazy { bakedSentryDsn() }
+    override val reporterEnvironment: String by lazy { deploymentValue("sentryEnvironment", deployment) ?: "?" }
+    override val dsn: String? by lazy { bakedSentryDsn(deployment) }
     override val platform: Platform = Platform.IOS
 
     /** The main bundle's id — an extension's main bundle is its `.appex` — or `null` where there is none (the simulator test executable). */
-    override val processId: String? by lazy { NSBundle.mainBundle.bundleIdentifier?.takeIf { it.isNotBlank() } }
+    override val processId: String? by lazy { bundle.bundleIdentifier?.takeIf { it.isNotBlank() } }
 }
 
 /** A key of the process's own bundle, `?` when it carries none — never Kotlin's `"null"`, which reads as a value. */

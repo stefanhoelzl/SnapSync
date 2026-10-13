@@ -63,6 +63,7 @@ class AndroidGalleryContractTest {
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGalleryReader::class
         override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(
             GalleryReaderState.GRANTED_SEEDED,
@@ -77,7 +78,7 @@ class AndroidGalleryContractTest {
             val ids: Set<PlatformAssetId> = when (state) {
                 GalleryReaderState.NO_GRANT, GalleryReaderState.REFUSING_WRITES ->
                     return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
-                GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED ->
+                GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED, GalleryReaderState.PARTIAL ->
                     return Entered.Unreachable(
                         "this binding holds the full grant: a grant short of it is another APK's",
                     )
@@ -107,6 +108,7 @@ class AndroidGalleryContractTest {
     private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGallery::class
         override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(GalleryState.GRANTED)
 
@@ -133,6 +135,7 @@ class AndroidGalleryContractTest {
     private val folderAlbums = object : Binding<FolderAlbumState, FolderAlbums> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGallery::class
         override val grant = LibraryGrant.GRANTED
         override val reaches = setOf(FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED)
 
@@ -182,6 +185,7 @@ class AndroidGalleryContractTest {
     private val photoAccess = object : Binding<PhotoAccessState, PhotoAccess> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGallery::class
         override val reaches = setOf(PhotoAccessState.GRANTED)
 
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {

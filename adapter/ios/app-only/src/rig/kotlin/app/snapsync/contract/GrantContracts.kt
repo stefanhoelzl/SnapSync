@@ -18,6 +18,7 @@ import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.simulatorAppContract
+import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.permission.PhotoLibraryPermission
@@ -25,6 +26,9 @@ import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import co.touchlab.kermit.Logger
+import platform.posix.usleep
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * The simulator app's photo-library bindings under the grants short of full: one launch holds one grant, so the
@@ -41,7 +45,10 @@ internal fun otherGrantContracts(): List<InAppContract> = listOf(
     simulatorAppContract(PhotoAccessContract, SimAppPartialPhotoAccessBinding(), ::partialRefusal),
     simulatorAppContract(GalleryContract, SimAppRefusedGalleryBinding(), ::refusedRefusal),
     simulatorAppContract(GalleryReaderContract, SimAppNeverAskedGalleryReaderBinding(), ::neverAskedRefusal),
+    simulatorAppContract(GalleryReaderContract, SimAppNeverAskedGalleryAccessBinding(), ::neverAskedRefusal),
+    simulatorAppContract(GalleryReaderContract, SimAppPartialGalleryReaderBinding(), ::partialRefusal),
     simulatorAppContract(PhotoAccessContract, SimAppNeverAskedPhotoAccessBinding(), ::neverAskedRefusal),
+    simulatorAppContract(GalleryContract, SimAppNeverAskedInBackgroundGalleryBinding(), ::neverAskedRefusal),
 )
 
 private fun partialRefusal() = grantRefusal(LibraryGrant.LIMITED)
@@ -67,6 +74,7 @@ private fun grantRefusal(grant: LibraryGrant): String? = hostRefusal() ?: curren
 class SimAppPartialGalleryBinding : Binding<GalleryState, GalleryChange> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
     override val grant = LibraryGrant.LIMITED
     override val reaches = setOf(GalleryState.PARTIAL)
 
@@ -84,6 +92,7 @@ class SimAppPartialGalleryBinding : Binding<GalleryState, GalleryChange> {
 class SimAppPartialPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
     override val grant = LibraryGrant.LIMITED
     override val reaches = setOf(PhotoAccessState.PARTIAL)
 
@@ -99,6 +108,7 @@ class SimAppPartialPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
 class SimAppRefusedGalleryBinding : Binding<GalleryState, GalleryChange> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
     override val grant = LibraryGrant.DENIED
     override val reaches = setOf(GalleryState.REFUSED)
 
@@ -114,6 +124,7 @@ class SimAppRefusedGalleryBinding : Binding<GalleryState, GalleryChange> {
 class SimAppNeverAskedGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGalleryReader::class
     override val grant = LibraryGrant.NOT_DETERMINED
     override val reaches = setOf(GalleryReaderState.NEVER_ASKED)
 
@@ -132,12 +143,78 @@ class SimAppNeverAskedGalleryReaderBinding : Binding<GalleryReaderState, SeededL
 class SimAppNeverAskedPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
     override val grant = LibraryGrant.NOT_DETERMINED
     override val reaches = setOf(PhotoAccessState.NEVER_ASKED)
 
     override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> =
         if (state in reaches) {
             Entered.Ready(PhotoAccess(photoAccessGallery().recorded(log)))
+        } else {
+            Entered.Unreachable("this launch was never asked for photo access")
+        }
+}
+
+/**
+ * The real [app.snapsync.gallery.IosGallery] in an app never asked for photo access and sent behind another — with no
+ * screen to ask on, so asking raises nothing and the grant is answered as it stands. The run sends the app to the
+ * background (`scripts/sim-contracts`, `?precondition=IN_BACKGROUND`); entering waits for that, holding background time
+ * so the process is not suspended under the clause.
+ */
+class SimAppNeverAskedInBackgroundGalleryBinding : Binding<GalleryState, GalleryChange> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
+    override val grant = LibraryGrant.NOT_DETERMINED
+    override val precondition = "IN_BACKGROUND"
+    override val reaches = setOf(GalleryState.NEVER_ASKED)
+
+    override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
+        if (state !in reaches) return Entered.Unreachable("this launch was never asked, and is sent to the background")
+        val hold = holdBackgroundTime()
+        val deadline = TimeSource.Monotonic.markNow() + BACKGROUND_WAIT
+        while (!appInBackground()) {
+            check(deadline.hasNotPassedNow()) { "the app was not sent to the background within $BACKGROUND_WAIT" }
+            usleep(POLL_MICROS)
+        }
+        return Entered.Ready(GalleryChange(contractGallery().recorded(log)) {}) {
+            releaseBackgroundTime(hold)
+        }
+    }
+
+    private companion object {
+        val BACKGROUND_WAIT = 30.seconds
+        const val POLL_MICROS = 100_000u
+    }
+}
+
+/** The real [IosGalleryReader] under a partial grant: it reads the grant as limited. */
+class SimAppPartialGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val adapter = IosGalleryReader::class
+    override val grant = LibraryGrant.LIMITED
+    override val reaches = setOf(GalleryReaderState.PARTIAL)
+
+    override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> =
+        if (state in reaches) {
+            Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log)))
+        } else {
+            Entered.Unreachable("this launch holds a partial grant")
+        }
+}
+
+/** The app's [IosGallery] read as a [GalleryReader] in an app never asked: its own grant read answers undetermined. */
+class SimAppNeverAskedGalleryAccessBinding : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val adapter = IosGallery::class
+    override val grant = LibraryGrant.NOT_DETERMINED
+    override val reaches = setOf(GalleryReaderState.NEVER_ASKED)
+
+    override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> =
+        if (state in reaches) {
+            Entered.Ready(SeededLibrary(contractGallery().recorded(log)))
         } else {
             Entered.Unreachable("this launch was never asked for photo access")
         }

@@ -41,6 +41,7 @@ class NetworkReplayContractTest {
     private val online = object : Binding<NetworkState, NetworkMonitor> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosNetworkMonitor::class
         override val reaches = setOf(NetworkState.ONLINE)
         override val precondition = "ONLINE"
         private val replay = ReplayBinding(precondition)
@@ -51,6 +52,7 @@ class NetworkReplayContractTest {
     private val offline = object : Binding<NetworkState, NetworkMonitor> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosNetworkMonitor::class
         override val reaches = setOf(NetworkState.OFFLINE)
         override val precondition = "OFFLINE"
         private val replay = ReplayBinding(precondition)
@@ -61,6 +63,7 @@ class NetworkReplayContractTest {
     private val restricted = object : Binding<NetworkState, NetworkMonitor> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosNetworkMonitor::class
         override val reaches = setOf(NetworkState.RESTRICTED)
         override val precondition = "RESTRICTED"
         private val replay = ReplayBinding(precondition)
@@ -71,6 +74,7 @@ class NetworkReplayContractTest {
     private val blocked = object : Binding<NetworkState, NetworkMonitor> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosNetworkMonitor::class
         override val reaches = setOf(NetworkState.BLOCKED)
         override val precondition = "BLOCKED"
         private val replay = ReplayBinding(precondition)

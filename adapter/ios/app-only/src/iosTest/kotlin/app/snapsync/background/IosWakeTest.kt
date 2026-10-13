@@ -165,7 +165,7 @@ class IosWakeTest {
 
     /** A seam that accepts the registration and makes no other call. */
     private object NoRegistration : BackgroundTaskApi {
-        override fun register(identifier: String, launch: (platform.BackgroundTasks.BGTask) -> Unit) = true
+        override fun register(identifier: String, launch: (LaunchedTask) -> Unit) = true
         override fun submit(request: platform.BackgroundTasks.BGTaskRequest): Result<Unit> = Result.success(Unit)
         override fun cancel(identifier: String) = Unit
         override suspend fun pendingIdentifiers(): List<String> = emptyList()
@@ -176,7 +176,7 @@ class IosWakeTest {
         val calls = mutableListOf<String>()
         val registered = mutableListOf<String>()
 
-        override fun register(identifier: String, launch: (platform.BackgroundTasks.BGTask) -> Unit): Boolean {
+        override fun register(identifier: String, launch: (LaunchedTask) -> Unit): Boolean {
             registered += identifier
             return true
         }

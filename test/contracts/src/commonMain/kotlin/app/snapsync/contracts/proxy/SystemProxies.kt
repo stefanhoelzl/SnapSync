@@ -15,7 +15,7 @@ import co.touchlab.kermit.Severity
 import kotlinx.coroutines.flow.onEach
 
 /** [BuildInfo] as its clause's [CallLog] sees it: every fact read is an answer. */
-fun BuildInfo.recorded(log: CallLog): BuildInfo = BuildInfoProxy(this, log)
+fun BuildInfo.recorded(log: CallLog): BuildInfo = BuildInfoProxy(log.wraps(this), log)
 
 internal class BuildInfoProxy(private val inner: BuildInfo, log: CallLog) : BuildInfo {
     private val r = log.recorder("BuildInfo")
@@ -34,7 +34,7 @@ internal class BuildInfoProxy(private val inner: BuildInfo, log: CallLog) : Buil
 }
 
 /** [Clock] as its clause's [CallLog] sees it. */
-fun Clock.recorded(log: CallLog): Clock = ClockProxy(this, log)
+fun Clock.recorded(log: CallLog): Clock = ClockProxy(log.wraps(this), log)
 
 internal class ClockProxy(private val inner: Clock, log: CallLog) : Clock {
     private val r = log.recorder("Clock")
@@ -44,7 +44,7 @@ internal class ClockProxy(private val inner: Clock, log: CallLog) : Clock {
 }
 
 /** [DeviceConditions] as its clause's [CallLog] sees it. */
-fun DeviceConditions.recorded(log: CallLog): DeviceConditions = DeviceConditionsProxy(this, log)
+fun DeviceConditions.recorded(log: CallLog): DeviceConditions = DeviceConditionsProxy(log.wraps(this), log)
 
 internal class DeviceConditionsProxy(private val inner: DeviceConditions, log: CallLog) : DeviceConditions {
     private val r = log.recorder("DeviceConditions")
@@ -53,7 +53,7 @@ internal class DeviceConditionsProxy(private val inner: DeviceConditions, log: C
 }
 
 /** [ThreadLabel] as its clause's [CallLog] sees it. */
-fun ThreadLabel.recorded(log: CallLog): ThreadLabel = ThreadLabelProxy(this, log)
+fun ThreadLabel.recorded(log: CallLog): ThreadLabel = ThreadLabelProxy(log.wraps(this), log)
 
 internal class ThreadLabelProxy(private val inner: ThreadLabel, log: CallLog) : ThreadLabel {
     private val r = log.recorder("ThreadLabel")
@@ -63,7 +63,7 @@ internal class ThreadLabelProxy(private val inner: ThreadLabel, log: CallLog) : 
 }
 
 /** [LogSink] as its clause's [CallLog] sees it. */
-fun LogSink.recorded(log: CallLog): LogSink = LogSinkProxy(this, log)
+fun LogSink.recorded(log: CallLog): LogSink = LogSinkProxy(log.wraps(this), log)
 
 internal class LogSinkProxy(private val inner: LogSink, log: CallLog) : LogSink {
     private val r = log.recorder("LogSink")
@@ -75,7 +75,7 @@ internal class LogSinkProxy(private val inner: LogSink, log: CallLog) : LogSink 
 }
 
 /** [NetworkMonitor] as its clause's [CallLog] sees it: every emission is an answer. */
-fun NetworkMonitor.recorded(log: CallLog): NetworkMonitor = NetworkMonitorProxy(this, log)
+fun NetworkMonitor.recorded(log: CallLog): NetworkMonitor = NetworkMonitorProxy(log.wraps(this), log)
 
 internal class NetworkMonitorProxy(private val inner: NetworkMonitor, log: CallLog) : NetworkMonitor {
     private val r = log.recorder("NetworkMonitor")
@@ -84,7 +84,7 @@ internal class NetworkMonitorProxy(private val inner: NetworkMonitor, log: CallL
 }
 
 /** [ProcessInfo] as its clause's [CallLog] sees it. */
-fun ProcessInfo.recorded(log: CallLog): ProcessInfo = ProcessInfoProxy(this, log)
+fun ProcessInfo.recorded(log: CallLog): ProcessInfo = ProcessInfoProxy(log.wraps(this), log)
 
 internal class ProcessInfoProxy(private val inner: ProcessInfo, log: CallLog) : ProcessInfo {
     private val r = log.recorder("ProcessInfo")
@@ -94,7 +94,7 @@ internal class ProcessInfoProxy(private val inner: ProcessInfo, log: CallLog) : 
 }
 
 /** [SystemUi] as its clause's [CallLog] sees it. */
-fun SystemUi.recorded(log: CallLog): SystemUi = SystemUiProxy(this, log)
+fun SystemUi.recorded(log: CallLog): SystemUi = SystemUiProxy(log.wraps(this), log)
 
 internal class SystemUiProxy(private val inner: SystemUi, log: CallLog) : SystemUi {
     private val r = log.recorder("SystemUi")
@@ -105,7 +105,7 @@ internal class SystemUiProxy(private val inner: SystemUi, log: CallLog) : System
 }
 
 /** [DateFormatting] as its clause's [CallLog] sees it: each [DateFormats] it hands over is an answer. */
-fun DateFormatting.recorded(log: CallLog): DateFormatting = DateFormattingProxy(this, log)
+fun DateFormatting.recorded(log: CallLog): DateFormatting = DateFormattingProxy(log.wraps(this), log)
 
 internal class DateFormattingProxy(private val inner: DateFormatting, log: CallLog) : DateFormatting {
     private val r = log.recorder("DateFormatting")

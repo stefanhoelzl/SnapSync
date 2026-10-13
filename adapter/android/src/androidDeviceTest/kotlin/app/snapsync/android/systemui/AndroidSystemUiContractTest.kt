@@ -37,20 +37,30 @@ class AndroidSystemUiContractTest {
     private val share = object : Binding<SharePresenterState, SystemUi> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(SharePresenterState.PRESENTABLE)
-        override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> =
-            if (state in reaches) {
+        override val adapter = AndroidSystemUi::class
+        override val reaches = setOf(SharePresenterState.PRESENTABLE, SharePresenterState.NO_SHEET)
+        override fun create(
+            state: SharePresenterState,
+            clauseId: String,
+            log: CallLog,
+        ): Entered<SystemUi> = when (state) {
+            SharePresenterState.PRESENTABLE ->
                 Entered.Ready(systemUi().recorded(log), dispose = { dismissHandoff("-a ${Intent.ACTION_CHOOSER}") })
-            } else {
-                Entered.Unreachable(
-                    "Android starts the sheet as a task of its own: there is always somewhere to present it",
-                )
+            // The system's chooser disabled: no activity handles ACTION_CHOOSER (measured, API 36).
+            SharePresenterState.NO_SHEET -> {
+                deviceShell("pm disable-user --user 0 $CHOOSER_PACKAGE")
+                Entered.Ready(systemUi().recorded(log)) { deviceShell("pm enable $CHOOSER_PACKAGE") }
             }
+            SharePresenterState.NO_WINDOW -> Entered.Unreachable(
+                "Android starts the sheet as a task of its own: there is always somewhere to present it",
+            )
+        }
     }
 
     private val links = object : Binding<LinkOpenerState, SystemUi> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidSystemUi::class
         override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
         override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> =
             when (state) {
@@ -75,6 +85,7 @@ class AndroidSystemUiContractTest {
     private val registry = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidExtensionRegistry::class
         override val reaches = setOf(ExtensionRegistryState.NO_MECHANISM)
         override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> =
             if (state in reaches) {
@@ -87,6 +98,7 @@ class AndroidSystemUiContractTest {
     private val settings = object : Binding<AppSettingsState, ShownSettings> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidSystemUi::class
         override val reaches = setOf(AppSettingsState.SHOWABLE)
         override fun create(state: AppSettingsState, clauseId: String, log: CallLog): Entered<ShownSettings> =
             Entered.Ready(
@@ -143,5 +155,6 @@ class AndroidSystemUiContractTest {
         const val SYSTEM_PACKAGE = "android"
         const val HANDOFF_FRONT_MILLIS = 20_000L
         const val HANDOFF_POLL_MILLIS = 100L
+        const val CHOOSER_PACKAGE = "com.android.intentresolver"
     }
 }

@@ -1,0 +1,33 @@
+# contract: AppSettings
+# host: IOS_DEVICE_APP
+# file: AppSettings@IOS_DEVICE_APP.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-13T00:49:52Z
+# live SHOWABLE_THE_APPS_SETTINGS_PAGE_COMES_TO_THE_FRONT: Passed
+[SHOWABLE_THE_APPS_SETTINGS_PAGE_COMES_TO_THE_FRONT]
+appLeftTheFront() -> false
+openURL:options:completionHandler:(url=app-settings: options={}) -> true
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> false
+appLeftTheFront() -> true

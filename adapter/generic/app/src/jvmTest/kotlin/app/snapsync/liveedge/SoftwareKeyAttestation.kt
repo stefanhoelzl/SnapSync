@@ -1,6 +1,8 @@
 package app.snapsync.liveedge
 
-import app.snapsync.contracts.SoftwareAttester
+import app.snapsync.contracts.Attester
+import app.snapsync.wire.models.AndroidKeyProof
+import app.snapsync.wire.models.Proof
 import org.bouncycastle.asn1.ASN1EncodableVector
 import org.bouncycastle.asn1.ASN1Enumerated
 import org.bouncycastle.asn1.ASN1Integer
@@ -21,6 +23,7 @@ import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.time.Duration
 import java.time.Instant
+import java.util.Base64
 import java.util.Date
 
 /**
@@ -30,13 +33,18 @@ import java.util.Date
  * policy accepts exactly that; it proves the mint and renewal routes and their verifier, never hardware trust, which
  * is the production `hardware` policy's and refuses this chain.
  */
-internal class SoftwareKeyAttestation(private val packageName: String = PACKAGE) : SoftwareAttester {
+internal class SoftwareKeyAttestation(private val packageName: String = PACKAGE) : Attester {
 
     private val root = p256()
     private val intermediate = p256()
     private val leaf = p256()
 
-    override fun attest(challenge: String): List<ByteArray> {
+    /** The chain over [challenge], leaf first, each certificate DER and base64 — what an Android device mints with. */
+    override fun proof(challenge: String): Proof = AndroidKeyProof(
+        attest(challenge).map(Base64.getEncoder()::encodeToString),
+    )
+
+    private fun attest(challenge: String): List<ByteArray> {
         val rootName = X500Name("CN=SnapSync contract attestation root")
         val intermediateName = X500Name("CN=SnapSync contract attestation intermediate")
         val rootCert = certificate(rootName, rootName, root, root) { }

@@ -18,6 +18,7 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
+import app.snapsync.download.IosDownload
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.ports.SystemUi
@@ -37,6 +38,7 @@ class RelaunchReplayContractTest {
     private val upload = object : Binding<TransferSessionState, SessionUnderTest> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosUrlSessionUploadPlatform::class
         override val reaches = setOf(TransferSessionState.RELAUNCHED_WITH_EVENTS)
 
         override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
@@ -67,6 +69,7 @@ class RelaunchReplayContractTest {
     private val share = object : Binding<SharePresenterState, SystemUi> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosSystemUi::class
         override val reaches = setOf(SharePresenterState.NO_WINDOW)
 
         override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> {
@@ -91,6 +94,7 @@ class RelaunchReplayContractTest {
     private val download = object : Binding<DownloadState, DownloadUnderTest> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
+        override val adapter = IosDownload::class
         override val reaches = setOf(DownloadState.RELAUNCHED_WITH_EVENTS)
 
         override fun create(state: DownloadState, clauseId: String, log: CallLog): Entered<DownloadUnderTest> {

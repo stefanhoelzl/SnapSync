@@ -29,6 +29,21 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // The Lifecycle adapter's contract binding (`docs/architecture.md`).
+            implementation(project(":test:contracts"))
+            implementation(libs.kermit)
+            // The Ui adapter's binding: the status screen's tour (`test/ui-tour`), over a real status container and the
+            // platform's own date formatting, tapped through a Compose UI test.
+            implementation(project(":adapter:ios:app-only"))
+            implementation(project(":domain:presentation"))
+            implementation(project(":domain:feature"))
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.coroutines.core)
+            implementation(libs.compose.ui.test)
+            implementation(libs.compose.components.resources)
+            implementation(libs.orbit.core)
         }
+        // The status screen's tour, shared with the Android Ui adapter's binding.
+        commonTest { kotlin.srcDir("../../../test/ui-tour/kotlin") }
     }
 }

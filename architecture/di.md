@@ -44,7 +44,6 @@ Roots found:
 | `IosSystemUi` | x | x | |
 | `IosUi` | x | x | |
 | `IosUrlSessionUploadPlatform` | x | x | |
-| `IosWake` | x | x | |
 | `KtorHttpTransport` | x | x | x |
 | `MetricKitProcessMetrics` | x | x | |
 | `NoPlatformDeviceId` | x | x | x |

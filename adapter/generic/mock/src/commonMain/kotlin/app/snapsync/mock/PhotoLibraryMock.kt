@@ -257,6 +257,18 @@ internal class LibraryState(
 
     @Volatile var byIdReadable = true
 
+    /** A library that refuses the app's writes — no album can be created in it. */
+    @Volatile var refusesWrites = false
+
+    /** A library whose platform answers no change token. */
+    @Volatile var withholdsToken = false
+
+    /** Whether every staged file the app imports is one the library cannot decode. */
+    @Volatile var undecodable = false
+
+    /** What each export wrote, by the path it was written to: the files an exporting library leaves. */
+    @Volatile var exported: Map<String, ByteArray> = emptyMap()
+
     @Volatile var albumKind = LibraryAlbumKind.COLLECTION
 
     /** Under [LibraryAlbumKind.FOLDER], the app's album folder each photo in one lives in; a photo in none is in the camera folder. */

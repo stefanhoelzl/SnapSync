@@ -75,6 +75,8 @@ androidx-compose = "1.12.1"
 
 [libraries]
 asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
+asm-analysis = { module = "org.ow2.asm:asm-analysis", version.ref = "asm" }
+kotlin-metadata-jvm = { module = "org.jetbrains.kotlin:kotlin-metadata-jvm", version.ref = "kotlin" }
 fabrikt = { module = "io.fabrikt:fabrikt", version.ref = "fabrikt" }
 swagger-parser-v3 = { module = "io.swagger.parser.v3:swagger-parser-v3", version.ref = "swagger-parser" }
 kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }

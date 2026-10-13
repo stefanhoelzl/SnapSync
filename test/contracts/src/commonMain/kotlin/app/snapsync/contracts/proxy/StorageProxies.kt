@@ -16,7 +16,7 @@ import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 
 /** [Files] as its clause's [CallLog] sees it. */
-fun Files.recorded(log: CallLog): Files = FilesProxy(this, log)
+fun Files.recorded(log: CallLog): Files = FilesProxy(log.wraps(this), log)
 
 internal class FilesProxy(private val inner: Files, log: CallLog) : Files {
     private val r = log.recorder("Files")
@@ -42,7 +42,7 @@ internal class FilesProxy(private val inner: Files, log: CallLog) : Files {
 }
 
 /** [Preferences] as its clause's [CallLog] sees it. */
-fun Preferences.recorded(log: CallLog): Preferences = PreferencesProxy(this, log)
+fun Preferences.recorded(log: CallLog): Preferences = PreferencesProxy(log.wraps(this), log)
 
 internal class PreferencesProxy(private val inner: Preferences, log: CallLog) : Preferences {
     private val r = log.recorder("Preferences")
@@ -53,7 +53,7 @@ internal class PreferencesProxy(private val inner: Preferences, log: CallLog) : 
 }
 
 /** [SecureStore] as its clause's [CallLog] sees it. */
-fun SecureStore.recorded(log: CallLog): SecureStore = SecureStoreProxy(this, log)
+fun SecureStore.recorded(log: CallLog): SecureStore = SecureStoreProxy(log.wraps(this), log)
 
 internal class SecureStoreProxy(private val inner: SecureStore, log: CallLog) : SecureStore {
     private val r = log.recorder("SecureStore")
@@ -64,7 +64,7 @@ internal class SecureStoreProxy(private val inner: SecureStore, log: CallLog) : 
 }
 
 /** [Databases] as its clause's [CallLog] sees it. */
-fun Databases.recorded(log: CallLog): Databases = DatabasesProxy(this, log)
+fun Databases.recorded(log: CallLog): Databases = DatabasesProxy(log.wraps(this), log)
 
 internal class DatabasesProxy(private val inner: Databases, log: CallLog) : Databases {
     private val r = log.recorder("Databases")
@@ -80,7 +80,7 @@ internal class DatabasesProxy(private val inner: Databases, log: CallLog) : Data
 }
 
 /** [PlatformDeviceId] as its clause's [CallLog] sees it. */
-fun PlatformDeviceId.recorded(log: CallLog): PlatformDeviceId = PlatformDeviceIdProxy(this, log)
+fun PlatformDeviceId.recorded(log: CallLog): PlatformDeviceId = PlatformDeviceIdProxy(log.wraps(this), log)
 
 internal class PlatformDeviceIdProxy(private val inner: PlatformDeviceId, log: CallLog) : PlatformDeviceId {
     private val r = log.recorder("PlatformDeviceId")

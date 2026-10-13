@@ -50,6 +50,7 @@ internal const val LOCKED = "LOCKED"
 internal class DeviceLockedProcessInfoBinding(private val recorder: Recorder) : Binding<ProcessInfoState, ProcessInfo> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosProcessInfo::class
     override val reaches = setOf(ProcessInfoState.LOCKED)
     override val precondition = LOCKED
 

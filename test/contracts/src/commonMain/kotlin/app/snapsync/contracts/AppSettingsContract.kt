@@ -23,7 +23,8 @@ class ShownSettings(
 /**
  * What [SystemUi.openSettings] promises (`docs/architecture.md` — this list IS the specification): the page where the
  * member changes the app's photo access comes to the front. It answers nothing, so the clause reads the screen. iOS
- * opens it by leaving the app, which takes the process away from whatever drives it, so its host is Android.
+ * opens it by leaving the app, which takes the process away from whatever drives it, so iOS's run is a device's,
+ * recorded while a person goes there and comes back; Android's runs live.
  */
 object AppSettingsContract : Contract<AppSettingsState, ShownSettings>("AppSettings") {
 

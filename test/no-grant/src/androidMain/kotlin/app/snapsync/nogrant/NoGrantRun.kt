@@ -42,6 +42,7 @@ internal class NoGrantRun {
     private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGallery::class
         override val reaches = setOf(GalleryState.NEVER_ASKED, GalleryState.REFUSED)
 
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
@@ -57,6 +58,7 @@ internal class NoGrantRun {
     private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGalleryReader::class
         override val reaches = setOf(GalleryReaderState.NO_GRANT, GalleryReaderState.NEVER_ASKED, GalleryReaderState.REFUSED)
 
         override fun create(
@@ -74,6 +76,7 @@ internal class NoGrantRun {
     private val photoAccess = object : Binding<PhotoAccessState, PhotoAccess> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidGallery::class
         override val reaches = setOf(PhotoAccessState.NEVER_ASKED, PhotoAccessState.REFUSED)
 
         override fun create(state: PhotoAccessState, clauseId: String, log: CallLog): Entered<PhotoAccess> {

@@ -1,5 +1,6 @@
 package app.snapsync.contract
 
+import app.snapsync.background.IosWake
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -7,6 +8,7 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
+import app.snapsync.contracts.WakeOs
 import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
@@ -26,13 +28,21 @@ class WakeReplayContractTest {
     private val binding = object : Binding<WakeState, ScheduledWakes> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
-        override val reaches = setOf(WakeState.EMPTY)
+        override val adapter = IosWake::class
+        override val reaches = setOf(WakeState.EMPTY, WakeState.DELIVERING)
 
         override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {
             // A state this host does not present: another platform's fact, or one no binding here enters.
             if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
             return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
-                schedulerInState(ReplayingBackgroundTaskApi(replayer), log, afterDispose = replayer::assertExhausted)
+                val tasks = ReplayingBackgroundTaskApi(replayer)
+                val os = WakeOs(changeLibrary = { error(NO_LIBRARY_WAKE) }, endRunningWake = tasks::endRunningWake)
+                schedulerInState(
+                    tasks,
+                    log,
+                    os.takeIf { state == WakeState.DELIVERING },
+                    afterDispose = replayer::assertExhausted,
+                )
             }
         }
     }

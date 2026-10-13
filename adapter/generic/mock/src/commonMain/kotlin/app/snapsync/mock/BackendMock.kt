@@ -393,6 +393,9 @@ internal class BackendState(
     val challenges = mutableSetOf<String>()
     val minted = mutableSetOf<String>()
 
+    /** The key each device attested with — what a renewal must assert with. */
+    val attestedKeys = mutableMapOf<String, String>()
+
     @Volatile var offline = false
 
     @Volatile var failDeviceListing = false

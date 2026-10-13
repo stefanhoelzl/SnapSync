@@ -98,6 +98,28 @@
             tools:ignore="MissingClass"
             tools:node="remove" />
         <!--
+          Nothing of this app runs before the device's first unlock (capability `privacy-security`): every component a
+          library declares direct-boot-aware is declared otherwise here, so no push, provider or service can start the
+          process while its credential-encrypted storage is still locked — where it could read none of its state. The
+          `ProcessInfo` adapter answers protected data available on that ground (`AndroidProcessInfo`), and
+          `verifyNoDirectBoot` fails the build if a merged library brings a direct-boot-aware component back.
+        -->
+        <service
+            android:name="com.google.firebase.messaging.FirebaseMessagingService"
+            android:directBootAware="false"
+            tools:ignore="MissingClass"
+            tools:replace="android:directBootAware" />
+        <service
+            android:name="com.google.firebase.components.ComponentDiscoveryService"
+            android:directBootAware="false"
+            tools:ignore="MissingClass"
+            tools:replace="android:directBootAware" />
+        <service
+            android:name="androidx.room.MultiInstanceInvalidationService"
+            android:directBootAware="false"
+            tools:ignore="MissingClass"
+            tools:replace="android:directBootAware" />
+        <!--
           DownloadManager's completion broadcast (capability `delivery`): declared here so it reaches a dead
           process. Exported because the download provider sends it; only a sender holding its permission can.
         -->

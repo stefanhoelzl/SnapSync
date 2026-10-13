@@ -72,10 +72,17 @@ object PushNotificationsContract : Contract<PushState, PushUnderTest>("PushNotif
         clause(
             "DELIVERING_A_TOKEN_REACHES_THE_APP",
             PushState.DELIVERING,
-            covers = cells { on<PushNotifications>().calls(PushHandlers::onToken, PushToken::class) },
+            covers = cells {
+                on<PushNotifications> {
+                    answers(PushNotifications::kind).returns()
+                    answers(PushNotifications::listen).returns()
+                    calls(PushHandlers::onToken, PushToken::class)
+                }
+            },
         ) { subject ->
             val os = kotlin.test.assertNotNull(subject.os, "a delivering binding plays the service")
             val tokens = mutableListOf<PushToken>()
+            assertTrue(subject.push.kind.isNotBlank(), "the registration names its service")
             subject.push.inbound(
                 PushHandlers(
                     onToken = inboundOf { tokens += it },

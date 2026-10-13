@@ -7,7 +7,7 @@ import app.snapsync.ports.Crypto
 import app.snapsync.ports.DeviceIntegrity
 
 /** [Crypto] as its clause's [CallLog] sees it. */
-fun Crypto.recorded(log: CallLog): Crypto = CryptoProxy(this, log)
+fun Crypto.recorded(log: CallLog): Crypto = CryptoProxy(log.wraps(this), log)
 
 internal class CryptoProxy(private val inner: Crypto, log: CallLog) : Crypto {
     private val r = log.recorder("Crypto")
@@ -25,7 +25,7 @@ internal class CryptoProxy(private val inner: Crypto, log: CallLog) : Crypto {
 }
 
 /** [DeviceIntegrity] as its clause's [CallLog] sees it. */
-fun DeviceIntegrity.recorded(log: CallLog): DeviceIntegrity = DeviceIntegrityProxy(this, log)
+fun DeviceIntegrity.recorded(log: CallLog): DeviceIntegrity = DeviceIntegrityProxy(log.wraps(this), log)
 
 internal class DeviceIntegrityProxy(private val inner: DeviceIntegrity, log: CallLog) : DeviceIntegrity {
     private val r = log.recorder("DeviceIntegrity")

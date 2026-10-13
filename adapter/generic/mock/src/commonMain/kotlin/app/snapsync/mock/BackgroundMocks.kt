@@ -28,13 +28,18 @@ import kotlin.concurrent.Volatile
 class WakeMock(
     /** The wakes this platform has; iOS has only the heartbeat. */
     internal val supported: Set<WakeId> = setOf(WakeId.Heartbeat),
+    /** Why the operating system refuses this process's requests, or `null` where it takes them. */
+    internal val refusal: String? = null,
 ) {
     internal val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
     internal val handlers = HandlerSlot<WakeHandlers>("Wake", BeforeListen.Thrown)
 
     @Volatile internal var scheduled = 0
 
-    fun port(): Wake = object : Wake {
+    fun port(): Wake = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : Wake {
         private val queue = InMemoryWake(pending, supported)
 
         @CompositionOnly
@@ -43,7 +48,7 @@ class WakeMock(
         }
 
         override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
-            queue.schedule(
+            refusal?.let { ScheduleResult.Refused(it) } ?: queue.schedule(
                 id,
                 trigger,
             ).also { if (id == WakeId.Heartbeat && it == ScheduleResult.Scheduled) scheduled++ }
@@ -98,10 +103,15 @@ class BackgroundTimeOperator internal constructor(private val mock: BackgroundTi
  * The operating system's record of the upload extension's registration. [supported] `false` — the JVM, iOS below
  * 26.1 — answers `Unsupported` to everything.
  */
-class ExtensionRegistryMock(supported: Boolean = false) {
-    internal val record: MutableStateFlow<Boolean>? = if (supported) MutableStateFlow(false) else null
+class ExtensionRegistryMock(
+    supported: Boolean = false,
+    /** Whether the photo grant is partial — the platform then refuses every change, as a device does. */
+    internal val partialGrant: Boolean = false,
+    registered: Boolean = false,
+) {
+    internal val record: MutableStateFlow<Boolean>? = if (supported) MutableStateFlow(registered) else null
 
-    fun port(): ExtensionRegistry = InMemoryExtensionRegistry(record)
+    fun port(): ExtensionRegistry = InMemoryExtensionRegistry(record, partialGrant)
 
     val operator: ExtensionRegistryOperator = ExtensionRegistryOperator(this)
 }

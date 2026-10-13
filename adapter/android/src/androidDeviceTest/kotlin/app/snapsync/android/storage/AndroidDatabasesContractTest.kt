@@ -23,6 +23,7 @@ class AndroidDatabasesContractTest {
     private val binding = object : Binding<DatabasesState, DatabasesSubject> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidDatabases::class
         override val reaches = setOf(
             DatabasesState.ABSENT,
             DatabasesState.CURRENT,

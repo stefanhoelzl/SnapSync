@@ -18,35 +18,33 @@ import kotlin.test.Test
  * (`docs/architecture.md`): the double every simulator scenario registers through is licensed by the
  * contract its real implementation passes on a device, or this fails naming the clause it answers differently.
  *
- * Each clause gets a fresh [SimulatorRecord] in its state — never the process-wide one the rig's levers reach.
- * The substitute models no photo grant, so the partial-grant refusal is not a state it can enter.
+ * Each clause gets a fresh [SimulatorRecord] in its state — never the process-wide one the rig's levers reach. It is
+ * the code the simulator app runs, so its run is a Live one (`docs/testing.md`, "Every adapter is covered"), and it
+ * enters every state the real registry answers in — a partial grant, an OS without the mechanism — so a scenario on
+ * the simulator can meet each answer a device gives.
  */
 class SimulatorExtensionRegistryContractTest {
 
     private val binding = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
         override val host = Host.IOS_SIM_KEXE
-        override val kind = BindingKind.Fake
-        override val reaches = setOf(ExtensionRegistryState.RECORD_ABSENT, ExtensionRegistryState.RECORD_PRESENT)
+        override val kind = BindingKind.Live
+        override val adapter = SimulatorExtensionRegistry::class
+        override val reaches = setOf(
+            ExtensionRegistryState.RECORD_ABSENT,
+            ExtensionRegistryState.RECORD_PRESENT,
+            ExtensionRegistryState.UNDER_PARTIAL_GRANT,
+            ExtensionRegistryState.NO_MECHANISM,
+        )
 
-        override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> =
-            when (state) {
-                ExtensionRegistryState.RECORD_ABSENT ->
-                    Entered.Ready(
-                        SimulatorExtensionRegistry(Logger.withTag("contract"), SimulatorRecord(registered = false))
-                            .recorded(log),
-                    )
-                ExtensionRegistryState.RECORD_PRESENT ->
-                    Entered.Ready(
-                        SimulatorExtensionRegistry(Logger.withTag("contract"), SimulatorRecord(registered = true))
-                            .recorded(log),
-                    )
-                ExtensionRegistryState.UNDER_PARTIAL_GRANT ->
-                    Entered.Unreachable(
-                        "the simulator substitute models no photo grant, and a simulator has no partial one",
-                    )
-                ExtensionRegistryState.NO_MECHANISM ->
-                    Entered.Unreachable("the substitute stands in for the mechanism, so it is never absent")
+        override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
+            val record = when (state) {
+                ExtensionRegistryState.RECORD_ABSENT -> SimulatorRecord(registered = false)
+                ExtensionRegistryState.RECORD_PRESENT -> SimulatorRecord(registered = true)
+                ExtensionRegistryState.UNDER_PARTIAL_GRANT -> SimulatorRecord(partialGrant = true)
+                ExtensionRegistryState.NO_MECHANISM -> SimulatorRecord(mechanism = false)
             }
+            return Entered.Ready(SimulatorExtensionRegistry(Logger.withTag("contract"), record).recorded(log))
+        }
     }
 
     @Test

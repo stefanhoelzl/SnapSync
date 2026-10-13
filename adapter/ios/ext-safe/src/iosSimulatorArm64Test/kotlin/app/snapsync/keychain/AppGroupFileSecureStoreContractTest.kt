@@ -28,6 +28,7 @@ class AppGroupFileSecureStoreContractTest {
     private val binding = object : Binding<SecureStoreState, SecureStore> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = AppGroupFileSecureStore::class
         override val reaches = setOf(
             SecureStoreState.INACCESSIBLE,
             SecureStoreState.EMPTY,

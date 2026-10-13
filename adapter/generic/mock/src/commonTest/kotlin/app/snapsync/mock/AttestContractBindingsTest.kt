@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
 /**
- * The integrity and attest-store doubles, the protected-storage double, the network double and the device-conditions double, held to the contracts their real implementations
+ * The integrity double, the protected-storage double, the network double and the device-conditions double, held to the contracts their real implementations
  * satisfy (`docs/architecture.md`). Each double is built at its DEFAULTS for the state, never with a knob
  * turned to make a clause pass: a double the contract catches lying is fixed in the double.
  */
@@ -34,16 +34,16 @@ class AttestContractBindingsTest {
     private val integrity = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(DeviceIntegrityState.UNAVAILABLE, DeviceIntegrityState.AVAILABLE)
+        override val adapter = InMemoryDeviceIntegrity::class
+        override val reaches = setOf(DeviceIntegrityState.UNAVAILABLE, DeviceIntegrityState.AVAILABLE, DeviceIntegrityState.UNUSABLE_KEY)
 
         override fun create(state: DeviceIntegrityState, clauseId: String, log: CallLog): Entered<DeviceIntegrity> =
-            if (state == DeviceIntegrityState.UNUSABLE_KEY) {
-                Entered.Unreachable("the in-memory enclave holds no key it refuses to use")
-            } else {
-                Entered.Ready(
-                    inMemoryDeviceIntegrity(available = state == DeviceIntegrityState.AVAILABLE).recorded(log),
-                )
-            }
+            Entered.Ready(
+                inMemoryDeviceIntegrity(
+                    available = state != DeviceIntegrityState.UNAVAILABLE,
+                    unusable = setOf(DeviceIntegrityContract.unusableHandle(clauseId)),
+                ).recorded(log),
+            )
     }
 
     @Test
@@ -52,14 +52,21 @@ class AttestContractBindingsTest {
     private val processInfo = object : Binding<ProcessInfoState, ProcessInfo> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
+        override val adapter = InMemoryProcessInfo::class
+        override val reaches = setOf(
+            ProcessInfoState.UNLOCKED,
+            ProcessInfoState.MEMORY_ACCOUNTED,
+            ProcessInfoState.MEMORY_NOT_ACCOUNTED,
+            ProcessInfoState.LOCKED,
+        )
 
-        override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
-            if (state in reaches) {
-                Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)).recorded(log))
-            } else {
-                Entered.Unreachable("the double accounts a footprint and is held available")
-            }
+        override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> {
+            val mock = ProcessInfoMock(
+                if (state == ProcessInfoState.LOCKED) Availability.UNAVAILABLE else Availability.AVAILABLE,
+            )
+            if (state == ProcessInfoState.MEMORY_NOT_ACCOUNTED) mock.operator.footprint = null
+            return Entered.Ready(mock.port().recorded(log))
+        }
     }
 
     @Test
@@ -69,6 +76,7 @@ class AttestContractBindingsTest {
     private val network = object : Binding<NetworkState, NetworkMonitor> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = InMemoryNetworkMonitor::class
         override val reaches =
             setOf(NetworkState.ONLINE, NetworkState.RESTRICTED, NetworkState.OFFLINE, NetworkState.BLOCKED)
 
@@ -90,6 +98,7 @@ class AttestContractBindingsTest {
     private val deviceConditions = object : Binding<DeviceConditionsState, DeviceConditions> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = InMemoryDeviceConditions::class
 
         // At its defaults the double is an iPhone; Android's facts would need a knob turned, which a binding may not.
         override val reaches = setOf(DeviceConditionsState.IPHONE)

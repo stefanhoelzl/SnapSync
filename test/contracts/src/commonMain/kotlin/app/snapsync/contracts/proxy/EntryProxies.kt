@@ -27,7 +27,7 @@ import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 
 /** [CrashReporter] as its clause's [CallLog] sees it. */
-fun CrashReporter.recorded(log: CallLog): CrashReporter = CrashReporterProxy(this, log)
+fun CrashReporter.recorded(log: CallLog): CrashReporter = CrashReporterProxy(log.wraps(this), log)
 
 internal class CrashReporterProxy(private val inner: CrashReporter, log: CallLog) : CrashReporter {
     private val r = log.recorder("CrashReporter")
@@ -57,7 +57,7 @@ internal class CrashReporterProxy(private val inner: CrashReporter, log: CallLog
 }
 
 /** [DevControls] as its clause's [CallLog] sees it. */
-fun DevControls.recorded(log: CallLog): DevControls = DevControlsProxy(this, log)
+fun DevControls.recorded(log: CallLog): DevControls = DevControlsProxy(log.wraps(this), log)
 
 internal class DevControlsProxy(private val inner: DevControls, log: CallLog) : DevControls {
     private val r = log.recorder("DevControls")
@@ -74,7 +74,7 @@ internal class DevControlsProxy(private val inner: DevControls, log: CallLog) : 
 }
 
 /** [ExtensionHost] as its clause's [CallLog] sees it. */
-fun ExtensionHost.recorded(log: CallLog): ExtensionHost = ExtensionHostProxy(this, log)
+fun ExtensionHost.recorded(log: CallLog): ExtensionHost = ExtensionHostProxy(log.wraps(this), log)
 
 internal class ExtensionHostProxy(private val inner: ExtensionHost, log: CallLog) : ExtensionHost {
     private val r = log.recorder("ExtensionHost")
@@ -92,7 +92,7 @@ internal class ExtensionHostProxy(private val inner: ExtensionHost, log: CallLog
 }
 
 /** [Lifecycle] as its clause's [CallLog] sees it. */
-fun Lifecycle.recorded(log: CallLog): Lifecycle = LifecycleProxy(this, log)
+fun Lifecycle.recorded(log: CallLog): Lifecycle = LifecycleProxy(log.wraps(this), log)
 
 internal class LifecycleProxy(private val inner: Lifecycle, log: CallLog) : Lifecycle {
     private val r = log.recorder("Lifecycle")
@@ -110,7 +110,7 @@ internal class LifecycleProxy(private val inner: Lifecycle, log: CallLog) : Life
 }
 
 /** [Links] as its clause's [CallLog] sees it. */
-fun Links.recorded(log: CallLog): Links = LinksProxy(this, log)
+fun Links.recorded(log: CallLog): Links = LinksProxy(log.wraps(this), log)
 
 internal class LinksProxy(private val inner: Links, log: CallLog) : Links {
     private val r = log.recorder("Links")
@@ -123,7 +123,7 @@ internal class LinksProxy(private val inner: Links, log: CallLog) : Links {
 }
 
 /** [ProcessMetrics] as its clause's [CallLog] sees it. */
-fun ProcessMetrics.recorded(log: CallLog): ProcessMetrics = ProcessMetricsProxy(this, log)
+fun ProcessMetrics.recorded(log: CallLog): ProcessMetrics = ProcessMetricsProxy(log.wraps(this), log)
 
 internal class ProcessMetricsProxy(private val inner: ProcessMetrics, log: CallLog) : ProcessMetrics {
     private val r = log.recorder("ProcessMetrics")
@@ -136,7 +136,7 @@ internal class ProcessMetricsProxy(private val inner: ProcessMetrics, log: CallL
 }
 
 /** [PushNotifications] as its clause's [CallLog] sees it. */
-fun PushNotifications.recorded(log: CallLog): PushNotifications = PushNotificationsProxy(this, log)
+fun PushNotifications.recorded(log: CallLog): PushNotifications = PushNotificationsProxy(log.wraps(this), log)
 
 internal class PushNotificationsProxy(private val inner: PushNotifications, log: CallLog) : PushNotifications {
     private val r = log.recorder("PushNotifications")
@@ -158,7 +158,7 @@ internal class PushNotificationsProxy(private val inner: PushNotifications, log:
 }
 
 /** [Ui] as its clause's [CallLog] sees it. */
-fun Ui<UiState, UiIntent>.recorded(log: CallLog): Ui<UiState, UiIntent> = UiProxy(this, log)
+fun Ui<UiState, UiIntent>.recorded(log: CallLog): Ui<UiState, UiIntent> = UiProxy(log.wraps(this), log)
 
 internal class UiProxy(private val inner: Ui<UiState, UiIntent>, log: CallLog) : Ui<UiState, UiIntent> {
     private val r = log.recorder("Ui")

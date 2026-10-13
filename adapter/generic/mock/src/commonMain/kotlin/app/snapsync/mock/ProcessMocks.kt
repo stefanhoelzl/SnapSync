@@ -72,7 +72,10 @@ class ClockMock(now: Instant = Instant.fromEpochMilliseconds(0), zone: TimeZone 
 
     @Volatile internal var now: Instant = now
 
-    fun port(): Clock = object : Clock {
+    fun port(): Clock = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : Clock {
         override fun now(): Instant = this@ClockMock.now
         override fun timeZone(): TimeZone = zone
     }
@@ -102,21 +105,35 @@ class SystemUiMock {
     internal val sharedTitles = MutableStateFlow<List<String>>(emptyList())
     internal val opened = MutableStateFlow<List<String>>(emptyList())
     internal val settings = MutableStateFlow(0)
+    internal val settingsInFront = MutableStateFlow(false)
 
-    fun port(): SystemUi = object : SystemUi {
+    @Volatile internal var noWindow = false
+
+    @Volatile internal var noSheet = false
+
+    @Volatile internal var unclaimed: Set<String> = emptySet()
+
+    fun port(): SystemUi = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : SystemUi {
         override suspend fun share(text: String, title: String): Handoff {
+            if (noWindow) return Handoff.Refused("no window to present the share sheet from")
+            if (noSheet) return Handoff.Refused("no app presents the share sheet")
             shared.value = shared.value + text
             sharedTitles.value = sharedTitles.value + title
             return Handoff.Accepted
         }
 
         override suspend fun openUrl(url: String): Handoff {
+            if (url in unclaimed) return Handoff.Refused("no app claims $url")
             opened.value = opened.value + url
             return Handoff.Accepted
         }
 
         override fun openSettings() {
             settings.value += 1
+            settingsInFront.value = true
         }
     }
 
@@ -124,7 +141,7 @@ class SystemUiMock {
 }
 
 /** What the app handed the platform's UI. */
-class SystemUiOperator internal constructor(mock: SystemUiMock) {
+class SystemUiOperator internal constructor(private val mock: SystemUiMock) {
     /** Every text the share sheet was handed, in order. */
     val shared: StateFlow<List<String>> = mock.shared.asStateFlow()
 
@@ -136,6 +153,23 @@ class SystemUiOperator internal constructor(mock: SystemUiMock) {
 
     /** How many times the app opened its Settings page. */
     val settingsOpened: StateFlow<Int> = mock.settings.asStateFlow()
+
+    /** Whether the app's Settings page is in front — until the member leaves it ([leaveSettings]). */
+    val settingsInFront: StateFlow<Boolean> = mock.settingsInFront.asStateFlow()
+
+    /** The member leaves the Settings page, back to the app. */
+    fun leaveSettings() {
+        mock.settingsInFront.value = false
+    }
+
+    /** Whether the app has no window to present from — a share is refused, as on a device in the background. */
+    var noWindow: Boolean by mock::noWindow
+
+    /** No app on the device presents the share sheet: sharing is refused. */
+    var noSheet: Boolean by mock::noSheet
+
+    /** The URLs no app on the device claims: opening one is refused. */
+    var unclaimed: Set<String> by mock::unclaimed
 }
 
 /**

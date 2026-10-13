@@ -5,6 +5,7 @@ import app.snapsync.inbound.Running
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.CompletedDownload
+import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.Gallery

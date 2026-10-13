@@ -186,7 +186,7 @@ object SnapSyncRoot {
      * handler and a second registration raises. `internal` so the control channel can deliver a task it plays the OS
      * for (`/os onBackgroundTask`) until the entry surface becomes event ports (11g).
      */
-    internal val wakeAdapter: IosWake by lazy { IosWake(log) }
+    internal val wakeAdapter: IosWake by lazy { rootWake(log) }
 
     /**
      * The registration port's adapter, chosen by compilation target, on every OS.

@@ -44,7 +44,10 @@ class LifecycleMock {
 
     @Volatile internal var everActive = false
 
-    fun port(): Lifecycle = object : Lifecycle {
+    fun port(): Lifecycle = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : Lifecycle {
         @CompositionOnly
         override fun inbound(handlers: LifecycleHandlers) {
             this@LifecycleMock.handlers.set(handlers)
@@ -72,7 +75,13 @@ class LifecycleOperator internal constructor(private val mock: LifecycleMock) {
 class LinksMock {
     internal val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Thrown)
 
-    fun port(): Links = object : Links {
+    /** Whether this installation's referrer was delivered — once per installation, as Android's record keeps it. */
+    @Volatile internal var referrerDelivered = false
+
+    fun port(): Links = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : Links {
         @CompositionOnly
         override fun inbound(handlers: LinkHandlers) {
             this@LinksMock.handlers.set(handlers)
@@ -88,6 +97,13 @@ class LinksOperator internal constructor(private val mock: LinksMock) {
 
     /** The platform delivered [delivery]. */
     fun deliver(delivery: LinkDelivery) = mock.handlers.require("a link").onLink.deliver(delivery)
+
+    /** A start of the installation, whose store answers [referrer]: delivered on the first start only. */
+    fun startInstalled(referrer: String) {
+        if (mock.referrerDelivered) return
+        mock.referrerDelivered = true
+        deliver(LinkDelivery.InstallReferrer("installReferrer", referrer))
+    }
 }
 
 /**
@@ -105,9 +121,15 @@ class PushServiceMock {
     /** The token this device was issued, and which process's handlers have been told it. */
     @Volatile internal var issued: String? = null
 
+    /** Why the service issues this device no token, or `null` where it does — a build that names no push project. */
+    @Volatile internal var refusal: String? = null
+
     @Volatile internal var toldTo: PushHandlers? = null
 
-    fun port(): PushNotifications = object : PushNotifications {
+    fun port(): PushNotifications = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : PushNotifications {
         override val kind: String get() = this@PushServiceMock.kind
 
         @CompositionOnly
@@ -117,6 +139,10 @@ class PushServiceMock {
 
         override fun register() {
             registrations++
+            refusal?.let { why ->
+                handlers.orNull("a registration", BeforeListen.Dropped)?.onTokenFailure(PlatformError(why))
+                return
+            }
             val token = issued ?: return
             val current = handlers.orNull("a registration", BeforeListen.Dropped) ?: return
             if (toldTo !== current) {
@@ -148,6 +174,16 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
         handlers.onToken.deliver(PushToken(token))
     }
 
+    /**
+     * The push service issues this device no token, for [description] — what a build naming no push project meets: every
+     * ask is answered with this failure. `null` lifts it.
+     */
+    var refusesTokens: String?
+        get() = mock.refusal
+        set(value) {
+            mock.refusal = value
+        }
+
     /** The push service could not issue a token. */
     fun deliverTokenFailure(description: String) =
         mock.handlers.require("a token failure").onTokenFailure.deliver(PlatformError(description))
@@ -165,7 +201,10 @@ class ScreenMock {
     internal val handlers = HandlerSlot<UiHandlers<UiState, UiIntent>>("Ui", BeforeListen.Thrown)
     internal val shown = MutableStateFlow<UiState?>(null)
 
-    fun port(): Ui<UiState, UiIntent> = object : Ui<UiState, UiIntent> {
+    fun port(): Ui<UiState, UiIntent> = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : Ui<UiState, UiIntent> {
         init {
             shown.value = null
         }
@@ -207,7 +246,10 @@ class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Igno
 
     @Volatile internal var encrypts: Boolean = true
 
-    fun port(): DevControls = object : DevControls {
+    fun port(): DevControls = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : DevControls {
         @CompositionOnly
         override fun inbound(handlers: DevHandlers) {
             this@DevControlsMock.handlers.set(handlers)
@@ -251,7 +293,10 @@ class DevControlsOperator internal constructor(private val mock: DevControlsMock
 class ExtensionHostMock {
     internal val handlers = HandlerSlot<ExtensionHandlers>("ExtensionHost", BeforeListen.Thrown)
 
-    fun port(): ExtensionHost = object : ExtensionHost {
+    fun port(): ExtensionHost = Face()
+
+    /** The port face a process is handed. */
+    internal inner class Face : ExtensionHost {
         @CompositionOnly
         override fun inbound(handlers: ExtensionHandlers) {
             this@ExtensionHostMock.handlers.set(handlers)

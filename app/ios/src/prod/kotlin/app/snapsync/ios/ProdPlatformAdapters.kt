@@ -1,7 +1,9 @@
 package app.snapsync.ios
 
+import app.snapsync.background.IosWake
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.dev.InertDevControls
+import co.touchlab.kermit.Logger
 
 /**
  * A production build's adapter set: the root's real adapters as they are — the Compose scene as the UI among them —
@@ -15,3 +17,6 @@ internal fun platformAdapters(real: AppDevicePorts): PlatformAdapters = Platform
     launch = { compose -> compose() },
     bootLines = emptyList(),
 )
+
+/** The root's wake: production's [IosWake], over the system's own task scheduler. */
+internal fun rootWake(log: Logger): IosWake = IosWake(log)

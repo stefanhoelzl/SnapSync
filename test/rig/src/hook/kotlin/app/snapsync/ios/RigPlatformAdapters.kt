@@ -2,9 +2,13 @@
 
 package app.snapsync.ios
 
+import app.snapsync.background.IosWake
 import app.snapsync.compose.AppDevicePorts
+import app.snapsync.compose.pushHandlers
 import app.snapsync.config.bakedUploadBase
+import app.snapsync.contract.AppPush
 import app.snapsync.contract.appDeviceContracts
+import app.snapsync.contract.contractTappableWake
 import app.snapsync.contract.extension.extensionContractEntries
 import app.snapsync.contract.extension.recordLanded
 import app.snapsync.contract.resumeContractRuns
@@ -35,6 +39,7 @@ import app.snapsync.rig.rigPortFilePath
 import app.snapsync.rig.startWhenReady
 import app.snapsync.rig.userCommands
 import app.snapsync.services.logs.LogTailService
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import platform.Foundation.NSDate
@@ -84,6 +89,9 @@ internal fun platformAdapters(real: AppDevicePorts): PlatformAdapters {
         bootLines = launch.bootLines,
     )
 }
+
+/** The root's wake in a rig build: production's, whose launches a device's contract run can take over for a clause. */
+internal fun rootWake(log: Logger): IosWake = contractTappableWake(log)
 
 private fun startRig(launch: RigLaunch) = RigServer(
     core = { SnapSyncRoot.app },
@@ -163,7 +171,13 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
             membershipRefusal = noMembershipRefusal { SnapSyncRoot.host },
             registry = { SnapSyncRoot.extensionRegistry },
         ) +
-        simulatorAppContracts(),
+        simulatorAppContracts(
+            AppPush(
+                adapter = SnapSyncRoot.pushNotifications,
+                composed = { SnapSyncRoot.ports.pushNotifications.value },
+                appHandlers = { pushHandlers(SnapSyncRoot.app) },
+            ),
+        ),
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
     refusals = iosRefusals(launch),
     recordLanded = ::recordLanded,

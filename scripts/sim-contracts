@@ -275,6 +275,29 @@ run_contracts() {
     done
     [ $status -eq 0 ] || { cp "$DATA/Documents/debug.log" "$OUT/debug$tag.log" 2>/dev/null; fail "see the outcome tables above"; }
 }
+# Run every contract the app lists for photo grant $1 that must run with the app in the BACKGROUND (`precondition=
+# IN_BACKGROUND`): each is posted, then Settings is launched over the app, and the entry — which waits for the app to
+# be behind another, holding background time — runs there. The app is brought back to the front after each.
+run_in_background() {
+    q="?grant=$1&precondition=IN_BACKGROUND"; tag=".$1.IN_BACKGROUND"
+    curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract$q" > "$OUT/registry$tag" || fail "GET /contract$q"
+    status=0
+    for name in $(cat "$OUT/registry$tag"); do
+        curl -sS -o "$OUT/$name$tag.txt" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/contract/$name$q" \
+            > "$OUT/$name$tag.code" &
+        post=$!
+        sleep 2
+        xcrun simctl launch "$DEVICE" com.apple.Preferences >/dev/null || fail "could not send the app to the background"
+        wait $post
+        code="$(cat "$OUT/$name$tag.code")"
+        echo "=== $name$tag (HTTP $code)"
+        cat "$OUT/$name$tag.txt"
+        if [ "$code" != 200 ]; then echo "  -> refused or missing"; status=1; fi
+        if grep -q ' Failed(\| Diverged(\| NotWithin(' "$OUT/$name$tag.txt"; then echo "  -> a clause did not pass"; status=1; fi
+        xcrun simctl launch "$DEVICE" app.snapsync >/dev/null || fail "could not bring the app back to the front"
+    done
+    [ $status -eq 0 ] || { cp "$DATA/Documents/debug.log" "$OUT/debug$tag.log" 2>/dev/null; fail "see the outcome tables above"; }
+}
 run_contracts ""
 echo "sim-contracts: every registered contract passed" | tee "$OUT/result"
 
@@ -300,5 +323,6 @@ for pass in limited:LIMITED NO:DENIED unset:NOT_DETERMINED; do
     launch "$DEVICE" "$RIG_PORT"
     stage "app: relaunched under ${pass#*:}"
     run_contracts "${pass#*:}"
+    run_in_background "${pass#*:}"
 done
 echo "sim-contracts: every registered contract passed under every grant, and the journeys passed" | tee "$OUT/result"

@@ -23,6 +23,7 @@ class SecureStoreContractBindingTest {
     private val binding = object : Binding<SecureStoreState, SecureStore> {
         override val host = currentHost
         override val kind = BindingKind.Fake
+        override val adapter = InMemorySecureStore::class
         override val reaches = setOf(
             SecureStoreState.INACCESSIBLE,
             SecureStoreState.EMPTY,

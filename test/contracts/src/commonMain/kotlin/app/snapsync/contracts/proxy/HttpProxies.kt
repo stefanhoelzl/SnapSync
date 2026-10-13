@@ -5,7 +5,7 @@ import app.snapsync.model.HttpRequest
 import app.snapsync.ports.HttpTransport
 
 /** [HttpTransport] as its clause's [CallLog] sees it. */
-fun HttpTransport.recorded(log: CallLog): HttpTransport = HttpTransportProxy(this, log)
+fun HttpTransport.recorded(log: CallLog): HttpTransport = HttpTransportProxy(log.wraps(this), log)
 
 internal class HttpTransportProxy(private val inner: HttpTransport, log: CallLog) : HttpTransport {
     private val r = log.recorder("HttpTransport")

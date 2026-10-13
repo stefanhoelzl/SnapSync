@@ -29,6 +29,7 @@ class IosDatabasesContractTest {
     private val binding = object : Binding<DatabasesState, DatabasesSubject> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosDatabases::class
         override val reaches = setOf(
             DatabasesState.ABSENT,
             DatabasesState.CURRENT,

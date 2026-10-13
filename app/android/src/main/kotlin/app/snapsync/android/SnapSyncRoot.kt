@@ -134,7 +134,7 @@ class SnapSyncRoot(internal val application: Application) {
         },
         download = lazy { AndroidDownload(application) },
         pushNotifications = lazy { AndroidPushNotifications(application, firebase) },
-        processInfo = lazy { AndroidProcessInfo(application) },
+        processInfo = lazy { AndroidProcessInfo() },
         // The default network and whether Android blocks it for this app.
         network = lazy { AndroidNetworkMonitor(application) },
         // Battery Saver, the standby bucket, the battery and the thermal status — read only for a bug report.

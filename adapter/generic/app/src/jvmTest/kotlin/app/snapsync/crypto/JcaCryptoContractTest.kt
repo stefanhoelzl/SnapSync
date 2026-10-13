@@ -18,12 +18,15 @@ class JcaCryptoContractTest {
     private val binding = object : Binding<CryptoState, Crypto> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
-        override val reaches = setOf(CryptoState.READY)
+        override val adapter = JcaCrypto::class
+        override val reaches = setOf(CryptoState.READY, CryptoState.OWN_BYTES)
         override fun create(
             state: CryptoState,
             clauseId: String,
             log: CallLog,
-        ): Entered<Crypto> = Entered.Ready(JcaCrypto().recorded(log))
+        ): Entered<Crypto> =
+            // The standard algorithms answer the published vectors and keep every property a stand-in keeps.
+            Entered.Ready(JcaCrypto().recorded(log))
     }
 
     @Test

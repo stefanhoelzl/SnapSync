@@ -26,6 +26,7 @@ class AndroidFilesContractTest {
     private val binding = object : Binding<FilesState, Files> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidFiles::class
         override val reaches = setOf(
             FilesState.EMPTY,
             FilesState.HOLDING,

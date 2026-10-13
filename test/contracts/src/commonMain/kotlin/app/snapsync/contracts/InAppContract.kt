@@ -16,6 +16,8 @@ class InAppContract(
     val name: String,
     val host: Host,
     val grant: LibraryGrant? = null,
+    /** What the run must establish beyond the grant ([Binding.precondition]): `IN_BACKGROUND`, the app sent behind another. */
+    val precondition: String? = null,
     val run: (params: Map<String, String>) -> String,
 )
 
@@ -45,7 +47,7 @@ fun <K : Enum<K>, T> simulatorAppContract(
     contract: Contract<K, T>,
     binding: Binding<K, T>,
     refusal: () -> String?,
-): InAppContract = InAppContract(contract.name, Host.IOS_SIM_APP, binding.grant) { params ->
+): InAppContract = InAppContract(contract.name, Host.IOS_SIM_APP, binding.grant, binding.precondition) { params ->
     val refused = refusal() ?: (binding as? RunParameters)?.accept(params)
     if (refused != null) {
         "$CONTRACT_REFUSED$refused\n"

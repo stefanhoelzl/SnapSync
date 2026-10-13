@@ -49,6 +49,14 @@ class AttestStateTest {
     }
 
     @Test
+    fun `a new token replaces the held one`() {
+        state.setToken("bearer-old")
+        state.setToken("bearer-renewed")
+
+        assertEquals("bearer-renewed", state.token(), "a renewal is what every later request carries")
+    }
+
+    @Test
     fun `a slot that was never written reads as no value`() {
         assertNull(state.token(), "not attested yet is a legitimate answer — there is nothing to mint")
         assertNull(state.keyId())

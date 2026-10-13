@@ -29,6 +29,7 @@ class AndroidSecureStoreContractTest {
     private val binding = object : Binding<SecureStoreState, SecureStore> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidSecureStore::class
         override val reaches = setOf(
             SecureStoreState.INACCESSIBLE,
             SecureStoreState.EMPTY,

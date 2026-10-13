@@ -157,14 +157,22 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
             runCatchingCancellable { Base64.decode(proof.attestation) }.getOrNull()
                 ?.contentEquals("attestation:${proof.keyId}:${req.challenge}".encodeToByteArray()) == true
         if (!genuine) return text(UNAUTHORIZED, "attestation rejected: ${DeviceRefusal.DEVICE_UNVERIFIABLE.wireName}")
+        state.attestedKeys[req.deviceId] = proof.keyId
         return json(CREATED, Token.serializer(), Token(state.mint(req.deviceId, req.challenge)))
     }
 
-    // It records no attested key, so every renewal over a challenge it issued is of a device it holds no record of.
+    // A renewal is an assertion by the key the device attested with, over a challenge this backend issued.
+    @OptIn(ExperimentalEncodingApi::class)
     private fun renew(call: Call): HttpResult {
         val req = call.decode(RenewRequest.serializer()) ?: return text(BAD_REQUEST, "invalid body")
         if (req.challenge !in state.challenges) return text(CONFLICT, "stale challenge")
-        return text(UNAUTHORIZED, "not attested")
+        // A service that refuses this device's attestation holds none for it: the device is sent to attest afresh.
+        if (state.refuseAttestation != null) return text(UNAUTHORIZED, "not attested")
+        val key = state.attestedKeys[req.deviceId] ?: return text(UNAUTHORIZED, "not attested")
+        val asserted = runCatchingCancellable { Base64.decode(req.assertion) }.getOrNull()
+            ?.contentEquals("assertion:$key:${req.challenge}".encodeToByteArray()) == true
+        if (!asserted) return text(UNAUTHORIZED, "assertion rejected")
+        return json(CREATED, Token.serializer(), Token(state.mint(req.deviceId, req.challenge)))
     }
 
     private fun create(call: Call): HttpResult {
@@ -584,6 +592,12 @@ enum class BackendFault {
 
     /** A `200` whose body is no JSON — an answer outside the contract. */
     MALFORMED,
+
+    /** `410 closed` — an event that ended for good, as a backend that still closed events answered every write. */
+    ENDED_FOR_GOOD,
+
+    /** `409 closed` — an event closed before events stopped closing, answering a member's changed asset set. */
+    CLOSED,
     ;
 
     internal fun answer(): HttpResult = when (this) {
@@ -591,11 +605,15 @@ enum class BackendFault {
         MAINTENANCE -> HttpResult.Response(503, TEXT + ("Retry-After" to "60"), "maintenance")
         UNREACHABLE -> HttpResult.Unreachable("injected: the backend is unreachable")
         MALFORMED -> HttpResult.Response(200, JSON, "<html>not the device API</html>")
+        ENDED_FOR_GOOD -> HttpResult.Response(410, JSON, CLOSED_BODY)
+        CLOSED -> HttpResult.Response(409, JSON, CLOSED_BODY)
     }
 }
 
 private val TEXT = mapOf("Content-Type" to "text/plain; charset=UTF-8")
 private val JSON = mapOf("Content-Type" to "application/json")
+
+private const val CLOSED_BODY = "{\"error\":\"closed\"}"
 
 private fun text(status: Int, body: String): HttpResult = HttpResult.Response(status, TEXT, body)
 

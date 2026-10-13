@@ -43,6 +43,10 @@ private fun <K : Enum<K>, T> runOne(clause: Clause<K, T>, binding: Binding<K, T>
             when {
                 outcome != Outcome.Passed -> outcome
                 disposal != Outcome.Passed -> disposal
+                log.wrapped != setOf(binding.adapter) -> Outcome.Failed(
+                    "the binding declares adapter ${binding.adapter.simpleName} but its proxies wrapped " +
+                        log.wrapped.map { it.simpleName.toString() }.sorted(),
+                )
                 else -> occurred(clause, log.cells)
             }
         }

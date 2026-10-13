@@ -2,6 +2,8 @@ package app.snapsync.dev
 
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.InviteLinkHints
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
@@ -18,6 +20,12 @@ import app.snapsync.ports.DevHandlers
  * (`PENDING_CLEANUPS.md`, "Re-enable encrypted creation"; decision record
  * `openspec/changes/archive/2026-10-12-defer-encrypt-by-default`).
  */
+@NeverAnswers(
+    Never(member = "createsPlainEvents", answer = "false"),
+    Never(member = "inviteLinkHints", answer = "InviteLinkHints.Honoured"),
+    Never(member = "uploaderPin", answer = "returns"),
+    Never(handler = "onReset"),
+)
 object InertDevControls : DevControls {
     /** Registers nothing: this adapter never delivers, so there is no handler to hold. */
     @CompositionOnly

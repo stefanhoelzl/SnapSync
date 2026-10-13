@@ -18,6 +18,12 @@ plugins {
 
 transferFixture.consumedBy("iosSimulatorArm64Test")
 
+// `NSLog` writes to stderr only where it is told to; the public-log sink's contract binding reads it back from there
+// (`PublicNSLogSink`). `simctl` hands the test executable every `SIMCTL_CHILD_`-prefixed variable, unprefixed.
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+    environment("SIMCTL_CHILD_CFLOG_FORCE_STDERR", "YES")
+}
+
 // ---- Port contracts (`docs/architecture.md`) ---------------------------------------------------
 //
 // `src/rig/kotlin` holds the Keychain's recording/replaying seams and the entitled-device binding. Under

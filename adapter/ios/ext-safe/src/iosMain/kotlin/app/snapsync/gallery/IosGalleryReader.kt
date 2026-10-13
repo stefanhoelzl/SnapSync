@@ -4,6 +4,8 @@ package app.snapsync.gallery
 
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.WriteOutcome
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
@@ -67,6 +69,7 @@ import kotlin.time.Instant
  * `AUTHREQ_PROMPTING`). Under a partial grant PhotoKit answers the selection, and the user-album walk returns
  * **no** albums, empty and without an error, even when a selected asset is in one (SE2, a real WhatsApp album).
  */
+@NeverAnswers(Never(member = "albumKind", answer = "LibraryAlbumKind.FOLDER"))
 class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : GalleryReader {
 
     override fun access(): LibraryGrant = currentPhotoPermission()

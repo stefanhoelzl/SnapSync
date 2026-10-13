@@ -21,6 +21,7 @@ import app.snapsync.databases.IosDatabases
 class SimAppDatabasesBinding : Binding<DatabasesState, DatabasesSubject> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosDatabases::class
     override val reaches = setOf(DatabasesState.CURRENT, DatabasesState.SHARED)
 
     override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<DatabasesSubject> {

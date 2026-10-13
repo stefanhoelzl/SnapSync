@@ -5,6 +5,8 @@ package app.snapsync.contract
 import app.snapsync.background.SystemBackgroundTimeApi
 import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.osCarriesOsDrivenUpload
+import app.snapsync.contracts.AppSettingsContract
+import app.snapsync.contracts.AppSettingsState
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -22,6 +24,7 @@ import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.SharePresenterState
+import app.snapsync.contracts.ShownSettings
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
@@ -34,6 +37,7 @@ import app.snapsync.logging.documentsDirectory
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.SystemUi
 import app.snapsync.systemui.IosSystemUi
+import kotlinx.coroutines.delay
 import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSISO8601DateFormatter
@@ -46,6 +50,10 @@ import platform.Foundation.writeToFile
 import platform.UIKit.UIApplication
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_sync
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.decrementAndFetch
+import kotlin.concurrent.atomics.incrementAndFetch
 
 /*
  * The hand-off ports' contract bindings on iOS (`docs/architecture.md`): `LinkOpenerContract` recorded on a
@@ -82,11 +90,60 @@ internal const val SIM_APP_UNREACHABLE_CLAIMED =
 internal class DeviceLinkOpenerBinding(private val recorder: Recorder) : Binding<LinkOpenerState, SystemUi> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
+    override val adapter = IosSystemUi::class
     override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
 
     override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> {
         recorder.open(clauseId)
         return Entered.Ready(IosSystemUi(RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)).recorded(log))
+    }
+}
+
+/** How a recording names the binding's reading of the screen: has the app left the front. */
+internal const val LEFT_THE_FRONT = "appLeftTheFront()"
+
+/**
+ * The real [IosSystemUi] in the app on a device, recording its `openURL` call, iOS's answer, and the binding's reading
+ * of the screen. iOS offers an app no read of which app is in front; what it shows is this app leaving the front once it
+ * asked iOS for its own Settings page, and iOS answering that open as done — the page is what came up. `leave` waits
+ * for the person to come back to the app, holding background time so the run outlives the trip. Replayed on every CI
+ * build by `IosAppSettingsReplayContractTest`.
+ */
+@OptIn(ExperimentalAtomicApi::class)
+internal class DeviceAppSettingsBinding(private val recorder: Recorder) : Binding<AppSettingsState, ShownSettings> {
+    override val host = Host.IOS_DEVICE_APP
+    override val kind = BindingKind.Live
+    override val adapter = IosSystemUi::class
+    override val reaches = setOf(AppSettingsState.SHOWABLE)
+
+    override fun create(state: AppSettingsState, clauseId: String, log: CallLog): Entered<ShownSettings> {
+        recorder.open(clauseId)
+        val hold = holdBackgroundTime()
+        // iOS answers an open later; a read waits for it, so the recording holds the answer before the screen it led to,
+        // as a replay — which answers at once — reads them.
+        val unanswered = AtomicInt(0)
+        val opener = UrlOpenerApi { url, completion ->
+            unanswered.incrementAndFetch()
+            RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder).open(url) { opened ->
+                unanswered.decrementAndFetch()
+                completion(opened)
+            }
+        }
+        return Entered.Ready(
+            ShownSettings(
+                ui = IosSystemUi(opener).recorded(log),
+                settingsInFront = {
+                    while (unanswered.load() > 0) delay(POLL_MILLIS)
+                    appInBackground().also { recorder.record(LEFT_THE_FRONT, "$it") }
+                },
+                leave = { while (appInBackground()) delay(POLL_MILLIS) },
+            ),
+            dispose = { releaseBackgroundTime(hold) },
+        )
+    }
+
+    private companion object {
+        const val POLL_MILLIS = 250L
     }
 }
 
@@ -104,6 +161,9 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
         recordAppOnDevice(LinkOpenerContract, null) { DeviceLinkOpenerBinding(it) }
     },
     InAppContract(WakeContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
+    InAppContract(AppSettingsContract.name, Host.IOS_DEVICE_APP) {
+        recordAppOnDevice(AppSettingsContract, null) { DeviceAppSettingsBinding(it) }
+    },
     InAppContract(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP) { recordRegistry(refusal) },
     InAppContract(NetworkMonitorContract.name, Host.IOS_DEVICE_APP) { params -> recordNetwork(params) },
     InAppContract(ProcessInfoContract.name, Host.IOS_DEVICE_APP) { recordProcessInfoLocked() },
@@ -204,6 +264,7 @@ internal fun <T> whileHoldingBackgroundTime(name: String, block: () -> T): T {
 class SimAppLinkOpenerBinding : Binding<LinkOpenerState, SystemUi> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosSystemUi::class
     override val reaches = setOf(LinkOpenerState.UNCLAIMED)
 
     override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> = when (state) {
@@ -219,6 +280,7 @@ class SimAppLinkOpenerBinding : Binding<LinkOpenerState, SystemUi> {
 class SimAppSharePresenterBinding : Binding<SharePresenterState, SystemUi> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
+    override val adapter = IosSystemUi::class
     override val reaches = setOf(SharePresenterState.PRESENTABLE)
 
     override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> =

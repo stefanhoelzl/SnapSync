@@ -43,6 +43,7 @@ class LiveEdgeContractsTest {
     private val backend = object : Binding<BackendState, EdgeSubject<BackendClient>> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = KtorHttpTransport::class
         override val reaches = setOf(
             BackendState.SERVING,
             BackendState.EVENT_EXISTS,
@@ -93,6 +94,7 @@ class LiveEdgeContractsTest {
     private val wireFixture = object : Binding<BackendState, EdgeSubject<BackendClient>> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = KtorHttpTransport::class
         override val reaches = setOf(
             BackendState.UNREADABLE_SUCCESS,
             BackendState.SERVER_FAILING,

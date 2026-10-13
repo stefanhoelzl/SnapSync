@@ -25,10 +25,10 @@ import platform.BackgroundTasks.BGTaskScheduler
 internal interface BackgroundTaskApi {
     /**
      * Register [launch] as the handler the system runs when it launches the task [identifier]; `false` when the system
-     * refused. Apple requires it before the app finishes launching, once per identifier per process — which is why no
-     * contract clause makes this call (a second registration raises), and a recording holds none.
+     * refused. Apple requires it before the app finishes launching, once per identifier per process (a second
+     * registration raises) — so a device's contract run takes over the app's own registration for the clause instead.
      */
-    fun register(identifier: String, launch: (BGTask) -> Unit): Boolean
+    fun register(identifier: String, launch: (LaunchedTask) -> Unit): Boolean
 
     /**
      * Submit [request] — a processing or an app-refresh request: success when the system accepted it, otherwise its
@@ -46,10 +46,16 @@ internal interface BackgroundTaskApi {
 internal object SystemBackgroundTaskApi : BackgroundTaskApi {
     private val log = Logger.withTag("BackgroundTaskApi")
 
-    override fun register(identifier: String, launch: (BGTask) -> Unit): Boolean =
+    override fun register(identifier: String, launch: (LaunchedTask) -> Unit): Boolean =
         BGTaskScheduler.sharedScheduler.registerForTaskWithIdentifier(identifier, usingQueue = null) { task ->
             objcBoundary(log, "bgTask.launch($identifier)") {
-                if (task != null) launch(task) else log.e { "the system launched $identifier with no task" }
+                if (task != null) {
+                    launch(
+                        SystemLaunchedTask(task),
+                    )
+                } else {
+                    log.e { "the system launched $identifier with no task" }
+                }
             }
         }
 
@@ -69,5 +75,30 @@ internal object SystemBackgroundTaskApi : BackgroundTaskApi {
         BGTaskScheduler.sharedScheduler.getPendingTaskRequestsWithCompletionHandler { requests ->
             objcBoundary(done) { requests.orEmpty().mapNotNull { (it as? BGTaskRequest)?.identifier } }
         }
+    }
+}
+
+/**
+ * A task the system launched, as [IosWake] uses it: its identifier, its completion and its expiration handler — the
+ * `BGTask` surface, behind the boundary so a recorded launch can replay against the adapter.
+ */
+internal interface LaunchedTask {
+    val identifier: String
+
+    /** `setTaskCompleted(success: true)`. */
+    fun complete()
+
+    /** Sets the task's expiration handler: [expired] runs when the system ends the task. */
+    fun onExpiry(expired: () -> Unit)
+}
+
+/** The real `BGTask`. */
+private class SystemLaunchedTask(private val task: BGTask) : LaunchedTask {
+    override val identifier: String get() = task.identifier
+
+    override fun complete() = task.setTaskCompletedWithSuccess(true)
+
+    override fun onExpiry(expired: () -> Unit) {
+        task.expirationHandler = expired
     }
 }

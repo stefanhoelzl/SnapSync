@@ -39,6 +39,7 @@ class JvmFilesContractTest {
     private val files = object : Binding<FilesState, Files> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = JvmFiles::class
         override val reaches = setOf(
             FilesState.EMPTY,
             FilesState.HOLDING,

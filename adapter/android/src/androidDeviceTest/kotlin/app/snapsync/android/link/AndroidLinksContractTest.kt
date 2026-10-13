@@ -27,6 +27,7 @@ class AndroidLinksContractTest {
     private val binding = object : Binding<LinksState, LinksUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
+        override val adapter = AndroidLinks::class
         override val reaches = setOf(
             LinksState.OPENABLE,
             LinksState.OPENED_WITH_NO_LINK,

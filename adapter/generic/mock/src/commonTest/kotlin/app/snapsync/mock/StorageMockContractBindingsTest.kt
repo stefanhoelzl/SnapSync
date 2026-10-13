@@ -22,7 +22,17 @@ class StorageMockContractBindingsTest {
     private val files = object : Binding<FilesState, Files> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED, FilesState.UNAVAILABLE)
+        override val adapter = InMemoryFiles::class
+        override val reaches = setOf(
+            FilesState.EMPTY,
+            FilesState.HOLDING,
+            FilesState.DENIED,
+            FilesState.UNAVAILABLE,
+            FilesState.DENIED_DIRECTORY,
+            FilesState.READ_ONLY_DIRECTORY,
+            FilesState.UNSEARCHABLE_DIRECTORY,
+            FilesState.LOOPED_LINK,
+        )
         override fun create(state: FilesState, clauseId: String, log: CallLog): Entered<Files> {
             val path = FilesContract.path(clauseId)
             return when (state) {
@@ -37,13 +47,25 @@ class StorageMockContractBindingsTest {
                     ).recorded(log),
                 )
                 FilesState.UNAVAILABLE -> Entered.Ready(inMemoryFiles(shared = null).recorded(log))
-                // The double holds paths, not directories with permissions, and no links.
+                FilesState.DENIED_SUBDIRECTORY -> Entered.Unreachable("the double holds no directories inside directories")
                 FilesState.DENIED_DIRECTORY,
-                FilesState.DENIED_SUBDIRECTORY,
                 FilesState.READ_ONLY_DIRECTORY,
                 FilesState.UNSEARCHABLE_DIRECTORY,
                 FilesState.LOOPED_LINK,
-                -> Entered.Unreachable("the double holds no directories with permissions, and no links")
+                -> {
+                    val directory = FileArea.SHARED to FilesContract.directory(clauseId)
+                    val conditions = when (state) {
+                        FilesState.DENIED_DIRECTORY -> FileConditions(unlistable = setOf(directory))
+                        FilesState.READ_ONLY_DIRECTORY -> FileConditions(readOnly = setOf(directory))
+                        FilesState.UNSEARCHABLE_DIRECTORY -> FileConditions(unsearchable = setOf(directory))
+                        else -> FileConditions(looped = setOf(FileArea.SHARED to path))
+                    }
+                    val areas = mapOf(
+                        FileArea.SHARED to mutableMapOf(path to FilesContract.seed(clauseId)),
+                        FileArea.PRIVATE to mutableMapOf<String, ByteArray>(),
+                    )
+                    Entered.Ready(InMemoryFiles(areas, denied = emptySet(), conditions = conditions).recorded(log))
+                }
             }
         }
     }
@@ -51,7 +73,13 @@ class StorageMockContractBindingsTest {
     private val preferences = object : Binding<PreferencesState, Preferences> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(PreferencesState.EMPTY, PreferencesState.HOLDING)
+        override val adapter = InMemoryPreferences::class
+        override val reaches = setOf(
+            PreferencesState.EMPTY,
+            PreferencesState.HOLDING,
+            PreferencesState.FOREIGN,
+            PreferencesState.UNWRITABLE,
+        )
         override fun create(
             state: PreferencesState,
             clauseId: String,
@@ -63,8 +91,15 @@ class StorageMockContractBindingsTest {
                     mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
                 ).recorded(log),
             )
-            PreferencesState.FOREIGN, PreferencesState.UNWRITABLE ->
-                Entered.Unreachable("the double holds strings only, and refuses no write")
+            PreferencesState.FOREIGN -> Entered.Ready(
+                InMemoryPreferences(mutableMapOf(), foreign = setOf(PreferencesContract.key(clauseId))).recorded(log),
+            )
+            PreferencesState.UNWRITABLE -> Entered.Ready(
+                InMemoryPreferences(
+                    mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
+                    refusesWrites = true,
+                ).recorded(log),
+            )
         }
     }
 

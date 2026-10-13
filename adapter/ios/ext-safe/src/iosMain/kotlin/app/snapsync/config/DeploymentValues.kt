@@ -24,16 +24,30 @@ import platform.Foundation.dictionaryWithContentsOfFile
  * caller below names the consequence that makes its own default safe, and one of them deliberately
  * answers "couldn't tell" rather than naming a value.
  */
-fun deploymentValue(key: String): String? = deploymentValues[key]?.takeIf { it.isNotBlank() }
+fun deploymentValue(key: String, deployment: DeploymentValues = DeploymentValues.main): String? = deployment.value(key)
 
-private val deploymentValues: Map<String, String> by lazy {
-    val path = NSBundle.mainBundle.pathForResource("Deployment", ofType = "plist") ?: return@lazy emptyMap()
-    val contents = NSDictionary.dictionaryWithContentsOfFile(path) ?: return@lazy emptyMap()
-    contents.entries.mapNotNull { entry ->
-        val name = entry.key as? String ?: return@mapNotNull null
-        val value = entry.value as? String ?: return@mapNotNull null
-        name to value
-    }.toMap()
+/** One bundle's `Deployment.plist`: this process's own ([main]), or another bundle's a contract binding hands in. */
+class DeploymentValues private constructor(private val values: Map<String, String>) {
+
+    fun value(key: String): String? = values[key]?.takeIf { it.isNotBlank() }
+
+    companion object {
+        /** This process's own bundle's values, read once. */
+        val main: DeploymentValues by lazy { of(NSBundle.mainBundle) }
+
+        /** [bundle]'s values; none where it carries no `Deployment.plist`. */
+        fun of(bundle: NSBundle): DeploymentValues {
+            val path = bundle.pathForResource("Deployment", ofType = "plist") ?: return DeploymentValues(emptyMap())
+            val contents = NSDictionary.dictionaryWithContentsOfFile(path) ?: return DeploymentValues(emptyMap())
+            return DeploymentValues(
+                contents.entries.mapNotNull { entry ->
+                    val name = entry.key as? String ?: return@mapNotNull null
+                    val value = entry.value as? String ?: return@mapNotNull null
+                    name to value
+                }.toMap(),
+            )
+        }
+    }
 }
 
 /**
@@ -46,7 +60,9 @@ private val deploymentValues: Map<String, String> by lazy {
  * deliver. Lives here rather than in `:app:ios` for the reason [bakedUploadBase] does: the shell is
  * gated to hold no decisions, and choosing what an absent key becomes is one.
  */
-fun bakedApnsEnv(): String = deploymentValue("apnsEnv") ?: "sandbox"
+fun bakedApnsEnv(
+    deployment: DeploymentValues = DeploymentValues.main,
+): String = deploymentValue("apnsEnv", deployment) ?: "sandbox"
 
 /**
  * The crash-reporting ingestion key, or `null` when this build carries none — which is every
@@ -54,7 +70,9 @@ fun bakedApnsEnv(): String = deploymentValue("apnsEnv") ?: "sandbox"
  * no DSN unless the build channel names a distributed build, so the SDK never starts and no connection
  * to the reporting host is ever opened.
  */
-fun bakedSentryDsn(): String? = deploymentValue("sentryDsn")
+fun bakedSentryDsn(
+    deployment: DeploymentValues = DeploymentValues.main,
+): String? = deploymentValue("sentryDsn", deployment)
 
 /**
  * The app's App Store page, or `null` when this build carries none.
@@ -71,4 +89,6 @@ fun bakedSentryDsn(): String? = deploymentValue("sentryDsn")
  * link, which is honest. The value ships in every build the resolver renders, so absence means a
  * misconfigured build rather than a state the product has.
  */
-fun bakedAppStoreUrl(): String? = deploymentValue("appStoreUrl")
+fun bakedAppStoreUrl(
+    deployment: DeploymentValues = DeploymentValues.main,
+): String? = deploymentValue("appStoreUrl", deployment)

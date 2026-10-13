@@ -18,6 +18,7 @@ class SystemClockContractTest {
     private val binding = object : Binding<ClockState, Clock> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = SystemClock::class
         override val reaches = setOf(ClockState.RUNNING)
         override fun create(state: ClockState, clauseId: String, log: CallLog): Entered<Clock> = Entered.Ready(
             SystemClock.recorded(log),

@@ -16,6 +16,8 @@ import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
+import app.snapsync.model.Never
+import app.snapsync.model.NeverAnswers
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -53,6 +55,9 @@ import kotlin.time.toJavaDuration
  * core stops cooperatively. A force-stop cancels every request until the app is next opened, when WorkManager
  * reschedules them.
  */
+@NeverAnswers(
+    Never(member = "schedule", answer = "ScheduleResult.Unsupported"),
+)
 class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wake")) : Wake {
 
     private val work = WorkManager.getInstance(context.applicationContext)

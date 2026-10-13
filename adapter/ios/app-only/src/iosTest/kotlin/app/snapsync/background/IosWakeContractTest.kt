@@ -24,6 +24,7 @@ class IosWakeContractTest {
     private val binding = object : Binding<WakeState, ScheduledWakes> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+        override val adapter = IosWake::class
         override val reaches = setOf(WakeState.NO_LIBRARY_WAKE, WakeState.REFUSING)
 
         override fun create(state: WakeState, clauseId: String, log: CallLog): Entered<ScheduledWakes> {

@@ -12,6 +12,7 @@ import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Clause
 import app.snapsync.contracts.Contract
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
@@ -43,6 +44,7 @@ import platform.Foundation.NSSortDescriptor
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetMediaTypeImage
 import platform.Photos.PHAssetResource
+import platform.Photos.PHAssetResourceUploadJob
 import platform.Photos.PHFetchOptions
 
 /*
@@ -137,6 +139,7 @@ internal fun photoKitUploadInState(
     objects: FixtureObjects,
     photo: GalleryResourceHandle,
     log: CallLog,
+    jobLimit: () -> Int = { error("only the at-cap state reads the cap") },
     afterDispose: () -> Unit = {},
 ): Entered<QueueUnderTest> {
     if (state !in EXTENSION_RECORDED) return Entered.Unreachable(NOT_RECORDED_IN_THE_EXTENSION)
@@ -199,6 +202,7 @@ internal class ExtensionPhotoKitUploadBinding(
 ) : Binding<OsUploadQueueState, QueueUnderTest> {
     override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
     override val kind = BindingKind.Live
+    override val adapter = IosPhotoKitUploadPlatform::class
     override val reaches = setOf(
         OsUploadQueueState.IDLE,
         OsUploadQueueState.AT_CAP,
@@ -210,7 +214,7 @@ internal class ExtensionPhotoKitUploadBinding(
     override fun create(state: OsUploadQueueState, clauseId: String, log: CallLog): Entered<QueueUnderTest> {
         // A state this host does not present: another platform's fact, or one no binding here enters.
         if (state !in reaches) return Entered.Unreachable("$state is not a state this host presents")
-        recorder.resume(clauseId)
+        if (callsFor(state) == 1) recorder.open(clauseId) else recorder.resume(clauseId)
         return photoKitUploadInState(
             state = state,
             api = RecordingUploadJobApi(SystemUploadJobApi(Logger.withTag("contract")), recorder),
@@ -277,6 +281,6 @@ private fun single(clause: Clause<OsUploadQueueState, QueueUnderTest>) =
         override val clauses = listOf(clause)
     }
 
-/** The clauses the extension records, one run each: every presented-state clause. */
+/** The clauses the extension records, one run each: every clause of a state it records. */
 internal fun extensionTransferClauses(): List<String> =
     OsUploadQueueContract.clauses.filter { it.state in EXTENSION_RECORDED }.map { it.id }
