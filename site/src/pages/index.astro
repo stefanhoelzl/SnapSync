@@ -244,19 +244,24 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           below). Legal basis: performance of the service you asked for (GDPR Art. 6(1)(b)).
         </li>
         <li>
-          <strong>A random device ID.</strong> Each install generates a random identifier so the
-          service can tell devices apart within an event. It is not linked to your identity and we
-          cannot use it to contact you.
+          <strong>A device ID.</strong> The app creates one identifier for your phone so the service
+          can tell devices apart within an event: on iPhone a random one; on Android one derived
+          from the identifier Android gives SnapSync alone (our service receives only the derived
+          value). It is not linked to your identity or to any other app, and we cannot use it to
+          contact you. It can stay the same if you delete SnapSync and install it again on the same
+          phone, so that your phone remains the same member of its events; resetting the phone to
+          its factory settings ends it. Legal basis: performance of the service you asked for (GDPR
+          Art. 6(1)(b)).
         </li>
         <li>
           <strong>A record of when the photo list is read.</strong> When the app fetches an event's
-          list of photos, our service records the random device ID of the install that fetched it,
-          why it did (for example, the app was opened, or woken because a new photo arrived), when,
-          and how many photos it was given. When a browser fetches the list, it records only that a
-          browser did and when — nothing that identifies the visitor. We use this record to keep
-          photo delivery working and efficient, only we can see it, and it is deleted together with
-          the event's photos. Legal basis: our legitimate interest in keeping the service working
-          (GDPR Art. 6(1)(f)).
+          list of photos, our service records the device ID of the phone that fetched it, why it did
+          (for example, the app was opened, or woken because a new photo arrived), when, and how
+          many photos it was given. When a browser fetches the list, it records only that a browser
+          did and when — nothing that identifies the visitor. We use this record to keep photo
+          delivery working and efficient, only we can see it, and it is deleted together with the
+          event's photos. Legal basis: our legitimate interest in keeping the service working (GDPR
+          Art. 6(1)(f)).
         </li>
         <li>
           <strong>A push token.</strong> Each time the app starts, your phone's platform gives it a
@@ -279,12 +284,12 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           system closes it, a technical report (what went wrong, the app's recent activity leading
           up to it, device model, operating system version, app version, and how its previous runs
           ended) is sent to our error-monitoring service so we can find and fix the problem. A
-          report may contain the random identifiers of your device, the event and the photos
-          involved, so we can find what a problem affected; it never contains the event's key (the
-          part of the invite that opens its photos) or anything that identifies you. Each report
-          also carries one random per-install identifier, created by the reporting itself, so we can
-          tell how many devices an error affects. Legal basis: our legitimate interest in keeping
-          the app working (GDPR Art. 6(1)(f)).
+          report may contain the identifiers of your device, the event and the photos involved, so
+          we can find what a problem affected; it never contains the event's key (the part of the
+          invite that opens its photos) or anything that identifies you. Each report also carries
+          one random per-install identifier, created by the reporting itself, so we can tell how
+          many devices an error affects. Legal basis: our legitimate interest in keeping the app
+          working (GDPR Art. 6(1)(f)).
         </li>
         <li>
           <strong>Bug reports you send.</strong> "Report a problem" in the app's menu opens a sheet
