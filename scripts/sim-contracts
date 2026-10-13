@@ -145,8 +145,10 @@ cleanup() {
 trap cleanup EXIT
 
 stage "xcodebuild: starting"
+# arm64 only: the generic simulator destination also builds an x86_64 slice (the Swift sources and the SwiftPM packages
+# twice) that an Apple-silicon simulator never loads; the Kotlin framework is iosSimulatorArm64 alone either way.
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
-    -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build \
+    -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO ARCHS=arm64 build \
     > "$OUT/xcodebuild.log" 2>&1 || { tail -40 "$OUT/xcodebuild.log"; fail "xcodebuild"; }
 stage "xcodebuild: done"
 # The journeys compile now, on the daemon the xcodebuild's Gradle left running, so their run at the end compiles
