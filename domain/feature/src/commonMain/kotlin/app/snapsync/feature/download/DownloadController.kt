@@ -4,7 +4,6 @@ import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
-import app.snapsync.model.EntryScope
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
@@ -14,8 +13,8 @@ import app.snapsync.model.StagedResource
 import app.snapsync.model.UnconfirmedImport
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
-import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.scheduling.outliving
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.crypto.openingFilesOf
 import app.snapsync.services.downloads.DownloadJobs
@@ -76,7 +75,6 @@ class DownloadController(
     // [DownloadArm.enabled] has none.
     private val readyToImport: suspend () -> Boolean,
     private val log: Logger = Logger.withTag("DownloadController"),
-    private val entryContext: EntryScope = EntryScope.None,
 ) {
 
     // Serializes all store-mutating flows. Both join (`provisionEvent`) and foreground fire `reconcile`,
@@ -193,6 +191,11 @@ class DownloadController(
         reconcile(eventId, UnionTrigger.WAKE)
     }
 
+    /** [reconcile] the joined event [eventId] for [trigger] — nothing while not joined. */
+    suspend fun reconcileJoined(eventId: String?, trigger: UnionTrigger) {
+        eventId?.let { reconcile(it, trigger) }
+    }
+
     /**
      * Discover + plan + enqueue, idempotently. Safe to call on join and on every foreground: already-imported and
      * already-planned assets are no-ops, and only not-yet-staged resources enqueue.
@@ -223,28 +226,23 @@ class DownloadController(
         trigger: UnionTrigger,
         announced: Long? = null,
         known: UnionPage? = null,
-    ) = log.invocation(
-        entryContext,
-        "reconcile",
-        params = "eventId=$eventId trigger=${trigger.wire}" +
-            (if (announced != null) " announced=$announced" else "") + if (known != null) " (the join's union)" else "",
-    ) {
+    ) = run body@{
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
         // (`null`). Neither enables the arm, and neither is inferred from the other.
         if (arm.enabled() != true) {
             // Upload-only membership, or none: skip discovery entirely (no union fetch, no enqueue, no import).
             log.i { "reconcile skipped — this membership does not download" }
-            return@invocation
+            return@body
         }
         if (!arm.keyHeld()) {
             log.i { "reconcile skipped — the event's key is lost; nothing downloads until its invite is opened again" }
-            return@invocation
+            return@body
         }
         val stored = store.union.cursor(eventId)
         val storedDeclared = store.union.declared(eventId)
         if (known == null && announced != null && stored != null && stored >= announced) {
             log.i { "the union was already read to $stored, past the announced $announced — nothing to read" }
-            return@invocation
+            return@body
         }
         // Every read counts, a failing one too: a backend that fails is asked no more often than one that answers.
         checks.stamp(EventCheck.PHOTOS, eventId)
@@ -254,10 +252,10 @@ class DownloadController(
         // bytes already on disk.
         val page = known ?: union.union(eventId, from, trigger).getOrElse {
             log.w(it) { "union fetch failed — keeping last state; the tail still imports what is staged" }
-            return@invocation
+            return@body
         }
         mutex.withLock { planLocked(eventId, page, stored, storedDeclared, from) }
-    }
+    }.also { log.i { "reconcile(eventId=$eventId trigger=${trigger.wire}${readOf(announced, known)})" } }
 
     /**
      * Plan [page] — read from [from], `null` for the whole union — and enqueue what is not yet staged, under [mutex];
@@ -345,7 +343,7 @@ class DownloadController(
      * discarded here.
      */
     suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean =
-        log.invocation(entryContext, "onResourceStaged", params = "key=$resourceKey", result = { "recorded=$it" }) {
+        run {
             val recorded = mutex.withLock { store.markStaged(ref, resourceKey, stagedPath) }
             // No row took it: the transfer outran a leave's prune, or a relaunched process inherited it for an event it
             // has left. Nothing references the file, so it goes now rather than sitting unreclaimable.
@@ -355,27 +353,40 @@ class DownloadController(
                     .onFailure { log.w(it) { "discarding the unrecorded staged file failed — left behind" } }
             }
             recorded
-        }
+        }.also { log.i { "onResourceStaged(key=$resourceKey) = recorded=$it" } }
 
     /**
-     * Import every asset whose resources are all staged and that is not yet imported — the process tail's unit ①,
-     * and the only import drain any wake runs.
+     * Import every asset whose resources are all staged and that is not yet imported — the wake's import sequence, and
+     * the only import drain any wake runs.
      *
-     * [stopRequested] is the operating system's "time is up", forwarded — expiry stops work cooperatively at the
-     * next boundary: checked before each import is claimed, so the import in flight runs
-     * to its report and no further one starts. Claim semantics are unchanged by a stop — an import that never reports
-     * keeps its claim — and every import left unstarted is a safe retry off its staged bytes.
+     * Each import runs **outliving** its drain: the platform cannot stop an import once submitted, so when the drain is
+     * cancelled — the operating system's time is up, or a new request made the sequence start over — the import in
+     * flight runs on to its report, keeping its claim, and no further one starts. Every import left unstarted is a safe
+     * retry off its staged bytes, and a pass that starts over skips the claimed one, so a transaction that never reports
+     * holds no one hostage ("A stalled import blocks no other work").
      *
-     * [awaitImport] runs one import and decides how long to wait for it. Inline by default. The tail passes one that
-     * gives the wait up — leaving the import claimed and running — when its time is up or another request is due, so a
-     * transaction that never reports holds no one hostage ("A stalled import blocks no other work"); the drain then
-     * moves on to the next importable asset, which the claim keeps from being the stalled one.
+     * It claims ONE ref under the lock, imports it outside the lock, and repeats — **one at a time, deliberately**.
+     * Claiming the whole importable batch up front makes a single non-reporting import strand every other ref in that
+     * batch: they stay claimed, so no later pass selects them, and recovery moves from "the next wake" to "the next
+     * process launch". Claiming per ref keeps the blast radius at one photo.
      */
-    suspend fun importReady(
-        stopRequested: () -> Boolean = { false },
-        awaitImport: suspend (import: suspend () -> Unit) -> Unit = { it() },
-    ) = log.invocation(entryContext, "importReady") {
-        drainImportable(stopRequested, awaitImport)
+    suspend fun importReady() {
+        // Attempted-in-this-pass, so a ref is offered at most ONCE per drain. Without it this loop
+        // live-locks: a `Failed` import leaves its row importable **and** releases its claim, so the next
+        // iteration selects the same ref and fails again, forever — spinning on any permanently bad
+        // resource (an unmapped type, a corrupt staged file). The old batch form could not reach this,
+        // because it iterated a fixed list; the per-ref form has to say so explicitly.
+        val attempted = mutableSetOf<AssetRef>()
+        if (!readyToImport()) {
+            log.i { "import drain skipped — no usable photo grant yet; what is staged stays staged" }
+            return
+        }
+        while (true) {
+            val claimed = mutex.withLock { claimNextImportableLocked(attempted) } ?: break
+            attempted += claimed.ref
+            outliving { importOne(claimed) }
+        }
+        log.i { "importReady" }
     }
 
     /**
@@ -397,10 +408,10 @@ class DownloadController(
      * Invoked once per process, from the composition's startup path, and from nowhere else — see
      * [adjudicateUnconfirmed] for why every other call site was removed.
      */
-    suspend fun sweepInterruptedImports() = log.invocation(entryContext, "sweepInterruptedImports") {
+    suspend fun sweepInterruptedImports() = run {
         adjudicateUnconfirmed()
-        drainImportable()
-    }
+        importReady()
+    }.also { log.i { "sweepInterruptedImports" } }
 
     /**
      * The per-process recovery sweep: settle the rows this process
@@ -546,45 +557,6 @@ class DownloadController(
     )
 
     /**
-     * Claim ONE ref under the lock, import it outside the lock, repeat. The only shape any trigger needs.
-     *
-     * **One at a time, deliberately.** Claiming the whole importable batch up front makes a single
-     * non-reporting import strand every other ref in that batch: they stay claimed, so no later pass
-     * selects them, and recovery moves from "the next wake" to "the next process launch". Claiming per ref
-     * keeps the blast radius at one photo.
-     *
-     * A stalled import ends THIS trigger's drain by blocking on it, and nothing else: every other trigger
-     * skips the claimed ref and imports the rest. That is what replaces the deleted deadline's
-     * stop-the-drain rule, which existed only to avoid abandoning one transaction per remaining asset —
-     * and nothing is abandoned any more.
-     */
-    private suspend fun drainImportable(
-        stopRequested: () -> Boolean = { false },
-        awaitImport: suspend (import: suspend () -> Unit) -> Unit = { it() },
-    ) {
-        // Attempted-in-this-pass, so a ref is offered at most ONCE per drain. Without it this loop
-        // live-locks: a `Failed` import leaves its row importable **and** releases its claim, so the next
-        // iteration selects the same ref and fails again, forever — spinning on any permanently bad
-        // resource (an unmapped type, a corrupt staged file). The old batch form could not reach this,
-        // because it iterated a fixed list; the per-ref form has to say so explicitly.
-        val attempted = mutableSetOf<AssetRef>()
-        if (!readyToImport()) {
-            log.i { "import drain skipped — no usable photo grant yet; what is staged stays staged" }
-            return
-        }
-        while (true) {
-            // Between two imports, never inside one: the operating system's time is up, so nothing new starts.
-            if (stopRequested()) {
-                log.i { "import drain stopped — the operating system's time is up; the rest stays staged" }
-                return
-            }
-            val claimed = mutex.withLock { claimNextImportableLocked(attempted) } ?: return
-            attempted += claimed.ref
-            awaitImport { importOne(claimed) }
-        }
-    }
-
-    /**
      * Phase 1 of the drain, **under [mutex]**: choose ONE importable ref, take it out of circulation, and
      * read everything the platform call will need.
      *
@@ -626,7 +598,7 @@ class DownloadController(
      * revert-proofed at all.
      */
     private suspend fun importOne(claimed: ClaimedImport) =
-        log.invocation(entryContext, "import", params = "asset=${claimed.ref.sourceAssetId}") {
+        run {
             val ref = claimed.ref
             // No try/catch: a throw leaves the ref claimed and propagates. See the KDoc above.
             val album = eventAlbum()
@@ -678,7 +650,7 @@ class DownloadController(
                 // unguardedness relies on not happening.
                 importing -= ref
             }
-        }
+        }.also { log.i { "import(asset=${claimed.ref.sourceAssetId})" } }
 
     /**
      * Settle [row] against the marker it **already holds**, never against a fresh one — the single action
@@ -725,22 +697,22 @@ class DownloadController(
      * **Self-extinguishing**: releasing also drops the resource rows that made the work findable, so a
      * second run finds nothing. No flag, no migration, no run-once bookkeeping.
      *
-     * Driven by the `flow/Foreground` trigger, unconditionally — the backlog belongs to the device, not
+     * Driven by the foreground's work, unconditionally — the backlog belongs to the device, not
      * to a membership, so it is reclaimed while unjoined and under an upload-only one too. That call is
      * what makes it a reclaim rather than a capability; it shipped without one, and every install that
      * predates per-asset release kept its orphaned files. See the trigger's own note for why foreground
      * and not a background task.
      */
-    suspend fun releaseSettledBytes() = log.invocation(entryContext, "releaseSettledBytes") {
+    suspend fun releaseSettledBytes() = run body@{
         releaseUnclaimedBytes()
         val paths = runCatchingCancellable { store.stagedPathsOfImportedAssets() }.getOrDefault(emptyList())
-        if (paths.isEmpty()) return@invocation
+        if (paths.isEmpty()) return@body
         log.i { "releasing ${paths.size} staged file(s) of already-imported assets" }
         runCatchingCancellable {
             stagedBytes.release(paths)
             mutex.withLock { store.dropResourcesOfImportedAssets() }
         }.onFailure { log.w(it) { "staged-byte reclaim failed — retried later" } }
-    }
+    }.also { log.i { "releaseSettledBytes" } }
 
     /**
      * Delete every staged file no resource row claims — bytes nothing will ever
@@ -778,12 +750,12 @@ class DownloadController(
      * one row can outlive it — and that is correct: the photo IS in the library, and the handle is the only
      * thing keeping it out of the upload universe.
      */
-    suspend fun onLeaveOrSwitch() = log.invocation(entryContext, "onLeaveOrSwitch") {
+    suspend fun onLeaveOrSwitch() = run {
         mutex.withLock {
             jobs.cancelAll()
             releaseAndPruneLocked()
         }
-    }
+    }.also { log.i { "onLeaveOrSwitch" } }
 
     /**
      * The download half of a durable-state reset (`POST /device/reset`).
@@ -795,9 +767,9 @@ class DownloadController(
      * write lands on nothing and the created asset is uploaded back into the event. The reset suspends
      * between its steps, so that window is wide.
      */
-    suspend fun onDurableStateReset() = log.invocation(entryContext, "onDurableStateReset") {
+    suspend fun onDurableStateReset() = run {
         mutex.withLock { releaseAndPruneLocked() }
-    }
+    }.also { log.i { "onDurableStateReset" } }
 
     /**
      * Free the staged bytes of prunable rows and drop those rows — **under [mutex]**, and against ONE view
@@ -850,3 +822,7 @@ class DownloadArm(
      */
     val keyHeld: () -> Boolean,
 )
+
+/** What a reconcile's read covered, for its line: the announced position it read from, or the join's union. */
+private fun readOf(announced: Long?, known: Any?): String =
+    (if (announced != null) " announced=$announced" else "") + (if (known != null) " (the join's union)" else "")

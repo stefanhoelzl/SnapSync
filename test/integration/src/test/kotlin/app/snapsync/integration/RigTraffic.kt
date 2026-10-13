@@ -93,8 +93,8 @@ suspend fun Rig.reconcile() = foreground()
 
 /**
  * The operating system finishes every in-flight download — healthy, or answered [status] with an error body — and,
- * unless [wait] is false, the app's answer settles: each transfer staged and the import its tail runs done. Settled is
- * read off what the outside can see — no tail holding background time, the screen's download row, the staging
+ * unless [wait] is false, the app's answer settles: each transfer staged and the import its staging starts done. Settled is
+ * read off what the outside can see — no run holding background time, the screen's download row, the staging
  * directory and the library — unchanged across a few reads.
  */
 suspend fun Rig.stage(wait: Boolean = true, status: Int? = null) {
@@ -113,15 +113,15 @@ suspend fun Rig.settleDownloads() {
     eventually(read = {
         val os = osRecord()
         val now = listOf(
-            os.backgroundTimeHolds.filter { it.startsWith("tail(") }.toString(),
+            os.backgroundTimeHolds.toString(),
             state().download.toString(),
             deviceJson("staging").toString(),
             gallery().census.total.toString(),
         ).joinToString("|")
-        steady = if (now == last && os.backgroundTimeHolds.none { it.startsWith("tail(") }) steady + 1 else 0
+        steady = if (now == last && os.backgroundTimeHolds.isEmpty()) steady + 1 else 0
         last = now
-        steady
-    }) { it >= SETTLED_READS }
+        steady to now
+    }) { (reads, _) -> reads >= SETTLED_READS }
 }
 
 /** Download and import every foreign photo the union serves. */

@@ -3,8 +3,8 @@ package app.snapsync.download
 import app.snapsync.ios.urlsession.HandlerRelease
 import app.snapsync.ios.urlsession.MainThreadRelease
 import app.snapsync.ios.urlsession.transferSessionConfiguration
-import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.logAt
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.TransferOutcome
@@ -150,10 +150,10 @@ private class DownloadDelegate(
         downloadTask: NSURLSessionDownloadTask,
         didFinishDownloadingToURL: NSURL,
     ) = objcBoundary(log, "download.didFinishDownloading") {
-        log.invocation("download.didFinishDownloading", severity = Severity.Debug) {
-            val path = didFinishDownloadingToURL.path ?: return@invocation
+        run body@{
+            val path = didFinishDownloadingToURL.path ?: return@body
             events.finished(SystemDownloadTask(downloadTask), outcomeOf(downloadTask, path, log), path)
-        }
+        }.also { log.logAt(Severity.Debug) { "download.didFinishDownloading" } }
     }
 
     @PlatformEntry
@@ -162,14 +162,13 @@ private class DownloadDelegate(
         task: NSURLSessionTask,
         didCompleteWithError: NSError?,
     ) = objcBoundary(log, "download.didComplete") {
-        log.invocation(
-            "download.didComplete",
+        run {
+            events.completed(SystemDownloadTask(task), didCompleteWithError)
+        }.also {
             // Domain and code, not just `localizedDescription`: iOS renders NSURLErrorUnknown as the literal
             // "unknown error", which names nothing an operator can act on or search for.
-            params = "error=${didCompleteWithError?.let { "${it.domain}/${it.code}: ${it.localizedDescription}" } ?: "«none»"}",
-            severity = Severity.Debug,
-        ) {
-            events.completed(SystemDownloadTask(task), didCompleteWithError)
+            val error = didCompleteWithError?.let { "${it.domain}/${it.code}: ${it.localizedDescription}" } ?: "«none»"
+            log.logAt(Severity.Debug) { "download.didComplete(error=$error)" }
         }
     }
 
@@ -185,6 +184,6 @@ private class DownloadDelegate(
     @PlatformEntry
     override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) =
         objcBoundary(log, "download.didFinishEvents") {
-            log.invocation("download.didFinishEvents") { events.drained() }
+            run { events.drained() }.also { log.i { "download.didFinishEvents" } }
         }
 }

@@ -49,6 +49,19 @@ class MembershipEntryTest {
     }
 
     @Test
+    fun `provisioning another event switches - none enters - the joined one only saves`() = runTest {
+        val switched = mutableListOf<String>()
+        entry(switched).provision("OLD", cfg)
+        assertEquals(listOf("stop", "leave:OLD", "load", "adopt:NEW", "save:NEW", "start"), switched)
+        val joined = mutableListOf<String>()
+        entry(joined).provision(null, cfg)
+        assertEquals(listOf("load", "adopt:NEW", "save:NEW", "start"), joined)
+        val stayed = mutableListOf<String>()
+        entry(stayed).provision("NEW", cfg)
+        assertEquals(listOf("save:NEW"), stayed, "re-provisioning the joined event leaves and loads nothing")
+    }
+
+    @Test
     fun `a share-only join adopts too`() = runTest {
         val order = mutableListOf<String>()
         entry(order).enter(null, cfg.copy(direction = Direction.UploadOnly))

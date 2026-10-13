@@ -106,9 +106,14 @@ and the mocks together; its `support/` package holds the shared setups (`configS
 `RecordingFiles`, …). A feature test that touches no port and no service stays in `:domain:feature`'s own
 `commonTest`, and so does one that needs a feature `internal`. A service's own tests live in `:domain:services`
 (over hand-written port doubles) or, where they need the mocks, in `:adapter:generic:mock`'s `commonTest` — which also
-holds the flow tests and the mocks' own contract bindings, because the mocks are `internal` and only their own module's
+holds the composition's process tests and the mocks' own contract bindings, because the mocks are `internal` and only their own module's
 tests can build one in a chosen state. **A feature's tests may be split across `:domain:feature` and `:test:feature`.
-Look in both.**
+Look in both.** A feature whose work runs `outliving` its caller runs under a runtime in its tests too
+(`support/Runtime.kt`'s `underRuntime { }`), so a cancelled caller leaves that work running as it does in the app.
+
+The runtime itself — entry-point bases, expiry and its grace, steps, single flight — is tested in
+`:domain:scheduling`'s `commonTest` over virtual time, and `:domain:inbound`'s log in its own; both modules sit at
+zero uncovered lines.
 
 ### No `:app:*` module has a test source set
 
@@ -130,15 +135,15 @@ The reasons differ, so keep them separate:
 Most of this risk has been removed by moving code:
 - OS callbacks arrive through entry ports (`Lifecycle`, `Links`, `PushNotifications`, `Ui`, `DevControls`,
   `ExtensionHost`). The shell forwards each Swift callback to its adapter in one line; what a delivery runs is the
-  composition's handler. The rig's entry tests (`EntryIntegrationTest`, `OsCompletionIntegrationTest`) deliver each
+  composition's entry point. The rig's entry tests (`EntryIntegrationTest`, `OsCompletionIntegrationTest`) deliver each
   entry to the JVM root and read what it did; `ExtensionEntryTest`, beside the mocks, pins the extension's re-read on
   JVM and the simulator.
 - The tap → `UiIntent` table is one factory in `:ui:screens`, and it is click-tested there.
 
 What is still uncovered:
 - Swift argument-level forwarding: the right entry called with a wrong argument of the same type. (Since 11f the
-  `BGTask` registration is Kotlin's — `IosWake` registers the heartbeat and hands its expiry to the wake's
-  `Completion` — so Swift forwards no task identifier at all.)
+  `BGTask` registration is Kotlin's — `IosWake` registers the heartbeat and expires the `Running` its delivery
+  answered — so Swift forwards no task identifier at all.)
 - The hand-written shell entries outside the port: `onLaunch`, the event-link activity filter's call site,
   and the log-only callbacks.
 
@@ -375,10 +380,11 @@ question: what could an adapter answer at all? It reads `:domain:ports` by refle
   cell per leaf subtype (only the outer type of a generic), an enum one per entry, `Boolean` a `true` and
   a `false`, a `Flow<T>` the variants of `T`, and any other type a single `returns`. A nullable type adds
   `null`.
-- `Port.handlers.field(Arg, …)`: a handler an event port's adapter calls, crossed with the variants of
-  every argument it passes.
+- `Port.handlers.field(Arg, …)`: a delivery an event port's adapter makes, crossed with the variants of
+  every argument it passes — a `Background` or `Granted` delivery's `Completion` among them.
 - `Port.member.param(…)`: the same, for a callback handed to a member.
-- `Port.Handle.member → Variant`: a handle (`Completion`, …) counted under each port that hands it out.
+- `Port.Handle.member → Variant`: a handle (`Completion`, the `Running` a `Granted` delivery answers or
+  `BackgroundTime.begin` is handed, …) counted under each port that hands it out or is handed it.
 
 A throw is never a cell: a port answers every expected failure as a value in its signature
 (`docs/architecture.md`, "A port answers every expected failure as a value"), and the test **fails** on a
@@ -434,12 +440,12 @@ answers do not depend on the host, and one check keeps the mock and the adapter 
   `SeededLibrary`, each `Download` a factory opens.
 - A proxy forwards every call unchanged and records the cell it saw as the grid's own text, rendered by the
   same `Covers.kt` the declarations use: the instance's class is the class the declaration names, on the
-  JVM and Kotlin/Native alike. It wraps what it hands on, too: the handlers passed to `listen` (logged as
-  `Port.handlers.field(…)`), the callbacks handed to a member, and the handles a member returns or a
-  handler receives (`Completion`, `BackgroundTimeHold`, `LibraryChangeToken`), each under the port that
+  JVM and Kotlin/Native alike. It wraps what it hands on, too: the handlers passed to `inbound` (logged as
+  `Port.handlers.field(…)`, one wrapper per inbound kind), the callbacks handed to a member, and the handles a
+  member returns, takes or a handler receives (`Completion`, `Running`, `BackgroundTimeHold`, `LibraryChangeToken`), each under the port that
   hands it out. A throw is never recorded — no port declares one — and passes unchanged.
 - Only the clause's **window** counts: from just before its body to the end of the binding's `dispose`.
-  What `create` does to enter the state (seeding writes, `listen`) satisfies no claim; a handler the
+  What `create` does to enter the state (seeding writes, `inbound`) satisfies no claim; a handler the
   adapter calls late, during the body or the disposal, does. A call after the window is dropped. So a
   binding's own cleanup in `dispose` goes through the bare implementation: a cleanup `delete` through the
   proxy would satisfy a clause that claims a delete its body never made.
@@ -719,20 +725,21 @@ app's own bookkeeping, and bytes that landed are read from the backend. 11g2 dro
 **On the JVM host every lever and read is a mock's operator face** — the backend's, the photo library's, the upload
 queue's, the download session's, the disk's, the clock's, the reporter's, the screen's — never the composed core
 (11g2b). What the app makes of a lever is observed, not awaited: `downloads/stage` finishes the OS's transfers and
-answers; the staging and the import its tail runs are read off the staging directory and the library. The reconcile
+answers; the staging and the import it starts are read off the staging directory and the library. The reconcile
 and the status read are the foreground entry's (`/os/app/onForeground`), so the protocol has no verb for either. The
 gallery read is the library's own answer under the person's grant, through the selection policy — the whole library
 under a full grant, the person's selection under a partial one. Over the real backend, a lever or read only the
 backend mock's operator has answers `409` with the reason.
 
 **The JVM host plays the operating system, its expiry and its record included:**
-- `os/app/onExpiry` is the OS saying time is up: every completion handler it holds and every background-time hold is
-  told so; `?arg=next` hands the next handler over already expired. The app host honours it only when its adapter choice mocks
+- `os/app/onExpiry` is the OS saying time is up: every wake it granted is withdrawn (the `Running` each delivery
+  answered is expired) and every background-time hold expires; `?arg=next` hands the next wake over already
+  withdrawn. The app host honours it only when its adapter choice mocks
   the background-time holds — a real OS's expiry is its own.
 - `device/os-record` is what the OS recorded of the app: the completion handlers handed over, released and released
   a second time; whether a screen was shown; whether the selection observer is open; the heartbeat requests and the
   heartbeat pending now (`pendingWake`: its cadence and delay, or `null`); the
-  background-time holds, by the name each was begun under; the push registrations; the transfer sessions; the
+  background-time holds, by the name each was begun under (the trigger's: `OnForeground`, or the trigger a detached run was started by); the push registrations; the transfer sessions; the
   databases opened and the files staged. A receipted entry's answer carries it **as read at the release**
   (`osAtRelease`), because "released after the wake's own work" is a statement about that instant.
 - `device/relaunch?scene=false` is a cold **background** launch: the process starts with no scene, so nothing builds
@@ -862,7 +869,7 @@ test process's own and revoking one kills it, so `NO_GRANT` clauses stay the iOS
 are iOS's too (Android files no photo into an album — `GRANTED_SEEDED_ALBUMS_WRITABLE`). The mocks'
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
 
-The client compiles against `model/`, presentation and `feature/`, never `ports/`, `flow/`, `compose/` or
+The client compiles against `model/`, presentation and `feature/`, never `ports/`, `entrypoints/`, `compose/` or
 the host, and `ReadModelImportsTest` confines its `feature/` references to the `readmodel` packages. **That
 compile boundary and that gate are the read-model rule.** Decision record:
 `changes/archive/2026-09-23-add-rig-jvm-host`.
@@ -874,7 +881,7 @@ compile boundary and that gate are the read-model rule.** Decision record:
 ### `:test:integration`: seam → observable outcome
 
 Each test (`rigTest { … }` in `Rig.kt`) starts a **fresh in-process JVM host over the backend mock**, drives
-it only through `RigClient`, and closes it. Tests run sequentially. A test cannot name a mock, a port, a flow or
+it only through `RigClient`, and closes it. Tests run sequentially. A test cannot name a mock, a port, an entry point or
 `compose/`: the module does not compile against them.
 
 Tests use **mocks only**, with no per-test real system. The port contracts are what justify trusting the
@@ -899,7 +906,7 @@ mocks, and the journeys exercise the real systems.
 **Never assert** ledger or download-store content (the protocol no longer carries the ledger), in-memory feature
 state, or call counts on a mock whose real system records nothing
 a person could read. If the only possible assertion is internal, the test belongs elsewhere, as a unit test
-in its zone or a contract clause — which tail unit ran is `TailRunnerTest`'s, what a ledger row holds is
+in its zone or a contract clause — which sequence a trigger runs is its entry point's (`entrypoints/`, read in one file), what a ledger row holds is
 `UploadCycleTest`'s, the extension's per-invocation credential re-read is `ExtensionEntryTest`'s (`:adapter:generic:mock`,
 over the composition). A seam with no presentation effect is fully covered by its outside outcomes: a
 selection-policy exclusion is proved by missing bytes and a missing manifest entry.

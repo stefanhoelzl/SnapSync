@@ -1,11 +1,16 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.ImportPlaceholder
+import app.snapsync.ports.ImportSettled
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import kotlin.test.assertEquals
@@ -41,8 +46,8 @@ class ImportDeliveries {
     private val settles = mutableMapOf<String, ImportOutcome>()
 
     val handlers = GalleryHandlers(
-        onImportPlaceholder = { correlation, id -> placeholders[correlation] = id },
-        onImportSettled = { correlation, result -> settles[correlation] = result },
+        onImportPlaceholder = inboundOf { placeholders[it.correlation] = it.created },
+        onImportSettled = inboundOf { settles[it.correlation] = it.outcome },
     )
 
     /** The asset the last placeholder for [correlation] named, or `null` if none was delivered. */
@@ -117,8 +122,8 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             covers = cells {
                 on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Imported::class)
                 on<Gallery> {
-                    calls(GalleryHandlers::onImportPlaceholder, String::class, PlatformAssetId::class)
-                    calls(GalleryHandlers::onImportSettled, String::class, ImportOutcome.Imported::class)
+                    calls(GalleryHandlers::onImportPlaceholder, ImportPlaceholder::class)
+                    calls(GalleryHandlers::onImportSettled, ImportSettled::class)
                 }
             },
         ) { subject ->
@@ -195,7 +200,7 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
             GalleryImportState.GRANTED_INVALID_STAGED,
             covers = cells {
                 on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Failed::class)
-                on<Gallery>().calls(GalleryHandlers::onImportSettled, String::class, ImportOutcome.Failed::class)
+                on<Gallery>().calls(GalleryHandlers::onImportSettled, ImportSettled::class)
             },
         ) { subject ->
             val clauseId = "AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED"

@@ -1,5 +1,6 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.FileAccess
@@ -28,7 +29,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -40,7 +40,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The download client's orchestration, exercised without an iOS runtime (capability `receiving-photos`):
@@ -79,7 +78,8 @@ class DownloadJobsTest {
         /** The staged paths the jobs moved finished bodies to. */
         val stagedTemps = mutableListOf<String>()
 
-        override fun listen(handlers: DownloadHandlers) = Unit
+        @CompositionOnly
+        override fun inbound(handlers: DownloadHandlers) = Unit
 
         override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
             started += Started(url, tag, network)
@@ -95,9 +95,6 @@ class DownloadJobsTest {
 
         /** Only the finish half of [finish]: what the delegate queue does for one finished transfer's bytes. */
         fun stage(description: String) = jobs.onFinished(description, OK, "temp:/$description")
-
-        /** The session delivered every event it had — `URLSessionDidFinishEventsForBackgroundURLSession`. */
-        fun eventsFinished() = jobs.onBackgroundEventsFinished()
 
         /**
          * The system invalidated the session — the only way one ever dies: every transfer it held reports completed
@@ -522,11 +519,11 @@ class DownloadJobsTest {
      * The OS's background-events handler reports on the wake's own work — the STAGINGS the session's events caused
      * — not on the events themselves (capability `receiving-photos`, "The download session's OS handler is released
      * after staging"). Releasing it when the session drained announced work that had only been queued, and iOS
-     * suspended the process on the strength of it (SNAPSYNC-6). Nor is it held for the imports any more: those are
-     * the process tail's, run after the release under the app's own background time (`changes/own-work-per-wake`).
+     * suspended the process on the strength of it (SNAPSYNC-6). The relaunch's entry point waits here for them; the
+     * operating system's expiry bounds that wait (the runtime's, not this store's).
      */
     @Test
-    fun the_os_handler_is_released_only_after_the_stagings_its_events_caused() = runTest {
+    fun the_wait_for_stagings_ends_only_after_the_stagings_in_flight() = runTest {
         val h = Harness(this)
         var released = false
         val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
@@ -535,58 +532,28 @@ class DownloadJobsTest {
             importsStarted += key
             gate.await() // a slow staging record — the store write the delivery callback makes
         }
-        h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
 
-        // Two transfers land, then the session reports every event delivered.
+        // Two transfers land, then the relaunch's entry point waits for what they staged.
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("B")), "b-primary.heic", EVENT))
-        h.transport.eventsFinished()
-        // `runCurrent`, NOT `advanceUntilIdle`: the handler is now bounded, and advancing virtual time
-        // freely would jump past that deadline and release it — proving nothing about the imports.
+        launch {
+            h.jobs.awaitOutstandingStagings()
+            released = true
+        }
         runCurrent()
 
-        assertEquals(listOf("a-primary.heic", "b-primary.heic"), importsStarted, "both imports started")
-        assertFalse(released, "the OS handler must NOT be released while its imports are still running")
+        assertEquals(listOf("a-primary.heic", "b-primary.heic"), importsStarted, "both stagings started")
+        assertFalse(released, "the wait must NOT end while the stagings are still running")
 
         gate.complete(Unit)
         runCurrent()
-        assertTrue(released, "released once the imports it announced actually finished")
-    }
-
-    /**
-     * The other half of the same guarantee: awaiting the stagings is correct, awaiting them **unboundedly** is not —
-     * an unanswered handler costs the app the very download wakes this capability runs on (capability
-     * `sync-status`). No clock of ours bounds it: the operating system's expiry does, through the handover the
-     * wake's owner was given, and it releases at once without cancelling the work.
-     */
-    @Test
-    fun a_stalled_staging_does_not_strand_the_os_handler_past_the_operating_systems_expiry() = runTest {
-        // `backgroundScope`, because this test deliberately parks a staging that never finishes: the expiry must
-        // release the handler and leave that work running, so it is still alive when the test body ends.
-        val h = Harness(backgroundScope)
-        var released = false
-        val neverStages = kotlinx.coroutines.CompletableDeferred<Unit>()
-        var stagingFinished = false
-        h.deliver = { _, _, _ ->
-            neverStages.await()
-            stagingFinished = true
-        }
-        val handover = h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
-
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
-        h.transport.eventsFinished()
-        advanceTimeBy(3_600.seconds)
-        assertFalse(released, "no clock of ours releases it")
-
-        handover.releaseOnExpiry("test expiry")
-        assertTrue(released, "the operating system's expiry releases it at once")
-        assertFalse(stagingFinished, "and never cancels or awaits the work")
+        assertTrue(released, "it ends once the stagings it waited for finished")
     }
 
     @Test
     fun a_relaunch_completion_for_an_unknown_transfer_is_still_staged() = runTest {
         val h = Harness(this)
-        h.jobs.adoptBackgroundEvents(bareCompletion { }) // relaunched by the OS: nothing was enqueued in THIS process
+        // Relaunched by the OS: nothing was enqueued in THIS process.
 
         // The OS hands us a transfer the previous process started.
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
@@ -724,12 +691,6 @@ class DownloadJobsTest {
         assertTrue(h.staged.isEmpty())
     }
 }
-
-/** An operating-system completion handler with no expiry signal, as a background-session relaunch hands one over. */
-private fun bareCompletion(onComplete: () -> Unit): app.snapsync.ports.Completion =
-    object : app.snapsync.ports.Completion {
-        override fun complete() = onComplete()
-    }
 
 /** The event every planned download in this file belongs to. */
 private const val EVENT = "E-1"

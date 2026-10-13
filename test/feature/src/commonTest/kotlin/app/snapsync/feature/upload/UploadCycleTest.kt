@@ -2265,7 +2265,7 @@ class UploadCycleTest {
             limitAfter = 0,
         )
 
-        val result = cycle(backend, platform).topUp { false }
+        val result = cycle(backend, platform).topUp()
 
         assertEquals(CycleResult.PROCESSING, result, "the refused re-creation is work left")
         assertEquals(1, platform.createAttempts, "the re-creation was asked once; the work read admits nothing")
@@ -2279,7 +2279,7 @@ class UploadCycleTest {
         LedgerWriter(backend).recordDiscovered(listOf(resource("a"), resource("b")))
         val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
 
-        val result = cycle(backend, platform, policy = admitting("2026-07-01T00:00:00Z")).topUp { false }
+        val result = cycle(backend, platform, policy = admitting("2026-07-01T00:00:00Z")).topUp()
 
         assertEquals(CycleResult.COMPLETED, result, "nothing it may create is left waiting")
         assertEquals(0, platform.createAttempts)
@@ -2302,7 +2302,7 @@ class UploadCycleTest {
             }
         }
 
-        val result = cycle(backend, platform, library = racing).topUp { false }
+        val result = cycle(backend, platform, library = racing).topUp()
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(0, platform.createAttempts, "the row was already in flight")
@@ -2352,7 +2352,7 @@ class UploadCycleTest {
             limitAfter = 1,
         )
 
-        val result = cycleOver(backend, platform).topUp { false }
+        val result = cycleOver(backend, platform).topUp()
 
         assertEquals(CycleResult.PROCESSING, result)
         assertEquals(listOf("a"), platform.created.map { it.filename })
@@ -2373,7 +2373,7 @@ class UploadCycleTest {
             failCreate = true,
         )
 
-        val result = cycleOver(backend, platform).topUp { false }
+        val result = cycleOver(backend, platform).topUp()
 
         assertEquals(CycleResult.COMPLETED, result, "a failed creation is not the platform's limit")
         assertTrue(platform.created.isEmpty())

@@ -3,6 +3,7 @@ package app.snapsync.feature.membership
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.confirmedGone
+import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.config.ConfigService
 
 /**
@@ -14,12 +15,12 @@ import app.snapsync.services.config.ConfigService
  * the window backfill, the retention backfill, and the absence verdict are the same operation seen from
  * three sides, so the name moved with the job.)
  *
- * The *fetch* stays coordination in **one** `flow/` trigger — `Foreground`, which keeps the membership
- * current — over a `compose/`-built `EventDirectory` effect; this feature owns the decision of what the
+ * The *fetch* is made for **one** trigger — the foreground's work, which keeps the membership current
+ * ([refreshJoined]) — over the `EventDirectory` service; this feature owns the decision of what the
  * fetched value means. (`Provision` once fetched too, to fill a name a scan couldn't fetch while
  * offline. A membership can no longer arrive nameless, and every provision route has just loaded or
  * minted its details, so that fetch was redundant by construction and is gone.) [RefreshOutcome] is what the
- * rule ANSWERS, not what the flows branch on: the one consequence — marking a deleted event — is performed here (see
+ * rule ANSWERS, not what a trigger branches on: the one consequence — marking a deleted event — is performed here (see
  * [stopTransfers]), so no trigger can reach it by a different route.
  *
  * Seated in `feature/membership` because the membership config is this feature's durable state
@@ -31,10 +32,18 @@ class MembershipRefresh(
      * What a confirmed deletion stops — every upload and download for the event, as a leave stops them — while the
      * membership itself stays — the app never leaves an event on its own. The effect is
      * built in `compose/`; the decision is here, so every trigger reaches the same consequence by construction: one
-     * verdict cannot mean two things depending on which flow observed it.
+     * verdict cannot mean two things depending on which trigger observed it.
      */
     private val stopTransfers: suspend () -> Unit,
 ) {
+
+    /**
+     * Keep the joined membership [eventId] current: fetch its details from [directory], then [refresh] — nothing while
+     * not joined.
+     */
+    suspend fun refreshJoined(eventId: String?, directory: EventDirectory) {
+        eventId?.let { refresh(it, directory.fetch(it).toJoinLoad()) }
+    }
 
     /**
      * Fold a freshly [fetched] details result into the persisted membership and return what it means.

@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.UploaderPin
 
@@ -12,7 +14,7 @@ import app.snapsync.model.UploaderPin
  *
  * An event port for the one command it delivers ([DevHandlers.onReset]); the two reads are read at every use.
  */
-interface DevControls : Listenable<DevHandlers> {
+interface DevControls : EventPort<DevHandlers> {
     /**
      * The per-uploader switch, read at every use (the channel changes it live). **Always `null` in a production
      * build**, so what a shipped process uploads with is a function of the device and its grant (decision record
@@ -38,7 +40,10 @@ interface DevControls : Listenable<DevHandlers> {
 }
 
 /** What the development controls tell the core. Built only by a composition. */
-class DevHandlers(
-    /** Void this device's durable sync state without telling any backend (the channel's `POST /device/reset`). */
-    val onReset: suspend () -> Unit,
+class DevHandlers @CompositionOnly constructor(
+    /**
+     * Void this device's durable sync state without telling any backend (the channel's `POST /device/reset`); the
+     * completion is answered once it is void.
+     */
+    val onReset: Background<Unit>,
 )

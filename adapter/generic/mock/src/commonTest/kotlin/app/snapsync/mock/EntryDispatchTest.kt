@@ -1,7 +1,13 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.mock
 
+import app.snapsync.contracts.answeredOf
+import app.snapsync.contracts.backgroundOf
+import app.snapsync.contracts.inboundOf
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.ProcessingAnswer
-import app.snapsync.ports.Completion
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionHandlers
@@ -9,12 +15,15 @@ import app.snapsync.ports.LifecycleHandlers
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.PushHandlers
+import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ports.UploadTarget
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,8 +46,14 @@ class EntryDispatchTest {
     @Test
     fun `the app's foreground life reaches the foreground and background handlers`() {
         val lifecycle = LifecycleMock()
-        lifecycle.port().listen(
-            LifecycleHandlers(onForeground = { ran += "foreground" }, onBackground = { ran += "background" }),
+        lifecycle.port().inbound(
+            LifecycleHandlers(
+                onForeground = backgroundOf { _, done ->
+                    ran += "foreground"
+                    done.complete()
+                },
+                onBackground = inboundOf { ran += "background" },
+            ),
         )
 
         lifecycle.operator.foreground()
@@ -51,7 +66,7 @@ class EntryDispatchTest {
     fun `an opened link reaches the link handler raw`() {
         val links = LinksMock()
         val delivered = mutableListOf<LinkDelivery>()
-        links.port().listen(LinkHandlers(onLink = { delivered += it }))
+        links.port().inbound(LinkHandlers(onLink = inboundOf { delivered += it }))
 
         links.operator.open("https://snapsync.app/e/1#k", hook = "onOpenURL")
 
@@ -62,11 +77,11 @@ class EntryDispatchTest {
     fun `the push service's token and failure and message each reach their own handler`() {
         val push = PushServiceMock()
         val messages = mutableListOf<Pair<Map<Any?, *>, Completion>>()
-        push.port().listen(
+        push.port().inbound(
             PushHandlers(
-                onToken = { ran += "token ${it.value}" },
-                onTokenFailure = { ran += "failure ${it.description}" },
-                onMessage = { message, done ->
+                onToken = inboundOf { ran += "token ${it.value}" },
+                onTokenFailure = inboundOf { ran += "failure ${it.description}" },
+                onMessage = backgroundOf { message, done ->
                     ran += "message"
                     messages += message.payload to done
                 },
@@ -85,18 +100,38 @@ class EntryDispatchTest {
     @Test
     fun `a live screen and a tap reach the screen's two handlers`() {
         val screen = ScreenMock()
-        screen.port().listen(UiHandlers(onIntent = { ran += "intent $it" }, onLive = { ran += "live" }))
+        screen.port().inbound(
+            UiHandlers<UiState, UiIntent>(
+                onIntent = inboundOf { ran += "intent $it" },
+                onLive = inboundOf {
+                    ran += "live"
+                    UiState(Layer.CreatingEvent)
+                },
+            ),
+        )
 
         screen.operator.live()
         screen.operator.tap(UiIntent.LeaveEvent)
 
         assertEquals(listOf("live", "intent ${UiIntent.LeaveEvent}"), ran)
+        assertEquals(
+            UiState(Layer.CreatingEvent),
+            screen.operator.shown.value,
+            "the live screen renders what the app answered",
+        )
     }
 
     @Test
     fun `the channel's reset reaches the reset handler`() = runTest {
         val dev = DevControlsMock()
-        dev.port().listen(DevHandlers(onReset = { ran += "reset" }))
+        dev.port().inbound(
+            DevHandlers(
+                onReset = backgroundOf { _, done ->
+                    ran += "reset"
+                    done.complete()
+                },
+            ),
+        )
 
         dev.operator.reset()
 
@@ -106,13 +141,13 @@ class EntryDispatchTest {
     @Test
     fun `the extension's invocation answers what the process handler returned and then its end`() = runTest {
         val host = ExtensionHostMock()
-        host.port().listen(
+        host.port().inbound(
             ExtensionHandlers(
-                onProcess = {
+                onProcess = answeredOf {
                     ran += "process"
                     ProcessingAnswer.FAILED
                 },
-                onTerminate = { ran += "terminate" },
+                onTerminate = inboundOf { ran += "terminate" },
             ),
         )
 
@@ -127,14 +162,14 @@ class EntryDispatchTest {
         val session = UploadSessionMock(network = { _, _, _ -> 201 }, held = { false })
         val handed = mutableListOf<Completion>()
         val upload = session.port()
-        upload.listen(
+        upload.inbound(
             TransferHandlers(
-                onFinished = { tag, error -> ran += "finished $tag ${error ?: "ok"}" },
-                onBackgroundEvents = {
-                    ran += "background events"
-                    handed += it
+                onFinished = inboundOf { ran += "finished ${it.tag} ${it.failure ?: "ok"}" },
+                onBackgroundEvents = backgroundOf { relaunch: SessionRelaunch, done ->
+                    ran += "background events after ${relaunch.drainsBefore}"
+                    handed += done
                 },
-                onEventsDrained = { ran += "drained" },
+                onEventsDrained = inboundOf { ran += "drained ${it.drains}" },
             ),
         )
         val target = UploadTarget(
@@ -148,7 +183,7 @@ class EntryDispatchTest {
         session.operator.handBack(completion)
 
         assertEquals(
-            listOf("finished A-primary.jpg ok", "background events", "drained"),
+            listOf("finished A-primary.jpg ok", "background events after 0", "drained 1"),
             ran,
         )
         assertSame(completion, handed.single(), "the relaunch's completion is handed over, not a stand-in")

@@ -1,5 +1,8 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
@@ -12,10 +15,10 @@ import app.snapsync.model.PushToken
  * One external system, deciding nothing: whether a delivered token is published is the push registration's
  * comparison against the last one the backend accepted, and what a push runs is the composition's handler.
  *
- * An event port: [listen] registers the composition's handlers once per adapter, as the graph is composed — a token
+ * An event port: [inbound] registers the composition's handlers once per adapter, as the graph is composed — a token
  * or a push arriving in a background wake must find them.
  */
-interface PushNotifications : Listenable<PushHandlers> {
+interface PushNotifications : EventPort<PushHandlers> {
     /**
      * The push service this adapter speaks — the backend's push kind (`PUSH_KIND_APNS`, `PUSH_KIND_FCM`) the device's
      * registration carries, so the backend picks the sender that can reach it. A fact of the platform, fixed for the
@@ -32,14 +35,14 @@ interface PushNotifications : Listenable<PushHandlers> {
 }
 
 /** What the push service tells the core. Built only by a composition (law "Commands cross one door"). */
-class PushHandlers(
+class PushHandlers @CompositionOnly constructor(
     /** The platform issued (or re-delivered, or rotated) this device's token. */
-    val onToken: (PushToken) -> Unit,
+    val onToken: Inbound<PushToken, Unit>,
     /** The platform could not issue a token — no silent push will arrive until it can. */
-    val onTokenFailure: (PlatformError) -> Unit,
+    val onTokenFailure: Inbound<PlatformError, Unit>,
     /**
-     * A silent push arrived; [completion] is released once the push's own work is done, or at once when the
-     * process's background time is up — always, including for a payload no receiver can use.
+     * A silent push arrived. Its completion is answered once the push's own work is done, or once its cancellation has
+     * unwound when the process's background time is up — always, including for a payload no receiver can use.
      */
-    val onMessage: (PushMessage, Completion) -> Unit,
+    val onMessage: Background<PushMessage>,
 )

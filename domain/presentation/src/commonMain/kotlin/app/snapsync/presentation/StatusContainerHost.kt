@@ -104,7 +104,7 @@ class StatusContainerHost(
     // The user-tap **command bundle** (`docs/architecture.md`, "Commands cross one door"):
     // leave / create / commitJoin / share / requestAccess / openSettings — `model/` vocabulary whose
     // live instance is built only in `compose/` (`AppCore.userCommands`) — this container fires
-    // commands solely through it and never references a feature command (or `ports/`, or `flow/`)
+    // commands solely through it and never references a feature command (or `ports/`, or an entry point)
     // directly; the armed presentation gate enforces the import law. Required: a host states every
     // command it wires, so a forgotten one is a compile error rather than an inert tap.
     //
@@ -1258,7 +1258,7 @@ class StatusContainerHost(
             // throw here would otherwise park the gate on a dead-end spinner for the life of the process, and the
             // join gate never rests in a phase that offers no action.
             //
-            // Which phase is right depends on whether the membership was PERSISTED, because `flow/Provision`
+            // Which phase is right depends on whether the membership was PERSISTED, because the join's `Provision`
             // saves the config at step 2 of 6 and everything after it is follow-up the next foreground
             // repeats. So the config decides, and it is the only thing that can:
             //  · it names this event  → the join LANDED; drop the pending join, and the joined screen is the

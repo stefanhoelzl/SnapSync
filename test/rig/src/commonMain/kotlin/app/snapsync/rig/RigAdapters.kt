@@ -1,5 +1,7 @@
 package app.snapsync.rig
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
@@ -8,6 +10,7 @@ import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
+import kotlinx.coroutines.CompletableDeferred
 
 // The control channel's adapters (`docs/testing.md`, "The control channel"): what a rig build's `platformAdapters()`
 // supplies in place of the production ones. A production build contains none of this — the source is compiled only
@@ -18,15 +21,16 @@ import app.snapsync.ui.state.UiState
  * `/user` verbs reach the core as the [UiIntent]s a tap would produce, through the same handlers. [inner] is lazy — the
  * root builds this set before the scene it decorates can be built — and is an adapter choice's screen mock where one mocks
  * it (`docs/testing.md`, "Launch-time adapters"). Forwarding
- * [listen] to [inner] is the one registration the composition makes (a rig decorator's forwarding `listen` counts as
- * the composition's single `listen`).
+ * [inbound] to [inner] is the one registration the composition makes (a rig decorator's forwarding `inbound` counts as
+ * the composition's single one).
  */
 class RigUi(private val inner: Lazy<Ui<UiState, UiIntent>>) : Ui<UiState, UiIntent> {
-    private var handlers: UiHandlers<UiIntent>? = null
+    private var handlers: UiHandlers<UiState, UiIntent>? = null
 
-    override fun listen(handlers: UiHandlers<UiIntent>) {
+    @CompositionOnly
+    override fun inbound(handlers: UiHandlers<UiState, UiIntent>) {
         this.handlers = handlers
-        inner.value.listen(handlers)
+        inner.value.inbound(handlers)
     }
 
     override fun show(state: UiState) = inner.value.show(state)
@@ -34,7 +38,7 @@ class RigUi(private val inner: Lazy<Ui<UiState, UiIntent>>) : Ui<UiState, UiInte
     /** A `/user` verb: [intent], as the screen would have handed it over. */
     fun dispatch(intent: UiIntent) =
         checkNotNull(handlers) { "no composition registered for the Ui port — the intent has no receiver" }
-            .onIntent(intent)
+            .onIntent.deliver(intent)
 }
 
 /**
@@ -54,7 +58,8 @@ class RigDevControls : DevControls {
     /** Whether an event this device creates is encrypted; `true`, as a shipped build, until the channel sets it. */
     var encrypts: Boolean = true
 
-    override fun listen(handlers: DevHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: DevHandlers) {
         this.handlers = handlers
     }
 
@@ -64,7 +69,20 @@ class RigDevControls : DevControls {
 
     override fun createsPlainEvents(): Boolean = !encrypts
 
-    /** `/device/reset`: void this device's durable sync state. */
-    suspend fun reset() =
-        checkNotNull(handlers) { "no composition registered for the DevControls port — nothing would reset" }.onReset()
+    /** `/device/reset`: void this device's durable sync state; returns once it is void. */
+    suspend fun reset() {
+        val handlers = checkNotNull(
+            handlers,
+        ) { "no composition registered for the DevControls port — nothing would reset" }
+        val done = CompletableDeferred<Unit>()
+        handlers.onReset.handle(
+            Unit,
+            object : Completion {
+                override fun complete() {
+                    done.complete(Unit)
+                }
+            },
+        )
+        done.await()
+    }
 }

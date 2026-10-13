@@ -9,7 +9,6 @@ import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.invocation
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferSession
@@ -78,15 +77,10 @@ class SessionTransfer(
      * its own answer ([UploadCreateOutcome.LIMIT_EXCEEDED]): this creates until refused.
      */
     override suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome =
-        log.invocation(
-            setup.entryContext,
-            "platform.createJob",
-            params = "key=${resource.filename}",
-            result = { "$it" },
-        ) {
+        run body@{
             if (!isUploadDestination(request.url)) {
                 log.w { "createJob: malformed destination URL — not creating" }
-                return@invocation UploadCreateOutcome.FAILED
+                return@body UploadCreateOutcome.FAILED
             }
             val target = UploadTarget(request.url, request.headers, setup.network())
             val handle = resource.data.galleryHandle()
@@ -102,7 +96,7 @@ class SessionTransfer(
                     UploadCreateOutcome.FAILED
                 }
             }.also { if (it == UploadCreateOutcome.LIMIT_EXCEEDED) log.w { "job limit reached — deferring the rest" } }
-        }
+        }.also { log.i { "platform.createJob(key=${resource.filename}) = $it" } }
 
     /**
      * Held from a file's export until its transfer exists (or the file is released), and by [releaseUnclaimedStaging]
@@ -269,12 +263,12 @@ class SessionTransfer(
      * inherited. Ledger rows are untouched: a cancelled transfer's end is recorded through the guarded write, which
      * matches no row once the leave has cleared the ledger.
      */
-    suspend fun cancelAll() = log.invocation(setup.entryContext, "platform.cancelAll") {
+    suspend fun cancelAll() = run {
         for (transfer in session.live()) {
             session.cancel(transfer)
             transfer.tag?.let(::releaseStaged)
         }
-    }
+    }.also { log.i { "platform.cancelAll" } }
 
     /**
      * Delete every staged upload file no in-flight transfer sends — what an export left when no transfer outlived it:
@@ -285,7 +279,7 @@ class SessionTransfer(
      * Deleting one loses nothing: a transfer's bytes come from the photo library, and a transfer started again exports
      * again. Under [staging], so an export whose transfer is about to start is never taken for unclaimed.
      */
-    suspend fun releaseUnclaimedStaging() = log.invocation(setup.entryContext, "platform.releaseUnclaimedStaging") {
+    suspend fun releaseUnclaimedStaging() = run {
         staging.withLock {
             val listed = when (val read = files.list(FileArea.SHARED, UPLOAD_STAGING_DIR)) {
                 is FileResult.Ok -> read.value
@@ -305,7 +299,7 @@ class SessionTransfer(
                 }
             }
         }
-    }
+    }.also { log.i { "platform.releaseUnclaimedStaging" } }
 
     /**
      * Whether the staged file at [path] is kept for a resume: the digest of a file in flight, or a file (or its digest)

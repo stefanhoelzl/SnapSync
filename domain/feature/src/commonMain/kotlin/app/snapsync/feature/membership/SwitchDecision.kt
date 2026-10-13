@@ -13,9 +13,9 @@ package app.snapsync.feature.membership
  * `DISCOVERED`/`REQUESTED` rows are this membership's work in flight, and nothing stopped it; only a join
  * loads the ledger from the per-device listing.
  *
- * The rule moved here from the Provision flow's guard at the migration finale: the flow switches on this
- * sealed answer (the transcriber grammar's sealed-result form) and fires the compose-built effects —
- * coordination; whether a transition is due is membership's decision.
+ * The rule moved here from the Provision flow's guard at the migration finale: the join's `Provision` switches on
+ * this sealed answer and runs the entry or the save — ordering; whether a transition is due is membership's
+ * decision.
  */
 sealed interface SwitchDecision {
 

@@ -18,7 +18,7 @@ import kotlin.test.fail
  * it: the suppression inventory is pinned by COUNT, per file, exact in both directions (a new pin
  * fails until it is argued into this table with a forcing proof at the site; a removed one fails
  * until the table shrinks), and the non-vacuity floor pins the scanned source set itself, so the
- * gate can never pass by scanning nothing (the `appShellSources` list going stale after a module
+ * gate can never pass by scanning nothing (the `APP_SHELL_SOURCES` list going stale after a module
  * rename is precisely how the flip would have passed vacuously).
  *
  * No site is pinned. The last one — `MainViewController.kt`'s switch on the resolved `SceneMode` — left the shell
@@ -45,15 +45,15 @@ class KotlinShellGuardTest {
         ?: fail("could not locate the repository root")
 
     /**
-     * DERIVED from `appShellSources` in the root build file — the same list the `detektAppShell` task
-     * scans — rather than a second copy of it.
+     * DERIVED from `APP_SHELL_SOURCES` in the detekt convention plugin (`DetektTiersPlugin`) — the same list the
+     * `detektAppShell` task scans — rather than a second copy of it.
      *
      * It used to be a copy, and the duplication had already failed once: `build.gradle.kts` records that
-     * the (since deleted) forge shell's root was absent from BOTH this list and `appShellSources` until the
+     * the (since deleted) forge shell's root was absent from BOTH this list and `APP_SHELL_SOURCES` until the
      * complexity-budgets change measured the tree. Its own comment draws the conclusion — "a
      * hand-maintained list of roots stops being true the moment a module is added, and nothing tells
      * you" — so the fix is to stop maintaining a second one. `DetektTierCoverageTest` reads
-     * `detektTierOf` out of this same file for the same reason.
+     * `TIER_OF` out of this same file for the same reason.
      *
      * Parsed from the build script text because `:test:architecture` deliberately depends on no project
      * modules and so has no access to the Gradle model.
@@ -64,24 +64,27 @@ class KotlinShellGuardTest {
      * source for the gates").
      */
     private val shellSourceRoots: List<String> = run {
-        val build = File(repoRoot, "build.gradle.kts").readText()
+        val build = File(
+            repoRoot,
+            "build-logic/src/main/kotlin/app/snapsync/buildlogic/DetektTiersPlugin.kt",
+        ).readText()
         // Comments are stripped BEFORE the block is delimited. A `[^)]*` match truncated at the first
         // `)` inside a comment — "(it constructs and forwards, it decides nothing)" — silently dropping
         // every root declared after it. The declaration ends at the first
         // line that is a lone `)`.
         val code = build.lines().joinToString("\n") { it.substringBefore("//") }
-        val block = code.substringAfter("val appShellSources = files(", missingDelimiterValue = "")
-            .substringBefore("\n)")
+        val block = code.substringAfter("val APP_SHELL_SOURCES = listOf(", missingDelimiterValue = "")
+            .substringBefore("\n        )")
             .takeIf { it.isNotBlank() }
             ?: fail(
-                "the root build file no longer declares `val appShellSources = files(...)` — the shell " +
+                "DetektTiersPlugin no longer declares `val APP_SHELL_SOURCES = listOf(...)` — the shell " +
                     "gate's scope has moved, and this guard is now deriving from nothing. Re-point it " +
                     "rather than restoring a hand-written copy.",
             )
         val roots = Regex(""""([^"]+)"""").findAll(block).map { it.groupValues[1] }.toList()
         assertTrue(
             roots.isNotEmpty(),
-            "parsed zero roots out of `appShellSources` — the declaration's shape changed and this " +
+            "parsed zero roots out of `APP_SHELL_SOURCES` — the declaration's shape changed and this " +
                 "guard would scan nothing",
         )
         roots
@@ -105,11 +108,11 @@ class KotlinShellGuardTest {
     }
 
     /**
-     * The floor deriving cannot provide: that `appShellSources` COVERS every iOS shell module.
+     * The floor deriving cannot provide: that `APP_SHELL_SOURCES` COVERS every iOS shell module.
      *
      * Deriving this guard's roots from the build file removes drift between the two lists, but it cannot
      * notice that the one remaining list is incomplete — if a shell module is missing from
-     * `appShellSources`, the guard now agrees with it and both are silently wrong. That is precisely the
+     * `APP_SHELL_SOURCES`, the guard now agrees with it and both are silently wrong. That is precisely the
      * failure on record: the (since deleted) forge shell's root was absent from both until the tree was measured.
      *
      * So the expected set is derived from a THIRD place neither list controls — the build's own include
@@ -138,7 +141,7 @@ class KotlinShellGuardTest {
         assertTrue(
             unscanned.isEmpty(),
             "shell modules the shell gate does not scan: $unscanned. Add each one's `src` to " +
-                "`appShellSources` in the root build file. A shell absent from that list is never " +
+                "`APP_SHELL_SOURCES` in DetektTiersPlugin. A shell absent from that list is never " +
                 "measured for decisions, and nothing else would tell you \u2014 which is exactly how " +
                 "the forge shell went unscanned until the tree was measured.",
         )
@@ -146,17 +149,17 @@ class KotlinShellGuardTest {
 
     @Test
     fun `the shell gate's source roots exist and are non-empty (non-vacuity floor)`() {
-        // The detekt gate silently passes on an empty source set; a stale `appShellSources` list
+        // The detekt gate silently passes on an empty source set; a stale `APP_SHELL_SOURCES` list
         // after a module rename is exactly how the flip would go vacuous. This floor fails first.
         shellSourceRoots.forEach { root ->
             assertTrue(
                 File(repoRoot, root).isDirectory,
-                "shell source root $root has moved — update appShellSources AND this guard",
+                "shell source root $root has moved — update APP_SHELL_SOURCES AND this guard",
             )
         }
         assertTrue(
             shellSources().isNotEmpty(),
-            "the shell gate scanned zero production Kotlin files — appShellSources is stale and detektAppShell passes vacuously",
+            "the shell gate scanned zero production Kotlin files — APP_SHELL_SOURCES is stale and detektAppShell passes vacuously",
         )
     }
 

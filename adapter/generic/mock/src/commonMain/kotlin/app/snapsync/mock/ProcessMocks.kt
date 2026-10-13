@@ -11,6 +11,7 @@ import app.snapsync.ports.MetricNode
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.SystemUi
+import app.snapsync.ports.ThreadLabel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -147,3 +148,17 @@ fun metricPayloadOf(fields: Map<String, String>): ProcessMetricPayload = Process
         override fun child(key: String): MetricNode? = fields[key]?.let(MetricNode::Leaf)
     },
 )
+
+/**
+ * A process's per-thread log label, as one slot: the label the core's runtime puts on the thread it runs a task on,
+ * read back by the log writers. One slot rather than one per thread — common code has no thread-local, and a test
+ * over a single-threaded scheduler has one thread. Not a binding of the `ThreadLabel` contract, which only a
+ * platform's slot keeps (`JvmThreadLabel`, `IosThreadLabel`, `AndroidThreadLabel`).
+ */
+class ThreadLabelMock : ThreadLabel {
+    @Volatile private var label: String? = null
+
+    override fun swap(label: String?): String? = this.label.also { this.label = label }
+
+    override fun current(): String? = label
+}

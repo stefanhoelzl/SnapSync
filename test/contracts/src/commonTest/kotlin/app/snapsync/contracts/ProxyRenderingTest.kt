@@ -1,6 +1,11 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
 import app.snapsync.contracts.proxy.recorded
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Running
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.HttpResult
@@ -10,7 +15,6 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
@@ -85,35 +89,26 @@ class ProxyRenderingTest {
         val wake = object : Wake {
             override suspend fun schedule(id: WakeId, trigger: WakeTrigger) = error("unused")
             override fun cancel(id: WakeId) = Unit
-            override fun listen(handlers: WakeHandlers) {
+
+            @CompositionOnly
+            override fun inbound(handlers: WakeHandlers) {
                 told = handlers
             }
         }.recorded(log)
-        var expired: (() -> Unit)? = null
-        wake.listen(
-            WakeHandlers(onWake = { _, completion ->
-                completion.onExpired {}
-                completion.complete()
-            }),
-        )
-        told.onWake(
+        wake.inbound(WakeHandlers(onWake = grantedOf { _, completion -> completion.complete() }))
+        told.onWake.handle(
             WakeId.LibraryChanged,
-            object : ExpiringCompletion {
+            object : Completion {
                 override fun complete() = Unit
-                override fun onExpired(action: () -> Unit) {
-                    expired = action
-                }
             },
-        )
-        expired!!()
+        ).expire()
 
         val declared = cells {
             on<Wake> {
-                answers(Wake::listen).returns()
-                calls(WakeHandlers::onWake, WakeId.LibraryChanged, ExpiringCompletion::class)
-                handle<ExpiringCompletion>().answers(ExpiringCompletion::complete).returns()
-                handle<ExpiringCompletion>().answers(ExpiringCompletion::onExpired).returns()
-                handle<ExpiringCompletion>().callsBack(ExpiringCompletion::onExpired, "action")
+                answers(Wake::inbound).returns()
+                calls(WakeHandlers::onWake, WakeId.LibraryChanged, Completion::class)
+                handle<Completion>().answers(Completion::complete).returns()
+                handle<Running>().answers(Running::expire).returns()
             }
         }.cells
         assertEquals(declared.toSet(), log.cells)

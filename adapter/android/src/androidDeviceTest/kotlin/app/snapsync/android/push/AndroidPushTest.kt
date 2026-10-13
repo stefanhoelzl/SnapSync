@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.android.push
 
 import app.snapsync.android.process.AndroidProcessInfo
@@ -13,13 +15,16 @@ import app.snapsync.contracts.PushNotificationsContract
 import app.snapsync.contracts.PushOs
 import app.snapsync.contracts.PushState
 import app.snapsync.contracts.PushUnderTest
+import app.snapsync.contracts.backgroundOf
+import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.PUSH_KIND_FCM
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushToken
 import app.snapsync.model.pushEventId
-import app.snapsync.ports.Completion
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushHandlers
 import com.google.firebase.messaging.RemoteMessage
@@ -48,11 +53,11 @@ class AndroidPushTest {
             "",
         ),
     ) = AndroidPushNotifications(context, config).apply {
-        listen(
+        inbound(
             PushHandlers(
-                onToken = { tokens += it },
-                onTokenFailure = { failures += it },
-                onMessage = { message, completion -> messages += pushEventId(message.payload) to completion },
+                onToken = inboundOf { tokens += it },
+                onTokenFailure = inboundOf { failures += it },
+                onMessage = backgroundOf { message, completion -> messages += pushEventId(message.payload) to completion },
             ),
         )
     }

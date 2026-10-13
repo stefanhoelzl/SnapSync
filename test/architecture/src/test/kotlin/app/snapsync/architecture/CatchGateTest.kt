@@ -30,8 +30,13 @@ class CatchGateTest {
     private val allowed = mapOf(
         "/domain/model/src/commonMain/kotlin/app/snapsync/model/Catching.kt" to
             "the cancellation-keeping helpers themselves",
-        "/domain/services/src/commonMain/kotlin/app/snapsync/services/upload/ProcessCycle.kt" to
-            "runProcessCycle: the extension's ObjC boundary — any throwable, cancellation included, aborts the process",
+        // The runtime's containment (`docs/patterns.md`, "Containment"): what a run, a delivery or a pass throws is
+        // reported where it was started, and nowhere else.
+        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to
+            "a synchronous delivery's catch (no coroutine to cancel) and an answered delivery's ObjC boundary — any " +
+            "throwable, cancellation included, aborts the process across it",
+        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/SingleFlight.kt" to
+            "a pass's end as a value for every waiter: its answer, its failure, or its cancellation (a cut pass)",
         "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/objc/ObjCBoundary.kt" to
             "objcBoundary: every Kotlin block and delegate method ObjC calls — nothing may unwind into ObjC frames",
     )

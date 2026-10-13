@@ -1,5 +1,9 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
 import kotlin.test.assertEquals
@@ -31,17 +35,22 @@ object LifecycleContract : Contract<LifecycleState, LifecycleUnderTest>("Lifecyc
             LifecycleState.MOVABLE,
             covers = cells {
                 on<Lifecycle> {
-                    answers(Lifecycle::listen).returns()
-                    calls(LifecycleHandlers::onForeground)
+                    answers(Lifecycle::inbound).returns()
+                    calls(LifecycleHandlers::onForeground, Completion::class)
+                    handle<Completion>().answers(Completion::complete).returns()
                     calls(LifecycleHandlers::onBackground)
                 }
             },
         ) { subject ->
             val seen = mutableListOf<String>()
-            subject.lifecycle.listen(
-                LifecycleHandlers(onForeground = {
-                    seen += "foreground"
-                }, onBackground = { seen += "background" }),
+            subject.lifecycle.inbound(
+                LifecycleHandlers(
+                    onForeground = backgroundOf { _, done ->
+                        seen += "foreground"
+                        done.complete()
+                    },
+                    onBackground = inboundOf { seen += "background" },
+                ),
             )
             subject.becomeActive()
             awaitWithin { seen.isNotEmpty() }

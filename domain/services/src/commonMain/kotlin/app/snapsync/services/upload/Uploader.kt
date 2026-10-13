@@ -1,6 +1,5 @@
 package app.snapsync.services.upload
 
-import app.snapsync.model.EntryScope
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadFailure
@@ -56,7 +55,6 @@ class TransferSetup(
      */
     val sealing: UploadSealing? = null,
     val log: Logger = Logger.withTag("UploadTransfer"),
-    val entryContext: EntryScope = EntryScope.None,
 ) {
     /** How [resource] goes up: plainly where nothing is ever sealed, else as [sealing] decides for the joined event. */
     internal suspend fun sealOf(resource: Resource): UploadSeal =

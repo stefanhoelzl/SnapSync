@@ -1,5 +1,9 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
+
 /**
  * **The platform's background downloads**: on iOS a background `URLSession`, which
  * keeps downloading while the app is suspended and relaunches it when a transfer ends. One external system, deciding
@@ -14,7 +18,7 @@ package app.snapsync.ports
  * waiting for the next reconcile. A session the *system* invalidates is rebuilt by the adapter on the next [start];
  * each transfer it still held reports [DownloadHandlers.onCompleted], with an error.
  */
-interface Download : Listenable<DownloadHandlers> {
+interface Download : EventPort<DownloadHandlers> {
 
     /**
      * Begin fetching [url] with [headers] — the version the app declares on every request; the redirect it fetches needs
@@ -36,20 +40,26 @@ interface Download : Listenable<DownloadHandlers> {
 }
 
 /** What the platform tells the core about its downloads. Built only by a composition. */
-class DownloadHandlers(
+class DownloadHandlers @CompositionOnly constructor(
     /**
-     * [tag]'s body finished arriving, with the [facts] to judge it by, at [tempPath] — a file the platform deletes when
-     * this returns. **Inline**: whatever keeps the bytes (a move to staging) happens before returning; a store write it
-     * causes may be launched, and is joined before the wake's handler is released.
+     * A body finished arriving, at a file the platform deletes when this returns. **Inline**: whatever keeps the
+     * bytes (a move to staging) happens before returning; a store write it causes may be launched, and is joined by
+     * the relaunch's run before it answers.
      */
-    val onFinished: (tag: String, facts: TransferOutcome, tempPath: String) -> Unit,
-    /** [tag]'s transfer ended — finished, failed or cancelled; [error] describes a failure. Its slot is free. */
-    val onCompleted: (tag: String, error: String?) -> Unit,
+    val onFinished: Inbound<FinishedDownload, Unit>,
+    /** A transfer ended — finished, failed or cancelled. Its slot is free. */
+    val onCompleted: Inbound<CompletedDownload, Unit>,
     /**
-     * The operating system relaunched (or woke) the app to deliver this session's events, handing [completion] — held
-     * by the core across the wake's own work (staging what is delivered) and released after the drain report.
+     * The operating system relaunched (or woke) the app to deliver this session's events, handing the completion the
+     * relaunch's run answers once the events are drained and what they staged is recorded — or once its time is up.
      */
-    val onBackgroundEvents: (completion: Completion) -> Unit,
-    /** The session delivered every event it held for the relaunch (`urlSessionDidFinishEvents`). */
-    val onEventsDrained: () -> Unit,
+    val onBackgroundEvents: Background<SessionRelaunch>,
+    /** The session delivered every event it held (`urlSessionDidFinishEvents`). */
+    val onEventsDrained: Inbound<SessionDrain, Unit>,
 )
+
+/** [tag]'s body finished arriving, with the [facts] to judge it by, at [tempPath]. */
+class FinishedDownload(val tag: String, val facts: TransferOutcome, val tempPath: String)
+
+/** [tag]'s transfer ended; [error] describes a failure, `null` for none. */
+class CompletedDownload(val tag: String, val error: String?)

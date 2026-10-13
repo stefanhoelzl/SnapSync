@@ -9,9 +9,7 @@ import android.database.sqlite.SQLiteException
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import app.snapsync.model.EntryScope
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
@@ -71,13 +69,9 @@ open class AndroidGalleryReader(
 
     /** Narrowed by [filter]'s capture range, to the second the platform reports dates in. */
     override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> =
-        log.invocation(
-            EntryScope.None,
-            "gallery.assets",
-            result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" },
-        ) {
+        run {
             readable { items(narrowingFor(filter)).map { it.asset() } }
-        }
+        }.also { log.i { "gallery.assets = ${"${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}"}" } }
 
     override suspend fun assetsById(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAsset>> =
         readable { itemsById(ids).map { it.asset() } }
@@ -122,12 +116,7 @@ open class AndroidGalleryReader(
     override val albumKind: LibraryAlbumKind = LibraryAlbumKind.FOLDER
 
     override suspend fun createAlbum(title: String): PlatformAlbumId? = withContext(Dispatchers.IO) {
-        log.invocation(
-            EntryScope.None,
-            "gallery.createAlbum",
-            params = "title=$title",
-            result = { "$it" },
-        ) {
+        run {
             // The name is found by querying the media provider, which can refuse: then no album is made.
             try {
                 PlatformAlbumId(newAlbum(title))
@@ -136,7 +125,7 @@ open class AndroidGalleryReader(
             } catch (e: SQLiteException) {
                 null.also { log.w { "createAlbum: the media provider failed — ${e::class.simpleName}: ${e.message}" } }
             }
-        }
+        }.also { log.i { "gallery.createAlbum(title=$title) = $it" } }
     }
 
     private fun newAlbum(title: String): String {

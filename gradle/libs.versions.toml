@@ -92,6 +92,8 @@ compose-components-resources = { module = "org.jetbrains.compose.components:comp
 # The custom rules the detekt tiers load (`:tools:detekt-rules`): written against the version the plugin runs.
 detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
 detekt-test = { module = "io.gitlab.arturbosch.detekt:detekt-test", version.ref = "detekt" }
+# The detekt tiers' convention plugin (`build-logic`, `snapsync.detekt-tiers`) configures the root's detekt tasks.
+detekt-gradle = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detekt" }
 # The third-party rule sets every detekt task loads beside the project's own: ktlint's formatting, and Compose's rules.
 detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
 compose-rules-detekt = { module = "io.nlopez.compose.rules:detekt", version.ref = "compose-rules" }

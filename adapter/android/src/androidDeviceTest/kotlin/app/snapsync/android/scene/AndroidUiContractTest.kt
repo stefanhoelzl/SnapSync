@@ -239,6 +239,7 @@ class AndroidUiContractTest {
                     tour = {
                         checkNotNull(screenTest) { "the tour runs inside the activity's UI test" }.tour()
                     },
+                    shown = { checkNotNull(shown) { "the screen was shown nothing yet" } },
                 ),
                 dispose = { current?.scope?.cancel() },
             )

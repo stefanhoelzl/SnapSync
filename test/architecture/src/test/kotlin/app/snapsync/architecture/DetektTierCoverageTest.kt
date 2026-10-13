@@ -34,7 +34,8 @@ class DetektTierCoverageTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    private val rootBuildFile = File(repoRoot, "build.gradle.kts")
+    /** The convention plugin that registers every detekt task and owns the tier map (`snapsync.detekt-tiers`). */
+    private val tiersPlugin = File(repoRoot, "build-logic/src/main/kotlin/app/snapsync/buildlogic/DetektTiersPlugin.kt")
 
     /**
      * Not a tier's config. `_base.yml` is the shared baseline every tier layers beneath its own file;
@@ -45,19 +46,19 @@ class DetektTierCoverageTest {
 
     /**
      * Tiers that scope by PATH rather than by module, so they appear in no module mapping:
-     * `flow` and `compose` are sub-scopes of `:domain` carved out of `core`, and `buildscripts`
+     * `compose` is a sub-scope of `:domain` carved out of `core`, and `buildscripts`
      * is every `*.gradle.kts` in the build. They still need a config and a registered task, which
      * is what the tests below assert about them.
      */
-    private val pathScopedTiers = setOf("flow", "compose", "buildscripts")
+    private val pathScopedTiers = setOf("compose", "buildscripts")
 
-    /** The `detektTierOf` block, isolated so a stray `"a" to "b"` elsewhere cannot feed the parse. */
+    /** The `TIER_OF` block, isolated so a stray `"a" to "b"` elsewhere cannot feed the parse. */
     private fun tierMapBlock(): String {
-        val text = rootBuildFile.readText()
-        val start = text.indexOf("val detektTierOf: Map<String, String> = mapOf(")
-        assertTrue(start >= 0, "build.gradle.kts no longer declares `detektTierOf` — this guard is scanning nothing")
-        val end = text.indexOf("\n)", start)
-        assertTrue(end > start, "could not find the end of the `detektTierOf` block")
+        val text = tiersPlugin.readText()
+        val start = text.indexOf("val TIER_OF: Map<String, String> = mapOf(")
+        assertTrue(start >= 0, "DetektTiersPlugin no longer declares `TIER_OF` — this guard is scanning nothing")
+        val end = text.indexOf("\n        )", start)
+        assertTrue(end > start, "could not find the end of the `TIER_OF` block")
         return text.substring(start, end)
     }
 
@@ -79,20 +80,20 @@ class DetektTierCoverageTest {
         val modules = includedModules()
         val pairs = tierPairs()
         assertTrue(modules.isNotEmpty(), "settings.gradle.kts parsed to zero includes — the scan is broken")
-        assertTrue(pairs.isNotEmpty(), "`detektTierOf` parsed to zero entries — the scan is broken")
+        assertTrue(pairs.isNotEmpty(), "`TIER_OF` parsed to zero entries — the scan is broken")
 
         val unmapped = modules.toSet() - pairs.map { it.first }.toSet()
         assertTrue(
             unmapped.isEmpty(),
             "these modules are in the build but in NO complexity tier, so nothing measures them: " +
-                "${unmapped.sorted()}. Add each to `detektTierOf` in build.gradle.kts " +
+                "${unmapped.sorted()}. Add each to `TIER_OF` in DetektTiersPlugin " +
                 "(`docs/architecture.md`, \"Coverage is derived, never remembered\").",
         )
 
         val stale = pairs.map { it.first }.toSet() - modules.toSet()
         assertTrue(
             stale.isEmpty(),
-            "`detektTierOf` maps modules that are not in the build: ${stale.sorted()}",
+            "`TIER_OF` maps modules that are not in the build: ${stale.sorted()}",
         )
     }
 
@@ -107,7 +108,7 @@ class DetektTierCoverageTest {
         val duplicated = pairs.groupBy { it.first }.filterValues { it.size > 1 }
         assertTrue(
             duplicated.isEmpty(),
-            "these modules appear more than once in `detektTierOf`, and Kotlin's `mapOf` would " +
+            "these modules appear more than once in `TIER_OF`, and Kotlin's `mapOf` would " +
                 "silently keep only the last: ${duplicated.keys.sorted()}",
         )
     }
@@ -150,17 +151,17 @@ class DetektTierCoverageTest {
 
     /**
      * A tier task that is not wired into `check` runs only when someone types its name, which is the
-     * same as not existing. `registerDetektTier` does the wiring, so this asserts every tier goes
+     * same as not existing. `registerTier` does the wiring, so this asserts every tier goes
      * through it rather than being registered by hand beside it.
      */
     @Test
     fun `every tier config is claimed by a registered tier task`() {
-        val text = rootBuildFile.readText()
-        val registered = Regex("""registerDetektTier\(\s*"(\w+)",\s*"([a-z-]+)"""")
+        val text = tiersPlugin.readText()
+        val registered = Regex("""registerTier\(\s*"(\w+)",\s*"([a-z-]+)"""")
             .findAll(text)
             .map { it.groupValues[2] }
             .toList()
-        assertTrue(registered.isNotEmpty(), "no `registerDetektTier` calls found — this guard is scanning nothing")
+        assertTrue(registered.isNotEmpty(), "no `registerTier` calls found — this guard is scanning nothing")
 
         val expected = tierPairs().map { it.second }.toSet() + pathScopedTiers
         assertEquals(

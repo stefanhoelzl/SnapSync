@@ -4,6 +4,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
@@ -36,7 +37,8 @@ class JdbcDatabases(private val directory: File) : Databases {
     /** The databases this instance has opened, by file path — the name each was opened by. */
     private val names = ConcurrentHashMap<String, String>()
 
-    override fun listen(handlers: DatabaseHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: DatabaseHandlers) {
         this.handlers = handlers
     }
 
@@ -77,7 +79,7 @@ class JdbcDatabases(private val directory: File) : Databases {
     }
 
     private fun changedElsewhere(path: String) {
-        handlers?.onChangedElsewhere(names.getValue(path))
+        handlers?.let { it.onChangedElsewhere.deliver(names.getValue(path)) }
     }
 
     /**

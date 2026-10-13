@@ -2,6 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.feature.membership.QuietSwitch
 import app.snapsync.feature.membership.toCommit
+import app.snapsync.inbound.Trigger
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
@@ -16,10 +17,10 @@ import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
-import app.snapsync.model.invocation
 import app.snapsync.model.outcome
 import app.snapsync.model.recordingRefusal
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -33,7 +34,7 @@ import kotlinx.coroutines.withContext
 /**
  * Wrap a user tap as a **platform entry point** (`docs/architecture.md`, "Absence is never silent"). `compose/` is
  * where this must live: it is where the door law says command instances are decorated, and
- * the only place that *can* — `:domain:presentation` may not reference `ports/`, so it cannot reach an `EntryContext`.
+ * the only place that *can* — `:domain:presentation` sees no runtime, so it cannot label a run with its trigger.
  *
  * The `tap.` namespace is load-bearing, not cosmetic. Without it a device log cannot say whether work was started by
  * the platform or by the person holding the phone: on Bugsink `SNAPSYNC-3`, proving that a leave was a manual tap
@@ -51,8 +52,10 @@ internal suspend fun <T> AppCore.awaitingOnCoreLane(
     params: String = "",
     result: (T) -> String = { "" },
     block: suspend () -> T,
-): T = withContext(coreLane) {
-    tapLog.invocation(process.entryContext, name, params, result = result) { block() }
+): T = withContext(scope.coroutineContext.minusKey(Job) + Trigger.of(name)) {
+    val answer = block()
+    tapLog.i { "$name($params) = ${result(answer)}" }
+    answer
 }
 
 /**
@@ -62,8 +65,8 @@ internal suspend fun <T> AppCore.awaitingOnCoreLane(
  * "Dispatcher lanes are fixed by the composition"), so this graph names no main lane at all. A hand-off's [Handoff]
  * is the one return value, and it is only rendered onto the tap's line by [result] — nothing acts on it.
  *
- * The `invocation` wrap sits INSIDE the launch deliberately: wrapping the launcher instead would time the hand-off
- * rather than the work, which is how `← tap.create (1ms)` came to be logged against a multi-second backend mint.
+ * The tap's line is written INSIDE the launch deliberately: written by the launcher instead it would report the
+ * hand-off rather than the work, which is how `← tap.create (1ms)` came to be logged against a multi-second mint.
  */
 private fun <T> AppCore.detachedOnCoreLane(
     name: String,
@@ -71,7 +74,10 @@ private fun <T> AppCore.detachedOnCoreLane(
     result: (T) -> String = { "" },
     block: suspend () -> T,
 ) {
-    scope.launch(coreLane) { tapLog.invocation(process.entryContext, name, params, result = result) { block() } }
+    scope.launch(Trigger.of(name)) {
+        val answer = block()
+        tapLog.i { "$name($params) = ${result(answer)}" }
+    }
 }
 
 /** The user-tap command bundle, each command's lane declared where it is built. */

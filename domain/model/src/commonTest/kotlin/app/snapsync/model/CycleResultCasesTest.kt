@@ -22,16 +22,9 @@ class CycleResultCasesTest {
 
     @Test
     fun `the cycle answers five kinds of result and the extension adapter maps each`() {
-        val all = listOf(
-            CycleResult.COMPLETED,
-            CycleResult.PROCESSING,
-            CycleResult.FAILED,
-            CycleResult.SKIPPED,
-            CycleResult.Paused(PauseReason.OLD_SCHEMA),
-        )
         assertEquals(
-            listOf("completed", "processing", "failed", "skipped", "paused"),
-            all.map(::name),
+            listOf("completed", "processing", "failed", "skipped") + PauseReason.entries.map { "paused" },
+            CycleResult.all.map(::name),
             "a new CycleResult case needs its platform answer: `processingResultRawValue` in :adapter:ios:ext-safe",
         )
     }

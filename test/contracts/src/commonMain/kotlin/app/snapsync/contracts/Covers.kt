@@ -82,7 +82,7 @@ class PortCells @PublishedApi internal constructor(
      * leaf or a plain argument type), an enum entry, a `Boolean`, or `null`. Arguments are not type-checked — a handler
      * field is a function type the compiler does not decompose — so the gate is their backstop.
      */
-    fun calls(handler: KProperty1<*, Function<*>>, vararg args: Any?) {
+    fun calls(handler: KProperty1<*, *>, vararg args: Any?) {
         builder.add("$owner.handlers.${handler.name}(${args.joinToString(", ", transform = ::variantName)})")
     }
 

@@ -1,5 +1,8 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links
@@ -46,7 +49,7 @@ object LinksContract : Contract<LinksState, LinksUnderTest>("Links") {
 
     private suspend fun LinksUnderTest.deliveredBy(act: suspend () -> Unit): List<LinkDelivery> {
         val delivered = mutableListOf<LinkDelivery>()
-        links.listen(LinkHandlers(onLink = { delivered += it }))
+        links.inbound(LinkHandlers(onLink = inboundOf { delivered += it }))
         act()
         awaitWithin { delivered.isNotEmpty() }
         return delivered
@@ -59,7 +62,7 @@ object LinksContract : Contract<LinksState, LinksUnderTest>("Links") {
             LinksState.OPENABLE,
             covers = cells {
                 on<Links> {
-                    answers(Links::listen).returns()
+                    answers(Links::inbound).returns()
                     calls(LinkHandlers::onLink, LinkDelivery.Link::class)
                 }
             },

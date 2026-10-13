@@ -7,6 +7,8 @@ import app.snapsync.objc.objcCallback
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.ImportPlaceholder
+import app.snapsync.ports.ImportSettled
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import co.touchlab.kermit.Logger
@@ -154,7 +156,7 @@ internal class IosPhotoLibraryImporter(
                                 success,
                                 error,
                                 created,
-                            ).also { handlers.onImportSettled(correlation, it) }
+                            ).also { handlers.onImportSettled.deliver(ImportSettled(correlation, it)) }
                         }
                     }
                 },
@@ -259,7 +261,7 @@ internal class IosPhotoLibraryImporter(
             created.localId = id
             // The marker, synchronously, on this thread — before the commit is observable. A row pruned out
             // from under this import is the handler's to report (it knows whether the write landed).
-            handlers.onImportPlaceholder(correlation, id)
+            handlers.onImportPlaceholder.deliver(ImportPlaceholder(correlation, id))
         }
         // Event album: add the just-created asset to the event
         // album in THIS commit (atomic — never briefly loose).

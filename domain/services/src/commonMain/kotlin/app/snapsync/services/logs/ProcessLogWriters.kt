@@ -1,5 +1,7 @@
 package app.snapsync.services.logs
 
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ports.LogSink
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
@@ -11,14 +13,22 @@ import co.touchlab.kermit.StaticConfig
  * supplies none leaves it alone: a JVM hosts many "processes" in one VM, where that list is VM-global, and a composition
  * there must not take it over.
  */
-class ProcessLogWriters(val writers: List<LogWriter>, sinks: List<LogSink>) {
+class ProcessLogWriters(
+    val writers: List<LogWriter>,
+    /** The same, for the structured log's lines (`app.snapsync.inbound.Log`). */
+    private val lines: List<app.snapsync.inbound.LogWriter>,
+    sinks: List<LogSink>,
+) {
 
     /** Whether this process installs [writers] as Kermit's global list. */
     val ownsGlobalLogger: Boolean = sinks.isNotEmpty()
 
     /** Install [writers] as Kermit's global list — where this process owns it, and nowhere else. */
+    @OptIn(CompositionOnly::class)
     fun install() {
-        if (ownsGlobalLogger) Logger.setLogWriters(writers)
+        if (!ownsGlobalLogger) return
+        Logger.setLogWriters(writers)
+        Log.install(lines)
     }
 
     /**

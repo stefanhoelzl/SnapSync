@@ -178,7 +178,6 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
                 ports.deviceIdentity,
             ),
             log = ports.log,
-            entryContext = process.entryContext,
         ),
     )
     // Constructed lazily so the device id resolves on first in-cycle use — after the gate's probe

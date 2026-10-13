@@ -38,6 +38,8 @@ plugins {
     alias(libs.plugins.android.kmp.library) apply false
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.detekt)
+    // Every detekt task this build runs, and the project's own rules on each (`DetektTiersPlugin`).
+    id("snapsync.detekt-tiers")
     alias(libs.plugins.dependency.analysis)
     // Applied per module rather than here (`docs/architecture.md`): the set of instrumented
     // modules is part of the contract, so it is readable in each module's own build file and a new
@@ -100,14 +102,18 @@ listOf(
     ":domain:services" to ":test:feature",
     ":domain:model" to ":test:feature",
     ":domain:ports" to ":test:feature",
-    ":domain:flow" to ":adapter:generic:mock",
     // The WIRING modules, credited by the integration surface and by nothing else it runs (`docs/architecture.md`,
     // "Coverage"): "One shared composition" says the wiring graph is not unit-tested and IS smoke-tested by the
-    // integration surface, so for these three the integration tests are the tests written for the code. Every other
+    // integration surface, so for these the integration tests are the tests written for the code. Every other
     // module stays credited by unit tests only — integration still runs model, feature, services, … and counts for none
     // of them.
     ":domain:compose" to ":test:integration",
     ":domain:host" to ":test:integration",
+    // The entry points order each trigger's steps and decide nothing (`docs/patterns.md`, "Entry points"): the
+    // integration surface delivers every trigger through the operating system's side, which is what they are for.
+    ":domain:entrypoints" to ":test:integration",
+    // The process's composition registers its metric reports' entry point; the mocks' suite drives it.
+    ":domain:entrypoints" to ":adapter:generic:mock",
     ":app:jvm" to ":test:integration",
     ":ui:components" to ":ui:screens",
     ":domain:presentation" to ":ui:screens",
@@ -125,304 +131,12 @@ dependencyAnalysis {
     }
 }
 
-// The shell roots, NAMED rather than derived from `:app:*` (`docs/architecture.md`,
-// "The shell gates"). `:app:desktop` is an `:app:*` module this gate has never scanned and must not:
-// it hosts two harness applications and is test equipment, measured as `harness` under capability
-// `docs/architecture.md`. Listing the shells is what makes that distinction visible; a `:app:*` glob
-// would either drag the harness in or need an exemption naming it anyway.
-val appShellSources = files(
-    "app/ios/src",
-    "app/ios/extension/src",
-    // The shared host composition (`snapSyncHost`): wiring every root calls, holding no decision. A shell by the
-    // same definition as the two above (it constructs and forwards, it decides nothing). A hand-maintained list of
-    // roots stops being true the moment a module is added, and nothing tells you — the forge shell was missing from
-    // it, and from `KotlinShellGuardTest.shellSourceRoots`, until the complexity-budgets change measured the tree.
-    "domain/host/src",
-    // The shared composition (`snapSyncApp`, `snapSyncExtension`, `uploadCycle`): the wiring graph every root reaches
-    // through the host. It constructs and connects; every decision it once held is a feature's or a service's, unit
-    // tested there, and this gate keeps it that way (`docs/architecture.md`, "One shared composition").
-    "domain/compose/src",
-    // The JVM root (`JvmApp`): the same composition as the iOS root, for the JVM test equipment. Wiring only by the
-    // same definition, so gated as a shell — the levers it must not grow are the mocks' operator faces.
-    "app/jvm/src",
-    // Compiled INTO `:app:ios` under `-Psnapsync.rig=true`, so it is shell source for gate purposes
-    // even though it lives in `:test:rig`'s tree (`docs/architecture.md`, "Source contributed
-    // into a shell's source set is shell source for the gates"). Listed rather than exempted: the gates
-    // select by PATH, so an unlisted contributed directory would make the shells' decision-free
-    // guarantee true only of the part someone remembered — and a rule a reader must remember is the
-    // failure mode these gates exist to remove. `KotlinShellGuardTest.shellSourceRoots` mirrors this
-    // list and must move with it.
-    "test/rig/src/hook",
-    // The same, compiled INTO `:app:ios:extension` in place of its `src/entries` under the same property.
-    "test/rig/src/ext-hook",
-    // The Android root (`SnapSyncRoot`): the same composition, in the Android app's one process.
-    "app/android/src",
-    // The same, compiled INTO `:app:android` in place of its `src/prod` under the same property.
-    "test/rig/src/android-hook",
-)
-
-// The detekt plugin registers its own `detekt` task against the ROOT project's Kotlin source set —
-// which does not exist, so it inspects nothing and passes. That is the vacuous pass the guards exist
-// to prevent, sitting one tab-completion away from the real ones: `./gradlew detekt` would report
-// success and mean nothing.
-//
-// Disabled, so that every detekt task in this build is one somebody registered on purpose. There are
-// now nine: `detektAppShell` (the shell PROOF, `docs/architecture.md`) and the eight tier
-// tasks below (the complexity BUDGETS, `docs/architecture.md`). The distinction matters more
-// than the count — see the tier block's header.
-tasks.named("detekt") { enabled = false }
-
-// The project's own rules (`:tools:detekt-rules`), on every detekt task this file registers: the plugin hands the
-// root's `detektPlugins` to each. Which files a rule reads is its `includes` in `config/detekt/_base.yml`.
-dependencies {
-    detektPlugins(project(":tools:detekt-rules"))
-    detektPlugins(libs.detekt.formatting)
-    detektPlugins(libs.compose.rules.detekt)
-}
-
-tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
-    description = "Counts decisions in the iOS app shells (`docs/architecture.md`)."
-    group = "verification"
-    setSource(appShellSources)
-    // Production only. A test may branch as much as it likes — the rule is about wiring, not about
-    // Kotlin. Pointing `setSource` at `src` picks up `iosTest`/`commonTest` too, which is how the
-    // first run of this task (arch-abandoned-v1) scanned `PhotoKitSmokeTest.kt`.
-    exclude("**/commonTest/**", "**/iosTest/**", "**/jvmTest/**", "**/appleTest/**", "**/nativeTest/**")
-    exclude("**/androidDeviceTest/**")
-    exclude("**/build/**")
-    config.setFrom(files("config/detekt/app-shell.yml"))
-    buildUponDefaultConfig = false
-
-    // GATING (since the migration finale drained the shells to zero unpinned decisions): a new
-    // conditional in `:app:*` Kotlin fails the canonical build. The only tolerated forms are the
-    // explicitly pinned `@Suppress("CyclomaticComplexMethod")` sites, whose inventory — each with
-    // its forcing proof — is itself gated by `KotlinShellGuardTest` (`:test:architecture`), so a
-    // new suppression is as loud as a new branch.
-    ignoreFailures = false
-    reports {
-        xml.required.set(true)
-        html.required.set(false)
-        txt.required.set(false)
-        sarif.required.set(false)
-        md.required.set(false)
-    }
-}
-
-tasks.named("check") { dependsOn("detektAppShell") }
+// Every detekt task — the shell proof (`detektAppShell`) and the complexity budgets, one per tier — is registered by
+// the `snapsync.detekt-tiers` convention plugin (`build-logic`), which owns the shell roots and the tier map.
 
 // The build logic's own tests (today the zero coverage gate's judgement, `CoverageZeroTest`): an included build's
 // `check` is never reached from this one's, so without this edge they would run on nobody's command.
 tasks.named("check") { dependsOn(gradle.includedBuild("build-logic").task(":test")) }
-
-// ---- Complexity budgets (`docs/architecture.md`) --------------------------------------
-//
-// A CEILING on complexity for every Kotlin source in the repository, expressed per scope, seeded at
-// what the tree measured, and permitted to move in one direction only: down.
-//
-// NOT the same kind of thing as `detektAppShell` above, and the two must never be merged. That gate
-// is a PROOF — threshold 2 asserts the shells hold no decisions, and its value comes precisely from
-// the number being 2. These are BUDGETS: they start where the code happens to be and fall as people
-// improve it. Raising the shell's threshold to a number the wider tree passes would destroy the
-// shell claim, which is why there are two gates and not one widened one.
-//
-// EIGHT tasks and eight configs because a detekt 1.x rule carries exactly ONE threshold per config:
-// path filters vary the SCOPE a rule applies to, never its number (`detekt-api`'s `Rule`/`PathFilters`
-// against `detekt-rules-complexity`'s single `threshold` delegate). Per-scope ceilings are therefore
-// not a configuration feature — they are a task-per-scope.
-//
-// COVERAGE IS DERIVED, NOT LISTED. `tierOf` maps subproject PATHS, and the tasks read each mapped
-// subproject's own `src` directory out of the live project model, so a module added to
-// `settings.gradle.kts` is scanned without touching this file — or, if it is in no tier,
-// `DetektTierCoverageTest` (`:test:architecture`) fails naming it. That is a deliberate departure
-// from `appShellSources` above, which is a hand list mirrored in a test. The mirror was faithful and
-// BOTH copies were wrong: the (since deleted) forge shell was missing from each until this change measured the tree.
-// A mechanism whose known failure has already occurred is not the one to reuse at eight times the
-// scale. The shell gate keeps its list because one of its roots (`test/rig/src/hook`) is not a module
-// and the project model cannot express it.
-
-/** Kotlin source-set directory names that hold TESTS. Everything else under `src/` is production. */
-val testSourceSetDirs = listOf(
-    "commonTest",
-    "iosTest",
-    "iosSimulatorArm64Test",
-    "jvmTest",
-    "appleTest",
-    "nativeTest",
-    "androidDeviceTest",
-    "test",
-)
-
-/**
- * Subproject path → production tier. EVERY subproject is mapped, exactly once; `DetektTierCoverageTest`
- * fails the build naming any that is not, so a new module cannot be silently unmeasured.
- *
- * `tests` is the tier of a module whose only source is tests (`:test:architecture`,
- * `:test:integration`). Every OTHER module's test source sets are scanned by the `tests` task too —
- * that tier is a source-set dimension as well as a module bucket.
- */
-val detektTierOf: Map<String, String> = mapOf(
-    // The iOS shells. Scanned here only for the rules the shell config does not carry (length,
-    // parameter counts, naming); their DECISIONS are the shell proof's business, at threshold 2.
-    ":app:ios" to "shell",
-    ":app:ios:extension" to "shell",
-    ":domain:host" to "shell",
-    ":app:jvm" to "shell",
-    ":app:android" to "shell",
-
-    // The tested core and its adapters. `:domain:presentation` belongs here and not in `ui`: it is
-    // Compose-free (a core zone with no Compose dependency), so none of Compose's structural inflation
-    // applies to it. The host, `:domain:host`, is a core zone too, but it is tiered as a shell above:
-    // it is wiring, and detektAppShell's threshold-2 proof is what keeps it decision-free.
-    ":domain:model" to "core",
-    ":domain:wire" to "core",
-    ":domain:ports" to "core",
-    ":domain:services" to "core",
-    ":domain:feature" to "core",
-    ":domain:flow" to "core",
-    ":domain:compose" to "core",
-    ":adapter:generic:app" to "core",
-    ":adapter:generic:mock" to "core",
-    ":adapter:generic:motionphoto" to "core",
-    ":adapter:generic:sentry" to "core",
-    ":adapter:ios:app-only" to "core",
-    ":adapter:ios:ext-safe" to "core",
-    ":adapter:ios:ui" to "core",
-    ":adapter:android" to "core",
-    ":domain:presentation" to "core",
-    ":ui:state" to "core",
-
-    // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
-    // STRUCTURALLY — a screen that renders six states has six branches by construction — so holding
-    // it to `core`'s numbers would mean either a permanent exclusion list or a `core` ceiling loose
-    // enough to enforce nothing.
-    ":ui:components" to "ui",
-    ":ui:screens" to "ui",
-
-    // Test equipment: harnesses, the control channel, the diagram generators. Read once,
-    // never shipped. These ceilings exist to catch a regression, not to converge.
-    ":app:desktop" to "harness",
-    ":test:harness-driver" to "harness",
-    ":test:rig" to "harness",
-    ":test:launch-adapters" to "harness",
-    ":test:contracts" to "harness",
-    ":test:edge" to "harness",
-    ":test:control" to "harness",
-    ":tools:diagrams" to "harness",
-    ":tools:detekt-rules" to "harness",
-
-    // Modules with no production source at all.
-    ":test:architecture" to "tests",
-    ":test:integration" to "tests",
-    ":test:feature" to "tests",
-    ":test:partial-grant" to "tests",
-    ":test:no-grant" to "tests",
-)
-
-/** The `src` directory of every subproject in a tier, read from the live project model. */
-fun tierSrcDirs(tier: String): List<File> = subprojects
-    .filter { detektTierOf[it.path] == tier }
-    .map { it.layout.projectDirectory.dir("src").asFile }
-
-/**
- * Registers one gating tier task. `assertNonEmpty` is the anti-vacuity floor required of every
- * source-scanning guard: detekt reports SUCCESS on an empty source set, so a filter regression would
- * otherwise pass by inspecting nothing.
- */
-fun registerDetektTier(
-    name: String,
-    configFile: String,
-    sources: List<File>,
-    configure: io.gitlab.arturbosch.detekt.Detekt.() -> Unit = {},
-) {
-    tasks.register<io.gitlab.arturbosch.detekt.Detekt>(name) {
-        description = "Complexity ceiling for the `$configFile` scope (`docs/architecture.md`)."
-        group = "verification"
-        setSource(files(sources))
-        exclude("**/build/**")
-        // The shared baseline first, then this tier's own file overriding it (detekt layers configs in
-        // order). The tier file is OPTIONAL: its absence means the scope sits at the baseline, which is
-        // what makes the set of files under `config/detekt/` the list of scopes still carrying debt
-        // (`docs/architecture.md`). `DetektTierCoverageTest` asserts every file present belongs
-        // to a tier — the reverse of what it asserted while every tier was required to have one.
-        val tierConfig = file("config/detekt/$configFile.yml")
-        config.setFrom(files("config/detekt/_base.yml") + if (tierConfig.exists()) files(tierConfig) else files())
-        buildUponDefaultConfig = true
-        ignoreFailures = false
-        // `-Psnapsync.detektAutoCorrect` lets the formatting rules rewrite what they flag, instead of failing on it.
-        autoCorrect = providers.gradleProperty("snapsync.detektAutoCorrect").isPresent
-        reports {
-            xml.required.set(true)
-            // Named per task. The plugin's default is `detekt.xml` for every task, so nine tasks would
-            // overwrite one file and only the last to finish would be readable.
-            xml.outputLocation.set(layout.buildDirectory.file("reports/detekt/$name.xml"))
-            html.required.set(false)
-            txt.required.set(false)
-            sarif.required.set(false)
-            md.required.set(false)
-        }
-        configure()
-        doFirst {
-            check(!source.isEmpty) {
-                "detekt tier `$name` scanned ZERO files — its scope resolved empty, so it would have " +
-                    "passed while inspecting nothing (`docs/architecture.md`, " +
-                    "\"Coverage is derived, never remembered\")."
-            }
-        }
-    }
-    tasks.named("check") { dependsOn(name) }
-}
-
-// The production tiers. Each excludes test source sets: the `tests` tier owns those, on its own
-// numbers, because test code measured structurally SIMPLER than production (max cyclomatic 6) and far
-// wider (89 functions in one class). One budget over both would be loose in one dimension and
-// meaningless in the other.
-val excludeTests = testSourceSetDirs.map { "**/$it/**" }.toTypedArray()
-
-registerDetektTier("detektShellTier", "shell", tierSrcDirs("shell")) { exclude(*excludeTests) }
-registerDetektTier("detektUiTier", "ui", tierSrcDirs("ui")) { exclude(*excludeTests) }
-
-registerDetektTier("detektCoreTier", "core", tierSrcDirs("core")) {
-    exclude(*excludeTests)
-    // `flow/` and `compose/` are carved out into their own tiers below — the two zones that carry a
-    // written decision-free law and are close enough to it to be gated on it.
-    exclude("**/app/snapsync/flow/**", "**/app/snapsync/compose/**")
-}
-
-registerDetektTier("detektHarnessTier", "harness", tierSrcDirs("harness")) {
-    exclude(*excludeTests)
-    // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2. Scanning it
-    // here too would subject it to a ceiling 20× looser than the one it already passes.
-    exclude("**/test/rig/src/hook/**", "**/test/rig/src/ext-hook/**")
-}
-
-// The two zones whose decision-free law is written but was never enforced (capability
-// `docs/architecture.md`: "flows coordinate, never decide"; "One shared composition"). Path sub-scopes
-// of `:domain`, carved out of `core`.
-registerDetektTier("detektFlowTier", "flow", tierSrcDirs("core")) {
-    include("**/app/snapsync/flow/**")
-    exclude(*excludeTests)
-}
-registerDetektTier("detektComposeTier", "compose", tierSrcDirs("core")) {
-    include("**/app/snapsync/compose/**")
-    exclude(*excludeTests)
-}
-
-// Every module's test source sets, plus the two modules that are nothing but tests.
-registerDetektTier("detektTestsTier", "tests", subprojects.map { it.layout.projectDirectory.dir("src").asFile }) {
-    include(*testSourceSetDirs.map { "**/$it/**" }.toTypedArray())
-}
-
-// The build scripts. Kotlin, carrying real logic (this file renders a diagram whose byte-identical
-// twin lives in `:tools:diagrams`), and until now scanned by nothing. Read from the project model for
-// the same reason as everything above.
-registerDetektTier(
-    "detektBuildScriptsTier",
-    "buildscripts",
-    listOf(project.buildFile, file("settings.gradle.kts")) + subprojects.map { it.buildFile } +
-        // The wire's route generator (`build-logic`, `snapsync.wire`): build logic, and real logic. The other
-        // convention plugins predate the scan and are not in it yet — bringing them in is its own change.
-        listOf(file("build-logic/build.gradle.kts"), file("build-logic/src/main/kotlin/app/snapsync/buildlogic/wire")),
-)
 
 // ---- Derived architecture diagrams (`docs/architecture.md`) ------------------------
 //

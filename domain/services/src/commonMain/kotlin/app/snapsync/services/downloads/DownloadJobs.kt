@@ -3,11 +3,8 @@ package app.snapsync.services.downloads
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ConfinedTo
-import app.snapsync.model.EntryScope
 import app.snapsync.model.PendingDownload
-import app.snapsync.model.invocation
 import app.snapsync.model.isCanonicalAssetId
-import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
@@ -15,7 +12,6 @@ import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.SEALED_SUFFIX
 import app.snapsync.services.staging.StagingService
-import app.snapsync.services.wake.OsCompletions
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -23,8 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /** Bounded in-flight window (Apple: keep background tasks in the low hundreds; we stay well under). */
 internal const val MAX_IN_FLIGHT = 24
@@ -103,8 +97,9 @@ internal fun isFetchableUrl(url: String): Boolean {
 /**
  * The download jobs, platform-free: a pending queue drained through a bounded
  * in-flight window into the [Download] port (on iOS a background `URLSession`, in tests a double). What the port
- * reports arrives through the composition's handlers, which call [onFinished], [onCompleted],
- * [adoptBackgroundEvents] and [onBackgroundEventsFinished]; the window refills as transfers complete.
+ * reports arrives through the composition's entry points, which call [onFinished] and [onCompleted]; a relaunch for
+ * the session's events waits for the stagings they caused ([awaitOutstandingStagings]). The window refills as transfers
+ * complete.
  *
  * **A finished body is judged and kept here, inline.** The port reports the facts and a temporary file the platform
  * deletes when its callback returns; whether it may be staged, where, and the move into staging all happen on that
@@ -151,30 +146,12 @@ class DownloadJobs(
      */
     private val opening: DownloadOpening? = null,
     private val log: Logger = Logger.withTag("DownloadJobs"),
-    // The ambient entry-point prefix, so every line a background-events wake causes traces back to it.
-    private val entryContext: EntryScope = EntryScope.None,
 ) {
 
     /**
-     * The OS completion handlers of this session's background-events wakes, held across the wake's own work —
-     * **staging** the delivered files — and released at the session's drain report once that staging is recorded;
-     * never held for the photo-library imports, which are the process tail's first unit (decision record
-     * `changes/own-work-per-wake`, D5). No deadline of the app's own bounds the hold: a drain report that never comes
-     * ends in the operating system's expiry, which the wake's owner forwards to the [OsCompletions.Handover] it was
-     * handed by [adoptBackgroundEvents]. The adapter's completion puts the release on the thread UIKit requires.
-     */
-    private val backgroundEvents = OsCompletions(entryPoint = "download.onBackgroundSessionEvents", log = log)
-
-    /**
-     * Serialises the drains: taking the outstanding stagings is a **destructive** read, so a second drain overlapping
-     * the first would find the list empty and release its handlers against stagings that are still being recorded.
-     */
-    private val drains = Mutex()
-
-    /**
-     * The stagings [onFinished] started since the last drain. Held so the OS's background-events handler is released
-     * *after* they are recorded — the session reports its own events drained, which
-     * says nothing about the store writes they caused.
+     * The stagings [onFinished] started since the last drain. Held so the session's drain report — which hands in the
+     * relaunch's completion — is answered *after* they are recorded: the session reports its own events drained,
+     * which says nothing about the store writes they caused.
      *
      * A thread-safe cell, not a plain list (law "State reached from OS callbacks is confined", `docs/architecture.md`):
      * [onFinished] registers from the session's delegate queue while [awaitOutstandingStagings] takes the list from a
@@ -251,22 +228,10 @@ class DownloadJobs(
     }
 
     /**
-     * The session has delivered every event it had. That is not yet the wake's own work done: each delivery started a
-     * staging, and recording those is what the OS handler reports on. So join them
-     * first, then release every handler outstanding — never waiting for the imports, which are the tail's.
-     *
-     * Unconditional: a foreground drain has no handler waiting on it, but the stagings it announces are joined all the
-     * same, and there is simply nobody to release.
-     */
-    fun onBackgroundEventsFinished() {
-        scope.launch { drains.withLock { backgroundEvents.releaseAfter { awaitOutstandingStagings() } } }
-    }
-
-    /**
      * Await every staging started since the last drain. Public because two callers need it and neither may reach
-     * the list: the background-events handler above (so the OS handler is released after the
-     * stagings), and the world harness's `stageAllDownloads`, whose operator drives the world synchronously
-     * and would otherwise race every download assertion.
+     * the list: the drain report's entry point (so the relaunch's completion is answered after the stagings), and
+     * the world harness's `stageAllDownloads`, whose operator drives the world synchronously and would otherwise race
+     * every download assertion.
      */
     suspend fun awaitOutstandingStagings() {
         outstandingStagings.getAndUpdate { emptyList() }.forEach { it.join() }
@@ -302,19 +267,6 @@ class DownloadJobs(
         inFlight.clear()
         download.cancelAll()
     }
-
-    /**
-     * Called from the download session's background-events handler: hold the OS [completion] until this wake's
-     * stagings are recorded. Returns the handover, through which the wake's owner learns of the release and forwards
-     * the operating system's expiry. The adapter brings its session up after handing this over, so every event it then
-     * delivers — and the drain report that follows them — lands in this handler's window.
-     */
-    fun adoptBackgroundEvents(completion: Completion): OsCompletions.Handover =
-        log.invocation(entryContext, "download.adoptBackgroundEvents") {
-            // Logged (law "Absence is never silent"): without it no diagnostic dump could distinguish a wake whose
-            // handler was released from one where it was never called.
-            backgroundEvents.adopt(completion)
-        }
 
     private fun pump() {
         while (inFlight.size < MAX_IN_FLIGHT) {

@@ -2,6 +2,8 @@ package app.snapsync.feature.download
 
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.UnionTrigger
+import app.snapsync.model.pushEventId
+import app.snapsync.model.pushSeq
 import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
 
@@ -29,6 +31,15 @@ class DownloadPushReceiver(
     private val controller: DownloadController,
     private val log: Logger = Logger.withTag("DownloadPushReceiver"),
 ) {
+    /**
+     * A silent push arrived with [payload], whole: a payload with no usable event id runs nothing — the codec in `model/`
+     * is the one place that knows its shape.
+     */
+    suspend fun onSilentPush(payload: Map<Any?, *>) {
+        val eventId = pushEventId(payload) ?: return log.i { "silent push carried no eventId — nothing to receive" }
+        onSilentPush(eventId, pushSeq(payload))
+    }
+
     suspend fun onSilentPush(eventId: String, announced: Long? = null) {
         val active = when (val membership = configSource.membership) {
             is MembershipRead.Member -> membership.config.eventId

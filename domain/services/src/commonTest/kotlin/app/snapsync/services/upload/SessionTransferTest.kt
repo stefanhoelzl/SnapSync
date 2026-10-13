@@ -1,5 +1,6 @@
 package app.snapsync.services.upload
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
@@ -36,7 +37,8 @@ class SessionTransferTest {
         val created = mutableListOf<TransferSource>()
         val networks = mutableListOf<TransferNetwork>()
 
-        override fun listen(handlers: TransferHandlers) = Unit
+        @CompositionOnly
+        override fun inbound(handlers: TransferHandlers) = Unit
 
         override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
             calls += "create($tag)"

@@ -1,9 +1,11 @@
 package app.snapsync.scene
 
-import app.snapsync.logging.invocation
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.logAt
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
@@ -31,7 +33,8 @@ import platform.UIKit.UIApplicationWillResignActiveNotification
 class IosLifecycle(private val record: SceneRecord, private val log: Logger) : Lifecycle {
     private val handlers = HandlerSlot<LifecycleHandlers>("Lifecycle", BeforeListen.Dropped)
 
-    override fun listen(handlers: LifecycleHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: LifecycleHandlers) {
         this.handlers.set(handlers)
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(
@@ -52,16 +55,16 @@ class IosLifecycle(private val record: SceneRecord, private val log: Logger) : L
     @PlatformEntry
     fun deliverForeground() {
         record.markActive()
-        handlers.orNull("didBecomeActive")?.onForeground()
+        handlers.orNull("didBecomeActive")?.onForeground?.handle(Unit, Completion.None)
     }
 
     /** The app is leaving the active state — what `willResignActive` delivers. */
     @PlatformEntry
     fun deliverBackground() {
-        handlers.orNull("willResignActive")?.onBackground()
+        handlers.orNull("willResignActive")?.onBackground?.deliver(Unit)
     }
 
     /** A scene-delegate callback that only records that it ran, with what the platform handed it. */
     fun deliverSceneEvent(name: String, params: String = "", severity: Severity = Severity.Info) =
-        log.invocation(name, params = params, severity = severity) { }
+        run { }.also { log.logAt(severity) { "$name($params)" } }
 }

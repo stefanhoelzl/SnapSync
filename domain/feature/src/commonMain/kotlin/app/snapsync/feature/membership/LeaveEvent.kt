@@ -45,7 +45,7 @@ import kotlinx.coroutines.launch
  *
  * The platform side-effects — stopping the producer and the backend notify — are
  * injected as suspend lambdas, so this stays pure `commonMain` logic and the app shell stays wiring-only.
- * The notify lambda is built in `compose/` over the `LeaveNotifier` port — the same one `flow/Provision`
+ * The notify lambda is built in `compose/` over the `LeaveNotifier` port — the same one the join's `Provision`
  * gets for the switch path, so the two routes to "this device left" cannot diverge.
  *
  * **Best-effort, no rollback:** each step runs independently; a failing step is logged and the rest still

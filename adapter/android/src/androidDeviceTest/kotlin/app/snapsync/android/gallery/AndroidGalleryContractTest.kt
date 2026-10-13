@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.android.gallery
 
 import android.app.Application
@@ -26,8 +28,10 @@ import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.SeededLibrary
+import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ImportFile
@@ -137,10 +141,10 @@ class AndroidGalleryContractTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val imported = mutableSetOf<PlatformAssetId>()
             val gallery = AndroidGallery(context, permission(), scope).recorded(log).apply {
-                listen(
+                inbound(
                     GalleryHandlers(
-                        onImportPlaceholder = { _, id -> imported += id },
-                        onImportSettled = { _, _ -> },
+                        onImportPlaceholder = inboundOf { imported += it.created },
+                        onImportSettled = inboundOf {},
                     ),
                 )
             }

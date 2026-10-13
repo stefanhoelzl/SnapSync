@@ -2,8 +2,8 @@ package app.snapsync.presentation
 
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
 import app.snapsync.ui.state.Layer

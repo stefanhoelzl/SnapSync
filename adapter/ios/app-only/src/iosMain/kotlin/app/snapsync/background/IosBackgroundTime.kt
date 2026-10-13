@@ -2,6 +2,7 @@
 
 package app.snapsync.background
 
+import app.snapsync.inbound.Running
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
@@ -77,17 +78,17 @@ class IosBackgroundTime internal constructor(
 
     constructor(log: Logger) : this(log, SystemBackgroundTimeApi)
 
-    override fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold {
-        val expiry = Once(onExpiry)
+    override fun begin(label: String, expiry: Running): BackgroundTimeHold {
+        val expired = Once(expiry::expire)
         val identifier = api.begin(label) {
             objcBoundary(log, "backgroundTime.expiry($label)") {
                 log.w { "$label: the operating system says background time is up — requesting a stop" }
-                expiry.run()
+                expired.run()
             }
         }
         if (identifier == null) {
             log.w { "$label: background time refused — the app's time is already up; reported as an expiry" }
-            expiry.run()
+            expired.run()
             return Refused
         }
         return Held(identifier)

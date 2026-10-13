@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
@@ -12,6 +13,8 @@ import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.ImportPlaceholder
+import app.snapsync.ports.ImportSettled
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant
@@ -70,7 +73,8 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         read.value = snapshot
     }
 
-    override fun listen(handlers: GalleryHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: GalleryHandlers) {
         state.listener = LibraryState.Listener(this, handlers)
     }
 
@@ -92,11 +96,13 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         val attempt = state.locked {
             (state.attempts.getOrElse(correlation) { 0 } + 1).also { state.attempts[correlation] = it }
         }
-        fun settle(outcome: ImportOutcome) = outcome.also { handlers.onImportSettled(correlation, it) }
+        fun settle(outcome: ImportOutcome) = outcome.also {
+            handlers.onImportSettled.deliver(ImportSettled(correlation, it))
+        }
         state.answers.beforeChange(correlation)?.let { return settle(ImportOutcome.Failed(it)) }
         val suffix = if (attempt == 1) "" else "-$attempt"
         val createdLocalId = PlatformAssetId("imported-${correlation.replace('/', '-')}$suffix")
-        handlers.onImportPlaceholder(correlation, createdLocalId)
+        handlers.onImportPlaceholder.deliver(ImportPlaceholder(correlation, createdLocalId))
         state.answers.beforeCommit(correlation)?.let {
             return settle(ImportOutcome.Failed(it, placeholder = createdLocalId))
         }

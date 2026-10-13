@@ -9,10 +9,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `AppUploadEngine` | `:domain:feature` | `:test:architecture` Engine; `:test:feature` FakeEngine | yes |
+| `Answered` | `:domain:inbound` | `:adapter:ios:ext-safe` ContractOr; `:domain:scheduling` AnsweredEntryPoint; `:test:contracts` AnsweredProxy; `:test:launch-adapters` Completed | yes |
+| `AppUploadEngine` | `:domain:feature` | `:domain:entrypoints` UploadEngine; `:test:architecture` Engine; `:test:feature` FakeEngine | yes |
 | `AttestStore` | `:domain:services` | `:domain:services` AttestState, CachedAttestStore, Item, SharedItem | no |
-| `BackgroundTime` | `:domain:ports` | `:adapter:android` AndroidBackgroundTime; `:adapter:generic:mock` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime; `:domain:services` Time; `:test:contracts` BackgroundTimeProxy; `:test:feature` Time | yes |
-| `BackgroundTimeHold` | `:domain:ports` | `:adapter:android` Hold; `:adapter:generic:mock` Hold; `:adapter:ios:app-only` Held, Refused; `:test:contracts` HoldProxy | no |
+| `Background` | `:domain:inbound` | `:domain:scheduling` EntryPoint; `:test:contracts` BackgroundProxy | no |
+| `BackgroundTime` | `:domain:ports` | `:adapter:android` AndroidBackgroundTime; `:adapter:generic:mock` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime; `:domain:scheduling` FakeBackgroundTime; `:test:contracts` BackgroundTimeProxy; `:test:feature` NoTime | yes |
+| `BackgroundTimeHold` | `:domain:ports` | `:adapter:android` Hold; `:adapter:generic:mock` Hold; `:adapter:ios:app-only` Held, Refused; `:domain:scheduling` Hold; `:test:contracts` HoldProxy | no |
 | `BackgroundTransfer` | `:domain:services` | `:domain:services` OsQueueTransfer, SessionTransfer; `:test:feature` FakePlatform, Library | yes |
 | `BeforeListen` | `:domain:model` | `:domain:model` Dropped, Logged, Thrown | no |
 | `Branch` | `:domain:ports` | — | no |
@@ -22,7 +24,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CandidateSource` | `:domain:services` | `:adapter:generic:mock` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:feature` FactsSource, UnreadableSource; `:domain:services` GalleryCandidateSource, PermissionAwareCandidateSource, RecordingWalk; `:test:feature` OneAsset | yes |
 | `ChangeOutcome` | `:domain:ports` | `:domain:ports` Applied, Refused | no |
 | `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:test:contracts` ClockProxy, FixedClock | yes |
-| `Completion` | `:domain:ports` | `:adapter:android` OnceCompletion; `:adapter:ios:app-only` PushCompletion, SessionCompletion; `:test:contracts` CompletionProxy | no |
+| `Completion` | `:domain:inbound` | `:adapter:android` OnceCompletion, WorkerCompletion; `:adapter:generic:mock` Answered; `:adapter:ios:app-only` PushCompletion, Released, SessionCompletion, TaskCompletion; `:domain:inbound` None; `:domain:scheduling` CountingCompletion, Done; `:test:contracts` CompletionProxy; `:test:rig` Handler | yes |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigRead` | `:domain:model` | `:domain:model` Joined, None, Unavailable | no |
@@ -45,23 +47,21 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceFilesSource` | `:domain:services` | `:domain:services` BackendDeviceFilesSource; `:test:feature` FakeFiles | yes |
 | `DeviceIdResult` | `:domain:model` | `:domain:model` AbsentNotMintable, Id, Unavailable | no |
 | `DeviceIntegrity` | `:domain:ports` | `:adapter:android` AndroidDeviceIntegrity; `:adapter:generic:mock` FakeKey, InMemoryDeviceIntegrity; `:adapter:ios:ext-safe` IosDeviceIntegrity; `:test:contracts` DeviceIntegrityProxy | yes |
-| `Download` | `:domain:ports` | `:adapter:android` AndroidDownload; `:adapter:generic:mock` Face, InertDownload, NetworkedDownload; `:adapter:ios:app-only` IosDownload; `:domain:services` FakeDownload; `:test:contracts` DownloadProxy; `:test:feature` RecordingDownload | yes |
+| `Download` | `:domain:ports` | `:adapter:android` AndroidDownload; `:adapter:generic:mock` Face, NetworkedDownload; `:adapter:ios:app-only` IosDownload; `:domain:services` FakeDownload; `:test:contracts` DownloadProxy; `:test:feature` RecordingDownload | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` StoreDownloadStatusSource | no |
 | `DumpHandOff` | `:domain:model` | `:domain:model` NotSent, Queued | no |
 | `DumpResult` | `:domain:model` | `:domain:model` Saved | no |
 | `Enter` | `:domain:feature` | `:domain:feature` Join, LeavePrevious | no |
-| `EntryContext` | `:domain:ports` | `:adapter:generic:mock` Entry; `:adapter:ios:ext-safe` IosEntryContext, IosThreadEntryContext; `:domain:compose` NoEntryContext; `:test:contracts` EntryContextProxy | no |
-| `EntryScope` | `:domain:model` | `:domain:model` None, RecordingScope | no |
 | `EventCreation` | `:domain:services` | `:domain:feature` FakeClient; `:domain:services` BackendEventCreation | yes |
 | `EventCreator` | `:domain:model` | `:domain:feature` CreateEvent; `:domain:presentation` SpyCreator | no |
 | `EventDirectory` | `:domain:services` | `:domain:services` BackendEventDirectory; `:test:feature` FakeDetails | yes |
 | `EventJoin` | `:domain:services` | `:domain:feature` CapturingJoin; `:domain:services` BackendEventJoin; `:test:feature` FakeJoin | yes |
 | `EventLookup` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
+| `EventPort` | `:domain:ports` | — | no |
 | `EventRename` | `:domain:services` | `:domain:services` BackendEventRename; `:test:feature` FakeRename | yes |
-| `EventUnionSource` | `:domain:services` | `:adapter:generic:mock` EmptyUnion; `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, RecordingUnion | yes |
-| `ExpiringCompletion` | `:domain:ports` | `:adapter:android` WorkerCompletion; `:adapter:ios:app-only` Released, TaskCompletion; `:app:desktop` NoCompletion; `:test:contracts` ExpiringCompletionProxy; `:test:rig` Handler | yes |
+| `EventUnionSource` | `:domain:services` | `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, RecordingUnion | yes |
 | `ExtensionHost` | `:domain:ports` | `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:contracts` ExtensionHostProxy; `:test:launch-adapters` UncomposedExtensionHost | yes |
-| `ExtensionRegistration` | `:domain:services` | `:domain:services` OsDrivenRegistration; `:test:architecture` PlatformRegistration; `:test:feature` FakeRegistration, Registration | yes |
+| `ExtensionRegistration` | `:domain:services` | `:domain:services` OsDrivenRegistration; `:test:architecture` PlatformRegistration; `:test:feature` FakeRegistration | yes |
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:android` AndroidExtensionRegistry; `:adapter:generic:mock` InMemoryExtensionRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:services` RecordingRegistry; `:test:contracts` ExtensionRegistryProxy | yes |
 | `Fact` | `:domain:model` | `:domain:model` Failed, Known, Unsupported | no |
 | `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |
@@ -71,32 +71,35 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, MemFiles, SharedArea; `:test:contracts` FilesProxy, UnusedFiles; `:test:feature` RecordingFiles, ThrowingDeletes, UnlistableStaging | yes |
 | `Found` | `:domain:services` | `:domain:services` Failed, Missing, OldSchema, Open | no |
 | `Gallery` | `:domain:ports` | `:adapter:android` AndroidGallery; `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery; `:test:contracts` GalleryProxy | yes |
-| `GalleryImport` | `:domain:ports` | `:adapter:generic:mock` NoImports, Recording; `:test:contracts` GalleryImportProxy, GalleryProxy; `:test:feature` FakeImporter, NoopImporter | yes |
+| `GalleryImport` | `:domain:ports` | `:adapter:generic:mock` Recording; `:test:contracts` GalleryImportProxy, GalleryProxy; `:test:feature` FakeImporter, NoopImporter | yes |
 | `GalleryRead` | `:domain:ports` | `:domain:ports` NotReadable, Read | no |
-| `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Recording, RecordingAlbums; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:compose` FullGrant; `:domain:services` ExportingLibrary, GrantOnlyReader, Library, RecordingLibrary, ScriptedGallery; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:feature` FakeAlbumManager, RecordingAlbumManager | yes |
+| `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Recording; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:compose` FullGrant; `:domain:services` ExportingLibrary, GrantOnlyReader, Library, RecordingLibrary, ScriptedGallery; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:feature` FakeAlbumManager, RecordingAlbumManager | yes |
 | `GalleryResourceHandle` | `:domain:ports` | `:adapter:android` MediaStoreResource; `:adapter:generic:mock` InMemoryResource, NotThisPlatformsHandle; `:adapter:ios:ext-safe` NotAPhoto, PhotoKitResource, ReplayOther, ReplayPhoto, StandInPhoto; `:domain:services` KeyHandle, TestHandle; `:test:feature` TestPhoto | yes |
+| `Granted` | `:domain:inbound` | `:domain:scheduling` GrantedEntryPoint; `:test:contracts` GrantedProxy; `:test:rig` QuietWake | yes |
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
 | `HeadRead` | `:domain:model` | `:domain:model` Read, Refused | no |
 | `Hmac` | `:domain:model` | `:domain:model` Recording | no |
+| `HostAssembly` | `:domain:entrypoints` | `:domain:host` HostFirst | no |
 | `HttpResult` | `:domain:model` | `:domain:model` Response, Unreachable | no |
 | `HttpTransport` | `:domain:ports` | `:adapter:generic:app` KtorHttpTransport; `:adapter:generic:mock` BackendRouter, FakeClient; `:domain:services` ScriptedTransport; `:test:architecture` Probe; `:test:contracts` HttpTransportProxy | yes |
 | `ImportOutcome` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
 | `ImportResult` | `:domain:model` | `:domain:model` Failed, Imported | no |
-| `ImportedAssetPresence` | `:domain:services` | `:adapter:generic:mock` UnknownPresence; `:domain:services` GalleryAssetPresence, PermissionAwareAssetPresence, RecordingLibrary; `:test:feature` CountingPresence, InMemoryAssetPresence | yes |
+| `ImportedAssetPresence` | `:domain:services` | `:domain:services` GalleryAssetPresence, PermissionAwareAssetPresence, RecordingLibrary; `:test:feature` CountingPresence, InMemoryAssetPresence | yes |
+| `Inbound` | `:domain:inbound` | `:domain:host` Intents, LiveScreen; `:domain:scheduling` InlineEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
 | `Items` | `:domain:ports` | — | no |
 | `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound, WrongLink | no |
 | `JoinProgress` | `:domain:presentation` | `:domain:presentation` Closed, Detailed, LoadFailed, Loading, NotFound, WrongLink | no |
 | `LeaveNotifier` | `:domain:services` | `:domain:services` BackendLeaveNotifier | no |
-| `LedgerCountsSource` | `:domain:feature` | `:adapter:generic:mock` CountingCounts; `:domain:feature` MutableLedgerCountsSource, ReadingLedgerCountsSource; `:test:feature` CountingSource | yes |
+| `LedgerCountsSource` | `:domain:feature` | `:domain:feature` MutableLedgerCountsSource, ReadingLedgerCountsSource; `:test:feature` CountingSource | yes |
 | `LibraryChangeToken` | `:domain:ports` | `:adapter:android` VolumeGenerations; `:adapter:generic:mock` Token; `:adapter:ios:app-only` PhotoKitLibraryChangeToken; `:domain:services` Token; `:test:contracts` TokenProxy | no |
 | `LibraryChangeTokenRead` | `:domain:ports` | `:test:contracts` GalleryProxy, LibraryChangeTokenReadProxy | no |
 | `LibraryResource` | `:domain:model` | `:domain:services` GalleryResourceRef; `:test:feature` Held | yes |
 | `Lifecycle` | `:domain:ports` | `:adapter:android` AndroidLifecycle, MainThreadListen; `:adapter:ios:ui` IosLifecycle; `:test:contracts` LifecycleProxy | no |
 | `LinkDelivery` | `:domain:ports` | `:domain:ports` InstallReferrer, Link, NoUrl, NotALink | no |
 | `Links` | `:domain:ports` | `:adapter:android` AndroidLinks; `:adapter:ios:app-only` IosLinks; `:test:contracts` LinksProxy | no |
-| `Listenable` | `:domain:ports` | — | no |
 | `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:contracts` LogSinkProxy; `:test:rig` RecordedLog | yes |
+| `LogWriter` | `:domain:inbound` | `:adapter:generic:mock` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:model` CapturingLogWriter; `:domain:scheduling` RecordingLog; `:domain:services` CapturingLogWriter, CrashLines, CrashLogWriter, SinkLines, SinkLogWriter; `:test:feature` CapturingLogWriter | yes |
 | `ManifestPublisher` | `:domain:services` | `:domain:services` BackendManifestPublisher; `:test:feature` FakeUploader | yes |
 | `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
 | `MetricNode` | `:domain:ports` | `:domain:ports` Leaf | no |
@@ -106,6 +109,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Opened` | `:domain:services` | `:domain:services` Damaged, Ok, OtherKey, Unreadable | no |
 | `OsUploadJobHandle` | `:domain:ports` | `:adapter:generic:mock` Job; `:adapter:ios:ext-safe` PhotoKitJob, Presented; `:domain:services` Job; `:test:feature` OfferedJob | yes |
 | `OsUploadQueue` | `:domain:ports` | `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` Queue, ScriptedQueue; `:test:contracts` OsUploadQueueProxy; `:test:feature` Queue | yes |
+| `Pass` | `:domain:scheduling` | `:domain:scheduling` Completed, Cut | no |
 | `PlatformDeviceId` | `:domain:ports` | `:adapter:android` AndroidPlatformDeviceId; `:adapter:generic:app` NoPlatformDeviceId; `:test:contracts` PlatformDeviceIdProxy | no |
 | `Port` | `:domain:ports` | `:test:architecture` None | yes |
 | `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
@@ -125,6 +129,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
 | `ResourceBatch` | `:domain:model` | `:domain:model` RecordingBatch | no |
 | `ResumePoint` | `:domain:services` | `:domain:services` Deferred, From, Landed | no |
+| `Running` | `:domain:inbound` | `:domain:scheduling` Run; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:feature` LockableSecureStore | yes |
 | `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
@@ -143,6 +148,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, FixedSync, IdleSync, MenuTestSync, Sync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:ios:app-only` IosSystemUi; `:test:contracts` SystemUiProxy | no |
+| `ThreadLabel` | `:domain:ports` | `:adapter:android` AndroidThreadLabel; `:adapter:generic:app` JvmThreadLabel; `:adapter:generic:mock` Labelled, ThreadLabelMock; `:adapter:ios:ext-safe` IosThreadLabel; `:domain:scheduling` FakeThreadLabel; `:test:contracts` ThreadLabelProxy | yes |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, ProofFailed, Refused, Unreachable | no |
 | `TransferHandle` | `:domain:ports` | `:adapter:android` Live; `:adapter:generic:mock` Live; `:domain:services` Handle | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |
@@ -159,6 +165,5 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Verdict` | `:domain:feature` | `:domain:feature` Clear, Leave, Settle | no |
 | `Wake` | `:domain:ports` | `:adapter:android` AndroidWake; `:adapter:generic:mock` InMemoryWake; `:adapter:ios:app-only` IosWake; `:domain:services` RecordingWake; `:test:contracts` WakeProxy | yes |
 | `WakeTrigger` | `:domain:model` | `:domain:model` After, LibraryChange | no |
-| `WalkOutcome` | `:domain:feature` | `:domain:feature` Abandoned, Walked | no |
 | `Work` | `:domain:model` | `:domain:model` Retry, Upload | no |
 | `WriteOutcome` | `:domain:model` | `:domain:model` Failed, Ok | no |

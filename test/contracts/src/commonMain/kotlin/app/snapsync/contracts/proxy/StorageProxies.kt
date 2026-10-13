@@ -1,8 +1,11 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts.proxy
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.contracts.CallLog
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.FileArea
 import app.snapsync.model.SecureSlot
 import app.snapsync.ports.DatabaseHandlers
@@ -69,16 +72,10 @@ internal class DatabasesProxy(private val inner: Databases, log: CallLog) : Data
     override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean) =
         r.answer("open", inner.open(name, schema, readOnly))
 
-    override fun listen(handlers: DatabaseHandlers) = r.returns(
-        "listen",
-        inner.listen(
-            DatabaseHandlers(
-                onChangedElsewhere = { database ->
-                    r.called("handlers.onChangedElsewhere", Recorder.arg(database, "String"))
-                    handlers.onChangedElsewhere(database)
-                },
-            ),
-        ),
+    @CompositionOnly
+    override fun inbound(handlers: DatabaseHandlers) = r.returns(
+        "inbound",
+        inner.inbound(DatabaseHandlers(InboundProxy(handlers.onChangedElsewhere, r, "onChangedElsewhere", "String"))),
     )
 }
 

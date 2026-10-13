@@ -66,12 +66,12 @@ class LambdaSeamShapeTest {
 
     /**
      * A `*Handlers` bundle is a slot of callbacks, so the slot rule reaches it too — with the one exception an event
-     * port needs: an adapter's `listen` stores what the composition registered. So a `var` of a `*Handlers` type is
-     * allowed only in a class that overrides `listen`, and nowhere else (`docs/architecture.md`, "Events arrive
-     * through `listen`").
+     * port needs: an adapter's `inbound` (a reporter's `listen`) stores what the composition registered. So a `var` of
+     * a `*Handlers` type is allowed only in a class that overrides one, and nowhere else (`docs/architecture.md`,
+     * "Events arrive through `inbound`").
      */
     @Test
-    fun `a Handlers-typed var lives only behind a listen`() {
+    fun `a Handlers-typed var lives only behind an inbound`() {
         val found = production.flatMap { source ->
             val text = code(source)
             KotlinDecls.varDecls(text).filter { HANDLERS_TYPE.matches(it.type.trim()) }.map { Triple(source, text, it) }
@@ -80,12 +80,12 @@ class LambdaSeamShapeTest {
             found.isNotEmpty(),
             "no adapter stores its handlers — the scan is broken, and this gate passes on nothing",
         )
-        val slots = found.filterNot { (_, text, _) -> "override fun listen(" in text }
+        val slots = found.filterNot { (_, text, _) -> "override fun inbound(" in text || "override fun listen(" in text }
             .map { (source, _, decl) -> "  ${source.path}:${decl.line} :: var ${decl.name}: ${decl.type}" }
         assertTrue(
             slots.isEmpty(),
-            "a `*Handlers` slot outside an event port's `listen` is a callback slot someone must remember to fill. " +
-                "Register handlers only through `Listenable.listen`.\n" + slots.joinToString("\n"),
+            "a `*Handlers` slot outside an event port's `inbound` is a callback slot someone must remember to fill. " +
+                "Register handlers only through `EventPort.inbound`.\n" + slots.joinToString("\n"),
         )
     }
 

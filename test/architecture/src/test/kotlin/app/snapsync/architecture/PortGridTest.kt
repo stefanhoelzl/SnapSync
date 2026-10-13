@@ -1,6 +1,6 @@
 package app.snapsync.architecture
 
-import app.snapsync.ports.Listenable
+import app.snapsync.ports.EventPort
 import java.io.File
 import kotlin.reflect.full.isSuperclassOf
 import kotlin.test.Test
@@ -13,19 +13,20 @@ import kotlin.test.assertTrue
  * The contract-coverage gate ([ContractCoverageTest]) asks whether every clause runs against something real. This asks
  * the other question: of everything a port's adapter can answer, which cells exist at all. A cell is one of
  *  - `Port.member → Variant` — a member the adapter implements × each variant of what it returns;
- *  - `Port.handlers.field(Arg, …)` — for an event port ([Listenable]), a handler the adapter CALLS × each variant of
- *    every argument it passes (crossed). What the handler returns is the core's answer, not the adapter's, so out;
- *  - `Port.member.param(Arg, …)` — the same for a callback the core hands a member (`BackgroundTime.begin`'s expiry);
- *  - `Port.Handle.member → Variant` — a handle a port hands over ([PortBundleTest]'s not-ports `Completion`,
- *    `BackgroundTimeHold`, `LibraryChangeToken`), counted under each port that hands it out, since each is a
- *    different adapter's.
+ *  - `Port.handlers.field(Arg, …)` — for an event port ([EventPort]), a delivery the adapter MAKES × each variant of
+ *    every argument it passes (crossed) — a `Background` delivery's completion among them. What the delivery answers
+ *    is the core's, not the adapter's, so out;
+ *  - `Port.member.param(Arg, …)` — the same for a callback the core hands a member;
+ *  - `Port.Handle.member → Variant` — a handle a port hands over or is handed (`BackgroundTimeHold`,
+ *    `LibraryChangeToken`; the inbound kinds' `Completion`, and the `Running` an adapter expires), counted under each
+ *    port that hands it, since each is a different adapter's.
  *
  * Variants: a sealed type → each leaf subtype (`Reply.Ok`; the OUTER type of a generic only); an enum → each entry;
  * `Boolean` → `true`/`false`; a `Flow<T>` → T's; anything else → one `returns` cell, or its type name as an argument.
  * A nullable type adds `null`. A throw is never a cell: a port answers every expected failure as a value, and no port
  * member declares a throw (`@Throws`) — the one assertion this report makes beyond its own scan. A member
  * the interface itself implements (a default body) is not the adapter's answer and is not a cell; a member inherited
- * from another port is counted under the port declaring it, except a generic base's ([Listenable.listen]), counted
+ * from another port is counted under the port declaring it, except a generic base's ([EventPort.inbound]), counted
  * under every port that binds it.
  *
  * Read by REFLECTION over the compiled `:domain:ports`, not by text: a regex over the source counts the generic
@@ -110,7 +111,8 @@ class PortGridTest {
             "Backend.* → Unreachable",
             "SecureStore.read → SecureStoreRead.Unavailable",
             "LibraryChangeTokenRead.changeToken → null",
-            "Wake.ExpiringCompletion.complete → returns",
+            "Wake.Completion.complete → returns",
+            "Wake.Running.expire → returns",
             "DeviceIntegrity.prove → ProveResult.Refused.Failed",
         )
         val missing = canaries - texts
@@ -119,7 +121,7 @@ class PortGridTest {
 
     @Test
     fun `every event port has handler cells`() {
-        val bare = ports.filter { Listenable::class.isSuperclassOf(it) }
+        val bare = ports.filter { EventPort::class.isSuperclassOf(it) }
             .map { it.simpleName!! }
             .filter { p -> cells.none { it.port == p && ".handlers." in it.text } }
         assertTrue(bare.isEmpty(), "port grid: event ports with no handler cell — the handler bundle read broke: $bare")

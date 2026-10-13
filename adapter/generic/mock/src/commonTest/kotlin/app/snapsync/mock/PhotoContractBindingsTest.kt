@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.mock
 
 import app.snapsync.contracts.Binding
@@ -26,6 +28,7 @@ import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ImportFile
@@ -119,7 +122,7 @@ class PhotoContractBindingsTest {
             }
             val library = MutableStateFlow<List<GalleryAssetResources>>(emptyList())
             val deliveries = ImportDeliveries()
-            val importer = inMemoryGallery(library).recorded(log).apply { listen(deliveries.handlers) }
+            val importer = inMemoryGallery(library).recorded(log).apply { inbound(deliveries.handlers) }
             val observed = object : ImportedLibrary {
                 override suspend fun captureDate(id: PlatformAssetId): String? =
                     library.value.firstOrNull { it.id == id }?.asset?.created?.toString()
@@ -159,7 +162,7 @@ class PhotoContractBindingsTest {
             val seeded = library.value.mapTo(linkedSetOf()) { it.id }
             // The seeded photos are this app's own saves, as the emulator binding's are: the ones it may move.
             mock.state.ownImports += seeded
-            val gallery = mock.port().recorded(log).apply { listen(ImportDeliveries().handlers) }
+            val gallery = mock.port().recorded(log).apply { inbound(ImportDeliveries().handlers) }
             val staged = {
                 listOf(
                     ImportFile(

@@ -501,8 +501,8 @@ routes to the downloads). An unknown task identifier is completed at once and lo
 
 🧭 **The rig classifies nothing.** A release carries no outcome, so "released after the own work" vs
 "released on the operating system's expiry" is **not** derivable from `heldMs`. The authoritative answer is
-the expiry line `… OS handler released on the operating system's expiry …`, which `OsCompletions` emits on
-the expiry path and no other — read it via `/device/logs` after this request's `[rig] → /os/…` marker. Every
+the runtime's expiry line `operating system expiry: cancelling trigger=…`, which it writes on the expiry path
+and no other — read it via `/device/logs` after this request's `[rig] → /os/…` marker. Every
 request writes that marker, so it doubles as the log cursor.
 
 Excluded members answer with **the reason they are excluded**, not a bare 404 — `onLaunch` re-registers

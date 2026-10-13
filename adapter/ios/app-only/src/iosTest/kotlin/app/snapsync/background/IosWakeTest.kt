@@ -1,13 +1,15 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, CompositionOnly::class)
 
 package app.snapsync.background
 
+import app.snapsync.contracts.grantedOf
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
@@ -42,13 +44,11 @@ class IosWakeTest {
         }
     }
 
-    private class Released : ExpiringCompletion {
+    private class Released : Completion {
         var releases = 0
         override fun complete() {
             releases++
         }
-
-        override fun onExpired(action: () -> Unit) = Unit
     }
 
     private val captured = Capturing()
@@ -86,9 +86,9 @@ class IosWakeTest {
     @Test
     fun `a task identifier the adapter does not know is completed at once`() {
         var woken = 0
-        val handlers = WakeHandlers(onWake = { _, _ -> woken++ })
+        val handlers = WakeHandlers(onWake = grantedOf { _, _ -> woken++ })
         // Registered through the seam's test double, never the system's: a test binary's second registration raises.
-        IosWake(Logger.withTag("test"), NoRegistration).also { it.listen(handlers) }.let { adapter ->
+        IosWake(Logger.withTag("test"), NoRegistration).also { it.inbound(handlers) }.let { adapter ->
             val completion = Released()
             adapter.onTaskLaunched("app.example.not-registered", completion)
             assertEquals(1, completion.releases, "a task held forever costs the app its future background time")
@@ -156,7 +156,7 @@ class IosWakeTest {
         IosWake(
             Logger.withTag("test"),
             tasks,
-        ).also { it.listen(WakeHandlers(onWake = { _, _ -> woken++ })) }.let { adapter ->
+        ).also { it.inbound(WakeHandlers(onWake = grantedOf { _, _ -> woken++ })) }.let { adapter ->
             assertEquals(IosWake.TASK_IDENTIFIERS, tasks.registered, "each identifier needs its launch handler")
             adapter.onTaskLaunched(IosWake.IDLE_TASK_IDENTIFIER, Released())
             assertEquals(1, woken, "the idle identifier is routed to the heartbeat wake too")

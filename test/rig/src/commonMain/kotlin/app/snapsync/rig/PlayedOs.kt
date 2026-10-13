@@ -2,12 +2,13 @@
 
 package app.snapsync.rig
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.Running
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.FileArea
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -27,7 +28,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * Played wherever the system is mocked: always on the JVM host, and on the app host for the systems an adapter choice mocks
  * (`docs/testing.md`, "Launch-time adapters"). A real operating system's expiry is its own, so the verb needs the
  * background-time holds mocked — the same signal a `BGTask`'s expiration handler and `UIApplication`'s background-time
- * expiry deliver, through the same `onExpired` registration and the background-time mock.
+ * expiry deliver, through the run each delivery answered and the background-time mock.
  */
 class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem) -> Boolean = { true }) {
     private val lock = AtomicBoolean(false)
@@ -36,7 +37,7 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
     private var released = 0
     private var releasedAgain = 0
 
-    /** Set by `onExpiry?arg=next`: the next handler is handed over with its time already up. */
+    /** Set by `onExpiry?arg=next`: the next grant of time is handed over already withdrawn. */
     private var nextExpired = false
 
     /** A few-instruction critical section, shared by every thread a handler is released on. */
@@ -51,15 +52,35 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         }
     }
 
-    /** A completion handler for [done], counted, and expirable by [expire]. */
-    fun completion(done: () -> Unit): ExpiringCompletion {
+    /**
+     * A completion handler for [done], counted and handed to [deliver] — the delivery it rides. Its time is the
+     * app's own background time, which [expire] ends.
+     */
+    fun deliver(done: () -> Unit, deliver: (Completion) -> Unit) {
+        deliver(handOver(done))
+    }
+
+    /**
+     * A completion handler for [done], counted and handed to [deliver] — a grant of time (a scheduled wake), which
+     * [expire] withdraws through the run the delivery answers.
+     */
+    fun grant(done: () -> Unit, deliver: (Completion) -> Running) {
+        val handler = handOver(done)
+        val expired = locked {
+            nextExpired.also { nextExpired = false }
+        }
+        val running = deliver(handler)
+        val expireNow = locked {
+            handler.running = running
+            (expired || handler.expired) && !handler.released
+        }
+        if (expireNow) running.expire()
+    }
+
+    private fun handOver(done: () -> Unit): Handler {
         val handler = Handler(done)
         locked {
             handed++
-            if (nextExpired) {
-                nextExpired = false
-                handler.expired = true
-            }
             held += handler
         }
         return handler
@@ -71,11 +92,11 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
      */
     fun expire() {
         val expiring = locked { held.filterNot { it.released }.onEach { it.expired = true } }
-        expiring.forEach { it.expiry?.invoke() }
+        expiring.mapNotNull { it.running }.distinct().forEach { it.expire() }
         device.backgroundTime.operator.expireAll()
     }
 
-    /** The next handler handed over arrives with its time already up. */
+    /** The next grant of time handed over arrives already withdrawn. */
     fun expireNext() = locked { nextExpired = true }
 
     /**
@@ -144,10 +165,10 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         }
     }.toString()
 
-    private inner class Handler(private val done: () -> Unit) : ExpiringCompletion {
+    private inner class Handler(private val done: () -> Unit) : Completion {
         var released = false
         var expired = false
-        var expiry: (() -> Unit)? = null
+        var running: Running? = null
 
         override fun complete() {
             val first = locked {
@@ -161,14 +182,6 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
                 }
             }
             if (first) done()
-        }
-
-        override fun onExpired(action: () -> Unit) {
-            val now = locked {
-                expiry = action
-                expired && !released
-            }
-            if (now) action()
         }
     }
 }

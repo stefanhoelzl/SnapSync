@@ -29,10 +29,9 @@ import app.snapsync.ios.urlsession.UPLOAD_SESSION_ID
 import app.snapsync.keychain.platformSecureStore
 import app.snapsync.link.IosLinks
 import app.snapsync.logging.FileLogSink
-import app.snapsync.logging.IosEntryContext
+import app.snapsync.logging.IosThreadLabel
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.appLogDestination
-import app.snapsync.logging.invocation
 import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.metrics.MetricKitProcessMetrics
@@ -294,7 +293,7 @@ object SnapSyncRoot {
             files = ports.files.value,
             clock = ports.clock.value,
             crypto = ports.crypto.value,
-            entryContext = IosEntryContext,
+            threadLabel = IosThreadLabel,
             build = IosBuildInfo(),
         )
     }
@@ -348,8 +347,8 @@ object SnapSyncRoot {
         ).also { adapters.bootLines.forEach { line -> log.i { line } } }
     }
 
-    // A silent push's own work (the download arm) and the tail its wake joins are both composed in the app graph
-    // (`flow/SilentPush`, the tail runner); this root supplies no arm of its own.
+    // A silent push's own work (the download arm) and the wake's work after it are both composed in the app graph
+    // (`OnSilentPush`); this root supplies no arm of its own.
 
     /**
      * The status host, assembled by the shared host composition on first touch: a minted event routes into its join
@@ -367,8 +366,9 @@ object SnapSyncRoot {
      * no database opens).
      */
     @PlatformEntry
-    fun onLaunch() = log.invocation("onLaunch") {
+    fun onLaunch() {
         adapters.launch { composed }
+        log.i { "onLaunch" }
     }
 
     /** The app became active, as SwiftUI observes it — the scene generation SwiftUI binds to `.id(…)` ([IosUi]). */

@@ -49,6 +49,7 @@ kotlin {
             // The Motion Photo codec: an Android motion photo is taken apart into a Live Photo here.
             implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))
+            api(project(":domain:inbound"))
             // The shared PhotoKit discovery walk (IosDiscovery) the URLSession tier reuses.
             api(project(":adapter:ios:ext-safe"))
             implementation(libs.coroutines.core)

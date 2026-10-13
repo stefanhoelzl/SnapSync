@@ -16,7 +16,7 @@ plugins {
 //
 // The one zone that sees both the composition zone and presentation, which must stay blind to each other: the
 // composition zone may not name presentation, and presentation may not name the composition zone. Only the host
-// sees both, so neither gains the other. It never sees `flow/` directly.
+// sees both, so neither gains the other.
 //
 // Every edge is `implementation()`: a consumer that needs the composition or presentation declares it. Of
 // `feature/`, only the `readmodel` packages may be named (the read-model import gate).
@@ -32,6 +32,10 @@ kotlin {
             implementation(project(":domain:feature"))
             implementation(project(":domain:compose"))
             implementation(project(":domain:presentation"))
+            // The UI deliveries and the host assembly the foreground entry point asks for.
+            implementation(project(":domain:inbound"))
+            implementation(project(":domain:scheduling"))
+            implementation(project(":domain:entrypoints"))
             // The screen's vocabulary the host binds the Ui port to.
             implementation(project(":ui:state"))
             // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.

@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.android.download
 
 import android.app.DownloadManager
@@ -19,6 +21,7 @@ import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import kotlinx.coroutines.delay
@@ -101,7 +104,7 @@ class AndroidDownloadContractTest {
         // A force-stopped app receives no broadcasts; the rows stay with DownloadManager until someone asks.
         context.unregisterReceiver(receiver)
         val first = AndroidDownload(context)
-        first.listen(ClauseDownloadHandlers { null }.handlers)
+        first.inbound(ClauseDownloadHandlers { null }.handlers)
         val path = DownloadContract.path("MISSED_BROADCAST", FixtureAnswer.Respond(HTTP_OK, length = MISSED_LENGTH))
         assertEquals(StartResult.Started, first.start(fixture() + path, emptyMap(), "d-missed", TransferNetwork.ANY))
         withTimeout(TRANSFER_WAIT_MILLIS) {
@@ -109,7 +112,7 @@ class AndroidDownloadContractTest {
         }
 
         val relaunched = ClauseDownloadHandlers { runCatching { File(it).readBytes() }.getOrNull() }
-        AndroidDownload(context).listen(relaunched.handlers)
+        AndroidDownload(context).inbound(relaunched.handlers)
 
         val delivered = relaunched.events.filterIsInstance<DownloadEvent.Finished>().single()
         assertEquals("d-missed", delivered.tag)

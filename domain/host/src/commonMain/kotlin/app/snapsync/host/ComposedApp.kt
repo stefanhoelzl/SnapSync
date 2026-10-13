@@ -3,13 +3,14 @@ package app.snapsync.host
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.ProcessServices
-import app.snapsync.compose.devHandlers
-import app.snapsync.compose.installNetworkReturns
-import app.snapsync.compose.lifecycleHandlers
-import app.snapsync.compose.pushHandlers
+import app.snapsync.compose.followNetworkReturns
+import app.snapsync.compose.inbound
 import app.snapsync.compose.snapSyncApp
+import app.snapsync.entrypoints.HostAssembly
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
+import app.snapsync.inbound.InboundImplementation
 import app.snapsync.ports.DateFormatting
-import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.UiHandlers
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
@@ -18,9 +19,12 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
+import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /**
@@ -70,6 +74,7 @@ class ComposedApp internal constructor(
  * function exists to end — the control channel's JVM host once built its status host without the version
  * refusal and never registered for pushes, and nothing said so.
  */
+@OptIn(CompositionOnly::class)
 fun snapSyncHost(
     scope: CoroutineScope,
     /** The composition lane [scope] runs on — named by the root, which owns that thread (see `AppCore.coreLane`). */
@@ -85,21 +90,12 @@ fun snapSyncHost(
     val core = snapSyncApp(scope, lane, ports)
     val process = core.process
     val log = process.logger("app")
-    // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much
-    // as a foreground launch does. `listen` only registers: the selection observer opens below, still on composition.
-    ports.gallery.listen(core.galleryHandlers)
-    // On iOS this registration IS the `BGTask` launch handler, which Apple requires before launch finishes — why the
-    // root composes at launch. It starts nothing: the handlers run only when the operating system wakes the app.
-    ports.wake.listen(core.events.wakeHandlers)
-    // The transfer sessions' events — a background relaunch that hands back finished transfers must find these.
-    ports.download.listen(core.events.downloadHandlers)
-    ports.uploadSession.listen(core.events.uploadHandlers)
     core.installCompositionSubscriptions()
     val composed = ComposedApp(core, process, cutoffFormatter, ports.dateFormatting) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
         // The network's return resumes the app's work while it is in front.
-        installNetworkReturns(core)
+        core.followNetworkReturns()
         val host = StatusContainerHost(
             statusSourcesOf(core, ports),
             scope = scope,
@@ -125,47 +121,49 @@ fun snapSyncHost(
         // The platform's UI is shown every state the host reduces, from assembly on. `show` only hands the state over:
         // the adapter renders it on its own main thread.
         scope.launch { host.screen.collect(ports.ui::show) }
+        // A link the app was opened with waits in the core until a screen can open it: from assembly on, it opens.
+        scope.launch {
+            core.openedLinks.pending.filterNotNull().collect { url ->
+                host.onOpenUrl(url)
+                core.openedLinks.consume(url)
+            }
+        }
         host
     }
     // A minted event routes into the host's join gate, so create and a scanned QR take one gate: collected from
     // composition on, so the host is assembled by the time the first one — a tap's — is minted.
     scope.launch { core.mintedEvents.collect { composed.host.onEventCreated(it.eventId, it.linkKey) } }
-    listenToEntries(composed, ports)
+    // Every event port's ONE delivery each, now that the graph they deliver into is built. The foreground asks for the
+    // status host first — a person reached the app — and so does a live screen; nothing else builds it, so a cold
+    // background start installs no permission-grant subscription.
+    core.inbound(HostFirst(composed))
+    ports.ui.inbound(UiHandlers(Intents(composed), LiveScreen(composed)))
     // Asked at every launch, a background one included: the answer arrives through the push handlers just registered,
     // and asking is how a rotated token is learned.
     ports.pushNotifications.register()
     return composed
 }
 
+/** The status host's assembly, as the foreground asks for it first. */
+private class HostFirst(private val composed: ComposedApp) : HostAssembly {
+    override fun assemble() {
+        composed.host
+    }
+}
+
+/** A person's intent on the screen: the status host's intent table decides what it means. */
+@OptIn(InboundImplementation::class)
+private class Intents(private val composed: ComposedApp) : Inbound<UiIntent, Unit> {
+    override fun deliver(arg: UiIntent) = composed.host.onIntent(arg)
+}
+
 /**
- * The entry ports' ONE registration each, on composition. `listen` only registers: no handler runs and no host is
- * built here. Three handlers are **host-first** — they assemble the status host before anything else, because each
- * is a person reaching the app: `Lifecycle.onForeground` (on the composition lane, before the foreground flow),
- * `Links.onLink` and `Ui.onLive`. Nothing else assembles it: a push token, a silent push, a scheduled or transfer wake
- * builds no host (a cold background start installs no permission-grant subscription).
+ * A live screen is about to be built: the status host — assembled first, once — answers its current state, so no
+ * screen's first frame is empty. Idempotent: a platform may build the screen more than once.
  */
-private fun listenToEntries(composed: ComposedApp, ports: AppPorts) {
-    val core = composed.core
-    ports.lifecycle.listen(lifecycleHandlers(core, assembleHost = { composed.host }))
-    ports.pushNotifications.listen(pushHandlers(core))
-    ports.devControls.listen(devHandlers(core))
-    ports.links.listen(
-        LinkHandlers(
-            onLink = { delivery ->
-                // Host-first: a link is a person opening the app, whatever the delivery turns out to be.
-                val host = composed.host
-                core.openLink(delivery) { url -> host.onOpenUrl(url) }
-            },
-        ),
-    )
-    ports.ui.listen(
-        UiHandlers(
-            onIntent = { intent -> composed.host.onIntent(intent) },
-            // Idempotent: the host is assembled once; each live screen is shown its current state before its first
-            // frame, so no screen ever renders an empty one.
-            onLive = { ports.ui.show(composed.host.screen.value) },
-        ),
-    )
+@OptIn(InboundImplementation::class)
+private class LiveScreen(private val composed: ComposedApp) : Inbound<Unit, UiState> {
+    override fun deliver(arg: Unit): UiState = composed.host.screen.value
 }
 
 /**
@@ -185,6 +183,6 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     network = core.network.status,
     mobileData = core.mobileDataChoice,
     store = ports.process.build.store,
-    foreground = core.foregroundLife.returns,
+    foreground = core.foregroundReturns,
     eventKey = EventKeyView(core.eventKeyReads.inviteKey, core.eventKeyReads.presence),
 )

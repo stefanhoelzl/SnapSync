@@ -122,7 +122,7 @@ class ConfigService(
 
     /**
      * Re-read the row into [config]: cross-process writers do not notify this process's [StateFlow], and a
-     * pre-first-unlock seed read `null`. The trigger flows call this at every OS entry, so an
+     * pre-first-unlock seed read `null`. The entry points call this at every OS entry, so an
      * **unreadable** read retains the last good value (`configAfterReload`): at this cadence a transient failure
      * would otherwise clear a good membership mid-session and flip the screen to the setup gate.
      */

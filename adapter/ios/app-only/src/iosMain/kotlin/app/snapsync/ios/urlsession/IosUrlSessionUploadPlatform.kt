@@ -2,9 +2,12 @@
 
 package app.snapsync.ios.urlsession
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.upload.uploadUrlRequest
-import app.snapsync.logging.invocation
 import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.FinishedTransfer
+import app.snapsync.ports.SessionDrain
+import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.Transfer
 import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferSession
@@ -52,13 +55,17 @@ class IosUrlSessionUploadPlatform internal constructor(
 
     private val handlers = AtomicReference<TransferHandlers?>(null)
 
-    override fun listen(handlers: TransferHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: TransferHandlers) {
         this.handlers.store(handlers)
     }
 
+    /** The session's drain reports, counted for the relaunches that wait for them. */
+    private val drains = DrainCount()
+
     private val events = SessionEvents(
         completed = { task, status, error -> finished(task, status, error) },
-        drained = { handlers.load()?.onEventsDrained?.invoke() },
+        drained = { handlers.load()?.onEventsDrained?.deliver(SessionDrain(drains.next())) },
     )
 
     private val sessionId = sessionIdentifier
@@ -75,39 +82,39 @@ class IosUrlSessionUploadPlatform internal constructor(
 
     /**
      * The operating system relaunched (or woke) the app to deliver this session's events. The handler is handed over
-     * FIRST, then the session is brought up — so every event it then delivers, and the drain report after them, land in
-     * that handler's window (adopt, then create).
+     * FIRST, with the count of drain reports so far, then the session is brought up — so every event it then delivers,
+     * and the drain report after them, land after the relaunch the core waits on.
      */
-    fun handleEvents(completion: () -> Unit) = log.invocation("upload.handleEvents") {
+    fun handleEvents(completion: () -> Unit) {
         val registered = handlers.load()
         if (registered == null) {
             // Never silent: without handlers there is no one to hold the handler; answering it at once costs nothing.
-            log.e { "upload session events arrived before the composition listened — released at once" }
+            log.e { "upload session events arrived before the composition registered — released at once" }
             SessionCompletion(completion, api).complete()
         } else {
-            registered.onBackgroundEvents(SessionCompletion(completion, api))
+            registered.onBackgroundEvents.handle(SessionRelaunch(drains.now), SessionCompletion(completion, api))
         }
         session
-        Unit
+        log.i { "upload.handleEvents" }
     }
 
     override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome =
-        log.invocation("urlSession.create", params = "tag=$tag", result = { "$it" }) {
+        run body@{
             val whole = source as? TransferSource.File ?: run {
                 log.w { "create: this uploader sends a file, not a resource handle — not creating" }
-                return@invocation CreateOutcome.FAILED
+                return@body CreateOutcome.FAILED
             }
             // The cap is measured against the SESSION's live tasks, not an in-process count — the OS owns the transfers
             // and they outlive us, so this is the only count that binds across a relaunch.
-            if (session.tasks().size >= cap) return@invocation CreateOutcome.LIMIT_EXCEEDED
-            val url = NSURL.URLWithString(target.url) ?: return@invocation CreateOutcome.FAILED
+            if (session.tasks().size >= cap) return@body CreateOutcome.LIMIT_EXCEEDED
+            val url = NSURL.URLWithString(target.url) ?: return@body CreateOutcome.FAILED
             // A resumed upload sends the file's rest, which a background session can only send as a file of its own.
             val file = if (whole.from <= 0) {
                 whole.path
             } else {
                 UploadSlices.cut(whole.path, whole.from, tag) ?: run {
                     log.w { "create: the rest of $tag from ${whole.from} could not be copied out — not creating" }
-                    return@invocation CreateOutcome.FAILED
+                    return@body CreateOutcome.FAILED
                 }
             }
             // Tagged with the ledger key — the only field present across the lifecycle. A file that cannot be read is no
@@ -115,10 +122,10 @@ class IosUrlSessionUploadPlatform internal constructor(
             if (!session.upload(uploadUrlRequest(url, target), file, tag)) {
                 log.w { "create: $file cannot be read — not creating" }
                 if (whole.from > 0) UploadSlices.release(tag)
-                return@invocation CreateOutcome.FAILED
+                return@body CreateOutcome.FAILED
             }
             CreateOutcome.CREATED
-        }
+        }.also { log.i { "urlSession.create(tag=$tag) = $it" } }
 
     override suspend fun live(): List<Transfer> = session.tasks().map { Transfer(it, it.tag) }
 
@@ -140,7 +147,7 @@ class IosUrlSessionUploadPlatform internal constructor(
                 if (registered == null) {
                     log.e { "upload ${outcome.key} ended before the composition listened — its outcome is not recorded" }
                 } else {
-                    registered.onFinished(outcome.key, outcome.error)
+                    registered.onFinished.deliver(FinishedTransfer(outcome.key, outcome.error))
                 }
             }
         }

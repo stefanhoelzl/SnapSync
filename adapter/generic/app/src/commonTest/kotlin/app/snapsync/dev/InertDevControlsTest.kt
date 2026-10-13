@@ -1,5 +1,11 @@
+@file:OptIn(CompositionOnly::class, InboundImplementation::class)
+
 package app.snapsync.dev
 
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.InboundImplementation
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.ports.DevHandlers
 import kotlin.test.Test
@@ -16,7 +22,15 @@ class InertDevControlsTest {
     @Test
     fun `answers the shipped values and never delivers`() {
         var resets = 0
-        InertDevControls.listen(DevHandlers(onReset = { resets++ }))
+        InertDevControls.inbound(
+            DevHandlers(
+                onReset = object : Background<Unit> {
+                    override fun handle(arg: Unit, completion: Completion) {
+                        resets++
+                    }
+                },
+            ),
+        )
         assertNull(InertDevControls.uploaderPin(), "no uploader is pinned on a production build")
         assertEquals(InviteLinkHints.Ignored, InertDevControls.inviteLinkHints(), "no link authorizes its own join")
         assertEquals(

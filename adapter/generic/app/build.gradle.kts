@@ -35,6 +35,8 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
+            // The inbound kinds the event ports deliver through.
+            api(project(":domain:inbound"))
             api(libs.coroutines.core)
             // HttpClient appears in every Ktor adapter's public constructor — consumers construct
             // their own engine (Darwin on device, MockEngine in the world/harness), so the type is API.

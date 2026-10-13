@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.snapsync.inbound.Completion
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.mock.BackendCall
@@ -31,7 +32,6 @@ import app.snapsync.model.noContribution
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
@@ -143,13 +143,13 @@ class WorldInspectorController(
         val result = mocks.extensionHost.operator.process()
         appendConsole("invoke: upload cycle → $result")
         joinedEventId()?.let { event ->
-            mocks.pushService.operator.deliverMessage(mapOf("eventId" to event), NoCompletion)
+            mocks.pushService.operator.deliverMessage(mapOf("eventId" to event), Completion.None)
             appendConsole("silent push → $event")
         }
     }
 
     /** The operating system wakes the app for its heartbeat. */
-    fun fireHeartbeat() = launchMutation { mocks.wakes.operator.fire(WakeId.Heartbeat, NoCompletion) }
+    fun fireHeartbeat() = launchMutation { mocks.wakes.operator.fire(WakeId.Heartbeat, Completion.None) }
 
     // ---- membership -------------------------------------------------------------------------------
 
@@ -491,13 +491,6 @@ class WorldInspectorController(
             held = BackendCall.entries.filter { mocks.backend.operator.isHeld(it) }.mapTo(mutableSetOf()) { it.key } +
                 listOfNotNull(ENUMERATION.takeIf { mocks.library.operator.enumerationHeld }),
         )
-    }
-
-    /** A completion the harness hands the app for an OS entry it plays: nothing waits on its release. */
-    private object NoCompletion : ExpiringCompletion {
-        override fun complete() = Unit
-
-        override fun onExpired(action: () -> Unit) = Unit
     }
 
     companion object {

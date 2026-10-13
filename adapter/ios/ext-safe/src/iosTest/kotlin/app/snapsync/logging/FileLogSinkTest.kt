@@ -100,19 +100,19 @@ class FileLogSinkTest {
     }
 
     @Test
-    fun `the ambient entry point prefixes the line`() {
+    fun `the thread's label prefixes the line`() {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
-            val owned = LogContext.enter("onSilentPush")
+            val replaced = IosThreadLabel.swap("OnSilentPush")
             try {
                 log(path).log(Severity.Warn, "reconcile failed", "download", null)
             } finally {
-                LogContext.exit(owned)
+                IosThreadLabel.swap(replaced)
             }
 
             val text = readTextFile(path).orEmpty()
             assertTrue(
-                "[onSilentPush] [Warn/download] reconcile failed" in text,
+                "[OnSilentPush] [Warn/download] reconcile failed" in text,
                 "the prefix is what traces a line back to what triggered it: $text",
             )
         }
@@ -318,4 +318,4 @@ class FileLogSinkTest {
 
 /** One line as the process's log writer hands it to the sink: formatted by `model/logLineBody`, no entry claimed. */
 internal fun FileLogSink.log(severity: Severity, message: String, tag: String, throwable: Throwable?) =
-    write(severity, tag, logLineBody(LogContext.current, severity.name, tag, message, throwable))
+    write(severity, tag, logLineBody(IosThreadLabel.current(), severity.name, tag, message, throwable))

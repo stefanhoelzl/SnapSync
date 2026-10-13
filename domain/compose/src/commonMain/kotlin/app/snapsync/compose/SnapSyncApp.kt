@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
@@ -9,6 +10,7 @@ import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.download.StoreDownloadStatusSource
+import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinUnion
 import app.snapsync.feature.membership.LeaveEvent
@@ -19,7 +21,6 @@ import app.snapsync.feature.membership.RenameEvent
 import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.membership.readmodel.RenameStatus
-import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
@@ -30,15 +31,10 @@ import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.feature.upload.PushTailGuard
-import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
-import app.snapsync.feature.upload.cadenceFacts
-import app.snapsync.flow.Background
-import app.snapsync.flow.Foreground
-import app.snapsync.flow.Provision
-import app.snapsync.flow.SilentPush
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCeiling
@@ -47,16 +43,14 @@ import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
+import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.UnionTrigger
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
 import app.snapsync.model.extensionRegistrable
-import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.BackgroundTime
@@ -69,10 +63,8 @@ import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Download
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Gallery
-import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
-import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.PlatformDeviceId
@@ -85,18 +77,23 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Wake
+import app.snapsync.scheduling.Observation
+import app.snapsync.scheduling.Runtime
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendServices
+import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.EventKeyMinting
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.ImportMarkers
+import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.gallery.AlbumLookupFailure
 import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryAssetPresence
 import app.snapsync.services.gallery.GalleryCandidateSource
+import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.gallery.LatestSelection
@@ -104,15 +101,19 @@ import app.snapsync.services.gallery.PermissionAwareAssetPresence
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.gallery.denylistedAlbumMembers
 import app.snapsync.services.links.LinkOpening
+import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.upload.OsDrivenRegistration
 import app.snapsync.services.upload.Resuming
+import app.snapsync.services.upload.SessionTransfer
+import app.snapsync.services.upload.TransferSetup
 import app.snapsync.services.version.AppVersionGate
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -214,7 +215,11 @@ class AppPorts(
  * platform store until its first use — the property a locked background launch depends on.
  */
 class AppCore internal constructor(
-    internal val scope: CoroutineScope,
+    /**
+     * The process's runtime (`docs/patterns.md`, "Entry points"): every entry point this graph builds runs through it,
+     * and its scope is the one the old zones' own launches still use until phase 4 moves them.
+     */
+    val runtime: Runtime,
     /**
      * The **composition lane** [scope] runs on (`docs/architecture.md`, law "Dispatcher lanes are fixed by the
      * composition") — named by the root, never derived, so no composition can be built without one.
@@ -229,6 +234,11 @@ class AppCore internal constructor(
     val process: ProcessServices,
     internal val ports: AppPorts,
 ) {
+    /** The process scope — the runtime's. */
+    internal val scope: CoroutineScope get() = runtime.scope
+
+    /** The state whose changes start work, each handed to its entry point. */
+    internal val observation: Observation = Observation(runtime)
 
     /** This process's services over [ports] — built here, never by a root (see [AppServices]). */
     internal val services: AppServices = AppServices(ports, process)
@@ -265,10 +275,22 @@ class AppCore internal constructor(
     val exchange: BackendExchange by lazy { BackendExchange(ports.http, process.build, versionGate) }
 
     /**
-     * The app's foreground life as the create screen's draft follows it, stamped by the
-     * lifecycle handlers over the process clock.
+     * The app's foreground life: whether it is in front now, and its returns as the create screen's draft follows
+     * them — stamped by the lifecycle's entry points over the process clock.
      */
-    val foregroundLife: ForegroundLife = ForegroundLife(process.clock)
+    internal val foreground: AppForeground = AppForeground(process.clock)
+
+    /** [foreground]'s returns, for readers outside the core (the status host), which see no service type. */
+    val foregroundReturns: StateFlow<ForegroundReturn> get() = foreground.returns
+
+    /** The app's own memory readings, taken while it settles in the background. */
+    internal val footprints: FootprintSampler by lazy {
+        FootprintSampler(
+            ports.processInfo,
+            process.footprints,
+            foreground,
+        )
+    }
 
     /** [versionGate]'s cell, for readers outside the core (the status host), which see no service type. */
     val versionRefusal: StateFlow<VersionRefusal?> get() = versionGate.refusal
@@ -367,7 +389,9 @@ class AppCore internal constructor(
     val membership: StateFlow<EventConfig?> get() = services.config.config
 
     /** What the screen reads of the joined event's key: the invite's, and whether it is lost ([EventKeyReads]). */
-    val eventKeyReads: EventKeyReads by lazy { EventKeyReads(services.eventKeys, membership, scope) }
+    val eventKeyReads: EventKeyReads by lazy {
+        EventKeyReads(services.eventKeys, membership, scope, foreground.returns)
+    }
 
     /** The device's mobile-data choice, for the status host's menu and waiting line. */
     val mobileDataChoice: StateFlow<Boolean> get() = services.mobileData.allowed
@@ -405,14 +429,13 @@ class AppCore internal constructor(
             // handler of its own, and a wake that delivered it requests (and holds) its own tail after its drain.
             onStaged = { ref, key, path ->
                 val recorded = downloadController.onResourceStaged(ref, key, path)
-                if (recorded) tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
+                if (recorded) work.downloadStaged.requested()
             },
             network = services.mobileData::transferNetwork,
             // The version every request declares — the download redirect's too (`downloadResource`).
             headers = exchange::versionHeaders,
             // An encrypted event's bytes are opened before they are staged (the encrypted file format).
             opening = DownloadOpening(services.eventKeys, services.fileCipher, services.config, process.files),
-            entryContext = process.entryContext,
         )
     }
 
@@ -433,7 +456,6 @@ class AppCore internal constructor(
             arm = downloadArm(),
             checks = services.eventChecks,
             readyToImport = { importsReady() },
-            entryContext = process.entryContext,
         )
     }
 
@@ -461,7 +483,6 @@ class AppCore internal constructor(
     val albumGather: AlbumGather by lazy {
         albumGather(
             services,
-            process.entryContext,
             galleryAccess,
             albumCoordinator,
             scope,
@@ -500,19 +521,13 @@ class AppCore internal constructor(
     // membership exists, at the moment of the transition; the root defaults nothing.
     /** The OS-driven mechanism's registration ritual, over the registry port. */
     val extensionRegistration: ExtensionRegistration by lazy {
-        OsDrivenRegistration(ports.extensionRegistry, services.log, process.entryContext)
+        OsDrivenRegistration(ports.extensionRegistry, services.log)
     }
 
-    private val linkOpening: LinkOpening by lazy { LinkOpening(process.logger("links"), process.entryContext) }
+    internal val linkOpening: LinkOpening by lazy { LinkOpening(process.logger("links")) }
 
-    /**
-     * What the app does with what the platform opened it with ([LinkOpening]): a link — or an install referrer's
-     * invite — is handed to [open]; anything else is logged by name. The host calls it, its status host assembled
-     * first.
-     */
-    fun openLink(delivery: LinkDelivery, open: (url: String) -> Unit) {
-        linkOpening.deliver(delivery, open)
-    }
+    /** The link the app was last opened with, until the screen has opened it. */
+    val openedLinks: OpenedLinks = OpenedLinks()
 
     val uploadTransitions: UploadTransitions by lazy {
         UploadTransitions(
@@ -520,9 +535,8 @@ class AppCore internal constructor(
             photoAccess = galleryAccess,
             extensionRegistrable = extensionRegistrableNow,
             registration = extensionRegistration,
-            appEngine = { tail.appEngine },
+            appEngine = { work.uploadEngine },
             log = services.log,
-            entryContext = process.entryContext,
         )
     }
 
@@ -568,15 +582,10 @@ class AppCore internal constructor(
             enroller = ManifestDeviceEnroller(backend.join),
             keys = services.eventKeys,
             // Every provision route — interactive join, switch, retry, `autoJoin`, a create routed into the
-            // join gate — passes here, so the album gather is started once the provision returns. It starts
-            // HERE rather than inside `flow/Provision`: a flow may not detach work (law "A trigger flow never
-            // outlives its own run"), and the gather must not hold up the join.
-            // Built HERE, never supplied by a root, so every composition's join runs `flow/Provision`. Labelled
-            // `provisionEvent` so the flow's steps carry it.
+            // join gate — passes here, so the album gather is started once the provision returns: the gather must not
+            // hold up the join. Built HERE, never supplied by a root, so every composition's join runs `Provision`.
             provision = { cfg ->
-                joinUnion.during(cfg.eventId) {
-                    services.log.invocation(process.entryContext, "provisionEvent") { provisionFlow.run(cfg) }
-                }
+                joinUnion.during(cfg.eventId) { work.provision.run(cfg) }
                 albumGather.start("provision", cfg.eventId)
             },
         )
@@ -584,7 +593,7 @@ class AppCore internal constructor(
 
     // The membership-refresh rule: what a fetched details result MEANS for the
     // persisted membership — seated in `feature/membership` because that config is the feature's durable
-    // state. The *fetch* it pairs with is [fetchEventDetails], coordinated by the Foreground flow — the
+    // state. The *fetch* it pairs with is the foreground's own work (`ForegroundWork`, `refreshJoined`) — the
     // sole trigger that refreshes. It reads the clock because the absence verdict needs a second,
     // OFFLINE witness. A confirmed deletion stops every transfer as a leave does — downloads and uploads — and
     // keeps the membership.
@@ -596,16 +605,6 @@ class AppCore internal constructor(
                 uploadTransitions.onLeave()
             },
         )
-    }
-
-    // The `GET /events/:id` fetch — the `EventDirectory` port effect the flows coordinate over, built
-    // here because a flow may not touch a port directly (law "flow/ never references ports/").
-    //
-    // It carries the SEALED outcome, via the same `toJoinLoad` mapping the join gate uses; no fetch result is
-    // destructive on its own — the rule requires a definitive `NotFound` AND the membership's own persisted
-    // deadline before it will tear anything down.
-    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad = { eventId ->
-        backend.directory.fetch(eventId).toJoinLoad()
     }
 
     // Every event this device mints, emitted once the backend answered: the host zone collects it into its join gate —
@@ -676,12 +675,28 @@ class AppCore internal constructor(
     /** The latest selection snapshot, set only by the selection subscription below — see [LatestSelection]. */
     private val selection = LatestSelection()
 
-    /** What the gallery tells this core — registered by the host zone's `listen` (see [galleryHandlers]). */
-    val galleryHandlers: GalleryHandlers =
-        galleryHandlers(ImportMarkers(services.downloadStore, services.log))
+    /** The transfer sessions' drain reports, which a relaunch for their events waits for. */
+    internal val uploadDrains: SessionDrains = SessionDrains()
+    internal val downloadDrains: SessionDrains = SessionDrains()
 
-    /** What the operating system's wakes and transfer sessions tell this core — see [AppEvents]. */
-    val events: AppEvents = AppEvents(this)
+    /** The download store's import markers — what the gallery's import deliveries write. */
+    internal val importMarkers: ImportMarkers by lazy { ImportMarkers(services.downloadStore, services.log) }
+
+    /** The app's own transfer session's service: what its deliveries record, and what a leave cancels. */
+    val uploadTransfer: SessionTransfer by lazy {
+        SessionTransfer(
+            ports.uploadSession,
+            TransferSetup(
+                record = services.ledger,
+                resources = GalleryDiscovery(ports.gallery),
+                gallery = ports.gallery,
+                files = process.files,
+                network = services.mobileData::transferNetwork,
+                log = services.log,
+            ),
+            uploadResuming,
+        )
+    }
 
     /**
      * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports): the permission
@@ -746,9 +761,9 @@ class AppCore internal constructor(
     /**
      * The status-refresh **rule**: cheap local reads before the library
      * enumeration, and no count at all without a membership. Seated in `feature/status` because it has
-     * three callers — the `Foreground` and `Provision` flows and `ReconfigureEvent`, which is a feature
-     * and cannot hold a flow's ordering — so it is a rule rather than one flow's order (law "Rules in
-     * features, order in flows", which offers exactly this alternative).
+     * three callers — the foreground's work, the join's `Provision` and `ReconfigureEvent`, which is a feature
+     * and cannot hold an entry point's ordering — so it is a rule rather than one entry point's order (law "Rules
+     * in features, order in entry points", which offers exactly this alternative).
      *
      * The two port touches it cannot make are built here: the config read, and the one policy
      * derivation.
@@ -766,12 +781,8 @@ class AppCore internal constructor(
         )
     }
 
-    // ── The OS-callback trigger flows (`docs/architecture.md`, "Rules in features, order in
-    // flows"). Each is built here — features referenced directly, port/platform
-    // touches injected from [ports] — and the shell entry points delegate to them. ────────────────
-
-    // The foreground-gated status-counts poll: started by the Foreground flow,
-    // stopped by the Background flow — the cadence is the feature's rule.
+    // The foreground-gated status-counts poll: started by the foreground's own work, stopped as the app leaves it —
+    // the cadence is the feature's rule.
     //
     // It ticks the GROUP through `StatusRefresh`, not the ledger source directly. Handing it `ledgerCounts`
     // is what let the poll and the refresh disagree about what the cheap local reads are, leaving the
@@ -783,87 +794,14 @@ class AppCore internal constructor(
     /** The foreground-gated network watch and what it tells the member. */
     val network: AppNetwork by lazy { AppNetwork(scope, ports.network, statusCountsPoller) }
 
-    val foregroundFlow: Foreground by lazy {
-        val storedUploadSettle = storedUploadSettleFor(services, backend.deviceFiles)
-        Foreground(
-            downloadController = downloadController,
-            membershipRefresh = membershipRefresh,
-            watches = network.watches,
-            reloadConfig = { services.config.reload() },
-            // The upload side's own work at a foreground entry; its top-up and walk are the tail's. The staging sweep
-            // first — local, and owed unjoined too; the settle against the joined event's listing (unjoined, there is
-            // nothing in flight to settle).
-            uploadOwnWork = {
-                events.uploadTransfer.releaseUnclaimedStaging()
-                storedUploadSettle.settleJoined(services.config.activeEventId())
-            },
-            refreshStatus = { statusRefresh.run() },
-            activeEventId = services.config::activeEventId,
-            fetchEventDetails = fetchEventDetails,
-            refreshAttestation = { attestation.refresh() },
-        )
-    }
-
-    val backgroundFlow: Background by lazy {
-        Background(watches = network.watches)
-    }
-
-    val silentPushFlow: SilentPush by lazy {
-        SilentPush(
-            reloadConfig = { services.config.reload() },
-            refreshAttestation = { attestation.refresh() },
-            // The push's own work: the download arm, with its own active-event and direction guards.
-            // The upload arm is not a receiver any more: its work is the tail's, which the push's wake joins only for
-            // the active event — [pushTailGuard], asked by the push handler after this flow returns.
-            downloadReceiver = downloadPushReceiver::onSilentPush,
-        )
-    }
-
     /**
-     * Whether a push's wake joins the tail — the upload arm's active-event guard.
-     * The limited-grant read discipline is the tail's own (its walk runs only under a full grant).
+     * Whether a push's wake joins the wake's work — the upload arm's active-event guard.
+     * The limited-grant read discipline is the uploads' own (the walk runs only under a full grant).
      */
     val pushTailGuard: PushTailGuard by lazy { PushTailGuard(services.config, services.log) }
 
-    /** The process's opportunistic tail and what reaches it without an OS handler — see [AppTail]. */
-    val tail: AppTail by lazy {
-        AppTail(
-            scope = scope,
-            services = services,
-            appUploader = { appUploader },
-            entryContext = process.entryContext,
-            downloads = { downloadController },
-            galleryAccess = galleryAccess,
-            mayCreate = appMayCreate,
-            cadenceFacts = {
-                cadenceFacts(
-                    services.config,
-                    galleryAccess.grant.value,
-                    extensionRegistrableNow(),
-                    extensionRegistration,
-                )
-            },
-            refreshCounts = { ledgerCounts.refresh() },
-            finish = { trigger -> membershipEnd.endOfWake(trigger) },
-        )
-    }
-
-    val provisionFlow: Provision by lazy {
-        Provision(
-            // From the union the entry's adoption read in this same provision, when it did: one union read per join.
-            reconcileDownloads = { downloadController.reconcile(it, UnionTrigger.JOIN, known = joinUnion.take(it)) },
-            albumCoordinator = albumCoordinator,
-            activeEventId = services.config::activeEventId,
-            // The order is `MembershipEntry`'s rule; the backend leave is awaited here, unlike the leave command's.
-            enterMembership = membershipEntry(leaveEvent::notifySwitchLeave)::enter,
-            saveConfig = saveConfig,
-            refreshStatus = { statusRefresh.run() },
-            // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
-            // parameter, and album creation works under a LIMITED grant (measured).
-            hasUsableAccess = { galleryAccess.usable },
-            registerPush = { pushRegistration.reRegister(services.pushTokens) },
-        )
-    }
+    /** What the entry points run (`AppWork`): built once, on first touch, and handed to the ports. */
+    internal val work: AppWork by lazy { AppWork(this) }
 
     /** Persist the whole membership — the one save a join's entry and a re-provision of the joined event share. */
     internal val saveConfig: suspend (EventConfig) -> Unit = { cfg -> services.config.save(cfg) }
@@ -962,29 +900,33 @@ class AppCore internal constructor(
      * a background start reads the selection and raises no limited-library prompt (decision record
      * `changes/timely-background-receiving`, D6).
      */
+    @OptIn(CompositionOnly::class)
     fun installCompositionSubscriptions() {
         scope.launch {
             runCatchingCancellable { attestation.ensureFresh() }
             pushRegistration.run(services.pushTokens, attestation.tokenChanged)
         }
-        scope.launch {
-            // One selection-change emission → ONE read serving both consumers, the status total and the enqueue:
-            // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
-            // `refresh` recounts N over the very same snapshot — no second library read on this path, and
-            // no snapshot-specific entry point for the total to drift through.
-            // A selection bringing marked photos no pass recognised withholds the membership BEFORE any reader sees
-            // it, and recognises them first (`changes/archive/2026-10-11-close-share-back-gaps`).
-            selection.follow(
+        // One selection-change emission → ONE read serving both consumers, the status total and the enqueue:
+        // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
+        // `refresh` recounts N over the very same snapshot — no second library read on this path, and
+        // no snapshot-specific entry point for the total to drift through.
+        // A selection bringing marked photos no pass recognised withholds the membership BEFORE any reader sees
+        // it, and recognises them first (`changes/archive/2026-10-11-close-share-back-gaps`).
+        observation.follow(
+            selection.published(
                 // The gallery keeps its latest snapshot, so one read before this collector runs is kept, not lost.
                 ports.gallery.selection,
                 beforePublish = { receivedPhotoAdoption.beforeSelectionPublished(services.config.config.value, it) },
-            ) {
-                receivedPhotoAdoption.afterSelectionPublished(services.config.config.value)
-                statusRefresh.refreshTotal()
-                // Its own work — the snapshot-fed discovery → manifest — then the tail (① and ② from the snapshot).
-                tail.onSelectionChanged()
-            }
-        }
+            ),
+            OnSelectionChanged(
+                runtime,
+                receivedPhotoAdoption,
+                services.config,
+                statusRefresh,
+                work.ownUploads,
+                work.wakeWork,
+            ),
+        )
         // The selection observer opens here and nowhere else — on composition, so a background start reads it too.
         ports.gallery.observeChanges(true)
     }
@@ -1003,5 +945,7 @@ class AppCore internal constructor(
  * else in the graph can fail, and no root can compose an app in a process that has not set it up — no root calls it.
  * [lane] is the composition lane [scope] runs on, named by the root ([AppCore.coreLane]).
  */
-fun snapSyncApp(scope: CoroutineScope, lane: CoroutineDispatcher, ports: AppPorts): AppCore =
-    AppCore(scope, lane, snapSyncProcess(ports.process), ports)
+fun snapSyncApp(scope: CoroutineScope, lane: CoroutineDispatcher, ports: AppPorts): AppCore {
+    val runtime = Runtime(scope.coroutineContext[Job], lane, ports.backgroundTime, ports.process.threadLabel)
+    return AppCore(runtime, lane, snapSyncProcess(ports.process, runtime), ports)
+}

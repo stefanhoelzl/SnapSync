@@ -7,6 +7,7 @@ import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.ThrowingDeletes
 import app.snapsync.feature.support.downloadJobs
 import app.snapsync.feature.support.testShared
+import app.snapsync.feature.support.underRuntime
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
@@ -48,7 +49,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -136,6 +136,9 @@ class DownloadControllerTest {
         /** Completes once a hung import has actually entered, so a test never races the claim. */
         val hanging = CompletableDeferred<AssetRef>()
 
+        /** What happens as each import completes — where a test's time runs out. */
+        var onImported: () -> Unit = {}
+
         private val never = CompletableDeferred<Unit>()
 
         /** The event album each import was asked to file into, in order. */
@@ -157,6 +160,7 @@ class DownloadControllerTest {
             }
             if (failNext) return ImportOutcome.Failed("forced", consumedResources = failConsumingResources)
             imported += ref
+            onImported()
             return ImportOutcome.Imported(PlatformAssetId("LOCAL-${ref.sourceAssetId}/L0/001"))
         }
     }
@@ -349,7 +353,7 @@ class DownloadControllerTest {
         assertTrue(importer.imported.isEmpty()) // live still missing → not importable
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
         assertTrue(importer.imported.isEmpty(), "staging records; the import is the tail's first unit")
-        c.importReady()
+        underRuntime { c.importReady() }
 
         assertEquals(listOf(ref), importer.imported)
         assertTrue(store.isSettled(ref))
@@ -372,12 +376,12 @@ class DownloadControllerTest {
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
 
-        c.importReady()
+        underRuntime { c.importReady() }
         assertTrue(importer.imported.isEmpty(), "no import while the dialog is open")
         assertFalse(store.isSettled(ref), "the staged photo waits")
 
         granted = true
-        c.importReady()
+        underRuntime { c.importReady() }
         assertEquals(listOf(ref), importer.imported)
     }
 
@@ -401,7 +405,7 @@ class DownloadControllerTest {
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
         order.clear()
-        c.importReady()
+        underRuntime { c.importReady() }
         assertEquals("ready?", order.first(), "asked before the first import")
         assertEquals(listOf(ref), importer.imported)
     }
@@ -420,7 +424,7 @@ class DownloadControllerTest {
             setOf(ref),
             c.settleAdopted(listOf(AdoptedAsset(ref, AssetId("L-KEPT"), "2026-06-01T10:00:00Z")), "event"),
         )
-        c.importReady()
+        underRuntime { c.importReady() }
         assertTrue(importer.imported.isEmpty(), "the library already holds it")
         assertEquals(setOf(AssetId("L-KEPT")), store.suppressedLocalIds())
     }
@@ -439,7 +443,7 @@ class DownloadControllerTest {
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
         assertNull(c.receivedPosition("event"), "staged but not imported is not received")
-        c.importReady()
+        underRuntime { c.importReady() }
         assertEquals(7, c.receivedPosition("event"), "own photos never count; the one foreign photo is in the library")
         assertEquals(
             UnionTrigger.RECEIVED_CHECK to null,
@@ -492,11 +496,11 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         c.onResourceStaged(ref, "Q-primary.heic", "/p")
         c.onResourceStaged(ref, "Q-live.mov", "/l")
-        c.importReady() // the tail's ① — staging itself imports nothing
+        underRuntime { c.importReady() } // the tail's ① — staging itself imports nothing
         assertFalse(store.isSettled(ref)) // failed → not imported
 
         importer.failNext = false
-        c.importReady() // retry succeeds
+        underRuntime { c.importReady() } // retry succeeds
         assertTrue(store.isSettled(ref))
     }
 
@@ -590,7 +594,7 @@ class DownloadControllerTest {
             controller(FakeUnion(emptyList(), ok = false), store = store, download = download, importer = importer)
         next.reconcile("event", UnionTrigger.FOREGROUND)
         assertTrue(importer.imported.isEmpty(), "the reconcile itself imports nothing, on a failure as on a success")
-        next.importReady()
+        underRuntime { next.importReady() }
 
         assertEquals(listOf(ref), importer.imported, "a fast union failure must not strand a staged asset")
         assertTrue(store.isSettled(ref))
@@ -622,12 +626,12 @@ class DownloadControllerTest {
         }
 
         // The first trigger reaches AAA and parks inside the library, holding its claim.
-        val stalled = launch { c.importReady() }
+        val stalled = launch { underRuntime { c.importReady() } }
         importer.hanging.await()
 
         // A second trigger — on device, another resource staging or a push. It must skip the claimed ref
         // and import the rest, rather than queueing behind it or finding them claimed.
-        withTimeoutOrNull(5.seconds) { c.importReady() }
+        withTimeoutOrNull(5.seconds) { underRuntime { c.importReady() } }
             ?: fail("a second trigger queued behind the stalled import instead of skipping it")
 
         assertEquals(
@@ -668,7 +672,7 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        val stalled = launch { c.importReady() }
+        val stalled = launch { underRuntime { c.importReady() } }
         importer.hanging.await() // the transaction is open and its claim is held
 
         withTimeoutOrNull(5.seconds) { c.reconcile("event", UnionTrigger.FOREGROUND) }
@@ -698,7 +702,7 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        val drain = launch { c.importReady() }
+        val drain = launch { underRuntime { c.importReady() } }
         importer.hanging.await()
         assertFalse(store.isSettled(ref), "a photo whose import never reported stays importable")
         assertEquals(1, store.importableAssets().size)
@@ -706,12 +710,12 @@ class DownloadControllerTest {
     }
 
     /**
-     * The tail's unit ① honours the operating system's stop between two imports (capability `sync-status`,
-     * "Expiry stops work cooperatively at the next boundary"): the import in flight completes, no further one
-     * starts, and what is left stays staged for a later wake.
+     * The import sequence's time running out ends the drain between two imports (capability `sync-status`, "Expiry
+     * stops work cooperatively at the next boundary"): the import in flight completes, no further one starts, and what
+     * is left stays staged for a later wake.
      */
     @Test
-    fun a_stop_ends_the_drain_between_two_imports() = runTest {
+    fun a_cancellation_ends_the_drain_between_two_imports() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
         val c = controller(
@@ -726,18 +730,19 @@ class DownloadControllerTest {
         }
         assertEquals(2, store.importableAssets().size, "the reconcile imported nothing itself")
 
-        var checks = 0
-        c.importReady(stopRequested = { checks++ >= 1 })
+        val drain = launch { underRuntime { c.importReady() } }
+        importer.onImported = { drain.cancel() }
+        drain.join()
 
-        assertEquals(1, store.importableAssets().size, "one import completed, and the stop started no second")
+        assertEquals(1, store.importableAssets().size, "one import completed, and the cancellation started no second")
     }
 
     /**
-     * A drain that gives up waiting on an import (the tail's, when its time is up or another request is due) moves on
-     * to the next importable asset; the abandoned import stays claimed, so it is never imported twice.
+     * A drain cancelled while an import hangs (its time is up, or a new request starts the sequence over) leaves that
+     * import running on, claimed — so it is never imported twice — and the next drain imports the rest.
      */
     @Test
-    fun a_drain_that_gives_up_on_a_hung_import_imports_the_rest() = runTest {
+    fun a_drain_cancelled_on_a_hung_import_leaves_it_claimed_and_the_next_imports_the_rest() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter().also { it.hangFor += "Q" }
         val c = controller(
@@ -751,17 +756,19 @@ class DownloadControllerTest {
             store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-live.mov", "/l/$id")
         }
 
-        // Every wait is given up at once; the import itself runs on, claimed.
-        c.importReady(awaitImport = { import -> backgroundScope.launch { import() } })
+        // The drain's time runs out while the import hangs; the import itself runs on, claimed.
+        val drain = launch { underRuntime { c.importReady() } }
         importer.hanging.await()
-        yield()
+        drain.cancel()
+        drain.join()
+        underRuntime { c.importReady() }
 
         assertEquals(
             listOf(AssetRef("DEVICE-A", AssetId("R"))),
             importer.imported,
-            "the drain moved past the hung import",
+            "the next drain moved past the hung import",
         )
-        c.importReady()
+        underRuntime { c.importReady() }
         assertEquals(1, importer.attempted.count { it.sourceAssetId == AssetId("Q") }, "the hung import stays claimed")
     }
 
@@ -778,7 +785,7 @@ class DownloadControllerTest {
 
         c.reconcile("event", UnionTrigger.FOREGROUND)
         assertEquals(1, store.importableAssets().size, "still importable: no reconcile imports")
-        c.importReady()
+        underRuntime { c.importReady() }
         assertTrue(store.importableAssets().isEmpty(), "the drain imports it")
     }
 
@@ -821,13 +828,13 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        val stalled = launch { c.importReady() }
+        val stalled = launch { underRuntime { c.importReady() } }
         importer.hanging.await()
         // The change block ran and wrote its marker; the commit has not landed. On device this write comes
         // from inside `performChanges`, which is why it is not the importer fake's business here.
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
-        c.sweepInterruptedImports() // a second trigger adjudicates the unconfirmed row
+        underRuntime { c.sweepInterruptedImports() } // a second trigger adjudicates the unconfirmed row
 
         assertEquals(
             setOf(AssetId("LOCAL-Q_L0_001")),
@@ -860,7 +867,7 @@ class DownloadControllerTest {
         // A marker left by a PREVIOUS process: nothing is claimed here, so absence is trustworthy.
         store.recordCreatedLocalId(ref, AssetId("PREVIOUS-PROCESS"))
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertTrue(
             AssetId("PREVIOUS-PROCESS") !in store.suppressedLocalIds(),
@@ -891,13 +898,13 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        val stalled = launch { c.importReady() }
+        val stalled = launch { underRuntime { c.importReady() } }
         importer.hanging.await()
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
         // The commit DID land; only the callback was lost. The library can see it.
         present.value = setOf(AssetId("LOCAL-Q_L0_001"))
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertTrue(store.isSettled(ref), "the row is settled against the marker it already held")
         assertEquals(setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds())
@@ -925,9 +932,9 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        val first = launch { c.importReady() }
+        val first = launch { underRuntime { c.importReady() } }
         importer.hanging.await() // the first has claimed the ref and is inside the library
-        c.importReady() // the second must find nothing to do
+        underRuntime { c.importReady() } // the second must find nothing to do
 
         assertEquals(
             listOf(ref),
@@ -955,7 +962,7 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        c.importReady()
+        underRuntime { c.importReady() }
 
         assertEquals(listOf(ref), importer.attempted, "offered once, not spun on")
         assertEquals(1, store.importableAssets().size, "and still importable for a later wake")
@@ -979,7 +986,7 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        val stalled = launch { c.importReady() }
+        val stalled = launch { underRuntime { c.importReady() } }
         importer.hanging.await()
 
         c.onLeaveOrSwitch()
@@ -1021,7 +1028,7 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         store.recordCreatedLocalId(ref, AssetId("FIRST")) // the verdict below is computed for THIS marker
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertEquals(
             setOf(AssetId("SECOND")),
@@ -1060,7 +1067,7 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertEquals(
             setOf(AssetId("LOCAL-Q_L0_001")),
@@ -1087,7 +1094,7 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertEquals(
             setOf(AssetId("LOCAL-Q_L0_001")),
@@ -1112,7 +1119,7 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertEquals(
             setOf(AssetId("LOCAL-Q_L0_001")),
@@ -1155,7 +1162,7 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-live.mov", "/l")
         store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
-        c.sweepInterruptedImports() // the relaunched process adjudicates
+        underRuntime { c.sweepInterruptedImports() } // the relaunched process adjudicates
 
         assertEquals(0, importer.imported.size, "no second asset was created")
         assertTrue(
@@ -1186,7 +1193,7 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-live.mov", "/l")
         store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertEquals(0, importer.imported.size, "no second asset was created")
         assertTrue(AssetId("FIRST-COPY") in store.suppressedLocalIds(), "the handle survives on partial evidence")
@@ -1213,7 +1220,7 @@ class DownloadControllerTest {
         store.dropResources(ref) // no staged resources remain to reason from
         store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertEquals(0, importer.imported.size, "nothing was imported")
         assertTrue(AssetId("FIRST-COPY") in store.suppressedLocalIds(), "and nothing was cleared")
@@ -1255,7 +1262,7 @@ class DownloadControllerTest {
         // the second call would never return, because Q's import is the one that hangs.
         store.markStaged(q, "Q-primary.heic", "/qp")
         store.markStaged(q, "Q-live.mov", "/ql")
-        val stalled = launch { c.importReady() }
+        val stalled = launch { underRuntime { c.importReady() } }
         importer.hanging.await()
         assertEquals(1, store.unconfirmedImports().size, "the in-flight import IS an unconfirmed row")
 
@@ -1263,7 +1270,7 @@ class DownloadControllerTest {
         c.onResourceStaged(r, "R-primary.heic", "/rp")
         c.onResourceStaged(r, "R-live.mov", "/rl")
         c.reconcile("event", UnionTrigger.FOREGROUND)
-        c.importReady()
+        underRuntime { c.importReady() }
 
         assertEquals(
             0,
@@ -1290,14 +1297,14 @@ class DownloadControllerTest {
                 disk = disk("/p", "/l"),
             )
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
         assertEquals(0, presence.calls, "nothing inherited → no row carries a marker → no lookup at all")
 
         c.reconcile("event", UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001")) // what a dead process left behind
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
         assertEquals(1, presence.calls, "one inherited row → exactly one batched lookup")
     }
 
@@ -1319,15 +1326,15 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        c.importReady()
+        underRuntime { c.importReady() }
 
         assertEquals(1, importer.attempted.size, "attempted once")
         assertTrue(store.isSettled(ref), "and settled, so discovery never plans it again")
         assertTrue(store.importableAssets().isEmpty(), "it is out of importable work")
         assertTrue(store.stagedResources(ref).isEmpty(), "and the rows that made it findable are gone")
 
-        c.importReady()
-        c.importReady()
+        underRuntime { c.importReady() }
+        underRuntime { c.importReady() }
         assertEquals(1, importer.attempted.size, "no later trigger attempts it again")
     }
 
@@ -1345,13 +1352,13 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        c.importReady()
+        underRuntime { c.importReady() }
 
         assertFalse(store.isSettled(ref), "the request was rejected, not the bytes — nothing is settled")
         assertEquals(2, store.stagedResources(ref).size, "its bytes are intact")
 
         importer.failNext = false
-        c.importReady()
+        underRuntime { c.importReady() }
         assertTrue(store.isSettled(ref), "and a later trigger imports it")
     }
 
@@ -1378,7 +1385,7 @@ class DownloadControllerTest {
         assertEquals(2, store.counts().stillArriving, "both are outstanding while both can still arrive")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        c.importReady()
+        underRuntime { c.importReady() }
 
         assertEquals(1, store.counts().stillArriving, "the unimportable one is no longer counted as outstanding")
         assertEquals(0, store.counts().imported, "and it is emphatically not counted as arrived")
@@ -1428,7 +1435,7 @@ class DownloadControllerTest {
         store.markStaged(claimed, "Q-live.mov", "/l")
         store.markStaged(unclaimed, "R-primary.heic", "/rp")
 
-        val stalled = launch { c.importReady() }
+        val stalled = launch { underRuntime { c.importReady() } }
         importer.hanging.await() // Q's transaction is open and its claim is held.
 
         withTimeoutOrNull(5.seconds) { c.onDurableStateReset() }
@@ -1759,7 +1766,7 @@ class DownloadControllerTest {
         val c = controller(union, store = store)
         c.reconcile("event", UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
-        c.importReady()
+        underRuntime { c.importReady() }
 
         union.assets = listOf(asset("DEVICE-A", "Q"))
         assertNull(c.receivedPosition("event"), "R's download is still pending")
@@ -1837,11 +1844,11 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
 
-        c.importReady()
+        underRuntime { c.importReady() }
         assertTrue(reported.isEmpty(), "a failed import put nothing into the album")
 
         importer.failNext = false
-        c.importReady()
+        underRuntime { c.importReady() }
         assertEquals(listOf<AlbumId?>("ALBUM-1", "ALBUM-1"), importer.albums, "each import is asked into the album")
         assertEquals(listOf("ALBUM-1"), reported, "and the album learns of the one that landed")
     }
@@ -1861,7 +1868,7 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
 
-        c.importReady()
+        underRuntime { c.importReady() }
 
         assertFalse(store.isSettled(ref), "not judged unimportable")
         assertEquals(setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds(), "its marker still holds it out")
@@ -1882,7 +1889,7 @@ class DownloadControllerTest {
         store.dropResources(ref)
         store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
-        c.sweepInterruptedImports()
+        underRuntime { c.sweepInterruptedImports() }
 
         assertTrue(store.isSettled(ref), "the library holds it: settled against its marker")
         assertTrue(staged.released.isEmpty(), "and with nothing staged, nothing reaches the disk")
@@ -1902,7 +1909,7 @@ class DownloadControllerTest {
         c.reconcile("event", UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
 
-        c.importReady() // must not throw
+        underRuntime { c.importReady() } // must not throw
 
         assertEquals(listOf(ref), importer.imported)
         assertTrue(store.isSettled(ref), "freeing disk is never worth failing an import over")

@@ -29,7 +29,7 @@ import kotlin.time.Duration.Companion.seconds
  * is **chosen for human perception rather than derived**: no measurement produces it and none is claimed. It
  * is also conditional on the foreground — while backgrounded the projection may be arbitrarily stale, which is
  * harmless because nothing renders it. The *ordering* (start on foreground entry, stop on backgrounding) is
- * the Foreground/Background flows' coordination.
+ * the lifecycle entry points' ordering.
  *
  * Each tick is **local and read-only** — no network, no storage LIST, and never the own-device library
  * enumeration, which is orders of magnitude slower and belongs only to the foreground refresh. Stated by class

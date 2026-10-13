@@ -282,10 +282,10 @@ class DeviceAttestation(
     /**
      * Refresh the token if it is stale, and publish what that says about [attested].
      *
-     * Called at every wake — launch, foreground, silent push, each `BGTask` — through the trigger flows.
+     * Called at every wake — launch, foreground, silent push, each `BGTask` — through the entry points' prelude.
      * A failed attestation never throws, like [ensureFresh]: a background wake must not die because attestation
      * failed. A token that cannot be READ at all — the store of record locked — does, as every call's token read does;
-     * the trigger flows contain it.
+     * the prelude's step contains it.
      *
      * **The clear on entry is load-bearing, not tidiness.** It brackets the *attempt*: from here until
      * this call returns, the last wake's verdict is gone and only this attempt's answer can be shown. It

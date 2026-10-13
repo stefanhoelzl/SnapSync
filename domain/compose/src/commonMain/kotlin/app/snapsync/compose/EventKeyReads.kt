@@ -4,15 +4,28 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.KeyPresence
 import app.snapsync.services.crypto.EventKeys
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 
 /**
  * **What the screen reads of the joined event's key** (the encrypted file format, `docs/architecture.md`), for readers
  * outside the core, which see no service type.
  */
-class EventKeyReads internal constructor(keys: EventKeys, membership: StateFlow<EventConfig?>, scope: CoroutineScope) {
-    private val rereads = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+class EventKeyReads internal constructor(
+    keys: EventKeys,
+    membership: StateFlow<EventConfig?>,
+    scope: CoroutineScope,
+    /** The app's returns to the foreground: each one is a re-read. */
+    foregroundReturns: StateFlow<Any>,
+) {
+    private val asked = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Every re-read: one [reread] asked for, and every return to the foreground. */
+    private val rereads: Flow<Unit> = merge(asked, foregroundReturns.drop(1).map { })
 
     /**
      * The joined event's key as its invite carries it, while the membership is ENCRYPTED: read from the secure store
@@ -30,6 +43,6 @@ class EventKeyReads internal constructor(keys: EventKeys, membership: StateFlow<
 
     /** Read [presence] and [inviteKey] again — a foreground, or a key kept from a reopened invite. */
     fun reread() {
-        rereads.tryEmit(Unit)
+        asked.tryEmit(Unit)
     }
 }

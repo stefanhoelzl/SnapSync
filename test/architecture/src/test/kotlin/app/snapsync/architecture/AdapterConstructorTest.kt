@@ -25,11 +25,7 @@ import kotlin.test.assertTrue
 class AdapterConstructorTest {
 
     /** `Class.parameter` → why the function is the platform's own, not a wired callback. */
-    private val exempt = mapOf(
-        "SessionCompletion.handler" to
-            "a background URLSession relaunch's completion handler, the block UIKit handed the app delegate",
-        "PushCompletion.handler" to "a silent push's fetch completion handler, the block UIKit handed the app delegate",
-    )
+    private val exempt = emptyMap<String, String>()
 
     private val ports: Set<String> by lazy {
         SourceScan.kotlinFiles()

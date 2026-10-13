@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.android.work
 
 import android.content.ContentUris
@@ -30,10 +32,14 @@ import app.snapsync.contracts.TransferSessionState
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeOs
 import app.snapsync.contracts.WakeState
+import app.snapsync.contracts.backgroundOf
+import app.snapsync.contracts.grantedOf
+import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.uploadClauseKey
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -173,11 +179,11 @@ class AndroidWorkContractTest {
                 unrestricted = awaitUnrestrictedNetwork(context),
             )
             val adapter = bare.recorded(log)
-            adapter.listen(
+            adapter.inbound(
                 TransferHandlers(
-                    onFinished = { tag, error -> ended += Ended(tag, error) },
-                    onBackgroundEvents = { it.complete() },
-                    onEventsDrained = {},
+                    onFinished = inboundOf { ended += Ended(it.tag, it.failure) },
+                    onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
+                    onEventsDrained = inboundOf {},
                 ),
             )
             val usable: suspend (String) -> TransferSource = { _ ->
@@ -242,11 +248,13 @@ class AndroidWorkContractTest {
     fun `a library change wakes the app`() {
         val woken = CompletableDeferred<WakeId>()
         val adapter = AndroidWake(context)
-        adapter.listen(
-            WakeHandlers { id, completion ->
-                woken.complete(id)
-                completion.complete()
-            },
+        adapter.inbound(
+            WakeHandlers(
+                grantedOf { id, completion ->
+                    woken.complete(id)
+                    completion.complete()
+                },
+            ),
         )
         val watched = runBlocking {
             adapter.schedule(
@@ -274,11 +282,13 @@ class AndroidWorkContractTest {
     fun `an unrestricted wake waits out a metered network and runs on an unmetered one`() {
         val ran = CompletableDeferred<Unit>()
         val adapter = AndroidWake(context)
-        adapter.listen(
-            WakeHandlers { _, completion ->
-                ran.complete(Unit)
-                completion.complete()
-            },
+        adapter.inbound(
+            WakeHandlers(
+                grantedOf { _, completion ->
+                    ran.complete(Unit)
+                    completion.complete()
+                },
+            ),
         )
         MeteredWifi.enter()
         try {
@@ -304,15 +314,16 @@ class AndroidWorkContractTest {
         val done = CompletableDeferred<Boolean>()
         val adapter = AndroidWake(context)
         val later = WakeTrigger.After(1.hours, network = WakeNetwork.NONE)
-        adapter.listen(
-            WakeHandlers { id, completion ->
-                var expired = false
-                completion.onExpired { expired = true }
-                runBlocking { adapter.schedule(id, later) }
-                Thread.sleep(REPLACE_WINDOW_MILLIS) // long enough for a REPLACE to have cancelled this very run
-                done.complete(!expired)
-                completion.complete()
-            },
+        var expired = false
+        adapter.inbound(
+            WakeHandlers(
+                grantedOf(expired = { expired = true }) { id, completion ->
+                    runBlocking { adapter.schedule(id, later) }
+                    Thread.sleep(REPLACE_WINDOW_MILLIS) // long enough for a REPLACE to have cancelled this very run
+                    done.complete(!expired)
+                    completion.complete()
+                },
+            ),
         )
         runBlocking { adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, network = WakeNetwork.NONE)) }
         try {
@@ -338,8 +349,12 @@ class AndroidWorkContractTest {
             journalName = journal,
             unrestricted = awaitUnrestrictedNetwork(context),
         )
-        first.listen(
-            TransferHandlers(onFinished = { _, _ -> }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}),
+        first.inbound(
+            TransferHandlers(
+                onFinished = inboundOf {},
+                onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
+                onEventsDrained = inboundOf {},
+            ),
         )
         val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-03T12:00:00Z", count = 1)
         val key = uploadClauseKey("RELAUNCH")
@@ -367,11 +382,11 @@ class AndroidWorkContractTest {
                 journalName = journal,
                 unrestricted = awaitUnrestrictedNetwork(context),
             )
-                .listen(
+                .inbound(
                     TransferHandlers(
-                        onFinished = { tag, error -> reported += Ended(tag, error) },
-                        onBackgroundEvents = { it.complete() },
-                        onEventsDrained = {},
+                        onFinished = inboundOf { reported += Ended(it.tag, it.failure) },
+                        onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
+                        onEventsDrained = inboundOf {},
                     ),
                 )
             val ended = assertNotNull(

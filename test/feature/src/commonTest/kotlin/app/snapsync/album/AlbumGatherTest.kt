@@ -13,7 +13,6 @@ import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.EntryScope
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -126,7 +125,6 @@ class AlbumGatherTest {
             photoAccess = galleryAccess(grant),
             coordinator = AlbumCoordinator(GalleryAlbums(manager), albums),
             scope = scope,
-            entryContext = EntryScope.None,
             batchSize = 2,
         )
 

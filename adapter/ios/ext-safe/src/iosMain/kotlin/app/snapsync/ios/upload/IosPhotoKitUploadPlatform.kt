@@ -1,6 +1,5 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.logging.invocation
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -44,19 +43,19 @@ class IosPhotoKitUploadPlatform internal constructor(
     override suspend fun terminals(): List<OsUploadJob> = fetch(JobSet.ACKNOWLEDGE)
 
     private fun fetch(set: JobSet): List<OsUploadJob> =
-        log.invocation("photokit.jobs", params = "set=$set", result = { "${it.size} job(s)" }) {
+        run {
             api.fetch(set).map(::jobOf)
-        }
+        }.also { log.i { "photokit.jobs(set=$set) = ${it.size} job(s)" } }
 
     override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome =
-        log.invocation("photokit.create", params = "to=${target.url}", result = { "$it" }) {
-            val url = NSURL.URLWithString(target.url) ?: return@invocation CreateOutcome.FAILED
+        run body@{
+            val url = NSURL.URLWithString(target.url) ?: return@body CreateOutcome.FAILED
             val answer = api.create(uploadUrlRequest(url, target), resource)
             // A refusal that names no code is still a refusal: it maps to FAILED, never to CREATED.
             createResultFor(if (answer.ok) null else answer.code ?: UNCODED_REFUSAL).also {
                 if (it == CreateOutcome.FAILED) log.w { "create refused: code=${answer.code} ${answer.description}" }
             }
-        }
+        }.also { log.i { "photokit.create(to=${target.url}) = $it" } }
 
     override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
         val facts = (job.handle as? PhotoKitJob)?.facts ?: return ChangeOutcome.Refused(null, "not a PhotoKit job")

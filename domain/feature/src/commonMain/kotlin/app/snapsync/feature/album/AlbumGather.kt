@@ -1,11 +1,9 @@
 package app.snapsync.feature.album
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.EntryScope
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
-import app.snapsync.model.invocation
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAccessState
@@ -68,7 +66,6 @@ class AlbumGather(
     /** The app-lifetime scope a gather is launched on — the composition lane, never the UI lane: the
      *  platform add blocks its thread for a whole library change. */
     private val scope: CoroutineScope,
-    private val entryContext: EntryScope,
     private val batchSize: Int = GATHER_BATCH_SIZE,
     private val log: Logger = Logger.withTag("AlbumGather"),
 ) {
@@ -83,7 +80,7 @@ class AlbumGather(
     /** Start a gather for [eventId], detached. [trigger] names the opt-in act, so the log says why it ran. */
     fun start(trigger: String, eventId: String) {
         scope.launch {
-            log.invocation(entryContext, "albumGather", "trigger=$trigger eventId=$eventId") { gather(eventId) }
+            run { gather(eventId) }.also { log.i { "albumGather(trigger=$trigger eventId=$eventId)" } }
         }
     }
 

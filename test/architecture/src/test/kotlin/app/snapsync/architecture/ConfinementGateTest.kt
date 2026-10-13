@@ -29,8 +29,8 @@ class ConfinementGateTest {
     private val receivers = mapOf(
         "domain/services/src/commonMain/kotlin/app/snapsync/services/downloads/DownloadJobs.kt" to
             "DownloadJobs", // DownloadTransportHost, from the URLSession delegate queue
-        "domain/services/src/commonMain/kotlin/app/snapsync/services/wake/OsCompletions.kt" to
-            "OsCompletions", // the OS's completion handlers, handed over and released on its own threads
+        "domain/services/src/commonMain/kotlin/app/snapsync/services/transfer/SessionDrains.kt" to
+            "SessionDrains", // a session's drain reports, from the URLSession delegate queue
         "adapter/generic/app/src/commonMain/kotlin/app/snapsync/selection/SelectionSnapshotLane.kt" to
             "SelectionSnapshotLane", // PhotoKit change notifications
         "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoKitSelection.kt" to

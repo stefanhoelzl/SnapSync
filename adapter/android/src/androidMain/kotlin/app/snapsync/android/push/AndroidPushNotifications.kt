@@ -2,16 +2,15 @@ package app.snapsync.android.push
 
 import android.content.Context
 import app.snapsync.android.download.OnceCompletion
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PUSH_KIND_FCM
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
-import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.Completion
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushNotifications
 import co.touchlab.kermit.Logger
@@ -87,7 +86,8 @@ class AndroidPushNotifications(
         }.onFailure { log.w(it) { "Firebase could not be started" } }.getOrNull()
     }
 
-    override fun listen(handlers: PushHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: PushHandlers) {
         this.handlers.set(handlers)
         registration.value = this
     }
@@ -108,7 +108,7 @@ class AndroidPushNotifications(
             // emulator: "FCM Registration failed!").
             val token = if (task.isSuccessful) task.result?.takeIf { it.isNotBlank() } else null
             if (token != null) {
-                handlers.orNull("a token")?.onToken(PushToken(token))
+                handlers.orNull("a token")?.onToken?.deliver(PushToken(token))
             } else {
                 failure(task.exception?.message ?: "FCM issued no token")
             }
@@ -117,18 +117,18 @@ class AndroidPushNotifications(
 
     /** FCM issued (or rotated) this device's token. */
     internal fun deliverToken(token: String) {
-        handlers.orNull("a token")?.onToken(PushToken(token))
+        handlers.orNull("a token")?.onToken?.deliver(PushToken(token))
     }
 
     /** A data message arrived; [completion] is released once the push's own work is done. */
     internal fun deliverMessage(data: Map<String, String>, completion: Completion) {
         val current = handlers.orNull("a push") ?: return completion.complete()
-        current.onMessage(PushMessage(data.toMap<Any?, Any?>()), completion)
+        current.onMessage.handle(PushMessage(data.toMap<Any?, Any?>()), completion)
     }
 
     private fun failure(reason: String) {
         log.w { "no push token: $reason" }
-        handlers.orNull("a token failure")?.onTokenFailure(PlatformError(reason))
+        handlers.orNull("a token failure")?.onTokenFailure?.deliver(PlatformError(reason))
     }
 
     internal companion object {
@@ -151,26 +151,18 @@ class SnapSyncMessagingService : FirebaseMessagingService() {
     // Deprecated with `getToken()` (see `AndroidPushNotifications.register`), and kept with it.
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onNewToken(token: String) {
-        log.invocation(
-            EntryScope.None,
-            "onNewToken",
-        ) { AndroidPushNotifications.registration.value?.deliverToken(token) }
+        run { AndroidPushNotifications.registration.value?.deliverToken(token) }.also { log.i { "onNewToken" } }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        log.invocation(
-            EntryScope.None,
-            "onMessageReceived",
-            params = "keys=${message.data.keys}",
-            result = { released: Boolean? -> if (released == null) "no composition" else "released=$released" },
-        ) {
+        run body@{
             // FCM calls this on its own worker thread and considers the message handled when it returns, so the thread
             // is held — on a latch, never a coroutine runner — until the core releases the push, at most the budget.
-            val push = AndroidPushNotifications.registration.value ?: return@invocation null
+            val push = AndroidPushNotifications.registration.value ?: return@body null
             val released = CountDownLatch(1)
             runCatchingCancellable { push.deliverMessage(message.data, OnceCompletion { released.countDown() }) }
                 .onFailure { log.w(it) { "the push could not be handed over" } }
             released.await(AndroidPushNotifications.MESSAGE_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
-        }
+        }.also { log.i { "onMessageReceived(keys=${message.data.keys}) = ${if (it == null) "no composition" else "it=$it"}" } }
     }
 }

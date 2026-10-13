@@ -10,7 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 
 /**
  * The app's network watch — the app says when it cannot reach the network — over the [NetworkMonitor] port: the
- * foreground-gated watch, the bundle the lifecycle flows start and stop it in beside the counts poll, and the
+ * foreground-gated watch, the bundle the lifecycle's entry points start and stop it in beside the counts poll, and the
  * read-model presentation and the network's return read.
 
  *
@@ -25,7 +25,7 @@ class AppNetwork internal constructor(
     /** Follows the network only while started — the platform's monitor runs only while the app is in front. */
     internal val watch: NetworkWatch = NetworkWatch(scope, NetworkReadings(monitor))
 
-    /** What runs only while the screen is visible — started by the Foreground flow, stopped by the Background flow. */
+    /** What runs only while the screen is visible — started by `OnForeground`'s work, stopped by `OnBackground`. */
     internal val watches: ForegroundWatches = ForegroundWatches(statusPoller, watch)
 
     /** What the member is told about the network, and when a missing one returns. */

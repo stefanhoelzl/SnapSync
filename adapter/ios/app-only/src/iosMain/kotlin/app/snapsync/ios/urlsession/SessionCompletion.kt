@@ -2,12 +2,14 @@
 
 package app.snapsync.ios.urlsession
 
+import app.snapsync.inbound.Completion
 import app.snapsync.objc.onQueue
-import app.snapsync.ports.Completion
 import co.touchlab.kermit.Logger
 import platform.darwin.dispatch_get_main_queue
 import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
 
 /**
  * `handleEventsForBackgroundURLSession`'s completion handler as a [Completion]: released once, **on the main thread**
@@ -17,7 +19,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * background-time expiry), so this adapter is what puts it where UIKit requires — the one reason it names the main
  * thread.
  *
- * A background-session relaunch carries no expiry signal of its own ([onExpired] never runs): its only "time is up" is
+ * A background-session relaunch carries no expiry signal of its own: its only "time is up" is
  * the process's background time, which the core holds across the wake.
  */
 internal class SessionCompletion(
@@ -48,4 +50,18 @@ internal object MainThreadRelease : HandlerRelease {
         "sessionCompletion.release",
         handler,
     )
+}
+
+/**
+ * A session's drain reports, counted: the count a relaunch is told it arrived after ([SessionRelaunch]), so the core
+ * waits for the first report after it — however the relaunch's run and the report race to the core.
+ */
+internal class DrainCount {
+    private val count = AtomicInt(0)
+
+    /** The reports made so far — what a relaunch arriving now is told. */
+    val now: Int get() = count.load()
+
+    /** One more report: its number. */
+    fun next(): Int = count.incrementAndFetch()
 }

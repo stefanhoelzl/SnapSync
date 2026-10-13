@@ -30,6 +30,7 @@ kotlin {
             implementation(project(":domain:model"))
             implementation(project(":ui:state"))
             implementation(project(":domain:ports"))
+            implementation(project(":domain:inbound"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

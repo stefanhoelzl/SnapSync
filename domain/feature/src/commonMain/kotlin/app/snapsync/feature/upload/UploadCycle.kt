@@ -21,11 +21,12 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.upload.BackgroundTransfer
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-
-/** A whole [UploadCycle.run] has no stop: the extension's only end is a kill, and it has no signal to stop on. */
-private val NEVER_STOP: () -> Boolean = { false }
+import kotlinx.coroutines.withContext
 
 /**
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
@@ -89,7 +90,7 @@ class UploadCycle(
     /**
      * Serialises this cycle's units — a whole [run], a [topUp], a [walkAndPublish]. The decide-here-act-there split
      * below is licensed by there being one writer at a time, and in the app process two entries reach the units: the
-     * tail runner, and a selection change's own work, which runs outside that runner by design. So the exclusion is the
+     * wake's sequences, and a selection change's own work, which runs outside them by design. So the exclusion is the
      * cycle's own rather than a caller's convention.
      */
     private val units = Mutex()
@@ -115,20 +116,19 @@ class UploadCycle(
             is Ready -> settled
             is CycleOutcome -> return@withLock settled.publish()
         }
-        update(ready, decide(ready), enqueue = NEVER_STOP).publish()
+        update(ready, decide(ready), enqueues = true).publish()
     }
 
     /**
-     * The tail's **top-up** (②; the producer tops up from the ledger, not from the walk's output): the entry gate and
-     * the platform settle — re-creating retry-spent failures — then job creation from the ledger's rows that need one,
-     * until the platform refuses or [stopRequested] answers `true` between two creations (the creation in flight
-     * completes). No library walk and no publish: a freed slot changes nothing the walk or the manifest would see
-     * (decision record `changes/own-work-per-wake`, D2).
+     * The **top-up** (the producer tops up from the ledger, not from the walk's output): the entry gate and the platform
+     * settle — re-creating retry-spent failures — then job creation from the ledger's rows that need one, until the
+     * platform refuses. Cancelled when the operating system's time is up, between two creations: each creation and its
+     * record are one non-cancellable step. No library walk and no publish: a freed slot changes nothing the walk or the
+     * manifest would see (decision record `changes/own-work-per-wake`, D2).
      *
-     * `PROCESSING` when work remains — the platform refused, or a stop left rows uncreated — `SKIPPED` when the gate
-     * declined, `COMPLETED` otherwise.
+     * `PROCESSING` when work remains — the platform refused — `SKIPPED` when the gate declined, `COMPLETED` otherwise.
      */
-    suspend fun topUp(stopRequested: () -> Boolean): CycleResult = units.withLock {
+    suspend fun topUp(): CycleResult = units.withLock {
         // The walk that immediately preceded this top-up in the same tail hands over what it read, once.
         val handedOver = walked
         walked = emptyMap()
@@ -136,40 +136,38 @@ class UploadCycle(
             is Ready -> settled
             is CycleOutcome -> return@withLock settled.result
         }
-        val enqueued = enqueue(ready, handedOver, stopRequested)
+        val enqueued = enqueue(ready, handedOver)
         if (ready.capHit || enqueued.truncated) CycleResult.PROCESSING else CycleResult.COMPLETED
     }
 
     /**
-     * The tail's **walk → manifest publish** (③): the entry gate, the full-enumeration walk and its decide stage, then
-     * — unless [stopRequested] answered `true` meanwhile — the record of what it found and the device-manifest
-     * publish. It creates **no** job: the rows it recorded are the next top-up's work, and [WalkOutcome.Walked]'s
-     * `addedRows` tells the tail to run that top-up at once (decision record `changes/own-work-per-wake`, D1).
+     * The **walk → manifest publish**: the entry gate, the full-enumeration walk and its decide stage, then the record
+     * of what it found and the device-manifest publish. It creates **no** job: the rows it recorded are the next
+     * top-up's work, and [WalkOutcome.addedRows] says that top-up is due at once (decision record
+     * `changes/own-work-per-wake`, D1).
      *
-     * **Atomic under a stop**: a stop that arrives while the walk enumerates abandons it after its decide stage, which
+     * **Abandoned when the time is up**: a cancellation while the walk enumerates ends it at its decide stage, which
      * writes nothing — so nothing it saw is recorded, nothing it missed is retracted, and no manifest is published from
      * it.
      *
      * Also the **own work of a selection change** under a partial grant, where the discovery binding resolves from the
      * selection snapshot and the walk reads no library.
      */
-    suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome = units.withLock {
+    suspend fun walkAndPublish(): WalkOutcome = units.withLock {
         walked = emptyMap()
         val ready = when (val settled = settle()) {
             is Ready -> settled
-            is CycleOutcome -> return@withLock WalkOutcome.Walked(settled.publish(), addedRows = false)
+            is CycleOutcome -> return@withLock WalkOutcome(settled.publish(), addedRows = false)
         }
         val plan = decide(ready)
-        if (stopRequested()) {
-            log.i { "walk abandoned — the operating system's time is up; nothing it saw is recorded" }
-            return@withLock WalkOutcome.Abandoned
-        }
-        val outcome = update(ready, plan, enqueue = null)
+        // The walk is a read; a cancellation that came while it ran ends the pass here, before anything is recorded.
+        currentCoroutineContext().ensureActive()
+        val outcome = update(ready, plan, enqueues = false)
         val added = outcome.audit.newWork > 0
         // Handed to the top-up this walk makes the tail run next, so a row it just read is created from the handle in
         // hand rather than resolved again. Only when that top-up follows.
         if (added) walked = plan.liveResources.associateBy { it.filename }
-        WalkOutcome.Walked(outcome.publish(), addedRows = added)
+        WalkOutcome(outcome.publish(), addedRows = added)
     }
 
     // --- stage 1: settle -------------------------------------------------------------------------
@@ -378,7 +376,7 @@ class UploadCycle(
      * Write what is ours: the walk's deletions, the jobs the platform will accept, and the manifest detail
      * of rows the walk can fill. Nothing here is visible to the event.
      */
-    private suspend fun update(ready: Ready, plan: CyclePlan, enqueue: (() -> Boolean)?): CycleOutcome.Enumerated {
+    private suspend fun update(ready: Ready, plan: CyclePlan, enqueues: Boolean): CycleOutcome.Enumerated {
         val engine = ready.engine
 
         // The walk's own deletion: the in-window rows of assets an authoritative walk did not return. Before anything
@@ -429,10 +427,9 @@ class UploadCycle(
 
         // The resources this walk already read, by key: a row it just recorded is created from the handle in
         // hand rather than resolved a second time (see [createOne]). A walk run as the tail's ③ creates nothing
-        // ([enqueue] is `null`): the top-up the tail runs next does, from the same handles.
-        val stop = enqueue
-        val enqueued = if (stop != null) {
-            enqueue(ready, plan.liveResources.associateBy { it.filename }, stop)
+        // ([enqueues] is `false`): the top-up that runs next does, from the same handles.
+        val enqueued = if (enqueues) {
+            enqueue(ready, plan.liveResources.associateBy { it.filename })
         } else {
             Enqueued(created = 0, truncated = false)
         }
@@ -481,11 +478,7 @@ class UploadCycle(
      * app-driven tier that same limit bounds staged temp-file disk, so asking for more than it will accept
      * costs nothing: the pass stops at the refusal, before the next resolve.
      */
-    private suspend fun enqueue(
-        ready: Ready,
-        walked: Map<String, Resource>,
-        stopRequested: () -> Boolean,
-    ): Enqueued {
+    private suspend fun enqueue(ready: Ready, walked: Map<String, Resource>): Enqueued {
         val needJob = ledger.rowsNeedingJob()
         if (needJob.isEmpty()) return Enqueued(created = 0, truncated = false)
 
@@ -505,10 +498,9 @@ class UploadCycle(
         // `changes/selection-is-the-walk` (D5).
         var created = 0
         for (row in eligible) {
-            // The operating system's time is up — expiry stops work cooperatively at the next boundary: the creation in
-            // flight has completed, and no further one starts. The rows not reached still need a job, so the pass
-            // reports truncated.
-            if (stopRequested()) return Enqueued(created, truncated = true)
+            // The boundary a cancellation stops at — the operating system's time is up: the creation before it is
+            // recorded with its job, and none after it starts.
+            currentCoroutineContext().ensureActive()
             // No outcome: the row's resource left the library, or the engine found it no longer work.
             when (createOne(ready, row, walked) ?: continue) {
                 UploadCreateOutcome.CREATED -> created++
@@ -548,9 +540,15 @@ class UploadCycle(
         // is skipped.
         val decision = ready.engine.handle(SyncEvent.ResourceChanged(resource))
         if (decision !is SyncDecision.Work) return null
-        return platform.createJob(decision.request, resource).also { result ->
-            if (result == UploadCreateOutcome.CREATED) ready.engine.handle(SyncEvent.UploadStarted(decision.request))
-            // FAILED: not created → no UploadStarted; the row still needs a job.
+        // One step a cancellation cannot split: a job the platform created is recorded `REQUESTED` before the pass can
+        // end, or the next top-up would create it again.
+        return withContext(NonCancellable) {
+            platform.createJob(decision.request, resource).also { result ->
+                if (result == UploadCreateOutcome.CREATED) {
+                    ready.engine.handle(SyncEvent.UploadStarted(decision.request))
+                }
+                // FAILED: not created → no UploadStarted; the row still needs a job.
+            }
         }
     }
 
@@ -892,3 +890,6 @@ class UploadCycle(
         return capHit
     }
 }
+
+/** What the walk → publish came to: its upload [result], and whether it recorded new rows a top-up is due for. */
+data class WalkOutcome(val result: CycleResult, val addedRows: Boolean)

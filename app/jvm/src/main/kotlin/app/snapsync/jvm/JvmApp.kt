@@ -2,7 +2,6 @@ package app.snapsync.jvm
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.compose.ExtensionDevicePorts
-import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.snapSyncExtension
@@ -10,6 +9,7 @@ import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.identity.NoPlatformDeviceId
+import app.snapsync.logging.JvmThreadLabel
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Files
@@ -162,7 +162,7 @@ class JvmApp<D>(
             files = files.value,
             clock = clock.value,
             crypto = crypto.value,
-            entryContext = NoEntryContext,
+            threadLabel = JvmThreadLabel(),
             build = ports.build.port(),
         )
 

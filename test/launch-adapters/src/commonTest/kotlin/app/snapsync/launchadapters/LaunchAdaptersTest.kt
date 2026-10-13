@@ -1,7 +1,13 @@
+@file:OptIn(CompositionOnly::class, InboundImplementation::class)
+
 package app.snapsync.launchadapters
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.compose.ExtensionDevicePorts
+import app.snapsync.inbound.Answered
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
+import app.snapsync.inbound.InboundImplementation
 import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.MockDevice
@@ -225,8 +231,8 @@ class LaunchAdaptersTest {
         // Inside the app — the control channel invoking the extension's root — the composition runs.
         val host = ExtensionHostMock()
         var composed = false
-        chosenExtensionHost(host.port(), launch(AdapterProcess.APP)).listen(
-            ExtensionHandlers(onProcess = {
+        chosenExtensionHost(host.port(), launch(AdapterProcess.APP)).inbound(
+            handlers(onProcess = {
                 composed = true
                 ProcessingAnswer.COMPLETED
             }, onTerminate = {}),
@@ -237,12 +243,22 @@ class LaunchAdaptersTest {
 
     private suspend fun assertAnsweredWithoutComposing(launch: LaunchAdapters) {
         val host = ExtensionHostMock()
-        chosenExtensionHost(host.port(), launch).listen(
-            ExtensionHandlers(onProcess = { error("composed under $launch") }, onTerminate = { error("composed") }),
+        chosenExtensionHost(host.port(), launch).inbound(
+            handlers(onProcess = { error("composed under $launch") }, onTerminate = { error("composed") }),
         )
         assertEquals(ProcessingAnswer.COMPLETED, host.operator.process())
         host.operator.terminate()
     }
+
+    /** The extension's two handlers, as its composition registers them. */
+    private fun handlers(onProcess: () -> ProcessingAnswer, onTerminate: () -> Unit) = ExtensionHandlers(
+        onProcess = object : Answered<Unit, ProcessingAnswer> {
+            override fun answer(arg: Unit) = onProcess()
+        },
+        onTerminate = object : Inbound<Unit, Unit> {
+            override fun deliver(arg: Unit) = onTerminate()
+        },
+    )
 
     private companion object {
         const val FRESH = "00000000-0000-4000-9000-0000000000f1"

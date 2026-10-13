@@ -1,7 +1,10 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
+
 /** Where each process-metric report goes. Handled INLINE, before [onReport] returns — see [ProcessMetrics]. */
-class MetricHandlers(val onReport: (ProcessMetricPayload) -> Unit)
+class MetricHandlers @CompositionOnly constructor(val onReport: Inbound<ProcessMetricPayload, Unit>)
 
 /** A process-metric report as the platform delivered it: its [root], a view nothing converts until it is walked. */
 class ProcessMetricPayload(val root: MetricNode)
@@ -46,7 +49,7 @@ sealed interface MetricNode {
  *
  * ⚠️ **Listening is a commitment, not a query.** Delivery may be **one-shot**: a provider may hold a report
  * indefinitely while nobody listens, and hand it over exactly once thereafter. So the handlers must already be live
- * when [listen] is called, and [MetricHandlers.onReport] completes its work before returning — on whatever thread
+ * when [inbound] is called, and [MetricHandlers.onReport] completes its work before returning — on whatever thread
  * the provider chose (the lane law's MetricKit exception, `docs/architecture.md`).
  */
-interface ProcessMetrics : Listenable<MetricHandlers>
+interface ProcessMetrics : EventPort<MetricHandlers>

@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.android.scene
 
 import androidx.test.platform.app.InstrumentationRegistry
@@ -11,6 +13,7 @@ import app.snapsync.contracts.LifecycleState
 import app.snapsync.contracts.LifecycleUnderTest
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
 import co.touchlab.kermit.Logger
@@ -18,7 +21,7 @@ import kotlin.test.Test
 
 /**
  * [AndroidLifecycle] against the [LifecycleContract], moved through the two entries the process lifecycle's resume and
- * pause call — the observer [AndroidLifecycle.listen] installs forwards to exactly these.
+ * pause call — the observer [AndroidLifecycle.inbound] installs forwards to exactly these.
  */
 class AndroidLifecycleContractTest {
 
@@ -43,7 +46,8 @@ class AndroidLifecycleContractTest {
 
     /** [lifecycle], listened to on the main thread, where the process lifecycle takes observers — as the root does. */
     private class MainThreadListen(private val lifecycle: AndroidLifecycle) : Lifecycle by lifecycle {
-        override fun listen(handlers: LifecycleHandlers) =
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { lifecycle.listen(handlers) }
+        @CompositionOnly
+        override fun inbound(handlers: LifecycleHandlers) =
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { lifecycle.inbound(handlers) }
     }
 }

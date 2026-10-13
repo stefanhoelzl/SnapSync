@@ -6,9 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import app.snapsync.android.scene.ForegroundActivity
-import app.snapsync.model.EntryScope
 import app.snapsync.model.Handoff
-import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.SystemUi
 import co.touchlab.kermit.Logger
@@ -41,17 +39,17 @@ class AndroidSystemUi(
     override suspend fun openUrl(url: String): Handoff =
         start("openUrl", Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
 
-    override fun openSettings() = log.invocation(EntryScope.None, "systemUi.openSettings") {
+    override fun openSettings() = run {
         val settings = Intent(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.fromParts("package", appContext.packageName, null),
         )
         runCatchingCancellable { launch(settings) }.onFailure { log.w(it) { "openSettings: the platform refused" } }
         Unit
-    }
+    }.also { log.i { "systemUi.openSettings" } }
 
     private suspend fun start(name: String, intent: Intent): Handoff = withContext(Dispatchers.Main) {
-        log.invocation(EntryScope.None, "systemUi.$name", result = { "$it" }) {
+        run {
             try {
                 launch(intent)
                 Handoff.Accepted
@@ -61,7 +59,7 @@ class AndroidSystemUi(
                 // The app that claims it guards the activity with a permission this app does not hold.
                 Handoff.Refused("the app that claims it refused: ${e.message}")
             }
-        }
+        }.also { log.i { "systemUi.$name = $it" } }
     }
 
     private fun launch(intent: Intent) {

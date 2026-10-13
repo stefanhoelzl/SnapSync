@@ -1,6 +1,10 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.feature.album
 
+import app.snapsync.feature.support.inboundOf
 import app.snapsync.feature.support.testShared
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.model.AlbumId
@@ -57,7 +61,7 @@ class FolderAlbumCoordinatorTest {
     )
     private val library = PhotoLibraryMock().apply { operator.albumKind = LibraryAlbumKind.FOLDER }
     private val gallery: Gallery = library.port().apply {
-        listen(GalleryHandlers(onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
+        inbound(GalleryHandlers(onImportPlaceholder = inboundOf {}, onImportSettled = inboundOf {}))
     }
     private val store = AlbumMapService(testShared())
     private val coordinator = AlbumCoordinator(GalleryAlbums(gallery), store)

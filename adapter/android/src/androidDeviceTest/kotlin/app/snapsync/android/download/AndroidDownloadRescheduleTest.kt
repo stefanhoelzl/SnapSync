@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.android.download
 
 import android.app.DownloadManager
@@ -7,6 +9,7 @@ import android.net.Uri
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.ClauseDownloadHandlers
 import app.snapsync.contracts.DownloadEvent
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.TransferNetwork
 import java.io.File
 import java.net.InetAddress
@@ -88,7 +91,7 @@ class AndroidDownloadRescheduleTest {
     private fun raceOnce(run: Int): DownloadEvent? {
         removeAllDownloads()
         val download = AndroidDownload(context)
-        download.listen(ClauseDownloadHandlers { null }.handlers)
+        download.inbound(ClauseDownloadHandlers { null }.handlers)
         download.start(
             "http://127.0.0.1:${server.localPort}/reschedule-$run",
             emptyMap(),
@@ -141,7 +144,7 @@ class AndroidDownloadRescheduleTest {
     /** A fresh process's start: its pass delivers every finished row. */
     private fun relaunch(): ClauseDownloadHandlers =
         ClauseDownloadHandlers { runCatching { File(it).readBytes() }.getOrNull() }
-            .also { AndroidDownload(context).listen(it.handlers) }
+            .also { AndroidDownload(context).inbound(it.handlers) }
 
     /** What DownloadManager's own (hidden) resume writes: a `control` change reschedules the row's job. */
     private fun reschedule(id: Long) {

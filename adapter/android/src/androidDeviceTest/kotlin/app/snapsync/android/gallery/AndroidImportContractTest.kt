@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.android.gallery
 
 import android.app.Application
@@ -24,8 +26,10 @@ import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.StagedImport
+import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.motionphoto.jpegXmp
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.motionphoto.motionPhotoStill
@@ -80,14 +84,15 @@ class AndroidImportContractTest {
     /** What the import tells its owner: kept, and every created row remembered for the cleanup. */
     private val handlers = GalleryHandlers(
         onImportPlaceholder = deliveries.handlers.onImportPlaceholder,
-        onImportSettled = { ref, result ->
-            deliveries.handlers.onImportSettled(ref, result)
+        onImportSettled = inboundOf { settled ->
+            deliveries.handlers.onImportSettled.deliver(settled)
+            val result = settled.outcome
             if (result is ImportOutcome.Imported) created += uriOf(result.created)
         },
     )
 
     private val gallery by lazy {
-        AndroidGallery(context, AndroidPhotoPermission(context, foreground), scope).apply { listen(handlers) }
+        AndroidGallery(context, AndroidPhotoPermission(context, foreground), scope).apply { inbound(handlers) }
     }
 
     @BeforeTest
@@ -141,7 +146,7 @@ class AndroidImportContractTest {
                 )
             }
             // Listened again through this clause's proxy, so what the import tells its owner is this clause's to claim.
-            val port = gallery.recorded(log).apply { listen(handlers) }
+            val port = gallery.recorded(log).apply { inbound(handlers) }
             return Entered.Ready(StagedImport(port, stage, library))
         }
     }

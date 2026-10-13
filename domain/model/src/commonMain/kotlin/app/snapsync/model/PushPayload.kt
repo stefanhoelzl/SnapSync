@@ -5,7 +5,7 @@ package app.snapsync.model
  * transcriber law, `docs/architecture.md` "Shells are wiring only" — migration step 12; the field extraction used to be
  * a `guard` in Swift, where nothing could test it); this codec is the one place that knows the payload's shape.
  *
- * `null` when the payload carries no usable `eventId` — the flow then fans out to no arm and the OS
+ * `null` when the payload carries no usable `eventId` — the push then reaches no arm and the OS
  * completion is still released (a malformed push must never strand the handler).
  *
  * Absence: null means "this push names no event". The collapse is deliberate and **safe for

@@ -155,6 +155,7 @@ dependencies {
     if (rigEnabled) implementation(project(":test:rig"))
     implementation(project(":domain:model"))
     implementation(project(":domain:ports"))
+    implementation(project(":domain:inbound"))
     implementation(project(":domain:feature"))
     implementation(project(":domain:compose"))
     implementation(project(":domain:services"))

@@ -9,6 +9,8 @@ import app.snapsync.model.withFinal
 import app.snapsync.model.withVersion
 import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.services.manifest.DeviceManifestService
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /**
  * Writes the per-event device manifest each cycle. The **sole** writer of
@@ -90,8 +92,12 @@ class DeviceManifestProducer(
         // a snapshot at least as new is already there, and at worst the next cycle republishes once.
         val record = UploadedManifest(eventId, manifestVersion, json)
         if (record == store.loadLastUploaded()) return false
-        if (!publisher.publish(eventId, deviceId, manifest)) return false
-        store.saveLastUploaded(record)
-        return true
+        // One step a cancellation cannot split: a publish the backend took is recorded before the pass can end, or the
+        // record would name the snapshot before it and the next cycle would publish this one again.
+        return withContext(NonCancellable) {
+            publisher.publish(eventId, deviceId, manifest).also { published ->
+                if (published) store.saveLastUploaded(record)
+            }
+        }
     }
 }

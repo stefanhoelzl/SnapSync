@@ -12,8 +12,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/creation`
 
-- files: `CreateEvent.kt`, `CreationStatus.kt`, `ForegroundReturn.kt`, `MintedEvent.kt`
-- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `ForegroundReturn (class)`, `MintedEvent (class)`
+- files: `CreateEvent.kt`, `CreationStatus.kt`, `MintedEvent.kt`
+- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `MintedEvent (class)`
 
 ## `feature/diagnostics`
 
@@ -24,6 +24,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 - files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `StoreDownloadStatusSource.kt`
 - top-level types: `DownloadArm (class)`, `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `StoreDownloadStatusSource (class)`
+
+## `feature/links`
+
+- files: `OpenedLinks.kt`
+- top-level types: `OpenedLinks (class)`
 
 ## `feature/membership`
 
@@ -37,11 +42,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/status`
 
-- files: `ForegroundWatches.kt`, `LedgerBackedSyncStatusSource.kt`, `LedgerCountsSource.kt`, `NetworkStatusSource.kt`, `NetworkWatch.kt`, `OwnDeviceGalleryStatusSource.kt`, `ShareableCount.kt`, `StatusCountsPoller.kt`, `StatusRefresh.kt`, `SyncStatusSource.kt`
-- top-level types: `ForegroundWatches (class)`, `LedgerCounts (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `NetworkStatusSource (interface)`, `NetworkWatch (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `ShareableCountSource (class)`, `StatusCountsPoller (class)`, `StatusRefresh (class)`, `SyncStatusSource (interface)`
+- files: `ForegroundCounts.kt`, `ForegroundWatches.kt`, `LedgerBackedSyncStatusSource.kt`, `LedgerCountsSource.kt`, `NetworkStatusSource.kt`, `NetworkWatch.kt`, `OwnDeviceGalleryStatusSource.kt`, `ShareableCount.kt`, `StatusCountsPoller.kt`, `StatusRefresh.kt`, `SyncStatusSource.kt`
+- top-level types: `ForegroundCounts (class)`, `ForegroundWatches (class)`, `LedgerCounts (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `NetworkStatusSource (interface)`, `NetworkWatch (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `ShareableCountSource (class)`, `StatusCountsPoller (class)`, `StatusRefresh (class)`, `SyncStatusSource (interface)`
 
 ## `feature/upload`
 
-- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `TailWakes.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`
-- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `PushTailGuard (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailSignal (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkOutcome (interface)`
+- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `OwnUploads.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WakeRearm.kt`
+- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OwnUploads (class)`, `PushTailGuard (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WakeRearm (class)`, `WalkOutcome (class)`
 

@@ -1,12 +1,14 @@
 package app.snapsync.mock
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Running
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
@@ -35,7 +37,8 @@ class WakeMock(
     fun port(): Wake = object : Wake {
         private val queue = InMemoryWake(pending, supported)
 
-        override fun listen(handlers: WakeHandlers) {
+        @CompositionOnly
+        override fun inbound(handlers: WakeHandlers) {
             this@WakeMock.handlers.set(handlers)
         }
 
@@ -60,12 +63,12 @@ class WakeOperator internal constructor(private val mock: WakeMock) {
     /** The requests it holds right now. */
     val pendingWakes: Map<WakeId, WakeTrigger> get() = mock.pending.value
 
-    /** The operating system wakes the app for [id], handing it [completion]. */
-    fun fire(id: WakeId, completion: ExpiringCompletion) {
+    /** The operating system wakes the app for [id], handing it [completion]; answers the run its expiry expires. */
+    fun fire(id: WakeId, completion: Completion): Running {
         val handlers = mock.handlers.require("a $id wake")
         // Every wake is one-shot: the operating system launching it is what consumes the request.
         mock.pending.value -= id
-        handlers.onWake(id, completion)
+        return handlers.onWake.handle(id, completion)
     }
 }
 

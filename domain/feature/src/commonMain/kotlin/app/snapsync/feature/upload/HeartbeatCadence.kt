@@ -37,7 +37,7 @@ data class CadenceFacts(
  *   library-change wake standing, and every caught-up device after the end. It still looks in now and then, for
  *   others' photos and the event's close.
  *
- * Pure: the tail runner reads the facts and applies the answer.
+ * Pure: the wake's re-arm ([WakeRearm]) reads the facts and applies the answer.
  */
 fun heartbeatCadence(
     facts: CadenceFacts,

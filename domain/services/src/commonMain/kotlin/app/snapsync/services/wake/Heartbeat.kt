@@ -18,7 +18,7 @@ import kotlin.time.Duration.Companion.seconds
  * (decision record `changes/timely-background-receiving`, D1).
  *
  * Owns what the wakes ARE — their delays and the heartbeat's network requirement — over the thin [Wake] port.
- * **When** and at which cadence each is armed is the tail runner's rule (`feature/upload/TailRunner`); a disarm
+ * **When** and at which cadence each is armed is the wake's re-arm rule (`feature/upload/WakeRearm`); a disarm
  * cancels every one.
  *
  * - [arm] requests the timed heartbeat at a [WakeCadence]: one heartbeat is pending at a time, so a request at one

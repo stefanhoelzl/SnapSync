@@ -3,7 +3,6 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.gallery.PhotoKitResource
-import app.snapsync.logging.invocation
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -179,19 +178,19 @@ internal class SimulatorUploadJobQueue(
     override suspend fun terminals(): List<OsUploadJob> = presented(SimulatorJobAction.ACKNOWLEDGE)
 
     private suspend fun presented(action: SimulatorJobAction): List<OsUploadJob> =
-        log.invocation("simulated.jobs", params = "set=$action", result = { "${it.size} job(s)" }) {
+        run {
             jobs.inSet(action).map(::jobOf)
-        }
+        }.also { log.i { "simulated.jobs(set=$action) = ${it.size} job(s)" } }
 
     override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome =
-        log.invocation("simulated.create", params = "to=${target.url}", result = { "$it" }) {
+        run body@{
             if (!payloadType.isInstance(resource)) {
                 log.w { "create: the resource is not a PhotoKit resource — not creating" }
-                return@invocation CreateOutcome.FAILED
+                return@body CreateOutcome.FAILED
             }
             jobs.record(target.asCreatedJob(isRetry = false, resource))
                 .also { log.i { "queue: ${jobs.createdCount()} job(s) created this cycle" } }
-        }
+        }.also { log.i { "simulated.create(to=${target.url}) = $it" } }
 
     override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
         val offered = (job.handle as? Presented)?.job ?: return ChangeOutcome.Refused(null, "not a presented job")

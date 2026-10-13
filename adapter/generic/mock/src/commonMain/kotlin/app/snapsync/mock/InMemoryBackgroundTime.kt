@@ -2,6 +2,7 @@
 
 package app.snapsync.mock
 
+import app.snapsync.inbound.Running
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,12 +15,12 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * expiration handler it holds for it. [expire] is what the operating system does when this hold's time is up — it
  * invokes the handler, at most once, and does **not** end the hold (the holder must).
  */
-class HeldBackgroundTime internal constructor(val label: String, private val onExpiry: () -> Unit) {
+class HeldBackgroundTime internal constructor(val label: String, private val expiry: Running) {
     private val expired = AtomicBoolean(false)
 
     /** The operating system's expiry for this hold: the handler runs once, however often this is called. */
     fun expire() {
-        if (expired.compareAndSet(expectedValue = false, newValue = true)) onExpiry()
+        if (expired.compareAndSet(expectedValue = false, newValue = true)) expiry.expire()
     }
 }
 
@@ -31,8 +32,8 @@ class HeldBackgroundTime internal constructor(val label: String, private val onE
  * never on this double (`docs/architecture.md`, `BackgroundTimeContract`).
  */
 internal class InMemoryBackgroundTime(private val held: MutableStateFlow<List<HeldBackgroundTime>>) : BackgroundTime {
-    override fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold {
-        val entry = HeldBackgroundTime(label, onExpiry)
+    override fun begin(label: String, expiry: Running): BackgroundTimeHold {
+        val entry = HeldBackgroundTime(label, expiry)
         held.update { it + entry }
         return Hold(entry)
     }

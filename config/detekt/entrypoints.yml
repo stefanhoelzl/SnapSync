@@ -1,0 +1,16 @@
+# The `entrypoints` tier (`DetektTiersPlugin`): `:domain:entrypoints`, one entry point per operating-system trigger.
+#
+# A CLAIM, not debt. Every other tier file records where a scope stood when it was measured, a ceiling that may only
+# fall. These numbers were written before the code (`docs/patterns.md`, "Entry points"): an entry point orders steps
+# and decides nothing, so its functions stay a short straight list — what a `when` over a fact selects at most. A
+# function that needs more is a decision, and a decision is a feature's.
+complexity:
+  CyclomaticComplexMethod:
+    threshold: 4
+  CognitiveComplexMethod:
+    threshold: 4
+  LongParameterList:
+    # A SIZE measure, not a decision: an entry point's collaborators are its steps' callees, and while those steps
+    # call today's features directly (MIGRATING, `ModuleSetTest`) the work a wake shares names up to nine of them.
+    # Phase 4 moves the work under sequences, and this returns to the default.
+    constructorThreshold: 10

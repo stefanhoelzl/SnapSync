@@ -1,6 +1,12 @@
 package app.snapsync.architecture
 
 import app.snapsync.contracts.CallLog
+import app.snapsync.inbound.Answered
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.Granted
+import app.snapsync.inbound.Inbound
+import app.snapsync.inbound.Running
 import app.snapsync.model.CaptureDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,8 +43,8 @@ import kotlin.test.fail
  *
  * The runner fails a clause whose declared cell never occurred, which is only as honest as the proxy that records it. So
  * this drives EVERY cell [PortGrid] derives through the port's proxy (`app.snapsync.contracts.proxy.<Port>Proxy`, built
- * as `(adapter, log)`): an adapter double made by reflection answers the cell's variant — or calls the handler,
- * callback or handle the cell names — and the proxy must record exactly that cell
+ * as `(adapter, log)`): an adapter double made by reflection answers the cell's variant — or makes the delivery,
+ * calls the callback or the handle the cell names — and the proxy must record exactly that cell
  * for that member, and no other variant of it. A proxy that forgot a member, a handler, a handle or a callback, or
  * renders one under another name, fails here naming the cell. A port another port extends is driven through the
  * extending port's proxy too, since its members are recorded under the port declaring them.
@@ -99,6 +105,8 @@ class ProxyCompletenessTest {
             when {
                 parsed.handler != null -> handlerCall(parsed)
                 parsed.handle != null -> handleCell(parsed)
+                // The registration itself: answered with a real bundle, which the proxy wraps field by field.
+                parsed.name == registration() -> listenAndHear()
                 else -> memberCell(parsed)
             }
             if (cell !in log.cells) return "recorded ${log.cells.ifEmpty { setOf("nothing") }}"
@@ -149,15 +157,11 @@ class ProxyCompletenessTest {
             check(
                 types.size == p.args!!.size,
             ) { "${field.name} takes ${types.size} arguments, the cell names ${p.args}" }
-            invoke(
-                field.getter.call(bundle)!!,
-                types.zip(p.args).map { (t, v) -> valueOf(t, v) },
-                isSuspend(field.returnType),
-            )
+            deliver(field.getter.call(bundle)!!, types.zip(p.args).map { (t, v) -> valueOf(t, v) })
         }
 
         private fun handleCell(p: Parsed) {
-            val handleType = Class.forName("app.snapsync.ports.${p.handle}").kotlin
+            val handleType = handleClass(p.handle!!)
             val handleAnswers = mutableMapOf<String, (Array<Any?>) -> Any?>()
             val handle = double(handleType) { handleAnswers[it] }
             val wrapped = obtainHandle(handleType, handle)
@@ -177,52 +181,87 @@ class ProxyCompletenessTest {
             }
         }
 
-        /** The handle as the proxy hands it on: from a member returning it, or from a handler it is passed to. */
+        /**
+         * The handle as the proxy hands it on: from a member returning it, to the adapter as a member's argument, or
+         * passed to — or answered by — a delivery the adapter makes.
+         */
         private fun obtainHandle(handleType: KClass<*>, handle: Any): Any {
             val producer = allMembers(through).firstOrNull { it.returnType.classifier == handleType }
             if (producer != null) {
                 answers[javaName(producer)] = { handle }
                 return callMember(proxy(), producer)!!
             }
-            val bundle = listenAndHear()
-            val field = bundle::class.memberProperties.first { f ->
-                handlerArgTypes(bundle::class, f.name).any {
-                    it.classifier == handleType
+            val taking = allMembers(
+                through,
+            ).firstOrNull { m -> valueParams(m).any { it.type.classifier == handleType } }
+            if (taking != null) {
+                val index = valueParams(taking).indexOfFirst { it.type.classifier == handleType }
+                var got: Any? = null
+                answers[javaName(taking)] = { args ->
+                    got = args[index]
+                    dummy(taking.returnType)
                 }
+                callMember(
+                    proxy(),
+                    taking,
+                    valueParams(taking).mapIndexed { i, p -> if (i == index) handle else dummy(p.type) },
+                )
+                return got!!
             }
-            val types = handlerArgTypes(bundle::class, field.name)
-            var got: Any? = null
-            heardFields[field.name] = { args -> got = args[types.indexOfFirst { it.classifier == handleType }] }
-            invoke(
-                field.getter.call(bundle)!!,
-                types.map {
-                    if (it.classifier == handleType) handle else dummy(it)
-                },
-                isSuspend(field.returnType),
-            )
-            return got!!
+            val bundle = listenAndHear()
+            val passing = bundle::class.memberProperties.firstOrNull { f ->
+                handlerArgTypes(bundle::class, f.name).any { it.classifier == handleType }
+            }
+            if (passing != null) {
+                val types = handlerArgTypes(bundle::class, passing.name)
+                var got: Any? = null
+                heardFields[passing.name] = { args -> got = args[types.indexOfFirst { it.classifier == handleType }] }
+                deliver(
+                    passing.getter.call(bundle)!!,
+                    types.map { if (it.classifier == handleType) handle else dummy(it) },
+                )
+                return got!!
+            }
+            // A run a delivery answers, which the adapter expires: our handler answers [handle], the proxy wraps it.
+            val answering = bundle::class.memberProperties.first { deliveryReturnsRunning(it.returnType) }
+            answeredBy[answering.name] = handle
+            val types = handlerArgTypes(bundle::class, answering.name)
+            return deliver(answering.getter.call(bundle)!!, types.map { dummy(it) })!!
         }
+
+        /** The member [through] registers its handlers through: an event port's `inbound`, or `listen`. */
+        private fun registration(): String =
+            if (allMembers(through).any { it.name == "inbound" }) "inbound" else PortGrid.LISTEN
+
+        /** What a handler of ours answers, by field, where it answers a handle the test drives. */
+        private val answeredBy = mutableMapOf<String, Any>()
 
         private val heardFields = mutableMapOf<String, (List<Any?>) -> Unit>()
 
         /** Listens through the proxy with a bundle of doubles, and answers the WRAPPED bundle the adapter was handed. */
         private fun listenAndHear(): Any {
-            answers["listen"] = { args ->
+            answers[registration()] = { args ->
                 heard = args[0]
                 Unit
             }
-            val listen = allMembers(through).first { it.name == "listen" }
+            val register = allMembers(through).first { it.name == registration() }
             val bundleType = PortGrid.handlerBundle(through)!!
             val ctor = bundleType.primaryConstructor!!
+            ctor.isAccessible = true
             val ours = ctor.callBy(
                 ctor.parameters.associateWith { param ->
-                    functionDouble(param.type) { args ->
+                    val heardBy: (List<Any?>) -> Any? = { args ->
                         heardFields[param.name]?.invoke(args)
-                        null
+                        answeredBy[param.name]
+                    }
+                    if (isFunctionType(param.type)) {
+                        functionDouble(param.type, heardBy)
+                    } else {
+                        deliveryDouble(param.type, heardBy)
                     }
                 },
             )
-            callMember(proxy(), listen, listOf(ours))
+            callMember(proxy(), register, listOf(ours))
             return heard!!
         }
 
@@ -253,7 +292,7 @@ class ProxyCompletenessTest {
         val path: String = text
     }
 
-    private companion object {
+    internal companion object {
         const val PROXY_PACKAGE = "app.snapsync.contracts.proxy"
 
         fun proxyClass(port: KClass<*>): KClass<*>? = runCatching {
@@ -293,7 +332,9 @@ class ProxyCompletenessTest {
         }
 
         fun handlerArgTypes(bundle: KClass<*>, field: String): List<KType> =
-            callbackArgTypes(bundle.memberProperties.first { it.name == field }.returnType)
+            bundle.memberProperties.first { it.name == field }.returnType.let {
+                if (isFunctionType(it)) callbackArgTypes(it) else deliveryArgs(it)
+            }
 
         fun callbackArgTypes(type: KType): List<KType> = type.arguments.dropLast(1).mapNotNull { it.type }
             .filterNot { it.classifier == Continuation::class }
@@ -432,5 +473,61 @@ class ProxyCompletenessTest {
             ).getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
             return unsafe.javaClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, c)
         }
+    }
+}
+
+private fun isFunctionType(type: KType): Boolean = (type.classifier as? KClass<*>)?.isSubclassOf(Function::class) == true
+
+private fun valueParams(m: KCallable<*>): List<KParameter> = m.parameters.filter { it.kind == KParameter.Kind.VALUE }
+
+/** A handle the grid names: a port's own, or one the inbound kinds hand across (`Completion`, `Running`). */
+private fun handleClass(name: String): KClass<*> = listOf("app.snapsync.ports", "app.snapsync.inbound").firstNotNullOf {
+    runCatching { Class.forName("$it.$name").kotlin }.getOrNull()
+}
+
+/**
+ * Makes [args] — what an adapter passes — as the delivery [handler] of its inbound kind: its argument (`Unit`
+ * where it takes none) and, for a `Background` or `Granted` one, the completion. Answers what it answered.
+ */
+private fun deliver(handler: Any, args: List<Any?>): Any? = when (handler) {
+    is Function<*> -> ProxyCompletenessTest.invoke(handler, args, suspending = false)
+    is Background<*> -> {
+        @Suppress("UNCHECKED_CAST")
+        val background = handler as Background<Any?>
+        background.handle(if (args.size == 2) args[0] else Unit, args.last() as Completion)
+    }
+    is Granted<*> -> {
+        @Suppress("UNCHECKED_CAST")
+        val granted = handler as Granted<Any?>
+        granted.handle(if (args.size == 2) args[0] else Unit, args.last() as Completion)
+    }
+    is Inbound<*, *> -> {
+        @Suppress("UNCHECKED_CAST")
+        (handler as Inbound<Any?, Any?>).deliver(args.singleOrNull() ?: Unit)
+    }
+    is Answered<*, *> -> {
+        @Suppress("UNCHECKED_CAST")
+        (handler as Answered<Any?, Any?>).answer(args.singleOrNull() ?: Unit)
+    }
+    else -> error("not a delivery: $handler")
+}
+
+/**
+ * A double of a delivery of [type] (an inbound kind): it hands [body] what it was delivered — its argument
+ * (none for `Unit`) and, for a `Background` or `Granted` one, the completion — and answers what [body] answers,
+ * or for a `Granted` one a run that expires nothing when [body] answers none.
+ */
+private fun deliveryDouble(type: KType, body: (List<Any?>) -> Any?): Any {
+    val k = type.classifier as KClass<*>
+    return Proxy.newProxyInstance(k.java.classLoader, arrayOf(k.java)) { self, method, args ->
+        if (method.declaringClass == Any::class.java) {
+            return@newProxyInstance ProxyCompletenessTest.objectMethod(
+                self,
+                method,
+                args,
+            )
+        }
+        val given = args.orEmpty().toList().filterNot { it == Unit }
+        body(given) ?: if (k == Granted::class) ProxyCompletenessTest.double(Running::class) { null } else null
     }
 }

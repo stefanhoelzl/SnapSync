@@ -1,7 +1,7 @@
 package app.snapsync.ios.urlsession
 
-import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.logAt
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.TransferHandle
 import co.touchlab.kermit.Logger
@@ -124,21 +124,24 @@ private class SessionDelegate(
     @PlatformEntry
     override fun URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError: NSError?) =
         objcBoundary(log, "upload.didComplete") {
-            log.invocation(
-                "upload.didComplete",
-                params = "error=${didCompleteWithError?.localizedDescription ?: "«none»"}",
-                severity = Severity.Debug,
-            ) {
+            run {
                 events.completed(
                     SystemTransferTask(task),
                     (task.response as? NSHTTPURLResponse)?.statusCode ?: 0L,
                     didCompleteWithError,
                 )
+            }.also {
+                log.logAt(
+                    Severity.Debug,
+                ) { "upload.didComplete(error=${didCompleteWithError?.localizedDescription ?: "«none»"})" }
             }
         }
 
     // Session-level, once per OS re-attach: INFO.
     @PlatformEntry
     override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) =
-        objcBoundary(log, "upload.didFinishEvents") { log.invocation("upload.didFinishEvents") { events.drained() } }
+        objcBoundary(
+            log,
+            "upload.didFinishEvents",
+        ) { run { events.drained() }.also { log.i { "upload.didFinishEvents" } } }
 }

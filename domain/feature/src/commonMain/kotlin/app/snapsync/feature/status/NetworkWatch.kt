@@ -28,7 +28,7 @@ import kotlin.time.Duration.Companion.seconds
  * cause changed, not the presence. The grace is chosen for human perception, not derived, like the counts poller's
  * cadence.
  *
- * **Started and stopped by the lifecycle flows**, beside the counts poller ([ForegroundWatches]): [start] collects
+ * **Started and stopped by the lifecycle's entry points**, beside the counts poller ([ForegroundWatches]): [start] collects
  * [readings] — the port's cold flow, through its service — and [stop] cancels the collection, which stops the
  * platform's monitor. [stop] resets [access] to `ONLINE`, so returning to the foreground never shows a notice that may
  * no longer be true; the next collection's first reading replaces it, after the same grace.

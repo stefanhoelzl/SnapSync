@@ -1,13 +1,17 @@
-@file:OptIn(ExperimentalAtomicApi::class)
+@file:OptIn(CompositionOnly::class, ExperimentalAtomicApi::class)
 
 package app.snapsync.contracts
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Granted
+import app.snapsync.inbound.InboundImplementation
+import app.snapsync.inbound.Running
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import kotlin.concurrent.atomics.AtomicReference
@@ -59,19 +63,31 @@ class ScheduledWakes(
     val pendingWakes: suspend () -> Int,
 )
 
-/** One wake the adapter delivered: which, and the completion it handed over with it. */
-private class Delivered(val id: WakeId, val completion: ExpiringCompletion)
+/** One wake the adapter delivered: which, the completion it handed over with it, and whether the adapter expired it. */
+private class Delivered(val id: WakeId, val completion: Completion) {
+    val expired = AtomicReference(false)
+}
 
 /** Handlers that keep every wake delivered, releasing none — the clause decides when. */
 private class WakeRecorder {
     private val delivered = AtomicReference<List<Delivered>>(emptyList())
     val all: List<Delivered> get() = delivered.load()
-    val handlers = WakeHandlers { id, completion ->
-        while (true) {
-            val now = delivered.load()
-            if (delivered.compareAndSet(now, now + Delivered(id, completion))) break
-        }
-    }
+
+    @OptIn(InboundImplementation::class)
+    val handlers = WakeHandlers(
+        object : Granted<WakeId> {
+            override fun handle(arg: WakeId, completion: Completion): Running {
+                val wake = Delivered(arg, completion)
+                while (true) {
+                    val now = delivered.load()
+                    if (delivered.compareAndSet(now, now + wake)) break
+                }
+                return object : Running {
+                    override fun expire() = wake.expired.store(true)
+                }
+            }
+        },
+    )
 }
 
 /**
@@ -106,15 +122,15 @@ object WakeContract : Contract<WakeState, ScheduledWakes>("BackgroundScheduler")
             WakeState.DELIVERING,
             covers = cells {
                 on<Wake> {
-                    answers(Wake::listen).returns()
+                    answers(Wake::inbound).returns()
                     answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
-                    calls(WakeHandlers::onWake, WakeId.Heartbeat, ExpiringCompletion::class)
-                    handle<ExpiringCompletion>().answers(ExpiringCompletion::complete).returns()
+                    calls(WakeHandlers::onWake, WakeId.Heartbeat, Completion::class)
+                    handle<Completion>().answers(Completion::complete).returns()
                 }
             },
         ) { subject ->
             val recorder = WakeRecorder()
-            subject.wake.listen(recorder.handlers)
+            subject.wake.inbound(recorder.handlers)
             assertEquals(ScheduleResult.Scheduled, subject.wake.schedule(WakeId.Heartbeat, NOW))
             awaitWithin { recorder.all.isNotEmpty() }
             val wake = recorder.all.single()
@@ -129,13 +145,13 @@ object WakeContract : Contract<WakeState, ScheduledWakes>("BackgroundScheduler")
             covers = cells {
                 on<Wake> {
                     answers(Wake::schedule).with(ScheduleResult.Scheduled::class)
-                    calls(WakeHandlers::onWake, WakeId.LibraryChanged, ExpiringCompletion::class)
+                    calls(WakeHandlers::onWake, WakeId.LibraryChanged, Completion::class)
                 }
             },
         ) { subject ->
             val os = assertNotNull(subject.os, "a binding that delivers wakes plays the system's side of them")
             val recorder = WakeRecorder()
-            subject.wake.listen(recorder.handlers)
+            subject.wake.inbound(recorder.handlers)
             assertEquals(
                 ScheduleResult.Scheduled,
                 subject.wake.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = 1.seconds)),
@@ -150,23 +166,20 @@ object WakeContract : Contract<WakeState, ScheduledWakes>("BackgroundScheduler")
             WakeState.DELIVERING,
             covers = cells {
                 on<Wake> {
-                    calls(WakeHandlers::onWake, WakeId.Heartbeat, ExpiringCompletion::class)
-                    handle<ExpiringCompletion>().answers(ExpiringCompletion::onExpired).returns()
-                    handle<ExpiringCompletion>().callsBack(ExpiringCompletion::onExpired, "action")
+                    calls(WakeHandlers::onWake, WakeId.Heartbeat, Completion::class)
+                    handle<Running>().answers(Running::expire).returns()
                 }
             },
         ) { subject ->
             val os = assertNotNull(subject.os, "a binding that delivers wakes plays the system's side of them")
             val recorder = WakeRecorder()
-            subject.wake.listen(recorder.handlers)
+            subject.wake.inbound(recorder.handlers)
             subject.wake.schedule(WakeId.Heartbeat, NOW)
             awaitWithin { recorder.all.isNotEmpty() }
             val wake = recorder.all.single()
-            val expired = AtomicReference(false)
-            wake.completion.onExpired { expired.store(true) }
-            assertFalse(expired.load(), "a running wake has not expired")
+            assertFalse(wake.expired.load(), "a running wake has not expired")
             os.endRunningWake()
-            awaitWithin { expired.load() }
+            awaitWithin { wake.expired.load() }
             wake.completion.complete()
         }
 

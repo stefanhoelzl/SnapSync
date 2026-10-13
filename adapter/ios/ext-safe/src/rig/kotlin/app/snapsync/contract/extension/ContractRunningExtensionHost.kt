@@ -4,6 +4,9 @@ package app.snapsync.contract.extension
 
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.OsUploadQueueContract
+import app.snapsync.inbound.Answered
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.InboundImplementation
 import app.snapsync.ios.upload.Step
 import app.snapsync.ios.upload.callsFor
 import app.snapsync.ios.upload.extensionTransferClauses
@@ -15,6 +18,7 @@ import app.snapsync.ports.ExtensionHost
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.runBlocking
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
@@ -101,7 +105,7 @@ fun extensionRunPlan(): List<Pair<String, Int>> =
 
 /**
  * The extension's entry port with one difference: when the app's rig has requested a contract run, an invocation
- * performs the run's next call INSTEAD of the upload cycle. A decorator over [inner] — its forwarding [listen] is the
+ * performs the run's next call INSTEAD of the upload cycle. A decorator over [inner] — its forwarding [inbound] is the
  * composition's one registration, with the cycle handler wrapped.
  *
  * A run spans calls — a job the extension creates is uploaded only after the call returns (measured, SE2, iOS 26.6) —
@@ -113,9 +117,17 @@ fun extensionRunPlan(): List<Pair<String, Int>> =
 class ContractRunningExtensionHost(private val inner: ExtensionHost) : ExtensionHost {
     private val log = Logger.withTag("ExtensionContract")
 
-    override fun listen(handlers: ExtensionHandlers) = inner.listen(
-        ExtensionHandlers(onProcess = { contractOr(handlers.onProcess) }, onTerminate = handlers.onTerminate),
-    )
+    @CompositionOnly
+    override fun inbound(handlers: ExtensionHandlers) =
+        inner.inbound(ExtensionHandlers(onProcess = ContractOr(handlers.onProcess), onTerminate = handlers.onTerminate))
+
+    /** The invocation: the requested contract run's next call, or else the composition's own answer. */
+    @OptIn(InboundImplementation::class)
+    private inner class ContractOr(
+        private val cycle: Answered<Unit, ProcessingAnswer>,
+    ) : Answered<Unit, ProcessingAnswer> {
+        override fun answer(arg: Unit): ProcessingAnswer = runBlocking { contractOr { cycle.answer(Unit) } }
+    }
 
     private suspend fun contractOr(cycle: suspend () -> ProcessingAnswer): ProcessingAnswer {
         val requestPath = contractRunFile(RUN_REQUEST_FILE) ?: return cycle()

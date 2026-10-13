@@ -70,6 +70,7 @@ kotlin {
             if (rigEnabled) implementation(project(":app:ios:extension"))
             api(project(":domain:model"))
             api(project(":domain:ports"))
+            api(project(":domain:inbound"))
             api(project(":domain:feature"))
             api(project(":domain:compose"))
             // The shared host composition: the core and the status host over it (`snapSyncHost`).

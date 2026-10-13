@@ -60,6 +60,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
+            api(project(":domain:inbound"))
             api(project(":domain:feature"))
             // The Ktor core types darwinHttpClient() returns.
             api(project(":adapter:generic:app"))

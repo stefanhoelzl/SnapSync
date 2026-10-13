@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
@@ -23,7 +24,8 @@ internal class InMemoryWake(
 ) : Wake {
     @Volatile private var handlers: WakeHandlers? = null
 
-    override fun listen(handlers: WakeHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: WakeHandlers) {
         this.handlers = handlers
     }
 

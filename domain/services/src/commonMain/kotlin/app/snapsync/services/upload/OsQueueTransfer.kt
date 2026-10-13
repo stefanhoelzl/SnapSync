@@ -6,7 +6,6 @@ import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
-import app.snapsync.model.invocation
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.OsUploadJob
 import app.snapsync.ports.OsUploadQueue
@@ -34,64 +33,68 @@ import app.snapsync.services.gallery.galleryHandle
 class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: TransferSetup) : BackgroundTransfer {
     private val log = setup.log
 
-    override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
-        log.invocation(setup.entryContext, "platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
-            val report = Report(log, "fetch")
-            val out = ArrayList<PlatformUploadJob>()
-            for (job in queue.retryOffered()) {
-                when (val classified = classify(job)) {
-                    // EVERY presented job must be acknowledged, an unmappable one included (error 50008).
-                    FetchedJob.AcknowledgeToDrain -> {
+    override suspend fun fetchRetryJobs(): List<PlatformUploadJob> {
+        val report = Report(log, "fetch")
+        val out = ArrayList<PlatformUploadJob>()
+        for (job in queue.retryOffered()) {
+            when (val classified = classify(job)) {
+                // EVERY presented job must be acknowledged, an unmappable one included (error 50008).
+                FetchedJob.AcknowledgeToDrain -> {
+                    report.unrecoverable++
+                    acknowledge(job)
+                }
+                is FetchedJob.Emit -> when (val row = rowFor(classified)) {
+                    is JobRow.Found -> out += PlatformUploadJob(
+                        key = row.key,
+                        contentType = jobContentType(job.contentType, null),
+                        error = classified.error,
+                        data = job.resource?.let(::GalleryResourceRef),
+                    )
+                    // Never handed to the cycle, which would decline to retry it and leave it un-acknowledged:
+                    // a job for a photo that left is answered HERE.
+                    JobRow.Pruned -> {
+                        report.pruned++
+                        acknowledge(job)
+                    }
+                    JobRow.Unmappable -> {
                         report.unrecoverable++
                         acknowledge(job)
                     }
-                    is FetchedJob.Emit -> when (val row = rowFor(classified)) {
-                        is JobRow.Found -> out += PlatformUploadJob(
-                            key = row.key,
-                            contentType = jobContentType(job.contentType, null),
-                            error = classified.error,
-                            data = job.resource?.let(::GalleryResourceRef),
-                        )
-                        // Never handed to the cycle, which would decline to retry it and leave it un-acknowledged:
-                        // a job for a photo that left is answered HERE.
-                        JobRow.Pruned -> {
-                            report.pruned++
-                            acknowledge(job)
-                        }
-                        JobRow.Unmappable -> {
-                            report.unrecoverable++
-                            acknowledge(job)
-                        }
-                    }
                 }
             }
-            report.emit()
-            out
         }
+        report.emit()
+        log.i { "platform.fetchRetryJobs = ${out.size} job(s)" }
+        return out
+    }
 
     /**
      * Record every terminal job into the ledger and acknowledge it; return only the retry-spent failures whose
      * resource is still live, so the cycle can re-create them in this same cycle. A succeeded job is recorded
      * `COMPLETED` and nothing about it reaches the cycle.
      */
-    override suspend fun drainTerminals(): List<PlatformUploadJob> =
-        log.invocation(setup.entryContext, "platform.drainTerminals", result = { "${it.size} job(s)" }) {
-            val report = Report(log, "drainTerminals")
-            val out = ArrayList<PlatformUploadJob>()
-            for (job in queue.terminals()) {
-                when (val classified = classify(job)) {
-                    FetchedJob.AcknowledgeToDrain -> report.unrecoverable++
-                    is FetchedJob.Emit -> when (val row = rowFor(classified)) {
-                        is JobRow.Found -> settle(job, classified, row.key)?.let { out += it }
-                        // The photo left the library or the selection, maybe mid-upload: answered, nothing written.
-                        JobRow.Pruned -> report.pruned++
-                        JobRow.Unmappable -> report.unrecoverable++
-                    }
-                }
-                acknowledge(job)
+    override suspend fun drainTerminals(): List<PlatformUploadJob> {
+        val report = Report(log, "drainTerminals")
+        val out = ArrayList<PlatformUploadJob>()
+        for (job in queue.terminals()) {
+            drainOne(job, report)?.let { out += it }
+            acknowledge(job)
+        }
+        report.emit()
+        log.i { "platform.drainTerminals = ${out.size} job(s)" }
+        return out
+    }
+
+    /** One terminal [job]: recorded, counted into [report] — and answered when the cycle should re-create it. */
+    private suspend fun drainOne(job: OsUploadJob, report: Report): PlatformUploadJob? =
+        when (val classified = classify(job)) {
+            FetchedJob.AcknowledgeToDrain -> null.also { report.unrecoverable++ }
+            is FetchedJob.Emit -> when (val row = rowFor(classified)) {
+                is JobRow.Found -> settle(job, classified, row.key)
+                // The photo left the library or the selection, maybe mid-upload: answered, nothing written.
+                JobRow.Pruned -> null.also { report.pruned++ }
+                JobRow.Unmappable -> null.also { report.unrecoverable++ }
             }
-            report.emit()
-            out
         }
 
     /** Record [job]'s terminal fact for [key]; answer the job to re-create when it failed and its resource lives. */
@@ -134,15 +137,15 @@ class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: Trans
      * job belongs to.
      */
     override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) =
-        log.invocation(setup.entryContext, "platform.retryJob", params = "key=${job.key}") {
+        run body@{
             val candidates = queue.retryOffered().map { it to classify(it) }
             val offered = retryJobMatching(candidates, job.key) { (rowFor(it) as? JobRow.Found)?.key } ?: run {
                 log.w { "retryJob: no offered retry for ${job.key} — it settled underneath us" }
-                return@invocation
+                return@body
             }
             if (!isUploadDestination(request.url)) {
                 log.w { "retryJob: malformed destination URL for ${job.key} — not retrying" }
-                return@invocation
+                return@body
             }
             // The queue's own retry re-sends the library's bytes, so an encrypted event's edge seal is renewed with it.
             val headers = when (val seal = setup.sealOf(request.resource)) {
@@ -150,14 +153,14 @@ class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: Trans
                 is UploadSeal.Sealed -> request.headers + setup.sealing!!.edgeHeaders(seal)
                 is UploadSeal.Withheld -> {
                     log.i { "retryJob: ${job.key} withheld — ${seal.reason}" }
-                    return@invocation
+                    return@body
                 }
             }
             val answer = queue.retry(offered, UploadTarget(request.url, headers, setup.network()))
             if (answer is ChangeOutcome.Refused) {
                 log.w { "retryJob: the retry was refused for ${job.key} (code=${answer.code} ${answer.detail})" }
             }
-        }
+        }.also { log.i { "platform.retryJob(key=${job.key})" } }
 
     /**
      * Make a job sending [resource]'s own bytes to [request]'s destination — sealed by the edge in an encrypted event.
@@ -165,31 +168,26 @@ class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: Trans
      * limit is its own answer ([UploadCreateOutcome.LIMIT_EXCEEDED]): this creates until refused.
      */
     override suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome =
-        log.invocation(
-            setup.entryContext,
-            "platform.createJob",
-            params = "key=${resource.filename}",
-            result = { "$it" },
-        ) {
+        run body@{
             if (!isUploadDestination(request.url)) {
                 log.w { "createJob: malformed destination URL — not creating" }
-                return@invocation UploadCreateOutcome.FAILED
+                return@body UploadCreateOutcome.FAILED
             }
             val handle = resource.data.galleryHandle() ?: run {
                 log.w { "createJob: ${resource.filename} is no library resource — not creating" }
-                return@invocation UploadCreateOutcome.FAILED
+                return@body UploadCreateOutcome.FAILED
             }
             val headers = when (val seal = setup.sealOf(resource)) {
                 UploadSeal.Plain -> request.headers
                 is UploadSeal.Sealed -> request.headers + setup.sealing!!.edgeHeaders(seal)
                 is UploadSeal.Withheld -> {
                     log.i { "createJob: ${resource.filename} withheld — ${seal.reason}" }
-                    return@invocation UploadCreateOutcome.FAILED
+                    return@body UploadCreateOutcome.FAILED
                 }
             }
             queue.create(handle, UploadTarget(request.url, headers, setup.network())).uploadCreateOutcome()
                 .also { if (it == UploadCreateOutcome.LIMIT_EXCEEDED) log.w { "job limit reached — deferring the rest" } }
-        }
+        }.also { log.i { "platform.createJob(key=${resource.filename}) = $it" } }
 
     private fun classify(job: OsUploadJob): FetchedJob =
         classifyFetchedJob(job.destinationUrl?.let(::destinationPathOf), job.state, job.failure?.uploadFailure())

@@ -1,7 +1,6 @@
 package app.snapsync.permission
 
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.logging.invocation
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.objc.onQueue
@@ -62,9 +61,9 @@ class PhotoLibraryPermission {
             // PLATFORM ENTRY POINT: the OS calls this observer body, so
             // it records that it was called and what it read. Once per foreground: INFO.
             objcBoundary(log, "photoPermission.onDidBecomeActive") {
-                log.invocation("photoPermission.onDidBecomeActive", result = { status: LibraryGrant -> "$status" }) {
+                run {
                     read().also { state.value = it }
-                }
+                }.also { log.i { "photoPermission.onDidBecomeActive = ${"$it"}" } }
             }
         }
 

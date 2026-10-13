@@ -1,0 +1,14 @@
+# The `scheduling` tier (`DetektTiersPlugin`): `:domain:scheduling`, the runtime every run is started by.
+#
+# A CLAIM, not debt (`docs/patterns.md`): written with the code, not measured after it. The runtime is the one place
+# that launches coroutines and catches what a run throws, and it stays small enough to read in one sitting.
+complexity:
+  CyclomaticComplexMethod:
+    threshold: 7
+  CognitiveComplexMethod:
+    threshold: 9
+exceptions:
+  TooGenericExceptionCaught:
+    # The runtime is WHERE the broad catches stand (`docs/patterns.md`, "Containment"): a run's, `isolated`'s, a pass's.
+    # `CatchSitesTest` pins them, file by file, and no other production code may hold one.
+    active: false

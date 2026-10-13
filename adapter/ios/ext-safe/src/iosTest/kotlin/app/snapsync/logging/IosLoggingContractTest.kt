@@ -4,36 +4,32 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
-import app.snapsync.contracts.EntryContextContract
-import app.snapsync.contracts.EntryContextState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.LogSinkContract
 import app.snapsync.contracts.LogSinkState
+import app.snapsync.contracts.ThreadLabelContract
+import app.snapsync.contracts.ThreadLabelState
 import app.snapsync.contracts.WrittenLog
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.ports.EntryContext
+import app.snapsync.ports.ThreadLabel
 import app.snapsync.testsupport.newTempDirectory
 import app.snapsync.testsupport.readTextFile
 import app.snapsync.testsupport.removeDirectory
 import kotlin.test.Test
 
 /**
- * The iOS device-log seams in the simulator's test executable: the ambient entry context both processes tag their
- * lines with ([IosEntryContext]) and the file sink each writes its own log through ([FileLogSink]), over a temp file.
+ * The iOS device-log seams in the simulator's test executable: the per-thread label both processes tag their lines
+ * with ([IosThreadLabel]) and the file sink each writes its own log through ([FileLogSink]), over a temp file.
  */
 class IosLoggingContractTest {
 
-    private val context = object : Binding<EntryContextState, EntryContext> {
+    private val label = object : Binding<ThreadLabelState, ThreadLabel> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
-        override val reaches = setOf(EntryContextState.AMBIENT)
-        override fun create(state: EntryContextState, clauseId: String, log: CallLog): Entered<EntryContext> =
-            if (state in reaches) {
-                Entered.Ready(IosEntryContext.recorded(log))
-            } else {
-                Entered.Unreachable("an iOS process tags every line with its entry point")
-            }
+        override val reaches = setOf(ThreadLabelState.EMPTY)
+        override fun create(state: ThreadLabelState, clauseId: String, log: CallLog): Entered<ThreadLabel> =
+            Entered.Ready(IosThreadLabel.recorded(log)) { IosThreadLabel.swap(null) }
     }
 
     private val sink = object : Binding<LogSinkState, WrittenLog> {
@@ -50,7 +46,7 @@ class IosLoggingContractTest {
     }
 
     @Test
-    fun `the ambient entry context satisfies the EntryContext contract`() = verify(EntryContextContract, context)
+    fun `the per-thread label satisfies the ThreadLabel contract`() = verify(ThreadLabelContract, label)
 
     @Test
     fun `the device-log file satisfies the LogSink contract`() = verify(LogSinkContract, sink)

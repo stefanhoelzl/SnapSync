@@ -1,7 +1,12 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.ios.urlsession
 
+import app.snapsync.contracts.backgroundOf
+import app.snapsync.contracts.inboundOf
 import app.snapsync.download.DOWNLOAD_SESSION_ID
 import app.snapsync.download.IosDownload
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.TransferHandlers
 import co.touchlab.kermit.Logger
@@ -20,20 +25,20 @@ class BackgroundSessionsTest {
     fun `each session's events reach the handlers of the session the operating system named`() {
         val handedTo = mutableListOf<String>()
         val upload = IosUrlSessionUploadPlatform(Logger.withTag("test"), "app.snapsync.test.upload")
-        upload.listen(
+        upload.inbound(
             TransferHandlers(
-                onFinished = { _, _ -> },
-                onBackgroundEvents = { handedTo += "upload" },
-                onEventsDrained = {},
+                onFinished = inboundOf {},
+                onBackgroundEvents = backgroundOf { _, _ -> handedTo += "upload" },
+                onEventsDrained = inboundOf {},
             ),
         )
         val download = IosDownload(Logger.withTag("test"))
-        download.listen(
+        download.inbound(
             DownloadHandlers(
-                onFinished = { _, _, _ -> },
-                onCompleted = { _, _ -> },
-                onBackgroundEvents = { handedTo += "download" },
-                onEventsDrained = {},
+                onFinished = inboundOf {},
+                onCompleted = inboundOf {},
+                onBackgroundEvents = backgroundOf { _, _ -> handedTo += "download" },
+                onEventsDrained = inboundOf {},
             ),
         )
         val sessions = BackgroundSessions(upload, download)

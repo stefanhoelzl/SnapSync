@@ -32,9 +32,9 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
+import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff

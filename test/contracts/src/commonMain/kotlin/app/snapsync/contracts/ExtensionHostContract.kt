@@ -1,5 +1,8 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
@@ -36,7 +39,7 @@ object ExtensionHostContract : Contract<ExtensionHostState, ExtensionHostUnderTe
             ExtensionHostState.INVOKABLE,
             covers = cells {
                 on<ExtensionHost> {
-                    answers(ExtensionHost::listen).returns()
+                    answers(ExtensionHost::inbound).returns()
                     calls(ExtensionHandlers::onProcess)
                     calls(ExtensionHandlers::onTerminate)
                 }
@@ -45,13 +48,13 @@ object ExtensionHostContract : Contract<ExtensionHostState, ExtensionHostUnderTe
             var processed = 0
             var ended = 0
             var answer = ProcessingAnswer.PROCESSING
-            subject.host.listen(
+            subject.host.inbound(
                 ExtensionHandlers(
-                    onProcess = {
+                    onProcess = answeredOf {
                         processed++
                         answer
                     },
-                    onTerminate = { ended++ },
+                    onTerminate = inboundOf { ended++ },
                 ),
             )
             // Every answer reaches the platform as its own result — the adapter passes it through, deciding nothing.

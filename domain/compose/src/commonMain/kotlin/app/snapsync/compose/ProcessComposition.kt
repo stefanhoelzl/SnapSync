@@ -1,5 +1,7 @@
 package app.snapsync.compose
 
+import app.snapsync.entrypoints.OnMetricReport
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.ReportDestination
 import app.snapsync.ports.BuildInfo
@@ -7,15 +9,17 @@ import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
-import app.snapsync.ports.EntryContext
 import app.snapsync.ports.Files
 import app.snapsync.ports.LogSink
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
+import app.snapsync.ports.ThreadLabel
+import app.snapsync.scheduling.Runtime
 import app.snapsync.services.crash.CrashReporting
 import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.logs.ProcessLogWriters
+import app.snapsync.services.logs.SinkLines
 import app.snapsync.services.logs.SinkLogWriter
 import app.snapsync.services.logs.bootBanner
 import co.touchlab.kermit.Logger
@@ -44,8 +48,8 @@ class ProcessPorts(
     val clock: Clock,
     /** The platform's cryptographic primitives — an encrypted event's files are sealed and opened over them. */
     val crypto: Crypto,
-    /** The ambient entry-point seam the device-log lines and the crash channel's `entry_point` tag read. */
-    val entryContext: EntryContext,
+    /** The label each thread's log lines carry — the run it is working for; the crash channel's `entry_point` tag. */
+    val threadLabel: ThreadLabel,
     /**
      * What the running build is: where it reports to ([BuildInfo.dsn]), what the boot banner names, and the constants
      * every composition over this process reads.
@@ -76,8 +80,8 @@ class ProcessServices internal constructor(
     val clock: Clock,
     /** The process's one [Crypto]. */
     val crypto: Crypto,
-    /** The process's one entry-point seam. */
-    val entryContext: EntryContext,
+    /** The process's one per-thread log label. */
+    val threadLabel: ThreadLabel,
     /**
      * The process's Kermit writers: every line to the [ProcessPorts.logSinks], and — where the build reports — into the
      * crash channel. Installed by [snapSyncProcess] where the process owns the global logger ([ProcessLogWriters]).
@@ -112,22 +116,24 @@ class ProcessServices internal constructor(
  *    report over exactly once, so the handler must already be live (it is: [ProcessAccount] over the started
  *    channel, whose log writer is already installed).
  */
-fun snapSyncProcess(ports: ProcessPorts): ProcessServices {
-    val crash = CrashReporting(ports.crashReporter, ports.build, ports.entryContext, ports.files)
+@OptIn(CompositionOnly::class)
+fun snapSyncProcess(ports: ProcessPorts, runtime: Runtime): ProcessServices {
+    val crash = CrashReporting(ports.crashReporter, ports.build, ports.threadLabel, ports.files)
     ports.crashReporter.listen(CrashHandlers(onEvent = crash::shapeEvent, onBreadcrumb = crash::shapeCrumb))
     val logging = ProcessLogWriters(
-        listOfNotNull(SinkLogWriter(ports.logSinks, ports.entryContext), crash.logWriter),
+        listOfNotNull(SinkLogWriter(ports.logSinks, ports.threadLabel), crash.logWriter),
+        listOfNotNull(SinkLines(ports.logSinks, ports.threadLabel), crash.lines),
         ports.logSinks,
     )
     logging.install()
     val footprints = FootprintTrail(ports.files, ports.clock)
     val services = ProcessServices(
         crash, ProcessAccount(crash, footprints), footprints, ports.files, ports.clock, ports.crypto,
-        ports.entryContext, logging, ports.build,
+        ports.threadLabel, logging, ports.build,
     )
     val boot = services.logger("process")
     ports.build.bootBanner().forEach { line -> boot.i { line } }
     crash.start()
-    ports.processMetrics.listen(MetricHandlers(onReport = services.processAccount::handle))
+    ports.processMetrics.inbound(MetricHandlers(onReport = OnMetricReport(runtime, services.processAccount)))
     return services
 }
