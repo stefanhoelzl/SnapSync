@@ -14,6 +14,7 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.WipeScope
 import app.snapsync.rig.gallery.WipeWindow
+import app.snapsync.rig.gallery.addLivePhoto
 import app.snapsync.rig.gallery.photoKitCensus
 import app.snapsync.rig.gallery.seedPhotos
 import app.snapsync.rig.gallery.wipeGallery
@@ -102,6 +103,7 @@ private fun photoKitCommands(launch: RigLaunch, photoAccess: PhotoLibraryPermiss
     } else {
         mapOf(
             "gallery/seed" to seedCommand { n, kind -> seedPhotos(log, n, kind) },
+            "gallery/add-moving" to addMovingCommand { photo -> addLivePhoto(log, photo) },
             "gallery/wipe" to RigCommand { params, _ ->
                 // A VALUE, not presence, and the only command here that refuses on one — because a wipe cannot be
                 // undone, so a stale or mistyped scope must refuse rather than delete something. `limit`/`offset`

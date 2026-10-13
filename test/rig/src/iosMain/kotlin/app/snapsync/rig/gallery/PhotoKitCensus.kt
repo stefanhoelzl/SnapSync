@@ -14,6 +14,9 @@ import platform.Photos.PHFetchOptions
 private const val SUBTYPE_SCREENSHOT = 4
 private const val SUBTYPE_SCREEN_RECORDING = 524_288
 
+/** `PHAssetMediaSubtypePhotoLive`: the census's moving photos — what a received photo that moves must become here. */
+private const val SUBTYPE_LIVE_PHOTO = 8
+
 /**
  * The app host's raw subtype census for [GalleryReport]: PhotoKit, with no predicate for the total and the
  * SELECT form per subtype. Why it bypasses the policy seam is on [GalleryReport].
@@ -23,6 +26,7 @@ fun photoKitCensus(): CensusView = CensusView(
     total = PHAsset.fetchAssetsWithOptions(null).count.toLong(),
     screenshots = countMatching(SUBTYPE_SCREENSHOT),
     screenRecordings = countMatching(SUBTYPE_SCREEN_RECORDING),
+    moving = countMatching(SUBTYPE_LIVE_PHOTO),
 )
 
 @OptIn(ExperimentalForeignApi::class)

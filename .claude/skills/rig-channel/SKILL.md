@@ -132,6 +132,9 @@ GET  /device/logs?process=app|extension pass-through to DeviceLogSource.tail, BO
 GET  /device/gallery[?cutoff=…][&resources=true]   the library, through the app's own policy
 POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
+POST /device/gallery/add-moving         body = {date, files: [{name, data(base64)}]}: ONE photo from a camera's own
+                                        files — iPhone: a still (+ its movie → a Live Photo); Android: one
+                                        motion-photo file. Real library only; `census.moving` counts what moves
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
 POST /device/uploaders?app=&extension= switch one uploader off/on (see below)
 POST /device/disk[?depth=2&largest=20]  what the app's files take on the REAL disk, per container: `shared` (the App

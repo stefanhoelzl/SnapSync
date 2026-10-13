@@ -44,7 +44,17 @@ data class GalleryView(
  * cannot set a subtype.
  */
 @Serializable
-data class CensusView(val total: Long, val screenshots: Long, val screenRecordings: Long)
+data class CensusView(
+    val total: Long,
+    val screenshots: Long,
+    val screenRecordings: Long,
+    /**
+     * How many of [total] MOVE in the platform's own form — a Live Photo on iPhone, a motion photo whose video is where
+     * its XMP says on Android — or null on a host that does not look (a mocked library holds no media bytes). Null is
+     * not zero: a host that cannot tell must never read as "nothing moves".
+     */
+    val moving: Long? = null,
+)
 
 /**
  * The origin exclusions' tuning the running app decides with (`SelectionCalibration`): the two resolution floors, in

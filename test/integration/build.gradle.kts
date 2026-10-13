@@ -1,3 +1,6 @@
+import java.net.URI
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kover)
@@ -83,6 +86,50 @@ tasks.register<Test>("journeys") {
         providers.gradleProperty("snapsync.journey.$name").orNull?.let { systemProperty("snapsync.journey.$name", it) }
     }
 }
+
+// The journeys' Android motion photos: REAL camera files — a Pixel 6 Pro's and a Pixel 8a's (the second carries
+// two video tracks), and Samsung One UI 5 and 6 JPEGs (their videos carry sound) and a One UI 6 HEIC — from
+// Immich's test assets. They are AGPL-3.0, so they are FETCHED, never committed: pinned to one commit, each
+// checked against its SHA-256, into the build directory, and added to the journeys' resources under
+// `motionphoto/`. A changed or missing file fails the build naming it; nothing falls back. (The iPhone Live Photo
+// is our own capture, committed under `moving/`.)
+abstract class FetchFixtures : DefaultTask() {
+    /** Each file's name → `url sha256`. */
+    @get:Input abstract val files: MapProperty<String, String>
+
+    @get:OutputDirectory abstract val into: DirectoryProperty
+
+    @TaskAction
+    fun fetch() {
+        val dir = into.get().dir("motionphoto").asFile.apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        files.get().forEach { (name, spec) ->
+            val (url, sha256) = spec.split(' ')
+            val bytes = URI(url).toURL().openStream().use { it.readBytes() }
+            val actual = MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+            check(actual == sha256) { "$name from $url has SHA-256 $actual, pinned $sha256" }
+            dir.resolve(name).writeBytes(bytes)
+        }
+    }
+}
+val immichAssets = "https://raw.githubusercontent.com/immich-app/test-assets/ec56cc6c1d76c45bc9615dc6ea232470a2b0a3a1"
+val fetchMotionPhotos = tasks.register<FetchFixtures>("fetchMotionPhotos") {
+    description = "Fetches the journeys' real Android motion photos (Immich test assets, pinned by commit and SHA-256)."
+    files.set(
+        mapOf(
+            "pixel-6-pro.jpg" to "4944eb4bb29ebf15dc342ab6d56399ab32efdfa78612bf08a9f53b1338c324bc",
+            "pixel-8a.jpg" to "c0f8317d1c2fca83df19aa2108d4754faf70d60a1baab60f7220a5d463dad1d0",
+            "samsung-one-ui-5.jpg" to "abfa7937af1c3dc2e4321dd713c7041c6871c21772d671d065b059ec07779537",
+            "samsung-one-ui-6.jpg" to "d193cbfc1967b8c319569fdb3c6e0c3ec5a5ebbe4f47080e9c6a86e8c6d327b3",
+            "samsung-one-ui-6.heic" to "4a604f5f28dee41565f766585ab4b29026e0031389504a0d2152a3b844a7e19c",
+        ).mapValues { (name, sha256) -> "$immichAssets/formats/motionphoto/$name $sha256" },
+    )
+    into.set(layout.buildDirectory.dir("journeys-fixtures"))
+}
+journeys.resources.srcDir(fetchMotionPhotos)
 
 // The journeys' full runtime classpath, one line, so `scripts/sim-contracts` and `scripts/android-journeys` can run
 // them with a bare `java` next to a live simulator instead of starting Gradle there: a Gradle daemon plus a test JVM

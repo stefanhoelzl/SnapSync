@@ -112,6 +112,11 @@ internal fun jvmRefusals(
             "source, album and folder census, which a mocked library has no counterpart for",
     )
     put(
+        "device/gallery/add-moving",
+        "a mocked photo library holds no media bytes for a camera's files to become; its moving photo is " +
+            "POST /device/gallery/add?kind=live-photo",
+    )
+    put(
         "device/process-metrics",
         "process-metric reports are MetricKit's; the JVM runs no process the operating system measures",
     )

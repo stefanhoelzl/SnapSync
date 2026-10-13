@@ -930,9 +930,22 @@ never through a scenario that happens to pass through them.
 
 A few end-to-end runs with **everything real**: the rig build on **one** simulator or emulator, `api/` served
 locally, and the real photo library — the same journeys on iOS and Android. They cover creating and joining an event, the app's own photos reaching the
-backend and the union, and the app receiving another member's photos into its library. That other member is
-played by the journey itself (`Member`), over the backend's **public HTTP surface only**, with real JPEG bytes,
-so the app's download ends in a real photo-library import. It is never a JVM-host lever or a private route,
+backend and the union, the app receiving another member's photos into its library, and photos that **move**
+(capability `receiving-photos`, "Received photos keep full fidelity"; `delivery`, "Only the original is uploaded,
+complete"): another member's iPhone Live Photo and real Android motion photos each arrive moving, in the phone's own
+form, and the app's own Live Photo or motion photo is shared whole. That other member is
+played by the journey itself (`Member`), over the backend's **public HTTP surface only**, with real camera bytes,
+so the app's download ends in a real photo-library import.
+
+The moving photos are **real camera files**, because a synthesized one is only as real as our idea of the format
+(the motion photo whose sound hung every iPhone import passed a two-frame, soundless fixture): an iPhone SE2's own Live
+Photo, scrubbed of its location and silenced, committed under `journeys/resources/moving/`, and five phones' motion
+photos (Pixel 6 Pro; Pixel 8a, two video tracks; Samsung One UI 5 and 6 with sound; a One UI 6 HEIC) from Immich's
+test assets. Those are AGPL-3.0, so they are never committed: `:test:integration:fetchMotionPhotos` fetches them pinned
+to one commit and checks each SHA-256, into the journeys' resources under `motionphoto/`. A moving photo reaches the
+app's library through `POST /device/gallery/add-moving` (the camera's files as they are), and the library's census
+counts what moves (`census.moving`: Live Photos on iPhone, motion photos whose video is where their XMP says on
+Android). It is never a JVM-host lever or a private route,
 because a member the backend could tell apart from a device is not a member. One simulator, because a second
 fresh simulator's first-boot work swamped the hosted runner (it tripled the job and made the journeys flaky).
 

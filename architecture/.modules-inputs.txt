@@ -245,6 +245,7 @@ edge :test:partial-grant :test:contracts
 edge :test:rig :adapter:android
 edge :test:rig :adapter:generic:app
 edge :test:rig :adapter:generic:mock
+edge :test:rig :adapter:generic:motionphoto
 edge :test:rig :adapter:ios:app-only
 edge :test:rig :adapter:ios:ext-safe
 edge :test:rig :app:jvm
