@@ -1,7 +1,6 @@
 package app.snapsync.integration
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -34,32 +33,15 @@ suspend fun Rig.uploadAll() {
 
 /** The object keys the backend lists for [device] (this device by default) in [event] (the joined one by default). */
 suspend fun Rig.objects(device: String? = null, event: String? = null): Set<String> =
-    deviceJson(
-        "backend/objects",
-        *listOfNotNull(device?.let { "device" to it }, event?.let { "event" to it }).toTypedArray(),
-    )
-        .getValue("objects").jsonArray.mapTo(mutableSetOf()) { it.jsonPrimitive.content }
+    publicBackend.objects(device, event).toSet()
 
 /** The asset ids the event's union serves, with the roles each is served with. */
 suspend fun Rig.union(event: String? = null): Map<String, Set<String>> =
-    deviceJson("backend/union", *listOfNotNull(event?.let { "event" to it }).toTypedArray())
-        .getValue("assets").jsonArray.associate { a ->
-            val o = a.jsonObject
-            o.getValue("asset").jsonPrimitive.content to
-                o.getValue("roles").jsonArray.mapTo(mutableSetOf()) { it.jsonPrimitive.content }
-        }
+    publicBackend.union(event).associate { it.asset to it.roles.toSet() }
 
 /** The asset ids — and each one's declared roles — the backend holds in [device]'s manifest for [event]; null when none. */
-suspend fun Rig.manifest(event: String? = null, device: String? = null): Map<String, Set<String>>? {
-    val params = listOfNotNull(event?.let { "event" to it }, device?.let { "device" to it }).toTypedArray()
-    val manifest = deviceJson("backend/manifest", *params)["manifest"]
-    if (manifest == null || manifest is JsonNull) return null
-    return manifest.jsonObject.getValue("assets").jsonArray.associate { a ->
-        val o = a.jsonObject
-        o.getValue("assetId").jsonPrimitive.content to
-            o.getValue("resources").jsonArray.mapTo(mutableSetOf()) { it.jsonObject.getValue("role").jsonPrimitive.content }
-    }
-}
+suspend fun Rig.manifest(event: String? = null, device: String? = null): Map<String, Set<String>>? =
+    backend.membership(event, device).manifest?.roles
 
 /**
  * A fellow member of [event] (the joined one by default) whose [assets] are complete on the backend — but [uploading]'s,
@@ -73,17 +55,14 @@ suspend fun Rig.foreignDevice(
     filename: String? = null,
     final: Boolean = false,
     uploading: List<String> = emptyList(),
-): String {
-    val params = listOfNotNull(
-        "device" to device,
-        "assets" to assets.joinToString(","),
-        ("uploading" to uploading.joinToString(",")).takeIf { uploading.isNotEmpty() },
-        event?.let { "event" to it },
-        filename?.let { "filename" to it },
-        ("final" to "true").takeIf { final },
-    ).toTypedArray()
-    return deviceJson("foreign-device", *params).getValue("eventId").jsonPrimitive.content
-}
+): String = publicBackend.foreignDevice(
+    device,
+    assets.toList(),
+    event = event,
+    filename = filename,
+    final = final,
+    uploading = uploading,
+)
 
 /**
  * The foreground's download reconcile — the union read, and the transfers it starts. Only the foreground entry does
@@ -157,22 +136,14 @@ suspend fun Rig.albums(): List<Album> =
 
 /** How many push registrations the backend stored for this device — the config is last-write-wins, the count is not. */
 suspend fun Rig.registrations(): Int =
-    deviceJson("backend/device-config").getValue("writes").jsonPrimitive.content.toInt()
+    backend.deviceConfig().writes
 
 /** The token and environment the backend holds for this device, or null when none was registered. */
 suspend fun Rig.deviceConfig(): Pair<String, String>? {
-    val config = deviceJson("backend/device-config")
-    val token = config["token"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: return null
-    return token to config.getValue("env").jsonPrimitive.content
+    val config = backend.deviceConfig()
+    return config.token?.let { it to checkNotNull(config.env) }
 }
 
 /** The pushes the backend sent, as (event, device, token). */
 suspend fun Rig.pushesSent(): List<Triple<String, String, String>> =
-    deviceJson("backend/pushes").getValue("pushes").jsonArray.map { p ->
-        val o = p.jsonObject
-        Triple(
-            o.getValue("event").jsonPrimitive.content,
-            o.getValue("device").jsonPrimitive.content,
-            o.getValue("token").jsonPrimitive.content,
-        )
-    }
+    backend.pushes().map { Triple(it.eventId, it.deviceId, it.token) }

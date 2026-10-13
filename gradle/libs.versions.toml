@@ -28,6 +28,9 @@ dependencyAnalysis = "3.19.2"
 kover = "0.9.11"
 kotlinx-datetime = "0.8.0"
 kotlinx-serialization = "1.11.0"
+# The control channel's typed lever interfaces (`:test:levers`): its compiler plugin derives each `@Rpc` interface's
+# descriptor and client. Experimental, and its plugin must list the `kotlin` version above (its "versions" page).
+kotlinx-rpc = "0.10.4"
 qrose = "1.3.1"
 # Never 3.2.0: it names a field `use streaming syntax`, which D8 refuses below DEX 040 (minSdk 30)
 # (KTOR-8583, fixed in 3.2.1). The Android minSdk is 30 now, but a build must not hinge on it.
@@ -112,6 +115,7 @@ sqldelight-driver-native = { module = "app.cash.sqldelight:native-driver", versi
 sqldelight-dialect-sqlite = { module = "app.cash.sqldelight:sqlite-3-25-dialect", version.ref = "sqldelight" }
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
+kotlinx-rpc-core = { module = "org.jetbrains.kotlinx:kotlinx-rpc-core", version.ref = "kotlinx-rpc" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -155,3 +159,4 @@ sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 dependency-analysis = { id = "com.autonomousapps.dependency-analysis", version.ref = "dependencyAnalysis" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
+kotlinx-rpc = { id = "org.jetbrains.kotlinx.rpc.plugin", version.ref = "kotlinx-rpc" }

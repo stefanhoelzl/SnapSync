@@ -14,6 +14,7 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.levers.BackendFault
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.AppleAppAttestProof
 import app.snapsync.wire.models.Proof
@@ -71,7 +72,7 @@ class BackendContractBindingTest {
                 val transport = mock.port()
                 val setup = EdgeSetup(transport, BASE)
                 val seeded = BackendContract.seed(state, clauseId, setup)
-                if (state == BackendState.VERSION_REFUSED) mock.operator.minAppVersion = DEPLOYED_MINIMUM
+                if (state == BackendState.VERSION_REFUSED) mock.operator.minAppVersion(DEPLOYED_MINIMUM)
                 faultOf(
                     state,
                 )?.let { fault -> OPERATIONS.forEach { mock.operator.fail(it, fault, times = Int.MAX_VALUE) } }

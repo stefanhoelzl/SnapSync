@@ -65,8 +65,6 @@ object RigVocabulary {
      * adapters") — refused, naming the real system, everywhere else.
      */
     val worldLevers: List<String> = listOf(
-        "device/backend/offline",
-        "device/backend/objects",
         "device/jobs",
         "device/jobs/limit",
         "device/jobs/complete",
@@ -84,20 +82,8 @@ object RigVocabulary {
         "device/album/delete",
         "device/invite-link-hints",
         "device/encrypt-new-events",
-        "device/foreign-device",
-        "device/foreign-device/leave",
-        "device/foreign-device/received",
-        // The integration surface's observable reads of the world's simulated systems (capability
-        // `docs/testing.md`, "The seam-to-UI-state integration surface") — what the backend, the crash
-        // reporter and the push service recorded.
-        "device/backend/union",
-        "device/backend/manifest",
-        "device/backend/device-config",
-        "device/backend/event",
-        "device/backend/departed",
-        "device/backend/publishes",
-        "device/backend/reads",
-        "device/backend/pushes",
+        // The integration surface's observable reads of the world's simulated systems (`docs/testing.md`, "The
+        // seam-to-UI-state integration surface") — what the crash reporter recorded. The backend's are its services'.
         "device/diagnostics/sent",
         // What the operating system recorded of the app: the completion handlers it handed over and got back, the
         // screen, the selection observer, the heartbeat requests, the background-time holds, the push registrations
@@ -105,18 +91,6 @@ object RigVocabulary {
         "device/os-record",
         // ...and the levers that put those systems, the photo library and the operating system into the states a
         // test starts from.
-        "device/backend/min-app-version",
-        "device/backend/sweep",
-        "device/backend/hold",
-        "device/backend/next-event-id",
-        "device/backend/complete",
-        "device/backend/finished",
-        "device/backend/fail-listing",
-        "device/backend/fail-union",
-        "device/backend/deposit",
-        "device/backend/refuse-credential",
-        "device/backend/refuse-attestation",
-        "device/backend/wipe-bytes",
         "device/clock/advance",
         "device/network",
         "device/conditions",
@@ -157,13 +131,19 @@ object RigVocabulary {
             "adapter choice to read or write; the app host's rig build reads one at every start"
     }
 
+    /**
+     * The typed services' verbs (`LeverDispatch.kt`): every method of every declared service, `device/<service>/<method>`,
+     * derived from its interface — never listed here. Honoured like [worldLevers], by what each service needs.
+     */
+    val serviceVerbs: List<String> = SERVICE_VERBS
+
     /** The port-contract verb (`GET /contract`, `POST /contract/<name>`). */
     const val CONTRACT: String = "contract"
 
     val entries: Set<String> =
         (
             appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts +
-                adapterCommands + CONTRACT
+                serviceVerbs + adapterCommands + CONTRACT
             )
             .toSet()
 }

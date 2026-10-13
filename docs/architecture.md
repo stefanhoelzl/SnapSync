@@ -36,7 +36,7 @@ group, with the group's argument in the commit.
 
 | group | why it exists | members |
 |---|---|---|
-| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:inbound` `:domain:ports` `:domain:scheduling` `:domain:services` `:domain:feature` `:domain:entrypoints` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:state` `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` `:adapter:generic:sentry` `:adapter:generic:motionphoto` · `:app:ios` `:app:ios:extension` `:app:desktop` |
+| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:inbound` `:domain:ports` `:domain:scheduling` `:domain:services` `:domain:feature` `:domain:entrypoints` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:state` `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` `:adapter:generic:sentry` `:adapter:generic:motionphoto` · `:test:levers` (the mocks withheld from the tests that call their typed faces) · `:app:ios` `:app:ios:extension` `:app:desktop` |
 | **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:test:rig`, `:test:contracts`, `:test:launch-adapters` (`-Psnapsync.rig`) |
 | **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:app:jvm` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` `:tools:detekt-rules` |
 

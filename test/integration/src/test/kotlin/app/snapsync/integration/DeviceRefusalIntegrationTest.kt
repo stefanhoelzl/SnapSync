@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.AttestationRefusal
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.presentation.message
 import app.snapsync.ui.state.JoinPhase
@@ -73,7 +74,7 @@ class DeviceRefusalIntegrationTest {
         foreground()
         awaitState { (it.ui.layer as? Layer.CreateEvent)?.error == ScreenMessage.DEVICE_UNVERIFIABLE }
 
-        device("backend/refuse-attestation", "reason" to "off")
+        backend.refuseAttestation()
         // No reopening: the tap re-checks, and the event is created as on any genuine phone.
         create()
     }
@@ -94,7 +95,7 @@ class DeviceRefusalIntegrationTest {
         assertEquals(ScreenMessage.APP_NOT_GENUINE, phase.refusal)
         assertFalse(refused.ready.configResolved)
 
-        device("backend/refuse-attestation", "reason" to "off")
+        backend.refuseAttestation()
         user("retryJoin")
         awaitState { it.ready.configResolved }
     }
@@ -129,7 +130,7 @@ class DeviceRefusalIntegrationTest {
     fun only_a_report_offered_for_the_refusal_carries_the_certificates_the_phone_presented() = rigTest {
         // Which root a refused phone's proof ends at reaches the operator — from "Report
         // this", never from any other report.
-        device("backend/refuse-attestation", "reason" to "device-unverifiable", "detail" to "certificate")
+        backend.refuseAttestation(AttestationRefusal.DEVICE_UNVERIFIABLE, "certificate")
         tokenless()
 
         user("reportRefusal")
@@ -163,6 +164,6 @@ class DeviceRefusalIntegrationTest {
     }
 
     private suspend fun Rig.refuse(reason: DeviceRefusal) {
-        device("backend/refuse-attestation", "reason" to reason.wireName)
+        backend.refuseAttestation(AttestationRefusal.valueOf(reason.name))
     }
 }

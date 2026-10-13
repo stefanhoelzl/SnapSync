@@ -36,7 +36,7 @@ class VersionGateIntegrationTest {
     )
     fun a_refused_build_reaches_the_update_screen_carrying_the_minimum_and_the_remedy() = rigTest {
         createAndJoin()
-        device("backend/min-app-version", "minimum" to "0.4")
+        backend.minAppVersion("0.4")
         device("app-version", "version" to "0.3") // a build that predates v2
 
         // Any backend call at all — the gate precedes every route, which is the whole reason a refused build cannot
@@ -53,7 +53,7 @@ class VersionGateIntegrationTest {
     @Verifies(spec = "app-update-required", requirement = "The notice clears by itself")
     fun updating_clears_the_refusal_and_the_screen_goes_away() = rigTest {
         createAndJoin()
-        device("backend/min-app-version", "minimum" to "0.4")
+        backend.minAppVersion("0.4")
         device("app-version", "version" to "0.3")
         anyBackendCall()
         awaitState { it.ui.layer is Layer.UpdateRequired }
@@ -71,7 +71,7 @@ class VersionGateIntegrationTest {
         // The negative direction, and it is not ceremony: a gate that reported on every response would park
         // every member on an update screen, and the two tests above would still pass.
         createAndJoin()
-        device("backend/min-app-version", "minimum" to "0.4")
+        backend.minAppVersion("0.4")
         device("app-version", "version" to "0.9")
 
         anyBackendCall()

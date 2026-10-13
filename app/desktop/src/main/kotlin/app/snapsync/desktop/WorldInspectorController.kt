@@ -10,7 +10,8 @@ import app.snapsync.domain.time.Timestamp
 import app.snapsync.inbound.Completion
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
-import app.snapsync.mock.BackendCall
+import app.snapsync.levers.AttestationRefusal
+import app.snapsync.levers.BackendCall
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
@@ -240,7 +241,7 @@ class WorldInspectorController(
 
     // ---- failure levers --------------------------------------------------------------------------
 
-    fun setBackendOffline(offline: Boolean) = launchMutation { mocks.backend.operator.offline = offline }
+    fun setBackendOffline(offline: Boolean) = launchMutation { mocks.backend.operator.offline(offline) }
 
     /**
      * The backend refuses this phone as not genuine for [reason], or stops (`null`) — a refused phone is told
@@ -248,7 +249,7 @@ class WorldInspectorController(
      */
     fun setRefusedAttestation(
         reason: DeviceRefusal?,
-    ) = launchMutation { mocks.backend.operator.refuseAttestation = reason }
+    ) = launchMutation { mocks.backend.operator.refuseAttestation(reason?.let { AttestationRefusal.valueOf(it.name) }) }
 
     /**
      * The membership made **unreadable** — the state a real device is in before its first unlock after a boot, when
@@ -272,7 +273,7 @@ class WorldInspectorController(
     }
 
     /** A one-shot lever: [change] the device's mocks, then say what was done in the console as [said]. */
-    fun lever(said: String, change: JvmMocks.() -> Unit) = launchMutation {
+    fun lever(said: String, change: suspend JvmMocks.() -> Unit) = launchMutation {
         mocks.change()
         appendConsole(said)
     }
@@ -486,10 +487,14 @@ class WorldInspectorController(
             appUploads = appUploads,
             downloads = downloads,
             jobLimit = queue.jobLimit,
-            backendOffline = mocks.backend.operator.offline,
-            refusedAttestation = mocks.backend.operator.refuseAttestation,
+            backendOffline = mocks.backend.operator.switches().offline,
+            refusedAttestation = mocks.backend.operator.switches().refusingAttestation?.let {
+                DeviceRefusal.valueOf(
+                    it.name,
+                )
+            },
             membershipUnreadable = mocks.databases.operator.locked,
-            held = BackendCall.entries.filter { mocks.backend.operator.isHeld(it) }.mapTo(mutableSetOf()) { it.key } +
+            held = mocks.backend.operator.switches().held.mapTo(mutableSetOf()) { it.key } +
                 listOfNotNull(ENUMERATION.takeIf { mocks.library.operator.enumerationHeld }),
         )
     }

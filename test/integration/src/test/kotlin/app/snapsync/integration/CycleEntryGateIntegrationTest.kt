@@ -1,8 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -28,7 +26,7 @@ import kotlin.test.assertTrue
 class CycleEntryGateIntegrationTest {
 
     /** How many manifest publishes the backend APPLIED for this device in the joined event. */
-    private suspend fun Rig.publishes(): Int = deviceJson("backend/publishes").getValue("applied").jsonPrimitive.int
+    private suspend fun Rig.publishes(): Int = backend.membership().publishes
 
     private suspend fun Rig.membershipUnreadable(on: Boolean) {
         // Before the first unlock after a boot every App-Group file is closed: the databases the membership lives in.

@@ -1,7 +1,5 @@
 package app.snapsync.integration
 
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -20,7 +18,7 @@ import kotlin.test.assertEquals
 class ManifestVersionIntegrationTest {
 
     /** How many manifest publishes the backend APPLIED for this device in the joined event. */
-    private suspend fun Rig.publishes(): Int = deviceJson("backend/publishes").getValue("applied").jsonPrimitive.int
+    private suspend fun Rig.publishes(): Int = backend.membership().publishes
 
     @Test
     fun a_cycle_that_changed_the_ledger_is_followed_by_one_republish_and_then_skips() = rigTest {

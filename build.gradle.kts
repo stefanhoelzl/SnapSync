@@ -45,6 +45,7 @@ plugins {
     // modules is part of the contract, so it is readable in each module's own build file and a new
     // module is never silently instrumented.
     alias(libs.plugins.kover) apply false
+    alias(libs.plugins.kotlinx.rpc) apply false
 }
 
 // `./gradlew buildHealth` — declared-but-unused module dependencies (`docs/architecture.md`).

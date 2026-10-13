@@ -1,9 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -74,8 +71,7 @@ class FlexibleShareRangeIntegrationTest {
     }
 
     private suspend fun Rig.final(event: String): Boolean =
-        deviceJson("backend/manifest", "event" to event).getValue("manifest").jsonObject
-            .getValue("final").jsonPrimitive.boolean
+        checkNotNull(backend.membership(event).manifest).final
 
     private companion object {
         const val START = "2026-05-15T00:00:00"

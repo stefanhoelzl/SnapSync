@@ -146,9 +146,9 @@ class ShareSetIntegrationTest {
         leave()
         val jobsBefore = jobs().created
 
-        device("backend/fail-listing", "on" to "true")
+        backend.failListing(true)
         val next = createAndJoin(name = "Next")
-        device("backend/fail-listing", "on" to "false")
+        backend.failListing(false)
 
         assertEquals(next, state().ready.eventId, "the failed listing blocked nothing")
         cycle()

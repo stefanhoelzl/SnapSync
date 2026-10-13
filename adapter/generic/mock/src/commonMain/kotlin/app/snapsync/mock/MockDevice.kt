@@ -58,7 +58,7 @@ open class MockDevice(
     val extensionRegistry = ExtensionRegistryMock(supported = osDrivenUpload)
 
     /** Where an OS-performed upload lands: the backend mock's byte route, unless the caller routes it elsewhere. */
-    private val uploadNetwork = network ?: UploadNetwork { url, headers, _ -> backend.operator.receive(url, headers) }
+    private val uploadNetwork = network ?: backend.byteRoute
     private val onRestrictedNetwork: () -> Boolean = { connectivity.cell.value == NetworkAccess.Online(restricted = true) }
     private val holdsUnrestrictedOnly: (TransferNetwork) -> Boolean =
         { rule -> rule == TransferNetwork.UNRESTRICTED_ONLY && onRestrictedNetwork() }

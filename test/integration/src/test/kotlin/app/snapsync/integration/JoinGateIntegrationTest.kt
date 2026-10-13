@@ -1,13 +1,12 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.BackendCall
 import app.snapsync.rig.RigState
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.step
 import kotlinx.coroutines.delay
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -79,11 +78,11 @@ class JoinGateIntegrationTest {
     fun a_load_failure_is_retryable() = rigTest {
         val event = registerEvent(name = "Anna's Wedding")
 
-        device("backend/offline", "on" to "true")
+        backend.offline(true)
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.LoadFailed }
 
-        device("backend/offline", "on" to "false")
+        backend.offline(false)
         user("retryLoad")
         awaitReady()
     }
@@ -100,7 +99,7 @@ class JoinGateIntegrationTest {
         openLink(inviteLink(event))
         awaitReady()
 
-        device("backend/offline", "on" to "true") // enrollment PUT now fails
+        backend.offline(true) // enrollment PUT now fails
         user("confirmJoin")
         awaitState {
             ((it.ui.layer as? Layer.JoiningEvent)?.phase)?.step == JoinPhase.Detailed.Step.CommitFailed
@@ -151,7 +150,7 @@ class JoinGateIntegrationTest {
         val current = createAndJoin(name = "Summer Trip") // already joined to E
 
         // The backend holds E's DELETE open, so it never completes while the switch runs.
-        device("backend/hold", "call" to "leave", "on" to "true")
+        backend.hold(BackendCall.LEAVE)
 
         openLink(inviteLink(next))
         awaitSwitchReady()
@@ -167,7 +166,7 @@ class JoinGateIntegrationTest {
         assertNotNull(manifest(next), "enrolled in the new event")
         assertFalse(departed(current), "E's DELETE never gated either step")
 
-        device("backend/hold", "call" to "leave", "on" to "false")
+        backend.release(BackendCall.LEAVE)
         eventually<Boolean>(read = { departed(current) }) { it }
     }
 
@@ -303,7 +302,7 @@ class JoinGateIntegrationTest {
 
         // The nightly sweep deletes the event out from under a still-active member, and time moves
         // past the deadline the membership persisted at join. BOTH witnesses now hold.
-        device("backend/sweep", "event" to event)
+        backend.sweep(event)
         device("clock/advance", "to" to PAST_EVERY_DEADLINE)
 
         os("app", "onForeground")
@@ -327,7 +326,7 @@ class JoinGateIntegrationTest {
 
         // The event is very much alive; the backend just cannot be reached. Past the deadline too, so
         // ONLY the confirmed-absence witness is missing — exactly the systemic-fault shape.
-        device("backend/offline", "on" to "true")
+        backend.offline(true)
         device("clock/advance", "to" to PAST_EVERY_DEADLINE)
 
         os("app", "onForeground")
@@ -350,7 +349,7 @@ class JoinGateIntegrationTest {
     }
 
     private suspend fun Rig.departed(event: String): Boolean =
-        deviceJson("backend/departed", "event" to event).getValue("departed").jsonPrimitive.boolean
+        backend.membership(event).departed
 
     /** Upload one own photo to completion, so the backend holds a NON-empty manifest for [event]. */
     private suspend fun Rig.shareOnePhoto(event: String) {

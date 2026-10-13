@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.BackendCall
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -75,11 +76,11 @@ class HeldScreenIntegrationTest {
     }
 
     private suspend fun Rig.hold(call: String) {
-        device("backend/hold", "call" to call, "on" to "true")
+        backend.hold(checkNotNull(BackendCall.ofKey(call)))
     }
 
     private suspend fun Rig.release(call: String) {
-        device("backend/hold", "call" to call, "on" to "false")
+        backend.release(checkNotNull(BackendCall.ofKey(call)))
     }
 
     private fun app.snapsync.rig.RigState.step(): JoinPhase.Detailed.Step? =

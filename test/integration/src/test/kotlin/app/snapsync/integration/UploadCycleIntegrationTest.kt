@@ -196,7 +196,7 @@ class UploadCycleIntegrationTest {
         assertTrue(primaryKey("A") in objects())
         assertTrue("A" in union(first))
 
-        device("backend/wipe-bytes")
+        backend.wipeBytes()
         assertTrue(objects().isEmpty())
         assertTrue("A" !in union(first), "the union drops what has no bytes")
 

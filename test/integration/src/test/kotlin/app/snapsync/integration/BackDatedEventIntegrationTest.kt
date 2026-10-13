@@ -2,9 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.ui.state.SharingNote
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,7 +42,7 @@ class BackDatedEventIntegrationTest {
         assertEquals(setOf("HOST-1", "GUEST-1"), union(event).keys, "both members' photos are in the event")
         val shared = awaitState { it.joined?.sharingNote == SharingNote.EveryoneShared }
         assertEquals(2, shared.joined!!.members, "the joined screen counts both members")
-        device("foreign-device/received", "device" to GUEST)
+        publicBackend.foreignDeviceReceived(GUEST)
 
         // Everyone has everything, but the week the host chose is not over: the event is not finished.
         refresh()
@@ -62,7 +59,7 @@ class BackDatedEventIntegrationTest {
         // The sweep deletes the photos: the host is shown the event as over, with the guest's photo still in the
         // library.
         val library = libraryTotal()
-        device("backend/complete", "event" to event)
+        backend.complete(event)
         refresh()
         val over = awaitState { it.joined?.deleted == true }
         assertNull(over.joined!!.members, "a deleted event shows no member count")
@@ -96,7 +93,7 @@ class BackDatedEventIntegrationTest {
         assertFalse(finished(event), "it never reports what it received, so the event waits on it")
 
         // It leaves on its own, as that build always has; nothing it never reported holds the event up any more.
-        device("foreign-device/leave", "device" to OLD_BUILD)
+        publicBackend.foreignDeviceLeave(OLD_BUILD)
         eventually(read = {
             refresh()
             finished(event)
@@ -105,10 +102,10 @@ class BackDatedEventIntegrationTest {
     }
 
     private suspend fun Rig.finished(event: String): Boolean =
-        deviceJson("backend/finished", "event" to event).getValue("finished").jsonPrimitive.boolean
+        backend.eventState(event).finished
 
     private suspend fun Rig.closedAt(event: String): String? =
-        deviceJson("backend/event", "event" to event).getValue("closedAt").jsonPrimitive.contentOrNull
+        publicBackend.event(event).closedAt
 
     private companion object {
         const val GUEST = "9e570000-0000-4000-8000-000000000001"

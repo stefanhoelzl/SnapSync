@@ -47,7 +47,7 @@ class DeclaredPhotosIntegrationTest {
         stage()
         awaitState { it.joined?.counts?.received == DirectionCount.Progress(done = 2, total = 4) }
 
-        device("foreign-device/leave", "device" to DEV_F)
+        publicBackend.foreignDeviceLeave(DEV_F)
         reconcile()
 
         awaitInSync()

@@ -1,5 +1,10 @@
 package app.snapsync.control
 
+import app.snapsync.levers.AttestationRefusal
+import app.snapsync.levers.BackendCall
+import app.snapsync.levers.BackendFault
+import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import app.snapsync.ui.state.Layer
@@ -7,6 +12,7 @@ import app.snapsync.ui.state.NetworkNotice
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -50,7 +56,7 @@ class JvmHostProtocolTest {
      */
     @Test
     fun a_refused_build_reaches_the_update_required_screen() = onHost { client ->
-        client.deviceVerb("backend/min-app-version", mapOf("minimum" to "100.0")).done()
+        client.levers(BackendLevers).minAppVersion("100.0")
         // Any backend call carries the version; a create is the first a person makes.
         client.user(
             "create",
@@ -65,7 +71,7 @@ class JvmHostProtocolTest {
     fun a_delivered_push_token_is_registered_on_the_backend() = onHost { client ->
         client.os("app", "onPushToken", arg = "DEADBEEF").done()
         val deadline = kotlin.time.TimeSource.Monotonic.markNow() + kotlin.time.Duration.parse("10s")
-        while ("DEADBEEF" !in client.deviceVerb("backend/device-config").done()) {
+        while (client.levers(BackendLevers).deviceConfig().token != "DEADBEEF") {
             check(deadline.hasNotPassedNow()) { "the delivered token never reached the backend" }
             kotlinx.coroutines.delay(50)
         }
@@ -131,9 +137,13 @@ class JvmHostProtocolTest {
     @Test
     fun the_attestation_refusal_lever_takes_a_reason_and_refuses_any_other() = onHost { client ->
         assertTrue("device/backend/refuse-attestation" in client.device().honoured)
-        val on = client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "device-modified")).done()
-        assertTrue("device-modified" in on, on)
-        assertTrue("off" in client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "off")).done())
+        val backend = client.levers(BackendLevers)
+        // The readable verb, as curl sends it: the reason by its wire name.
+        client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "device-modified")).done()
+        assertEquals(AttestationRefusal.DEVICE_MODIFIED, backend.switches().refusingAttestation)
+        // Without one, the phone is genuine again.
+        client.deviceVerb("backend/refuse-attestation").done()
+        assertEquals(null, backend.switches().refusingAttestation)
         val bad = assertIs<Reply.Failed>(client.deviceVerb("backend/refuse-attestation", mapOf("reason" to "tampered")))
         assertEquals(400, bad.status)
         assertTrue("device-unverifiable" in bad.body, bad.body)
@@ -141,8 +151,57 @@ class JvmHostProtocolTest {
 
     @Test
     fun a_backend_lever_the_real_backend_cannot_honour_is_refused() = onHost("deno") { client ->
-        val offline = assertIs<Reply.Refused>(client.deviceVerb("backend/offline"))
+        val offline = assertIs<Reply.Refused>(client.deviceVerb("backend/offline", mapOf("on" to "true")))
         assertTrue("unavailable on this backend" in offline.reason, offline.reason)
+        val typed = assertFailsWith<LeverRefused> { client.levers(BackendLevers).offline(true) }
+        assertEquals(offline.reason, typed.reason, "the typed client is refused for the same reason")
+        assertTrue("device/backend/offline" in client.device().refused, "and the host advertises the refusal")
+    }
+
+    /**
+     * Every typed service's method is a verb the host classifies — derived from its interface, never listed — and the
+     * curl form reads its arguments from the query by the parameter's type (`docs/testing.md`, "The control channel").
+     */
+    @Test
+    fun the_typed_services_are_verbs_with_typed_arguments() = onHost { client ->
+        val ad = client.device()
+        assertTrue("device/backend/refuse-next-credential" in ad.honoured, "a method's verb is its kebab-case name")
+        assertTrue("device/public-backend/foreign-device-leave" in ad.honoured)
+        val wrong = assertIs<Reply.Failed>(client.deviceVerb("backend/hold", mapOf("call" to "leave", "on" to "true")))
+        assertTrue("unknown: [on]" in wrong.body, "an argument the method does not take is a 400: ${wrong.body}")
+        val missing = assertIs<Reply.Failed>(client.deviceVerb("backend/hold"))
+        assertTrue("call is required" in missing.body, missing.body)
+        val bad = assertIs<Reply.Failed>(client.deviceVerb("backend/hold", mapOf("call" to "rename")))
+        assertTrue("event|create|join|leave" in bad.body, "an enum's 400 names its values: ${bad.body}")
+
+        client.deviceVerb("backend/hold", mapOf("call" to "leave")).done()
+        assertTrue(
+            "\"held\":[\"leave\"]" in client.deviceVerb("backend/switches").done(),
+            "a read answers its value as JSON",
+        )
+        client.levers(BackendLevers).release(BackendCall.LEAVE)
+        assertEquals(false, BackendCall.LEAVE in client.levers(BackendLevers).switches().held)
+        val unjoined = assertIs<Reply.Failed>(client.deviceVerb("backend/membership"))
+        assertTrue("no joined event" in unjoined.body, "an omitted event is the joined one: ${unjoined.body}")
+    }
+
+    /**
+     * The backend mock's per-route faults, reachable over the channel: a fault on the create route reaches the screen,
+     * and the next create — the fault spent — goes through. An operation the device API does not declare is refused,
+     * since a fault on it would never fire.
+     */
+    @Test
+    fun a_route_fault_reaches_the_screen_once() = onHost { client ->
+        val backend = client.levers(BackendLevers)
+        val unknown = assertFailsWith<IllegalStateException> { backend.fail("createEvents", BackendFault.MAINTENANCE) }
+        assertTrue("createEvent" in unknown.message.orEmpty(), unknown.message)
+
+        backend.fail("createEvent", BackendFault.MAINTENANCE)
+        val create = mapOf("name" to "Faulty", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00")
+        client.user("create", create).done()
+        client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.error != null }
+        client.user("create", create).done()
+        client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
     }
 
     /**
@@ -189,10 +248,19 @@ class JvmHostProtocolTest {
 
         client.deviceVerb("jobs/complete").done()
         client.os("photokit-ext", "processRawValue").done()
-        val objects = client.deviceVerb("backend/objects").done()
-        assertTrue("-primary" in objects, "the backend lists the transferred object: $objects")
-        val union = client.deviceVerb("backend/union").done()
-        assertTrue("\"primary\"" in union, "the second cycle published the photo, and the event serves it: $union")
+        val backend = client.levers(PublicBackendLevers)
+        val objects = backend.objects()
+        assertTrue(objects.any { "-primary" in it }, "the backend lists the transferred object: $objects")
+        val union = backend.union()
+        assertTrue(
+            union.any { "primary" in it.roles },
+            "the second cycle published the photo, and the event serves it: $union",
+        )
+        // The same read as curl sends it: the reply is the return value, JSON.
+        assertEquals(
+            objects.joinToString(",", "[", "]") { "\"$it\"" },
+            client.deviceVerb("public-backend/objects").done(),
+        )
     }
 
     /**

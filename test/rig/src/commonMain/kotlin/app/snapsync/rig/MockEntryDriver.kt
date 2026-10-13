@@ -35,7 +35,7 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
      * whose union never grew, or when the backend behind the port is not the mock.
      */
     override fun silentPush(eventId: String?, done: () -> Unit) {
-        val seq = device.backend.operator.pushesSent().lastOrNull { it.eventId == eventId }?.seq
+        val seq = device.backend.pushesHandedOver().lastOrNull { it.eventId == eventId }?.seq
         val payload = buildMap<Any?, Any?> {
             put("eventId", eventId)
             seq?.let { put("seq", it) }

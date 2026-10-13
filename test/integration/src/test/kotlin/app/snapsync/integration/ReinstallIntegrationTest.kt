@@ -140,7 +140,7 @@ class ReinstallIntegrationTest {
 
         device("reinstall")
         addPhoto("OWN")
-        device("backend/fail-union", "on" to "true")
+        backend.failUnion(true)
         rejoinUnrecognised(event)
 
         cycle()
@@ -148,7 +148,7 @@ class ReinstallIntegrationTest {
         assertTrue(manifest(event).isNullOrEmpty(), "and nothing is announced to the others")
         assertEquals(SyncHealth.Loading, state().joined?.health, "the status stays on its neutral line")
 
-        device("backend/fail-union", "on" to "false")
+        backend.failUnion(false)
         recognisedAfter { os("app", "onForeground") }
         uploadAll()
 
@@ -172,10 +172,10 @@ class ReinstallIntegrationTest {
         downloadAll()
 
         device("reinstall")
-        device("backend/fail-union", "on" to "true")
+        backend.failUnion(true)
         rejoinUnrecognised(event)
         os("app", "onBackground")
-        device("backend/fail-union", "on" to "false")
+        backend.failUnion(false)
 
         recognisedAfter { os("app", "onBackgroundTask", HEARTBEAT) }
         cycle()
@@ -195,11 +195,11 @@ class ReinstallIntegrationTest {
         downloadAll()
 
         device("reinstall")
-        device("backend/fail-union", "on" to "true")
+        backend.failUnion(true)
         rejoinUnrecognised(event)
         device("network", "access" to "offline")
         awaitHealth { it is SyncHealth.NoNetwork } // a missing network is published only once it has lasted
-        device("backend/fail-union", "on" to "false")
+        backend.failUnion(false)
 
         recognisedAfter { device("network", "access" to "online") }
         cycle()

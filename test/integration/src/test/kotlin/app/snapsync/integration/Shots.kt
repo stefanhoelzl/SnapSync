@@ -78,7 +78,7 @@ suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
         }
         Shot.IN_SYNC -> {
             takePhotos()
-            device("backend/next-event-id", "id" to Shot.EVENT_ID)
+            backend.nextEventId(Shot.EVENT_ID)
             // Where the host composes the OS-driven extension, its cycle uploads (the app's own uploader would take the
             // same photos, so it is switched off); where it does not — Android — the app's uploader does, and the
             // operating system lands its transfers.

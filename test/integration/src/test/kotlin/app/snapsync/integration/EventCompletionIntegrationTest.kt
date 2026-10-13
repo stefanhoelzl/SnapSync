@@ -1,9 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,8 +25,8 @@ class EventCompletionIntegrationTest {
         device("clock/advance", "to" to AFTER_THE_END)
         // The first upload cycle after the end settles the share — on this host the operator plays the uploader.
         cycle()
-        val published = deviceJson("backend/manifest", "event" to event).getValue("manifest").jsonObject
-        assertEquals(true, published.getValue("final").jsonPrimitive.boolean, "the share is settled after the end")
+        val published = checkNotNull(backend.membership(event).manifest)
+        assertEquals(true, published.final, "the share is settled after the end")
 
         os("app", "onForeground")
 
@@ -60,7 +57,7 @@ class EventCompletionIntegrationTest {
         foreignDevice(DEV_F, "FQ")
         device("clock/advance", "to" to AFTER_THE_END)
         // The clock ran out while this member was away: the sweep completed the event.
-        device("backend/complete", "event" to event)
+        backend.complete(event)
 
         os("app", "onSilentPush", event)
 
@@ -76,12 +73,12 @@ class EventCompletionIntegrationTest {
     )
     fun a_leave_made_offline_reaches_the_backend_on_a_later_wake() = rigTest {
         val event = createAndJoin()
-        device("backend/offline", "on" to "true")
+        backend.offline(true)
 
         leave()
         assertFalse(departed(event), "the backend was unreachable")
 
-        device("backend/offline", "on" to "false")
+        backend.offline(false)
         os("app", "onForeground")
 
         val delivered = eventually(read = { departed(event) }, until = { it })
@@ -89,7 +86,7 @@ class EventCompletionIntegrationTest {
     }
 
     private suspend fun Rig.departed(event: String): Boolean =
-        deviceJson("backend/departed", "event" to event).getValue("departed").jsonPrimitive.boolean
+        backend.membership(event).departed
 
     private companion object {
         const val SHORT_START = "2026-05-15T00:00:00"

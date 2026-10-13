@@ -36,12 +36,12 @@ class RelaunchIntegrationTest {
     @Test
     fun the_version_gates_refusal_is_process_memory() = rigTest {
         createAndJoin()
-        device("backend/min-app-version", "minimum" to "0.4")
+        backend.minAppVersion("0.4")
         device("app-version", "version" to "0.3")
         foreground() // any backend call: the gate precedes every route
         awaitState { it.ui.layer is Layer.UpdateRequired }
 
-        device("backend/min-app-version") // the gate is lifted, and nothing asks the backend again
+        backend.minAppVersion() // the gate is lifted, and nothing asks the backend again
         device("relaunch")
 
         assertTrue(state().ui.layer is Layer.Joined, "a new process starts with no refusal in memory")

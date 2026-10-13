@@ -65,7 +65,7 @@ class PushRegistrationIntegrationTest {
         // The foreground's wake-point refresh gives the device a credential to be refused. Obtained before the
         // token arrives, so this first credential is not the change the test watches for.
         os("app", "onForeground")
-        device("backend/refuse-credential")
+        backend.refuseNextCredential()
 
         // The OS delivers a token: registration #1, through the DELIVERY arm — refused.
         os("app", "onPushToken", "DEADBEEF")
