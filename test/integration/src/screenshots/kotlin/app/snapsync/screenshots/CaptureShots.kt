@@ -66,22 +66,25 @@ internal interface CaptureHost {
 
     /**
      * Capture until two consecutive frames are byte-identical, and keep that frame at [to]. Neither platform stamps a
-     * time into its PNG, so identical bytes mean the pixels stopped moving — Compose has settled and any theme change
-     * has landed.
+     * time into its PNG, so identical bytes mean the pixels stopped moving — Compose has settled. A frame identical to
+     * [unlike] never counts: right after an appearance flip a loaded app can hold the old theme for two frames, which
+     * would settle on it (run 38470210476: `create` on a device still past its first boot; Android, run 38461109284).
      */
-    suspend fun settledScreenshot(to: File): File {
+    suspend fun settledScreenshot(to: File, unlike: File? = null): File {
+        val other = unlike?.readBytes()
         val previous = File(to.parentFile, ".prev.png")
         screenshot(previous)
         repeat(SETTLE_ATTEMPTS) {
             delay(1.seconds)
             screenshot(to)
-            if (to.readBytes().contentEquals(previous.readBytes())) {
+            val frame = to.readBytes()
+            if (frame.contentEquals(previous.readBytes()) && (other == null || !frame.contentEquals(other))) {
                 previous.delete()
                 return to
             }
             to.copyTo(previous, overwrite = true)
         }
-        error("the screen never settled for ${to.name}")
+        error(if (other == null) "the screen never settled for ${to.name}" else "${to.name} never settled unlike ${unlike.name}")
     }
 
     /** Whether the app's control channel answers on [port]. */
@@ -119,10 +122,8 @@ private class Capture(private val host: CaptureHost, private val out: File) {
         host.appearance(dark = false)
         val light = host.settledScreenshot(File(out, "${shot.id}-light.png"))
         host.appearance(dark = true)
-        val dark = host.settledScreenshot(File(out, "${shot.id}-dark.png"))
-        // The app re-themes on the appearance change; identical frames mean it did not, and half the set would be
-        // mislabelled.
-        check(!light.readBytes().contentEquals(dark.readBytes())) { "${shot.id} did not re-theme on the appearance flip" }
+        val dark = host.settledScreenshot(File(out, "${shot.id}-dark.png"), unlike = light)
+        // The dark frame is never the light one (`unlike`): a flip the app never re-themed on would mislabel half the set.
         println("captured ${shot.id} (light + dark)")
     }
 
