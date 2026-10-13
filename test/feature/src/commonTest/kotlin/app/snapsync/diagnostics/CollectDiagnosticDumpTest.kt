@@ -1,5 +1,10 @@
 package app.snapsync.diagnostics
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.configService
@@ -12,10 +17,6 @@ import app.snapsync.mock.inMemoryNetworkMonitor
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.AppFacts
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DeviceConditionsReading
 import app.snapsync.model.DiagnosticEnvironment
@@ -29,8 +30,7 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.StandbyBucket
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
+import app.snapsync.model.TimestampText
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.device.DeviceConditionsReadings
@@ -39,6 +39,7 @@ import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.network.NetworkReadings
 import app.snapsync.services.settings.MobileDataSetting
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -78,7 +79,7 @@ class CollectDiagnosticDumpTest {
         extLog: String? = null,
         config: EventConfig? = null,
         permission: LibraryGrant = LibraryGrant.GRANTED,
-        ledger: LedgerService = LedgerService(testShared()) { LEDGER_EVENT },
+        ledger: LedgerService = LedgerService(testShared()) { testEventId(LEDGER_EVENT) },
         downloads: DownloadService = DownloadService(inMemoryDatabases()),
         environment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
@@ -224,14 +225,14 @@ class CollectDiagnosticDumpTest {
     fun `the state section names the build and tier and membership`() = runTest {
         val dump = collector(
             config = EventConfig(
-                eventId = "5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e",
+                eventId = testEventId("5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e"),
                 name = "Anna's Birthday",
-                minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-07-01T00:00:00Z")),
-                maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-07-08T00:00:00Z")),
+                minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),
+                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-08T00:00:00Z")),
                 direction = Direction.Both,
                 saveToAlbum = true,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             ),
             permission = LibraryGrant.LIMITED,
             environment = DiagnosticEnvironment(
@@ -411,14 +412,14 @@ class CollectDiagnosticDumpTest {
         val failed = Fact.Failed(longest)
         val dump = collector(
             config = EventConfig(
-                eventId = "5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e",
+                eventId = testEventId("5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e"),
                 name = "n".repeat(100),
-                minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-07-01T00:00:00Z")),
-                maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-07-08T00:00:00Z")),
+                minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),
+                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-08T00:00:00Z")),
                 direction = Direction.Both,
                 saveToAlbum = true,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             ),
             conditions = conditions.port(),
             appFacts = { AppFacts(failed, failed, failed, failed) },
@@ -448,7 +449,7 @@ class CollectDiagnosticDumpTest {
 
     @Test
     fun `the ledger section is five labelled counts and no rows`() = runTest {
-        val ledger = LedgerService(testShared()) { LEDGER_EVENT }
+        val ledger = LedgerService(testShared()) { testEventId(LEDGER_EVENT) }
         ledger.recordUnlessSettled(LedgerEntry("a.jpg", AssetId("asset-1"), LedgerState.COMPLETED))
         ledger.recordUnlessSettled(LedgerEntry("b.jpg", AssetId("asset-2"), LedgerState.REQUESTED))
 

@@ -58,8 +58,9 @@ The per-module one-liners are in `CLAUDE.md` ("Modules"). The live graph is `arc
 
 ### The core and its zones
 
-The core is ten modules under `domain/`: nine zones and the host, each with its package at
-`app.snapsync.<zone>` (the host's is `app.snapsync.host`). Each declares only the zone edges its law
+The core is the modules under `domain/` — its zones, its layers and the host — each with its package at
+`app.snapsync.<zone>` (the host's is `app.snapsync.host`). "The core" names that grouping; `domain` names one layer
+of it, `:domain:domain`, whose package is `app.snapsync.domain` (the grouping is to be renamed `core/` in phase 5). Each declares only the zone edges its law
 permits, always with `implementation()`, so a forbidden reference does not resolve. That covers
 fully-qualified names, typealiases and generated source, which a text scan would miss. The permitted
 edges are `ModuleSetTest`'s `permitted` map.
@@ -69,16 +70,24 @@ inbound  <-  ports  <-  scheduling                       (the layers work enters
 model    <-  ports  <-  services  <-  feature  <-  entrypoints  <-  compose
                                          ^          (+ inbound, scheduling)    ^
                                          +-- presentation --------------------+-- host
+domain   <-  every zone above that names its values  (MIGRATING; it depends on nothing)
 ```
 
 `feature/` also sees `scheduling/` (the runtime its outliving work and a sequence's pass run on), and `entrypoints/`
 sees `feature/` and `services/` **migrating**: an entry point's steps still call today's features and services, until
 phase 4 moves the work under sequences and each edge goes.
 
+`domain/` is the first of the layers phase 4 moves the old zones into (`docs/patterns.md`, "The domain"). The old
+zones depend on it while their types move — `model`, `services`, `feature`, `presentation`, `entrypoints`, `compose`
+and the host, each edge **migrating** — and it depends on nothing, so the direction is one-way. Phase 5 deletes the
+old zones with their edges. `data`, `application` and `query` are created by the first phase that moves code into
+each.
+
 | zone | holds | may reference |
 |---|---|---|
+| `domain/` | values and pure policy, by concept (`time`, `event`, `sharing`, `asset`, `device`): the timestamp, the event's and a membership's dates and capture range, the identities. No format: the boundary reads and writes them (`docs/patterns.md`, "Formats live at the boundary") | nothing — no module, no library (`DomainPurity`) |
 | `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types (and the `EventCreator` command), logging helpers (`logAt`, `bestEffort`), and **every pure-data type a port carries** | nothing project-internal |
-| `inbound/` | how work **enters** the core: the four inbound kinds an event port delivers through (`Inbound`, `Background`, `Granted`, `Answered`), the handles they carry (`Completion`, `Running`), the `Trigger` that names the work, the structured `Log`, and the two opt-in markers (`@InboundImplementation`, `@CompositionOnly`) — `docs/patterns.md` | nothing project-internal |
+| `inbound/` | how work **enters** the core: the four inbound kinds an event port delivers through (`Inbound`, `Background`, `Granted`, `Answered`), the handles they carry (`Completion`, `Running`), the `Trigger` that names the work, the structured `Log`, and the opt-in markers (`@InboundImplementation`, `@CompositionOnly`, `@AppProcessOnly`) — `docs/patterns.md` | nothing project-internal |
 | `ports/` | every port interface — outbound, and the event ports the platform delivers through (`EventPort<H>`, registered with `inbound(handlers)`), with their `*Handlers` bundles typed by the inbound kinds — and nothing else (`PortsHoldInterfacesOnlyTest`). Every port extends the `Port` marker (`PortBundleTest`), `BuildInfo` among them: what the running build is | `model/`, `inbound/` |
 | `scheduling/` | how work **runs**: the process's `Runtime` (the supervised scope, the background-time holds, the expiry), the entry-point bases, `steps { }`, single-flight `Sequence`s, `outliving`, `Observation` — `docs/patterns.md` | `inbound/`, `ports/` (`BackgroundTime`, `ThreadLabel`) |
 | `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means — each a **concrete** class a feature takes as it is, with an interface only where there are several implementations or a decorator. The storage services (`LedgerService`, `DownloadService`, `SuppressionService`, `ConfigService`, `StagingService`, `DeviceManifestService`, `LogTailService`, `AlbumMapService`, `PersistedDeviceIdentity`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them); the gallery services (`GalleryAccessState` — what the grant means; `GalleryDiscovery`, `WalkMemo`, `GalleryAssetPresence`, `GalleryCandidateSource`, the permission-aware decorators, `GalleryAlbums`, `GalleryImporter`); the transfer services (`OsQueueTransfer` and `SessionTransfer`, `ExtensionRegistration`, `DownloadJobs`, `SessionDrains`); the push record (`PushRegistrationRecord`, `PushTokenSource`); the app's foreground facts (`AppForeground`); the backend services; and the process's crash reporting (`CrashReporting`, `ProcessAccount`) and log writers (`SinkLogWriter` for Kermit lines, `SinkLines` for the structured `Log`) | `model/`, `ports/`, `inbound/` |
@@ -243,7 +252,7 @@ received-photo recognition withholds what it must) and, once the host is assembl
 | Each kind of write to a durable port has exactly one owner (a feature use case or a port's guarded write), written as one transaction with the guard in the statement. Two processes running that owner is fine | **review** |
 | No transport adapter holds the ledger, not even the narrow `TransferRecord`: the upload service records a transfer's end, through that guarded write, where the platform reports it | `TransportLedgerGateTest` |
 | No OS completion handler is stored in a mutable field (Kotlin and Swift): an adapter wraps the block in an immutable `Completion` and delivers it with its event, and the run answers it once — after its work, or after the expiry's grace | `OsHandlerContainmentTest` (a plain ban, no licensed owner) + the runtime (`EntryPointTest`) |
-| The walk memo is built in one place (`appUploadDiscovery`) and bound only by the app's uploader, never by the extension or the shared `uploadCycle` | `WalkMemoContainmentTest` |
+| The walk memo is built in one place (`appUploadDiscovery`) and bound only by the app's uploader, never by the extension or the shared `uploadCycle` | `@AppProcessOnly` on its constructor, carried on by `appUploadDiscovery`; `OptInPinsTest` pins the uploader's one opt-in |
 | Mutable state touched from an OS callback thread is confined to a named lane (`@ConfinedTo`) or is a thread-safe primitive | `ConfinementGateTest` (heuristic) |
 
 ### Entry points, commands and queries
@@ -449,7 +458,9 @@ The coverage floors' end state is not a ratchet: a module at zero is held there 
 - `compose/` has its own tier. The `flow` tier went with its zone. `entrypoints/` and `scheduling/` have their own,
   and their files are the first that state a **claim**, written with the code, rather than debt measured after it:
   an entry point orders steps and decides nothing (cyclomatic and cognitive 4), and the runtime stays small enough to
-  read in one sitting (7 / 9). `inbound/` sits in `core`.
+  read in one sitting (7 / 9). `domain/`'s claim is the entry points' (4 / 4), and it was measured before it was
+  written: every pure rule bound for the layer was at most 6 / 4 in `model`, and each case above 4 re-checked a
+  nullable or sentinel input (`docs/patterns.md`, "The domain"). `inbound/` sits in `core`.
 - **`detektAppShell` is not a tier** and must never be folded into one. It is the shells' decision-free
   proof, and its value comes from the number being 2.
 - Compose trades `LongMethod` against `LongParameterList`. Extracting composables can raise tier totals
@@ -484,7 +495,7 @@ branch. A module is in one of two states, and its `plugins {}` block says which.
 
 - **At zero** — `id("snapsync.coverage-zero")`. Its `coverageZero` task (on `check`) reads the module's own Kover
   `report.xml` and fails on any missed `INSTRUCTION` or `BRANCH`. No ceiling, no percentage: a miss is fixed by a test,
-  never by a number. Today: `:domain:inbound`, `:domain:scheduling`, `:domain:entrypoints` (each at zero from creation, through the
+  never by a number. Today: `:domain:inbound`, `:domain:scheduling`, `:domain:entrypoints`, `:domain:domain` (each at zero from creation, through the
   `snapsync.layer` plugin), `:domain:model`, `:domain:ports`, `:domain:presentation`,
   `:domain:feature`, `:domain:services`, `:adapter:generic:app`, `:ui:components`, `:ui:screens` and the three wiring
   modules, `:domain:compose`, `:domain:host` and `:app:jvm`.

@@ -1,17 +1,19 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.SecureSlot
+import app.snapsync.model.TimestampText
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,13 +35,13 @@ class KeyPresenceTest {
     private val crypto = fakeCrypto()
 
     private fun config(keyId: String?) = EventConfig(
-        "11111111-1111-4111-8111-111111111111",
+        testEventId("11111111-1111-4111-8111-111111111111"),
         "Party",
-        captureCutoff("2026-07-06T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+        CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
         keyId = keyId,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     @Test

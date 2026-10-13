@@ -1,13 +1,14 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
+import app.snapsync.model.TimestampText
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesOf
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
@@ -77,7 +78,9 @@ class GalleryServicesTest {
 
     private fun photo(id: String) = platformPhoto(id)
 
-    private val policy = SelectionPolicy(listOf(SelectionRule.CaptureAfter(captureCutoff("2026-01-01T00:00:00Z"))))
+    private val policy = SelectionPolicy(
+        listOf(SelectionRule.CaptureAfter(CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")))),
+    )
 
     // ---- GalleryCandidateSource ---------------------------------------------------------------------
 
@@ -266,7 +269,7 @@ class GalleryServicesTest {
         )
         val denied = GalleryAlbums(
             gallery,
-        ).assetIdsInAlbums(SELECTION_CALIBRATION, captureCutoff("2026-01-01T00:00:00Z"))
+        ).assetIdsInAlbums(SELECTION_CALIBRATION, CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")))
         assertEquals(setOf(AssetId("A"), AssetId("B")), denied)
         assertEquals(
             listOf("albums", "albumMembers(wa)", "albumMembers(tg)"),
@@ -277,7 +280,7 @@ class GalleryServicesTest {
 
     @Test
     fun `an unreadable gallery denies nothing`() = runTest {
-        val cutoff = captureCutoff("2026-01-01T00:00:00Z")
+        val cutoff = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z"))
         assertEquals(
             emptySet(),
             GalleryAlbums(ScriptedGallery(readable = false)).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff),

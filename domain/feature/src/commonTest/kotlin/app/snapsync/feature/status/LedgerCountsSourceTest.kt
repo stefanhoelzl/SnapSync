@@ -1,6 +1,6 @@
 package app.snapsync.feature.status
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -1,11 +1,12 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureDate
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.model.ImportResult
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.TimestampText
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.ImportOutcome
@@ -23,12 +24,12 @@ class GalleryAssetReadingTest {
         val dated = platformPhoto("x/L0/001", created = "2026-06-01T10:00:00.750Z").asset.facts()
         assertEquals(AssetId("x_L0_001"), dated.assetId)
         assertEquals(
-            CaptureDate.parse("2026-06-01T10:00:00Z"),
-            dated.creationDate,
+            CaptureDate.Dated(TimestampText.parse("2026-06-01T10:00:00Z")),
+            dated.captureDate,
             "to the second, as every date compared",
         )
         assertEquals(4032L * 3024L, dated.pixelArea)
-        assertEquals(null, platformPhoto("u", created = null).asset.facts().creationDate)
+        assertEquals(CaptureDate.Undated, platformPhoto("u", created = null).asset.facts().captureDate)
     }
 
     @Test

@@ -90,7 +90,7 @@ suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
             } else {
                 landAppUploads(Shot.OWN_PHOTOS)
             }
-            foreignDevice("GUEST", *Array(Shot.THEIR_PHOTOS) { "GUEST-${it + 1}" })
+            foreignDevice(GUEST_DEVICE, *Array(Shot.THEIR_PHOTOS) { "GUEST-${it + 1}" })
             downloadAll()
             foreground()
         }

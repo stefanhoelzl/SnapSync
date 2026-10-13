@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.services.gallery.UploadDiscovery
@@ -25,15 +26,16 @@ val APP_WALK_MEMO_USE: WalkMemoUse = WalkMemoUse.SERVE
 
 /**
  * The app process's upload discovery binding: [walk] behind the walk memo (decision record
- * `changes/own-work-per-wake`, D9). The **one** place a [WalkMemo] is built, and called only from the app's
- * uploader — the upload extension binds its walk bare and walks afresh on every `process()` call
- * (`WalkMemoContainmentTest` pins both sides).
+ * `changes/own-work-per-wake`, D9). The **one** place a [WalkMemo] is built: it carries [AppProcessOnly] on, and the
+ * app's uploader is its one caller — the upload extension binds its walk bare and walks afresh on every `process()`
+ * call (`OptInPinsTest` pins the opt-in).
 
  *
  * [changeToken] is the app's `Gallery` — the extension's `GalleryReader` has none to offer — and
  * [grant] the grant [walk] itself decides its authority by, so the memo keys on the same answer the walk reports
  * under.
  */
+@AppProcessOnly
 fun appUploadDiscovery(
     walk: UploadDiscovery,
     changeToken: LibraryChangeTokenRead,

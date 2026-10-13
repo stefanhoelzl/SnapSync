@@ -1,5 +1,11 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -9,14 +15,15 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
-private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+private val FIXTURE_CEILING = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z"))
 
 class EventConfigTest {
 
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Every config carries a cutoff; it is required (capability `photo-sharing`). */
-    private val cutoff = captureCutoff("2026-07-06T14:32:11Z")
+    private val cutoffText = "2026-07-06T14:32:11Z"
+    private val cutoff = CaptureCutoff(TimestampText.parse(cutoffText))
 
     private fun roundTrip(config: EventConfig): EventConfig =
         json.decodeFromString(EventConfig.serializer(), json.encodeToString(EventConfig.serializer(), config))
@@ -24,12 +31,12 @@ class EventConfigTest {
     @Test
     fun `persists the cutoff across a serialization round-trip`() {
         val config = EventConfig(
-            eventId = "11111111-1111-4111-8111-111111111111",
+            eventId = testEventId("11111111-1111-4111-8111-111111111111"),
             name = "Birthday",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         assertEquals(config, roundTrip(config))
     }
@@ -58,7 +65,7 @@ class EventConfigTest {
         // concrete ceiling. One that has not loses its membership on update — the accepted cost on this
         // controlled install base, with a device reset as the escape hatch.
         val preCeiling =
-            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff"}"""
+            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoffText"}"""
         assertFailsWith<SerializationException> {
             json.decodeFromString(EventConfig.serializer(), preCeiling)
         }
@@ -67,7 +74,9 @@ class EventConfigTest {
     @Test
     fun `a config JSON without the event's end or deletion deadline does not decode`() {
         // Every membership since 0.2 stores both (the join writes them), so a config without one is malformed.
-        val base = """"eventId":"e","name":"B","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z","""
+        val base = """"eventId":"${testEventId(
+            "e",
+        ).value}","name":"B","minPhotoDate":"$cutoffText","maxPhotoDate":"2099-01-01T00:00:00Z","""
         val noEnd = """{$base"deletesAt":"2099-12-31T00:00:00Z"}"""
         val noDeletion = """{$base"endsAt":"2099-12-31T00:00:00Z"}"""
         for (missing in listOf(noEnd, noDeletion)) {
@@ -77,35 +86,38 @@ class EventConfigTest {
 
     @Test
     fun `a config JSON carrying a ceiling decodes to a concrete upper bound`() {
-        val current = """{"eventId":"e","name":"B","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
+        val current = """{"eventId":"${testEventId("e").value}","name":"B","minPhotoDate":"$cutoffText","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
             """"endsAt":"2099-12-31T00:00:00Z","deletesAt":"2099-12-31T00:00:00Z"}"""
         val decoded = json.decodeFromString(EventConfig.serializer(), current)
-        assertEquals(captureCeiling("2099-01-01T00:00:00Z"), decoded.maxPhotoDate)
+        assertEquals(CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")), decoded.maxPhotoDate)
     }
 
     @Test
     fun `equality distinguishes a differing cutoff`() {
         val base = EventConfig(
-            eventId = "e",
+            eventId = testEventId("e"),
             name = "n",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         assertEquals(base, base.copy())
-        assertEquals(false, base == base.copy(minPhotoDate = captureCutoff("2026-07-06T14:32:12Z")))
+        assertEquals(
+            false,
+            base == base.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:12Z"))),
+        )
     }
 
     @Test
     fun `an absent direction defaults to Both and means bidirectional`() {
         val config = EventConfig(
-            eventId = "11111111-1111-4111-8111-111111111111",
+            eventId = testEventId("11111111-1111-4111-8111-111111111111"),
             name = "Birthday",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         assertEquals(Direction.Both, config.direction)
         assertEquals(config, roundTrip(config))
@@ -115,13 +127,13 @@ class EventConfigTest {
     fun `persists the direction across a serialization round-trip`() {
         for (direction in Direction.entries) {
             val config = EventConfig(
-                eventId = "11111111-1111-4111-8111-111111111111",
+                eventId = testEventId("11111111-1111-4111-8111-111111111111"),
                 name = "Birthday",
                 minPhotoDate = cutoff,
                 maxPhotoDate = FIXTURE_CEILING,
                 direction = direction,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             )
             assertEquals(config, roundTrip(config))
         }
@@ -131,7 +143,7 @@ class EventConfigTest {
     fun `a legacy config JSON without a direction decodes to Both`() {
         // A Keychain item serialized before the field existed carries no `direction` key.
         val legacy =
-            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
+            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoffText","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
                 """"endsAt":"2099-12-31T00:00:00Z","deletesAt":"2099-12-31T00:00:00Z"}"""
         val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
         assertEquals(Direction.Both, decoded.direction)
@@ -140,13 +152,13 @@ class EventConfigTest {
     @Test
     fun `equality distinguishes a differing direction`() {
         val base = EventConfig(
-            eventId = "e",
+            eventId = testEventId("e"),
             name = "n",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
             direction = Direction.Both,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         assertEquals(false, base == base.copy(direction = Direction.UploadOnly))
         assertEquals(false, base == base.copy(direction = Direction.DownloadOnly))
@@ -169,17 +181,17 @@ class EventConfigTest {
         // The upload policy reads the direction, so Neither withdraws every photo from the manifest and the
         // cycle with no special case (capability `manage-membership`).
         val config = EventConfig(
-            eventId = "e",
+            eventId = testEventId("e"),
             name = "n",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
             direction = Direction.Neither,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         assertEquals(
             listOf<SelectionRule>(SelectionRule.DenyAll),
-            selectionRulesFor(config, CaptureDate.parse("2026-08-01T00:00:00Z"), { emptySet() }, { emptySet() }),
+            selectionRulesFor(config, TimestampText.parse("2026-08-01T00:00:00Z"), { emptySet() }, { emptySet() }),
         )
     }
 
@@ -196,12 +208,12 @@ class EventConfigTest {
     @Test
     fun `an absent saveToAlbum defaults to false and means no album`() {
         val config = EventConfig(
-            eventId = "11111111-1111-4111-8111-111111111111",
+            eventId = testEventId("11111111-1111-4111-8111-111111111111"),
             name = "Birthday",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         assertEquals(false, config.saveToAlbum)
         assertEquals(config, roundTrip(config))
@@ -211,13 +223,13 @@ class EventConfigTest {
     fun `persists saveToAlbum across a serialization round-trip`() {
         for (flag in listOf(true, false)) {
             val config = EventConfig(
-                eventId = "11111111-1111-4111-8111-111111111111",
+                eventId = testEventId("11111111-1111-4111-8111-111111111111"),
                 name = "Birthday",
                 minPhotoDate = cutoff,
                 maxPhotoDate = FIXTURE_CEILING,
                 saveToAlbum = flag,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             )
             assertEquals(config, roundTrip(config))
         }
@@ -227,7 +239,7 @@ class EventConfigTest {
     fun `a legacy config JSON without saveToAlbum decodes to false`() {
         // A Keychain item serialized before the field existed carries no `saveToAlbum` key.
         val legacy =
-            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
+            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoffText","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
                 """"endsAt":"2099-12-31T00:00:00Z","deletesAt":"2099-12-31T00:00:00Z"}"""
         val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
         assertEquals(false, decoded.saveToAlbum)
@@ -236,13 +248,13 @@ class EventConfigTest {
     @Test
     fun `equality distinguishes a differing saveToAlbum`() {
         val base = EventConfig(
-            eventId = "e",
+            eventId = testEventId("e"),
             name = "n",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
             saveToAlbum = false,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         assertEquals(false, base == base.copy(saveToAlbum = true))
     }
@@ -252,12 +264,12 @@ class EventConfigTest {
         // Internal builds wrote the per-membership choice (capability `mobile-data`) before it became the device's
         // (`changes/archive/2026-10-07-mobile-data-per-device`); their configs must keep decoding, the stale key ignored.
         val config = EventConfig(
-            eventId = "e",
+            eventId = testEventId("e"),
             name = "Birthday",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         val stale = encodeConfigFile(
             config,
@@ -272,7 +284,7 @@ class EventConfigTest {
         // but what having no default buys: `name` is a required CONSTRUCTOR parameter, so no construction
         // site can omit it. The two are one knob — the @Serializable plugin derives the decode default
         // from the constructor default.
-        val nameless = """{"eventId":"11111111-1111-4111-8111-111111111111","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
+        val nameless = """{"eventId":"11111111-1111-4111-8111-111111111111","minPhotoDate":"$cutoffText","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
             """"endsAt":"2099-12-31T00:00:00Z","deletesAt":"2099-12-31T00:00:00Z"}"""
         assertFailsWith<SerializationException> {
             json.decodeFromString(EventConfig.serializer(), nameless)
@@ -285,7 +297,7 @@ class EventConfigTest {
         // non-blank value, so nothing in this type stops a blank name. The ONE guard is
         // `BackendEventDirectory`, which maps a blank name to `EventLookup.Failed` — do not read the
         // declaration above as though it made a blank name unrepresentable.
-        val blank = """{"eventId":"11111111-1111-4111-8111-111111111111","name":"","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
+        val blank = """{"eventId":"11111111-1111-4111-8111-111111111111","name":"","minPhotoDate":"$cutoffText","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
             """"endsAt":"2099-12-31T00:00:00Z","deletesAt":"2099-12-31T00:00:00Z"}"""
         val decoded = json.decodeFromString(EventConfig.serializer(), blank)
         assertEquals("", decoded.name)
@@ -299,7 +311,7 @@ class EventConfigTest {
         // `minPhotoDate` is the only default guaranteed consistent with the floor invariant
         // (`minPhotoDate >= startsAt`, here with equality).
         val legacy =
-            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
+            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoffText","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
                 """"endsAt":"2099-12-31T00:00:00Z","deletesAt":"2099-12-31T00:00:00Z"}"""
         val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
         assertEquals(EventStart(cutoff.at), decoded.startsAt)
@@ -309,36 +321,36 @@ class EventConfigTest {
     @Test
     fun `persists startsAt across a serialization round-trip`() {
         val config = EventConfig(
-            eventId = "11111111-1111-4111-8111-111111111111",
+            eventId = testEventId("11111111-1111-4111-8111-111111111111"),
             name = "Birthday",
-            minPhotoDate = captureCutoff("2026-07-14T21:00:00Z"),
+            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-14T21:00:00Z")),
             maxPhotoDate = FIXTURE_CEILING,
-            startsAt = eventStart("2026-07-14T18:00:00Z"),
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            startsAt = EventStart(TimestampText.parse("2026-07-14T18:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         assertEquals(config, roundTrip(config))
         // The two are independent facts: a member who joined late sits ABOVE the event's floor.
-        assertEquals(eventStart("2026-07-14T18:00:00Z"), roundTrip(config).startsAt)
-        assertEquals(captureCutoff("2026-07-14T21:00:00Z"), roundTrip(config).minPhotoDate)
+        assertEquals(EventStart(TimestampText.parse("2026-07-14T18:00:00Z")), roundTrip(config).startsAt)
+        assertEquals(CaptureCutoff(TimestampText.parse("2026-07-14T21:00:00Z")), roundTrip(config).minPhotoDate)
     }
 
     @Test
     fun `equality distinguishes a differing startsAt`() {
         val base = EventConfig(
-            eventId = "e",
+            eventId = testEventId("e"),
             name = "n",
             minPhotoDate = cutoff,
             maxPhotoDate = FIXTURE_CEILING,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
-        assertEquals(false, base == base.copy(startsAt = eventStart("2001-01-01T00:00:00Z")))
+        assertEquals(false, base == base.copy(startsAt = EventStart(TimestampText.parse("2001-01-01T00:00:00Z"))))
     }
 
     @Test
     fun `an empty cutoff would admit every asset — it is never a valid value`() {
-        // Guards the trap that makes `minPhotoDate = captureCutoff("")` an unsafe legacy default: the cutoff compare is
+        // Guards the trap that makes `minPhotoDate = CaptureCutoff(TimestampText.parse(""))` an unsafe legacy default: the cutoff compare is
         // `creationDate >= minPhotoDate`, and every string is `>= ""`. The mirror case is the safe one an
         // empty-string default is easily confused with: an undated ASSET is excluded by any real cutoff.
         assertEquals(true, "2026-07-06T14:32:11Z" >= "")
@@ -349,41 +361,41 @@ class EventConfigTest {
     // ── the start gate (capability `photo-sharing`, "Nothing is shared before the event starts") ──
 
     private val startsBefore = EventConfig(
+        testEventId("E"),
         "E",
-        "E",
-        captureCutoff("2026-07-08T18:00:00Z"),
-        startsAt = eventStart("2026-07-10T18:00:00Z"),
-        endsAt = eventEnd("2026-07-12T18:00:00Z"),
-        maxPhotoDate = captureCeiling("2026-07-12T18:00:00Z"),
-        deletesAt = deletesAt("2026-08-12T18:00:00Z"),
+        CaptureCutoff(TimestampText.parse("2026-07-08T18:00:00Z")),
+        startsAt = EventStart(TimestampText.parse("2026-07-10T18:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2026-07-12T18:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-12T18:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2026-08-12T18:00:00Z")),
     )
 
     @Test
     fun `before the start a floor reaching before it is held at the start`() {
         assertEquals(
             CaptureCutoff(startsBefore.startsAt.at),
-            startsBefore.sharingFloor(CaptureDate.parse("2026-07-09T12:00:00Z")),
+            startsBefore.sharingFloor(TimestampText.parse("2026-07-09T12:00:00Z")),
         )
     }
 
     @Test
     fun `from the start on the member's own floor applies`() {
-        assertEquals(startsBefore.minPhotoDate, startsBefore.sharingFloor(CaptureDate.parse("2026-07-10T18:00:00Z")))
-        assertEquals(startsBefore.minPhotoDate, startsBefore.sharingFloor(CaptureDate.parse("2026-07-20T00:00:00Z")))
+        assertEquals(startsBefore.minPhotoDate, startsBefore.sharingFloor(TimestampText.parse("2026-07-10T18:00:00Z")))
+        assertEquals(startsBefore.minPhotoDate, startsBefore.sharingFloor(TimestampText.parse("2026-07-20T00:00:00Z")))
     }
 
     @Test
     fun `a floor after the start is never lowered`() {
-        val late = startsBefore.copy(minPhotoDate = captureCutoff("2026-07-11T09:00:00Z"))
-        assertEquals(late.minPhotoDate, late.sharingFloor(CaptureDate.parse("2026-07-09T12:00:00Z")))
-        assertEquals(late.minPhotoDate, late.sharingFloor(CaptureDate.parse("2026-07-11T12:00:00Z")))
+        val late = startsBefore.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-11T09:00:00Z")))
+        assertEquals(late.minPhotoDate, late.sharingFloor(TimestampText.parse("2026-07-09T12:00:00Z")))
+        assertEquals(late.minPhotoDate, late.sharingFloor(TimestampText.parse("2026-07-11T12:00:00Z")))
     }
 
     @Test
     fun `the policy before the start admits no photo — however early the member's range starts`() = runTest {
         val rules = selectionRulesFor(
             startsBefore,
-            CaptureDate.parse("2026-07-09T12:00:00Z"),
+            TimestampText.parse("2026-07-09T12:00:00Z"),
             { emptySet() },
             { emptySet() },
         )

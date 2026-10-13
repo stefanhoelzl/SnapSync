@@ -1,11 +1,12 @@
 package app.snapsync.downloadstore
 
 import app.snapsync.databases.IosDatabases
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.downloads.SuppressionService
+import app.snapsync.testids.testDeviceId
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
 import kotlinx.coroutines.runBlocking
@@ -35,7 +36,7 @@ import kotlin.test.assertTrue
  */
 class IosDownloadStoreTest {
 
-    private val ref = AssetRef(sourceDeviceId = "device-b", sourceAssetId = AssetId("asset-9"))
+    private val ref = AssetRef(sourceDeviceId = testDeviceId("device-b"), sourceAssetId = AssetId("asset-9"))
 
     private val resource = PlannedResource(
         resourceKey = "photo-9.heic",

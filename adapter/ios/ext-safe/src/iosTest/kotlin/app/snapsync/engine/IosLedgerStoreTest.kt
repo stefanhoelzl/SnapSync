@@ -1,11 +1,12 @@
 package app.snapsync.engine
 
 import app.snapsync.databases.IosDatabases
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testEventId
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
 import kotlinx.coroutines.runBlocking
@@ -35,7 +36,9 @@ import kotlin.test.assertTrue
 class IosLedgerStoreTest {
 
     /** The ledger over the shared database in [dir], joined to one event. */
-    private fun ledgerIn(dir: String) = LedgerService(SharedDatabase(IosDatabases(dir), legacy = null)) { "E-joined" }
+    private fun ledgerIn(
+        dir: String,
+    ) = LedgerService(SharedDatabase(IosDatabases(dir), legacy = null)) { testEventId("E-joined") }
 
     private fun entry(key: String, state: LedgerState = LedgerState.COMPLETED) = LedgerEntry(
         key = key,

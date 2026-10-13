@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.contained
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
@@ -54,7 +55,7 @@ class EventCompletion(
      * The union position up to which this device holds every photo of the others, or `null` when it does not — the
      * sibling download controller's answer (feature-blindness).
      */
-    private val receivedPosition: suspend (eventId: String) -> Long?,
+    private val receivedPosition: suspend (eventId: EventId) -> Long?,
     /** Tells the backend that position. */
     private val reporter: ReceivedReporter,
     /** When a wake last read the event's state — every read stamps it; a [finish] that is bounded honours it. */
@@ -62,7 +63,7 @@ class EventCompletion(
     private val log: Logger = Logger.withTag("EventCompletion"),
 ) {
     /** The last position the backend recorded for an event, this process — so an unchanged one is not sent again. */
-    private val reported = mutableMapOf<String, Long>()
+    private val reported = mutableMapOf<EventId, Long>()
 
     /**
      * The end of every wake whose tail covered the whole pass (decision record `changes/timely-background-receiving`,
@@ -73,7 +74,7 @@ class EventCompletion(
     suspend fun endOfWake(
         checksPhotos: Boolean,
         bounded: Boolean,
-        photoCheck: suspend (eventId: String) -> Unit,
+        photoCheck: suspend (eventId: EventId) -> Unit,
     ): CompletionOutcome {
         config.config.value?.takeIf { checksPhotos && !it.deleted }?.let { joined ->
             log.contained("the bounded photo check failed; the next wake runs it again") { photoCheck(joined.eventId) }
@@ -126,7 +127,7 @@ class EventCompletion(
     }
 
     /** The last published manifest for [eventId], or `null` when none is recorded for it or it cannot be read. */
-    private fun published(eventId: String) = manifestRecord.loadLastUploaded()
+    private fun published(eventId: EventId) = manifestRecord.loadLastUploaded()
         ?.takeIf { it.eventId == eventId }
         ?.let { runCatchingCancellable { deviceManifestFromJson(it.manifest) }.getOrNull() }
 }

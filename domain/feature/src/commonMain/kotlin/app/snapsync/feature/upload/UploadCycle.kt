@@ -1,6 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.CycleResult
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.LedgerEntry
@@ -78,13 +79,13 @@ class UploadCycle(
     // `false` when the projection was unchanged since the last successful write, so nothing was PUT. That answer is the
     // notify's whole trigger, which is why it is a Boolean rather than Unit: "the union now lists something new" is a
     // fact only the producer's skip-if-unchanged record knows.
-    private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy, manifestVersion: Long) -> Boolean,
+    private val onDiscovery: suspend (eventId: EventId, policy: SelectionPolicy, manifestVersion: Long) -> Boolean,
     // Event-album placement: fired with the `assetId`s (normalized) this cycle is about to enqueue for the FIRST time,
     // so the running process adds those own photos to the event album before their upload jobs exist. Runs in whichever
     // process runs the cycle (extension on ≥26.1, app on 18–26.0). Best-effort — invoked under `runCatching`. Fired
     // only when the membership opted in (`saveToAlbum`), which arrives with the gate, so the opt-in check is no longer
     // each root's to remember.
-    private val placeInAlbum: suspend (eventId: String, assetIds: Set<AssetId>) -> Unit,
+    private val placeInAlbum: suspend (eventId: EventId, assetIds: Set<AssetId>) -> Unit,
     private val log: Logger = Logger.withTag("UploadCycle"),
 ) {
     /**
@@ -687,7 +688,7 @@ class UploadCycle(
 
     /** A settled cycle that may create work: the facts every later stage needs. */
     private class Ready(
-        val eventId: String,
+        val eventId: EventId,
         val policy: SelectionPolicy,
         /** The manifest version the gate read first; the publish carries it. */
         val manifestVersion: Long,
@@ -734,7 +735,7 @@ class UploadCycle(
 
         /** This membership's direction excludes upload. */
         class Declined(
-            val eventId: String,
+            val eventId: EventId,
             val policy: SelectionPolicy,
             val manifestVersion: Long,
         ) : CycleOutcome {
@@ -794,7 +795,7 @@ class UploadCycle(
      * first.
      */
     private suspend fun writeDeviceManifest(
-        eventId: String,
+        eventId: EventId,
         policy: SelectionPolicy,
         manifestVersion: Long,
     ): Boolean {

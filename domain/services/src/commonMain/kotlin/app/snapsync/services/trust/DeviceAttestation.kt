@@ -1,5 +1,6 @@
 package app.snapsync.services.trust
 
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.ProofFormat
 import app.snapsync.model.RefusalFacts
@@ -385,7 +386,7 @@ class DeviceAttestation(
      * something it was never asked about — what made `SNAPSYNC-20` unanswerable. So the platform's own error is
      * logged here, at `Warn`: the app recovers by attesting afresh, and this rides as a breadcrumb.
      */
-    private suspend fun renew(deviceId: String, keyId: String): TokenOutcome = withFreshChallenge { challenge ->
+    private suspend fun renew(deviceId: DeviceId, keyId: String): TokenOutcome = withFreshChallenge { challenge ->
         val assertion = when (val proved = integrity.prove(challenge, keyId)) {
             is ProveResult.Ok -> proved.proof
             is ProveResult.Refused -> {
@@ -394,7 +395,7 @@ class DeviceAttestation(
             }
         }
         renewOutcome(
-            exchange.send(Routes.RenewToken.request(RenewRequest(deviceId, base64(assertion.bytes), challenge))),
+            exchange.send(Routes.RenewToken.request(RenewRequest(deviceId.value, base64(assertion.bytes), challenge))),
         )
     }
 
@@ -403,7 +404,7 @@ class DeviceAttestation(
      * once the backend has ACCEPTED its attestation — a keyId stored for an attestation the backend never recorded
      * would send every future renewal down the assertion path, against a key the server has never heard of.
      */
-    private suspend fun mint(deviceId: String): TokenOutcome = withFreshChallenge { challenge ->
+    private suspend fun mint(deviceId: DeviceId): TokenOutcome = withFreshChallenge { challenge ->
         val proof = when (val proved = integrity.prove(challenge)) {
             is ProveResult.Ok -> proved.proof
             is ProveResult.Refused -> {
@@ -417,7 +418,7 @@ class DeviceAttestation(
             val outcome = mintOutcome(
                 exchange.send(
                     Routes.MintToken.request(
-                        MintRequest(deviceId, challenge, wireProof(proof.handle, proof.format, proof.bytes)),
+                        MintRequest(deviceId.value, challenge, wireProof(proof.handle, proof.format, proof.bytes)),
                     ),
                 ),
             )

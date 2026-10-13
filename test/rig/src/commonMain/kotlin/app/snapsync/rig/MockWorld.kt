@@ -1,10 +1,11 @@
 package app.snapsync.rig
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.HttpRequest
 import app.snapsync.model.HttpResult
@@ -112,7 +113,7 @@ class BackendReach(
         val page = reply as? EventFilesReply.Page ?: refused("the union", reply)
         return page.items.map { asset ->
             UnionAsset(
-                deviceId = asset.deviceId,
+                deviceId = requireNotNull(DeviceId.parse(asset.deviceId)) { "not a device id: '${asset.deviceId}'" },
                 assetId = AssetId(asset.assetId),
                 creationDate = asset.creationDate,
                 resources = asset.resources.map {
@@ -166,7 +167,7 @@ class BackendReach(
     }
 
     suspend fun publish(eventId: String, manifest: DeviceManifest) {
-        val reply = send(Routes.PublishManifest.request(eventId, manifest.deviceId, manifest.onWire()))
+        val reply = send(Routes.PublishManifest.request(eventId, manifest.deviceId.value, manifest.onWire()))
         if (reply != PublishManifestReply.Published) refused("publish ${manifest.deviceId}'s manifest", reply)
     }
 
@@ -220,7 +221,7 @@ private fun Role.inApp(): ResourceRole = ResourceRole.entries.first { it.wire ==
 
 /** A seeded member's snapshot as the backend takes it; an unstamped one is version 0, the oldest. */
 private fun DeviceManifest.onWire(): Manifest = Manifest(
-    deviceId = deviceId,
+    deviceId = deviceId.value,
     assets = assets.map { asset ->
         ManifestAsset(
             assetId = asset.assetId.value,

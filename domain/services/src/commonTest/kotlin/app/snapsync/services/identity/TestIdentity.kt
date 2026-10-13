@@ -7,13 +7,15 @@ import app.snapsync.model.StoredProtection
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
+import app.snapsync.testids.testDeviceId
 
 /**
- * A real [PersistedDeviceIdentity] resolving to [id]: over an empty [store] it mints the platform's stable id, which is
- * [id]. For this module's tests, which cannot reach the fake module's in-memory store.
+ * A real [PersistedDeviceIdentity] resolving to the fixture device [id] stands for ([testDeviceId]): over an empty
+ * [store] it mints the platform's stable id, which is that device id. For this module's tests, which cannot reach the
+ * fake module's in-memory store.
  */
 internal fun identityOf(id: String, store: SecureStore = MapSecureStore()): PersistedDeviceIdentity =
-    PersistedDeviceIdentity(DeviceIdentityRole.MINTING, store, PlatformDeviceId { id })
+    PersistedDeviceIdentity(DeviceIdentityRole.MINTING, store, PlatformDeviceId { testDeviceId(id).value })
 
 /** A map-backed secure store that counts its reads; [unavailable] answers as a locked device's does. */
 internal class MapSecureStore(private val unavailable: Boolean = false) : SecureStore {

@@ -1,13 +1,15 @@
 package app.snapsync.services.config
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.MembershipRead
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
+import app.snapsync.model.TimestampText
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -21,19 +23,19 @@ import kotlin.test.assertNull
  */
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
-private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+private val FIXTURE_CEILING = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z"))
 
 class ConfigAfterReloadTest {
 
     private val config = EventConfig(
-        eventId = "e1",
+        eventId = testEventId("e1"),
         name = "Party",
-        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),
         maxPhotoDate = FIXTURE_CEILING,
         direction = Direction.Both,
         saveToAlbum = true,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     @Test

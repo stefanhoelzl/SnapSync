@@ -3,7 +3,7 @@ package app.snapsync.journeys
 import app.snapsync.control.RigClient
 import app.snapsync.control.Verifies
 import app.snapsync.control.done
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.decodeEventUrl
@@ -170,7 +170,7 @@ class Journeys {
             is ConfigDecodeResult.Success -> decoded.payload
             is ConfigDecodeResult.Failure -> fail("A's invite link does not decode (${decoded.reason}): $invite")
         }
-        val event = link.eventId
+        val event = link.eventId.value
         // An encrypted event's invite carries its key, and the member keeps it as a device does at its join.
         member.join(event, link.key)
         // Captured today at noon: inside the event's window, as a member's photo of the event would be.

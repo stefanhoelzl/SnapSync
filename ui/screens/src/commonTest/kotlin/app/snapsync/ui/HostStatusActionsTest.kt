@@ -18,20 +18,22 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.NetworkAccess
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.VersionRefusal
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
 import app.snapsync.presentation.url
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.share_range_custom
@@ -100,24 +102,24 @@ private const val OTHER_ID = "22222222-2222-4222-8222-222222222222"
 private const val STORE_URL = RIG_STORE_URL
 
 private val MEMBERSHIP = EventConfig(
-    eventId = JOINED_ID,
+    eventId = testEventId(JOINED_ID),
     name = "Anna's Birthday",
-    minPhotoDate = captureCutoff("2026-07-04T18:00:00Z"),
-    startsAt = eventStart("2026-07-04T18:00:00Z"),
-    endsAt = eventEnd("2026-07-20T18:00:00Z"),
-    maxPhotoDate = captureCeiling("2026-07-20T18:00:00Z"),
-    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-04T18:00:00Z")),
+    startsAt = EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
+    endsAt = EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-20T18:00:00Z")),
+    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
 /** What the details load answers for [OTHER_ID]: an event that has started and runs past "now". */
 private val OTHER_EVENT = JoinLoad.Found(
     "Anna's Wedding",
-    eventStart("2026-07-04T18:00:00Z"),
-    eventEnd("2026-07-20T18:00:00Z"),
-    deletesAt("2026-08-03T18:00:00Z"),
+    EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
+    EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
+    DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
 )
 
-private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(eventId))
+private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(testEventId(eventId)))
 
 /**
  * The status screen's ONE tap → intent table, [statusActions], clicked through the real screen over a real

@@ -14,6 +14,7 @@ kotlin {
             implementation(project(":domain:inbound"))
             implementation(project(":domain:scheduling"))
             implementation(project(":domain:model"))
+            implementation(project(":domain:domain"))
             // The deliveries' arguments are the ports' vocabulary; no port is called from here.
             implementation(project(":domain:ports"))
             // MIGRATING (`ModuleSetTest`'s permitted edges say so): the steps call today's features and services until

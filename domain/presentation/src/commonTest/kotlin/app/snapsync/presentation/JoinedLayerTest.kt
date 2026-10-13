@@ -1,5 +1,11 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
@@ -9,12 +15,9 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
+import app.snapsync.model.TimestampText
 import app.snapsync.model.decodeEventUrl
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
@@ -40,19 +43,19 @@ private const val EVENT_ID = "44444444-4444-4444-8444-444444444444"
 
 /** An open membership whose event is under way at the fixed clock (2026-07-09T12:00Z). */
 private val MEMBERSHIP = EventConfig(
-    eventId = EVENT_ID,
+    eventId = testEventId(EVENT_ID),
     name = "Lake Weekend",
-    minPhotoDate = captureCutoff("2026-07-06T00:00:00Z"),
-    startsAt = eventStart("2026-07-06T00:00:00Z"),
-    endsAt = eventEnd("2026-07-13T00:00:00Z"),
-    maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
-    deletesAt = deletesAt("2026-08-05T00:00:00Z"),
+    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
+    startsAt = EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
+    endsAt = EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
+    deletesAt = DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
 )
 
 /** The same membership once its event has ended (before the fixed clock), the event still open. */
 private val ENDED = MEMBERSHIP.copy(
-    endsAt = eventEnd("2026-07-08T00:00:00Z"),
-    maxPhotoDate = captureCeiling("2026-07-08T00:00:00Z"),
+    endsAt = EventEnd(TimestampText.parse("2026-07-08T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-08T00:00:00Z")),
 )
 
 /** Everything of the member's shared: the snapshot that reads in sync. */
@@ -149,15 +152,15 @@ class JoinedLayerTest {
     @Test
     fun `a back-dated event says until when others can join while that day is ahead`() = runTest {
         // Clock: 2026-07-09T12:00Z. ENDED ends 2026-07-08.
-        val backDated = ENDED.copy(openUntil = eventEnd("2026-07-15T12:00:00Z"))
+        val backDated = ENDED.copy(openUntil = OpenUntil(TimestampText.parse("2026-07-15T12:00:00Z")))
         assertEquals(
             LocalDateTime.parse("2026-07-15T12:00"),
             joined(backgroundScope, backDated).layer().joinableUntil,
         )
         val notWhen = mapOf(
-            "a regular event" to ENDED.copy(openUntil = ENDED.endsAt),
+            "a regular event" to ENDED.copy(openUntil = OpenUntil(ENDED.endsAt.at)),
             "no open-until date served" to ENDED,
-            "the day has passed" to ENDED.copy(openUntil = eventEnd("2026-07-09T06:00:00Z")),
+            "the day has passed" to ENDED.copy(openUntil = OpenUntil(TimestampText.parse("2026-07-09T06:00:00Z"))),
             "the event's photos were deleted" to backDated.copy(deleted = true),
         )
         for ((case, config) in notWhen) assertNull(joined(backgroundScope, config).layer().joinableUntil, case)

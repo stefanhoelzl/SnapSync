@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.EventConfig
 
 /**
@@ -28,9 +29,9 @@ class MembershipEntry(
     /** Stop the previous membership's uploads (the upload arm's leave verb). */
     private val stopUploads: suspend () -> Unit,
     /** The best-effort backend leave of the previous event. */
-    private val notifyLeave: suspend (eventId: String) -> Unit,
+    private val notifyLeave: suspend (eventId: EventId) -> Unit,
     /** Make the upload ledger the share set of the new membership, in the event given. */
-    private val loadShareSet: suspend (eventId: String) -> Unit,
+    private val loadShareSet: suspend (eventId: EventId) -> Unit,
     /** Recognise the library's photos an earlier install received for [EventConfig.eventId] ([ReceivedPhotoAdoption]). */
     private val adoptReceived: suspend (EventConfig) -> Unit,
     /** Persist the whole config (a port touch). */
@@ -42,17 +43,17 @@ class MembershipEntry(
      * Provision [cfg] over the joined [activeEventId] ([switchDecision]): enter it — a switch, or a first join — or,
      * re-provisioning the event already joined, save it whole, leaving and loading nothing.
      */
-    suspend fun provision(activeEventId: String?, cfg: EventConfig) =
+    suspend fun provision(activeEventId: EventId?, cfg: EventConfig) =
         when (val decision = switchDecision(activeEventId, cfg.eventId)) {
             is SwitchDecision.Enter -> enter(decision.previousEventId, cfg)
             SwitchDecision.Stay -> saveConfig(cfg)
         }
 
     /** Enter [cfg]'s membership, leaving [previousEventId] first when this is a switch (`null` for a first join). */
-    suspend fun enter(previousEventId: String?, cfg: EventConfig) {
-        if (previousEventId != null) {
+    suspend fun enter(previousEventId: EventId?, cfg: EventConfig) {
+        previousEventId?.let { previous ->
             stopUploads()
-            notifyLeave(previousEventId)
+            notifyLeave(previous)
         }
         loadShareSet(cfg.eventId)
         adoptReceived(cfg)

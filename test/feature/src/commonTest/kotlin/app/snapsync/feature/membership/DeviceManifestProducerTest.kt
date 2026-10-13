@@ -1,7 +1,10 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.testShared
-import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.JoinResult
@@ -10,8 +13,8 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadedManifest
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
@@ -19,6 +22,8 @@ import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.backend.EventJoin
 import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -33,8 +38,10 @@ private suspend fun policyFrom(cutoff: String): SelectionPolicy =
     SelectionPolicy(
         selectionRulesFor(
             includesUpload = true,
-            cutoff = captureCutoff(
-                cutoff,
+            cutoff = CaptureCutoff(
+                TimestampText.parse(
+                    cutoff,
+                ),
             ),
             ceiling = null,
             suppressedAssetIds = {
@@ -80,8 +87,8 @@ class DeviceManifestProducerTest {
     private val DeviceManifestService.lastUploaded: UploadedManifest? get() = loadLastUploaded()
 
     private class FakeUploader(var ok: Boolean = true) : ManifestPublisher {
-        val puts = mutableListOf<Triple<String, String, String>>()
-        override suspend fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): Boolean {
+        val puts = mutableListOf<Triple<EventId, DeviceId, String>>()
+        override suspend fun publish(eventId: EventId, deviceId: DeviceId, manifest: DeviceManifest): Boolean {
             puts += Triple(eventId, deviceId, manifest.encodeToJson())
             return ok
         }
@@ -89,8 +96,8 @@ class DeviceManifestProducerTest {
 
     /** A join that records its calls and writes nothing — which is the whole contract now. */
     private class FakeJoin(private val result: JoinResult = JoinResult.JOINED) : EventJoin {
-        val joins = mutableListOf<Pair<String, String>>()
-        override suspend fun join(eventId: String, deviceId: String): JoinResult {
+        val joins = mutableListOf<Pair<EventId, DeviceId>>()
+        override suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult {
             joins += eventId to deviceId
             return result
         }
@@ -102,22 +109,27 @@ class DeviceManifestProducerTest {
 
     @Test
     fun projection_keeps_every_asset_at_or_after_the_start_date_sorted() = runTest {
-        val m = projectDeviceManifest("dev", listOf(row("B"), row("A")), policy = policyFrom("0001-01-01T00:00:00Z"))
-        assertEquals("dev", m.deviceId)
+        val m =
+            projectDeviceManifest(
+                testDeviceId("dev"),
+                listOf(row("B"), row("A")),
+                policy = policyFrom("0001-01-01T00:00:00Z"),
+            )
+        assertEquals(testDeviceId("dev"), m.deviceId)
         assertEquals(listOf(AssetId("A"), AssetId("B")), m.assets.map { it.assetId }) // sorted, all kept
     }
 
     @Test
     fun projection_excludes_assets_before_the_start_date() = runTest {
         val rows = listOf(row("old", "2025-01-01T00:00:00Z"), row("new", "2026-06-27T10:00:00Z"))
-        val m = projectDeviceManifest("dev", rows, policy = policyFrom("2026-01-01T00:00:00Z"))
+        val m = projectDeviceManifest(testDeviceId("dev"), rows, policy = policyFrom("2026-01-01T00:00:00Z"))
         assertEquals(listOf(AssetId("new")), m.assets.map { it.assetId })
     }
 
     @Test
     fun device_manifest_json_round_trips() {
-        val m = DeviceManifest("dev", listOf(asset("A")))
-        assertEquals("dev", deviceManifestFromJson(m.encodeToJson()).deviceId)
+        val m = DeviceManifest(testDeviceId("dev"), listOf(asset("A")))
+        assertEquals(testDeviceId("dev"), deviceManifestFromJson(m.encodeToJson()).deviceId)
         assertEquals(AssetId("A"), deviceManifestFromJson(m.encodeToJson()).assets.single().assetId)
     }
 
@@ -126,7 +138,7 @@ class DeviceManifestProducerTest {
         // The on-storage device.json shares its field vocabulary with the event-wide union: a resource
         // serializes as exactly { role, contentType, key, filename } — `key` the storage object name,
         // `filename` the human capture name (the rename from the per-asset manifest's filename/originalFilename).
-        val json = Json.parseToJsonElement(DeviceManifest("dev", listOf(asset("A"))).encodeToJson())
+        val json = Json.parseToJsonElement(DeviceManifest(testDeviceId("dev"), listOf(asset("A"))).encodeToJson())
         val resource = json.jsonObject["assets"]!!.jsonArray[0].jsonObject["resources"]!!.jsonArray[0]
         assertEquals(setOf("role", "contentType", "key", "filename"), resource.jsonObject.keys)
         assertEquals("A-primary.jpg", resource.jsonObject["key"]!!.toString().trim('"')) // storage name
@@ -140,7 +152,7 @@ class DeviceManifestProducerTest {
         // The ledger row is what names the resource now, so it must carry everything the union's field
         // vocabulary needs — otherwise the manifest would have to re-read PhotoKit to describe bytes it
         // has already uploaded.
-        val m = projectDeviceManifest("dev", listOf(row("A")), policyFrom("0001-01-01T00:00:00Z"))
+        val m = projectDeviceManifest(testDeviceId("dev"), listOf(row("A")), policyFrom("0001-01-01T00:00:00Z"))
         val r = m.assets.single().resources.single()
         assertEquals(ResourceRole.PRIMARY, r.role)
         assertEquals("image/jpeg", r.contentType)
@@ -154,7 +166,7 @@ class DeviceManifestProducerTest {
         // it, not because its bytes have landed. The backend keeps the asset out of the union until every
         // declared role has a resource, which is what lets it tell "not yet" from "never".
         val rows = LedgerState.entries.map { row("A${it.name}", state = it) }
-        val m = projectDeviceManifest("dev", rows, policyFrom("0001-01-01T00:00:00Z"))
+        val m = projectDeviceManifest(testDeviceId("dev"), rows, policyFrom("0001-01-01T00:00:00Z"))
         assertEquals(
             LedgerState.entries.map { AssetId("A${it.name}") }.sorted(),
             m.assets.map { it.assetId }.sorted(),
@@ -171,9 +183,9 @@ class DeviceManifestProducerTest {
         val failed = listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE))
         val retried = listOf(row("A"), row("A", state = LedgerState.REQUESTED, role = ResourceRole.LIVE))
 
-        val json = projectDeviceManifest("dev", discovered, policy).encodeToJson()
-        assertEquals(json, projectDeviceManifest("dev", failed, policy).encodeToJson())
-        assertEquals(json, projectDeviceManifest("dev", retried, policy).encodeToJson())
+        val json = projectDeviceManifest(testDeviceId("dev"), discovered, policy).encodeToJson()
+        assertEquals(json, projectDeviceManifest(testDeviceId("dev"), failed, policy).encodeToJson())
+        assertEquals(json, projectDeviceManifest(testDeviceId("dev"), retried, policy).encodeToJson())
     }
 
     @Test
@@ -182,7 +194,7 @@ class DeviceManifestProducerTest {
         // alone, so the union served it as a complete one-resource asset and a recipient imported the
         // Live Photo as a plain still — permanently, since a recipient plans per asset.
         val m = projectDeviceManifest(
-            "dev",
+            testDeviceId("dev"),
             listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE)),
             policyFrom("0001-01-01T00:00:00Z"),
         )
@@ -200,7 +212,7 @@ class DeviceManifestProducerTest {
         // projection or its storage read: an empty capture date sorts before every real cutoff
         // (`SelectionRule.CaptureAfter`), so the one admission decides this like every other.
         val bare = LedgerEntry("Z-primary.jpg", AssetId("Z"), LedgerState.COMPLETED)
-        val m = projectDeviceManifest("dev", listOf(row("A"), bare), policyFrom("0001-01-01T00:00:00Z"))
+        val m = projectDeviceManifest(testDeviceId("dev"), listOf(row("A"), bare), policyFrom("0001-01-01T00:00:00Z"))
         assertEquals(listOf(AssetId("A")), m.assets.map { it.assetId })
     }
 
@@ -211,10 +223,10 @@ class DeviceManifestProducerTest {
         DeviceManifestProducer(
             store,
             up,
-            "dev",
-        ).produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+            testDeviceId("dev"),
+        ).produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
-        assertEquals("E", up.puts.single().first)
+        assertEquals(testEventId("E"), up.puts.single().first)
         assertTrue(store.lastUploaded!!.manifest.endsWith(up.puts.single().third)) // the record holds the json
     }
 
@@ -224,25 +236,35 @@ class DeviceManifestProducerTest {
         // needs its own device.json written.
         val store = manifestRecord()
         val up = FakeUploader()
-        val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("EVENT-A", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
         producer.produce(
-            "EVENT-B",
+            testEventId("EVENT-A"),
+            policyFrom("0001-01-01T00:00:00Z"),
+            listOf(row("A")),
+            manifestVersion = 1L,
+        )
+        producer.produce(
+            testEventId("EVENT-B"),
             policyFrom("0001-01-01T00:00:00Z"),
             listOf(row("A")),
             manifestVersion = 1L,
         ) // same content, new event
         assertEquals(2, up.puts.size) // both events written, despite identical content
-        assertEquals(listOf("EVENT-A", "EVENT-B"), up.puts.map { it.first })
+        assertEquals(listOf(testEventId("EVENT-A"), testEventId("EVENT-B")), up.puts.map { it.first })
     }
 
     @Test
     fun skips_the_put_when_the_snapshot_is_unchanged() = runTest {
         val store = manifestRecord()
         val up = FakeUploader()
-        val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L) // identical
+        val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
+        producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        producer.produce(
+            testEventId("E"),
+            policyFrom("0001-01-01T00:00:00Z"),
+            listOf(row("A")),
+            manifestVersion = 1L,
+        ) // identical
         assertEquals(1, up.puts.size) // second produce skipped the PUT
     }
 
@@ -261,19 +283,19 @@ class DeviceManifestProducerTest {
         val store = manifestRecord()
         val up = FakeUploader()
         val join = FakeJoin()
-        val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
+        producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
 
-        ManifestDeviceEnroller(join).enroll("E", "dev") // the re-join
+        ManifestDeviceEnroller(join).enroll(testEventId("E"), testDeviceId("dev")) // the re-join
 
-        assertEquals(listOf("E" to "dev"), join.joins)
+        assertEquals(listOf(testEventId("E") to testDeviceId("dev")), join.joins)
         assertEquals(1, up.puts.size, "the join must write no manifest")
 
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size, "an unchanged projection under the same version is correctly skipped")
 
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 7L)
+        producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 7L)
         assertEquals(2, up.puts.size, "the join's ledger load advanced the version, so the unchanged set republishes")
         assertEquals(up.puts[0].third.substringBefore("\"version\""), up.puts[1].third.substringBefore("\"version\""))
     }
@@ -281,8 +303,8 @@ class DeviceManifestProducerTest {
     @Test
     fun the_publish_carries_the_manifest_version() = runTest {
         val up = FakeUploader()
-        DeviceManifestProducer(manifestRecord(), up, "dev")
-            .produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 42L)
+        DeviceManifestProducer(manifestRecord(), up, testDeviceId("dev"))
+            .produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 42L)
         assertEquals(42L, deviceManifestFromJson(up.puts.single().third).version)
     }
 
@@ -295,9 +317,19 @@ class DeviceManifestProducerTest {
         // marker no longer matches and it republishes.
         val store = manifestRecord()
         val up = FakeUploader()
-        val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"), row("B")), manifestVersion = 5L)
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"), row("B")), manifestVersion = 6L)
+        val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
+        producer.produce(
+            testEventId("E"),
+            policyFrom("0001-01-01T00:00:00Z"),
+            listOf(row("A"), row("B")),
+            manifestVersion = 5L,
+        )
+        producer.produce(
+            testEventId("E"),
+            policyFrom("0001-01-01T00:00:00Z"),
+            listOf(row("A"), row("B")),
+            manifestVersion = 6L,
+        )
         assertEquals(2, up.puts.size)
     }
 
@@ -305,7 +337,10 @@ class DeviceManifestProducerTest {
     fun a_refused_join_does_not_enrol_and_is_distinguishable() = runTest {
         // A closed event is a refusal the user can act on; the seam must not flatten it into "something failed".
         val closed = FakeJoin(JoinResult.EVENT_CLOSED)
-        assertEquals(JoinResult.EVENT_CLOSED, ManifestDeviceEnroller(closed).enroll("E", "dev"))
+        assertEquals(
+            JoinResult.EVENT_CLOSED,
+            ManifestDeviceEnroller(closed).enroll(testEventId("E"), testDeviceId("dev")),
+        )
     }
 
     @Test
@@ -315,8 +350,8 @@ class DeviceManifestProducerTest {
         DeviceManifestProducer(
             store,
             up,
-            "dev",
-        ).produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+            testDeviceId("dev"),
+        ).produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals(null, store.lastUploaded) // not recorded → retried next cycle
         assertFalse(up.puts.isEmpty())

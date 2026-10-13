@@ -1,5 +1,6 @@
 package app.snapsync.membership
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.SharedStore
@@ -9,7 +10,6 @@ import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -23,6 +23,8 @@ import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.settings.MobileDataSetting
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,7 +42,7 @@ class ResetDeviceStateTest {
         val configFiles = SharedStore()
         val config: ConfigService = configService(null, configFiles)
         private val databases = inMemoryDatabases()
-        val ledger = LedgerService(testShared(databases)) { LEDGER_EVENT }
+        val ledger = LedgerService(testShared(databases)) { testEventId(LEDGER_EVENT) }
         val downloads = DownloadService(downloadsDb ?: databases)
         val mobileData = MobileDataSetting(inMemoryPreferences())
 
@@ -98,8 +100,8 @@ class ResetDeviceStateTest {
     @Test
     fun `imported downloads survive so no downloaded photo is re-uploaded`() = runTest {
         val f = Fixture()
-        val imported = AssetRef("device-A", AssetId("asset-imported"))
-        val pending = AssetRef("device-B", AssetId("asset-pending"))
+        val imported = AssetRef(testDeviceId("device-A"), AssetId("asset-imported"))
+        val pending = AssetRef(testDeviceId("device-B"), AssetId("asset-pending"))
         f.downloads.plan(imported, "2026-07-01T10:00:00Z", listOf(resource("a.HEIC")))
         f.downloads.markImported(imported, createdLocalId = AssetId("local-123"))
         f.downloads.plan(pending, "2026-07-01T11:00:00Z", listOf(resource("b.HEIC")))

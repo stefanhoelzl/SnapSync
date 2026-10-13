@@ -1,6 +1,8 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.StoredResource
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
@@ -21,7 +23,7 @@ import app.snapsync.wire.api.Routes
  * [Result] (never thrown), so a failed load can fall back to an empty ledger rather than crash the join.
  */
 fun interface DeviceFilesSource {
-    suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>>
+    suspend fun list(eventId: EventId, deviceId: DeviceId): Result<List<StoredResource>>
 }
 
 /**
@@ -48,7 +50,7 @@ class DeviceListingShapeException(message: String) : Exception(message)
  * `changes/incremental-union`, D3); [trigger] says why, and the backend records it.
  */
 fun interface EventUnionSource {
-    suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage>
+    suspend fun union(eventId: EventId, cursor: Long?, trigger: UnionTrigger): Result<UnionPage>
 }
 
 /**
@@ -64,8 +66,8 @@ fun interface EventUnionSource {
  */
 class BackendDeviceFilesSource(private val gateway: BackendGateway) : DeviceFilesSource {
 
-    override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> =
-        when (val reply = gateway.send(Routes.DeviceFiles.request(eventId, deviceId))) {
+    override suspend fun list(eventId: EventId, deviceId: DeviceId): Result<List<StoredResource>> =
+        when (val reply = gateway.send(Routes.DeviceFiles.request(eventId.value, deviceId.value))) {
             is DeviceFilesReply.Listed -> runCatchingCancellable {
                 // A non-canonical id fails the constructor: a listing this build cannot read, never an invented row.
                 reply.items.map {
@@ -96,9 +98,9 @@ class BackendDeviceFilesSource(private val gateway: BackendGateway) : DeviceFile
  */
 class BackendEventUnionSource(private val gateway: BackendGateway) : EventUnionSource {
 
-    override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
+    override suspend fun union(eventId: EventId, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
         val request = Routes.EventFiles.request(
-            eventId,
+            eventId.value,
             cursor?.toString(),
             urls = false,
             snapSyncTrigger = trigger.wire,
@@ -118,14 +120,16 @@ class BackendEventUnionSource(private val gateway: BackendGateway) : EventUnionS
         }
     }
 
-    private fun asset(eventId: String, dto: app.snapsync.wire.models.UnionAsset): UnionAsset {
+    private fun asset(eventId: EventId, dto: app.snapsync.wire.models.UnionAsset): UnionAsset {
         val assetId = AssetId(dto.assetId)
+        // A malformed id refuses the asset, as a malformed asset id always has.
+        val deviceId = requireNotNull(DeviceId.parse(dto.deviceId)) { "not a device id: '${dto.deviceId}'" }
         return UnionAsset(
-            deviceId = dto.deviceId,
+            deviceId = deviceId,
             assetId = assetId,
             creationDate = dto.creationDate,
             resources = dto.resources.map {
-                val path = Routes.DownloadResource.path(eventId, dto.deviceId, assetId.value, it.role.value)
+                val path = Routes.DownloadResource.path(eventId.value, dto.deviceId, assetId.value, it.role.value)
                 UnionResource(it.key, gateway.open.url(path), it.role.value, it.contentType, it.filename)
             },
         )

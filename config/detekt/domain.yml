@@ -1,0 +1,12 @@
+# The `domain` tier (`DetektTiersPlugin`): `:domain:domain`, values and pure policy.
+#
+# A CLAIM, not debt (`docs/patterns.md`, "The domain"): a verdict is a `when` over a fact's cases — at most 4 paths and
+# 4 cognitive points, the entry points' claim. Measured before it was written: every pure rule bound for this layer was
+# at most 6 / 4 in `model` (2026-10-13), and each case above 4 re-checked a nullable or sentinel input — a missing type,
+# not a complex rule. A rule that needs more is two rules, or a type that splits the cases. detekt fails AT the
+# threshold, so each is one above the claim: do not "correct" it.
+complexity:
+  CyclomaticComplexMethod:
+    threshold: 5
+  CognitiveComplexMethod:
+    threshold: 5

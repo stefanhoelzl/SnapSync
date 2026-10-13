@@ -100,7 +100,7 @@ class EncryptedEventIntegrationTest {
 
         // Neither uploader takes the new photo, and the other member's photo is not fetched.
         addPhoto("OWN-1")
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         foreground()
         assertEquals("completed", cycle(), "the extension's cycle is withheld, and the system rests")
         assertEquals(0, jobs().created, "the extension creates no upload")

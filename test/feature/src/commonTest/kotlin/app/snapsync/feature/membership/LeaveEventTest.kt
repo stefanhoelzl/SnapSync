@@ -2,17 +2,20 @@
 
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.inertPendingLeaves
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
+import app.snapsync.model.TimestampText
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -23,7 +26,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
-private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+private val FIXTURE_CEILING = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z"))
 
 class LeaveEventTest {
 
@@ -36,12 +39,12 @@ class LeaveEventTest {
     private fun joined(eventId: String?) =
         eventId?.let {
             EventConfig(
-                it,
+                testEventId(it),
                 name = "Anna's Birthday",
-                minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
+                minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
                 maxPhotoDate = FIXTURE_CEILING,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             )
         }
 
@@ -49,7 +52,7 @@ class LeaveEventTest {
     fun `leave stops the producer clears config then notifies with the snapshotted eventId`() = runTest {
         val order = mutableListOf<String>()
         val files = membershipFiles(order)
-        var notifiedWith: String? = null
+        var notifiedWith: EventId? = null
 
         LeaveEvent(
             keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
@@ -71,13 +74,13 @@ class LeaveEventTest {
         assertTrue(files.configCleared)
         assertNull(files.persistedConfig())
         assertEquals(listOf("disable", "clear", "notify"), order)
-        assertEquals("E1", notifiedWith)
+        assertEquals(testEventId("E1"), notifiedWith)
     }
 
     @Test
     fun `the local teardown returns without waiting on the backend notify`() = runTest {
         val files = membershipFiles()
-        var notifyStartedWith: String? = null
+        var notifyStartedWith: EventId? = null
         val neverCompletes = CompletableDeferred<Unit>() // the DELETE hangs forever
 
         LeaveEvent(
@@ -98,7 +101,7 @@ class LeaveEventTest {
         // — the screen flip never waits on the network. The notify was dispatched with the snapshot id.
         assertTrue(files.configCleared)
         assertNull(files.persistedConfig())
-        assertEquals("E7", notifyStartedWith)
+        assertEquals(testEventId("E7"), notifyStartedWith)
         assertFalse(neverCompletes.isCompleted)
     }
 
@@ -191,7 +194,9 @@ class LeaveEventTest {
     // ── Every leave says whether it has everything (capability `manage-membership`) ─────────────────────────────
 
     /** [joined], with a range that ended before the test clock's now. */
-    private fun ended(eventId: String) = joined(eventId)!!.copy(endsAt = eventEnd("2026-06-10T12:00:00Z"))
+    private fun ended(
+        eventId: String,
+    ) = joined(eventId)!!.copy(endsAt = EventEnd(TimestampText.parse("2026-06-10T12:00:00Z")))
 
     private suspend fun kotlinx.coroutines.test.TestScope.leaveAnswering(
         config: EventConfig,
@@ -220,7 +225,7 @@ class LeaveEventTest {
         val (sent, asked) = leaveAnswering(ended("E8")) { true }
         assertEquals(true, sent)
         // Asked with the snapshot, though the config is cleared by the time the background notify runs.
-        assertEquals("E8", asked?.eventId)
+        assertEquals(testEventId("E8"), asked?.eventId)
         assertFalse(leaveAnswering(ended("E9")) { false }.first!!)
     }
 
@@ -261,8 +266,8 @@ class LeaveEventTest {
         saved: EventConfig?,
         eventId: String,
         everythingReceived: suspend (EventConfig) -> Boolean,
-    ): List<Pair<String, Boolean>> {
-        val sent = mutableListOf<Pair<String, Boolean>>()
+    ): List<Pair<EventId, Boolean>> {
+        val sent = mutableListOf<Pair<EventId, Boolean>>()
         LeaveEvent(
             keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(saved, membershipFiles()),
@@ -271,7 +276,7 @@ class LeaveEventTest {
             scope = backgroundScope,
             everythingReceived = everythingReceived,
             pendingLeaves = inertPendingLeaves(),
-        ).notifySwitchLeave(eventId)
+        ).notifySwitchLeave(testEventId(eventId))
         return sent
     }
 
@@ -282,24 +287,27 @@ class LeaveEventTest {
             asked = true
             true
         }
-        assertEquals(listOf("E12" to false), switchLeave(ended("OTHER"), "E12", ask))
-        assertEquals(listOf("E12" to false), switchLeave(null, "E12", ask))
+        assertEquals(listOf(testEventId("E12") to false), switchLeave(ended("OTHER"), "E12", ask))
+        assertEquals(listOf(testEventId("E12") to false), switchLeave(null, "E12", ask))
         assertFalse(asked)
     }
 
     @Test
     fun `a switch leave before the saved event ended says no`() = runTest {
-        assertEquals(listOf("E13" to false), switchLeave(joined("E13"), "E13") { true })
+        assertEquals(listOf(testEventId("E13") to false), switchLeave(joined("E13"), "E13") { true })
     }
 
     @Test
     fun `a switch leave after the end says what the downloads answer`() = runTest {
-        assertEquals(listOf("E14" to true), switchLeave(ended("E14"), "E14") { true })
-        assertEquals(listOf("E14" to false), switchLeave(ended("E14"), "E14") { false })
+        assertEquals(listOf(testEventId("E14") to true), switchLeave(ended("E14"), "E14") { true })
+        assertEquals(listOf(testEventId("E14") to false), switchLeave(ended("E14"), "E14") { false })
     }
 
     @Test
     fun `a doubt about the downloads makes a switch leave a no`() = runTest {
-        assertEquals(listOf("E15" to false), switchLeave(ended("E15"), "E15") { throw RuntimeException("unreadable") })
+        assertEquals(
+            listOf(testEventId("E15") to false),
+            switchLeave(ended("E15"), "E15") { throw RuntimeException("unreadable") },
+        )
     }
 }

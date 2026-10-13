@@ -1,8 +1,9 @@
 package app.snapsync.services.config
 
-import app.snapsync.model.CaptureDate
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.ConfigRead
-import app.snapsync.model.DeletesAt
 import app.snapsync.model.EventConfig
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.confirmedGone
@@ -135,26 +136,26 @@ class ConfigService(
      * Has this membership's own retention deadline [deletesAt] passed? The self-leave's
      * OFFLINE witness — see [confirmedGone] for why it is exact.
      */
-    fun isPastDeletion(deletesAt: DeletesAt): Boolean = confirmedGone(deletesAt, CaptureDate.of(clock.now()))
+    fun isPastDeletion(deletesAt: DeletesAt): Boolean = confirmedGone(deletesAt, Timestamp.of(clock.now()))
 
     /** Now, on the clock every membership-time decision here reads — what a policy is derived at. */
-    fun now(): CaptureDate = CaptureDate.of(clock.now())
+    fun now(): Timestamp = Timestamp.of(clock.now())
 
     /**
      * Has [config]'s event range ended? Read on the same clock as [isPastDeletion]; an
      * end not yet learned has not passed — see [hasEnded].
      */
-    fun hasEnded(config: EventConfig): Boolean = config.hasEnded(CaptureDate.of(clock.now()))
+    fun hasEnded(config: EventConfig): Boolean = config.hasEnded(Timestamp.of(clock.now()))
 
     /**
      * Has [config]'s OWN capture range ended — what its share is settled by? Read on the same clock as [hasEnded]; see
      * [shareHasEnded].
      */
-    fun shareHasEnded(config: EventConfig): Boolean = config.shareHasEnded(CaptureDate.of(clock.now()))
+    fun shareHasEnded(config: EventConfig): Boolean = config.shareHasEnded(Timestamp.of(clock.now()))
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
     /** The joined event's id, or `null` while not joined — the scope every per-event read takes. */
-    fun activeEventId(): String? = held.config.value?.eventId
+    fun activeEventId(): EventId? = held.config.value?.eventId
 
     /**
      * Whether the membership receives others' photos — three-valued, no fallback: `null`

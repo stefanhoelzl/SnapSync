@@ -1,6 +1,6 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SelectionScope

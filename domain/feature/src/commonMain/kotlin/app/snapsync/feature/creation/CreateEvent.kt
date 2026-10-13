@@ -1,11 +1,12 @@
 package app.snapsync.feature.creation
 
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.OpenUntil
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.EventCreator
-import app.snapsync.model.EventEnd
-import app.snapsync.model.iso
+import app.snapsync.model.TimestampText
 import app.snapsync.services.backend.EventCreation
 import app.snapsync.services.crypto.EventKeyMinting
 import co.touchlab.kermit.Logger
@@ -39,7 +40,7 @@ class CreateEvent(
     // performs a real details load; provision (save config with name + cutoff) happens on confirm.
     // `linkKey` is the minted event's key when it is encrypted, `null` for a plain one: the creator joins through the
     // same gate as every guest, with the key its own invite will carry.
-    private val onMinted: suspend (eventId: String, linkKey: String?) -> Unit,
+    private val onMinted: suspend (eventId: EventId, linkKey: String?) -> Unit,
     /** Whether a create is ENCRYPTED, and its key — asked at every create; `null` where this build creates only plain events. */
     private val minting: EventKeyMinting?,
 ) : EventCreator {
@@ -49,7 +50,7 @@ class CreateEvent(
     // Suspending, and holding no scope: the composition launches this (law "Dispatcher lanes are
     // fixed by the composition"), which is what lets the tap's `Logger.invocation` span the real work
     // instead of timing the hand-off — `← tap.create (1ms)` against a multi-second mint.
-    override suspend fun create(name: String, startsAt: String, endsAt: String, openUntil: EventEnd?) {
+    override suspend fun create(name: String, startsAt: String, endsAt: String, openUntil: OpenUntil?) {
         // One create at a time — a non-idempotent command is in flight before it first suspends: a second tap
         // that reached the lane while the first mint is out would mint a second
         // event. Checked and set before the first suspension, so on the serial lane nothing can come between.
@@ -61,7 +62,15 @@ class CreateEvent(
         // The key is minted HERE, on the creating device, and only its id is sent (the encrypted file format,
         // `docs/architecture.md`); the key itself reaches the creator's join, and from it the invite link.
         val key = minting?.forNewEvent()
-        when (val outcome = client.create(name.trim(), startsAt, endsAt, key?.keyId, openUntil?.iso)) {
+        when (
+            val outcome = client.create(
+                name.trim(),
+                startsAt,
+                endsAt,
+                key?.keyId,
+                openUntil?.at?.let(TimestampText::format),
+            )
+        ) {
             is CreateOutcome.Created -> {
                 onMinted(outcome.eventId, key?.linkKey)
                 status.value = CreationStatus.Idle

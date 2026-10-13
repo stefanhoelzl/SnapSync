@@ -1,9 +1,10 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
+import app.snapsync.model.TimestampText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -19,8 +20,8 @@ class AssetFiltersTest {
     fun `the filter is the policy's capture range alone`() {
         val filter = SelectionPolicy(
             listOf(
-                SelectionRule.CaptureAfter(captureCutoff("2026-06-01T00:00:00Z")),
-                SelectionRule.CaptureBefore(captureCeiling("2026-06-30T00:00:00Z")),
+                SelectionRule.CaptureAfter(CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z"))),
+                SelectionRule.CaptureBefore(CaptureCeiling(TimestampText.parse("2026-06-30T00:00:00Z"))),
                 SelectionRule.ExcludeScreenshots,
                 SelectionRule.ExcludeScreenRecordings,
             ),
@@ -33,10 +34,10 @@ class AssetFiltersTest {
     fun `of two bounds the narrower is the filter's`() {
         val filter = SelectionPolicy(
             listOf(
-                SelectionRule.CaptureAfter(captureCutoff("2026-06-01T00:00:00Z")),
-                SelectionRule.CaptureAfter(captureCutoff("2026-06-05T00:00:00Z")),
-                SelectionRule.CaptureBefore(captureCeiling("2026-06-30T00:00:00Z")),
-                SelectionRule.CaptureBefore(captureCeiling("2026-06-20T00:00:00Z")),
+                SelectionRule.CaptureAfter(CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z"))),
+                SelectionRule.CaptureAfter(CaptureCutoff(TimestampText.parse("2026-06-05T00:00:00Z"))),
+                SelectionRule.CaptureBefore(CaptureCeiling(TimestampText.parse("2026-06-30T00:00:00Z"))),
+                SelectionRule.CaptureBefore(CaptureCeiling(TimestampText.parse("2026-06-20T00:00:00Z"))),
             ),
         ).assetFilter()!!
         assertEquals(Instant.parse("2026-06-05T00:00:00Z"), filter.createdFrom)

@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.upload.UploadCycle
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.upload.Uploader
@@ -38,8 +39,10 @@ internal class AppUploader(private val core: AppCore) {
      * The cycle — assembled by the SHARED composition `uploadCore` (`docs/architecture.md`, "One shared composition"):
      * the entry-gate translation, the device-manifest producer (on this tier the APP is its sole writer, and without
      * the PUT this tier's uploads would never appear in the event union) and the engine wiring are the same code the
-     * ≥26.1 extension and the world harness run. Long-lived: each unit re-reads the membership.
+     * ≥26.1 extension and the world harness run. Long-lived: each unit re-reads the membership. It binds the walk
+     * memo, the app process's alone ([AppProcessOnly]).
      */
+    @OptIn(AppProcessOnly::class)
     val cycle: UploadCycle by lazy {
         uploadCycle(
             core.process,

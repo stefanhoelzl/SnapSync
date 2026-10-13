@@ -1,14 +1,15 @@
 package app.snapsync.feature.album
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AssetId
 import app.snapsync.model.EventConfig
+import app.snapsync.model.TimestampText
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
@@ -17,6 +18,7 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -59,16 +61,16 @@ private fun albumMap() = AlbumMapService(testShared())
 
 class AlbumCoordinatorTest {
 
-    private val event = "e1"
+    private val event = testEventId("e1")
 
     /** The joined membership of [event], saving to its album. */
     private val joined = EventConfig(
-        eventId = event,
+        eventId = testEventId(event.value),
         name = "Party",
-        minPhotoDate = captureCutoff("2026-09-01T00:00:00Z"),
-        endsAt = eventEnd("2026-09-30T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2026-09-30T00:00:00Z"),
-        deletesAt = deletesAt("2026-10-30T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-09-01T00:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2026-09-30T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-09-30T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2026-10-30T00:00:00Z")),
         saveToAlbum = true,
     )
 
@@ -76,17 +78,23 @@ class AlbumCoordinatorTest {
     fun `ensureAlbum creates and stores when absent`() = runTest {
         val manager = FakeAlbumManager(createResult = "album-X")
         val store = albumMap()
-        val id = AlbumCoordinator(GalleryAlbums(manager), store).ensureAlbum(event, "Birthday", saveToAlbum = true)
+        val id = AlbumCoordinator(
+            GalleryAlbums(manager),
+            store,
+        ).ensureAlbum(testEventId(event.value), "Birthday", saveToAlbum = true)
         assertEquals("album-X", id)
-        assertEquals("album-X", store.get(event))
+        assertEquals("album-X", store.get(testEventId(event.value)))
         assertEquals(1, manager.createCount)
     }
 
     @Test
     fun `ensureAlbum reuses an existing album without recreating`() = runTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
-        val store = albumMap().apply { put(event, "album-X") }
-        val id = AlbumCoordinator(GalleryAlbums(manager), store).ensureAlbum(event, "Birthday", saveToAlbum = true)
+        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
+        val id = AlbumCoordinator(
+            GalleryAlbums(manager),
+            store,
+        ).ensureAlbum(testEventId(event.value), "Birthday", saveToAlbum = true)
         assertEquals("album-X", id)
         assertEquals(0, manager.createCount) // reused, not recreated
     }
@@ -95,10 +103,13 @@ class AlbumCoordinatorTest {
     fun `ensureAlbum recreates and overwrites when the stored album is dangling`() = runTest {
         // Stored id no longer resolves (user deleted the album).
         val manager = FakeAlbumManager(createResult = "album-NEW", existingIds = mutableSetOf())
-        val store = albumMap().apply { put(event, "album-OLD") }
-        val id = AlbumCoordinator(GalleryAlbums(manager), store).ensureAlbum(event, "Birthday", saveToAlbum = true)
+        val store = albumMap().apply { put(testEventId(event.value), "album-OLD") }
+        val id = AlbumCoordinator(
+            GalleryAlbums(manager),
+            store,
+        ).ensureAlbum(testEventId(event.value), "Birthday", saveToAlbum = true)
         assertEquals("album-NEW", id)
-        assertEquals("album-NEW", store.get(event)) // overwritten
+        assertEquals("album-NEW", store.get(testEventId(event.value))) // overwritten
         assertEquals(1, manager.createCount)
     }
 
@@ -106,8 +117,13 @@ class AlbumCoordinatorTest {
     fun `ensureAlbum returns null on a creation failure and stores nothing`() = runTest {
         val manager = FakeAlbumManager(createResult = null)
         val store = albumMap()
-        assertNull(AlbumCoordinator(GalleryAlbums(manager), store).ensureAlbum(event, "Birthday", saveToAlbum = true))
-        assertNull(store.get(event))
+        assertNull(
+            AlbumCoordinator(
+                GalleryAlbums(manager),
+                store,
+            ).ensureAlbum(testEventId(event.value), "Birthday", saveToAlbum = true),
+        )
+        assertNull(store.get(testEventId(event.value)))
     }
 
     @Test
@@ -116,9 +132,14 @@ class AlbumCoordinatorTest {
         // callers call unconditionally, and an opted-out membership creates and stores nothing.
         val manager = FakeAlbumManager(createResult = "album-X")
         val store = albumMap()
-        assertNull(AlbumCoordinator(GalleryAlbums(manager), store).ensureAlbum(event, "Birthday", saveToAlbum = false))
+        assertNull(
+            AlbumCoordinator(
+                GalleryAlbums(manager),
+                store,
+            ).ensureAlbum(testEventId(event.value), "Birthday", saveToAlbum = false),
+        )
         assertEquals(0, manager.createCount)
-        assertNull(store.get(event))
+        assertNull(store.get(testEventId(event.value)))
     }
 
     @Test
@@ -129,27 +150,30 @@ class AlbumCoordinatorTest {
         val store = albumMap()
         assertNull(
             AlbumCoordinator(GalleryAlbums(manager), store)
-                .ensureAlbum("E", "Birthday", saveToAlbum = true, hasUsableAccess = false),
+                .ensureAlbum(testEventId("E"), "Birthday", saveToAlbum = true, hasUsableAccess = false),
         )
         assertEquals(0, manager.createCount)
-        assertNull(store.get("E"))
+        assertNull(store.get(testEventId("E")))
     }
 
     @Test
     fun `albumIdFor returns the stored album only for an opted-in membership`() = runTest {
         val manager = FakeAlbumManager()
-        val store = albumMap().apply { put(event, "album-X") }
+        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
         val coordinator = AlbumCoordinator(GalleryAlbums(manager), store)
-        assertEquals("album-X", coordinator.albumIdFor(event, saveToAlbum = true))
-        assertNull(coordinator.albumIdFor(event, saveToAlbum = false)) // opt-out: no import-time add
-        assertNull(coordinator.albumIdFor("other", saveToAlbum = true)) // no album ever created
+        assertEquals("album-X", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
+        assertNull(coordinator.albumIdFor(testEventId(event.value), saveToAlbum = false)) // opt-out: no import-time add
+        assertNull(coordinator.albumIdFor(testEventId("other"), saveToAlbum = true)) // no album ever created
     }
 
     @Test
     fun `place adds to the stored album`() = runTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
-        val store = albumMap().apply { put(event, "album-X") }
-        AlbumCoordinator(GalleryAlbums(manager), store).place(event, listOf(AssetId("A_L0_1"), AssetId("B_L0_1")))
+        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
+        AlbumCoordinator(
+            GalleryAlbums(manager),
+            store,
+        ).place(testEventId(event.value), listOf(AssetId("A_L0_1"), AssetId("B_L0_1")))
         assertEquals(listOf("album-X" to listOf(AssetId("A_L0_1"), AssetId("B_L0_1"))), manager.added)
     }
 
@@ -157,30 +181,36 @@ class AlbumCoordinatorTest {
     fun `place skips when no album exists yet`() = runTest {
         val manager = FakeAlbumManager()
         val store = albumMap() // empty
-        AlbumCoordinator(GalleryAlbums(manager), store).place(event, listOf(AssetId("A_L0_1")))
+        AlbumCoordinator(GalleryAlbums(manager), store).place(testEventId(event.value), listOf(AssetId("A_L0_1")))
         assertTrue(manager.added.isEmpty())
     }
 
     @Test
     fun `place is a no-op for an empty id list`() = runTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
-        val store = albumMap().apply { put(event, "album-X") }
-        AlbumCoordinator(GalleryAlbums(manager), store).place(event, emptyList())
+        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
+        AlbumCoordinator(GalleryAlbums(manager), store).place(testEventId(event.value), emptyList())
         assertTrue(manager.added.isEmpty())
     }
 
     @Test
     fun `place never throws when the manager add fails`() = runTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"), failAdd = true)
-        val store = albumMap().apply { put(event, "album-X") }
-        AlbumCoordinator(GalleryAlbums(manager), store).place(event, listOf(AssetId("A_L0_1"))) // must not throw
+        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
+        AlbumCoordinator(
+            GalleryAlbums(manager),
+            store,
+        ).place(testEventId(event.value), listOf(AssetId("A_L0_1"))) // must not throw
     }
 
     @Test
     fun `place never throws when the library refuses the add`() = runTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"), addOutcome = WriteOutcome.Failed("no"))
-        val store = albumMap().apply { put(event, "album-X") }
-        AlbumCoordinator(GalleryAlbums(manager), store).place(event, listOf(AssetId("A_L0_1"))) // must not throw
+        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
+        AlbumCoordinator(
+            GalleryAlbums(manager),
+            store,
+        ).place(testEventId(event.value), listOf(AssetId("A_L0_1"))) // must not throw
         assertEquals(1, manager.added.size, "the add was asked once, and its refusal ends it")
     }
 
@@ -188,19 +218,19 @@ class AlbumCoordinatorTest {
     fun `received photos are added to a collection which has no filled state`() = runTest {
         // Only a folder album turns "emptied" into "deleted"; a collection is never marked filled.
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
-        val store = albumMap().apply { put(event, "album-X") }
+        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
         val coordinator = AlbumCoordinator(GalleryAlbums(manager), store)
 
-        coordinator.placeReceived(event, listOf(AssetId("R_L0_1")))
+        coordinator.placeReceived(testEventId(event.value), listOf(AssetId("R_L0_1")))
         coordinator.onImportedInto(event, "album-X")
 
         assertEquals(listOf("album-X" to listOf(AssetId("R_L0_1"))), manager.added)
-        assertFalse(store.filled(event))
+        assertFalse(store.filled(testEventId(event.value)))
     }
 
     @Test
     fun `the joined membership's imports file into its album and none file while unjoined`() = runTest {
-        val store = albumMap().apply { put(event, "album-X") }
+        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
         val coordinator = AlbumCoordinator(GalleryAlbums(FakeAlbumManager()), store)
         assertEquals("album-X", coordinator.albumIdFor(joined))
         assertNull(coordinator.albumIdFor(joined.copy(saveToAlbum = false)), "the opt-in rule still holds")

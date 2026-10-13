@@ -1,5 +1,7 @@
 package app.snapsync.feature.download
 
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetPresence
@@ -57,7 +59,7 @@ class DownloadController(
     // Where staged bytes live, what is still on disk, and the release of settled rows' bytes. Required: a
     // composition that downloads must say where the bytes land.
     private val stagedBytes: StagingService,
-    private val myDeviceId: String,
+    private val myDeviceId: DeviceId,
     // Whether the download arm may run at all ([DownloadArm]): the membership's direction and the event's key.
     private val arm: DownloadArm,
     // When a background wake last read the union (decision record `changes/timely-background-receiving`, D4): every
@@ -147,7 +149,7 @@ class DownloadController(
      * once it has received everything). A membership that does not receive needs nothing: it answers the position it
      * read. A union that cannot be read answers `null`: a doubt reports nothing.
      */
-    suspend fun receivedPosition(eventId: String): Long? =
+    suspend fun receivedPosition(eventId: EventId): Long? =
         heldPosition(eventId, UnionTrigger.RECEIVED_CHECK, receives = arm.enabled() == true)
 
     /**
@@ -165,7 +167,7 @@ class DownloadController(
      * it serves is SETTLED here — imported, deleted by the member, or judged unimportable — and nothing waits to
      * download or import; `null` otherwise, and for a union that cannot be read.
      */
-    private suspend fun heldPosition(eventId: String, trigger: UnionTrigger, receives: Boolean): Long? {
+    private suspend fun heldPosition(eventId: EventId, trigger: UnionTrigger, receives: Boolean): Long? {
         val page = union.union(eventId, null, trigger).getOrElse { return null }
         if (!receives) return page.cursor
         val foreign = page.assets.filter { it.deviceId != myDeviceId }.map { AssetRef(it.deviceId, it.assetId) }
@@ -183,7 +185,7 @@ class DownloadController(
      * background wake runs, so others' photos arrive when no push does, at no more than one union read per
      * hour per event. A push, an opening and a join call [reconcile] themselves — each has a reason to read now.
      */
-    suspend fun reconcileIfDue(eventId: String) {
+    suspend fun reconcileIfDue(eventId: EventId) {
         if (!checks.due(EventCheck.PHOTOS, eventId)) {
             log.i { "union read within the hour — this wake reads none" }
             return
@@ -192,7 +194,7 @@ class DownloadController(
     }
 
     /** [reconcile] the joined event [eventId] for [trigger] — nothing while not joined. */
-    suspend fun reconcileJoined(eventId: String?, trigger: UnionTrigger) {
+    suspend fun reconcileJoined(eventId: EventId?, trigger: UnionTrigger) {
         eventId?.let { reconcile(it, trigger) }
     }
 
@@ -222,7 +224,7 @@ class DownloadController(
      * was read for this event now.
      */
     suspend fun reconcile(
-        eventId: String,
+        eventId: EventId,
         trigger: UnionTrigger,
         announced: Long? = null,
         known: UnionPage? = null,
@@ -263,7 +265,7 @@ class DownloadController(
      * [storedDeclared] — and prune after a full read ([reconcile]).
      */
     private suspend fun planLocked(
-        eventId: String,
+        eventId: EventId,
         page: UnionPage,
         stored: Long?,
         storedDeclared: Long?,
@@ -327,7 +329,7 @@ class DownloadController(
      * what is claimed, for [releaseAndPruneLocked]'s reasons. A transfer still in flight for a dropped row stages onto no
      * row and its bytes are discarded ([onResourceStaged]).
      */
-    private suspend fun pruneWithdrawnLocked(eventId: String, listed: Set<AssetRef>) {
+    private suspend fun pruneWithdrawnLocked(eventId: EventId, listed: Set<AssetRef>) {
         val stranded = store.union.pruneWithdrawn(eventId, listed, protecting = importing.toSet())
         if (stranded.isNotEmpty()) log.i { "a full read pruned withdrawn photos — ${stranded.size} staged file(s) freed" }
         runCatchingCancellable { stagedBytes.release(stranded) }
@@ -394,7 +396,7 @@ class DownloadController(
      * the same lock as every other decision here, so a ref this process has CLAIMED for an
      * import is never adopted underneath it: that import's own marker settles it. Answers the refs recorded.
      */
-    suspend fun settleAdopted(adopted: Collection<AdoptedAsset>, eventId: String): Set<AssetRef> =
+    suspend fun settleAdopted(adopted: Collection<AdoptedAsset>, eventId: EventId): Set<AssetRef> =
         mutex.withLock { store.adoptAll(adopted.filter { it.ref !in importing }, eventId) }
 
     /**

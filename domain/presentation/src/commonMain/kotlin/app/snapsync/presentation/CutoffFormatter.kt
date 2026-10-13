@@ -1,11 +1,12 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
-import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.EventWindow
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.localToCutoff
 import app.snapsync.ui.state.CoarseDuration
 import kotlinx.datetime.LocalDateTime
@@ -15,7 +16,6 @@ import kotlinx.datetime.periodUntil
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Duration.Companion.days
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -44,10 +44,10 @@ class CutoffFormatter(
     fun millisToNextMinute(): Long = MILLIS_PER_MINUTE - now().toEpochMilliseconds().mod(MILLIS_PER_MINUTE)
 
     /** A picked local wall-clock value as the capture date it names. */
-    fun toCutoff(local: LocalDateTime): CaptureDate = localToCutoff(local, zone)
+    fun toCutoff(local: LocalDateTime): Timestamp = localToCutoff(local, zone)
 
     /** A capture date as a local value for the picker. */
-    fun toLocal(date: CaptureDate): LocalDateTime = date.at.toLocalDateTime(zone)
+    fun toLocal(date: Timestamp): LocalDateTime = date.at.toLocalDateTime(zone)
 
     /** A membership's or event's date as a local value. */
     fun toLocal(start: EventStart): LocalDateTime = toLocal(start.at)
@@ -61,15 +61,18 @@ class CutoffFormatter(
     /** See the [EventStart] overload. */
     fun toLocal(ceiling: CaptureCeiling): LocalDateTime = toLocal(ceiling.at)
 
+    /** An open-until date in this device's zone. */
+    fun toLocal(until: OpenUntil): LocalDateTime = toLocal(until.at)
+
     /**
      * "Now" as a capture date — the form the event-start comparison needs (`startsAt > nowCutoff()`): comparing
      * instants rather than local values needs no zone.
      */
-    fun nowCutoff(): CaptureDate = toCutoff(nowLocal())
+    fun nowCutoff(): Timestamp = toCutoff(nowLocal())
 
     /**
      * The latest end an event starting at [from] may have: [from] plus the
-     * backend's event window ([EVENT_WINDOW_MAX_SECONDS], generated from the same deployment value
+     * backend's event window ([EventWindow.MAX.inWholeSeconds], generated from the same deployment value
      * `POST /events` validates against).
      *
      * Measured in INSTANTS, not wall-clock days, because the backend measures `endsAt - startsAt` in seconds
@@ -77,26 +80,26 @@ class CutoffFormatter(
      * local days later" is an hour more or less than the limit, and the hour more is a refusal.
      */
     fun latestEnd(from: LocalDateTime): LocalDateTime =
-        (from.toInstant(zone) + EVENT_WINDOW_MAX_SECONDS.seconds).toLocalDateTime(zone)
+        (from.toInstant(zone) + EventWindow.MAX).toLocalDateTime(zone)
 
     /**
      * The earliest start a range ending at [until] may have — the mirror of [latestEnd], measured in instants for the
-     * same reason: a member's range is no longer than an event may be (`shareRangeFault`), which the join measures in
+     * same reason: a member's range is no longer than an event may be (`CaptureRange`), which the join measures in
      * seconds.
      */
     fun earliestStart(until: LocalDateTime): LocalDateTime =
-        (until.toInstant(zone) - EVENT_WINDOW_MAX_SECONDS.seconds).toLocalDateTime(zone)
+        (until.toInstant(zone) - EventWindow.MAX).toLocalDateTime(zone)
 
     /**
      * The open-until date of an event created now that guests may join for [days] more days (decision record
      * `changes/back-dated-events`, D1). Added in INSTANTS, like [latestEnd]: the backend bounds it in seconds from its
      * own now, and "30 local days" across a daylight-saving change is an hour more than the 30 days it admits.
      */
-    fun openFor(days: Int): EventEnd = EventEnd(CaptureDate.of(now() + days.days))
+    fun openFor(days: Int): OpenUntil = OpenUntil(Timestamp.of(now() + days.days))
 
     /** Whether `[from, until]` is no longer than the backend's event window — see [latestEnd]. */
     fun fitsEventWindow(from: LocalDateTime, until: LocalDateTime): Boolean =
-        until.toInstant(zone) - from.toInstant(zone) <= EVENT_WINDOW_MAX_SECONDS.seconds
+        until.toInstant(zone) - from.toInstant(zone) <= EventWindow.MAX
 
     /**
      * The duration between [from] and [until] by its coarsest single unit, for the create screen's live hint

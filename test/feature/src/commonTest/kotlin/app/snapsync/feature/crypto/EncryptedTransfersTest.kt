@@ -1,5 +1,10 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
@@ -8,7 +13,6 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventConfig
@@ -21,14 +25,11 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.decodeEventKey
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Crypto
@@ -61,6 +62,8 @@ import app.snapsync.services.upload.SessionTransfer
 import app.snapsync.services.upload.TransferRecord
 import app.snapsync.services.upload.TransferSetup
 import app.snapsync.services.upload.uploadStagingPath
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -85,13 +88,13 @@ class EncryptedTransfersTest {
     private val photo = ByteArray(150_000) { (it * 11 + 2).toByte() }
 
     private fun joined(keyId: String?) = EventConfig(
-        eventId = EVENT,
+        eventId = testEventId(EVENT),
         name = "Secret",
-        minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
         keyId = keyId,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     /** One member's device: its files, its kept key, its membership. */
@@ -307,7 +310,13 @@ class EncryptedTransfersTest {
         repeat(5) { attempt ->
             receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
             assertFalse(
-                opening.open(AssetRef(DEVICE_A, AssetId(ASSET)), KEY, EVENT, "os-tmp/$attempt", "staged/$attempt"),
+                opening.open(
+                    AssetRef(testDeviceId(DEVICE_A), AssetId(ASSET)),
+                    KEY,
+                    EVENT,
+                    "os-tmp/$attempt",
+                    "staged/$attempt",
+                ),
             )
         }
         assertTrue(receiver.files.operations.none { it.startsWith("write") && it.contains("staged/") })

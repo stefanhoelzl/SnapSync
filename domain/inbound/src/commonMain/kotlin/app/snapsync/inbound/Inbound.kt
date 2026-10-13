@@ -28,6 +28,20 @@ annotation class InboundImplementation
 annotation class CompositionOnly
 
 /**
+ * The app process's alone: the upload extension must never construct or reach it. Both processes link the core, so
+ * linkage cannot keep it out; the extension's 32 MB limit — overrun is a jetsam kill and a relaunch loop, not an error
+ * — and its holding nothing across `process()` calls can. The app's composition opts in, once, where it binds it
+ * (`OptInPinsTest`; `docs/patterns.md`, "Opt-in capabilities").
+ */
+@RequiresOptIn(
+    level = RequiresOptIn.Level.ERROR,
+    message = "The upload extension must not reach this: compose it in the app's uploader only.",
+)
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.CONSTRUCTOR)
+annotation class AppProcessOnly
+
+/**
  * A delivery the platform makes **once and synchronously**, on its own thread, and may answer with [R]: a transfer's
  * end, an import's placeholder or settlement, a metric report, a lifecycle notice. The receiver persists what the
  * delivery means **before it returns** — there is no second delivery.

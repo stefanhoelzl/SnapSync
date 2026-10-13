@@ -7,17 +7,34 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.downloads.db.DownloadAsset
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.services.downloads.db.DownloadResource
+import app.snapsync.services.downloads.db.EventRef
+import app.snapsync.services.downloads.db.Recognised
+import app.snapsync.services.downloads.db.UnionCursor
+import app.snapsync.services.ledger.db.EventAlbum
+import app.snapsync.services.ledger.db.EventCheck
 import app.snapsync.services.ledger.db.LedgerDatabase
 import app.snapsync.services.ledger.db.LedgerRow
 import app.snapsync.services.ledger.db.Membership
+import app.snapsync.services.ledger.db.PendingLeave
+import app.snapsync.services.ledger.db.UploadedManifest
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.time.Instant
 
 /** One statement of a schema, run against its generated queries with fixed arguments. */
 class SchemaStatement<Q>(val name: String, val run: (Q) -> Unit)
@@ -64,10 +81,21 @@ fun SqlSchema<QueryResult.Value<Unit>>.at(version: Long, vararg rows: String): S
 }
 
 /** The column encoding is the services' business; a statement needs only a value it can bind and read back. */
-private object AssetIdText : ColumnAdapter<AssetId, String> {
-    override fun decode(databaseValue: String) = AssetId(databaseValue)
-    override fun encode(value: AssetId) = value.value
+private class Text<T : Any>(
+    private val wrap: (String) -> T,
+    private val unwrap: (T) -> String,
+) : ColumnAdapter<T, String> {
+    override fun decode(databaseValue: String) = wrap(databaseValue)
+    override fun encode(value: T) = unwrap(value)
 }
+
+private val AssetIdText = Text(::AssetId, AssetId::value)
+private val EventIdText = Text({ requireNotNull(EventId.parse(it)) }, EventId::value)
+private val DeviceIdText = Text({ requireNotNull(DeviceId.parse(it)) }, DeviceId::value)
+
+/** A date role's column, as its whole-second instant's epoch text: any instant binds and reads back. */
+private fun <T : Any> dateText(wrap: (Timestamp) -> T, unwrap: (T) -> Timestamp) =
+    Text({ wrap(Timestamp.of(Instant.parse(it))) }, { unwrap(it).at.toString() })
 
 private val LEDGER = ProductionSchema(
     label = "ledger",
@@ -75,8 +103,21 @@ private val LEDGER = ProductionSchema(
     database = {
         LedgerDatabase(
             it,
+            EventAlbum.Adapter(eventIdAdapter = EventIdText),
+            EventCheck.Adapter(eventIdAdapter = EventIdText),
             LedgerRow.Adapter(assetIdAdapter = AssetIdText, stateAdapter = EnumColumnAdapter()),
-            Membership.Adapter(directionAdapter = EnumColumnAdapter()),
+            Membership.Adapter(
+                eventIdAdapter = EventIdText,
+                minPhotoDateAdapter = dateText(::CaptureCutoff, CaptureCutoff::at),
+                startsAtAdapter = dateText(::EventStart, EventStart::at),
+                endsAtAdapter = dateText(::EventEnd, EventEnd::at),
+                maxPhotoDateAdapter = dateText(::CaptureCeiling, CaptureCeiling::at),
+                deletesAtAdapter = dateText(::DeletesAt, DeletesAt::at),
+                directionAdapter = EnumColumnAdapter(),
+                openUntilAdapter = dateText(::OpenUntil, OpenUntil::at),
+            ),
+            PendingLeave.Adapter(eventIdAdapter = EventIdText),
+            UploadedManifest.Adapter(eventIdAdapter = EventIdText),
         )
     },
     queries = { it.ledgerQueries },
@@ -92,17 +133,27 @@ private val DOWNLOADS = ProductionSchema(
         DownloadDatabase(
             it,
             DownloadAsset.Adapter(
+                sourceDeviceIdAdapter = DeviceIdText,
                 sourceAssetIdAdapter = AssetIdText,
                 stateAdapter = EnumColumnAdapter(),
                 createdLocalIdAdapter = AssetIdText,
             ),
-            DownloadResource.Adapter(sourceAssetIdAdapter = AssetIdText),
+            DownloadResource.Adapter(sourceDeviceIdAdapter = DeviceIdText, sourceAssetIdAdapter = AssetIdText),
+            EventRef.Adapter(
+                eventIdAdapter = EventIdText,
+                sourceDeviceIdAdapter = DeviceIdText,
+                sourceAssetIdAdapter = AssetIdText,
+            ),
+            Recognised.Adapter(eventIdAdapter = EventIdText),
+            UnionCursor.Adapter(eventIdAdapter = EventIdText),
         )
     },
     queries = { it.downloadStoreQueries },
     statements = DownloadStoreStatements,
     firstVersion = 5,
-    firstRow = "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'IMPORTED', '', 'LOCAL-OLD', 'E1')",
+    // Ids as a device stores them: the backend issues every device and event id as a canonical UUID.
+    firstRow = "INSERT INTO downloadAsset VALUES ('00000000-0000-4000-8000-00000000000a', 'OLD', 'IMPORTED', '', " +
+        "'LOCAL-OLD', '00000000-0000-4000-8000-00000000000e')",
 )
 
 /** [production] at its oldest migrated-from version, as a schema the port can create: those tables, holding a row. */

@@ -1,5 +1,9 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.mock.BackendMock
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.ExtensionHostMock
@@ -17,10 +21,7 @@ import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig
 import app.snapsync.model.HttpResult
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
+import app.snapsync.model.TimestampText
 import app.snapsync.ports.HttpTransport
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.LegacyRecords
@@ -29,6 +30,7 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.identity.AttestState
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -103,18 +105,18 @@ class ExtensionEntryTest {
         attest.setToken(token)
         ConfigService(appDatabase, clock).save(
             EventConfig(
-                eventId = "11111111-1111-4111-8111-111111111111",
+                eventId = testEventId("11111111-1111-4111-8111-111111111111"),
                 name = "Anna's Birthday",
-                minPhotoDate = captureCutoff("2026-07-14T18:00:00Z"),
-                maxPhotoDate = captureCeiling("2026-07-21T18:00:00Z"),
+                minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-14T18:00:00Z")),
+                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-21T18:00:00Z")),
                 saveToAlbum = false,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             ),
         )
         // The app creates and migrates the download store — the extension only ever opens it read-only — and has
         // recognised this membership's received photos, without which the extension shares nothing of it.
-        DownloadService(databases).recognition.mark("11111111-1111-4111-8111-111111111111")
+        DownloadService(databases).recognition.mark(testEventId("11111111-1111-4111-8111-111111111111"))
     }
 
     /** The extension's ports over the device's mocks, as its root assembles them. */

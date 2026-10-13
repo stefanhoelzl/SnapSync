@@ -5,6 +5,7 @@ import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.rig.AssetView
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import kotlinx.serialization.json.jsonPrimitive
@@ -80,7 +81,7 @@ suspend fun Rig.inviteLink(
     saveToAlbum: Boolean? = null,
 ): String = encodeEventUrl(
     EventLinkPayload(
-        eventId,
+        testEventId(eventId),
         autoJoin,
         minPhotoDate,
         direction = direction,

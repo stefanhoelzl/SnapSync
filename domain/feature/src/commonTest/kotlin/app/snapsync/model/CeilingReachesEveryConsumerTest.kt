@@ -1,7 +1,12 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,8 +29,8 @@ import kotlin.test.assertTrue
  */
 class CeilingReachesEveryConsumerTest {
 
-    private val cutoff = captureCutoff("2026-07-01T00:00:00Z")
-    private val ceiling = captureCeiling("2026-07-08T00:00:00Z")
+    private val cutoff = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z"))
+    private val ceiling = CaptureCeiling(TimestampText.parse("2026-07-08T00:00:00Z"))
 
     private val inWindow = "2026-07-04T12:00:00Z"
     private val postCeiling = "2026-07-20T12:00:00Z" // the event's window closed twelve days earlier
@@ -83,7 +88,7 @@ class CeilingReachesEveryConsumerTest {
         // The projection used to take a bare `startDate` and apply the floor alone — so AFTER was listed
         // in `device.json`, entered the event union, and was offered to every other member as bytes that
         // were never uploaded. A 404 for everyone.
-        val manifest = projectDeviceManifest("dev", ledgerRows(), policyOf())
+        val manifest = projectDeviceManifest(testDeviceId("dev"), ledgerRows(), policyOf())
         assertEquals(listOf(AssetId("IN")), manifest.assets.map { it.assetId })
     }
 
@@ -99,7 +104,7 @@ class CeilingReachesEveryConsumerTest {
         val facts = discovered.map {
             AssetFacts(
                 it.assetId,
-                CaptureDate.parse(it.metadata[RESOURCE_META_CREATION_DATE]!!),
+                CaptureDate.Dated(TimestampText.parse(it.metadata[RESOURCE_META_CREATION_DATE]!!)),
                 pixelArea = 12_000_000,
             )
         }
@@ -125,7 +130,7 @@ class CeilingReachesEveryConsumerTest {
         // consumers see, so a future rule added to one of them fails here rather than on a device.
         val fromResources = admitted()
         val fromFacts = factsFromResources(discovered).filter { policyOf().admits(it) }.map { it.assetId }.toSet()
-        val fromManifest = projectDeviceManifest("dev", ledgerRows(), policyOf())
+        val fromManifest = projectDeviceManifest(testDeviceId("dev"), ledgerRows(), policyOf())
             .assets.map { it.assetId }.toSet()
 
         assertEquals(fromResources, fromFacts)

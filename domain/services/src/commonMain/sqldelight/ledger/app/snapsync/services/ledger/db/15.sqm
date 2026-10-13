@@ -1,0 +1,183 @@
+import app.snapsync.domain.asset.AssetId;
+import app.snapsync.domain.event.DeletesAt;
+import app.snapsync.domain.event.EventEnd;
+import app.snapsync.domain.event.EventId;
+import app.snapsync.domain.event.EventStart;
+import app.snapsync.domain.event.OpenUntil;
+import app.snapsync.domain.sharing.CaptureCeiling;
+import app.snapsync.domain.sharing.CaptureCutoff;
+import app.snapsync.model.Direction;
+import app.snapsync.model.LedgerState;
+import kotlin.Boolean;
+
+-- v15 -> v16: the columns that hold an event id, an asset id or one of the event's dates are read and written as the
+-- domain layer's values (`docs/architecture.md`, "The core and its zones"; `docs/patterns.md`, "Formats live at the
+-- boundary"). NOTHING a device stores changes: the same columns, the same SQL types, constraints, indexes and triggers,
+-- the same rows. Only the Kotlin type SQLDelight binds each column to changes — and that lives in the `CREATE TABLE`
+-- a shipped migration may never edit (`MigrationPinTest`), so each table is re-created here with its types.
+--
+-- `ledgerRow.eventId` stays plain text: 12.sqm parks a pre-v13 row under the empty event, which is no event id.
+--
+-- REBUILT the way 12.sqm rebuilt `ledgerRow` (SQLite 3.25 has no `DROP COLUMN`, and a type is not a column change it
+-- can express): each table's rows are staged in an ordinary table, the table is re-created, the rows come back, and
+-- its indexes and triggers are re-created byte-for-byte. The triggers are dropped FIRST, so moving the ledger's rows
+-- back does not count as a manifest change.
+--
+-- ROW-PRESERVING, every column copied as it is. DOWNGRADE: the tables an earlier build reads are the same tables.
+
+CREATE TABLE ledgerRow_v15 AS SELECT * FROM ledgerRow;
+
+DROP TRIGGER ledgerRow_version_insert;
+DROP TRIGGER ledgerRow_version_delete;
+DROP TRIGGER ledgerRow_version_update;
+DROP INDEX ledgerRow_assetId;
+DROP INDEX ledgerRow_destinationPath;
+DROP TABLE ledgerRow;
+
+CREATE TABLE ledgerRow (
+    eventId TEXT NOT NULL,
+    key TEXT NOT NULL,
+    assetId TEXT AS AssetId NOT NULL,
+    state TEXT AS LedgerState NOT NULL,
+    creationDate TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    contentType TEXT NOT NULL DEFAULT '',
+    originalFilename TEXT NOT NULL DEFAULT '',
+    destinationPath TEXT,
+    PRIMARY KEY (eventId, key)
+);
+
+INSERT INTO ledgerRow (
+    eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+)
+SELECT eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+FROM ledgerRow_v15;
+
+DROP TABLE ledgerRow_v15;
+
+CREATE INDEX ledgerRow_assetId ON ledgerRow(eventId, assetId);
+
+CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
+
+CREATE TRIGGER ledgerRow_version_insert AFTER INSERT ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_delete AFTER DELETE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_update AFTER UPDATE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1
+    WHERE id = 0 AND (
+        old.eventId IS NOT new.eventId
+        OR old.key IS NOT new.key
+        OR old.assetId IS NOT new.assetId
+        OR old.creationDate IS NOT new.creationDate
+        OR old.role IS NOT new.role
+        OR old.contentType IS NOT new.contentType
+        OR old.originalFilename IS NOT new.originalFilename
+    );
+END;
+
+CREATE TABLE membership_v15 AS SELECT * FROM membership;
+
+DROP TABLE membership;
+
+CREATE TABLE membership (
+    id             INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    eventId        TEXT AS EventId NOT NULL,
+    name           TEXT    NOT NULL,
+    minPhotoDate   TEXT AS CaptureCutoff NOT NULL,
+    startsAt       TEXT AS EventStart NOT NULL,
+    endsAt         TEXT AS EventEnd NOT NULL,
+    maxPhotoDate   TEXT AS CaptureCeiling NOT NULL,
+    deletesAt      TEXT AS DeletesAt NOT NULL,
+    direction      TEXT AS Direction NOT NULL,
+    saveToAlbum    INTEGER AS Boolean NOT NULL,
+    closed         INTEGER AS Boolean NOT NULL DEFAULT 0,
+    membersActive  INTEGER,
+    membersSettled INTEGER,
+    keyId          TEXT,
+    openUntil      TEXT AS OpenUntil,
+    membersWaiting INTEGER,
+    deleted        INTEGER AS Boolean NOT NULL DEFAULT 0,
+    CHECK ((membersActive IS NULL) = (membersSettled IS NULL))
+);
+
+INSERT INTO membership (
+    id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum, closed,
+    membersActive, membersSettled, keyId, openUntil, membersWaiting, deleted
+)
+SELECT id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum, closed,
+    membersActive, membersSettled, keyId, openUntil, membersWaiting, deleted
+FROM membership_v15;
+
+DROP TABLE membership_v15;
+
+CREATE TABLE uploadedManifest_v15 AS SELECT * FROM uploadedManifest;
+
+DROP TABLE uploadedManifest;
+
+CREATE TABLE uploadedManifest (
+    id       INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    eventId  TEXT AS EventId NOT NULL,
+    version  INTEGER NOT NULL,
+    manifest TEXT    NOT NULL
+);
+
+INSERT INTO uploadedManifest (id, eventId, version, manifest)
+SELECT id, eventId, version, manifest FROM uploadedManifest_v15;
+
+DROP TABLE uploadedManifest_v15;
+
+CREATE TABLE pendingLeave_v15 AS SELECT * FROM pendingLeave;
+
+DROP TABLE pendingLeave;
+
+CREATE TABLE pendingLeave (
+    eventId  TEXT AS EventId NOT NULL PRIMARY KEY,
+    received INTEGER AS Boolean NOT NULL
+);
+
+INSERT INTO pendingLeave (eventId, received) SELECT eventId, received FROM pendingLeave_v15;
+
+DROP TABLE pendingLeave_v15;
+
+CREATE TABLE eventAlbum_v15 AS SELECT * FROM eventAlbum;
+
+DROP TABLE eventAlbum;
+
+CREATE TABLE eventAlbum (
+    eventId      TEXT AS EventId NOT NULL PRIMARY KEY,
+    albumLocalId TEXT NOT NULL,
+    filled       INTEGER AS Boolean NOT NULL DEFAULT 0
+);
+
+INSERT INTO eventAlbum (eventId, albumLocalId, filled) SELECT eventId, albumLocalId, filled FROM eventAlbum_v15;
+
+DROP TABLE eventAlbum_v15;
+
+CREATE TABLE eventCheck_v15 AS SELECT * FROM eventCheck;
+
+DROP TABLE eventCheck;
+
+CREATE TABLE eventCheck (
+    eventId TEXT AS EventId NOT NULL,
+    kind    TEXT    NOT NULL,
+    lastAt  INTEGER NOT NULL,
+    PRIMARY KEY (eventId, kind)
+);
+
+INSERT INTO eventCheck (eventId, kind, lastAt) SELECT eventId, kind, lastAt FROM eventCheck_v15;
+
+DROP TABLE eventCheck_v15;

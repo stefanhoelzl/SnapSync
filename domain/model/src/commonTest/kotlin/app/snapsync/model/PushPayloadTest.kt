@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -14,13 +15,22 @@ class PushPayloadTest {
 
     @Test
     fun `extracts the eventId string`() {
-        assertEquals("E1", pushEventId(mapOf<Any?, Any?>("eventId" to "E1", "aps" to mapOf<Any?, Any?>())))
+        assertEquals(
+            testEventId("E1"),
+            pushEventId(mapOf<Any?, Any?>("eventId" to testEventId("E1").value, "aps" to mapOf<Any?, Any?>())),
+        )
     }
 
     @Test
     fun `an FCM data message’s string map yields its eventId`() {
         // FCM hands a data message over as `Map<String, String>`: the same key the APNs payload carries.
-        assertEquals("E1", pushEventId(mapOf("eventId" to "E1")))
+        assertEquals(testEventId("E1"), pushEventId(mapOf("eventId" to testEventId("E1").value)))
+    }
+
+    @Test
+    fun `an eventId that names no event is no eventId`() {
+        // The backend issues every event id as a canonical UUID: any other string reaches no arm, like an absent one.
+        assertEquals(null, pushEventId(mapOf("eventId" to "E1")))
     }
 
     @Test

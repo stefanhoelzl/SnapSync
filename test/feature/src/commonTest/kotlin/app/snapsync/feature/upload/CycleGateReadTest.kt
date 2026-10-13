@@ -1,5 +1,12 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.configService
@@ -10,18 +17,12 @@ import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PauseReason
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.SuppressionReadiness
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformDeviceId
@@ -32,6 +33,7 @@ import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -51,7 +53,7 @@ import kotlin.time.Instant
 class CycleGateReadTest {
 
     private val host = "https://edge.example"
-    private val cutoff = captureCutoff("2026-01-01T00:00:00Z")
+    private val cutoff = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z"))
 
     /** The suppression store, scripted; records whether the gate asked it, and hands out [suppressed]. */
     private class Suppression(
@@ -63,16 +65,16 @@ class CycleGateReadTest {
         var idsAsked = 0
         override suspend fun readiness(): SuppressionReadiness = readiness.also { readinessAsked++ }
         override suspend fun suppressedLocalIds(): Set<AssetId> = suppressed.also { idsAsked++ }
-        override suspend fun isRecognised(eventId: String): Boolean = recognised
+        override suspend fun isRecognised(eventId: EventId): Boolean = recognised
     }
 
     private fun event(eventId: String = "E", saveToAlbum: Boolean = false, keyId: String? = null) = EventConfig(
-        eventId,
+        testEventId(eventId),
         "E",
         cutoff,
-        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         saveToAlbum = saveToAlbum,
         keyId = keyId,
     )
@@ -107,14 +109,14 @@ class CycleGateReadTest {
     fun `an encrypted event whose key this device lost is withheld however the process would admit`() = runTest {
         val suppression = Suppression()
         val gate = gate(joined = event(keyId = "lost-key"), suppression = suppression).read()
-        assertEquals("E", assertIs<CycleGate.Withheld>(gate).config.eventId)
+        assertEquals(testEventId("E"), assertIs<CycleGate.Withheld>(gate).config.eventId)
         assertEquals(0, suppression.readinessAsked, "a withheld cycle never asks the suppression store")
     }
 
     @Test
     fun `an event whose photos are deleted is withheld however the process would admit`() = runTest {
         val gate = gate(joined = event().copy(deleted = true)).read()
-        assertEquals("E", assertIs<CycleGate.Withheld>(gate).config.eventId)
+        assertEquals(testEventId("E"), assertIs<CycleGate.Withheld>(gate).config.eventId)
     }
 
     // ---- joined -----------------------------------------------------------------------------------------
@@ -131,9 +133,9 @@ class CycleGateReadTest {
             val read = gate(joined = event("E", saveToAlbum = true), ledger = ledger, suppression = suppression).read()
 
             val run = assertIs<CycleGate.Run>(read)
-            assertEquals("E", run.config.eventId)
+            assertEquals(testEventId("E"), run.config.eventId)
             assertEquals(host, run.config.host)
-            assertEquals("E", run.membership.eventId)
+            assertEquals(testEventId("E"), run.membership.eventId)
             assertTrue(run.membership.saveToAlbum)
             assertEquals(ledger.manifestVersion(), run.membership.manifestVersion)
             assertEquals(1, suppression.readinessAsked, "an admitted cycle asks the suppression store once")
@@ -164,12 +166,12 @@ class CycleGateReadTest {
     fun `before the event starts the floor is the start — from the start on it is the member's own`() = runTest {
         // Capability `photo-sharing`, "Nothing is shared before the event starts": a member who chose to share from two
         // days before the start shares nothing of those days until the start has passed — then all of them.
-        val start = eventStart("2026-07-10T18:00:00Z")
-        val own = captureCutoff("2026-07-08T18:00:00Z")
+        val start = EventStart(TimestampText.parse("2026-07-10T18:00:00Z"))
+        val own = CaptureCutoff(TimestampText.parse("2026-07-08T18:00:00Z"))
         val joined = event().copy(
             minPhotoDate = own,
             startsAt = start,
-            maxPhotoDate = captureCeiling("2026-07-12T18:00:00Z"),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-12T18:00:00Z")),
         )
         var now = Instant.parse("2026-07-09T12:00:00Z")
         val clock = object : Clock {
@@ -189,7 +191,7 @@ class CycleGateReadTest {
         runTest {
             val read = gate(suppression = Suppression(recognised = false)).read()
 
-            assertEquals("E", assertIs<CycleGate.Withheld>(read).config.eventId)
+            assertEquals(testEventId("E"), assertIs<CycleGate.Withheld>(read).config.eventId)
         }
 
     @Test
@@ -212,7 +214,7 @@ class CycleGateReadTest {
 
         val read = gate(suppression = suppression, admission = UploadAdmission.Withheld).read()
 
-        assertEquals("E", assertIs<CycleGate.Withheld>(read).config.eventId)
+        assertEquals(testEventId("E"), assertIs<CycleGate.Withheld>(read).config.eventId)
         assertEquals(0, suppression.readinessAsked)
     }
 
@@ -290,7 +292,7 @@ class CycleGateReadTest {
     @Test
     fun `an unreadable ledger skips naming the manifest version`() = runTest {
         val databases = inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked")))
-        val locked = LedgerService(testShared(databases)) { "E" }
+        val locked = LedgerService(testShared(databases)) { testEventId("E") }
         val suppression = Suppression()
 
         val skip = assertIs<CycleGate.Skip>(gate(ledger = locked, suppression = suppression).read())

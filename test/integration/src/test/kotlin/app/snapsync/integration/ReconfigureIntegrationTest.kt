@@ -84,7 +84,7 @@ class ReconfigureIntegrationTest {
     )
     fun turning_receive_off_cancels_in_flight_downloads_and_imports_nothing() = rigTest {
         createAndJoin() // Both
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         val before = libraryTotal()
 
         // Enqueue an in-flight download, then turn RECEIVE off before it is staged.

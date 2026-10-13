@@ -1,5 +1,7 @@
 package app.snapsync.services.backend
 
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.JoinResult
 import app.snapsync.model.runCatchingCancellable
@@ -23,7 +25,7 @@ import app.snapsync.wire.models.Received
  * membership exist, and which blanked a rejoining device's contribution until the next cycle republished it.
  */
 fun interface EventJoin {
-    suspend fun join(eventId: String, deviceId: String): JoinResult
+    suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult
 }
 
 /**
@@ -34,7 +36,7 @@ fun interface EventJoin {
  * refused rather than creating one — and it records no upload. Synchronous and in-cycle.
  */
 fun interface ManifestPublisher {
-    suspend fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): Boolean
+    suspend fun publish(eventId: EventId, deviceId: DeviceId, manifest: DeviceManifest): Boolean
 }
 
 /**
@@ -52,7 +54,7 @@ fun interface ManifestPublisher {
  */
 fun interface LeaveNotifier {
     /** Announce that this device has left [eventId]. Never throws; failure arrives as a failed [Result]. */
-    suspend fun notifyLeaving(eventId: String, received: Boolean): Result<Unit>
+    suspend fun notifyLeaving(eventId: EventId, received: Boolean): Result<Unit>
 }
 
 /**
@@ -64,7 +66,7 @@ fun interface LeaveNotifier {
  * repeats. Never throws.
  */
 fun interface ReceivedReporter {
-    suspend fun report(eventId: String, position: Long): Boolean
+    suspend fun report(eventId: EventId, position: Long): Boolean
 }
 
 /**
@@ -75,8 +77,8 @@ fun interface ReceivedReporter {
  */
 class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
 
-    override suspend fun join(eventId: String, deviceId: String): JoinResult =
-        when (gateway.send(Routes.JoinEvent.request(eventId, deviceId), obtainFirst = true)) {
+    override suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult =
+        when (gateway.send(Routes.JoinEvent.request(eventId.value, deviceId.value), obtainFirst = true)) {
             JoinEventReply.Joined -> JoinResult.JOINED
             // A completed event — or one closed before events stopped closing — admits nobody.
             is Closed -> JoinResult.EVENT_CLOSED
@@ -94,9 +96,9 @@ class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
  */
 class BackendManifestPublisher(private val gateway: BackendGateway) : ManifestPublisher {
 
-    override suspend fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): Boolean {
+    override suspend fun publish(eventId: EventId, deviceId: DeviceId, manifest: DeviceManifest): Boolean {
         val body = manifest.onWire() ?: return false
-        return when (gateway.send(Routes.PublishManifest.request(eventId, deviceId, body))) {
+        return when (gateway.send(Routes.PublishManifest.request(eventId.value, deviceId.value, body))) {
             PublishManifestReply.Published -> true
             // A legacy CLOSED event's asset sets are fixed and a COMPLETED one holds none: the
             // refusal is final, so it is recorded like a publish — re-sending the same snapshot every cycle could
@@ -119,9 +121,9 @@ class BackendLeaveNotifier(
     private val identity: PersistedDeviceIdentity,
 ) : LeaveNotifier {
 
-    override suspend fun notifyLeaving(eventId: String, received: Boolean): Result<Unit> {
+    override suspend fun notifyLeaving(eventId: EventId, received: Boolean): Result<Unit> {
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
-        return when (val reply = gateway.send(Routes.LeaveEvent.request(eventId, id, received))) {
+        return when (val reply = gateway.send(Routes.LeaveEvent.request(eventId.value, id.value, received))) {
             LeaveEventReply.Left -> Result.success(Unit)
             // An event the backend no longer holds has nothing left to leave: the leave is as done as it will ever be.
             EventNotFound -> Result.success(Unit)
@@ -139,9 +141,9 @@ class BackendReceivedReporter(
     private val identity: PersistedDeviceIdentity,
 ) : ReceivedReporter {
 
-    override suspend fun report(eventId: String, position: Long): Boolean {
+    override suspend fun report(eventId: EventId, position: Long): Boolean {
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return false }
-        return gateway.send(Routes.ReportReceived.request(eventId, id, Received(position))) ==
+        return gateway.send(Routes.ReportReceived.request(eventId.value, id.value, Received(position))) ==
             ReportReceivedReply.Recorded
     }
 }

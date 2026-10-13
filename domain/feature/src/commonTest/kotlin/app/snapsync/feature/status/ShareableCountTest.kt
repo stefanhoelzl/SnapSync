@@ -1,14 +1,14 @@
 package app.snapsync.feature.status
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AssetFacts
-import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
+import app.snapsync.model.TimestampText
 import app.snapsync.services.gallery.CandidateSource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -16,10 +16,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /** Every candidate carries a cutoff (capability `photo-sharing`). */
-private val CUTOFF = captureCutoff("2026-07-06T00:00:00Z")
+private val CUTOFF = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z"))
 private const val IN_SCOPE = "2026-07-10T00:00:00Z"
 private const val PRE_CUTOFF = "2026-07-01T00:00:00Z"
-private val UNTIL = captureCeiling("2026-07-14T00:00:00Z")
+private val UNTIL = CaptureCeiling(TimestampText.parse("2026-07-14T00:00:00Z"))
 private const val POST_UNTIL = "2026-07-20T00:00:00Z"
 
 /** An admitted camera photo unless it opts into an exclusion (a 12 MP capture by default). */
@@ -31,7 +31,7 @@ private fun asset(
     height: Long = 3024,
 ) = AssetFacts(
     assetId = AssetId(id),
-    creationDate = CaptureDate.parseOrNull(creationDate),
+    captureDate = TimestampText.captureDate(creationDate),
     isScreenshot = isScreenshot,
     pixelArea = width * height,
 )
@@ -79,8 +79,8 @@ private fun countSource(
 class ShareableCountTest {
 
     private suspend fun ShareableCountSource.countFor(
-        cutoff: app.snapsync.model.CaptureCutoff = CUTOFF,
-        ceiling: app.snapsync.model.CaptureCeiling? = null,
+        cutoff: app.snapsync.domain.sharing.CaptureCutoff = CUTOFF,
+        ceiling: app.snapsync.domain.sharing.CaptureCeiling? = null,
         includesUpload: Boolean = true,
     ) = count(includesUpload, cutoff, ceiling)
 

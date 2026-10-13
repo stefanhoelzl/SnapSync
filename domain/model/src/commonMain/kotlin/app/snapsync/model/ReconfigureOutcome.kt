@@ -14,7 +14,7 @@ enum class ReconfigureOutcome {
     NotCurrent,
 
     /**
-     * The chosen range breaks the share-range rule (`shareRangeFault`): nothing was changed. The calendar cannot
+     * The chosen range breaks the share-range rule (`CaptureRange`): nothing was changed. The calendar cannot
      * produce one, so the settings show it as a change that could not be saved.
      */
     Refused,

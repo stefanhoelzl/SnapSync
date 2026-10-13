@@ -1,12 +1,15 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.CaptureDate
-import app.snapsync.model.DeletesAt
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.EventCompletionState
-import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLookup
-import app.snapsync.model.EventStart
 import app.snapsync.model.MemberCounts
+import app.snapsync.model.TimestampText
 import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.GetEventReply
 import app.snapsync.wire.api.Routes
@@ -16,7 +19,7 @@ import app.snapsync.wire.api.Routes
  * error maps to [EventLookup.Failed], never an exception (the gate reduces it to a retryable state).
  */
 fun interface EventDirectory {
-    suspend fun fetch(eventId: String): EventLookup
+    suspend fun fetch(eventId: EventId): EventLookup
 }
 
 /**
@@ -31,9 +34,9 @@ fun interface EventDirectory {
  */
 class BackendEventDirectory(private val gateway: BackendGateway) : EventDirectory {
 
-    override suspend fun fetch(eventId: String): EventLookup = when (
+    override suspend fun fetch(eventId: EventId): EventLookup = when (
         val reply = gateway.send(
-            Routes.GetEvent.request(eventId),
+            Routes.GetEvent.request(eventId.value),
         )
     ) {
         is GetEventReply.Found -> {
@@ -65,7 +68,7 @@ class BackendEventDirectory(private val gateway: BackendGateway) : EventDirector
                     ),
                     keyId = meta.keyId,
                     // Not one of the required four: an unreadable one costs only the "guests can join until" line.
-                    openUntil = canonicalOrNull(meta.openUntil)?.let(::EventEnd),
+                    openUntil = canonicalOrNull(meta.openUntil)?.let(::OpenUntil),
                 )
             } else {
                 EventLookup.Failed
@@ -79,5 +82,5 @@ class BackendEventDirectory(private val gateway: BackendGateway) : EventDirector
      * A fetched date as a capture date, or `null` when it names no instant. Truncated to its second toward the earlier
      * instant, the inclusive direction — so a photo taken within the date's own second is admitted rather than lost.
      */
-    private fun canonicalOrNull(raw: String): CaptureDate? = CaptureDate.parseOrNull(raw)
+    private fun canonicalOrNull(raw: String): Timestamp? = TimestampText.parseOrNull(raw)
 }

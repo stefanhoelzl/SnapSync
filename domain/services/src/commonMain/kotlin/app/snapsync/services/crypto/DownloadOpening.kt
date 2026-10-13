@@ -82,15 +82,15 @@ class DownloadOpening(
      */
     private fun attempt(ref: AssetRef, resourceKey: String, eventId: String, from: String, to: String): String? {
         val joined = config.joinedOrRead() ?: return "not joined"
-        if (eventId.isNotEmpty() && eventId != joined.eventId) return "fetched for another event"
+        if (eventId.isNotEmpty() && eventId != joined.eventId.value) return "fetched for another event"
         val key = try {
             keys.current()
         } catch (locked: SecureStoreUnavailable) {
             return "the event key cannot be read now: ${locked.detail}"
         } ?: return NO_KEY
         val ad = EncryptedFileFormat.associatedData(
-            joined.eventId,
-            ref.sourceDeviceId,
+            joined.eventId.value,
+            ref.sourceDeviceId.value,
             ref.sourceAssetId.value,
             roleFromUploadKey(resourceKey).wire,
         )

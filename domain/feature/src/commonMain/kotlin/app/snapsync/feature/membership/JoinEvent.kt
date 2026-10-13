@@ -1,13 +1,16 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLookup
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinResult
+import app.snapsync.model.TimestampText
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.shareRangeFault
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
@@ -24,7 +27,7 @@ import co.touchlab.kermit.Logger
  *   (`docs/architecture.md`, "Absence is never silent"). Nothing is persisted either way.
  * - [Unverified]: the service did not accept this phone's credential — the attestation's refusal says why.
  * - [EnrollFailed]: the join request failed or the event is gone — nothing persisted, no producer enabled.
- * - [InvalidRange]: the chosen capture range breaks the share-range rule ([shareRangeFault]) — refused before anything
+ * - [InvalidRange]: the chosen capture range breaks the share-range rule ([CaptureRange]) — refused before anything
  *   is enrolled. No shipped entry path can produce one, so the screen shows it as a failed join.
  */
 enum class JoinOutcome { Committed, AlreadyJoined, EventClosed, Unverified, EnrollFailed, WrongLink, InvalidRange }
@@ -62,14 +65,14 @@ class JoinEvent(
 ) {
 
     /** Fetch the event's details for the confirmation gate (loading → loaded/not-found/failed). */
-    suspend fun loadDetails(eventId: String): EventLookup = details.fetch(eventId)
+    suspend fun loadDetails(eventId: EventId): EventLookup = details.fetch(eventId)
 
     /**
      * The confirmation gate's read: the event's details, and [JoinLoad.WrongLink] when the link's key ([linkKey]) does
      * not open it — so a link cut short in sharing is told before the member chooses anything, not after.
      */
     suspend fun loadJoin(
-        eventId: String,
+        eventId: EventId,
         linkKey: String?,
     ): JoinLoad = when (val load = loadDetails(eventId).toJoinLoad()) {
         is JoinLoad.Found -> if (keys.opens(linkKey, load.keyId)) load else JoinLoad.WrongLink
@@ -91,7 +94,7 @@ class JoinEvent(
      * joined membership is done **in place** by `ReconfigureEvent`,
      * not by leaving and re-joining; only `startsAt` (the floor) stays immutable for the membership's life.
      *
-     * **The share-range rule is applied here** ([shareRangeFault]): the persisted range is the chosen one, unchanged,
+     * **The share-range rule is applied here** ([CaptureRange]): the persisted range is the chosen one, unchanged,
      * or the join is refused as [JoinOutcome.InvalidRange] before anything is enrolled. Doing it in the use-case rather
      * than in the UI is what makes it total — **every** entry path funnels through this one call (the interactive
      * confirm, the switch confirm, the retry, and the rig's `autoJoin` path carrying a link-supplied range), so none of
@@ -103,11 +106,14 @@ class JoinEvent(
     suspend fun join(choice: JoinChoice): JoinOutcome {
         val eventId = choice.eventId
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
-        shareRangeFault(choice.minPhotoDate, choice.maxPhotoDate, choice.startsAt, choice.endsAt)?.let { fault ->
+        val range = CaptureRange.of(choice.minPhotoDate, choice.maxPhotoDate, choice.startsAt, choice.endsAt)
+        if (range !is CaptureRangeVerdict.Ok) {
             log.e {
-                "join: refused — the range ${choice.minPhotoDate}..${choice.maxPhotoDate} " +
-                    "breaks the share-range rule " +
-                    "($fault) for the event ${choice.startsAt}..${choice.endsAt}"
+                val chosen = "${TimestampText.format(
+                    choice.minPhotoDate.at,
+                )}..${TimestampText.format(choice.maxPhotoDate.at)}"
+                val event = "${TimestampText.format(choice.startsAt.at)}..${TimestampText.format(choice.endsAt.at)}"
+                "join: refused — the range $chosen breaks the share-range rule ($range) for the event $event"
             }
             return JoinOutcome.InvalidRange
         }
@@ -131,10 +137,10 @@ class JoinEvent(
             EventConfig(
                 eventId = eventId,
                 name = choice.name,
-                minPhotoDate = choice.minPhotoDate,
+                minPhotoDate = range.range.from,
                 startsAt = choice.startsAt,
                 endsAt = choice.endsAt,
-                maxPhotoDate = choice.maxPhotoDate,
+                maxPhotoDate = range.range.until,
                 // Persisted verbatim from the loaded details, never computed here: it is the OFFLINE
                 // witness of the self-leave, and a client-derived one would
                 // decide whether this membership is later destroyed.

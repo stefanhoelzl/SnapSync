@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+
 /** Outcome of a per-asset import. */
 sealed interface ImportResult {
     /** The asset was created; [createdLocalId] is its sanitized local identifier (the suppression handle). */

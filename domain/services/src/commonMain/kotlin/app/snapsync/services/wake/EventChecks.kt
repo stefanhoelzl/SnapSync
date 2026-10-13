@@ -1,5 +1,6 @@
 package app.snapsync.services.wake
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.databases.SharedDatabase
 import co.touchlab.kermit.Logger
@@ -37,7 +38,7 @@ class EventChecks(
     private val log: Logger = Logger.withTag("EventChecks"),
 ) {
     /** Whether a wake may ask [eventId] for [check] now. */
-    fun due(check: EventCheck, eventId: String): Boolean {
+    fun due(check: EventCheck, eventId: EventId): Boolean {
         val millis = runCatchingCancellable {
             db.use { it.eventCheckQueries.selectLastCheck(eventId, check.key).executeAsOneOrNull() }
         }.getOrElse { return true.also { _ -> log.w(it) { "last $check check unreadable — due" } } }
@@ -47,14 +48,14 @@ class EventChecks(
     }
 
     /** Record that [eventId] was asked for [check] now. */
-    fun stamp(check: EventCheck, eventId: String) {
+    fun stamp(check: EventCheck, eventId: EventId) {
         runCatchingCancellable {
             db.use { it.eventCheckQueries.stampCheck(eventId, check.key, now().toEpochMilliseconds()) }
         }.onFailure { log.w(it) { "last $check check not recorded — the next wake asks again" } }
     }
 
     /** Forget every time recorded for [eventId]. */
-    fun clear(eventId: String) {
+    fun clear(eventId: EventId) {
         runCatchingCancellable { db.use { it.eventCheckQueries.clearChecks(eventId) } }
             .onFailure { log.w(it) { "the check times of $eventId not forgotten" } }
     }

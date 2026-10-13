@@ -2,8 +2,9 @@ package app.snapsync.services.downloads
 
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.AdoptedAsset
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.DownloadCounts
 import app.snapsync.model.DownloadState
@@ -16,11 +17,16 @@ import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UnconfirmedImport
 import app.snapsync.ports.Databases
 import app.snapsync.services.databases.AssetIdColumnAdapter
+import app.snapsync.services.databases.DeviceIdColumnAdapter
+import app.snapsync.services.databases.EventIdColumnAdapter
 import app.snapsync.services.databases.openOwned
 import app.snapsync.services.downloads.db.DownloadAsset
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.services.downloads.db.DownloadResource
 import app.snapsync.services.downloads.db.DownloadStoreQueries
+import app.snapsync.services.downloads.db.EventRef
+import app.snapsync.services.downloads.db.Recognised
+import app.snapsync.services.downloads.db.UnionCursor
 
 /** The download store's database file — runtime identity (`docs/architecture.md`, section 9). */
 const val DOWNLOADS_DB_NAME: String = "downloads.db"
@@ -63,7 +69,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * The created local id of every imported photo of [eventId]'s union — the refs a reconcile of that event recorded,
      * and the photos adopted for it ([planAll], [adoptAll]). A photo two events share answers for both.
      */
-    suspend fun importedLocalIdsOf(eventId: String): Set<AssetId> =
+    suspend fun importedLocalIdsOf(eventId: EventId): Set<AssetId> =
         q.selectImportedLocalIdsOfEvent(eventId).executeAsList().toSet()
 
     /**
@@ -109,7 +115,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      */
     suspend fun planAll(
         assets: List<PlannedAsset>,
-        eventId: String? = null,
+        eventId: EventId? = null,
         members: Collection<AssetRef> = emptyList(),
         cursor: Long? = null,
         declared: Long? = null,
@@ -127,7 +133,10 @@ class DownloadService(databases: Databases) : SuppressionSource {
                         r.role,
                         r.contentType,
                         r.originalFilename,
-                        eventId ?: "",
+                        when (eventId) {
+                            null -> ""
+                            else -> eventId.value
+                        },
                     )
                 }
             }
@@ -136,7 +145,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
                     q.insertEventRef(
                         eventId,
                         it.sourceDeviceId,
-                        it.sourceAssetId.value,
+                        it.sourceAssetId,
                     )
                 }
             }
@@ -151,7 +160,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * again. Every other row (an import's marker, imported, unimportable, deleted by the member) is this install's own
      * record and is left exactly as it is.
      */
-    suspend fun adoptAll(adopted: Collection<AdoptedAsset>, eventId: String): Set<AssetRef> {
+    suspend fun adoptAll(adopted: Collection<AdoptedAsset>, eventId: EventId): Set<AssetRef> {
         if (adopted.isEmpty()) return emptySet()
         return q.transactionWithResult {
             adopted.filterTo(mutableSetOf()) { a ->
@@ -161,7 +170,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
                     q.adoptPending(a.localId, device, asset)
                     q.changedRows().executeAsOne() > 0
                 }
-                if (recorded) q.insertEventRef(eventId, device, asset.value)
+                if (recorded) q.insertEventRef(eventId, device, asset)
                 recorded
             }.mapTo(mutableSetOf()) { it.ref }
         }
@@ -290,7 +299,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * reads would be equivalent here, but it would put the consistency in the caller's hands, where the next
      * count added could quietly be read outside it.
      */
-    suspend fun counts(eventId: String? = null): DownloadCounts {
+    suspend fun counts(eventId: EventId? = null): DownloadCounts {
         // Scoped to ONE event's rows for what the joined screen shows: the table keeps
         // every event's imported rows as suppression handles, so the unscoped read is a census of the device
         // (diagnostics, reset), never this membership's progress.
@@ -360,15 +369,26 @@ class DownloadService(databases: Databases) : SuppressionSource {
     }
 }
 
-/** Construct the generated database with the [DownloadState] enum adapter wired (the single site that knows the encoding). */
+/** Construct the generated database with its column adapters wired (the single site that knows each encoding). */
 internal fun DownloadDatabase(driver: SqlDriver): DownloadDatabase = DownloadDatabase(
     driver,
     DownloadAsset.Adapter(
+        sourceDeviceIdAdapter = DeviceIdColumnAdapter,
         sourceAssetIdAdapter = AssetIdColumnAdapter,
         stateAdapter = EnumColumnAdapter(),
         createdLocalIdAdapter = AssetIdColumnAdapter,
     ),
-    DownloadResource.Adapter(sourceAssetIdAdapter = AssetIdColumnAdapter),
+    DownloadResource.Adapter(
+        sourceDeviceIdAdapter = DeviceIdColumnAdapter,
+        sourceAssetIdAdapter = AssetIdColumnAdapter,
+    ),
+    EventRef.Adapter(
+        eventIdAdapter = EventIdColumnAdapter,
+        sourceDeviceIdAdapter = DeviceIdColumnAdapter,
+        sourceAssetIdAdapter = AssetIdColumnAdapter,
+    ),
+    Recognised.Adapter(eventIdAdapter = EventIdColumnAdapter),
+    UnionCursor.Adapter(eventIdAdapter = EventIdColumnAdapter),
 )
 
 /** The staging paths the download store's rows still claim, over the same database as [DownloadService]. */
@@ -399,13 +419,13 @@ class StagingClaims internal constructor(private val queries: () -> DownloadStor
  */
 class Recognition internal constructor(private val queries: () -> DownloadStoreQueries) : RecognitionSource {
 
-    override suspend fun isRecognised(eventId: String): Boolean = queries().isRecognised(eventId).executeAsOne()
+    override suspend fun isRecognised(eventId: EventId): Boolean = queries().isRecognised(eventId).executeAsOne()
 
     /**
      * Record that [eventId]'s received photos have been recognised: what a recognition pass writes once it has READ the
      * event's union — never after a read that failed. The upload gate of both processes shares nothing before it.
      */
-    suspend fun mark(eventId: String) {
+    suspend fun mark(eventId: EventId) {
         queries().markRecognised(eventId)
     }
 
@@ -413,7 +433,7 @@ class Recognition internal constructor(private val queries: () -> DownloadStoreQ
      * Withdraw [eventId]'s recognition: the photos the app can see now include marked ones no pass has recognised, so
      * nothing of the membership may be shared until the next pass has.
      */
-    suspend fun unmark(eventId: String) {
+    suspend fun unmark(eventId: EventId) {
         queries().unmarkRecognised(eventId)
     }
 }
@@ -426,10 +446,10 @@ class Recognition internal constructor(private val queries: () -> DownloadStoreQ
 class UnionTracking internal constructor(private val queries: () -> DownloadStoreQueries) {
 
     /** The union position [eventId] was last read to, or `null` for none — the next read is then a full one. */
-    suspend fun cursor(eventId: String): Long? = queries().selectUnionCursor(eventId).executeAsOneOrNull()
+    suspend fun cursor(eventId: EventId): Long? = queries().selectUnionCursor(eventId).executeAsOneOrNull()
 
     /** The declared total stored with [eventId]'s position (change `count-declared-photos`), or `null` for none. */
-    suspend fun declared(eventId: String): Long? =
+    suspend fun declared(eventId: EventId): Long? =
         queries().selectUnionDeclared(eventId).executeAsOneOrNull()?.declared
 
     /**
@@ -439,7 +459,7 @@ class UnionTracking internal constructor(private val queries: () -> DownloadStor
      * an incremental read re-records only what it served. The per-photo rows, and with them every import marker, are
      * untouched.
      */
-    suspend fun purgeEventRefsExcept(eventId: String) {
+    suspend fun purgeEventRefsExcept(eventId: EventId) {
         val q = queries()
         q.transaction {
             q.purgeEventRefsExcept(eventId)
@@ -455,7 +475,7 @@ class UnionTracking internal constructor(private val queries: () -> DownloadStor
      * rows not yet received are candidates (`selectWithdrawable`); the row is DELETED, never settled, so a photo that
      * comes back is planned again.
      */
-    suspend fun pruneWithdrawn(eventId: String, listed: Set<AssetRef>, protecting: Set<AssetRef>): List<String> {
+    suspend fun pruneWithdrawn(eventId: EventId, listed: Set<AssetRef>, protecting: Set<AssetRef>): List<String> {
         val q = queries()
         // A read first, so the common case — nothing withdrawn — costs no durable commit; the transaction below reads
         // again, and only its read decides what goes.

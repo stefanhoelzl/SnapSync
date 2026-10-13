@@ -1,10 +1,10 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ConfinedTo
 import app.snapsync.model.PendingDownload
-import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.ports.Download
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
@@ -38,8 +38,9 @@ internal fun encodeTag(ref: AssetRef, resourceKey: String, eventId: String): Str
 
 internal fun decodeTag(description: String): TaskTag? {
     val parts = description.split(SEP)
-    if (parts.size !in LEGACY_TAG_FIELDS..TAG_FIELDS || !isCanonicalAssetId(parts[1])) return null
-    return TaskTag(AssetRef(parts[0], AssetId(parts[1])), parts[2], parts.getOrElse(LEGACY_TAG_FIELDS) { "" })
+    if (parts.size !in LEGACY_TAG_FIELDS..TAG_FIELDS || !AssetId.isCanonical(parts[1])) return null
+    val device = DeviceId.parse(parts[0]) ?: return null
+    return TaskTag(AssetRef(device, AssetId(parts[1])), parts[2], parts.getOrElse(LEGACY_TAG_FIELDS) { "" })
 }
 
 /** A tag's fields: source device, source asset, resource key, event. */
@@ -51,10 +52,10 @@ private const val LEGACY_TAG_FIELDS = 3
 /**
  * Where a resource's bytes land in durable staging, relative to the shared area: under its event, so one event's
  * staged bytes are one folder. A transfer with no event (a pre-`event-scoped-local-state` tag) stages where it always
- * did. `/` is not legal in a path segment.
+ * did. `/` is not legal in a path segment: a device id never holds one, and a key or an event may.
  */
 internal fun stagingPath(root: String, eventId: String, ref: AssetRef, resourceKey: String): String {
-    val leaf = "${ref.sourceDeviceId.replace('/', '_')}/${resourceKey.replace('/', '_')}"
+    val leaf = "${ref.sourceDeviceId.value}/${resourceKey.replace('/', '_')}"
     return if (eventId.isEmpty()) "$root/$leaf" else "$root/${eventId.replace('/', '_')}/$leaf"
 }
 

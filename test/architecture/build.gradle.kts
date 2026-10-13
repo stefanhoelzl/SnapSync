@@ -48,6 +48,7 @@ dependencies {
     // that executes domain code rather than reading source: the invariant is behavioral (no reachable sequence
     // orphans in-flight work), which no text scan can see.
     testImplementation(project(":domain:model"))
+    testImplementation(project(":domain:domain"))
     // The generated wire (`api/openapi.yaml`): the limits and routes the client's mirrors are pinned to.
     testImplementation(project(":domain:wire"))
     // The screen's vocabulary: the name cap the event-name gate pins, and the types `AppPorts` binds `Ui` to.

@@ -1,7 +1,8 @@
 package app.snapsync.status
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
-import app.snapsync.model.AssetId
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
@@ -10,8 +11,8 @@ import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
+import app.snapsync.model.TimestampText
 import app.snapsync.model.candidatesFromResources
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.gallery.CandidateSource
 import kotlinx.coroutines.CancellationException
@@ -23,7 +24,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 /** Every membership carries a cutoff (capability `photo-sharing`); there is no whole-library total. */
-private val CUTOFF = captureCutoff("2026-07-06T00:00:00Z")
+private val CUTOFF = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z"))
 
 /**
  * The admitting policy every test here drives, bounded below by [CUTOFF] and unbounded above.

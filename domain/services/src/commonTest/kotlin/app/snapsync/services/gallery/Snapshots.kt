@@ -1,6 +1,6 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.Resource
 

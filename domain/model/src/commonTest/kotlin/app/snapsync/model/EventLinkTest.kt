@@ -2,6 +2,7 @@
 
 package app.snapsync.model
 
+import app.snapsync.testids.testEventId
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
@@ -12,7 +13,7 @@ import kotlin.test.assertTrue
 class EventLinkTest {
 
     private val eventId = "11111111-1111-4111-8111-111111111111"
-    private val sample = EventLinkPayload(eventId = eventId)
+    private val sample = EventLinkPayload(eventId = testEventId(eventId))
 
     private fun success(raw: String): EventLinkPayload {
         val result = decodeEventUrl(raw)
@@ -29,7 +30,7 @@ class EventLinkTest {
 
     @Test
     fun `encode then decode round-trips the event id`() {
-        assertEquals(eventId, success(encodeEventUrl(sample)).eventId)
+        assertEquals(testEventId(eventId), success(encodeEventUrl(sample)).eventId)
     }
 
     @Test
@@ -61,7 +62,7 @@ class EventLinkTest {
     fun `payload with optional padding still decodes`() {
         val padded = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT)
             .encode("""{"eventId":"$eventId"}""".encodeToByteArray())
-        assertEquals(eventId, success("$LINK_ORIGIN/join#v=3&d=$padded").eventId)
+        assertEquals(testEventId(eventId), success("$LINK_ORIGIN/join#v=3&d=$padded").eventId)
     }
 
     @Test
@@ -119,7 +120,10 @@ class EventLinkTest {
     @Test
     fun `uppercase uuid is accepted`() {
         val upper = eventId.uppercase()
-        assertEquals(upper, success("$LINK_ORIGIN/join#v=3&d=${absent("""{"eventId":"$upper"}""")}").eventId)
+        assertEquals(
+            testEventId(upper),
+            success("$LINK_ORIGIN/join#v=3&d=${absent("""{"eventId":"$upper"}""")}").eventId,
+        )
     }
 
     @Test
@@ -136,7 +140,7 @@ class EventLinkTest {
     @Test
     fun `autoJoin true decodes`() {
         val payload = success("$LINK_ORIGIN/join#v=3&d=${absent("""{"eventId":"$eventId","autoJoin":true}""")}")
-        assertEquals(eventId, payload.eventId)
+        assertEquals(testEventId(eventId), payload.eventId)
         assertEquals(true, payload.autoJoin)
     }
 
@@ -148,8 +152,8 @@ class EventLinkTest {
 
     @Test
     fun `encode with autoJoin round-trips`() {
-        val payload = success(encodeEventUrl(EventLinkPayload(eventId = eventId, autoJoin = true)))
-        assertEquals(eventId, payload.eventId)
+        val payload = success(encodeEventUrl(EventLinkPayload(eventId = testEventId(eventId), autoJoin = true)))
+        assertEquals(testEventId(eventId), payload.eventId)
         assertEquals(true, payload.autoJoin)
     }
 
@@ -163,7 +167,7 @@ class EventLinkTest {
         val cutoff = "2026-07-06T14:32:11Z"
         val json = """{"eventId":"$eventId","autoJoin":true,"minPhotoDate":"$cutoff"}"""
         val payload = success("$LINK_ORIGIN/join#v=3&d=${absent(json)}")
-        assertEquals(eventId, payload.eventId)
+        assertEquals(testEventId(eventId), payload.eventId)
         assertEquals(true, payload.autoJoin)
         assertEquals(cutoff, payload.minPhotoDate)
     }
@@ -190,7 +194,7 @@ class EventLinkTest {
     fun `dev direction key decodes alongside autoJoin`() {
         val json = """{"eventId":"$eventId","autoJoin":true,"direction":"download"}"""
         val payload = success("$LINK_ORIGIN/join#v=3&d=${absent(json)}")
-        assertEquals(eventId, payload.eventId)
+        assertEquals(testEventId(eventId), payload.eventId)
         assertEquals(true, payload.autoJoin)
         assertEquals("download", payload.direction)
         assertEquals(Direction.DownloadOnly, Direction.fromWire(payload.direction!!))
@@ -224,7 +228,7 @@ class EventLinkTest {
 
     @Test
     fun `encode with direction round-trips`() {
-        val payload = success(encodeEventUrl(EventLinkPayload(eventId = eventId, direction = "upload")))
+        val payload = success(encodeEventUrl(EventLinkPayload(eventId = testEventId(eventId), direction = "upload")))
         assertEquals("upload", payload.direction)
     }
 
@@ -250,7 +254,7 @@ class EventLinkTest {
 
     @Test
     fun `encode with saveToAlbum round-trips`() {
-        val payload = success(encodeEventUrl(EventLinkPayload(eventId = eventId, saveToAlbum = true)))
+        val payload = success(encodeEventUrl(EventLinkPayload(eventId = testEventId(eventId), saveToAlbum = true)))
         assertEquals(true, payload.saveToAlbum)
     }
 
@@ -266,7 +270,7 @@ class EventLinkTest {
 
     @Test
     fun `a referrer with the hints the page passes on keeps them`() {
-        val link = encodeEventUrl(EventLinkPayload(eventId = eventId, autoJoin = true))
+        val link = encodeEventUrl(EventLinkPayload(eventId = testEventId(eventId), autoJoin = true))
         assertEquals(link, inviteLinkFromInstallReferrer(fragmentOf(link)))
     }
 
@@ -307,7 +311,7 @@ class EventLinkTest {
     @Test
     fun `a path-form link decodes to its event`() {
         val payload = success("$LINK_ORIGIN/join/$eventId")
-        assertEquals(eventId, payload.eventId)
+        assertEquals(testEventId(eventId), payload.eventId)
         assertEquals(false, payload.autoJoin)
         assertNull(payload.minPhotoDate)
         assertNull(payload.direction)
@@ -316,8 +320,8 @@ class EventLinkTest {
 
     @Test
     fun `a path-form link tolerates a trailing slash and an empty fragment`() {
-        assertEquals(eventId, success("$LINK_ORIGIN/join/$eventId/").eventId)
-        assertEquals(eventId, success("$LINK_ORIGIN/join/$eventId#").eventId)
+        assertEquals(testEventId(eventId), success("$LINK_ORIGIN/join/$eventId/").eventId)
+        assertEquals(testEventId(eventId), success("$LINK_ORIGIN/join/$eventId#").eventId)
     }
 
     @Test

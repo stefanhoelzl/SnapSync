@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
+import app.snapsync.model.TimestampText
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiState
@@ -98,15 +99,15 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
     val ui = host.screen.value
     // Resolved once the SCREEN shows the joined event, not merely once the membership is read: a caller polling on this
     // then acts on what the member sees.
-    val config = core.membership.value?.takeIf { (ui.layer as? Layer.Joined)?.membership?.eventId == it.eventId }
+    val config = core.membership.value?.takeIf { (ui.layer as? Layer.Joined)?.membership?.eventId == it.eventId.value }
     return RigState(
         ui = ui,
         ready = Readiness(
             configResolved = config != null,
-            eventId = config?.eventId,
+            eventId = config?.eventId?.value,
             direction = config?.direction?.name,
-            minPhotoDate = config?.minPhotoDate?.at?.iso,
-            maxPhotoDate = config?.maxPhotoDate?.at?.iso,
+            minPhotoDate = config?.minPhotoDate?.at?.let(TimestampText::format),
+            maxPhotoDate = config?.maxPhotoDate?.at?.let(TimestampText::format),
         ),
         download = DownloadView(
             downloaded = progress.downloaded,

@@ -1,10 +1,14 @@
+@file:OptIn(AppProcessOnly::class)
+
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.TimestampText
 import app.snapsync.model.candidatesFromResources
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
@@ -278,7 +282,7 @@ class WalkMemoTest {
         suspend fun policy(cutoff: String) = SelectionPolicy(
             selectionRulesFor(
                 includesUpload = true,
-                cutoff = captureCutoff(cutoff),
+                cutoff = CaptureCutoff(TimestampText.parse(cutoff)),
                 ceiling = null,
                 suppressedAssetIds = { emptySet() },
                 albumExcludedAssetIds = { emptySet() },

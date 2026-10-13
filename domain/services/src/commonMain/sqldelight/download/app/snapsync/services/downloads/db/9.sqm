@@ -1,0 +1,110 @@
+import app.snapsync.domain.asset.AssetId;
+import app.snapsync.domain.device.DeviceId;
+import app.snapsync.domain.event.EventId;
+import app.snapsync.model.DownloadState;
+
+-- v9 -> v10: the columns that hold an event id, a device id or an asset id are read and written as the domain layer's
+-- values (`docs/architecture.md`, "The core and its zones"; `docs/patterns.md`, "Formats live at the boundary").
+-- NOTHING a device stores changes: the same columns, the same SQL types, constraints and index, the same rows. Only the
+-- Kotlin type SQLDelight binds each column to changes — and that lives in the `CREATE TABLE` a shipped migration may
+-- never edit (`MigrationPinTest`), so each table is re-created here with its types.
+--
+-- `downloadResource.eventId` stays plain text: 6.sqm gave a resource planned before it the empty event, which is no
+-- event id.
+--
+-- REBUILT the way 6.sqm rebuilt `downloadAsset` (SQLite 3.25 has no `DROP COLUMN`, and a type is not a column change it
+-- can express): each table's rows are staged in an ordinary table, the table is re-created, the rows come back, and
+-- its index is re-created. ROW-PRESERVING, every column copied as it is. DOWNGRADE: the tables an earlier build reads
+-- are the same tables.
+
+CREATE TABLE downloadAsset_v10 AS SELECT * FROM downloadAsset;
+
+DROP INDEX downloadAsset_createdLocalId;
+DROP TABLE downloadAsset;
+
+CREATE TABLE downloadAsset (
+    sourceDeviceId TEXT AS DeviceId NOT NULL,
+    sourceAssetId  TEXT AS AssetId NOT NULL,
+    state          TEXT AS DownloadState NOT NULL,
+    creationDate   TEXT NOT NULL,
+    createdLocalId TEXT AS AssetId,
+    PRIMARY KEY (sourceDeviceId, sourceAssetId)
+);
+
+INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId)
+SELECT sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId FROM downloadAsset_v10;
+
+DROP TABLE downloadAsset_v10;
+
+CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId);
+
+CREATE TABLE downloadResource_v10 AS SELECT * FROM downloadResource;
+
+DROP TABLE downloadResource;
+
+CREATE TABLE downloadResource (
+    sourceDeviceId TEXT AS DeviceId NOT NULL,
+    sourceAssetId  TEXT AS AssetId NOT NULL,
+    resourceKey    TEXT NOT NULL,
+    url            TEXT NOT NULL,
+    role           TEXT NOT NULL,
+    contentType    TEXT NOT NULL,
+    originalFilename TEXT NOT NULL,
+    stagedPath     TEXT,
+    -- 1 once this resource's download has been SENT to the OS (a background URLSession task exists).
+    -- Combined with `stagedPath IS NULL` it means "in flight" — the download analogue of the upload
+    -- ledger's REQUESTED. Superseded implicitly once `stagedPath` becomes non-null.
+    enqueued       INTEGER NOT NULL DEFAULT 0,
+    eventId        TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey)
+);
+
+INSERT INTO downloadResource (
+    sourceDeviceId, sourceAssetId, resourceKey, url, role, contentType, originalFilename, stagedPath, enqueued, eventId
+)
+SELECT sourceDeviceId, sourceAssetId, resourceKey, url, role, contentType, originalFilename, stagedPath, enqueued, eventId
+FROM downloadResource_v10;
+
+DROP TABLE downloadResource_v10;
+
+CREATE TABLE eventRef_v10 AS SELECT * FROM eventRef;
+
+DROP TABLE eventRef;
+
+CREATE TABLE eventRef (
+    eventId        TEXT AS EventId NOT NULL,
+    sourceDeviceId TEXT AS DeviceId NOT NULL,
+    sourceAssetId  TEXT AS AssetId NOT NULL,
+    PRIMARY KEY (eventId, sourceDeviceId, sourceAssetId)
+);
+
+INSERT INTO eventRef (eventId, sourceDeviceId, sourceAssetId)
+SELECT eventId, sourceDeviceId, sourceAssetId FROM eventRef_v10;
+
+DROP TABLE eventRef_v10;
+
+CREATE TABLE unionCursor_v10 AS SELECT * FROM unionCursor;
+
+DROP TABLE unionCursor;
+
+CREATE TABLE unionCursor (
+    eventId  TEXT AS EventId NOT NULL PRIMARY KEY,
+    cursor   INTEGER NOT NULL,
+    declared INTEGER
+);
+
+INSERT INTO unionCursor (eventId, cursor, declared) SELECT eventId, cursor, declared FROM unionCursor_v10;
+
+DROP TABLE unionCursor_v10;
+
+CREATE TABLE recognised_v10 AS SELECT * FROM recognised;
+
+DROP TABLE recognised;
+
+CREATE TABLE recognised (
+    eventId TEXT AS EventId NOT NULL PRIMARY KEY
+);
+
+INSERT INTO recognised (eventId) SELECT eventId FROM recognised_v10;
+
+DROP TABLE recognised_v10;

@@ -2,6 +2,10 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
@@ -10,13 +14,11 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.eventEnd
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -112,7 +114,7 @@ class KeyLostTest {
         val restored = mutableListOf<String>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT), key = LINK_KEY)))
             runCurrent()
             assertEquals(listOf(LINK_KEY), restored)
             assertEquals(null, (host.screen.value.layer as Layer.Joined).pendingSwitch, "no join screen")
@@ -124,7 +126,7 @@ class KeyLostTest {
         val restored = mutableListOf<String>()
         val host = host(KeyPresence.Lost, restored = restored, keeps = false)
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT), key = LINK_KEY)))
             runCurrent()
             assertEquals(listOf(LINK_KEY), restored, "the core is asked, and keeps only the event's own key")
             assertEquals(SyncHealth.KeyLost, host.health())
@@ -136,7 +138,7 @@ class KeyLostTest {
         val restored = mutableListOf<String>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
             runCurrent()
             assertEquals(emptyList(), restored)
             assertEquals(SyncHealth.KeyLost, host.health())
@@ -148,7 +150,7 @@ class KeyLostTest {
         val restored = mutableListOf<String>()
         val host = host(KeyPresence.Held, restored = restored)
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT), key = LINK_KEY)))
             runCurrent()
             assertEquals(emptyList(), restored)
         }
@@ -174,7 +176,7 @@ class KeyLostTest {
         driving(host) {
             val joined = { host.screen.value.layer as Layer.Joined }
             assertEquals(
-                encodeEventUrl(EventLinkPayload(EVENT, key = LINK_KEY)),
+                encodeEventUrl(EventLinkPayload(testEventId(EVENT), key = LINK_KEY)),
                 joined().inviteUrl,
                 "the whole invite",
             )
@@ -198,12 +200,12 @@ class KeyLostTest {
         val NOW: Instant = Instant.parse("2026-07-09T12:00:00Z")
         val LINK_KEY = encodeEventKey(ByteArray(32) { it.toByte() })
         val ENCRYPTED = EventConfig(
-            EVENT,
+            testEventId(EVENT),
             "Party",
-            captureCutoff("2026-07-06T00:00:00Z"),
-            maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             keyId = "0123456789abcdef",
         )
     }

@@ -19,6 +19,10 @@ plugins {
 // The statement lists `DatabasesContract`'s schema clauses run (`SchemaStatementsTask`): read from the SQLDelight
 // code `:domain:services` generates for its two databases, so a query added there is run here with nothing to
 // remember. A fixture per argument type; a type with none fails this task naming the statement.
+// The date roles' fixture instant, fully qualified: a fixture names only its own type, which the statement's file
+// imports.
+val epoch = "app.snapsync.domain.time.Timestamp.of(kotlin.time.Instant.fromEpochSeconds(0))"
+
 val generateSchemaStatements = tasks.register<SchemaStatementsTask>("generateSchemaStatements") {
     dependsOn(":domain:services:generateSqlDelightInterface")
     generatedCode.set(project(":domain:services").layout.buildDirectory.dir("generated/sqldelight/code"))
@@ -29,6 +33,14 @@ val generateSchemaStatements = tasks.register<SchemaStatementsTask>("generateSch
             "String" to "\"f\"",
             "Long" to "1L",
             "AssetId" to "AssetId(\"f\")",
+            "EventId" to "EventId.parse(\"00000000-0000-4000-8000-000000000001\")!!",
+            "DeviceId" to "DeviceId.parse(\"00000000-0000-4000-8000-000000000002\")!!",
+            "CaptureCutoff" to "CaptureCutoff($epoch)",
+            "CaptureCeiling" to "CaptureCeiling($epoch)",
+            "EventStart" to "EventStart($epoch)",
+            "EventEnd" to "EventEnd($epoch)",
+            "OpenUntil" to "OpenUntil($epoch)",
+            "DeletesAt" to "DeletesAt($epoch)",
             "LedgerState" to "LedgerState.entries.first()",
             "DownloadState" to "DownloadState.entries.first()",
             "Direction" to "Direction.entries.first()",
@@ -50,6 +62,7 @@ kotlin {
         }
         commonMain.dependencies {
             api(project(":domain:model"))
+            api(project(":domain:domain"))
             // The Motion Photo fixtures the import contracts hand a library.
             implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))

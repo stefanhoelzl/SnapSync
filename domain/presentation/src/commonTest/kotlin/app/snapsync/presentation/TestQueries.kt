@@ -1,11 +1,13 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
@@ -24,7 +26,7 @@ internal fun testQueries(
     count: suspend (CaptureCutoff, CaptureCeiling?) -> Int? = { _, _ -> null },
     losesNothing: suspend () -> Boolean = { false },
 ): UserQueries = object : UserQueries {
-    override suspend fun loadJoinDetails(eventId: String, linkKey: String?) = load(eventId, linkKey)
+    override suspend fun loadJoinDetails(eventId: EventId, linkKey: String?) = load(eventId.value, linkKey)
 
     override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?) = count(cutoff, until)
 
@@ -45,7 +47,7 @@ internal fun counting(count: suspend (CaptureCutoff, CaptureCeiling?) -> Int?): 
 /** The user-command bundle with the inert defaults the production implementation does not carry. */
 internal fun testCommands(
     leave: suspend () -> Unit = {},
-    create: (name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?) -> Unit = { _, _, _, _ -> },
+    create: (name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) -> Unit = { _, _, _, _ -> },
     commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed },
     share: (url: String, title: String) -> Unit = { _, _ -> },
     requestAccess: () -> Unit = {},
@@ -64,7 +66,7 @@ internal fun testCommands(
 ): UserCommands = object : UserCommands {
     override suspend fun leave() = leave.invoke()
 
-    override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?) =
+    override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) =
         create.invoke(name, startsAt, endsAt, openUntil)
 
     override suspend fun commitJoin(choice: JoinChoice) = commitJoin.invoke(choice)
@@ -81,14 +83,14 @@ internal fun testCommands(
     override fun choosePhotos() = Unit
 
     override suspend fun reconfigure(
-        eventId: String,
+        eventId: EventId,
         direction: Direction,
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
-    ) = reconfigure.invoke(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
+    ) = reconfigure.invoke(eventId.value, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
 
-    override fun rename(eventId: String, name: String) = rename.invoke(eventId, name)
+    override fun rename(eventId: EventId, name: String) = rename.invoke(eventId.value, name)
 
     override suspend fun resetRename() = resetRename.invoke()
 

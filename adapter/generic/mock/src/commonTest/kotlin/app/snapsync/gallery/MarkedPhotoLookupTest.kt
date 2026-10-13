@@ -1,15 +1,15 @@
 package app.snapsync.gallery
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.id
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
+import app.snapsync.model.TimestampText
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
@@ -18,6 +18,7 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.services.gallery.MarkedPhotoLookup
 import app.snapsync.services.gallery.resourcesFrom
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -28,10 +29,10 @@ import kotlin.test.assertTrue
 /** The join's read of the library's SnapSync-marked photos (capability `receiving-photos`), over the in-memory gallery. */
 class MarkedPhotoLookupTest {
 
-    private val start = CaptureDate.parse("2026-06-01T00:00:00Z")
-    private val end = CaptureDate.parse("2026-06-10T00:00:00Z")
-    private val refA = AssetRef("dev-a", AssetId("SRC-A"))
-    private val refB = AssetRef("dev-b", AssetId("SRC-B"))
+    private val start = TimestampText.parse("2026-06-01T00:00:00Z")
+    private val end = TimestampText.parse("2026-06-10T00:00:00Z")
+    private val refA = AssetRef(testDeviceId("dev-a"), AssetId("SRC-A"))
+    private val refB = AssetRef(testDeviceId("dev-b"), AssetId("SRC-B"))
 
     /** A received photo in the library: its primary (and, for a Live Photo, its video) named with [ref]'s mark. */
     private fun received(
@@ -64,7 +65,11 @@ class MarkedPhotoLookupTest {
         received("L-A", refA, live = true),
         received("L-B", refB),
         LibraryAssets.photo("L-OWN", creationDate = "2026-06-05T12:00:00Z"), // the member's own capture: unmarked
-        received("L-EARLY", AssetRef("dev-c", AssetId("SRC-C")), date = "2026-05-20T12:00:00Z"), // outside the event
+        received(
+            "L-EARLY",
+            AssetRef(testDeviceId("dev-c"), AssetId("SRC-C")),
+            date = "2026-05-20T12:00:00Z",
+        ), // outside the event
     )
 
     /** The gallery's reads, recording every id a resource read asked for. */
@@ -93,8 +98,11 @@ class MarkedPhotoLookupTest {
         // Capability `receiving-photos`: another member's range may start before the event, so the photo they took
         // the week before is a received photo too — found when the caller's window reaches it.
         val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unrestricted }
-            .markedIn(CaptureDate.parse("2026-05-15T00:00:00Z"), end, known = emptySet())
-        assertEquals(AssetId("L-EARLY"), found?.get(ReceivedPhotoName.token(AssetRef("dev-c", AssetId("SRC-C")))))
+            .markedIn(TimestampText.parse("2026-05-15T00:00:00Z"), end, known = emptySet())
+        assertEquals(
+            AssetId("L-EARLY"),
+            found?.get(ReceivedPhotoName.token(AssetRef(testDeviceId("dev-c"), AssetId("SRC-C")))),
+        )
     }
 
     @Test

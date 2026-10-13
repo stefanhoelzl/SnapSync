@@ -15,6 +15,7 @@ kotlin {
 dependencies {
     implementation(libs.ktor.client.core)
     api(project(":domain:model"))
+    api(project(":domain:domain"))
     api(project(":domain:ports"))
     api(project(":domain:feature"))
     // The screen pane and the mirror take the screen's `CutoffFormatter`.

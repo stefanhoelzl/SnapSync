@@ -112,12 +112,19 @@ snapsync:
     includes:
       - '**/domain/inbound/src/commonMain/**'
       - '**/domain/entrypoints/src/commonMain/**'
+      - '**/domain/domain/src/commonMain/**'
   NoFunctionTypes:
     active: true
     includes:
       - '**/domain/inbound/src/commonMain/**'
       - '**/domain/scheduling/src/commonMain/**'
       - '**/domain/entrypoints/src/commonMain/**'
+      - '**/domain/domain/src/commonMain/**'
+  DomainPurity:
+    # The domain is values and verdicts (`docs/patterns.md`, "The domain").
+    active: true
+    includes:
+      - '**/domain/domain/src/commonMain/**'
 
 # ktlint's formatting rules (`detekt-formatting`), the shape every Kotlin file is written in. A finding is fixed by
 # the tool, not by hand: `./gradlew <tier> -Psnapsync.detektAutoCorrect` rewrites what it flags. Imports follow the

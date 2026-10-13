@@ -21,6 +21,7 @@ kotlin {
         // packages may be named (the read-model import gate, `docs/architecture.md`).
         commonMain.dependencies {
             implementation(project(":domain:model"))
+            implementation(project(":domain:domain"))
             implementation(project(":domain:feature"))
             // The screen's vocabulary this zone reduces into (`UiState`) and hears (`UiIntent`).
             implementation(project(":ui:state"))

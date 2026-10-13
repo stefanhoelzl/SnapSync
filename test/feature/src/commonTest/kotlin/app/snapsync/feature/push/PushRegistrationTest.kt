@@ -19,6 +19,7 @@ import app.snapsync.services.backend.PushTokenPublisher
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.push.PushTokenSource
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -64,7 +65,11 @@ class PushRegistrationTest {
     private var identity = identityMinting("DEVICE-1")
 
     private fun identityMinting(deviceId: String) =
-        PersistedDeviceIdentity(DeviceIdentityRole.MINTING, secureStore, PlatformDeviceId { deviceId })
+        PersistedDeviceIdentity(
+            DeviceIdentityRole.MINTING,
+            secureStore,
+            PlatformDeviceId { testDeviceId(deviceId).value },
+        )
 
     private fun registration(publisher: PushTokenPublisher) = PushRegistration(publisher, record, identity)
 

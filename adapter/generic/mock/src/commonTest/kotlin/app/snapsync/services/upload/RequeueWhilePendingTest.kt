@@ -1,12 +1,13 @@
 package app.snapsync.services.upload
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.model.AssetId
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -19,7 +20,7 @@ import kotlin.test.assertEquals
  */
 class RequeueWhilePendingTest {
 
-    private val ledger = LedgerService(SharedDatabase(inMemoryDatabases(), legacy = null)) { "E-1" }
+    private val ledger = LedgerService(SharedDatabase(inMemoryDatabases(), legacy = null)) { testEventId("E-1") }
     private val log = Logger.withTag("test")
 
     private suspend fun pending(vararg keys: String) = keys.forEach {

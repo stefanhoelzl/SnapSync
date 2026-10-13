@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.EventId
+
 /**
  * The silent-push payload's event id. The Swift shell forwards the OS-delivered `userInfo` dictionary **whole** (the
  * transcriber law, `docs/architecture.md` "Shells are wiring only" — migration step 12; the field extraction used to be
@@ -16,7 +18,7 @@ package app.snapsync.model
  * it cannot fail. Nor is the outcome silent — `SilentPush.run` logs it before returning, which is the
  * clause of that law an entry point may never trade away.
  */
-fun pushEventId(userInfo: Map<Any?, *>): String? = userInfo["eventId"] as? String
+fun pushEventId(userInfo: Map<Any?, *>): EventId? = (userInfo["eventId"] as? String)?.let(EventId::parse)
 
 /**
  * The union position a silent push announces (decision record `changes/incremental-union`, D6): a device whose cursor

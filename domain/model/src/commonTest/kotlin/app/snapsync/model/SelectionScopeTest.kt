@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

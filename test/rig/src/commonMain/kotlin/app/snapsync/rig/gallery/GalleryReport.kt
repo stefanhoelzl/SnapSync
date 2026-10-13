@@ -1,11 +1,11 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.CandidateRead
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionRule
+import app.snapsync.model.TimestampText
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.rig.AssetView
 import app.snapsync.rig.CalibrationView
@@ -66,7 +66,7 @@ class GalleryReport(
             // the app can hold. Without it the deny-everything narrowing — the one that keeps a
             // download-only member off a whole-library walk — is unobservable on a device.
             includesUpload = includesUpload,
-            cutoff = CaptureCutoff(CaptureDate.parse(cutoff)),
+            cutoff = CaptureCutoff(TimestampText.parse(cutoff)),
             ceiling = null,
             // The operator reads the POLICY here, not the device's echo/album state — this route
             // answers "what would this cutoff admit", so the two port-read exclusions are out of scope.
@@ -95,7 +95,7 @@ class GalleryReport(
             val refusedBy = if (admitted) null else rules.firstOrNull { !it.admits(facts) }
             AssetView(
                 assetId = facts.assetId.value,
-                captureDate = facts.creationDate?.iso.orEmpty(),
+                captureDate = TimestampText.captureText(facts.captureDate),
                 pixelArea = facts.pixelArea,
                 isScreenshot = facts.isScreenshot,
                 isScreenRecording = facts.isScreenRecording,
@@ -138,8 +138,8 @@ class GalleryReport(
      */
     private fun describe(rule: SelectionRule): String = when (rule) {
         SelectionRule.DenyAll -> "DenyAll"
-        is SelectionRule.CaptureAfter -> "CaptureAfter(${rule.cutoff.at.iso})"
-        is SelectionRule.CaptureBefore -> "CaptureBefore(${rule.ceiling.at.iso})"
+        is SelectionRule.CaptureAfter -> "CaptureAfter(${TimestampText.format(rule.cutoff.at)})"
+        is SelectionRule.CaptureBefore -> "CaptureBefore(${TimestampText.format(rule.ceiling.at)})"
         SelectionRule.ExcludeScreenshots -> "ExcludeScreenshots"
         SelectionRule.ExcludeScreenRecordings -> "ExcludeScreenRecordings"
         is SelectionRule.MinImageArea -> "MinImageArea(${rule.minArea})"

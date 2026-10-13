@@ -2,6 +2,10 @@ package app.snapsync.services.ledger
 
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.contracts.at
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
@@ -11,11 +15,8 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.LedgerState
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
+import app.snapsync.model.TimestampText
 import app.snapsync.model.encodeConfigFile
-import app.snapsync.model.eventEnd
 import app.snapsync.ports.Databases
 import app.snapsync.ports.Files
 import app.snapsync.services.config.ConfigService
@@ -25,6 +26,7 @@ import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.databases.strings
 import app.snapsync.services.ledger.db.LedgerDatabase
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,7 +49,7 @@ class LedgerMigrationTest {
     @Test
     fun `an upgrade from v12 adopts every parked row into the membership the app copies`() = runTest {
         val (databases, driver) = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
-        val ledger = LedgerService(appOpen(databases, membershipFile(JOINED))) { JOINED }
+        val ledger = LedgerService(appOpen(databases, membershipFile(JOINED))) { testEventId(JOINED) }
 
         assertEquals(LedgerState.COMPLETED, ledger.get("C-photo.jpg")?.state, "adopted, not lost")
         assertEquals(listOf(JOINED), driver.eventIds())
@@ -69,11 +71,11 @@ class LedgerMigrationTest {
     fun `a later join never adopts what was parked`() = runTest {
         // The extension opened first and migrated, as it may: nothing is copied, so nothing is adopted or dropped.
         val (databases, driver) = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
-        LedgerService(SharedDatabase(databases, legacy = null)) { "E-later" }.manifestVersion()
+        LedgerService(SharedDatabase(databases, legacy = null)) { testEventId(LATER) }.manifestVersion()
         assertEquals(listOf(""), driver.eventIds(), "parked, untouched by a process that copies nothing")
 
-        // The app's copy finds no membership file — the device had left — so the rows go, never to "E-later".
-        LedgerService(appOpen(databases, inMemoryFiles())) { "E-later" }.manifestVersion()
+        // The app's copy finds no membership file — the device had left — so the rows go, never to the later event.
+        LedgerService(appOpen(databases, inMemoryFiles())) { testEventId(LATER) }.manifestVersion()
         assertTrue(driver.eventIds().isEmpty())
     }
 
@@ -88,7 +90,7 @@ class LedgerMigrationTest {
             ),
         )
 
-        val ledger = LedgerService(appOpen(databases, membershipFile(JOINED))) { JOINED }
+        val ledger = LedgerService(appOpen(databases, membershipFile(JOINED))) { testEventId(JOINED) }
 
         assertEquals(LedgerState.DISCOVERED, ledger.get("C-photo.jpg")?.state)
         assertEquals(listOf("", JOINED), driver.eventIds(), "the duplicate stays parked until a purge")
@@ -114,7 +116,7 @@ class LedgerMigrationTest {
             .read()
 
         val config = assertIs<ConfigRead.Joined>(read).config
-        assertEquals(JOINED, config.eventId)
+        assertEquals(testEventId(JOINED), config.eventId)
         assertEquals(false, config.deleted)
         assertNull(config.openUntil)
         assertEquals(MemberCounts(active = 3, settled = 1, waiting = null), config.members)
@@ -127,7 +129,7 @@ class LedgerMigrationTest {
 }
 
 /** The event every service in this file is joined to, unless a test says otherwise. */
-private const val JOINED = "E-joined"
+private const val JOINED = "e101ed00-0000-4000-8000-00000000000a"
 
 /** The shared database as the app opens it, over [files] holding the records' legacy homes. */
 private fun appOpen(databases: Databases, files: Files) =
@@ -136,12 +138,12 @@ private fun appOpen(databases: Databases, files: Files) =
 /** A shared area holding the membership's legacy file, joined to [eventId]. */
 private fun membershipFile(eventId: String): Files = inMemoryFiles().apply {
     val config = EventConfig(
-        eventId,
+        testEventId(eventId),
         name = "Anna's Birthday",
-        minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
-        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
     write(FileArea.SHARED, CONFIG_FILE_NAME, encodeConfigFile(config).encodeToByteArray())
 }
@@ -154,3 +156,5 @@ private const val V12_ROWS: String =
     "INSERT INTO ledgerRow VALUES " +
         "('C-photo.jpg', 'C', 'COMPLETED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_C.JPG', '/v2/files/C'), " +
         "('R-photo.jpg', 'R', 'REQUESTED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_R.JPG', '/v2/files/R')"
+
+private const val LATER = "1a7e0000-0000-4000-8000-00000000000b"

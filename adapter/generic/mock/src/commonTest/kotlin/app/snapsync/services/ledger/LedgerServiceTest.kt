@@ -1,7 +1,7 @@
 package app.snapsync.services.ledger
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -11,6 +11,7 @@ import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.databases.sharedOver
 import app.snapsync.services.ledger.db.LedgerDatabase
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,7 +35,7 @@ class LedgerServiceTest {
 
     private val databases = inMemoryDatabases()
     private var joined: String? = JOINED
-    private val ledger = LedgerService(sharedOver(databases)) { joined }
+    private val ledger = LedgerService(sharedOver(databases)) { joined?.let(::testEventId) }
 
     // ---- the joined event --------------------------------------------------------------------------------
 
@@ -67,7 +68,10 @@ class LedgerServiceTest {
 
     @Test
     fun `rows of an event this ledger is not joined to are invisible to every read and write`() = runTest {
-        ledger.resetTo(OTHER, listOf(entry(key = "k", state = LedgerState.COMPLETED, destinationPath = "/p")))
+        ledger.resetTo(
+            testEventId(OTHER),
+            listOf(entry(key = "k", state = LedgerState.COMPLETED, destinationPath = "/p")),
+        )
 
         assertNull(ledger.get("k"), "a COMPLETED row of another event suppresses nothing")
         assertNull(ledger.entryForDestination("/p"))
@@ -91,10 +95,10 @@ class LedgerServiceTest {
     fun `purging keeps the named event's rows and deletes every other's`() = runTest {
         ledger.recordUnlessSettled(entry(key = "a"))
 
-        ledger.purgeExcept(JOINED)
+        ledger.purgeExcept(testEventId(JOINED))
         assertEquals(LedgerState.REQUESTED, ledger.get("a")?.state)
 
-        ledger.purgeExcept(OTHER)
+        ledger.purgeExcept(testEventId(OTHER))
         assertNull(ledger.get("a"))
     }
 
@@ -400,7 +404,10 @@ class LedgerServiceTest {
     @Test
     fun `deleting more keys than one statement binds deletes them all`() = runTest {
         val keys = (0 until 1_200).map { "asset-$it-photo.jpg" }
-        ledger.resetTo(JOINED, keys.map { entry(key = it, state = LedgerState.COMPLETED) } + entry(key = "kept"))
+        ledger.resetTo(
+            testEventId(JOINED),
+            keys.map { entry(key = it, state = LedgerState.COMPLETED) } + entry(key = "kept"),
+        )
 
         ledger.deleteKeys(keys)
 
@@ -411,19 +418,19 @@ class LedgerServiceTest {
     fun `a reset replaces every row with the baseline verbatim - settled ones included - and purges other events`() = runTest {
         ledger.recordUnlessSettled(entry(key = "old", state = LedgerState.COMPLETED))
         ledger.recordUnlessSettled(entry(key = "a", state = LedgerState.COMPLETED))
-        LedgerService(sharedOver(databases)) { OTHER }.recordUnlessSettled(entry(key = "elsewhere"))
+        LedgerService(sharedOver(databases)) { testEventId(OTHER) }.recordUnlessSettled(entry(key = "elsewhere"))
 
         val baseline =
             listOf(entry(key = "a", state = LedgerState.REQUESTED), entry(key = "b", state = LedgerState.COMPLETED))
-        ledger.resetTo(JOINED, baseline)
+        ledger.resetTo(testEventId(JOINED), baseline)
 
         assertNull(ledger.get("old"))
         assertEquals(baseline[0], ledger.get("a"), "the reset family applies no precedence")
         assertEquals(baseline[1], ledger.get("b"))
-        val other = LedgerService(sharedOver(databases)) { OTHER }
+        val other = LedgerService(sharedOver(databases)) { testEventId(OTHER) }
         assertNull(other.get("elsewhere"), "a reset is a join: no other event survives it")
 
-        ledger.resetTo(JOINED, emptyList())
+        ledger.resetTo(testEventId(JOINED), emptyList())
         assertEquals(LedgerAggregates(0, 0), ledger.aggregates())
     }
 
@@ -431,7 +438,7 @@ class LedgerServiceTest {
     fun `a reset for another event takes the joined event's rows with the purge`() = runTest {
         ledger.recordUnlessSettled(entry(key = "joined"))
 
-        ledger.resetTo(OTHER, emptyList())
+        ledger.resetTo(testEventId(OTHER), emptyList())
 
         assertNull(ledger.get("joined"))
     }
@@ -463,7 +470,7 @@ class LedgerServiceTest {
         assertTrue(ledger.markTerminal(entry().key, TerminalOutcome.COMPLETED))
         assertEquals(before, ledger.manifestVersion())
 
-        ledger.resetTo(JOINED, listOf(LedgerEntry("bare", AssetId("bare"), LedgerState.COMPLETED)))
+        ledger.resetTo(testEventId(JOINED), listOf(LedgerEntry("bare", AssetId("bare"), LedgerState.COMPLETED)))
         val bare = ledger.manifestVersion()
         ledger.backfillManifestDetail(entry(key = "bare"))
         assertTrue(ledger.manifestVersion() > bare, "a detail backfill changes what is declared")
@@ -506,7 +513,7 @@ class LedgerServiceTest {
         val afterClear = ledger.manifestVersion()
         assertTrue(afterClear > afterRecord, "clear deletes rows, so it advances")
         assertNull(ledger.get(entry().key), "and it deleted them")
-        ledger.resetTo(JOINED, listOf(entry(key = "B"), entry(key = "C")))
+        ledger.resetTo(testEventId(JOINED), listOf(entry(key = "B"), entry(key = "C")))
         val afterReset = ledger.manifestVersion()
         assertTrue(afterReset > afterClear, "resetTo inserts rows, so it advances")
 

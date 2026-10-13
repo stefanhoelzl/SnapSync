@@ -1,9 +1,12 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
@@ -16,13 +19,10 @@ import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UserQueries
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AlbumStyle
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface
@@ -59,13 +59,13 @@ private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 
 /** A membership whose cutoff sits exactly on the floor and ceiling, so the form seeds to both presets. */
 private val CONFIG = EventConfig(
-    eventId = EVENT_ID,
+    eventId = testEventId(EVENT_ID),
     name = "Anna's Birthday",
-    minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
-    startsAt = eventStart("2026-07-06T14:32:11Z"),
-    endsAt = eventEnd("2026-07-13T14:32:11Z"),
-    maxPhotoDate = captureCeiling("2026-07-13T14:32:11Z"),
-    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
+    startsAt = EventStart(TimestampText.parse("2026-07-06T14:32:11Z")),
+    endsAt = EventEnd(TimestampText.parse("2026-07-13T14:32:11Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z")),
+    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
 private class FakeSync : SyncStatusSource {
@@ -138,7 +138,7 @@ class StatusContainerHostSurfacesTest {
             resetRename = { spy.renameResets++ },
             sendDiagnostics = sendDiagnostics,
             commitJoin = { join ->
-                onCommitJoin(join.eventId)
+                onCommitJoin(join.eventId.value)
                 app.snapsync.model.JoinCommit.Committed
             },
         ),
@@ -205,7 +205,7 @@ class StatusContainerHostSurfacesTest {
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the settings surface") { it.onSettings() }
 
-            config.value = CONFIG.copy(eventId = "22222222-2222-4222-8222-222222222222", name = "Trip")
+            config.value = CONFIG.copy(eventId = testEventId("22222222-2222-4222-8222-222222222222"), name = "Trip")
             val next = host.stateWhere(
                 "the next membership",
             ) { (it.layer as? Layer.Joined)?.membership?.name == "Trip" }
@@ -220,14 +220,19 @@ class StatusContainerHostSurfacesTest {
         // the rejoin of one event can conflate in the StateFlow into A → A.
         val config = MutableStateFlow<EventConfig?>(CONFIG)
         val details = joinDetails {
-            JoinLoad.Found(CONFIG.name, CONFIG.startsAt, CONFIG.endsAt, deletesAt("2026-08-05T14:32:11Z"))
+            JoinLoad.Found(
+                CONFIG.name,
+                CONFIG.startsAt,
+                CONFIG.endsAt,
+                DeletesAt(TimestampText.parse("2026-08-05T14:32:11Z")),
+            )
         }
         return onHost(config = config, queries = details, onCommitJoin = { config.value = CONFIG }) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the settings surface") { it.onSettings() }
 
             config.value = null
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT_ID))))
             host.stateWhere("the join surface, ready") {
                 ((it.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready
             }
@@ -564,7 +569,7 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `widening applies at once and narrowing asks`() {
         // Sharing from the 8th of a 6th–13th event: the whole event widens; a later start narrows.
-        val narrowed = CONFIG.copy(minPhotoDate = captureCutoff("2026-07-08T00:00:00Z"))
+        val narrowed = CONFIG.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-08T00:00:00Z")))
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(narrowed)) { host ->
             host.surfaces.onOpenReconfigure()
@@ -582,8 +587,8 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `a range narrower at one end and wider at the other asks`() {
         val middle = CONFIG.copy(
-            minPhotoDate = captureCutoff("2026-07-08T00:00:00Z"),
-            maxPhotoDate = captureCeiling("2026-07-11T00:00:00Z"),
+            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-08T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-11T00:00:00Z")),
         )
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
@@ -680,8 +685,8 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `a custom range with one bound keeps the other one in effect`() {
         val middle = CONFIG.copy(
-            minPhotoDate = captureCutoff("2026-07-08T09:00:00Z"),
-            maxPhotoDate = captureCeiling("2026-07-12T21:00:00Z"),
+            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-08T09:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-12T21:00:00Z")),
         )
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
@@ -697,7 +702,7 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `a preset after a custom range widens back to the whole event`() {
-        val middle = CONFIG.copy(minPhotoDate = captureCutoff("2026-07-08T09:00:00Z"))
+        val middle = CONFIG.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-08T09:00:00Z")))
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
             host.surfaces.onOpenReconfigure()
@@ -723,6 +728,22 @@ class StatusContainerHostSurfacesTest {
                 while (spy.renames.isEmpty()) kotlinx.coroutines.yield()
             }
             assertEquals(listOf(EVENT_ID to "Anna's Wedding"), spy.renames)
+        }
+    }
+
+    @Test
+    fun `a rename for an id that names no event renames nothing`() {
+        val spy = Spy()
+        return onHost(spy) { host ->
+            host.onRenameEvent("not-an-event", "Anna's Wedding")
+            // One rename at a time: the event's own is retried until the refused one has released the guard.
+            withTimeout(5.seconds) {
+                while (spy.renames.isEmpty()) {
+                    host.onRenameEvent(EVENT_ID, "Anna's Wedding")
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+            assertEquals(setOf(EVENT_ID to "Anna's Wedding"), spy.renames.toSet(), "only the event's own reached it")
         }
     }
 

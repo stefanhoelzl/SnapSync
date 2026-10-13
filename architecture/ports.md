@@ -22,6 +22,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Candidate` | `:domain:model` | `:domain:model` BatchedCandidate, HeldCandidate, LazyCandidate | no |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
 | `CandidateSource` | `:domain:services` | `:adapter:generic:mock` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:feature` FactsSource, UnreadableSource; `:domain:services` GalleryCandidateSource, PermissionAwareCandidateSource, RecordingWalk; `:test:feature` OneAsset | yes |
+| `CaptureDate` | `:domain:domain` | `:domain:domain` Dated, Undated | no |
+| `CaptureRangeVerdict` | `:domain:domain` | `:domain:domain` Inverted, Ok, OutsideEvent, TooLong | no |
 | `ChangeOutcome` | `:domain:ports` | `:domain:ports` Applied, Refused | no |
 | `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:adapter:generic:mock` Face; `:domain:presentation` MovableClock; `:test:contracts` ClockProxy, FixedClock | yes |
 | `Completion` | `:domain:inbound` | `:adapter:android` OnceCompletion, WorkerCompletion; `:adapter:generic:mock` Answered; `:adapter:ios:app-only` PushCompletion, Released, SessionCompletion, TaskCompletion; `:domain:inbound` None; `:domain:scheduling` CountingCompletion, Done; `:test:contracts` CompletionProxy; `:test:rig` Handler | yes |

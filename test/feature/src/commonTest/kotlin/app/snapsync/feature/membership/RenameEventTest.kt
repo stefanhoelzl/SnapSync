@@ -2,18 +2,21 @@
 
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.RenameOutcome
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
 import app.snapsync.services.backend.EventRename
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -23,7 +26,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+private val FIXTURE_CEILING = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z"))
 
 class RenameEventTest {
 
@@ -32,10 +35,10 @@ class RenameEventTest {
 
     /** Records what was sent and answers with a scripted outcome. */
     private class FakeRename(private val outcome: RenameOutcome) : EventRename {
-        var sentEventId: String? = null
+        var sentEventId: EventId? = null
         var sentName: String? = null
         var calls = 0
-        override suspend fun rename(eventId: String, name: String): RenameOutcome {
+        override suspend fun rename(eventId: EventId, name: String): RenameOutcome {
             sentEventId = eventId
             sentName = name
             calls++
@@ -44,15 +47,15 @@ class RenameEventTest {
     }
 
     private fun current(eventId: String = "E1", name: String = "Weekend") = EventConfig(
-        eventId = eventId,
+        eventId = testEventId(eventId),
         name = name,
-        minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
-        startsAt = eventStart("2026-07-06T12:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+        startsAt = EventStart(TimestampText.parse("2026-07-06T12:00:00Z")),
         maxPhotoDate = FIXTURE_CEILING,
         direction = Direction.Both,
         saveToAlbum = true,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     /** Drive the fire-and-forget command to completion on the test scheduler. */
@@ -65,7 +68,7 @@ class RenameEventTest {
         name: String = "Ana's 30th",
     ): RenameEvent {
         val useCase = RenameEvent(store.service(source.config), client, status)
-        useCase.rename(eventId, name)
+        useCase.rename(testEventId(eventId), name)
         runCurrent()
         return useCase
     }
@@ -181,7 +184,7 @@ class RenameEventTest {
         val seen = mutableListOf<RenameStatus>()
         val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         val client = object : EventRename {
-            override suspend fun rename(eventId: String, name: String): RenameOutcome {
+            override suspend fun rename(eventId: EventId, name: String): RenameOutcome {
                 seen += status.value // observed from inside the request
                 return RenameOutcome.Renamed("Ana's 30th")
             }
@@ -214,7 +217,7 @@ class RenameEventTest {
             name = "  Ana's 30th ",
         )
 
-        assertEquals("E1", client.sentEventId)
+        assertEquals(testEventId("E1"), client.sentEventId)
         assertEquals("Ana's 30th", client.sentName)
         assertEquals(1, client.calls)
     }

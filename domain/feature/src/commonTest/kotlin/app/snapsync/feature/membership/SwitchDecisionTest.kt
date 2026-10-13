@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -13,18 +14,21 @@ class SwitchDecisionTest {
 
     @Test
     fun `provisioning a different event while joined leaves the previous one`() {
-        assertEquals(SwitchDecision.LeavePrevious("OLD"), switchDecision("OLD", "NEW"))
+        assertEquals(
+            SwitchDecision.LeavePrevious(testEventId("OLD")),
+            switchDecision(testEventId("OLD"), testEventId("NEW")),
+        )
     }
 
     @Test
     fun `re-provisioning the same event is not a switch`() {
-        assertEquals(SwitchDecision.Stay, switchDecision("SAME", "SAME"))
+        assertEquals(SwitchDecision.Stay, switchDecision(testEventId("SAME"), testEventId("SAME")))
     }
 
     @Test
     fun `a first join is a join not a switch and not a stay`() {
         // A join loads the share set; a stay must not (it would reset a live membership's ledger).
-        assertEquals(SwitchDecision.Join, switchDecision(null, "NEW"))
+        assertEquals(SwitchDecision.Join, switchDecision(null, testEventId("NEW")))
         kotlin.test.assertNull(SwitchDecision.Join.previousEventId, "a first join leaves nothing first")
     }
 }

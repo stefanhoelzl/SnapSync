@@ -1,11 +1,11 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SELECTION_CALIBRATION
+import app.snapsync.model.TimestampText
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.captureCutoff
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
@@ -91,7 +91,7 @@ class AlbumExclusionsTest {
         log: Logger,
     ) = app.snapsync.services.gallery.denylistedAlbumMembers(GalleryAlbums(library), cutoff, grant, onFailure, log)
 
-    private val cutoff = captureCutoff("2026-06-01T00:00:00Z")
+    private val cutoff = CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z"))
     private val log = Logger.withTag("AlbumExclusionsTest")
 
     @Test

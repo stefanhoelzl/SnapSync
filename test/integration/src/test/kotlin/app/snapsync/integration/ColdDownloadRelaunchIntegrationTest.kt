@@ -29,7 +29,7 @@ class ColdDownloadRelaunchIntegrationTest {
     fun a_download_relaunch_imports_what_the_session_staged() = rigTest {
         // The process that started the transfers, then died.
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         val before = libraryTotal()
         reconcile()
 

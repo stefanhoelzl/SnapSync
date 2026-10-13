@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+
 /**
  * One resource the backend holds for this device: its recomposed storage [key] and the [assetId] the
  * backend **reported** for it.

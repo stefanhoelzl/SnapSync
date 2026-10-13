@@ -31,6 +31,8 @@ import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.ledger.db.LedgerDatabase
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.time.Instant
 
@@ -212,9 +214,16 @@ fun configService(
     return ConfigService(store.db, clock)
 }
 
-/** A device identity that resolves to [id] — the app's, minting the platform id over an empty secure store. */
+/**
+ * A device identity that resolves to the fixture device [id] stands for ([testDeviceId]) — the app's, minting the
+ * platform id over an empty secure store.
+ */
 fun testIdentity(id: String): PersistedDeviceIdentity =
-    PersistedDeviceIdentity(DeviceIdentityRole.MINTING, inMemorySecureStore(), PlatformDeviceId { id })
+    PersistedDeviceIdentity(
+        DeviceIdentityRole.MINTING,
+        inMemorySecureStore(),
+        PlatformDeviceId { testDeviceId(id).value },
+    )
 
 /** A device identity that cannot be read — the secure store answers as a locked device's does. */
 fun unreadableIdentity(): PersistedDeviceIdentity =
@@ -238,7 +247,7 @@ const val LEDGER_EVENT: String = "E-ledger"
  * event), and the reads a test needs that the app never makes: every row, and which events hold rows.
  */
 class TestLedger(val databases: Databases = inMemoryDatabases(), var joined: String? = LEDGER_EVENT) {
-    val service: LedgerService = LedgerService(testShared(databases)) { joined }
+    val service: LedgerService = LedgerService(testShared(databases)) { joined?.let(::testEventId) }
 
     /** Every row the joined event holds, by key. */
     suspend fun rows(): Map<String, LedgerEntry> = keys().mapNotNull { key ->

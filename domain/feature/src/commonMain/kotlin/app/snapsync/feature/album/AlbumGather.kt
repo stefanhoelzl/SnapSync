@@ -1,6 +1,7 @@
 package app.snapsync.feature.album
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
@@ -78,7 +79,7 @@ class AlbumGather(
     private var lastUsable: Boolean? = null
 
     /** Start a gather for [eventId], detached. [trigger] names the opt-in act, so the log says why it ran. */
-    fun start(trigger: String, eventId: String) {
+    fun start(trigger: String, eventId: EventId) {
         scope.launch {
             run { gather(eventId) }.also { log.i { "albumGather(trigger=$trigger eventId=$eventId)" } }
         }
@@ -111,7 +112,7 @@ class AlbumGather(
         onAccessObserved(usable)
     }
 
-    suspend fun gather(eventId: String) = running.withLock {
+    suspend fun gather(eventId: EventId) = running.withLock {
         val cfg = configSource.config.value
         when {
             cfg == null || cfg.eventId != eventId -> log.i { "gather: event=$eventId is no longer joined — skipping" }

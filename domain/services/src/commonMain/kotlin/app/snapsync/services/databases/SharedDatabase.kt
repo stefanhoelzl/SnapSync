@@ -6,9 +6,13 @@ import app.snapsync.model.SharedRecordsReadiness
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Databases
 import app.snapsync.services.ledger.LEDGER_DB_NAME
+import app.snapsync.services.ledger.db.EventAlbum
+import app.snapsync.services.ledger.db.EventCheck
 import app.snapsync.services.ledger.db.LedgerDatabase
 import app.snapsync.services.ledger.db.LedgerRow
 import app.snapsync.services.ledger.db.Membership
+import app.snapsync.services.ledger.db.PendingLeave
+import app.snapsync.services.ledger.db.UploadedManifest
 
 /**
  * **`ledger.db` for this process** (`docs/architecture.md`, "Storage") — the one database
@@ -62,6 +66,19 @@ class SharedDatabase(
 /** The generated database over [driver] with its column adapters wired — the one place that knows each encoding. */
 internal fun sharedDatabaseOver(driver: SqlDriver): LedgerDatabase = LedgerDatabase(
     driver,
+    eventAlbumAdapter = EventAlbum.Adapter(eventIdAdapter = EventIdColumnAdapter),
+    eventCheckAdapter = EventCheck.Adapter(eventIdAdapter = EventIdColumnAdapter),
     ledgerRowAdapter = LedgerRow.Adapter(assetIdAdapter = AssetIdColumnAdapter, stateAdapter = EnumColumnAdapter()),
-    membershipAdapter = Membership.Adapter(directionAdapter = EnumColumnAdapter()),
+    membershipAdapter = Membership.Adapter(
+        eventIdAdapter = EventIdColumnAdapter,
+        minPhotoDateAdapter = CaptureCutoffColumnAdapter,
+        startsAtAdapter = EventStartColumnAdapter,
+        endsAtAdapter = EventEndColumnAdapter,
+        maxPhotoDateAdapter = CaptureCeilingColumnAdapter,
+        deletesAtAdapter = DeletesAtColumnAdapter,
+        directionAdapter = EnumColumnAdapter(),
+        openUntilAdapter = OpenUntilColumnAdapter,
+    ),
+    pendingLeaveAdapter = PendingLeave.Adapter(eventIdAdapter = EventIdColumnAdapter),
+    uploadedManifestAdapter = UploadedManifest.Adapter(eventIdAdapter = EventIdColumnAdapter),
 )

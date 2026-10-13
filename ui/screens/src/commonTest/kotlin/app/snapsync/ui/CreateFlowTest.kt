@@ -30,18 +30,20 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
 import app.snapsync.presentation.onIntent
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.calendar_next_month
 import app.snapsync.ui.components.resources.network_blocked
@@ -164,7 +166,11 @@ class CreateFlowTest {
         onNodeWithText(str(Res.string.create_button)).performClick()
         awaitFired(rig, "create:My Party")
         assertEquals(
-            Triple("My Party", eventStart("2026-07-06T12:00:00Z"), eventEnd("2026-07-08T13:00:00Z")),
+            Triple(
+                "My Party",
+                EventStart(TimestampText.parse("2026-07-06T12:00:00Z")),
+                EventEnd(TimestampText.parse("2026-07-08T13:00:00Z")),
+            ),
             rig.created.single(),
         )
     }
@@ -177,7 +183,11 @@ class CreateFlowTest {
         onNodeWithText(str(Res.string.create_button)).performClick()
         awaitFired(rig, "create:Dinner")
         assertEquals(
-            Triple("Dinner", eventStart("2026-07-06T12:00:00Z"), eventEnd("2026-07-06T13:00:00Z")),
+            Triple(
+                "Dinner",
+                EventStart(TimestampText.parse("2026-07-06T12:00:00Z")),
+                EventEnd(TimestampText.parse("2026-07-06T13:00:00Z")),
+            ),
             rig.created.single(),
         )
     }
@@ -192,7 +202,7 @@ class CreateFlowTest {
         onNodeWithText(str(Res.string.create_button)).performClick()
         awaitFired(rig, "create:My Party")
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
-        assertEquals(eventStart("2026-07-06T12:00:00Z"), rig.created.single().second)
+        assertEquals(EventStart(TimestampText.parse("2026-07-06T12:00:00Z")), rig.created.single().second)
     }
 
     @Test
@@ -325,7 +335,7 @@ class CreateFlowTest {
             completeForm(rig, "My Party")
             onNodeWithText(str(Res.string.create_button)).performClick()
             awaitFired(rig, "create:My Party")
-            assertEquals(eventStart("2026-07-06T12:00:00Z"), rig.created.single().second)
+            assertEquals(EventStart(TimestampText.parse("2026-07-06T12:00:00Z")), rig.created.single().second)
         }
 
     @Test
@@ -455,12 +465,12 @@ class CreateFlowTest {
         val KEEP: SoftwareKeyboardController = CountingKeyboard()
 
         val MEMBERSHIP = EventConfig(
-            eventId = "11111111-1111-4111-8111-111111111111",
+            eventId = testEventId("11111111-1111-4111-8111-111111111111"),
             name = "My Party",
-            minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
-            endsAt = eventEnd("2026-07-08T13:00:00Z"),
-            maxPhotoDate = captureCeiling("2026-07-08T13:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2026-07-08T13:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-08T13:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
     }
 }

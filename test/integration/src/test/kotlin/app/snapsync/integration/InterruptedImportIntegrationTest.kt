@@ -31,7 +31,7 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 class InterruptedImportIntegrationTest {
 
-    private val foreignDevice = "DEV-F"
+    private val foreignDevice = DEV_F
     private val foreignAsset = "FQ"
 
     @Test

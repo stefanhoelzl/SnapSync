@@ -3,6 +3,7 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +29,7 @@ class InviteLinkHintsIntegrationTest {
     /** Every hint the decoder accepts, set to its most damaging value, on the event's whole invite. */
     private suspend fun Rig.craftedLink(eventId: String) = encodeEventUrl(
         EventLinkPayload(
-            eventId,
+            testEventId(eventId),
             autoJoin = true,
             minPhotoDate = "2001-01-01T00:00:00Z",
             maxPhotoDate = "2099-01-01T00:00:00Z",

@@ -1,6 +1,7 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -45,7 +46,7 @@ class SuppressionService(private val databases: Databases) : SuppressionSource, 
         is Found.Failed -> throw DatabaseUnavailable(DOWNLOADS_DB_NAME, found.detail)
     }
 
-    override suspend fun isRecognised(eventId: String): Boolean = when (val found = open()) {
+    override suspend fun isRecognised(eventId: EventId): Boolean = when (val found = open()) {
         is Found.Open -> found.queries.isRecognised(eventId).executeAsOne()
         // No store: the app has run no recognition on this device, so nothing is recognised.
         Found.Missing -> false

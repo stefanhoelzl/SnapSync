@@ -37,8 +37,8 @@ class UploadSealing(
         } ?: return UploadSeal.Withheld("no event key is kept")
         if (cipher.keyIdOf(key).toHex() != keyId) return UploadSeal.Withheld("the kept key is not the event's")
         val ad = EncryptedFileFormat.associatedData(
-            joined.eventId,
-            identity.deviceId(),
+            joined.eventId.value,
+            identity.deviceId().value,
             assetIdFromUploadKey(resource.filename).value,
             roleFromUploadKey(resource.filename).wire,
         )

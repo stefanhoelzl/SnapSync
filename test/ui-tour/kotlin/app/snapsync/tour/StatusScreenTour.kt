@@ -28,14 +28,14 @@ import androidx.compose.ui.test.performTouchInput
 import app.snapsync.contracts.UiUnderTest
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
+import app.snapsync.domain.event.EventEnd
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.EventStart
+import app.snapsync.domain.event.EventStart
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
@@ -50,12 +50,9 @@ import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
+
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
@@ -129,6 +126,10 @@ import org.jetbrains.compose.resources.getString
 import kotlin.time.Instant
 
 import kotlin.concurrent.Volatile
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.model.TimestampText
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.OpenUntil
 
 /** The event the joined parts of the tour are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
@@ -145,25 +146,25 @@ private const val SOURCE = "StatusScreenTour.kt"
 private const val ABOVE_THE_SHEET_PX = 5f
 
 private val MEMBERSHIP = EventConfig(
-    eventId = JOINED_ID,
+    eventId = EventId.parse(JOINED_ID)!!,
     name = "Anna’s Birthday",
-    minPhotoDate = captureCutoff("2026-07-04T18:00:00Z"),
-    startsAt = eventStart("2026-07-04T18:00:00Z"),
-    endsAt = eventEnd("2026-07-20T18:00:00Z"),
-    maxPhotoDate = captureCeiling("2026-07-20T18:00:00Z"),
-    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-04T18:00:00Z")),
+    startsAt = EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
+    endsAt = EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-20T18:00:00Z")),
+    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
 private val OTHER_EVENT = JoinLoad.Found(
     "Anna’s Wedding",
-    eventStart("2026-07-04T18:00:00Z"),
-    eventEnd("2026-07-20T18:00:00Z"),
-    deletesAt("2026-08-03T18:00:00Z"),
+    EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
+    EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
+    DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
 )
 
 private val CUTOFF = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC)
 
-private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(eventId))
+private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(EventId.parse(eventId)!!))
 
 // A test reads the words the screen shows; production never blocks on a resource.
 private fun str(res: StringResource): String = runBlocking { getString(res) }
@@ -231,7 +232,7 @@ abstract class StatusScreenTour {
         permission: GalleryAccess = GalleryAccess.GRANTED,
         refusal: VersionRefusal? = null,
         deviceRefusal: DeviceRefusal? = null,
-        private val details: suspend (String) -> JoinLoad = { OTHER_EVENT },
+        private val details: suspend (EventId) -> JoinLoad = { OTHER_EVENT },
     ) {
         val config = MutableStateFlow(config)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -260,7 +261,7 @@ abstract class StatusScreenTour {
                     this@Rig.config.value = null
                 }
 
-                override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?) = Unit
+                override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) = Unit
 
                 override suspend fun commitJoin(choice: JoinChoice) = JoinCommit.Failed
 
@@ -275,14 +276,14 @@ abstract class StatusScreenTour {
                 override fun choosePhotos() = Unit
 
                 override suspend fun reconfigure(
-                    eventId: String,
+                    eventId: EventId,
                     direction: Direction,
                     minPhotoDate: CaptureCutoff,
                     maxPhotoDate: CaptureCeiling,
                     saveToAlbum: Boolean,
                 ) = ReconfigureOutcome.Saved
 
-                override fun rename(eventId: String, name: String) = Unit
+                override fun rename(eventId: EventId, name: String) = Unit
 
                 override suspend fun resetRename() = Unit
 
@@ -293,7 +294,7 @@ abstract class StatusScreenTour {
                 override suspend fun restoreEventKey(linkKey: String) = false
             },
             queries = object : UserQueries {
-                override suspend fun loadJoinDetails(eventId: String, linkKey: String?) = details(eventId)
+                override suspend fun loadJoinDetails(eventId: EventId, linkKey: String?) = details(eventId)
 
                 override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
 

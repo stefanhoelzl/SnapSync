@@ -1,16 +1,18 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.TimestampText
 import app.snapsync.model.VersionRefusal
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.StoreName
 import kotlinx.coroutines.CoroutineScope
@@ -75,12 +77,12 @@ class VersionGateHostTest {
             backgroundScope,
             refusal,
             config = EventConfig(
-                GATE_EVENT_ID,
+                testEventId(GATE_EVENT_ID),
                 "Anna's Birthday",
                 GATE_CUTOFF,
                 maxPhotoDate = GATE_CEILING,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             ),
         ).testWithInternalState(this) {
             runOnCreate() // the initial state is the joined layer
@@ -158,8 +160,8 @@ class VersionGateHostTest {
 private const val STORE_URL = "https://apps.apple.com/de/app/id6781692480"
 
 private const val GATE_EVENT_ID = "11111111-1111-4111-8111-111111111111"
-private val GATE_CUTOFF = captureCutoff("2026-07-06T14:32:11Z")
-private val GATE_CEILING = captureCeiling("2026-07-13T14:32:11Z")
+private val GATE_CUTOFF = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z"))
+private val GATE_CEILING = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z"))
 
 /**
  * A container carrying only what this capability needs: the refusal read-model, the build's store URL,

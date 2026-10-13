@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.ResourceRole
 
 /** The backend states a [BackendContract] clause needs, each entered through the backend's public surface. */

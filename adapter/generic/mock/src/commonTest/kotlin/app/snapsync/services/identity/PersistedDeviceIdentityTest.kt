@@ -12,6 +12,7 @@ import app.snapsync.model.StoredProtection
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.secure.RecordingSecureStore
+import app.snapsync.testids.testDeviceId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -47,19 +48,29 @@ class PersistedDeviceIdentityTest {
     private fun identity(
         role: DeviceIdentityRole,
         secure: SecureStore = store,
-        platform: PlatformDeviceId = PlatformDeviceId { "minted-id" },
+        platform: PlatformDeviceId = PlatformDeviceId { testDeviceId("minted-id").value },
     ) = PersistedDeviceIdentity(role = role, store = secure, platformDeviceId = platform)
 
     // ---- the read-only role (the upload extension) ---------------------------------------------
 
     @Test
     fun `the extension reads the shared slot and returns its value verbatim`() {
-        store.answers[SHARED] = found("device-42")
+        store.answers[SHARED] = found(testDeviceId("device-42").value)
         val identity = identity(DeviceIdentityRole.READ_ONLY)
 
-        assertEquals(DeviceIdResult.Id("device-42", DeviceIdResult.Via.READ), identity.resolve())
-        assertEquals("device-42", identity.deviceId())
+        assertEquals(DeviceIdResult.Id(testDeviceId("device-42"), DeviceIdResult.Via.READ), identity.resolve())
+        assertEquals(testDeviceId("device-42"), identity.deviceId())
         assertTrue(store.untouched(), "a healthy read writes nothing")
+    }
+
+    @Test
+    fun `a stored id that is no device id is unusable - never handed out and never minted over`() {
+        store.answers[SHARED] = found("not-a-device-id")
+
+        val expected = DeviceIdResult.Unavailable("the stored device id is not a device id")
+        assertEquals(expected, identity(DeviceIdentityRole.READ_ONLY).resolve())
+        assertEquals(expected, identity(DeviceIdentityRole.MINTING).current())
+        assertTrue(store.untouched(), "an unusable identity is reported, not replaced")
     }
 
     /** The extension cannot tell "no identity yet" from "the app's identity is not reachable from here". */
@@ -68,7 +79,7 @@ class PersistedDeviceIdentityTest {
         var asked = false
         val identity = identity(DeviceIdentityRole.READ_ONLY, platform = {
             asked = true
-            "minted-id"
+            testDeviceId("minted-id").value
         })
 
         assertEquals(DeviceIdResult.AbsentNotMintable, identity.resolve())
@@ -95,9 +106,13 @@ class PersistedDeviceIdentityTest {
     fun `the app mints only when the shared slot is absent`() {
         val identity = identity(DeviceIdentityRole.MINTING)
 
-        assertEquals(DeviceIdResult.Id("minted-id", DeviceIdResult.Via.MINTED), identity.resolve())
+        assertEquals(DeviceIdResult.Id(testDeviceId("minted-id"), DeviceIdResult.Via.MINTED), identity.resolve())
         assertEquals(listOf(SHARED), store.reads, "the shared slot is the only one consulted")
-        assertEquals(listOf("minted-id"), store.writesTo(SHARED), "a minted id is persisted to the shared slot")
+        assertEquals(
+            listOf(testDeviceId("minted-id").value),
+            store.writesTo(SHARED),
+            "a minted id is persisted to the shared slot",
+        )
         assertEquals(listOf(SHARED), store.writes.map { it.first }, "nothing else is written")
     }
 
@@ -108,7 +123,7 @@ class PersistedDeviceIdentityTest {
         var minted = false
         val identity = identity(DeviceIdentityRole.MINTING, platform = {
             minted = true
-            "minted-id"
+            testDeviceId("minted-id").value
         })
 
         assertEquals(DeviceIdResult.Unavailable(LOCKED), identity.resolve())
@@ -123,19 +138,22 @@ class PersistedDeviceIdentityTest {
      */
     @Test
     fun `an item under another protection is read verbatim and never rewritten`() {
-        store.answers[SHARED] = found("provisioned-in-june", StoredProtection.RESTRICTED)
+        store.answers[SHARED] = found(testDeviceId("provisioned-in-june").value, StoredProtection.RESTRICTED)
         val identity = identity(DeviceIdentityRole.MINTING)
 
-        assertEquals(DeviceIdResult.Id("provisioned-in-june", DeviceIdResult.Via.READ), identity.resolve())
+        assertEquals(
+            DeviceIdResult.Id(testDeviceId("provisioned-in-june"), DeviceIdResult.Via.READ),
+            identity.resolve(),
+        )
         assertTrue(store.untouched(), "the id is never rewritten")
     }
 
     @Test
     fun `an item already stored background-readable is left completely alone`() {
-        store.answers[SHARED] = found("device-42")
+        store.answers[SHARED] = found(testDeviceId("device-42").value)
         val identity = identity(DeviceIdentityRole.MINTING)
 
-        assertEquals("device-42", identity.deviceId())
+        assertEquals(testDeviceId("device-42"), identity.deviceId())
         assertTrue(store.untouched(), "an already-correct item costs no write")
     }
 
@@ -143,17 +161,17 @@ class PersistedDeviceIdentityTest {
 
     @Test
     fun `a platform that offers a stable id has that id minted`() {
-        val identity = identity(DeviceIdentityRole.MINTING, platform = { "platform-stable-id" })
+        val identity = identity(DeviceIdentityRole.MINTING, platform = { testDeviceId("platform-stable-id").value })
 
-        assertEquals("platform-stable-id", identity.deviceId())
-        assertEquals(listOf("platform-stable-id"), store.writesTo(SHARED))
+        assertEquals(testDeviceId("platform-stable-id"), identity.deviceId())
+        assertEquals(listOf(testDeviceId("platform-stable-id").value), store.writesTo(SHARED))
     }
 
     @Test
     fun `a platform that offers none has a random upper-case UUID minted`() {
         val identity = identity(DeviceIdentityRole.MINTING, platform = { null })
 
-        val id = identity.deviceId()
+        val id = identity.deviceId().value
 
         assertEquals(36, id.length, "a canonical UUID string: $id")
         assertEquals(id.uppercase(), id, "the platform's canonical upper-case form, as NSUUID().UUIDString mints")
@@ -170,7 +188,7 @@ class PersistedDeviceIdentityTest {
         var mints = 0
         val identity = identity(DeviceIdentityRole.MINTING, platform = {
             mints++
-            "minted-$mints"
+            testDeviceId("minted-$mints").value
         })
 
         assertIs<DeviceIdResult.Unavailable>(identity.resolve(), "an unsaved id must never be used")
@@ -182,7 +200,7 @@ class PersistedDeviceIdentityTest {
 
         assertIs<DeviceIdResult.Id>(resolved, "a failure is not kept: the next resolve retries")
         assertEquals(DeviceIdResult.Via.MINTED, resolved.via)
-        assertEquals(found(resolved.value), store.read(SHARED), "the id handed out is the id stored")
+        assertEquals(found(resolved.value.value), store.read(SHARED), "the id handed out is the id stored")
     }
 
     // ---- caching: a success is kept, a failure never ----------------------------------------------
@@ -196,11 +214,11 @@ class PersistedDeviceIdentityTest {
         var mints = 0
         val identity = identity(DeviceIdentityRole.MINTING, platform = {
             mints++
-            "minted-$mints"
+            testDeviceId("minted-$mints").value
         })
 
-        assertEquals("minted-1", identity.deviceId())
-        assertEquals("minted-1", identity.deviceId())
+        assertEquals(testDeviceId("minted-1"), identity.deviceId())
+        assertEquals(testDeviceId("minted-1"), identity.deviceId())
         assertEquals(1, mints, "a second mint inside one process would be two identities")
         assertEquals(1, store.readsOf(SHARED), "the resolution is not re-run per call")
     }
@@ -215,14 +233,14 @@ class PersistedDeviceIdentityTest {
         var mints = 0
         val identity = identity(DeviceIdentityRole.MINTING, platform = {
             mints++
-            "minted-id"
+            testDeviceId("minted-id").value
         })
 
         assertIs<DeviceIdResult.Unavailable>(identity.resolve())
         assertEquals(0, mints, "an unreadable store never mints")
 
-        store.answers[SHARED] = found("device-42")
-        assertEquals(DeviceIdResult.Id("device-42", DeviceIdResult.Via.READ), identity.resolve())
+        store.answers[SHARED] = found(testDeviceId("device-42").value)
+        assertEquals(DeviceIdResult.Id(testDeviceId("device-42"), DeviceIdResult.Via.READ), identity.resolve())
         assertEquals(0, mints)
     }
 
@@ -231,13 +249,17 @@ class PersistedDeviceIdentityTest {
         val items = mutableMapOf<SecureSlot, SecureStoreRead.Found>()
         val shared = inMemorySecureStore(items)
         val extension = identity(DeviceIdentityRole.READ_ONLY, secure = shared)
-        val app = identity(DeviceIdentityRole.MINTING, secure = shared, platform = { "the-apps-id" })
+        val app = identity(
+            DeviceIdentityRole.MINTING,
+            secure = shared,
+            platform = { testDeviceId("the-apps-id").value },
+        )
 
         assertEquals(DeviceIdResult.AbsentNotMintable, extension.resolve())
-        assertEquals("the-apps-id", app.deviceId())
+        assertEquals(testDeviceId("the-apps-id"), app.deviceId())
 
         assertEquals(
-            DeviceIdResult.Id("the-apps-id", DeviceIdResult.Via.READ),
+            DeviceIdResult.Id(testDeviceId("the-apps-id"), DeviceIdResult.Via.READ),
             extension.resolve(),
             "both processes resolve ONE id",
         )
@@ -255,10 +277,10 @@ class PersistedDeviceIdentityTest {
 
     @Test
     fun `current answers the stored id without writing`() {
-        store.answers[SHARED] = found("device-42", StoredProtection.RESTRICTED)
+        store.answers[SHARED] = found(testDeviceId("device-42").value, StoredProtection.RESTRICTED)
 
         assertEquals(
-            DeviceIdResult.Id("device-42", DeviceIdResult.Via.READ),
+            DeviceIdResult.Id(testDeviceId("device-42"), DeviceIdResult.Via.READ),
             identity(DeviceIdentityRole.MINTING).current(),
         )
         assertTrue(store.untouched(), "a report's read writes nothing")

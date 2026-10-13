@@ -1,12 +1,16 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventConfig
@@ -14,16 +18,15 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.Resource
 import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
+import app.snapsync.model.TimestampText
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
 import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.crypto.UploadSealing
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -44,16 +47,16 @@ class CryptoServicesEdgesTest {
 
     private val crypto = fakeCrypto()
     private val resource = Resource("ASSET1-primary.heic", AssetId("ASSET1"), "public.heic", emptyMap(), null)
-    private val ref = AssetRef(DEVICE, AssetId("ASSET1"))
+    private val ref = AssetRef(testDeviceId(DEVICE), AssetId("ASSET1"))
 
     private fun config(keyId: String?) = EventConfig(
-        eventId = EVENT,
+        eventId = testEventId(EVENT),
         name = "Secret",
-        minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
         keyId = keyId,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     @Test

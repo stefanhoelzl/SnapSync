@@ -7,20 +7,25 @@ import io.gitlab.arturbosch.detekt.api.Entity
 import io.gitlab.arturbosch.detekt.api.Issue
 import io.gitlab.arturbosch.detekt.api.Rule
 import io.gitlab.arturbosch.detekt.api.Severity
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtClass
+import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtFunctionType
 import org.jetbrains.kotlin.psi.KtIfExpression
+import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtNullableType
 import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.KtReferenceExpression
 import org.jetbrains.kotlin.psi.KtTypeAlias
 import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.KtWhenExpression
 import org.jetbrains.kotlin.psi.psiUtil.containingClass
 
 // The rules of the core's layers (`docs/patterns.md`): what an entry point may contain, where a coroutine may start,
-// and what may stand in for behaviour. Each is scoped by its `includes` in `config/detekt/_base.yml`.
+// what may stand in for behaviour, and what the domain may hold. Each is scoped by its `includes` in
+// `config/detekt/_base.yml`.
 
 /**
  * An entry point orders steps and decides nothing (`docs/patterns.md`, "Entry points"): no `if`, and a `when` only over
@@ -153,7 +158,7 @@ class NoFunctionTypes(config: Config = Config.empty) : Rule(config) {
 
     override fun visitClass(klass: KtClass) {
         super.visitClass(klass)
-        if (klass.isInterface() && klass.hasModifier(org.jetbrains.kotlin.lexer.KtTokens.FUN_KEYWORD)) {
+        if (klass.isInterface() && klass.hasModifier(KtTokens.FUN_KEYWORD)) {
             report(CodeSmell(issue, Entity.from(klass), "A `fun interface` converts from a lambda: a plain interface."))
         }
     }
@@ -168,5 +173,100 @@ class NoFunctionTypes(config: Config = Config.empty) : Rule(config) {
     private fun KtTypeReference?.isFunctionType(): Boolean {
         val element = this?.typeElement ?: return false
         return element is KtFunctionType || (element as? KtNullableType)?.innerType is KtFunctionType
+    }
+}
+
+/**
+ * The domain is values and verdicts (`docs/patterns.md`, "The domain"): nothing suspends, nothing changes, nothing is
+ * passed as behaviour, nothing reads the world, and every verdict lives on its type. Its module depends on nothing, so
+ * the compiler withholds ports, coroutines and formats; this holds what the standard library still allows.
+ *
+ * Syntax only — K/N has no type resolution here: a mutable type behind an inferred type it does not name, and
+ * non-determinism read inside a call, are review's. A local `var` (a loop's counter) is not state, and `by lazy` is the
+ * memo of a value; both pass, as does a `buildList` RETURNED from a function.
+ */
+class DomainPurity(config: Config = Config.empty) : Rule(config) {
+    override val issue = Issue(
+        javaClass.simpleName,
+        Severity.Maintainability,
+        "The domain is values and verdicts: no suspension, no mutable state, no behaviour as a value, no world.",
+        Debt.TWENTY_MINS,
+    )
+
+    override fun visitNamedFunction(function: KtNamedFunction) {
+        super.visitNamedFunction(function)
+        if (function.hasModifier(KtTokens.SUSPEND_KEYWORD)) {
+            report(
+                CodeSmell(issue, Entity.from(function), "A suspending function: a verdict decides, it does not wait."),
+            )
+        }
+        if (function.isTopLevel) {
+            report(
+                CodeSmell(issue, Entity.from(function), "A top-level function: a verdict or codec lives on its type."),
+            )
+        }
+    }
+
+    override fun visitProperty(property: KtProperty) {
+        super.visitProperty(property)
+        if (property.isLocal) return
+        if (property.isVar) report(CodeSmell(issue, Entity.from(property), "A `var` property is state: a value."))
+        if (property.isTopLevel && property.receiverTypeReference != null) {
+            report(CodeSmell(issue, Entity.from(property), "A top-level extension property: it lives on its type."))
+        }
+        val named = listOfNotNull(
+            property.typeReference?.text,
+            (property.initializer as? KtCallExpression)?.calleeExpression?.text,
+        )
+        if (named.any { text -> MUTABLE.any { Regex("""\b$it\b""").containsMatchIn(text) } }) {
+            report(CodeSmell(issue, Entity.from(property), "A mutable value held as a property: hold a read-only one."))
+        }
+    }
+
+    override fun visitParameter(parameter: KtParameter) {
+        super.visitParameter(parameter)
+        val type = parameter.typeReference?.typeElement
+        if (type is KtFunctionType || (type as? KtNullableType)?.innerType is KtFunctionType) {
+            report(CodeSmell(issue, Entity.from(parameter), "A function-typed parameter: a verdict takes values."))
+        }
+        if (parameter.hasValOrVar() && parameter.isMutable) {
+            report(CodeSmell(issue, Entity.from(parameter), "A `var` constructor property is state: a value."))
+        }
+    }
+
+    override fun visitTypeReference(typeReference: KtTypeReference) {
+        super.visitTypeReference(typeReference)
+        if (typeReference.hasModifier(KtTokens.SUSPEND_KEYWORD)) {
+            report(CodeSmell(issue, Entity.from(typeReference), "A suspending function type: a verdict does not wait."))
+        }
+    }
+
+    override fun visitCallExpression(expression: KtCallExpression) {
+        super.visitCallExpression(expression)
+        val name = expression.calleeExpression?.text
+        if (name in CONSOLE) report(CodeSmell(issue, Entity.from(expression), "`$name` reads or writes the world."))
+    }
+
+    override fun visitReferenceExpression(expression: KtReferenceExpression) {
+        super.visitReferenceExpression(expression)
+        val text = (expression.parent as? KtDotQualifiedExpression)?.takeIf { it.receiverExpression == expression }?.text
+        if (text != null && WORLD.any { text.startsWith(it) }) {
+            report(CodeSmell(issue, Entity.from(expression), "`$text` reads the world: take the value as an argument."))
+        } else if (expression.text == "Random" && expression.parent !is KtDotQualifiedExpression) {
+            report(
+                CodeSmell(issue, Entity.from(expression), "`Random` reads the world: take the value as an argument."),
+            )
+        }
+    }
+
+    private companion object {
+        val MUTABLE = listOf(
+            "MutableList", "MutableSet", "MutableMap", "MutableCollection", "ArrayList", "HashMap", "HashSet",
+            "LinkedHashMap", "LinkedHashSet", "ArrayDeque", "Array", "IntArray", "LongArray", "ByteArray",
+            "StringBuilder", "mutableListOf", "mutableSetOf", "mutableMapOf", "arrayListOf", "hashMapOf", "hashSetOf",
+            "arrayOf", "buildList", "buildSet", "buildMap",
+        )
+        val CONSOLE = setOf("println", "print", "readln", "readlnOrNull")
+        val WORLD = listOf("Clock.System", "TimeSource.Monotonic", "Random.", "Uuid.random")
     }
 }

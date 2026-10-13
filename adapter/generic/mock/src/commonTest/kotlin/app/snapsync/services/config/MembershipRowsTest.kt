@@ -1,7 +1,14 @@
 package app.snapsync.services.config
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.Direction
+import app.snapsync.model.TimestampText
 import app.snapsync.services.ledger.db.SelectMembership
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertNull
 
@@ -14,13 +21,13 @@ class MembershipRowsTest {
     @Test
     fun `half a member count reads as no counts`() {
         val row = SelectMembership(
-            eventId = "E",
+            eventId = testEventId("E"),
             name = "Anna's Birthday",
-            minPhotoDate = "2026-06-10T00:00:00Z",
-            startsAt = "2026-06-10T00:00:00Z",
-            endsAt = "2026-06-20T00:00:00Z",
-            maxPhotoDate = "2026-06-20T00:00:00Z",
-            deletesAt = "2026-07-20T00:00:00Z",
+            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-06-10T00:00:00Z")),
+            startsAt = EventStart(TimestampText.parse("2026-06-10T00:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2026-06-20T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-06-20T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2026-07-20T00:00:00Z")),
             direction = Direction.Both,
             saveToAlbum = false,
             closed = false,

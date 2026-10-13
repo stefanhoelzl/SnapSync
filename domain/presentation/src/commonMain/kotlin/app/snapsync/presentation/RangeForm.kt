@@ -1,8 +1,8 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount

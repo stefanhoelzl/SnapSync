@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.feature.membership.EventCompletion
 import app.snapsync.services.leave.PendingLeaves
 
@@ -38,7 +39,7 @@ class MembershipEnd internal constructor(private val core: AppCore) {
     }
 
     /** A leave reaches the backend: the event's checks go, and the leave waits until the backend confirms it. */
-    suspend fun notifyLeave(eventId: String, received: Boolean) {
+    suspend fun notifyLeave(eventId: EventId, received: Boolean) {
         core.services.eventChecks.clear(eventId)
         pendingLeaves.leave(eventId, received)
     }

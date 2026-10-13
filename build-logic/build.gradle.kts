@@ -89,6 +89,10 @@ gradlePlugin {
             id = "snapsync.detekt-tiers"
             implementationClass = "app.snapsync.buildlogic.DetektTiersPlugin"
         }
+        register("deployment") {
+            id = "snapsync.deployment"
+            implementationClass = "app.snapsync.buildlogic.DeploymentPlugin"
+        }
         register("liveEdge") {
             id = "snapsync.live-edge"
             implementationClass = "app.snapsync.buildlogic.LiveEdgePlugin"

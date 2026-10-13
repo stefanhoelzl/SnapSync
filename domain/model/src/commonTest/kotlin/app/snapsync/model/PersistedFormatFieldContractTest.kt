@@ -1,5 +1,14 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -17,19 +26,19 @@ class PersistedFormatFieldContractTest {
         assertFieldContract(
             EventConfig.serializer(),
             EventConfig(
-                eventId = "11111111-1111-4111-8111-111111111111",
+                eventId = testEventId("11111111-1111-4111-8111-111111111111"),
                 name = "Picnic",
-                minPhotoDate = captureCutoff("2026-07-06T14:00:00Z"),
-                startsAt = eventStart("2026-07-06T00:00:00Z"),
-                endsAt = eventEnd("2026-07-07T00:00:00Z"),
-                maxPhotoDate = captureCeiling("2026-07-07T00:00:00Z"),
-                deletesAt = deletesAt("2026-08-05T00:00:00Z"),
+                minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:00:00Z")),
+                startsAt = EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
+                endsAt = EventEnd(TimestampText.parse("2026-07-07T00:00:00Z")),
+                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-07T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
                 direction = Direction.UploadOnly,
                 saveToAlbum = true,
                 closed = true,
                 members = MemberCounts(active = 2, settled = 1, waiting = 1),
                 keyId = "k1",
-                openUntil = eventEnd("2026-07-14T00:00:00Z"),
+                openUntil = OpenUntil(TimestampText.parse("2026-07-14T00:00:00Z")),
                 deleted = true,
             ),
             optional = setOf(
@@ -59,7 +68,7 @@ class PersistedFormatFieldContractTest {
         assertFieldContract(
             EventLinkPayload.serializer(),
             EventLinkPayload(
-                eventId = "11111111-1111-4111-8111-111111111111",
+                eventId = testEventId("11111111-1111-4111-8111-111111111111"),
                 autoJoin = true,
                 minPhotoDate = "2026-07-06T14:00:00Z",
                 maxPhotoDate = "2026-07-07T00:00:00Z",
@@ -79,7 +88,7 @@ class PersistedFormatFieldContractTest {
         assertFieldContract(DeviceManifestAsset.serializer(), asset)
         assertFieldContract(
             DeviceManifest.serializer(),
-            DeviceManifest("device-1", listOf(asset), version = 4, final = true),
+            DeviceManifest(testDeviceId("device-1"), listOf(asset), version = 4, final = true),
             optional = setOf("version", "final"),
         )
     }
@@ -108,11 +117,11 @@ class PersistedFormatFieldContractTest {
     fun `the membership derives its start from its cutoff only when the document has none`() {
         val decoded = assertIs<ConfigFileDecode.Valid>(
             decodeConfigFile(
-                """{"v":1,"payload":{"eventId":"e","name":"n","minPhotoDate":"2026-07-06T14:00:00Z",""" +
+                """{"v":1,"payload":{"eventId":"${testEventId("e").value}","name":"n","minPhotoDate":"2026-07-06T14:00:00Z",""" +
                     """"endsAt":"2026-07-07T00:00:00Z","maxPhotoDate":"2026-07-07T00:00:00Z",""" +
                     """"deletesAt":"2026-08-05T00:00:00Z"}}""",
             ),
         )
-        assertEquals(eventStart("2026-07-06T14:00:00Z"), decoded.config.startsAt)
+        assertEquals(EventStart(TimestampText.parse("2026-07-06T14:00:00Z")), decoded.config.startsAt)
     }
 }

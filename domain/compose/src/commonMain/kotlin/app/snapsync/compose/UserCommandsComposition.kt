@@ -1,13 +1,15 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.membership.QuietSwitch
 import app.snapsync.feature.membership.toCommit
 import app.snapsync.inbound.Trigger
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.Handoff
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
@@ -15,6 +17,7 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.outcome
@@ -97,9 +100,9 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
         name: String,
         startsAt: EventStart,
         endsAt: EventEnd,
-        openUntil: EventEnd?,
+        openUntil: OpenUntil?,
     ) = detachedOnCoreLane("tap.create") {
-        eventCreator.create(name, startsAt.at.iso, endsAt.at.iso, openUntil)
+        eventCreator.create(name, TimestampText.format(startsAt.at), TimestampText.format(endsAt.at), openUntil)
     }
 
     // The join gate's commit: join (no body, no manifest) then
@@ -141,7 +144,7 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     // In-place membership reconfigure: edit direction/
     // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
     override suspend fun reconfigure(
-        eventId: String,
+        eventId: EventId,
         direction: Direction,
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
@@ -162,7 +165,7 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     // Rename the joined event: unlike `reconfigure`, which edits only
     // this device's settings, this rewrites the SHARED event — every member picks the new name up
     // on their next foreground refresh. Fire-and-forget; the outcome rides `renameStatus`.
-    override fun rename(eventId: String, name: String) =
+    override fun rename(eventId: EventId, name: String) =
         detachedOnCoreLane("tap.rename", params = "eventId=$eventId") {
             renameEvent.rename(eventId, name)
         }
@@ -202,7 +205,7 @@ internal fun AppCore.userQueriesFor(): UserQueries = object : UserQueries {
     // is opened, and this device's own "holds everything" answer.
     private val quietSwitch = QuietSwitch(services.config, backend.directory, downloadController::holdsEverythingFor)
 
-    override suspend fun loadJoinDetails(eventId: String, linkKey: String?): JoinLoad =
+    override suspend fun loadJoinDetails(eventId: EventId, linkKey: String?): JoinLoad =
         awaitingOnCoreLane("query.loadJoinDetails", "eventId=$eventId") { joinEvent.loadJoin(eventId, linkKey) }
 
     override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =

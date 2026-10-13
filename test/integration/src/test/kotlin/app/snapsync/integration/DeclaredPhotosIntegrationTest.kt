@@ -19,7 +19,7 @@ class DeclaredPhotosIntegrationTest {
     fun photos_still_uploading_elsewhere_are_counted_and_waited_for_until_they_land() = rigTest {
         val event = createAndJoin()
         val all = (1..10).map { "P$it" }
-        foreignDevice("DEV-F", *all.toTypedArray(), event = event, uploading = listOf("P8", "P9", "P10"))
+        foreignDevice(DEV_F, *all.toTypedArray(), event = event, uploading = listOf("P8", "P9", "P10"))
         reconcile()
         stage()
 
@@ -30,7 +30,7 @@ class DeclaredPhotosIntegrationTest {
             "7 of 10 received, and nothing left this device can do",
         )
 
-        foreignDevice("DEV-F", *all.toTypedArray(), event = event) // the rest finishes uploading
+        foreignDevice(DEV_F, *all.toTypedArray(), event = event) // the rest finishes uploading
         reconcile()
         stage()
 
@@ -42,12 +42,12 @@ class DeclaredPhotosIntegrationTest {
     @Verifies(spec = "sync-status", requirement = "Progress counts only what this membership shares")
     fun a_member_leaving_before_its_photos_arrive_takes_them_out_of_the_total() = rigTest {
         val event = createAndJoin()
-        foreignDevice("DEV-F", "A", "B", "C", "D", event = event, uploading = listOf("C", "D"))
+        foreignDevice(DEV_F, "A", "B", "C", "D", event = event, uploading = listOf("C", "D"))
         reconcile()
         stage()
         awaitState { it.joined?.counts?.received == DirectionCount.Progress(done = 2, total = 4) }
 
-        device("foreign-device/leave", "device" to "DEV-F")
+        device("foreign-device/leave", "device" to DEV_F)
         reconcile()
 
         awaitInSync()
@@ -63,7 +63,7 @@ class DeclaredPhotosIntegrationTest {
     fun photos_leaving_while_everything_has_arrived_are_on_their_way_not_waited_for() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
-        foreignDevice("DEV-F", "A", event = event)
+        foreignDevice(DEV_F, "A", event = event)
         reconcile()
         stage()
         addPhoto("MINE")

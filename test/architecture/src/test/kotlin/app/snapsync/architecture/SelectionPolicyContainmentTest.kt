@@ -51,8 +51,14 @@ class SelectionPolicyContainmentTest {
         "Resource.kt",
     )
 
-    /** A comparison operator applied to a capture date — the shape that drifted. */
-    private val comparison = Regex("""creationDate\s*(>=|<=|>|<)|(>=|<=|>|<)\s*creationDate""")
+    /**
+     * A comparison operator applied to a capture date — the shape that drifted: a raw `creationDate` text or field,
+     * or the date a [CaptureDate.Dated] carries.
+     */
+    private val comparison = Regex(
+        """(creationDate|captureDate)\s*(>=|<=|>|<)|(>=|<=|>|<)\s*(creationDate|captureDate)""" +
+            """|is CaptureDate\.Dated -> \w+\.at\s*(>=|<=|>|<)""",
+    )
 
     @Test
     fun `no consumer compares a capture date outside the single admission`() {

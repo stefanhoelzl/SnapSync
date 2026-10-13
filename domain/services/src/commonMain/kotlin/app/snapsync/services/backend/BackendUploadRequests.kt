@@ -1,5 +1,7 @@
 package app.snapsync.services.backend
 
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.Resource
@@ -52,8 +54,8 @@ import app.snapsync.wire.api.Routes
  */
 class BackendUploadRequests(
     private val exchange: BackendExchange,
-    private val eventId: String,
-    private val deviceId: String,
+    private val eventId: EventId,
+    private val deviceId: DeviceId,
     private val token: suspend () -> String?,
     /**
      * The credential read from its store of record, bypassing any in-process copy — what [provideForRetry] uses.
@@ -78,7 +80,9 @@ class BackendUploadRequests(
         // request rebuilt on the retry path — where metadata is empty — address a byte-identical object.
         val captureName = resource.metadata[RESOURCE_META_ORIGINAL_FILENAME]
             ?.takeIf { it.isNotBlank() } ?: resource.filename
-        val url = exchange.url(Routes.UploadResource.path(eventId, deviceId, assetId.value, role, captureName))
+        val url = exchange.url(
+            Routes.UploadResource.path(eventId.value, deviceId.value, assetId.value, role, captureName),
+        )
         val headers = buildMap {
             put("Content-Type", contentTypeOf(resource))
             putAll(exchange.versionHeaders())

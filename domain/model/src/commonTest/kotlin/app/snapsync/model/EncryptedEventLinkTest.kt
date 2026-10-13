@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -20,10 +21,10 @@ class EncryptedEventLinkTest {
 
     @Test
     fun `an encrypted event's invite is the path form carrying its key`() {
-        val url = encodeEventUrl(EventLinkPayload(eventId, key = text))
+        val url = encodeEventUrl(EventLinkPayload(testEventId(eventId), key = text))
         assertEquals("$LINK_ORIGIN/join/$eventId#k=$text", url)
         val decoded = assertIs<ConfigDecodeResult.Success>(decodeEventUrl(url)).payload
-        assertEquals(eventId, decoded.eventId)
+        assertEquals(testEventId(eventId), decoded.eventId)
         assertContentEquals(key, decodeEventKey(decoded.key!!))
     }
 
@@ -31,7 +32,7 @@ class EncryptedEventLinkTest {
     fun `a keyed invite carries its development hints after its key and decodes back to them`() {
         val payload =
             EventLinkPayload(
-                eventId,
+                testEventId(eventId),
                 autoJoin = true,
                 minPhotoDate = "2026-07-01T00:00:00Z",
                 maxPhotoDate = "2026-07-08T00:00:00Z",
@@ -56,10 +57,10 @@ class EncryptedEventLinkTest {
 
     @Test
     fun `an install referrer carrying k opens the event's whole invite`() {
-        val payload = encodeEventUrl(EventLinkPayload(eventId)).substringAfter("#")
+        val payload = encodeEventUrl(EventLinkPayload(testEventId(eventId))).substringAfter("#")
         assertEquals("$LINK_ORIGIN/join/$eventId#k=$text", inviteLinkFromInstallReferrer("$payload&k=$text"))
         assertEquals(
-            encodeEventUrl(EventLinkPayload(eventId)),
+            encodeEventUrl(EventLinkPayload(testEventId(eventId))),
             inviteLinkFromInstallReferrer(payload),
             "no key, the plain invite",
         )
@@ -68,7 +69,7 @@ class EncryptedEventLinkTest {
 
     @Test
     fun `a plain event's invite is unchanged and carries no key`() {
-        val url = encodeEventUrl(EventLinkPayload(eventId))
+        val url = encodeEventUrl(EventLinkPayload(testEventId(eventId)))
         assertTrue(url.startsWith("$LINK_ORIGIN/join#v=3&d="), url)
         assertNull(assertIs<ConfigDecodeResult.Success>(decodeEventUrl(url)).payload.key)
         assertNull(assertIs<ConfigDecodeResult.Success>(decodeEventUrl("$LINK_ORIGIN/join/$eventId")).payload.key)

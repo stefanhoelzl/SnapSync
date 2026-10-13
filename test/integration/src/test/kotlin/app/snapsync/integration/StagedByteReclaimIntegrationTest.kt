@@ -57,7 +57,7 @@ class StagedByteReclaimIntegrationTest {
         awaitReclaimed(paths, "the first pass drained it")
 
         // A second asset, mid-import: its bytes staged, its row unsettled — exactly what a retry will read.
-        foreignDevice("DEV-F", "FR")
+        foreignDevice(DEV_F, "FR")
         device("import/suspend-next")
         reconcile()
         awaitDownloadQueued()
@@ -111,7 +111,7 @@ class StagedByteReclaimIntegrationTest {
      * terminal, its resource rows surviving, the files on disk — and check the files really are there.
      */
     private suspend fun Rig.seedLegacyBacklog(asset: String): Set<String> {
-        val paths = deviceJson("staging/seed-legacy-backlog", "device" to "DEV-F", "asset" to asset)
+        val paths = deviceJson("staging/seed-legacy-backlog", "device" to DEV_F, "asset" to asset)
             .getValue("staged").jsonArray.mapTo(mutableSetOf()) { it.jsonPrimitive.content }
         assertEquals(2, paths.size, "precondition: a primary and a live resource were staged")
         assertTrue(stagedFiles().containsAll(paths), "precondition: the files are on the disk")

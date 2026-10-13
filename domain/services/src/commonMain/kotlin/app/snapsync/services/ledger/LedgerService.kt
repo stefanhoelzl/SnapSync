@@ -1,6 +1,7 @@
 package app.snapsync.services.ledger
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.DONE_STATES
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
@@ -37,13 +38,13 @@ const val LEDGER_DB_NAME: String = "ledger.db"
 class LedgerService(
     private val db: SharedDatabase,
     /** The event this process is joined to, or null; read at every call, never cached. */
-    private val joinedEvent: () -> String?,
+    private val joinedEvent: () -> EventId?,
 ) : TransferRecord {
 
     private val queries get() = db.use { it.ledgerQueries }
 
     /** The joined event, or null when nothing is joined. */
-    private fun event(): String? = joinedEvent()
+    private fun event(): String? = joinedEvent()?.value
 
     /**
      * The row for [key], or null when there is none.
@@ -267,8 +268,8 @@ class LedgerService(
      * costs space, never a suppressed upload. Rows of [eventId] are kept, so a failed listing at a rejoin keeps what
      * this device last knew of the event.
      */
-    suspend fun purgeExcept(eventId: String) {
-        queries.purgeExcept(eventId)
+    suspend fun purgeExcept(eventId: EventId) {
+        queries.purgeExcept(eventId.value)
     }
 
     /**
@@ -279,17 +280,17 @@ class LedgerService(
      * [purgeExcept]) — the join seed uses it, before the joined config is saved, which is why it names its event;
      * it is **not** a per-key record, and it is owned by that membership use-case.
      */
-    suspend fun resetTo(eventId: String, entries: List<LedgerEntry>) {
+    suspend fun resetTo(eventId: EventId, entries: List<LedgerEntry>) {
         // One transaction: purge, delete the event's rows, then insert each. If any statement throws, SQLDelight
         // rolls back the whole transaction, so the store is left unchanged — a partial baseline is never
         // observable. A plain insert: after deleteEvent nothing can conflict, and the reset family applies no
         // precedence.
         queries.transaction {
-            queries.purgeExcept(eventId)
-            queries.deleteEvent(eventId)
+            queries.purgeExcept(eventId.value)
+            queries.deleteEvent(eventId.value)
             entries.forEach {
                 queries.insert(
-                    eventId, it.key, it.assetId, it.state,
+                    eventId.value, it.key, it.assetId, it.state,
                     it.creationDate, wireOf(it.role), it.contentType, it.originalFilename,
                     it.destinationPath,
                 )

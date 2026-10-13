@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+
 /**
  * The assets a membership's [policy] **admits** among a set of ledger [rows] — the one derivation both consumers of the
  * ledger take: the device-manifest projection ([projectDeviceManifest]), which declares what this device provides, and
@@ -24,7 +26,7 @@ package app.snapsync.model
  */
 suspend fun admittedAssetIds(rows: Collection<LedgerEntry>, policy: SelectionPolicy): Set<AssetId> {
     val facts = rows.groupBy { it.assetId }.map { (assetId, group) ->
-        AssetFacts(assetId = assetId, creationDate = CaptureDate.parseOrNull(group.first().creationDate))
+        AssetFacts(assetId = assetId, captureDate = TimestampText.captureDate(group.first().creationDate))
     }
     return EventPhotoSet(policy) { candidatesFromFacts(facts) }
         .assets()

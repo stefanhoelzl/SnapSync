@@ -18,7 +18,7 @@ class HeartbeatCadenceIntegrationTest {
         device("clock/advance", "to" to DURING)
         createAndJoin("direction" to "upload", startsAt = SHORT_START, endsAt = SHORT_END)
         // A second member that never settles keeps the event open after its end, so this one stays joined.
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         heartbeat()
         assertEquals(BUSY, osRecord().pendingCadence, "its own new photos are noticed only by looking")
 

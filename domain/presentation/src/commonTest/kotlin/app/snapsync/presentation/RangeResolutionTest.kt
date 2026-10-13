@@ -1,14 +1,16 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.CaptureDate
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
 import app.snapsync.model.localToCutoff
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount
@@ -228,7 +230,7 @@ class RangeResolutionTest {
     }
 
     /** A fixed-shape cutoff conversion — the resolution is under test, not the formatter. */
-    private fun stubCutoff(local: LocalDateTime): CaptureDate = localToCutoff(local, TimeZone.UTC)
+    private fun stubCutoff(local: LocalDateTime): Timestamp = localToCutoff(local, TimeZone.UTC)
 
     // ── directionOf ─────────────────────────────────────────────────────────────────────────────
 
@@ -247,7 +249,7 @@ class RangeResolutionTest {
 
     // ── nowWithinWindow ─────────────────────────────────────────────────────────────────────────
 
-    private fun d(iso: String) = CaptureDate.parse(iso)
+    private fun d(iso: String) = TimestampText.parse(iso)
 
     @Test
     fun `now inside the window offers the now preset`() {
@@ -280,17 +282,17 @@ class RangeResolutionTest {
     // ── reconfigureForm ─────────────────────────────────────────────────────────────────────────
 
     private fun membership(from: String, until: String) = EventConfig(
-        eventId = "11111111-1111-4111-8111-111111111111",
+        eventId = testEventId("11111111-1111-4111-8111-111111111111"),
         name = "Anna's Birthday",
-        minPhotoDate = captureCutoff(from),
-        startsAt = eventStart("2026-07-06T14:00:00Z"),
-        endsAt = eventEnd("2026-07-13T14:00:00Z"),
-        maxPhotoDate = captureCeiling(until),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse(from)),
+        startsAt = EventStart(TimestampText.parse("2026-07-06T14:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2026-07-13T14:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse(until)),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     /** The wall clock is the instant's own digits — the zone is not what is under test. */
-    private fun local(at: CaptureDate): LocalDateTime = LocalDateTime.parse(at.iso.removeSuffix("Z"))
+    private fun local(at: Timestamp): LocalDateTime = LocalDateTime.parse(TimestampText.format(at).removeSuffix("Z"))
 
     @Test
     fun `a membership spanning the whole window pre-fills the whole event`() {

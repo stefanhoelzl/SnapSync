@@ -1,5 +1,13 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.mock.fakeCrypto
@@ -13,13 +21,11 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinResult
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,35 +37,35 @@ private const val EVENT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 private const val DEVICE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
 /** Every membership carries a cutoff (capability `photo-sharing`); there is no "no cutoff" join. */
-private val CUTOFF = captureCutoff("2026-07-06T14:32:11Z")
+private val CUTOFF = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z"))
 
 /** The event's start date — earlier than [CUTOFF], so the default fixtures share a range inside the event. */
-private val STARTS_AT = eventStart("2026-07-01T09:00:00Z")
+private val STARTS_AT = EventStart(TimestampText.parse("2026-07-01T09:00:00Z"))
 
 /** The event's end date, a week after [STARTS_AT]. */
-private val ENDS_AT = eventEnd("2026-07-08T09:00:00Z")
+private val ENDS_AT = EventEnd(TimestampText.parse("2026-07-08T09:00:00Z"))
 
 /** The same instant as [ENDS_AT], in its OTHER role: a membership's capture-date ceiling. */
-private val CEILING = captureCeiling("2026-07-08T09:00:00Z")
+private val CEILING = CaptureCeiling(TimestampText.parse("2026-07-08T09:00:00Z"))
 
 /** The event's server-derived retention deadline (capability `event-lifetime`), carried on every details
  *  load and persisted onto the membership as the self-leave's offline witness. */
-private val DELETES_AT = deletesAt("2026-07-31T09:00:00Z")
-private val OPEN_UNTIL = eventEnd("2026-07-15T09:00:00Z")
+private val DELETES_AT = DeletesAt(TimestampText.parse("2026-07-31T09:00:00Z"))
+private val OPEN_UNTIL = OpenUntil(TimestampText.parse("2026-07-15T09:00:00Z"))
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
-private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+private val FIXTURE_CEILING = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z"))
 
 private class FakeEnroller(private val result: JoinResult = JoinResult.JOINED) : DeviceEnroller {
-    val calls = mutableListOf<Pair<String, String>>()
-    override suspend fun enroll(eventId: String, deviceId: String): JoinResult {
+    val calls = mutableListOf<Pair<EventId, DeviceId>>()
+    override suspend fun enroll(eventId: EventId, deviceId: DeviceId): JoinResult {
         calls += eventId to deviceId
         return result
     }
 }
 
 private class FakeDetails(private val result: EventLookup) : EventDirectory {
-    override suspend fun fetch(eventId: String): EventLookup = result
+    override suspend fun fetch(eventId: EventId): EventLookup = result
 }
 
 private fun joinEvent(
@@ -100,13 +106,20 @@ class JoinEventTest {
         val enroller = FakeEnroller(result = JoinResult.JOINED)
         val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
             .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+                JoinChoice(
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                ),
             )
 
         assertEquals(JoinOutcome.Committed, outcome)
-        assertEquals(listOf(EVENT_A to DEVICE), enroller.calls)
+        assertEquals(listOf(testEventId(EVENT_A) to testDeviceId(DEVICE)), enroller.calls)
         assertEquals(
-            listOf(EventConfig(EVENT_A, "Anna's Wedding", CUTOFF, STARTS_AT, ENDS_AT, CEILING, DELETES_AT)),
+            listOf(
+                EventConfig(testEventId(EVENT_A), "Anna's Wedding", CUTOFF, STARTS_AT, ENDS_AT, CEILING, DELETES_AT),
+            ),
             provisioned,
         )
     }
@@ -119,7 +132,10 @@ class JoinEventTest {
         joinEvent(config = null, enrollResult = JoinResult.JOINED, provisioned = provisioned)
             .join(
                 JoinChoice(
-                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
                     openUntil = OPEN_UNTIL,
                 ),
             )
@@ -132,7 +148,12 @@ class JoinEventTest {
         val provisioned = mutableListOf<EventConfig>()
         val outcome = joinEvent(config = null, enrollResult = JoinResult.FAILED, provisioned = provisioned)
             .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+                JoinChoice(
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                ),
             )
 
         assertEquals(JoinOutcome.EnrollFailed, outcome)
@@ -144,7 +165,12 @@ class JoinEventTest {
         val provisioned = mutableListOf<EventConfig>()
         val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_NOT_FOUND, provisioned = provisioned)
             .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+                JoinChoice(
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                ),
             )
 
         assertEquals(JoinOutcome.EnrollFailed, outcome)
@@ -156,7 +182,12 @@ class JoinEventTest {
         val provisioned = mutableListOf<EventConfig>()
         val outcome = joinEvent(config = null, enrollResult = JoinResult.UNVERIFIED, provisioned = provisioned)
             .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+                JoinChoice(
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                ),
             )
 
         assertEquals(JoinOutcome.Unverified, outcome)
@@ -169,18 +200,23 @@ class JoinEventTest {
         val enroller = FakeEnroller(result = JoinResult.JOINED)
         val outcome = joinEvent(
             config = EventConfig(
-                EVENT_A,
+                testEventId(EVENT_A),
                 "Anna's Wedding",
                 CUTOFF,
                 maxPhotoDate = FIXTURE_CEILING,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             ),
             enroller = enroller,
             provisioned = provisioned,
         )
             .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+                JoinChoice(
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                ),
             )
 
         assertEquals(JoinOutcome.AlreadyJoined, outcome)
@@ -193,19 +229,26 @@ class JoinEventTest {
         val enroller = FakeEnroller(result = JoinResult.JOINED)
         val outcome = joinEvent(
             config = EventConfig(
-                EVENT_A,
+                testEventId(EVENT_A),
                 "Old",
                 CUTOFF,
                 maxPhotoDate = FIXTURE_CEILING,
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             ),
             enroller = enroller,
         )
-            .join(JoinChoice(EVENT_B, "New", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+            .join(
+                JoinChoice(
+                    testEventId(
+                        EVENT_B,
+                    ),
+                    "New", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                ),
+            )
 
         assertEquals(JoinOutcome.Committed, outcome)
-        assertEquals(listOf(EVENT_B to DEVICE), enroller.calls)
+        assertEquals(listOf(testEventId(EVENT_B) to testDeviceId(DEVICE)), enroller.calls)
     }
 
     @Test
@@ -215,13 +258,16 @@ class JoinEventTest {
             joinEvent(
                 config = null,
                 details = EventLookup.Found("N", STARTS_AT, ENDS_AT, DELETES_AT),
-            ).loadDetails(EVENT_A),
+            ).loadDetails(testEventId(EVENT_A)),
         )
         assertEquals(
             EventLookup.NotFound,
-            joinEvent(config = null, details = EventLookup.NotFound).loadDetails(EVENT_A),
+            joinEvent(config = null, details = EventLookup.NotFound).loadDetails(testEventId(EVENT_A)),
         )
-        assertEquals(EventLookup.Failed, joinEvent(config = null, details = EventLookup.Failed).loadDetails(EVENT_A))
+        assertEquals(
+            EventLookup.Failed,
+            joinEvent(config = null, details = EventLookup.Failed).loadDetails(testEventId(EVENT_A)),
+        )
     }
 
     @Test
@@ -231,7 +277,12 @@ class JoinEventTest {
             config = null,
             provisioned = provisioned,
         ).join(
-            JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            JoinChoice(
+                testEventId(
+                    EVENT_A,
+                ),
+                "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+            ),
         )
         assertEquals("Anna's Wedding", provisioned.single().name)
     }
@@ -241,7 +292,12 @@ class JoinEventTest {
         val provisioned = mutableListOf<EventConfig>()
         val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_CLOSED, provisioned = provisioned)
             .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+                JoinChoice(
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                ),
             )
 
         assertEquals(JoinOutcome.EventClosed, outcome)
@@ -255,7 +311,12 @@ class JoinEventTest {
             config = null,
             provisioned = provisioned,
         ).join(
-            JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, true),
+            JoinChoice(
+                testEventId(
+                    EVENT_A,
+                ),
+                "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, true,
+            ),
         )
         assertEquals(true, provisioned.single().saveToAlbum)
     }
@@ -266,14 +327,16 @@ class JoinEventTest {
         joinEvent(config = null, provisioned = provisioned)
             .join(
                 JoinChoice(
-                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
-                    captureCutoff(
-                        "2026-07-04T18:00:00Z",
+                    testEventId(EVENT_A), "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    CaptureCutoff(
+                        TimestampText.parse(
+                            "2026-07-04T18:00:00Z",
+                        ),
                     ),
                     CEILING, Direction.Both, false,
                 ),
             )
-        assertEquals(captureCutoff("2026-07-04T18:00:00Z"), provisioned.single().minPhotoDate)
+        assertEquals(CaptureCutoff(TimestampText.parse("2026-07-04T18:00:00Z")), provisioned.single().minPhotoDate)
     }
 
     @Test
@@ -282,7 +345,12 @@ class JoinEventTest {
             val provisioned = mutableListOf<EventConfig>()
             joinEvent(config = null, provisioned = provisioned)
                 .join(
-                    JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, direction, false),
+                    JoinChoice(
+                        testEventId(
+                            EVENT_A,
+                        ),
+                        "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, direction, false,
+                    ),
                 )
             assertEquals(direction, provisioned.single().direction)
         }
@@ -294,11 +362,11 @@ class JoinEventTest {
     fun `a range starting before the event is kept as chosen`() = runTest {
         // Capability `join-event`: the evening before, the trip there — a member may reach before the start.
         val provisioned = mutableListOf<EventConfig>()
-        val before = captureCutoff("2026-06-29T18:00:00Z")
+        val before = CaptureCutoff(TimestampText.parse("2026-06-29T18:00:00Z"))
         val outcome = joinEvent(config = null, provisioned = provisioned)
             .join(
                 JoinChoice(
-                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    testEventId(EVENT_A), "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
                     before, CEILING, Direction.Both, false,
                 ),
             )
@@ -311,11 +379,11 @@ class JoinEventTest {
     @Test
     fun `a range ending after the event is kept as chosen`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val after = captureCeiling("2026-07-10T09:00:00Z")
+        val after = CaptureCeiling(TimestampText.parse("2026-07-10T09:00:00Z"))
         joinEvent(config = null, provisioned = provisioned)
             .join(
                 JoinChoice(
-                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    testEventId(EVENT_A), "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
                     CUTOFF, after, Direction.Both, false,
                 ),
             )
@@ -328,7 +396,12 @@ class JoinEventTest {
         val provisioned = mutableListOf<EventConfig>()
         joinEvent(config = null, provisioned = provisioned)
             .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+                JoinChoice(
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+                ),
             )
 
         assertEquals(CUTOFF, provisioned.single().minPhotoDate)
@@ -344,8 +417,8 @@ class JoinEventTest {
         val outcome = joinEvent(config = null, provisioned = provisioned, enroller = enroller)
             .join(
                 JoinChoice(
-                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
-                    captureCutoff("2001-01-01T00:00:00Z"), CEILING, Direction.Both, false,
+                    testEventId(EVENT_A), "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    CaptureCutoff(TimestampText.parse("2001-01-01T00:00:00Z")), CEILING, Direction.Both, false,
                 ),
             )
 
@@ -361,9 +434,9 @@ class JoinEventTest {
         val outcome = joinEvent(config = null, provisioned = provisioned)
             .join(
                 JoinChoice(
-                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
-                    captureCutoff("2026-06-20T00:00:00Z"),
-                    captureCeiling("2026-06-25T00:00:00Z"),
+                    testEventId(EVENT_A), "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    CaptureCutoff(TimestampText.parse("2026-06-20T00:00:00Z")),
+                    CaptureCeiling(TimestampText.parse("2026-06-25T00:00:00Z")),
                     Direction.Both,
                     false,
                 ),
@@ -379,8 +452,8 @@ class JoinEventTest {
         val outcome = joinEvent(config = null, provisioned = provisioned)
             .join(
                 JoinChoice(
-                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
-                    captureCutoff("2026-06-01T00:00:00Z"), CEILING, Direction.Both, false,
+                    testEventId(EVENT_A), "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z")), CEILING, Direction.Both, false,
                 ),
             )
 
@@ -394,18 +467,27 @@ class JoinEventTest {
         val enroller = FakeEnroller(result = JoinResult.JOINED)
         val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
             .join(
-                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.DownloadOnly, false),
+                JoinChoice(
+                    testEventId(
+                        EVENT_A,
+                    ),
+                    "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.DownloadOnly, false,
+                ),
             )
 
         assertEquals(JoinOutcome.Committed, outcome)
-        assertEquals(listOf(EVENT_A to DEVICE), enroller.calls, "download-only must still enroll (empty manifest)")
+        assertEquals(
+            listOf(testEventId(EVENT_A) to testDeviceId(DEVICE)),
+            enroller.calls,
+            "download-only must still enroll (empty manifest)",
+        )
         assertEquals(Direction.DownloadOnly, provisioned.single().direction)
     }
 
     // ── Encrypted events (the encrypted file format, `docs/architecture.md`) ─────────────────────────────────
 
     private fun choice(linkKey: String?, eventKeyId: String?) = JoinChoice(
-        EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+        testEventId(EVENT_A), "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
         linkKey = linkKey, eventKeyId = eventKeyId,
     )
 
@@ -464,13 +546,18 @@ class JoinEventTest {
         val keys = EventKeys(fakeCrypto(), inMemorySecureStore())
         val minted = keys.mint()
         val encrypted = EventLookup.Found("Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, keyId = minted.keyId)
-        assertIs<JoinLoad.Found>(joinEvent(null, details = encrypted, keys = keys).loadJoin(EVENT_A, minted.linkKey))
-        assertEquals(JoinLoad.WrongLink, joinEvent(null, details = encrypted, keys = keys).loadJoin(EVENT_A, null))
-        assertEquals(JoinLoad.WrongLink, joinEvent(null, keys = keys).loadJoin(EVENT_A, minted.linkKey))
-        assertIs<JoinLoad.Found>(joinEvent(null, keys = keys).loadJoin(EVENT_A, null))
+        assertIs<JoinLoad.Found>(
+            joinEvent(null, details = encrypted, keys = keys).loadJoin(testEventId(EVENT_A), minted.linkKey),
+        )
+        assertEquals(
+            JoinLoad.WrongLink,
+            joinEvent(null, details = encrypted, keys = keys).loadJoin(testEventId(EVENT_A), null),
+        )
+        assertEquals(JoinLoad.WrongLink, joinEvent(null, keys = keys).loadJoin(testEventId(EVENT_A), minted.linkKey))
+        assertIs<JoinLoad.Found>(joinEvent(null, keys = keys).loadJoin(testEventId(EVENT_A), null))
         assertEquals(
             JoinLoad.NotFound,
-            joinEvent(null, details = EventLookup.NotFound, keys = keys).loadJoin(EVENT_A, null),
+            joinEvent(null, details = EventLookup.NotFound, keys = keys).loadJoin(testEventId(EVENT_A), null),
         )
     }
 }

@@ -1,16 +1,18 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.mock.fixedClock
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLookup
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,13 +28,13 @@ import kotlin.time.Instant
 class QuietSwitchTest {
 
     private val joined = EventConfig(
-        eventId = "E",
+        eventId = testEventId("E"),
         name = "Party",
-        minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
-        startsAt = eventStart("2026-07-06T12:00:00Z"),
-        endsAt = eventEnd("2026-07-13T12:00:00Z"),
-        maxPhotoDate = captureCeiling("2026-07-13T12:00:00Z"),
-        deletesAt = deletesAt("2026-08-12T12:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+        startsAt = EventStart(TimestampText.parse("2026-07-06T12:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2026-07-13T12:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T12:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2026-08-12T12:00:00Z")),
     )
 
     private fun found(waiting: Int?, completed: Boolean = false) = EventLookup.Found(

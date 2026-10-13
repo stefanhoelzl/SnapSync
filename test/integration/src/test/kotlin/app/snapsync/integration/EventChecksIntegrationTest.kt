@@ -50,7 +50,7 @@ class EventChecksIntegrationTest {
         device("clock/advance", "to" to DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         // A second member that never settles keeps the event open, so this one stays joined to be woken.
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         device("clock/advance", "to" to AFTER_THE_END)
         heartbeat()
         val first = eventReads(event)

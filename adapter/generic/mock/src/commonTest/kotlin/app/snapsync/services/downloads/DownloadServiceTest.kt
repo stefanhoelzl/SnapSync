@@ -1,12 +1,14 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AdoptedAsset
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.SuppressionReadiness
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,7 +27,7 @@ class DownloadServiceTest {
 
     private val store = DownloadService(inMemoryDatabases())
 
-    private val ref = AssetRef("DEVICE-A", AssetId("ASSET-Q"))
+    private val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("ASSET-Q"))
 
     private fun resources() = listOf(
         PlannedResource("ASSET-Q-primary.heic", "https://e/primary", "primary", "image/heic", "IMG.HEIC"),
@@ -45,16 +47,16 @@ class DownloadServiceTest {
 
     @Test
     fun `a membership is recognised only once marked - and a join forgets every other membership's`() = runTest {
-        assertFalse(store.recognition.isRecognised("E1"), "nothing is recognised before a pass marks it")
+        assertFalse(store.recognition.isRecognised(testEventId("E1")), "nothing is recognised before a pass marks it")
 
-        store.recognition.mark("E1")
-        store.recognition.mark("E1")
-        store.recognition.mark("E2")
-        assertTrue(store.recognition.isRecognised("E1"), "marking twice is marking once")
+        store.recognition.mark(testEventId("E1"))
+        store.recognition.mark(testEventId("E1"))
+        store.recognition.mark(testEventId("E2"))
+        assertTrue(store.recognition.isRecognised(testEventId("E1")), "marking twice is marking once")
 
-        store.union.purgeEventRefsExcept("E2")
-        assertFalse(store.recognition.isRecognised("E1"), "a rejoin of E1 recognises again")
-        assertTrue(store.recognition.isRecognised("E2"))
+        store.union.purgeEventRefsExcept(testEventId("E2"))
+        assertFalse(store.recognition.isRecognised(testEventId("E1")), "a rejoin of E1 recognises again")
+        assertTrue(store.recognition.isRecognised(testEventId("E2")))
     }
 
     // ---- planning: what the union offers, recorded once ----------------------------------------------------------
@@ -69,7 +71,7 @@ class DownloadServiceTest {
 
     @Test
     fun `a batch plan records every asset with its resources`() = runTest {
-        val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
+        val other = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-R"))
         store.planAll(
             listOf(
                 PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()),
@@ -124,7 +126,7 @@ class DownloadServiceTest {
 
     @Test
     fun `a batch re-plan refreshes only unstaged urls and never downgrades a settled row`() = runTest {
-        val done = AssetRef("DEVICE-B", AssetId("DONE"))
+        val done = AssetRef(testDeviceId("DEVICE-B"), AssetId("DONE"))
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         store.plan(done, "2026-06-30T10:00:00Z", resources())
@@ -157,23 +159,32 @@ class DownloadServiceTest {
     }
 
     @Test
+    fun `a resource planned for no event fetches from the event-less path`() = runTest {
+        val ref = AssetRef(testDeviceId("DEV-A"), AssetId("A"))
+
+        store.planAll(listOf(planned(ref)))
+
+        assertEquals(setOf(""), store.pendingDownloads().mapTo(mutableSetOf()) { it.eventId })
+    }
+
+    @Test
     fun `a planned resource names the event whose bytes it fetches`() = runTest {
-        store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
-        assertEquals(setOf("EVENT-1"), store.pendingDownloads().mapTo(mutableSetOf()) { it.eventId })
+        store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref))
+        assertEquals(setOf(testEventId("EVENT-1").value), store.pendingDownloads().mapTo(mutableSetOf()) { it.eventId })
 
         // Re-planned by another event's read while still unstaged: re-pointed at that event's bytes.
-        store.planAll(listOf(planned(ref)), "EVENT-2", members = listOf(ref))
-        assertEquals(setOf("EVENT-2"), store.pendingDownloads().mapTo(mutableSetOf()) { it.eventId })
+        store.planAll(listOf(planned(ref)), testEventId("EVENT-2"), members = listOf(ref))
+        assertEquals(setOf(testEventId("EVENT-2").value), store.pendingDownloads().mapTo(mutableSetOf()) { it.eventId })
     }
 
     @Test
     fun `settled among answers the asked refs that are imported or unimportable`() = runTest {
-        val imported = AssetRef("DEVICE-A", AssetId("IMPORTED"))
-        val unimportable = AssetRef("DEVICE-A", AssetId("UNIMPORTABLE"))
-        val pending = AssetRef("DEVICE-A", AssetId("PENDING"))
-        val unconfirmed = AssetRef("DEVICE-A", AssetId("UNCONFIRMED"))
-        val notAsked = AssetRef("DEVICE-B", AssetId("IMPORTED-NOT-ASKED"))
-        val unknown = AssetRef("DEVICE-Z", AssetId("NEVER-PLANNED"))
+        val imported = AssetRef(testDeviceId("DEVICE-A"), AssetId("IMPORTED"))
+        val unimportable = AssetRef(testDeviceId("DEVICE-A"), AssetId("UNIMPORTABLE"))
+        val pending = AssetRef(testDeviceId("DEVICE-A"), AssetId("PENDING"))
+        val unconfirmed = AssetRef(testDeviceId("DEVICE-A"), AssetId("UNCONFIRMED"))
+        val notAsked = AssetRef(testDeviceId("DEVICE-B"), AssetId("IMPORTED-NOT-ASKED"))
+        val unknown = AssetRef(testDeviceId("DEVICE-Z"), AssetId("NEVER-PLANNED"))
         listOf(imported, unimportable, pending, unconfirmed, notAsked).forEach {
             store.plan(it, "2026-06-30T10:00:00Z", resources())
         }
@@ -194,12 +205,12 @@ class DownloadServiceTest {
     @Test
     fun `a plan with nothing to record writes nothing`() = runTest {
         store.planAll(emptyList())
-        store.planAll(emptyList(), eventId = "EVENT-1")
+        store.planAll(emptyList(), eventId = testEventId("EVENT-1"))
         assertEquals(0, store.counts().stillArriving)
-        assertEquals(null, store.union.cursor("EVENT-1"))
+        assertEquals(null, store.union.cursor(testEventId("EVENT-1")))
 
-        store.planAll(emptyList(), eventId = "EVENT-1", cursor = 5)
-        assertEquals(5, store.union.cursor("EVENT-1"))
+        store.planAll(emptyList(), eventId = testEventId("EVENT-1"), cursor = 5)
+        assertEquals(5, store.union.cursor(testEventId("EVENT-1")))
     }
 
     // ---- staging and importing -----------------------------------------------------------------------------------
@@ -246,7 +257,7 @@ class DownloadServiceTest {
 
     @Test
     fun `a batch enqueue puts every marked asset in flight`() = runTest {
-        val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
+        val other = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-R"))
         store.planAll(
             listOf(
                 PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()),
@@ -359,7 +370,10 @@ class DownloadServiceTest {
     @Test
     fun `a marker write onto a row that is gone reports it`() = runTest {
         assertFalse(
-            store.recordCreatedLocalId(AssetRef("DEVICE-Z", AssetId("NEVER-PLANNED")), AssetId("LOCAL-CREATED")),
+            store.recordCreatedLocalId(
+                AssetRef(testDeviceId("DEVICE-Z"), AssetId("NEVER-PLANNED")),
+                AssetId("LOCAL-CREATED"),
+            ),
             "no row, so the marker landed on nothing",
         )
 
@@ -543,7 +557,7 @@ class DownloadServiceTest {
 
     @Test
     fun `a prune drops non-terminal rows and keeps imported ones`() = runTest {
-        val imported = AssetRef("DEVICE-A", AssetId("DONE"))
+        val imported = AssetRef(testDeviceId("DEVICE-A"), AssetId("DONE"))
         store.plan(
             imported,
             "2026-01-01T00:00:00Z",
@@ -609,7 +623,7 @@ class DownloadServiceTest {
     /** An unprotected sibling is still dropped in the same call — protection is per-ref, not a global off. */
     @Test
     fun `prune protects only the refs it was given`() = runTest {
-        val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
+        val other = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-R"))
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         store.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
@@ -629,11 +643,11 @@ class DownloadServiceTest {
 
     @Test
     fun `a leave's prune forgets every position - so every next read is a full one`() = runTest {
-        store.planAll(emptyList(), "EVENT-1", cursor = 3)
-        store.planAll(emptyList(), "EVENT-2", cursor = 4)
+        store.planAll(emptyList(), testEventId("EVENT-1"), cursor = 3)
+        store.planAll(emptyList(), testEventId("EVENT-2"), cursor = 4)
         store.pruneNonTerminal(protecting = emptySet())
-        assertEquals(null, store.union.cursor("EVENT-1"))
-        assertEquals(null, store.union.cursor("EVENT-2"))
+        assertEquals(null, store.union.cursor(testEventId("EVENT-1")))
+        assertEquals(null, store.union.cursor(testEventId("EVENT-2")))
     }
 
     // ---- events: a photo is received for the events whose union holds it -----------------------------------------
@@ -646,42 +660,46 @@ class DownloadServiceTest {
      */
     @Test
     fun `event-scoped counts see only that event's union`() = runTest {
-        val earlier = AssetRef("DEVICE-B", AssetId("ASSET-OLD"))
+        val earlier = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-OLD"))
         val earlierResources = listOf(
             PlannedResource("ASSET-OLD-primary.heic", "https://e/old", "primary", "image/heic", "OLD.HEIC"),
         )
         store.planAll(
             listOf(PlannedAsset(earlier, "2026-06-01T10:00:00Z", earlierResources)),
-            eventId = "EVENT-1",
+            eventId = testEventId("EVENT-1"),
             members = listOf(earlier),
         )
         store.markStaged(earlier, "ASSET-OLD-primary.heic", "/stage/old")
         store.markImported(earlier, AssetId("LOCAL-OLD"))
-        assertEquals(1, store.counts("EVENT-1").imported)
+        assertEquals(1, store.counts(testEventId("EVENT-1")).imported)
 
         // The next event's union holds none of it.
         store.planAll(
             listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", resources())),
-            eventId = "EVENT-2",
+            eventId = testEventId("EVENT-2"),
             members = listOf(ref),
         )
-        val next = store.counts("EVENT-2")
+        val next = store.counts(testEventId("EVENT-2"))
         assertEquals(0, next.imported, "the earlier event's photo is not received for this one")
         assertEquals(1, next.stillArriving, "only this event's photo is there to receive")
         assertEquals(setOf(AssetId("LOCAL-OLD")), store.suppressedLocalIds(), "the earlier row is kept as a handle")
         assertEquals(2, store.counts().stillArriving, "the device-wide census still sees both")
 
         // A photo that reappears in a later union counts for that event from then on.
-        store.planAll(emptyList(), eventId = "EVENT-2", members = listOf(ref, earlier))
-        assertEquals(1, store.counts("EVENT-2").imported)
-        assertEquals(2, store.counts("EVENT-2").stillArriving)
-        assertEquals(1, store.counts("EVENT-1").stillArriving, "and still for the event it was received in")
+        store.planAll(emptyList(), eventId = testEventId("EVENT-2"), members = listOf(ref, earlier))
+        assertEquals(1, store.counts(testEventId("EVENT-2")).imported)
+        assertEquals(2, store.counts(testEventId("EVENT-2")).stillArriving)
+        assertEquals(
+            1,
+            store.counts(testEventId("EVENT-1")).stillArriving,
+            "and still for the event it was received in",
+        )
     }
 
     /** Read by the event album's gather: only an import this event's union holds, and only a confirmed one. */
     @Test
     fun `an event's imported local ids are its confirmed imports only`() = runTest {
-        fun r(id: String) = AssetRef("DEVICE-A", AssetId(id))
+        fun r(id: String) = AssetRef(testDeviceId("DEVICE-A"), AssetId(id))
         val imported = r("IMPORTED")
         val pending = r("PENDING")
         val unconfirmed = r("UNCONFIRMED")
@@ -690,10 +708,10 @@ class DownloadServiceTest {
         val untagged = r("UNTAGGED")
         store.planAll(
             listOf(imported, pending, unconfirmed, unimportable).map(::planned),
-            "EVENT-1",
+            testEventId("EVENT-1"),
             members = listOf(imported, pending, unconfirmed, unimportable),
         )
-        store.planAll(listOf(planned(others)), "EVENT-2", members = listOf(others))
+        store.planAll(listOf(planned(others)), testEventId("EVENT-2"), members = listOf(others))
         store.plan(untagged, "2026-06-30T12:00:00Z", resources())
         store.markImported(imported, AssetId("LOCAL-A"))
         store.recordCreatedLocalId(unconfirmed, AssetId("LOCAL-CREATED"))
@@ -703,7 +721,7 @@ class DownloadServiceTest {
 
         assertEquals(
             setOf(AssetId("LOCAL-A")),
-            store.importedLocalIdsOf("EVENT-1"),
+            store.importedLocalIdsOf(testEventId("EVENT-1")),
             "a pending, an unconfirmed (a marker is not yet known to name an asset) and an unimportable ref are " +
                 "omitted, and so are another event's and an untagged one",
         )
@@ -711,29 +729,33 @@ class DownloadServiceTest {
 
     @Test
     fun `an imported ref a later event reconciles answers for both events`() = runTest {
-        store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+        store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref))
         store.markImported(ref, AssetId("LOCAL-1"))
-        store.planAll(emptyList(), "EVENT-2", members = listOf(ref))
+        store.planAll(emptyList(), testEventId("EVENT-2"), members = listOf(ref))
         assertEquals(
             setOf(AssetId("LOCAL-1")),
-            store.importedLocalIdsOf("EVENT-2"),
+            store.importedLocalIdsOf(testEventId("EVENT-2")),
             "the settled ref is the later event's too",
         )
-        assertEquals(setOf(AssetId("LOCAL-1")), store.importedLocalIdsOf("EVENT-1"), "and still the earlier one's")
-        assertEquals(1, store.counts("EVENT-1").imported)
-        assertEquals(1, store.counts("EVENT-2").imported)
+        assertEquals(
+            setOf(AssetId("LOCAL-1")),
+            store.importedLocalIdsOf(testEventId("EVENT-1")),
+            "and still the earlier one's",
+        )
+        assertEquals(1, store.counts(testEventId("EVENT-1")).imported)
+        assertEquals(1, store.counts(testEventId("EVENT-2")).imported)
     }
 
     @Test
     fun `the join's purge forgets other events' refs and keeps every photo's record`() = runTest {
-        store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+        store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref))
         store.markImported(ref, AssetId("LOCAL-1"))
-        store.planAll(emptyList(), "EVENT-2", members = listOf(ref))
+        store.planAll(emptyList(), testEventId("EVENT-2"), members = listOf(ref))
 
-        store.union.purgeEventRefsExcept("EVENT-2")
+        store.union.purgeEventRefsExcept(testEventId("EVENT-2"))
 
-        assertTrue(store.importedLocalIdsOf("EVENT-1").isEmpty(), "the other event's refs are gone")
-        assertEquals(setOf(AssetId("LOCAL-1")), store.importedLocalIdsOf("EVENT-2"))
+        assertTrue(store.importedLocalIdsOf(testEventId("EVENT-1")).isEmpty(), "the other event's refs are gone")
+        assertEquals(setOf(AssetId("LOCAL-1")), store.importedLocalIdsOf(testEventId("EVENT-2")))
         assertTrue(store.isSettled(ref), "the photo's record survives")
         assertEquals(setOf(AssetId("LOCAL-1")), store.suppressedLocalIds(), "and so does its import marker")
     }
@@ -744,13 +766,17 @@ class DownloadServiceTest {
     fun `an adopted photo is settled suppressed and counted for its event`() = runTest {
         val adopted = store.adoptAll(
             listOf(AdoptedAsset(ref, AssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z")),
-            "EVENT-1",
+            testEventId("EVENT-1"),
         )
         assertEquals(setOf(ref), adopted)
         assertTrue(store.isSettled(ref), "an adopted ref is never planned or downloaded again")
         assertEquals(setOf(AssetId("LOCAL-KEPT")), store.suppressedLocalIds(), "and its asset is never uploaded back")
-        assertEquals(setOf(AssetId("LOCAL-KEPT")), store.importedLocalIdsOf("EVENT-1"))
-        assertEquals(1, store.counts("EVENT-1").imported, "it counts as received for the event it was adopted for")
+        assertEquals(setOf(AssetId("LOCAL-KEPT")), store.importedLocalIdsOf(testEventId("EVENT-1")))
+        assertEquals(
+            1,
+            store.counts(testEventId("EVENT-1")).imported,
+            "it counts as received for the event it was adopted for",
+        )
         assertTrue(
             store.pendingDownloads().isEmpty() && store.importableAssets().isEmpty() && store.unconfirmedImports().isEmpty(),
         )
@@ -761,8 +787,8 @@ class DownloadServiceTest {
 
     @Test
     fun `adoption settles a planned row and leaves a marked or terminal one`() = runTest {
-        val marked = AssetRef("DEVICE-B", AssetId("ASSET-MARKED"))
-        val deleted = AssetRef("DEVICE-B", AssetId("ASSET-DELETED"))
+        val marked = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-MARKED"))
+        val deleted = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-DELETED"))
         store.plan(ref, "2026-06-30T10:00:00Z", resources()) // planned while the photo grant was pending
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         store.plan(marked, "2026-06-30T11:00:00Z", resources())
@@ -776,7 +802,7 @@ class DownloadServiceTest {
                 AdoptedAsset(marked, AssetId("LOCAL-OTHER"), "2026-06-30T11:00:00Z"),
                 AdoptedAsset(deleted, AssetId("LOCAL-Y"), "2026-06-30T12:00:00Z"),
             ),
-            "EVENT-1",
+            testEventId("EVENT-1"),
         )
         assertEquals(setOf(ref), adopted, "only the planned row, which no import has created an asset for")
         assertTrue(store.isSettled(ref), "it is never imported: the library already holds it")
@@ -792,12 +818,16 @@ class DownloadServiceTest {
             store.stagedPathsOfImportedAssets(),
             "its staged bytes are released",
         )
-        assertEquals(1, store.counts("EVENT-1").imported, "it counts as received for the event it was adopted for")
+        assertEquals(
+            1,
+            store.counts(testEventId("EVENT-1")).imported,
+            "it counts as received for the event it was adopted for",
+        )
     }
 
     @Test
     fun `adopting nothing writes nothing`() = runTest {
-        assertTrue(store.adoptAll(emptyList(), "EVENT-1").isEmpty())
+        assertTrue(store.adoptAll(emptyList(), testEventId("EVENT-1")).isEmpty())
         assertEquals(0, store.counts().stillArriving)
     }
 
@@ -805,38 +835,42 @@ class DownloadServiceTest {
 
     @Test
     fun `a plan stores the union position it covered for its event`() = runTest {
-        assertEquals(null, store.union.cursor("EVENT-1"), "no position before any read")
-        store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref), cursor = 7)
-        assertEquals(7, store.union.cursor("EVENT-1"))
-        assertEquals(null, store.union.cursor("EVENT-2"), "a position is per event")
-        store.planAll(emptyList(), "EVENT-1", cursor = 9)
-        assertEquals(9, store.union.cursor("EVENT-1"), "a read that served nothing new still moves it")
+        assertEquals(null, store.union.cursor(testEventId("EVENT-1")), "no position before any read")
+        store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref), cursor = 7)
+        assertEquals(7, store.union.cursor(testEventId("EVENT-1")))
+        assertEquals(null, store.union.cursor(testEventId("EVENT-2")), "a position is per event")
+        store.planAll(emptyList(), testEventId("EVENT-1"), cursor = 9)
+        assertEquals(9, store.union.cursor(testEventId("EVENT-1")), "a read that served nothing new still moves it")
     }
 
     // The event's declared total (change `count-declared-photos`) rides with the position, and goes with it.
     @Test
     fun `the declared total is stored with the position and counted with the event`() = runTest {
-        assertEquals(null, store.counts("EVENT-1").declared, "none before any read")
-        store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref), cursor = 7, declared = 200)
-        assertEquals(200, store.union.declared("EVENT-1"))
-        assertEquals(200, store.counts("EVENT-1").declared)
-        assertEquals(null, store.counts("EVENT-2").declared, "per event")
+        assertEquals(null, store.counts(testEventId("EVENT-1")).declared, "none before any read")
+        store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref), cursor = 7, declared = 200)
+        assertEquals(200, store.union.declared(testEventId("EVENT-1")))
+        assertEquals(200, store.counts(testEventId("EVENT-1")).declared)
+        assertEquals(null, store.counts(testEventId("EVENT-2")).declared, "per event")
 
-        store.planAll(emptyList(), "EVENT-1", cursor = 7, declared = null)
-        assertEquals(null, store.counts("EVENT-1").declared, "a backend without it answers none, which is stored")
+        store.planAll(emptyList(), testEventId("EVENT-1"), cursor = 7, declared = null)
+        assertEquals(
+            null,
+            store.counts(testEventId("EVENT-1")).declared,
+            "a backend without it answers none, which is stored",
+        )
 
-        store.planAll(emptyList(), "EVENT-1", cursor = 8, declared = 5)
+        store.planAll(emptyList(), testEventId("EVENT-1"), cursor = 8, declared = 5)
         store.pruneNonTerminal(emptySet())
-        assertEquals(null, store.counts("EVENT-1").declared, "forgotten with the position")
+        assertEquals(null, store.counts(testEventId("EVENT-1")).declared, "forgotten with the position")
     }
 
     @Test
     fun `known counts every foreign row of the event - received and given up included`() = runTest {
-        val given = AssetRef("DEVICE-B", AssetId("ASSET-GIVEN-UP"))
-        val received = AssetRef("DEVICE-B", AssetId("ASSET-RECEIVED"))
+        val given = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-GIVEN-UP"))
+        val received = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-RECEIVED"))
         store.planAll(
             listOf(planned(ref), planned(given), planned(received)),
-            "EVENT-1",
+            testEventId("EVENT-1"),
             members = listOf(ref, given, received),
         )
         store.markStaged(given, "ASSET-Q-primary.heic", "/stage/p")
@@ -844,7 +878,7 @@ class DownloadServiceTest {
         assertTrue(store.settleUnimportable(given))
         store.markImported(received, AssetId("LOCAL-R"))
 
-        val counts = store.counts("EVENT-1")
+        val counts = store.counts(testEventId("EVENT-1"))
         assertEquals(3, counts.known, "the declared total already counts all three")
         assertEquals(2, counts.stillArriving, "the given-up one leaves the denominator")
         assertEquals(1, counts.imported)
@@ -852,21 +886,21 @@ class DownloadServiceTest {
 
     @Test
     fun `a withdrawn row not yet received is pruned with the paths it stranded`() = runTest {
-        store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+        store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref))
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
 
-        val stranded = store.union.pruneWithdrawn("EVENT-1", listed = emptySet(), protecting = emptySet())
+        val stranded = store.union.pruneWithdrawn(testEventId("EVENT-1"), listed = emptySet(), protecting = emptySet())
 
         assertEquals(listOf("/stage/primary.heic"), stranded)
         assertTrue(store.pendingDownloads().isEmpty(), "its work is gone")
         assertFalse(store.isSettled(ref), "deleted, not settled — a photo that comes back is planned again")
-        store.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+        store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref))
         assertEquals(2, store.pendingDownloads().size)
     }
 
     @Test
     fun `a withdrawal prune keeps what is listed - received - judged - claimed or another event's`() = runTest {
-        fun r(id: String) = AssetRef("DEVICE-A", AssetId(id))
+        fun r(id: String) = AssetRef(testDeviceId("DEVICE-A"), AssetId(id))
         val listed = r("LISTED")
         val imported = r("IMPORTED")
         val unimportable = r("UNIMPORTABLE")
@@ -874,13 +908,13 @@ class DownloadServiceTest {
         val marked = r("MARKED")
         val otherEvent = r("OTHER")
         val all = listOf(listed, imported, unimportable, claimed, marked)
-        store.planAll(all.map(::planned), "EVENT-1", members = all)
-        store.planAll(listOf(planned(otherEvent)), "EVENT-2", members = listOf(otherEvent))
+        store.planAll(all.map(::planned), testEventId("EVENT-1"), members = all)
+        store.planAll(listOf(planned(otherEvent)), testEventId("EVENT-2"), members = listOf(otherEvent))
         store.markImported(imported, AssetId("L-IMPORTED"))
         store.settleUnimportable(unimportable)
         store.recordCreatedLocalId(marked, AssetId("L-MARKED"))
 
-        store.union.pruneWithdrawn("EVENT-1", listed = setOf(listed), protecting = setOf(claimed))
+        store.union.pruneWithdrawn(testEventId("EVENT-1"), listed = setOf(listed), protecting = setOf(claimed))
 
         assertTrue(store.isSettled(imported) && store.isSettled(unimportable), "a received or judged row stays")
         assertEquals(
@@ -888,7 +922,7 @@ class DownloadServiceTest {
             (store.pendingDownloads().mapTo(mutableSetOf()) { it.ref } + store.unconfirmedImports().map { it.ref }) - otherEvent,
             "listed, claimed and marker-carrying rows keep their work",
         )
-        store.union.pruneWithdrawn("EVENT-1", listed = emptySet(), protecting = emptySet())
+        store.union.pruneWithdrawn(testEventId("EVENT-1"), listed = emptySet(), protecting = emptySet())
         assertTrue(
             otherEvent in store.pendingDownloads().map { it.ref },
             "another event's row is not this read's to judge",

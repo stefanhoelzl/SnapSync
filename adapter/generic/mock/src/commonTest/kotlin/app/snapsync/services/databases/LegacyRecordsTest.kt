@@ -1,20 +1,21 @@
 package app.snapsync.services.databases
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.SharedRecordsReadiness
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadedManifest
-import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.Files
 import app.snapsync.services.album.AlbumMapService
@@ -24,6 +25,7 @@ import app.snapsync.services.leave.PendingLeaves
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.wake.EventCheck
 import app.snapsync.services.wake.EventChecks
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -154,15 +156,37 @@ class LegacyRecordsTest {
     @Test
     fun `the manifest record keeps its event - version - json`() {
         val json = """{"deviceId":"D","assets":[],"version":7}"""
-        shared[MANIFEST_FILE] = "E $json".encodeToByteArray()
+        shared[MANIFEST_FILE] = "${testEventId("E").value} $json".encodeToByteArray()
 
-        assertEquals(UploadedManifest("E", 7, json), DeviceManifestService(app()).loadLastUploaded())
+        assertEquals(UploadedManifest(testEventId("E"), 7, json), DeviceManifestService(app()).loadLastUploaded())
         assertFalse(MANIFEST_FILE in shared)
     }
 
     @Test
+    fun `legacy records that name no event are dropped and the rest are copied`() = runTest {
+        shared[MANIFEST_FILE] = "E1 {\"deviceId\":\"D\",\"assets\":[],\"version\":7}".encodeToByteArray()
+        shared[LEAVES_FILE] = "E1\n${testEventId("F").value} received\n".encodeToByteArray()
+        values[ALBUM_MAP] = """{"E1":"album-1","${testEventId("E2").value}":"album-2"}"""
+        val answers = mutableListOf<Pair<EventId, Boolean>>()
+        val leaves = PendingLeaves(
+            app(),
+            LeaveNotifier { id, received -> Result.success(Unit).also { answers += id to received } },
+        )
+
+        assertNull(DeviceManifestService(app()).loadLastUploaded(), "the manifest record named no event")
+        leaves.deliverAll()
+        assertEquals(listOf(testEventId("F") to true), answers, "only the line naming an event is a leave")
+        assertEquals(
+            "album-2",
+            AlbumMapService(app()).get(testEventId("E2")),
+            "only the key naming an event is an album",
+        )
+        assertEquals(SharedRecordsReadiness.Ready, app().readiness())
+    }
+
+    @Test
     fun `a manifest record that does not parse is dropped - one republish`() {
-        shared[MANIFEST_FILE] = "E not-json".encodeToByteArray()
+        shared[MANIFEST_FILE] = "${testEventId("E").value} not-json".encodeToByteArray()
 
         assertNull(DeviceManifestService(app()).loadLastUploaded())
         assertEquals(SharedRecordsReadiness.Ready, app().readiness())
@@ -170,14 +194,14 @@ class LegacyRecordsTest {
 
     @Test
     fun `a manifest record with no version is dropped`() {
-        shared[MANIFEST_FILE] = "E {\"deviceId\":\"D\"}".encodeToByteArray()
+        shared[MANIFEST_FILE] = "${testEventId("E").value} {\"deviceId\":\"D\"}".encodeToByteArray()
 
         assertNull(DeviceManifestService(app()).loadLastUploaded())
     }
 
     @Test
     fun `an unreadable manifest record stays pending`() {
-        shared[MANIFEST_FILE] = "E {}".encodeToByteArray()
+        shared[MANIFEST_FILE] = "${testEventId("E").value} {}".encodeToByteArray()
         denied += FileArea.SHARED to MANIFEST_FILE
 
         assertEquals(SharedRecordsReadiness.LegacyPending, app().readiness())
@@ -187,8 +211,8 @@ class LegacyRecordsTest {
 
     @Test
     fun `every pending leave is copied with whether it received everything`() = runTest {
-        shared[LEAVES_FILE] = "E\nF received\n".encodeToByteArray()
-        val answers = mutableListOf<Pair<String, Boolean>>()
+        shared[LEAVES_FILE] = "${testEventId("E").value}\n${testEventId("F").value} received\n".encodeToByteArray()
+        val answers = mutableListOf<Pair<EventId, Boolean>>()
         val leaves = PendingLeaves(
             app(),
             LeaveNotifier { id, received -> Result.success(Unit).also { answers += id to received } },
@@ -196,7 +220,11 @@ class LegacyRecordsTest {
 
         leaves.deliverAll()
 
-        assertEquals(listOf("E" to false, "F" to true), answers, "a line without the marker did not receive")
+        assertEquals(
+            listOf(testEventId("E") to false, testEventId("F") to true),
+            answers,
+            "a line without the marker did not receive",
+        )
         assertFalse(LEAVES_FILE in shared)
     }
 
@@ -204,15 +232,15 @@ class LegacyRecordsTest {
 
     @Test
     fun `the album map and its filled marks become one row per event and the keys go`() {
-        values[ALBUM_MAP] = """{"E1":"album-1","E2":"album-2"}"""
-        values[ALBUM_FILLED] = """["E2"]"""
+        values[ALBUM_MAP] = """{"${testEventId("E1").value}":"album-1","${testEventId("E2").value}":"album-2"}"""
+        values[ALBUM_FILLED] = """["${testEventId("E2").value}"]"""
 
         val albums = AlbumMapService(app())
 
-        assertEquals("album-1", albums.get("E1"))
-        assertFalse(albums.filled("E1"))
-        assertEquals("album-2", albums.get("E2"))
-        assertTrue(albums.filled("E2"))
+        assertEquals("album-1", albums.get(testEventId("E1")))
+        assertFalse(albums.filled(testEventId("E1")))
+        assertEquals("album-2", albums.get(testEventId("E2")))
+        assertTrue(albums.filled(testEventId("E2")))
         assertTrue(values.isEmpty(), "both keys are gone")
     }
 
@@ -221,21 +249,21 @@ class LegacyRecordsTest {
         values[ALBUM_MAP] = "not json"
         values[ALBUM_FILLED] = "not json"
 
-        assertNull(AlbumMapService(app()).get("E1"))
+        assertNull(AlbumMapService(app()).get(testEventId("E1")))
         assertTrue(values.isEmpty())
     }
 
     @Test
     fun `unreadable keys stay pending - the albums and the joined event's check times alike`() {
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
-        values[ALBUM_MAP] = """{"E1":"album-1"}"""
+        values[ALBUM_MAP] = """{"${testEventId("E1").value}":"album-1"}"""
         val locked = object : app.snapsync.ports.Preferences by inMemoryPreferences(values) {
             override fun get(key: String) = app.snapsync.model.PrefRead.Unavailable("locked")
         }
         val db = SharedDatabase(databases.port(), LegacyRecords(inMemoryFiles(shared = shared), locked))
 
         assertEquals(SharedRecordsReadiness.LegacyPending, db.readiness())
-        assertEquals(mapOf(ALBUM_MAP to """{"E1":"album-1"}"""), values, "left in place")
+        assertEquals(mapOf(ALBUM_MAP to """{"${testEventId("E1").value}":"album-1"}"""), values, "left in place")
         val imported = db.use { it.legacyImportQueries.selectImported().executeAsList() }
         assertFalse(LegacySource.CHECKS.key in imported, "the check times wait too")
     }
@@ -265,12 +293,12 @@ class LegacyRecordsTest {
         val NOW: Instant = Instant.parse("2026-06-15T12:00:00Z")
 
         val JOINED = EventConfig(
-            eventId = "E-joined",
+            eventId = testEventId("E-joined"),
             name = "Anna's Birthday",
-            minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-06-10T00:00:00Z")),
-            maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-06-20T00:00:00Z")),
-            endsAt = EventEnd(CaptureDate.parse("2026-06-20T00:00:00Z")),
-            deletesAt = deletesAt("2026-07-20T00:00:00Z"),
+            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-06-10T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-06-20T00:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2026-06-20T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2026-07-20T00:00:00Z")),
         )
     }
 }

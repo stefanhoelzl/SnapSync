@@ -1,10 +1,12 @@
 package app.snapsync.services.downloads
 
 import app.snapsync.contracts.at
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.downloads.db.DownloadDatabase
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,14 +32,14 @@ class DownloadMigrationTest {
             DOWNLOADS_DB_NAME,
             DownloadDatabase.Schema.at(
                 6,
-                "INSERT INTO downloadAsset VALUES ('DEV-A', 'IMP', 'IMPORTED', '2026-08-08T12:00:00Z', 'LOCAL-IMP', 'E1')",
-                "INSERT INTO downloadAsset VALUES ('DEV-A', 'PEND', 'PENDING', '2026-08-08T12:00:00Z', NULL, 'E1')",
-                "INSERT INTO downloadAsset VALUES ('DEV-A', 'OLD', 'PENDING', '2026-08-08T12:00:00Z', NULL, NULL)",
-                "INSERT INTO downloadResource VALUES ('DEV-A', 'PEND', 'pend-primary.heic', 'https://x.invalid/p', 'primary', " +
+                "INSERT INTO downloadAsset VALUES ('$DEV_A', 'IMP', 'IMPORTED', '2026-08-08T12:00:00Z', 'LOCAL-IMP', '$E1')",
+                "INSERT INTO downloadAsset VALUES ('$DEV_A', 'PEND', 'PENDING', '2026-08-08T12:00:00Z', NULL, '$E1')",
+                "INSERT INTO downloadAsset VALUES ('$DEV_A', 'OLD', 'PENDING', '2026-08-08T12:00:00Z', NULL, NULL)",
+                "INSERT INTO downloadResource VALUES ('$DEV_A', 'PEND', 'pend-primary.heic', 'https://x.invalid/p', 'primary', " +
                     "'image/heic', 'P.HEIC', 'download-staging/DEV-A/pend-primary.heic', 1)",
-                "INSERT INTO downloadResource VALUES ('DEV-A', 'PEND', 'pend-live.mov', 'https://x.invalid/l', 'live', " +
+                "INSERT INTO downloadResource VALUES ('$DEV_A', 'PEND', 'pend-live.mov', 'https://x.invalid/l', 'live', " +
                     "'video/quicktime', 'P.MOV', NULL, 0)",
-                "INSERT INTO downloadResource VALUES ('DEV-A', 'OLD', 'old-primary.heic', 'https://x.invalid/o', 'primary', " +
+                "INSERT INTO downloadResource VALUES ('$DEV_A', 'OLD', 'old-primary.heic', 'https://x.invalid/o', 'primary', " +
                     "'image/heic', 'O.HEIC', NULL, 0)",
             ),
         )
@@ -45,21 +47,21 @@ class DownloadMigrationTest {
         val store = DownloadService(databases)
 
         assertEquals(setOf(AssetId("LOCAL-IMP")), store.suppressedLocalIds(), "the import marker survives")
-        assertEquals(setOf(AssetId("LOCAL-IMP")), store.importedLocalIdsOf("E1"))
-        assertEquals(1, store.counts("E1").imported)
-        assertEquals(2, store.counts("E1").stillArriving, "the untagged row is no event's")
+        assertEquals(setOf(AssetId("LOCAL-IMP")), store.importedLocalIdsOf(testEventId(E1)))
+        assertEquals(1, store.counts(testEventId(E1)).imported)
+        assertEquals(2, store.counts(testEventId(E1)).stillArriving, "the untagged row is no event's")
         assertEquals(3, store.counts().stillArriving, "and still the device's")
         assertEquals(
-            mapOf("pend-live.mov" to "E1", "old-primary.heic" to ""),
+            mapOf("pend-live.mov" to E1, "old-primary.heic" to ""),
             store.pendingDownloads().associate { it.resource.resourceKey to it.eventId },
         )
         assertEquals(
             listOf("download-staging/DEV-A/pend-primary.heic"),
-            store.stagedResources(AssetRef("DEV-A", AssetId("PEND"))).map { it.stagedPath },
+            store.stagedResources(AssetRef(testDeviceId(DEV_A), AssetId("PEND"))).map { it.stagedPath },
             "a staged path is kept verbatim",
         )
         // v7 → v8 (`changes/archive/2026-10-11-close-share-back-gaps`): recognition starts empty, with no backfill — the next pass decides.
-        assertFalse(store.recognition.isRecognised("E1"), "no membership is recognised by the migration")
+        assertFalse(store.recognition.isRecognised(testEventId(E1)), "no membership is recognised by the migration")
     }
 
     /**
@@ -71,13 +73,17 @@ class DownloadMigrationTest {
     fun `v8 to v9 keeps each position and declares nothing until the next read`() = runTest {
         val (databases, _) = databaseAt(
             DOWNLOADS_DB_NAME,
-            DownloadDatabase.Schema.at(8, "INSERT INTO unionCursor VALUES ('E1', 5)"),
+            DownloadDatabase.Schema.at(8, "INSERT INTO unionCursor VALUES ('$E1', 5)"),
         )
 
         val store = DownloadService(databases)
 
-        assertEquals(5, store.union.cursor("E1"), "the position survives")
-        assertEquals(null, store.union.declared("E1"))
-        assertEquals(null, store.counts("E1").declared)
+        assertEquals(5, store.union.cursor(testEventId(E1)), "the position survives")
+        assertEquals(null, store.union.declared(testEventId(E1)))
+        assertEquals(null, store.counts(testEventId(E1)).declared)
     }
 }
+
+/** The fixture's event and device, as the canonical ids a device stores. */
+private val E1 = testEventId("E1").value
+private val DEV_A = testDeviceId("DEV-A").value

@@ -67,7 +67,7 @@ internal fun launchWorld(
     ownDeviceId = { (ports.secureStore.value.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
     joinedEventId = {
         val config = ConfigService(SharedDatabase(ports.databases.value, legacy = null), ports.clock.value)
-        (config.read() as? ConfigRead.Joined)?.config?.eventId
+        (config.read() as? ConfigRead.Joined)?.config?.eventId?.value
     },
     setInviteLinkHints = { controls.hints = it },
     setEncryptsNewEvents = { controls.encrypts = it },

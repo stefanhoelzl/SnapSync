@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+
 /**
  * One key's durable upload memory. The ledger is the engine's only state: per-resource entries
  * keyed by [Resource.filename], holding the [assetId] the resource belongs to (an opaque grouping

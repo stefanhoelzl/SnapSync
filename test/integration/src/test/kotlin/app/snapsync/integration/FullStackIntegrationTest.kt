@@ -78,7 +78,7 @@ class FullStackIntegrationTest {
         awaitState { it.joined?.counts == SyncCounts(progress(0, 2), progress(0, 0)) }
 
         uploadAll()
-        foreignDevice("GUEST", "G-1", "G-2", "G-3")
+        foreignDevice(GUEST_DEVICE, "G-1", "G-2", "G-3")
         downloadAll()
         refresh()
         val settled = awaitState { it.health == SyncHealth.InSync }
@@ -149,7 +149,7 @@ class FullStackIntegrationTest {
     @Verifies(spec = "sync-status", requirement = "Progress counts only what this membership shares")
     fun foreign_download_imports_and_own_status_excludes_it() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         val before = libraryTotal()
 
         downloadAll()
@@ -168,7 +168,7 @@ class FullStackIntegrationTest {
     )
     fun an_imported_foreign_photo_carries_the_capturing_devices_filename() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ", filename = "IMG_4471.HEIC")
+        foreignDevice(DEV_F, "FQ", filename = "IMG_4471.HEIC")
 
         downloadAll()
 
@@ -190,7 +190,7 @@ class FullStackIntegrationTest {
         permission("LIMITED")
         createAndJoin()
         addPhoto("A") // present in the library — must NOT be enumerated or uploaded
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
 
         // The baseline snapshot lands, and it is EMPTY — the member selected nothing. A real `.limited` device
         // always emits one when observation begins, and only that emission makes the total a counted zero.
@@ -278,7 +278,7 @@ class FullStackIntegrationTest {
         // The app's own import auto-joins the platform selection (measured); the snapshot then carries it, and
         // echo-suppression drops it at the cycle.
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         downloadAll()
         // The imported photo's library id, read under the full grant — under LIMITED the app sees only the selection.
         val imported = gallery().policy!!.assets.single().assetId
@@ -360,7 +360,7 @@ class FullStackIntegrationTest {
         extensionUploadsOnly()
         createAndJoin("direction" to "upload")
         addPhoto("A")
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
 
         uploadAll()
         assertTrue(primaryKey("A") in objects(), "upload-only still uploads own photos")
@@ -391,7 +391,7 @@ class FullStackIntegrationTest {
         extensionUploadsOnly()
         createAndJoin("direction" to "download")
         addPhoto("A") // an un-uploaded own photo remains in the library
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
 
         val before = libraryTotal()
         downloadAll()

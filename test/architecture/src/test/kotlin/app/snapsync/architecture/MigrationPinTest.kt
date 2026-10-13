@@ -36,6 +36,8 @@ class MigrationPinTest {
             "c5f9d683f65552aa5fa5144ed7c1c7e35d1ea9d8818d2817aee1d609b1552b7e",
         "download/app/snapsync/services/downloads/db/8.sqm" to
             "e25008999997ccaeaa0492557716948217f15127c85b7d7ffb4abb8097658237",
+        "download/app/snapsync/services/downloads/db/9.sqm" to
+            "acb19f0657a61342cd3c48e4f10cf4c2f9662270705ac4cfdb487cd4286f1791",
         "ledger/app/snapsync/services/ledger/db/11.sqm" to
             "bc378a8aecf83363863d1742286af7021f0c4d3ba591d09c194e010963763548",
         "ledger/app/snapsync/services/ledger/db/12.sqm" to
@@ -44,6 +46,8 @@ class MigrationPinTest {
             "495f541590bff52cefbffc96817800604ccef42c95a8fbcbf1800e8a131b1bcf",
         "ledger/app/snapsync/services/ledger/db/14.sqm" to
             "39642ee5a2d20528e9c65c2b3798927d9b6cbb62633443438672c12704835ab3",
+        "ledger/app/snapsync/services/ledger/db/15.sqm" to
+            "47cb425ef439827ece704c3cad4dcbf205a6d8ef523142de8feddf47c19786e6",
     )
 
     @Test

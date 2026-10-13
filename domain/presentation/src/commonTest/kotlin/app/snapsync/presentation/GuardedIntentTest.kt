@@ -1,5 +1,10 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
@@ -8,12 +13,9 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
+import app.snapsync.model.TimestampText
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CompletableDeferred
@@ -37,13 +39,13 @@ private const val JOINED = "11111111-1111-4111-8111-111111111111"
 private const val OTHER = "22222222-2222-4222-8222-222222222222"
 
 private val CONFIG = EventConfig(
-    eventId = JOINED,
+    eventId = testEventId(JOINED),
     name = "Anna's Birthday",
-    minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
-    startsAt = eventStart("2026-07-06T14:32:11Z"),
-    endsAt = eventEnd("2026-07-13T14:32:11Z"),
-    maxPhotoDate = captureCeiling("2026-07-13T14:32:11Z"),
-    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
+    startsAt = EventStart(TimestampText.parse("2026-07-06T14:32:11Z")),
+    endsAt = EventEnd(TimestampText.parse("2026-07-13T14:32:11Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z")),
+    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
 private class IdleSync : SyncStatusSource {
@@ -84,9 +86,9 @@ class GuardedIntentTest {
                         queries = joinDetails {
                             JoinLoad.Found(
                                 "Trip",
-                                eventStart("2026-07-06T00:00:00Z"),
-                                eventEnd("2026-07-13T00:00:00Z"),
-                                deletesAt("2026-08-05T00:00:00Z"),
+                                EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
+                                EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
+                                DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
                             )
                         },
                         commands = testCommands(
@@ -124,7 +126,7 @@ class GuardedIntentTest {
         }
 
     private suspend fun StatusContainerHost.awaitSwitchConfirmation() {
-        onOpenUrl(encodeEventUrl(EventLinkPayload(OTHER)))
+        onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(OTHER))))
         stateWhere("the switch confirmation") { (it.layer as? Layer.Joined)?.pendingSwitch?.eventId == OTHER }
     }
 

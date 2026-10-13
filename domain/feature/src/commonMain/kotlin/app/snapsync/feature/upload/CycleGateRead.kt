@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.EventConfig

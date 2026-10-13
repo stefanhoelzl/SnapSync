@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.device.DeviceId
+
 /**
  * One addressed item of the `SecureStore` port: a (service, account) pair, and whether it lives in the store's
  * **shared** place — on iOS the App-Group Keychain access group both processes are entitled to — or is searched
@@ -54,7 +56,7 @@ enum class DeviceIdentityRole {
 sealed interface DeviceIdResult {
 
     /** The id, and how this resolution came by it. */
-    data class Id(val value: String, val via: Via) : DeviceIdResult
+    data class Id(val value: DeviceId, val via: Via) : DeviceIdResult
 
     /** "I could not look" — a store read or the persisting write failed. Never minted, never used unsaved. */
     data class Unavailable(val detail: String) : DeviceIdResult

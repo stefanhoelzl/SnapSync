@@ -1,14 +1,15 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.CaptureCutoff
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,7 +17,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`): here the event's end. */
-private val FIXTURE_CEILING = captureCeiling("2026-07-08T12:00:00Z")
+private val FIXTURE_CEILING = CaptureCeiling(TimestampText.parse("2026-07-08T12:00:00Z"))
 
 class ReconfigureEventTest {
 
@@ -33,17 +34,17 @@ class ReconfigureEventTest {
         eventId: String = "E1",
         direction: Direction = Direction.Both,
         saveToAlbum: Boolean = false,
-        minPhotoDate: CaptureCutoff = captureCutoff("2026-07-06T12:00:00Z"),
+        minPhotoDate: CaptureCutoff = CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
     ) = EventConfig(
-        eventId = eventId,
+        eventId = testEventId(eventId),
         name = "Anna's Birthday",
         minPhotoDate = minPhotoDate,
-        startsAt = eventStart("2026-07-06T12:00:00Z"),
+        startsAt = EventStart(TimestampText.parse("2026-07-06T12:00:00Z")),
         maxPhotoDate = FIXTURE_CEILING,
         direction = direction,
         saveToAlbum = saveToAlbum,
-        endsAt = eventEnd("2026-07-08T12:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        endsAt = EventEnd(TimestampText.parse("2026-07-08T12:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     private fun make(
@@ -72,16 +73,16 @@ class ReconfigureEventTest {
             savedWhenBumped = store.saved
             bumps++
         }).reconfigure(
-            eventId = "E1",
+            eventId = testEventId("E1"),
             direction = Direction.Both,
-            chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+            chosenCutoff = CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
             chosenUpper = FIXTURE_CEILING,
             saveToAlbum = false,
         )
         assertEquals(1, bumps)
         // Bumped BEFORE the save, a cycle could read the new version and then the old config, and publish
         // the old policy under a version nothing later exceeds.
-        assertEquals(captureCutoff("2026-07-06T18:00:00Z"), savedWhenBumped?.minPhotoDate)
+        assertEquals(CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")), savedWhenBumped?.minPhotoDate)
     }
 
     @Test
@@ -89,9 +90,9 @@ class ReconfigureEventTest {
         var bumps = 0
         make(Membership(current()), ConfigWrites(fails = true), bumpManifestVersion = { bumps++ })
             .reconfigure(
-                eventId = "E1",
+                eventId = testEventId("E1"),
                 direction = Direction.Both,
-                chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+                chosenCutoff = CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
                 chosenUpper = FIXTURE_CEILING,
                 saveToAlbum = false,
             )
@@ -108,9 +109,9 @@ class ReconfigureEventTest {
         val order = mutableListOf<String>()
         val outcome = make(Membership(current()), ConfigWrites(fails = true), order)
             .reconfigure(
-                eventId = "E1",
+                eventId = testEventId("E1"),
                 direction = Direction.UploadOnly, // would cancel downloads
-                chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+                chosenCutoff = CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
                 chosenUpper = FIXTURE_CEILING,
                 saveToAlbum = true, // would create and fill the album
             )
@@ -121,10 +122,22 @@ class ReconfigureEventTest {
     @Test
     fun `a landed save answers Saved and a stale surface answers NotCurrent`() = runTest {
         val saved = make(Membership(current()), ConfigWrites())
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.Both,
+                CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
+                FIXTURE_CEILING,
+                false,
+            )
         assertEquals(ReconfigureOutcome.Saved, saved)
         val stale = make(Membership(current(eventId = "OTHER")), ConfigWrites())
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.Both,
+                CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
+                FIXTURE_CEILING,
+                false,
+            )
         assertEquals(ReconfigureOutcome.NotCurrent, stale)
     }
 
@@ -133,9 +146,9 @@ class ReconfigureEventTest {
         var bumps = 0
         make(Membership(current(eventId = "OTHER")), ConfigWrites(), bumpManifestVersion = { bumps++ })
             .reconfigure(
-                eventId = "E1",
+                eventId = testEventId("E1"),
                 direction = Direction.Both,
-                chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+                chosenCutoff = CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
                 chosenUpper = FIXTURE_CEILING,
                 saveToAlbum = false,
             )
@@ -146,20 +159,20 @@ class ReconfigureEventTest {
     fun `saves the whole config with only the three participation fields changed`() = runTest {
         val store = ConfigWrites()
         make(Membership(current()), store).reconfigure(
-            eventId = "E1",
+            eventId = testEventId("E1"),
             direction = Direction.UploadOnly,
-            chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+            chosenCutoff = CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
             chosenUpper = FIXTURE_CEILING,
             saveToAlbum = true,
         )
 
         val saved = store.saved!!
         // eventId / name / startsAt preserved; the three participation fields changed.
-        assertEquals("E1", saved.eventId)
+        assertEquals(testEventId("E1"), saved.eventId)
         assertEquals("Anna's Birthday", saved.name)
-        assertEquals(eventStart("2026-07-06T12:00:00Z"), saved.startsAt)
+        assertEquals(EventStart(TimestampText.parse("2026-07-06T12:00:00Z")), saved.startsAt)
         assertEquals(Direction.UploadOnly, saved.direction)
-        assertEquals(captureCutoff("2026-07-06T18:00:00Z"), saved.minPhotoDate)
+        assertEquals(CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")), saved.minPhotoDate)
         assertTrue(saved.saveToAlbum)
     }
 
@@ -168,27 +181,27 @@ class ReconfigureEventTest {
         // Capability `manage-membership`: a changed range follows the join rule and may reach outside the event.
         val store = ConfigWrites()
         val outcome = make(Membership(current()), store).reconfigure(
-            eventId = "E1",
+            eventId = testEventId("E1"),
             direction = Direction.Both,
-            chosenCutoff = captureCutoff("2026-07-05T09:00:00Z"), // the day before the event
+            chosenCutoff = CaptureCutoff(TimestampText.parse("2026-07-05T09:00:00Z")), // the day before the event
             chosenUpper = FIXTURE_CEILING,
             saveToAlbum = false,
         )
         assertEquals(ReconfigureOutcome.Saved, outcome)
-        assertEquals(captureCutoff("2026-07-05T09:00:00Z"), store.saved!!.minPhotoDate)
+        assertEquals(CaptureCutoff(TimestampText.parse("2026-07-05T09:00:00Z")), store.saved!!.minPhotoDate)
     }
 
     @Test
     fun `an end after the event's end is kept as chosen`() = runTest {
         val store = ConfigWrites()
         make(Membership(current()), store).reconfigure(
-            eventId = "E1",
+            eventId = testEventId("E1"),
             direction = Direction.Both,
-            chosenCutoff = captureCutoff("2026-07-06T12:00:00Z"),
-            chosenUpper = captureCeiling("2026-07-10T12:00:00Z"),
+            chosenCutoff = CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+            chosenUpper = CaptureCeiling(TimestampText.parse("2026-07-10T12:00:00Z")),
             saveToAlbum = false,
         )
-        assertEquals(captureCeiling("2026-07-10T12:00:00Z"), store.saved!!.maxPhotoDate)
+        assertEquals(CaptureCeiling(TimestampText.parse("2026-07-10T12:00:00Z")), store.saved!!.maxPhotoDate)
     }
 
     @Test
@@ -201,10 +214,10 @@ class ReconfigureEventTest {
             val order = mutableListOf<String>()
             var bumps = 0
             val outcome = make(Membership(current()), store, order, bumpManifestVersion = { bumps++ }).reconfigure(
-                eventId = "E1",
+                eventId = testEventId("E1"),
                 direction = Direction.Both,
-                chosenCutoff = captureCutoff(from),
-                chosenUpper = captureCeiling(until),
+                chosenCutoff = CaptureCutoff(TimestampText.parse(from)),
+                chosenUpper = CaptureCeiling(TimestampText.parse(until)),
                 saveToAlbum = false,
             )
             assertEquals(ReconfigureOutcome.Refused, outcome, "$from..$until")
@@ -220,9 +233,9 @@ class ReconfigureEventTest {
         val order = mutableListOf<String>()
         // The surface was opened for E9, but the current membership is E1 (a switch landed).
         make(Membership(current(eventId = "E1")), store, order).reconfigure(
-            eventId = "E9",
+            eventId = testEventId("E9"),
             direction = Direction.DownloadOnly,
-            chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+            chosenCutoff = CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
             chosenUpper = FIXTURE_CEILING,
             saveToAlbum = true,
         )
@@ -236,7 +249,13 @@ class ReconfigureEventTest {
         make(
             Membership(null),
             store,
-        ).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
+        ).reconfigure(
+            testEventId("E1"),
+            Direction.Both,
+            CaptureCutoff(TimestampText.parse("2026-07-06T18:00:00Z")),
+            FIXTURE_CEILING,
+            false,
+        )
         assertNull(store.saved)
     }
 
@@ -244,7 +263,13 @@ class ReconfigureEventTest {
     fun `enabling upload arms the producer`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current(direction = Direction.DownloadOnly)), ConfigWrites(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.Both,
+                CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+                FIXTURE_CEILING,
+                false,
+            )
         assertTrue("arm" in order)
     }
 
@@ -252,7 +277,13 @@ class ReconfigureEventTest {
     fun `disabling upload still only kicks the arm whose transition stops nothing`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current(direction = Direction.Both)), ConfigWrites(), order)
-            .reconfigure("E1", Direction.DownloadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.DownloadOnly,
+                CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+                FIXTURE_CEILING,
+                false,
+            )
         // The reconfigure transition never deregisters or cancels (UploadTransitionsTest); the cycle's policy is
         // what stops new work, so in-flight uploads drain.
         assertTrue("arm" in order)
@@ -262,8 +293,14 @@ class ReconfigureEventTest {
     fun `enabling download reconciles`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current(direction = Direction.UploadOnly)), ConfigWrites(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
-        assertTrue("reconcile:E1" in order)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.Both,
+                CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+                FIXTURE_CEILING,
+                false,
+            )
+        assertTrue("reconcile:${testEventId("E1")}" in order)
         assertTrue("cancelDownloads" !in order)
     }
 
@@ -271,7 +308,13 @@ class ReconfigureEventTest {
     fun `disabling download cancels in-flight downloads`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current(direction = Direction.Both)), ConfigWrites(), order)
-            .reconfigure("E1", Direction.UploadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.UploadOnly,
+                CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+                FIXTURE_CEILING,
+                false,
+            )
         assertTrue("cancelDownloads" in order)
         assertTrue(order.none { it.startsWith("reconcile") })
     }
@@ -281,7 +324,13 @@ class ReconfigureEventTest {
         val order = mutableListOf<String>()
         val writes = ConfigWrites()
         make(Membership(current(direction = Direction.Both)), writes, order)
-            .reconfigure("E1", Direction.Neither, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.Neither,
+                CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+                FIXTURE_CEILING,
+                false,
+            )
         // The member stays in the event doing nothing (capability `manage-membership`): no reconcile, in-flight
         // downloads stop, and the upload arm's kick lets the cycle's policy admit nothing while uploads drain.
         assertEquals(Direction.Neither, writes.saved?.direction)
@@ -296,7 +345,13 @@ class ReconfigureEventTest {
     fun `always ensures the album and refreshes status`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current()), ConfigWrites(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.Both,
+                CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+                FIXTURE_CEILING,
+                true,
+            )
         assertTrue("refresh" in order)
         assertTrue("album" in order)
     }
@@ -305,7 +360,13 @@ class ReconfigureEventTest {
     fun `the album gather starts after the album is ensured`() = runTest {
         val order = mutableListOf<String>()
         make(Membership(current()), ConfigWrites(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
+            .reconfigure(
+                testEventId("E1"),
+                Direction.Both,
+                CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+                FIXTURE_CEILING,
+                true,
+            )
         assertTrue("gather" in order)
         assertTrue(order.indexOf("album") < order.indexOf("gather"), "the gather never ensures the album itself")
     }
@@ -318,7 +379,13 @@ class ReconfigureEventTest {
             ConfigWrites(),
             order,
             gatherAlbum = { error("boom") },
-        ).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
-        assertTrue("reconcile:E1" in order, "the download effect after the gather still ran")
+        ).reconfigure(
+            testEventId("E1"),
+            Direction.Both,
+            CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+            FIXTURE_CEILING,
+            true,
+        )
+        assertTrue("reconcile:${testEventId("E1")}" in order, "the download effect after the gather still ran")
     }
 }

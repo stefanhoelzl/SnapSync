@@ -1,6 +1,6 @@
 package app.snapsync.feature.status
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.runCatchingCancellable

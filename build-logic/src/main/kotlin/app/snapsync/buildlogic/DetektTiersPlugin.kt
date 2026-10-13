@@ -79,9 +79,11 @@ class DetektTiersPlugin : Plugin<Project> {
             // `compose/` is carved out into its own tier below — a zone that carries a written decision-free law.
             exclude("**/app/snapsync/compose/**")
         }
-        // The two layers whose numbers are a CLAIM, not debt (`config/detekt/entrypoints.yml`, `scheduling.yml`).
+        // The layers whose numbers are a CLAIM, not debt (`config/detekt/entrypoints.yml`, `scheduling.yml`,
+        // `domain.yml`).
         root.registerTier("detektEntryPointsTier", "entrypoints", srcDirs("entrypoints")) { exclude(excludeTests) }
         root.registerTier("detektSchedulingTier", "scheduling", srcDirs("scheduling")) { exclude(excludeTests) }
+        root.registerTier("detektDomainTier", "domain", srcDirs("domain")) { exclude(excludeTests) }
         root.registerTier("detektHarnessTier", "harness", srcDirs("harness")) {
             exclude(excludeTests)
             // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2.
@@ -234,9 +236,10 @@ class DetektTiersPlugin : Plugin<Project> {
             ":ui:state" to "core",
 
             // The layers whose ceilings are claims from their first line (`docs/patterns.md`): an entry point orders
-            // steps and decides nothing; the runtime is small and stays so.
+            // steps and decides nothing; the runtime is small and stays so; a domain verdict is a `when` over a fact.
             ":domain:entrypoints" to "entrypoints",
             ":domain:scheduling" to "scheduling",
+            ":domain:domain" to "domain",
 
             // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
             // STRUCTURALLY — a screen that renders six states has six branches by construction.

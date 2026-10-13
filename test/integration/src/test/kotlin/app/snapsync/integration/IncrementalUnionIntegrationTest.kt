@@ -18,7 +18,7 @@ class IncrementalUnionIntegrationTest {
         os("app", "onPushToken", "DEADBEEF") // a registered member is woken
         eventually(read = { registrations() }) { it == 1 }
         settleDownloads()
-        foreignDevice("DEV-F", "FA", event = event) // the backend wakes this member, naming the new position
+        foreignDevice(DEV_F, "FA", event = event) // the backend wakes this member, naming the new position
         val before = unionReads(event)
 
         os("app", "onSilentPush", event)
@@ -34,14 +34,14 @@ class IncrementalUnionIntegrationTest {
     @Verifies(spec = "photo-sharing", requirement = "Deleting or no longer sharing a photo withdraws it")
     fun a_photo_withdrawn_before_it_arrived_never_arrives_and_one_received_stays() = rigTest {
         val event = createAndJoin()
-        foreignDevice("DEV-F", "KEPT", "RECEIVED", event = event)
+        foreignDevice(DEV_F, "KEPT", "RECEIVED", event = event)
         reconcile()
         stage() // both arrive
         val withBoth = libraryTotal()
 
-        foreignDevice("DEV-F", "KEPT", "LATE", event = event) // RECEIVED withdrawn, LATE shared
+        foreignDevice(DEV_F, "KEPT", "LATE", event = event) // RECEIVED withdrawn, LATE shared
         reconcile() // plans LATE
-        foreignDevice("DEV-F", "KEPT", event = event) // LATE withdrawn before it arrived
+        foreignDevice(DEV_F, "KEPT", event = event) // LATE withdrawn before it arrived
         reconcile() // the opening's full read drops it
         stage()
 

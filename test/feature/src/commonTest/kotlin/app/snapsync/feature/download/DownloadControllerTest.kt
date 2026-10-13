@@ -1,5 +1,11 @@
 package app.snapsync.feature.download
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.InMemoryAssetPresence
 import app.snapsync.feature.support.RecordingDatabases
 import app.snapsync.feature.support.RecordingDownload
@@ -11,7 +17,6 @@ import app.snapsync.feature.support.underRuntime
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Direction
@@ -20,14 +25,11 @@ import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.PlannedResource
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionResource
 import app.snapsync.model.UnionTrigger
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryImport
@@ -43,6 +45,8 @@ import app.snapsync.services.gallery.assetRefOf
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 import app.snapsync.services.wake.EventChecks
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -65,7 +69,7 @@ class DownloadControllerTest {
     private val myDevice = "DEVICE-ME"
 
     private fun asset(device: String, id: String) = UnionAsset(
-        deviceId = device,
+        deviceId = testDeviceId(device),
         assetId = AssetId(id),
         creationDate = "2026-06-30T10:00:00Z",
         resources = listOf(
@@ -86,7 +90,7 @@ class DownloadControllerTest {
     ) : EventUnionSource {
         var calls = 0
         val reads = mutableListOf<Pair<Long?, UnionTrigger>>()
-        override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
+        override suspend fun union(eventId: EventId, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
             calls++
             reads += cursor to trigger
             if (!ok) return Result.failure(RuntimeException("boom"))
@@ -227,7 +231,9 @@ class DownloadControllerTest {
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,
-            myDeviceId = myDevice, arm = DownloadArm(enabled = downloadEnabled, keyHeld = keyHeld), checks = checks,
+            myDeviceId = testDeviceId(myDevice),
+            arm = DownloadArm(enabled = downloadEnabled, keyHeld = keyHeld),
+            checks = checks,
             readyToImport = readyToImport,
         )
     }
@@ -237,28 +243,28 @@ class DownloadControllerTest {
         val download = RecordingDownload()
         var held = false
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))), download = download, keyHeld = { held })
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertTrue(download.started.isEmpty(), "a lost key fetches nothing it could not open")
         held = true
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertTrue(download.started.isNotEmpty(), "the key back, the photo downloads")
     }
 
     @Test
     fun a_lost_key_is_never_taken_for_everything_received() = runTest {
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))), keyHeld = { false })
-        assertNull(c.receivedPosition("event"), "a member missing photos is never told it holds them all")
+        assertNull(c.receivedPosition(testEventId("event")), "a member missing photos is never told it holds them all")
     }
 
     @Test
     fun reconcile_skips_own_device_and_plans_only_foreign() = runTest {
         val download = RecordingDownload()
         val union = FakeUnion(listOf(asset(myDevice, "MINE"), asset("DEVICE-A", "FOREIGN")))
-        controller(union, download = download).reconcile("event", UnionTrigger.FOREGROUND)
+        controller(union, download = download).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         // Only FOREIGN's two resources are enqueued; MINE (own) is skipped.
         assertEquals(setOf("FOREIGN-primary.heic", "FOREIGN-live.mov"), download.started.map { it.resourceKey }.toSet())
-        assertTrue(download.started.all { it.ref.sourceDeviceId == "DEVICE-A" })
+        assertTrue(download.started.all { it.ref.sourceDeviceId == testDeviceId("DEVICE-A") })
     }
 
     /**
@@ -285,7 +291,11 @@ class DownloadControllerTest {
         val download = RecordingDownload(accept = false)
         val union = FakeUnion(List(N) { asset("DEVICE-A", "A$it") } + asset(myDevice, "MINE"))
 
-        controller(union, store = counting.store, download = download).reconcile("event", UnionTrigger.FOREGROUND)
+        controller(
+            union,
+            store = counting.store,
+            download = download,
+        ).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         assertEquals(1, counting.batchReads.size, "one read of the settled refs for the whole union")
         assertEquals(0, counting.singleReads.size, "and no per-asset settled query")
@@ -307,7 +317,7 @@ class DownloadControllerTest {
     fun a_settled_asset_is_left_out_of_the_plan_batch() = runTest {
         val counting = PlanCounting()
         val store = counting.store
-        val settled = AssetRef("DEVICE-A", AssetId("DONE"))
+        val settled = AssetRef(testDeviceId("DEVICE-A"), AssetId("DONE"))
         store.plan(
             settled,
             "2026-06-30T10:00:00Z",
@@ -321,7 +331,7 @@ class DownloadControllerTest {
             FakeUnion(listOf(asset("DEVICE-A", "DONE"), asset("DEVICE-A", "NEW"))),
             store = store,
             download = download,
-        ).reconcile("event", UnionTrigger.FOREGROUND)
+        ).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         assertEquals(listOf<Any?>("NEW"), counting.plannedAssets.map { it.args[1] }, "the plan batch carries only NEW")
         assertTrue(download.started.none { it.ref == settled }, "a settled asset is never re-downloaded")
@@ -333,7 +343,7 @@ class DownloadControllerTest {
         controller(
             FakeUnion(listOf(asset(myDevice, "MINE"))),
             store = counting.store,
-        ).reconcile("event", UnionTrigger.FOREGROUND)
+        ).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         assertTrue(counting.plannedAssets.isEmpty(), "nothing planned")
         assertTrue(counting.marks.isEmpty(), "and nothing marked")
@@ -345,9 +355,9 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertFalse(store.isSettled(ref)) // nothing staged yet
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         assertTrue(importer.imported.isEmpty()) // live still missing → not importable
@@ -371,8 +381,8 @@ class DownloadControllerTest {
             controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer, readyToImport = {
                 granted
             })
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
 
@@ -400,8 +410,8 @@ class DownloadControllerTest {
                 true
             },
         )
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
         order.clear()
@@ -415,14 +425,14 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
 
         assertEquals(
             setOf(ref),
-            c.settleAdopted(listOf(AdoptedAsset(ref, AssetId("L-KEPT"), "2026-06-01T10:00:00Z")), "event"),
+            c.settleAdopted(listOf(AdoptedAsset(ref, AssetId("L-KEPT"), "2026-06-01T10:00:00Z")), testEventId("event")),
         )
         underRuntime { c.importReady() }
         assertTrue(importer.imported.isEmpty(), "the library already holds it")
@@ -436,15 +446,19 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(listOf(asset(myDevice, "MINE"), asset("DEVICE-A", "Q")), position = 7)
         val c = controller(union, store = store)
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
 
-        assertNull(c.receivedPosition("event"), "a foreign photo not even planned is missing")
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        assertNull(c.receivedPosition(testEventId("event")), "a foreign photo not even planned is missing")
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
-        assertNull(c.receivedPosition("event"), "staged but not imported is not received")
+        assertNull(c.receivedPosition(testEventId("event")), "staged but not imported is not received")
         underRuntime { c.importReady() }
-        assertEquals(7, c.receivedPosition("event"), "own photos never count; the one foreign photo is in the library")
+        assertEquals(
+            7,
+            c.receivedPosition(testEventId("event")),
+            "own photos never count; the one foreign photo is in the library",
+        )
         assertEquals(
             UnionTrigger.RECEIVED_CHECK to null,
             union.reads.last().let { it.second to it.first },
@@ -455,18 +469,18 @@ class DownloadControllerTest {
     @Test
     fun a_membership_that_does_not_receive_reports_the_position_it_read_and_an_unreadable_union_reports_none() = runTest {
         val union = FakeUnion(listOf(asset("DEVICE-A", "Q")), position = 3)
-        assertEquals(3, controller(union, downloadEnabled = { false }).receivedPosition("event"))
-        assertNull(controller(FakeUnion(emptyList(), ok = false)).receivedPosition("event"))
+        assertEquals(3, controller(union, downloadEnabled = { false }).receivedPosition(testEventId("event")))
+        assertNull(controller(FakeUnion(emptyList(), ok = false)).receivedPosition(testEventId("event")))
     }
 
     /** A membership of "event" in [direction] — what a leave asks about once the joined configuration is gone. */
     private fun membership(direction: Direction) = EventConfig(
-        eventId = "event",
+        eventId = testEventId("event"),
         name = "Party",
-        minPhotoDate = captureCutoff("2026-06-01T00:00:00Z"),
-        endsAt = eventEnd("2026-07-01T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2026-07-01T00:00:00Z"),
-        deletesAt = deletesAt("2026-08-01T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2026-07-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-01T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2026-08-01T00:00:00Z")),
         direction = direction,
     )
 
@@ -491,9 +505,9 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter().also { it.failNext = true }
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.onResourceStaged(ref, "Q-primary.heic", "/p")
         c.onResourceStaged(ref, "Q-live.mov", "/l")
         underRuntime { c.importReady() } // the tail's ① — staging itself imports nothing
@@ -516,7 +530,7 @@ class DownloadControllerTest {
         val union = FakeUnion(listOf(asset("DEVICE-A", "FOREIGN")))
         controller(union, store = store, download = download, downloadEnabled = {
             null
-        }).reconcile("event", UnionTrigger.FOREGROUND)
+        }).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         assertEquals(0, union.calls, "no union fetch without a membership to reconcile against")
         assertTrue(download.started.isEmpty(), "no downloads enqueued")
@@ -531,7 +545,7 @@ class DownloadControllerTest {
         val union = FakeUnion(listOf(asset("DEVICE-A", "FOREIGN")))
         controller(union, store = store, download = download, downloadEnabled = {
             false
-        }).reconcile("event", UnionTrigger.FOREGROUND)
+        }).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         assertEquals(0, union.calls, "no union fetch when download is disabled")
         assertTrue(download.started.isEmpty(), "no downloads enqueued when download is disabled")
@@ -543,7 +557,9 @@ class DownloadControllerTest {
         // Both / download-only membership: reconcile behaves exactly as before.
         val download = RecordingDownload()
         val union = FakeUnion(listOf(asset("DEVICE-A", "FOREIGN")))
-        controller(union, download = download, downloadEnabled = { true }).reconcile("event", UnionTrigger.FOREGROUND)
+        controller(union, download = download, downloadEnabled = {
+            true
+        }).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         assertEquals(1, union.calls)
         assertEquals(
@@ -560,7 +576,7 @@ class DownloadControllerTest {
             FakeUnion(emptyList(), ok = false),
             store = store,
             download = download,
-        ).reconcile("event", UnionTrigger.FOREGROUND)
+        ).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertTrue(download.started.isEmpty())
         assertEquals(0, store.counts().imported)
     }
@@ -577,11 +593,11 @@ class DownloadControllerTest {
         val download = RecordingDownload()
         val importer = FakeImporter()
         val union = FakeUnion(listOf(asset("DEVICE-A", "Q")))
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
 
         // A good wake plans the asset and stages one of its two resources — not yet importable.
         val c = controller(union, store = store, download = download, importer = importer)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         assertTrue(importer.imported.isEmpty())
 
@@ -592,7 +608,7 @@ class DownloadControllerTest {
         val enqueuedBefore = download.started.size
         val next =
             controller(FakeUnion(emptyList(), ok = false), store = store, download = download, importer = importer)
-        next.reconcile("event", UnionTrigger.FOREGROUND)
+        next.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertTrue(importer.imported.isEmpty(), "the reconcile itself imports nothing, on a failure as on a success")
         underRuntime { next.importReady() }
 
@@ -618,9 +634,9 @@ class DownloadControllerTest {
         val importer = FakeImporter().also { it.hangFor += "AAA" }
         val union = FakeUnion(listOf(asset("DEVICE-A", "AAA"), asset("DEVICE-A", "BBB"), asset("DEVICE-A", "CCC")))
         val c = controller(union, store = store, importer = importer)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         for (id in listOf("AAA", "BBB", "CCC")) {
-            val ref = AssetRef("DEVICE-A", AssetId(id))
+            val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId(id))
             store.markStaged(ref, "$id-primary.heic", "/stage/$id/p")
             store.markStaged(ref, "$id-live.mov", "/stage/$id/l")
         }
@@ -639,7 +655,10 @@ class DownloadControllerTest {
             importer.imported.mapTo(mutableSetOf()) { it.sourceAssetId },
             "every other ref imported while AAA's transaction stayed open",
         )
-        assertFalse(store.isSettled(AssetRef("DEVICE-A", AssetId("AAA"))), "and AAA is still not imported")
+        assertFalse(
+            store.isSettled(AssetRef(testDeviceId("DEVICE-A"), AssetId("AAA"))),
+            "and AAA is still not imported",
+        )
         stalled.cancel()
     }
 
@@ -660,22 +679,22 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val download = RecordingDownload()
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
-        val other = AssetRef("DEVICE-B", AssetId("R"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
+        val other = AssetRef(testDeviceId("DEVICE-B"), AssetId("R"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-B", "R"))),
             store = store,
             download = download,
             importer = importer,
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
         val stalled = launch { underRuntime { c.importReady() } }
         importer.hanging.await() // the transaction is open and its claim is held
 
-        withTimeoutOrNull(5.seconds) { c.reconcile("event", UnionTrigger.FOREGROUND) }
+        withTimeoutOrNull(5.seconds) { c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND) }
             ?: fail("reconcile queued behind the stalled import — the lock still spans the platform call")
         withTimeoutOrNull(5.seconds) { c.onResourceStaged(other, "R-primary.heic", "/rp") }
             ?: fail("onResourceStaged queued behind the stalled import — an OS wake would lose its staging")
@@ -695,10 +714,10 @@ class DownloadControllerTest {
     @Test
     fun a_hung_import_leaves_the_asset_importable() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val importer = FakeImporter().also { it.hangFor += "Q" }
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
@@ -723,10 +742,10 @@ class DownloadControllerTest {
             store = store,
             importer = importer,
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         for (id in listOf("Q", "R")) {
-            store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-primary.heic", "/p/$id")
-            store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-live.mov", "/l/$id")
+            store.markStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId(id)), "$id-primary.heic", "/p/$id")
+            store.markStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId(id)), "$id-live.mov", "/l/$id")
         }
         assertEquals(2, store.importableAssets().size, "the reconcile imported nothing itself")
 
@@ -750,10 +769,10 @@ class DownloadControllerTest {
             store = store,
             importer = importer,
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         for (id in listOf("Q", "R")) {
-            store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-primary.heic", "/p/$id")
-            store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-live.mov", "/l/$id")
+            store.markStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId(id)), "$id-primary.heic", "/p/$id")
+            store.markStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId(id)), "$id-live.mov", "/l/$id")
         }
 
         // The drain's time runs out while the import hangs; the import itself runs on, claimed.
@@ -764,7 +783,7 @@ class DownloadControllerTest {
         underRuntime { c.importReady() }
 
         assertEquals(
-            listOf(AssetRef("DEVICE-A", AssetId("R"))),
+            listOf(AssetRef(testDeviceId("DEVICE-A"), AssetId("R"))),
             importer.imported,
             "the next drain moved past the hung import",
         )
@@ -777,13 +796,13 @@ class DownloadControllerTest {
     fun a_reconcile_imports_nothing_even_when_assets_are_staged() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertEquals(1, store.importableAssets().size, "still importable: no reconcile imports")
         underRuntime { c.importReady() }
         assertTrue(store.importableAssets().isEmpty(), "the drain imports it")
@@ -794,7 +813,7 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val download = RecordingDownload()
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, download = download)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.onLeaveOrSwitch()
         assertTrue(download.cancelled)
         assertTrue(store.pendingDownloads().isEmpty()) // non-terminal dropped
@@ -815,7 +834,7 @@ class DownloadControllerTest {
     @Test
     fun an_absent_verdict_never_clears_a_marker_while_the_import_is_claimed() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val importer = FakeImporter().also { it.hangFor += "Q" }
         // The library sees nothing: the transaction has not committed yet.
         val c = controller(
@@ -824,7 +843,7 @@ class DownloadControllerTest {
             importer = importer,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
@@ -849,7 +868,7 @@ class DownloadControllerTest {
     fun an_absent_verdict_clears_the_marker_once_the_import_is_no_longer_claimed() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))),
             store = store,
@@ -861,7 +880,7 @@ class DownloadControllerTest {
             // the change block, which runs only once every resource is staged.
             disk = disk("/p", "/l"),
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         // A marker left by a PREVIOUS process: nothing is claimed here, so absence is trustworthy.
@@ -885,7 +904,7 @@ class DownloadControllerTest {
     @Test
     fun a_present_verdict_settles_the_row_and_releases_the_claim() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val importer = FakeImporter().also { it.hangFor += "Q" }
         val present = MutableStateFlow(emptySet<AssetId>())
         val c = controller(
@@ -894,7 +913,7 @@ class DownloadControllerTest {
             importer = importer,
             presence = InMemoryAssetPresence(present = present),
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
@@ -926,9 +945,9 @@ class DownloadControllerTest {
     fun two_concurrent_triggers_import_one_asset_once() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
@@ -956,9 +975,9 @@ class DownloadControllerTest {
     fun a_permanently_failing_asset_is_attempted_once_per_drain() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter().also { it.failNext = true } // stays armed: never cleared below
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
@@ -980,9 +999,9 @@ class DownloadControllerTest {
     fun a_leave_during_a_claimed_import_spares_its_row() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
@@ -1008,7 +1027,7 @@ class DownloadControllerTest {
     @Test
     fun a_present_verdict_that_went_stale_is_discarded() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         // The row moves on DURING the lookup — which is when it really happens: the presence call blocks
         // (it is a synchronous platform round-trip, which is why it runs outside the lock), and the
         // platform's completion callback settles the row from another thread while it does. Modelled by
@@ -1025,7 +1044,7 @@ class DownloadControllerTest {
             store = store,
             presence = lookupMovesTheRowOn,
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.recordCreatedLocalId(ref, AssetId("FIRST")) // the verdict below is computed for THIS marker
 
         underRuntime { c.sweepInterruptedImports() }
@@ -1050,7 +1069,7 @@ class DownloadControllerTest {
     @Test
     fun an_absent_verdict_does_not_clear_a_marker_the_completion_settled_meanwhile() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         // The completion lands DURING the lookup — the real interleaving, made deterministic by hanging it
         // off the lookup itself (which on device is a blocking platform round-trip).
         val completionLandsDuringLookup = object : ImportedAssetPresence {
@@ -1064,7 +1083,7 @@ class DownloadControllerTest {
             store = store,
             presence = completionLandsDuringLookup,
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
         underRuntime { c.sweepInterruptedImports() }
@@ -1084,14 +1103,14 @@ class DownloadControllerTest {
     @Test
     fun an_unknown_verdict_changes_nothing() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))),
             store = store,
             // Unreadable: the grant cannot answer, which is NOT the same as answering "absent".
             presence = InMemoryAssetPresence(readable = MutableStateFlow(false)),
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
         underRuntime { c.sweepInterruptedImports() }
@@ -1111,12 +1130,12 @@ class DownloadControllerTest {
     @Test
     fun a_verdict_missing_from_the_lookup_is_read_as_unknown_not_absent() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val silent = object : ImportedAssetPresence {
             override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> = emptyMap()
         }
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, presence = silent)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
         underRuntime { c.sweepInterruptedImports() }
@@ -1147,7 +1166,7 @@ class DownloadControllerTest {
     fun a_surviving_commit_still_in_flight_at_relaunch_settles_rather_than_clearing() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         // A previous process: the change block ran, the library INGESTED the staged files (so they are
         // gone from disk), the marker was recorded, and the process died mid-commit.
         val c = controller(
@@ -1157,7 +1176,7 @@ class DownloadControllerTest {
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())), // commit in flight
             disk = disk(), // the library took them
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
@@ -1180,7 +1199,7 @@ class DownloadControllerTest {
     fun one_consumed_resource_of_several_settles_the_row() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))),
             store = store,
@@ -1188,7 +1207,7 @@ class DownloadControllerTest {
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
             disk = disk("/p"), // the paired video was taken, the still not yet
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
@@ -1208,7 +1227,7 @@ class DownloadControllerTest {
     fun absent_with_no_staged_resources_changes_nothing() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))),
             store = store,
@@ -1216,7 +1235,7 @@ class DownloadControllerTest {
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
             disk = disk(),
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.dropResources(ref) // no staged resources remain to reason from
         store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
@@ -1248,8 +1267,8 @@ class DownloadControllerTest {
             markerStore = store
             hangFor += "Q"
         }
-        val q = AssetRef("DEVICE-A", AssetId("Q"))
-        val r = AssetRef("DEVICE-A", AssetId("R"))
+        val q = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
+        val r = AssetRef(testDeviceId("DEVICE-A"), AssetId("R"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R"))),
             store = store,
@@ -1257,7 +1276,7 @@ class DownloadControllerTest {
             presence = presence,
         )
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         // Staged into the store directly: routing these through `onResourceStaged` would drain inline and
         // the second call would never return, because Q's import is the one that hangs.
         store.markStaged(q, "Q-primary.heic", "/qp")
@@ -1269,7 +1288,7 @@ class DownloadControllerTest {
         // The rest of the burst arrives while that commit is open.
         c.onResourceStaged(r, "R-primary.heic", "/rp")
         c.onResourceStaged(r, "R-live.mov", "/rl")
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         underRuntime { c.importReady() }
 
         assertEquals(
@@ -1287,7 +1306,7 @@ class DownloadControllerTest {
     fun the_sweep_asks_once_and_only_about_what_it_inherited() = runTest {
         val presence = CountingPresence()
         val store = DownloadService(inMemoryDatabases())
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         // Its staged bytes are on disk, as a dead process that never reached the library leaves them.
         val c =
             controller(
@@ -1300,7 +1319,7 @@ class DownloadControllerTest {
         underRuntime { c.sweepInterruptedImports() }
         assertEquals(0, presence.calls, "nothing inherited → no row carries a marker → no lookup at all")
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001")) // what a dead process left behind
@@ -1320,10 +1339,10 @@ class DownloadControllerTest {
             failNext = true
             failConsumingResources = true
         }
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         underRuntime { c.importReady() }
@@ -1346,10 +1365,10 @@ class DownloadControllerTest {
             failNext = true
             failConsumingResources = false
         }
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         underRuntime { c.importReady() }
@@ -1374,14 +1393,14 @@ class DownloadControllerTest {
             failNext = true
             failConsumingResources = true
         }
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R"))),
             store = store,
             importer = importer,
         )
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertEquals(2, store.counts().stillArriving, "both are outstanding while both can still arrive")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
@@ -1397,7 +1416,7 @@ class DownloadControllerTest {
     fun reset_prunes_non_terminal_rows() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         c.onDurableStateReset()
 
@@ -1421,14 +1440,14 @@ class DownloadControllerTest {
     fun reset_spares_a_claimed_import_while_pruning_the_rest() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val claimed = AssetRef("DEVICE-A", AssetId("Q"))
-        val unclaimed = AssetRef("DEVICE-B", AssetId("R"))
+        val claimed = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
+        val unclaimed = AssetRef(testDeviceId("DEVICE-B"), AssetId("R"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-B", "R"))),
             store = store,
             importer = importer,
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         // Q is staged WHOLE, so it becomes importable and the drain claims it; R is staged in part, so it
         // stays non-terminal and unclaimed — which is exactly the row a reset is meant to drop.
         store.markStaged(claimed, "Q-primary.heic", "/p")
@@ -1466,9 +1485,9 @@ class DownloadControllerTest {
         // the library and once in staging — forever.
         val store = DownloadService(inMemoryDatabases())
         val staged = disk("/p", "/l")
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, disk = staged)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         store.markImported(ref, AssetId("LOCAL-Q"))
@@ -1503,15 +1522,15 @@ class DownloadControllerTest {
         // What older installs hold: a resource downloaded twice whose second copy landed after the first was
         // imported — on disk, named by no row, so no release path ever reaches it (measured: 1.14 GB on the XS).
         val store = DownloadService(inMemoryDatabases())
-        val landing = "$DOWNLOAD_STAGING_DIR/event/DEVICE-A/Q-primary.heic"
+        val landing = "$DOWNLOAD_STAGING_DIR/${testEventId("event")}/${testDeviceId("DEVICE-A")}/Q-primary.heic"
         // Where a transfer started before transfers named their event lands, for the same row.
-        val legacyLanding = "$DOWNLOAD_STAGING_DIR/DEVICE-A/Q-live.mov"
+        val legacyLanding = "$DOWNLOAD_STAGING_DIR/${testDeviceId("DEVICE-A")}/Q-live.mov"
         val unclaimed = listOf(
-            "$DOWNLOAD_STAGING_DIR/DEVICE-A/OLD-primary.mov",
-            "$DOWNLOAD_STAGING_DIR/DEVICE-B/X-primary.heic",
-            "$DOWNLOAD_STAGING_DIR/other-event/DEVICE-A/Q-primary.heic",
+            "$DOWNLOAD_STAGING_DIR/${testDeviceId("DEVICE-A")}/OLD-primary.mov",
+            "$DOWNLOAD_STAGING_DIR/${testDeviceId("DEVICE-B")}/X-primary.heic",
+            "$DOWNLOAD_STAGING_DIR/${testEventId("other-event")}/${testDeviceId("DEVICE-A")}/Q-primary.heic",
             // An encrypted event's download being opened beside a path no row claims is no exception.
-            "$DOWNLOAD_STAGING_DIR/DEVICE-A/OLD-primary.mov.sealed",
+            "$DOWNLOAD_STAGING_DIR/${testDeviceId("DEVICE-A")}/OLD-primary.mov.sealed",
         )
         // An encrypted event's download waits sealed beside its landing path while it is opened into it.
         val opening = "$landing.sealed"
@@ -1519,7 +1538,7 @@ class DownloadControllerTest {
         val staged = disk(landing, legacyLanding, opening, outside, *unclaimed.toTypedArray())
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, disk = staged)
         // Q is planned, its downloads in flight: one has landed at its path and is not recorded yet.
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         c.releaseSettledBytes()
 
@@ -1534,7 +1553,7 @@ class DownloadControllerTest {
     @Test
     fun the_unclaimed_sweep_releases_nothing_when_it_cannot_read_the_store() = runTest {
         // An unreadable store is not an empty one: read as empty, every staged file would look unclaimed.
-        val staged = disk("$DOWNLOAD_STAGING_DIR/DEVICE-A/Q-primary.heic")
+        val staged = disk("$DOWNLOAD_STAGING_DIR/${testDeviceId("DEVICE-A")}/Q-primary.heic")
         val store = DownloadService(inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("store unreadable"))))
         val c = controller(FakeUnion(emptyList()), store = store, disk = staged)
 
@@ -1551,9 +1570,9 @@ class DownloadControllerTest {
         val databases = RecordingDatabases()
         val store = DownloadService(databases)
         val failing = ThrowingDeletes(disk("/p", "/l"))
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, disk = failing)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         store.markImported(ref, AssetId("LOCAL-Q"))
@@ -1577,7 +1596,7 @@ class DownloadControllerTest {
     @Test
     fun a_wake_reads_the_union_when_none_was_read_within_the_hour() = runTest {
         val union = FakeUnion(emptyList())
-        controller(union).reconcileIfDue("event")
+        controller(union).reconcileIfDue(testEventId("event"))
         assertEquals(1, union.calls)
     }
 
@@ -1587,12 +1606,15 @@ class DownloadControllerTest {
         var now = NOW
         val checks = EventChecks(testShared(), now = { now })
         val controller = controller(union, checks = checks)
-        controller.reconcile("event", UnionTrigger.FOREGROUND) // a push, an opening or a join: unbounded, and it stamps
+        controller.reconcile(
+            testEventId("event"),
+            UnionTrigger.FOREGROUND,
+        ) // a push, an opening or a join: unbounded, and it stamps
         now = NOW + 59.minutes
-        controller.reconcileIfDue("event")
+        controller.reconcileIfDue(testEventId("event"))
         assertEquals(1, union.calls, "the wake after a push reads nothing")
         now = NOW + 1.hours
-        controller.reconcileIfDue("event")
+        controller.reconcileIfDue(testEventId("event"))
         assertEquals(2, union.calls, "an hour later it reads again")
     }
 
@@ -1600,15 +1622,15 @@ class DownloadControllerTest {
     fun a_failed_read_counts_so_a_failing_backend_is_not_asked_every_wake() = runTest {
         val union = FakeUnion(emptyList(), ok = false)
         val controller = controller(union)
-        controller.reconcileIfDue("event")
-        controller.reconcileIfDue("event")
+        controller.reconcileIfDue(testEventId("event"))
+        controller.reconcileIfDue(testEventId("event"))
         assertEquals(1, union.calls)
     }
 
     @Test
     fun an_upload_only_membership_reads_no_union_on_a_wake() = runTest {
         val union = FakeUnion(emptyList())
-        controller(union, downloadEnabled = { false }).reconcileIfDue("event")
+        controller(union, downloadEnabled = { false }).reconcileIfDue(testEventId("event"))
         assertEquals(0, union.calls)
     }
 
@@ -1621,7 +1643,7 @@ class DownloadControllerTest {
         controller(
             union,
             download = download,
-        ).reconcile("event", UnionTrigger.JOIN, known = UnionPage(listOf(asset("DEVICE-A", "FOREIGN")), 0))
+        ).reconcile(testEventId("event"), UnionTrigger.JOIN, known = UnionPage(listOf(asset("DEVICE-A", "FOREIGN")), 0))
         assertEquals(0, union.calls, "the join's adoption read it already")
         assertEquals(setOf("FOREIGN-primary.heic", "FOREIGN-live.mov"), download.started.map { it.resourceKey }.toSet())
     }
@@ -1630,8 +1652,8 @@ class DownloadControllerTest {
     fun a_known_union_stamps_the_hour_so_the_next_wake_reads_none() = runTest {
         val union = FakeUnion(emptyList())
         val controller = controller(union)
-        controller.reconcile("event", UnionTrigger.JOIN, known = UnionPage(emptyList(), 0))
-        controller.reconcileIfDue("event")
+        controller.reconcile(testEventId("event"), UnionTrigger.JOIN, known = UnionPage(emptyList(), 0))
+        controller.reconcileIfDue(testEventId("event"))
         assertEquals(0, union.calls)
     }
 
@@ -1641,10 +1663,10 @@ class DownloadControllerTest {
     fun a_push_or_a_wake_reads_from_the_stored_position_and_every_other_trigger_reads_everything() = runTest {
         val union = FakeUnion(listOf(asset("DEVICE-A", "ONE")), position = 4)
         val c = controller(union)
-        c.reconcile("event", UnionTrigger.PUSH) // no position stored yet: a full read
-        c.reconcile("event", UnionTrigger.PUSH)
-        c.reconcile("event", UnionTrigger.WAKE)
-        UnionTrigger.entries.filter { it.full }.forEach { c.reconcile("event", it) }
+        c.reconcile(testEventId("event"), UnionTrigger.PUSH) // no position stored yet: a full read
+        c.reconcile(testEventId("event"), UnionTrigger.PUSH)
+        c.reconcile(testEventId("event"), UnionTrigger.WAKE)
+        UnionTrigger.entries.filter { it.full }.forEach { c.reconcile(testEventId("event"), it) }
         assertEquals(
             listOf<Long?>(null, 4, 4) + List(UnionTrigger.entries.count { it.full }) { null },
             union.reads.map { it.first },
@@ -1656,11 +1678,11 @@ class DownloadControllerTest {
     fun the_position_moves_only_with_a_plan_that_landed() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(emptyList(), position = 6)
-        controller(union, store = store).reconcile("event", UnionTrigger.FOREGROUND)
-        assertEquals(6, store.union.cursor("event"))
+        controller(union, store = store).reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        assertEquals(6, store.union.cursor(testEventId("event")))
         val failing = FakeUnion(emptyList(), ok = false, position = 99)
-        controller(failing, store = store).reconcile("event", UnionTrigger.PUSH)
-        assertEquals(6, store.union.cursor("event"), "a failed read stores nothing")
+        controller(failing, store = store).reconcile(testEventId("event"), UnionTrigger.PUSH)
+        assertEquals(6, store.union.cursor(testEventId("event")), "a failed read stores nothing")
     }
 
     // The event's declared total (change `count-declared-photos`) rides with the position.
@@ -1669,17 +1691,17 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(emptyList(), position = 6, declared = 200)
         val c = controller(union, store = store)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
-        assertEquals(200, store.union.declared("event"))
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        assertEquals(200, store.union.declared(testEventId("event")))
 
         union.declared = 230
-        c.reconcile("event", UnionTrigger.FOREGROUND)
-        assertEquals(230, store.union.declared("event"), "the others declared more, at the same position")
-        assertEquals(6, store.union.cursor("event"))
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        assertEquals(230, store.union.declared(testEventId("event")), "the others declared more, at the same position")
+        assertEquals(6, store.union.cursor(testEventId("event")))
 
         union.declared = null
-        c.reconcile("event", UnionTrigger.FOREGROUND)
-        assertEquals(null, store.union.declared("event"), "a backend without it stores none")
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        assertEquals(null, store.union.declared(testEventId("event")), "a backend without it stores none")
     }
 
     @Test
@@ -1688,11 +1710,11 @@ class DownloadControllerTest {
         val checks = EventChecks(testShared(), now = { NOW })
         val union = FakeUnion(emptyList(), position = 8)
         val c = controller(union, store = store, checks = checks)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
-        c.reconcile("event", UnionTrigger.PUSH, announced = 8)
-        c.reconcile("event", UnionTrigger.PUSH, announced = 3)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.PUSH, announced = 8)
+        c.reconcile(testEventId("event"), UnionTrigger.PUSH, announced = 3)
         assertEquals(1, union.calls)
-        c.reconcile("event", UnionTrigger.PUSH, announced = 9)
+        c.reconcile(testEventId("event"), UnionTrigger.PUSH, announced = 9)
         assertEquals(2, union.calls, "a position past the stored one is read")
     }
 
@@ -1701,19 +1723,19 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(listOf(asset("DEVICE-A", "KEPT"), asset("DEVICE-A", "GONE")), position = 2)
         val c = controller(union, store = store)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertEquals(4, store.pendingDownloads().size)
 
         union.assets = listOf(asset("DEVICE-A", "KEPT"))
-        c.reconcile("event", UnionTrigger.PUSH, announced = 3)
+        c.reconcile(testEventId("event"), UnionTrigger.PUSH, announced = 3)
         assertEquals(4, store.pendingDownloads().size, "a delta says nothing about what is no longer served")
 
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertEquals(setOf("KEPT"), store.pendingDownloads().mapTo(mutableSetOf()) { it.ref.sourceAssetId.value })
 
         // It comes back: a later read plans it again.
         union.assets = listOf(asset("DEVICE-A", "KEPT"), asset("DEVICE-A", "GONE"))
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertEquals(4, store.pendingDownloads().size)
     }
 
@@ -1722,12 +1744,12 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(listOf(asset("DEVICE-A", "GOT")), position = 1)
         val c = controller(union, store = store)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
-        val got = AssetRef("DEVICE-A", AssetId("GOT"))
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        val got = AssetRef(testDeviceId("DEVICE-A"), AssetId("GOT"))
         store.markImported(got, AssetId("LOCAL-GOT"))
 
         union.assets = emptyList()
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertTrue(store.isSettled(got), "a received copy is the member's")
         assertEquals(setOf(AssetId("LOCAL-GOT")), store.suppressedLocalIds())
     }
@@ -1737,9 +1759,9 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(emptyList(), position = 5)
         val c = controller(union, store = store)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.onLeaveOrSwitch()
-        assertEquals(null, store.union.cursor("event"))
+        assertEquals(null, store.union.cursor(testEventId("event")))
     }
 
     // ---- the remaining edges: what each refusal and each concurrent move leaves behind ----
@@ -1752,7 +1774,7 @@ class DownloadControllerTest {
 
     /** Stage both of [id]'s resources at `/<id>-p` and `/<id>-l`. */
     private suspend fun DownloadController.stageBoth(id: String) {
-        val ref = AssetRef("DEVICE-A", AssetId(id))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId(id))
         onResourceStaged(ref, "$id-primary.heic", "/$id-p")
         onResourceStaged(ref, "$id-live.mov", "/$id-l")
     }
@@ -1764,12 +1786,12 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R")))
         val c = controller(union, store = store)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
         underRuntime { c.importReady() }
 
         union.assets = listOf(asset("DEVICE-A", "Q"))
-        assertNull(c.receivedPosition("event"), "R's download is still pending")
+        assertNull(c.receivedPosition(testEventId("event")), "R's download is still pending")
     }
 
     @Test
@@ -1777,9 +1799,9 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(listOf(asset("DEVICE-A", "KEPT"), asset("DEVICE-A", "GONE")), position = 2)
         val c = controller(union, store = store)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
-        c.reconcile("event", UnionTrigger.PUSH, known = UnionPage(listOf(asset("DEVICE-A", "KEPT")), 3))
+        c.reconcile(testEventId("event"), UnionTrigger.PUSH, known = UnionPage(listOf(asset("DEVICE-A", "KEPT")), 3))
 
         assertEquals(1, union.calls, "the known page is planned without a read")
         assertEquals(setOf("KEPT"), store.pendingDownloads().mapTo(mutableSetOf()) { it.ref.sourceAssetId.value })
@@ -1790,11 +1812,11 @@ class DownloadControllerTest {
         val staged = disk("/GONE-p")
         val union = FakeUnion(listOf(asset("DEVICE-A", "KEPT"), asset("DEVICE-A", "GONE")))
         val c = controller(union, disk = staged)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
-        c.onResourceStaged(AssetRef("DEVICE-A", AssetId("GONE")), "GONE-primary.heic", "/GONE-p")
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        c.onResourceStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId("GONE")), "GONE-primary.heic", "/GONE-p")
 
         union.assets = listOf(asset("DEVICE-A", "KEPT"))
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
 
         assertEquals(listOf("/GONE-p"), staged.released)
         assertTrue(staged.shared.isEmpty(), "a withdrawn photo's half-download is not kept")
@@ -1805,11 +1827,11 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(listOf(asset("DEVICE-A", "KEPT"), asset("DEVICE-A", "GONE")))
         val c = controller(union, store = store, disk = ThrowingDeletes(disk("/GONE-p")))
-        c.reconcile("event", UnionTrigger.FOREGROUND)
-        c.onResourceStaged(AssetRef("DEVICE-A", AssetId("GONE")), "GONE-primary.heic", "/GONE-p")
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        c.onResourceStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId("GONE")), "GONE-primary.heic", "/GONE-p")
 
         union.assets = listOf(asset("DEVICE-A", "KEPT"))
-        c.reconcile("event", UnionTrigger.FOREGROUND) // must not throw
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND) // must not throw
 
         assertEquals(setOf("KEPT"), store.pendingDownloads().mapTo(mutableSetOf()) { it.ref.sourceAssetId.value })
     }
@@ -1820,7 +1842,9 @@ class DownloadControllerTest {
         val staged = disk("/stray")
         val c = controller(FakeUnion(emptyList()), disk = staged)
 
-        assertFalse(c.onResourceStaged(AssetRef("DEVICE-A", AssetId("LEFT")), "LEFT-primary.heic", "/stray"))
+        assertFalse(
+            c.onResourceStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId("LEFT")), "LEFT-primary.heic", "/stray"),
+        )
         assertEquals(listOf("/stray"), staged.released)
         assertTrue(staged.shared.isEmpty())
     }
@@ -1829,7 +1853,9 @@ class DownloadControllerTest {
     fun an_unrecorded_staging_whose_discard_fails_is_still_answered_unrecorded() = runTest {
         val c = controller(FakeUnion(emptyList()), disk = ThrowingDeletes(disk("/stray")))
 
-        assertFalse(c.onResourceStaged(AssetRef("DEVICE-A", AssetId("LEFT")), "LEFT-primary.heic", "/stray"))
+        assertFalse(
+            c.onResourceStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId("LEFT")), "LEFT-primary.heic", "/stray"),
+        )
     }
 
     @Test
@@ -1841,7 +1867,7 @@ class DownloadControllerTest {
             importer = importer,
             album = EventAlbumHooks(current = { "ALBUM-1" }, onImported = { reported += it }),
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
 
         underRuntime { c.importReady() }
@@ -1863,9 +1889,9 @@ class DownloadControllerTest {
             it.failNext = true
             it.failConsumingResources = true
         }
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
 
         underRuntime { c.importReady() }
@@ -1878,14 +1904,14 @@ class DownloadControllerTest {
     fun a_present_verdict_with_no_staged_resources_settles_and_releases_nothing() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val staged = RecordingFiles()
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))),
             store = store,
             presence = InMemoryAssetPresence(present = MutableStateFlow(setOf(AssetId("FIRST-COPY")))),
             disk = staged,
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.dropResources(ref)
         store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
@@ -1899,14 +1925,14 @@ class DownloadControllerTest {
     fun an_import_whose_staged_bytes_cannot_be_freed_still_lands_and_keeps_them_findable() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))),
             store = store,
             importer = importer,
             disk = ThrowingDeletes(disk("/Q-p", "/Q-l")),
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.stageBoth("Q")
 
         underRuntime { c.importReady() } // must not throw
@@ -1919,11 +1945,11 @@ class DownloadControllerTest {
     @Test
     fun an_unlistable_staging_directory_sweeps_nothing_and_the_reclaim_still_runs() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val stray = "$DOWNLOAD_STAGING_DIR/DEVICE-A/stray"
+        val stray = "$DOWNLOAD_STAGING_DIR/${testDeviceId("DEVICE-A")}/stray"
         val files = disk("/Q-p", "/Q-l", stray)
-        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, disk = UnlistableStaging(files))
-        c.reconcile("event", UnionTrigger.FOREGROUND)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         store.markStaged(ref, "Q-primary.heic", "/Q-p")
         store.markStaged(ref, "Q-live.mov", "/Q-l")
         store.markImported(ref, AssetId("LOCAL-Q"))
@@ -1942,8 +1968,8 @@ class DownloadControllerTest {
             store = store,
             disk = ThrowingDeletes(disk("/Q-p")),
         )
-        c.reconcile("event", UnionTrigger.FOREGROUND)
-        c.onResourceStaged(AssetRef("DEVICE-A", AssetId("Q")), "Q-primary.heic", "/Q-p")
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        c.onResourceStaged(AssetRef(testDeviceId("DEVICE-A"), AssetId("Q")), "Q-primary.heic", "/Q-p")
 
         c.onLeaveOrSwitch() // must not throw
 

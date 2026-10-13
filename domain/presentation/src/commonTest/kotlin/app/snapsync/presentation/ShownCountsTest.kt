@@ -1,12 +1,13 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
+import app.snapsync.model.TimestampText
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncCounts
@@ -39,12 +40,12 @@ class ShownCountsTest {
     private fun joinedState(counts: SyncCounts?) = UiState(
         Layer.Joined(
             membership = EventConfig(
-                eventId = "5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e",
+                eventId = testEventId("5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e"),
                 name = "Anna's Birthday",
-                minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-07-06T14:32:11Z")),
-                maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-07-13T14:32:11Z")),
-                endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
+                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z")),
+                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             ).shown(),
             inviteUrl = "https://snapsync.stho.net/e/x",
             health = SyncHealth.InSync,

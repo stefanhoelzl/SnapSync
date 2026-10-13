@@ -1,16 +1,18 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.EventStart
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.deletesAt
+import app.snapsync.model.TimestampText
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeChoice
@@ -74,7 +76,7 @@ class RangeIntentsTest {
 
     @Test
     fun `Create creates only a form that may be created and creates what it shows`() = runTest {
-        val created = mutableListOf<Triple<String, EventStart, app.snapsync.model.EventEnd>>()
+        val created = mutableListOf<Triple<String, EventStart, app.snapsync.domain.event.EventEnd>>()
         host(backgroundScope, created = { n, s, e, _ -> created += Triple(n, s, e) }).testWithInternalState(this) {
             runOnCreate()
             containerHost.onIntent(UiIntent.ConfirmCreate)
@@ -91,7 +93,13 @@ class RangeIntentsTest {
             containerHost.onIntent(UiIntent.ConfirmCreate)
             testScheduler.runCurrent()
             assertEquals(
-                listOf(Triple("Party", eventStart("2026-07-09T12:00:00Z"), eventEnd("2026-07-09T13:00:00Z"))),
+                listOf(
+                    Triple(
+                        "Party",
+                        EventStart(TimestampText.parse("2026-07-09T12:00:00Z")),
+                        EventEnd(TimestampText.parse("2026-07-09T13:00:00Z")),
+                    ),
+                ),
                 created,
             )
             cancelAndIgnoreRemainingItems()
@@ -112,7 +120,7 @@ class RangeIntentsTest {
             testScheduler.runCurrent()
             assertEquals(before, containerHost.screen.value)
 
-            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT_ID))))
             awaitShown { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready }
 
             containerHost.onIntent(UiIntent.RangePickerOpen)
@@ -192,9 +200,9 @@ class RangeIntentsTest {
                 listOf(
                     Created(
                         "Party",
-                        eventStart("2026-07-01T12:00:00Z"),
-                        eventEnd("2026-07-02T13:00:00Z"),
-                        eventEnd("2026-07-16T12:00:00Z"),
+                        EventStart(TimestampText.parse("2026-07-01T12:00:00Z")),
+                        EventEnd(TimestampText.parse("2026-07-02T13:00:00Z")),
+                        OpenUntil(TimestampText.parse("2026-07-16T12:00:00Z")),
                     ),
                 ),
                 created,
@@ -234,7 +242,10 @@ class RangeIntentsTest {
             containerHost.onIntent(UiIntent.ConfirmCreate)
             testScheduler.runCurrent()
             assertNull(form().keepOpen)
-            assertEquals(listOf(eventEnd("2026-07-09T12:01:00Z") to null), created.map { it.ends to it.openUntil })
+            assertEquals(
+                listOf(EventEnd(TimestampText.parse("2026-07-09T12:01:00Z")) to null),
+                created.map { it.ends to it.openUntil },
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -243,8 +254,8 @@ class RangeIntentsTest {
     private data class Created(
         val name: String,
         val starts: EventStart,
-        val ends: app.snapsync.model.EventEnd,
-        val openUntil: app.snapsync.model.EventEnd?,
+        val ends: app.snapsync.domain.event.EventEnd,
+        val openUntil: OpenUntil?,
     )
 
     /** "Party", 1 July 12:00 to 2 July 13:00 — over a week before the clock's 9 July. */
@@ -283,7 +294,7 @@ class RangeIntentsTest {
 
     private fun host(
         scope: CoroutineScope,
-        created: (String, EventStart, app.snapsync.model.EventEnd, app.snapsync.model.EventEnd?) -> Unit =
+        created: (String, EventStart, EventEnd, OpenUntil?) -> Unit =
             { _, _, _, _ -> },
     ) = StatusContainerHost(
         StatusSources(
@@ -300,9 +311,9 @@ class RangeIntentsTest {
         queries = joinDetails { _ ->
             JoinLoad.Found(
                 "Picnic",
-                eventStart("2026-07-04T18:00:00Z"),
-                eventEnd("2026-07-20T18:00:00Z"),
-                deletesAt("2026-08-03T18:00:00Z"),
+                EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
+                EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
+                DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
             )
         },
         diagnostics = testDiagnostics(),

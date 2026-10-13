@@ -1,6 +1,6 @@
 package app.snapsync.selection
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.Resource
 import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.CompletableDeferred

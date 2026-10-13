@@ -7,7 +7,7 @@ package app.snapsync.model
 
 /** The device id as a report writes it: the id, or why there is none. Never a mint — see `PersistedDeviceIdentity.current`. */
 fun DeviceIdResult.asFact(): Fact<String> = when (this) {
-    is DeviceIdResult.Id -> Fact.Known(value)
+    is DeviceIdResult.Id -> Fact.Known(value.value)
     is DeviceIdResult.Unavailable -> Fact.Failed("the secure store could not be read: $detail")
     DeviceIdResult.AbsentNotMintable -> Fact.Failed("no device id stored yet")
 }

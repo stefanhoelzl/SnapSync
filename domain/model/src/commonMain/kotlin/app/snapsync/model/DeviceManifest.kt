@@ -1,6 +1,14 @@
+@file:UseSerializers(
+    AssetIdAsString::class,
+    DeviceIdAsString::class,
+)
+
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.UseSerializers
 import kotlinx.serialization.json.Json
 
 /**
@@ -40,7 +48,7 @@ class DeviceManifestAsset(
  */
 @Serializable
 class DeviceManifest(
-    val deviceId: String,
+    val deviceId: DeviceId,
     val assets: List<DeviceManifestAsset>,
     /**
      * The ledger's **manifest version** this snapshot was projected under: the backend stores a publish only when it is
@@ -106,7 +114,7 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
  * is stable. Within an asset, resources are sorted by their key for the same reason.
  */
 suspend fun projectDeviceManifest(
-    deviceId: String,
+    deviceId: DeviceId,
     rows: Collection<LedgerEntry>,
     policy: SelectionPolicy,
 ): DeviceManifest {

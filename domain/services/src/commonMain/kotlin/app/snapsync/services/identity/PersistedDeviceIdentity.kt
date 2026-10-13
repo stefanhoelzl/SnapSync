@@ -1,5 +1,6 @@
 package app.snapsync.services.identity
 
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.DeviceIdResult
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.DeviceIdentityRole
@@ -73,7 +74,7 @@ class PersistedDeviceIdentity(
         if (resolution.isInitialized()) return resolution.value
         // The store's raw read: an unreadable slot answers Unavailable here rather than throwing.
         return when (val read = store.read(SecureSlots.DEVICE_ID)) {
-            is SecureStoreRead.Found -> DeviceIdResult.Id(read.value, DeviceIdResult.Via.READ)
+            is SecureStoreRead.Found -> stored(read.value, DeviceIdResult.Via.READ)
             SecureStoreRead.Absent -> DeviceIdResult.AbsentNotMintable
             is SecureStoreRead.Unavailable -> DeviceIdResult.Unavailable(read.detail)
         }
@@ -87,7 +88,7 @@ class PersistedDeviceIdentity(
                 // Asks the shared slot and accepts its answer; absence is never minted over here.
                 DeviceIdentityRole.READ_ONLY ->
                     readExisting(store, SecureSlots.DEVICE_ID, onResolution = reported::add)
-                        ?.let { DeviceIdResult.Id(it, DeviceIdResult.Via.READ) }
+                        ?.let { stored(it, DeviceIdResult.Via.READ) }
                         ?: DeviceIdResult.AbsentNotMintable
 
                 DeviceIdentityRole.MINTING -> resolveOrMint(
@@ -95,7 +96,7 @@ class PersistedDeviceIdentity(
                     SecureSlots.DEVICE_ID,
                     onResolution = reported::add,
                     generate = ::mint,
-                ).let { DeviceIdResult.Id(it, via(reported.single())) }
+                ).let { stored(it, via(reported.single())) }
             }
         } catch (unavailable: SecureStoreUnavailable) {
             DeviceIdResult.Unavailable(unavailable.detail)
@@ -109,8 +110,16 @@ class PersistedDeviceIdentity(
         return result
     }
 
+    /**
+     * The id the slot holds, as the device id it spells — or, when it spells none, an identity this process cannot
+     * use: every backend call would be refused under it, so it is reported as unusable rather than handed out.
+     */
+    private fun stored(text: String, via: DeviceIdResult.Via): DeviceIdResult =
+        DeviceId.parse(text)?.let { DeviceIdResult.Id(it, via) }
+            ?: DeviceIdResult.Unavailable("the stored device id is not a device id")
+
     /** The transitional throwing form every consumer reads today (`PersistedDeviceIdentity`). */
-    fun deviceId(): String = when (val result = resolve()) {
+    fun deviceId(): DeviceId = when (val result = resolve()) {
         is DeviceIdResult.Id -> result.value
         is DeviceIdResult.Unavailable -> throw SecureStoreUnavailable(result.detail)
         DeviceIdResult.AbsentNotMintable -> throw DeviceIdentityAbsent()

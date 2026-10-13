@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -13,21 +14,21 @@ class UploadConfigTest {
 
     @Test
     fun builds_config_from_eventId_and_host() {
-        val config = buildUploadConfig(eventId, host)
+        val config = buildUploadConfig(testEventId(eventId), host)
         assertEquals(host, config?.host)
-        assertEquals(eventId, config?.eventId)
+        assertEquals(testEventId(eventId), config?.eventId)
     }
 
     @Test
-    fun null_or_blank_eventId_skips() {
+    fun a_missing_eventId_skips() {
+        // A blank id is no event id: `EventId` cannot hold one, so only absence remains to skip on.
         assertNull(buildUploadConfig(null, host))
-        assertNull(buildUploadConfig("", host))
     }
 
     @Test
     fun missing_or_blank_host_skips() {
-        assertNull(buildUploadConfig(eventId, null))
-        assertNull(buildUploadConfig(eventId, ""))
+        assertNull(buildUploadConfig(testEventId(eventId), null))
+        assertNull(buildUploadConfig(testEventId(eventId), ""))
     }
 
     @Test
