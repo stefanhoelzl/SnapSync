@@ -12,6 +12,8 @@ import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
+import app.snapsync.contracts.ThreadLabelContract
+import app.snapsync.contracts.ThreadLabelState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
@@ -21,11 +23,12 @@ import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.ProcessInfo
+import app.snapsync.ports.ThreadLabel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
 /**
- * The integrity double, the protected-storage double, the network double and the device-conditions double, held to the contracts their real implementations
+ * The integrity double, the process doubles (its facts and its log label), the network double and the device-conditions double, held to the contracts their real implementations
  * satisfy (`docs/architecture.md`). Each double is built at its DEFAULTS for the state, never with a knob
  * turned to make a clause pass: a double the contract catches lying is fixed in the double.
  */
@@ -78,6 +81,19 @@ class AttestContractBindingsTest {
     @Test
     fun `the in-memory process info satisfies the ProcessInfo contract`() =
         verify(ProcessInfoContract, processInfo)
+
+    private val threadLabel = object : Binding<ThreadLabelState, ThreadLabel> {
+        override val host = currentHost
+        override val kind = BindingKind.Fake
+        override val adapter = ThreadLabelMock::class
+        override val reaches = setOf(ThreadLabelState.EMPTY)
+
+        override fun create(state: ThreadLabelState, clauseId: String, log: CallLog): Entered<ThreadLabel> =
+            Entered.Ready(ThreadLabelMock().recorded(log))
+    }
+
+    @Test
+    fun `the label mock satisfies the ThreadLabel contract`() = verify(ThreadLabelContract, threadLabel)
 
     private val network = object : Binding<NetworkState, NetworkMonitor> {
         override val host = currentHost

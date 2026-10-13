@@ -48,25 +48,6 @@ class IosLoggingContractTest {
         }
     }
 
-    /** The one-thread context MetricKit's callbacks claim ([IosThreadEntryContext]): the same promise, on its thread. */
-    private val threadContext = object : Binding<EntryContextState, EntryContext> {
-        override val host = Host.IOS_SIM_KEXE
-        override val kind = BindingKind.Live
-        override val adapter = IosThreadEntryContext::class
-        override val reaches = setOf(EntryContextState.AMBIENT)
-        override fun create(state: EntryContextState, clauseId: String, log: CallLog): Entered<EntryContext> =
-            if (state in reaches) {
-                Entered.Ready(IosThreadEntryContext.recorded(log))
-            } else {
-                Entered.Unreachable("an iOS process tags every line with its entry point")
-            }
-    }
-
-    /**
-     * The public `NSLog` channel ([PublicNSLogSink]) read back from this process's stderr, where `NSLog` writes when
-     * `CFLOG_FORCE_STDERR` is set — as this test executable's run sets it (`build.gradle.kts`). The stream is redirected
-     * into a temp file for the clause and restored after.
-     */
     private val nslog = object : Binding<LogSinkState, WrittenLog> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
@@ -84,12 +65,6 @@ class IosLoggingContractTest {
 
     @Test
     fun `the per-thread label satisfies the ThreadLabel contract`() = verify(ThreadLabelContract, label)
-
-    @Test
-    fun `the one-thread entry context satisfies the EntryContext contract`() = verify(
-        EntryContextContract,
-        threadContext,
-    )
 
     @Test
     fun `the public NSLog channel satisfies the LogSink contract`() = verify(LogSinkContract, nslog)

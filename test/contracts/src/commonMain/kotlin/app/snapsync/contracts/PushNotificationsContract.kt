@@ -75,7 +75,7 @@ object PushNotificationsContract : Contract<PushState, PushUnderTest>("PushNotif
             covers = cells {
                 on<PushNotifications> {
                     answers(PushNotifications::kind).returns()
-                    answers(PushNotifications::listen).returns()
+                    answers(PushNotifications::inbound).returns()
                     calls(PushHandlers::onToken, PushToken::class)
                 }
             },

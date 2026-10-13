@@ -1,4 +1,9 @@
-@file:OptIn(ExperimentalStdlibApi::class, ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+@file:OptIn(
+    ExperimentalStdlibApi::class,
+    ExperimentalForeignApi::class,
+    kotlinx.cinterop.BetaInteropApi::class,
+    CompositionOnly::class,
+)
 
 package app.snapsync.ios
 
@@ -15,6 +20,7 @@ import app.snapsync.contract.resumeContractRuns
 import app.snapsync.contract.simulatorAppContracts
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.files.IosFiles
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.upload.UploadExtensionRoot
 import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.keychain.contract.deviceContracts
@@ -175,7 +181,8 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
             AppPush(
                 adapter = SnapSyncRoot.pushNotifications,
                 composed = { SnapSyncRoot.ports.pushNotifications.value },
-                appHandlers = { pushHandlers(SnapSyncRoot.app) },
+                // The rig plays the composition here: the app's own handlers, handed back to its adapter.
+                appHandlers = { SnapSyncRoot.app.pushHandlers() },
             ),
         ),
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
