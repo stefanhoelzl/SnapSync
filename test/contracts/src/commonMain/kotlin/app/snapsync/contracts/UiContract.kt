@@ -7,50 +7,162 @@ import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
+import kotlin.reflect.KClass
 import kotlin.test.assertTrue
 
 /** Whether the screen can be shown and touched. */
 enum class UiStateForContract {
     /**
-     * A screen the binding can bring up over the port's own entry and touch once — [UiUnderTest.tap], which shows a
-     * state through [Ui.show] and taps one control on it, as a person would.
+     * A screen the binding can bring up over the port's own entry and touch through every control a person can reach —
+     * [UiUnderTest.tour], which shows the states the controls appear in and taps each, as a person would.
      */
-    TOUCHABLE,
+    TOURABLE,
 }
 
 /**
- * The port as a clause receives it: [ui], and [tap] — the binding bringing the screen up through the adapter's own
- * entry (an activity's creation, the scene's first activation), showing it a state through [Ui.show], and tapping one
- * control a person can reach on it.
+ * The port as a clause receives it: [ui], and [tour] — the binding bringing the screen up through the adapter's own
+ * entry (an activity's creation, the scene's first activation) and touching every control a person can reach, in the
+ * states each appears in, which it shows through [Ui.show]. [react] is what the clause's handler does with an intent
+ * beyond recording it: the composition that reduces it into the next state, so a tour can open a dialog and confirm it.
  */
 class UiUnderTest(
     val ui: Ui<UiState, UiIntent>,
-    val tap: suspend () -> Unit,
+    val react: (UiIntent) -> Unit,
+    val tour: suspend () -> Unit,
     /** The state the app shows now — what a screen brought up live renders first. */
     val shown: () -> UiState,
 )
 
 /**
  * What the screen promises the composition (`docs/architecture.md`, "entry ports"): it reports itself live when it is
- * brought up, renders what it is shown, and a tap on it reaches the handler as an intent. The intent is the
- * composition's vocabulary, carried through the adapter as it is — the port grid counts it as ONE cell
- * (`docs/testing.md`, "The port grid") — so one tap proves the crossing. Which tap means which intent is
- * `statusActions`', click-tested over every control in `:ui:screens` (`HostStatusActionsTest`); what an intent DOES is
- * the presentation's (`StatusContainerHost.onIntent`), tested beside it. This is what the adapter delivers.
+ * brought up, and every control a person can touch reaches the handler as the intent it means — none dropped, none
+ * missing. What an intent DOES is the presentation's (`StatusContainerHost.onIntent`), tested beside it; which tap
+ * means which intent is `statusActions`', click-tested in `:ui:screens`. This is what the adapter delivers.
  */
 object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
+
+    /** Every intent a person can make: what a tour of the whole screen must deliver. */
+    val EVERY_INTENT: List<KClass<out UiIntent>> = listOf(
+        UiIntent.ConfirmCreate::class,
+        UiIntent.CreateName::class,
+        UiIntent.KeepOpenFor::class,
+        UiIntent.KeepOpenDismiss::class,
+        UiIntent.RangeDay::class,
+        UiIntent.RangeDragStart::class,
+        UiIntent.RangeDragEnd::class,
+        UiIntent.RangeSweep::class,
+        UiIntent.RangeFromHour::class,
+        UiIntent.RangeFromMinute::class,
+        UiIntent.RangeUntilHour::class,
+        UiIntent.RangeUntilMinute::class,
+        UiIntent.RangeUntilMinuteDrag::class,
+        UiIntent.RangePickerOpen::class,
+        UiIntent.RangePickerConfirm::class,
+        UiIntent.RangePickerDismiss::class,
+        UiIntent.RequestPermission::class,
+        UiIntent.ChoosePhotos::class,
+        UiIntent.OpenSettings::class,
+        UiIntent.LeaveEvent::class,
+        UiIntent.ShareInvite::class,
+        UiIntent.OpenAppStore::class,
+        UiIntent.ConfirmLeaveOpen::class,
+        UiIntent.ConfirmLeaveDismiss::class,
+        UiIntent.RenameOpen::class,
+        UiIntent.RenameDismiss::class,
+        UiIntent.QrOpen::class,
+        UiIntent.QrDismiss::class,
+        UiIntent.ReportBugOpen::class,
+        UiIntent.ReportRefusal::class,
+        UiIntent.ReportBugDismiss::class,
+        UiIntent.MenuOpen::class,
+        UiIntent.MenuDismiss::class,
+        UiIntent.MenuReportBug::class,
+        UiIntent.MobileData::class,
+        UiIntent.OpenLink::class,
+        UiIntent.ReportNoticeDismiss::class,
+        UiIntent.OpenReconfigure::class,
+        UiIntent.CancelReconfigure::class,
+        UiIntent.RenameEvent::class,
+        UiIntent.RenameStatusConsumed::class,
+        UiIntent.ConfirmStopSharing::class,
+        UiIntent.KeepSharing::class,
+        UiIntent.ShareOn::class,
+        UiIntent.ReceiveOn::class,
+        UiIntent.SaveToAlbum::class,
+        UiIntent.RangePreset::class,
+        UiIntent.RetryLoad::class,
+        UiIntent.ConfirmJoin::class,
+        UiIntent.ConfirmSwitch::class,
+        UiIntent.RetryJoin::class,
+        UiIntent.CancelJoin::class,
+        UiIntent.CancelSwitch::class,
+        UiIntent.SendDiagnostics::class,
+    )
 
     override val clauses = clauses {
 
         clause(
-            "TOUCHABLE_A_TAP_REACHES_THE_HANDLER",
-            UiStateForContract.TOUCHABLE,
+            "TOURABLE_EVERY_CONTROL_REACHES_THE_HANDLER",
+            UiStateForContract.TOURABLE,
             covers = cells {
                 on<Ui<UiState, UiIntent>> {
                     answers(Ui<UiState, UiIntent>::inbound).returns()
                     answers(Ui<UiState, UiIntent>::show).returns()
                     calls(UiHandlers<UiState, UiIntent>::onLive)
-                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ConfirmCreate::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.CreateName::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.KeepOpenFor::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.KeepOpenDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeDay::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeDragStart::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeDragEnd::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeSweep::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeFromHour::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeFromMinute::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeUntilHour::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeUntilMinute::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangeUntilMinuteDrag::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangePickerOpen::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangePickerConfirm::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangePickerDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RequestPermission::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ChoosePhotos::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.OpenSettings::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.LeaveEvent::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ShareInvite::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.OpenAppStore::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ConfirmLeaveOpen::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ConfirmLeaveDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RenameOpen::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RenameDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.QrOpen::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.QrDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ReportBugOpen::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ReportRefusal::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ReportBugDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.MenuOpen::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.MenuDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.MenuReportBug::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.MobileData::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.OpenLink::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ReportNoticeDismiss::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.OpenReconfigure::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.CancelReconfigure::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RenameEvent::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RenameStatusConsumed::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ConfirmStopSharing::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.KeepSharing::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ShareOn::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ReceiveOn::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.SaveToAlbum::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RangePreset::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RetryLoad::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ConfirmJoin::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ConfirmSwitch::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RetryJoin::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.CancelJoin::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.CancelSwitch::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.SendDiagnostics::class)
                 }
             },
         ) { subject ->
@@ -58,16 +170,23 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
             var live = 0
             subject.ui.inbound(
                 UiHandlers(
-                    onIntent = inboundOf { delivered += it },
+                    onIntent = inboundOf { intent ->
+                        delivered += intent
+                        subject.react(intent)
+                    },
                     onLive = inboundOf {
                         live++
                         subject.shown()
                     },
                 ),
             )
-            subject.tap()
+            subject.tour()
             assertTrue(live > 0, "a screen brought up reports itself live")
-            assertTrue(delivered.isNotEmpty(), "a tap on the screen reaches the handler as an intent")
+            val missing = EVERY_INTENT.filter { kind -> delivered.none { kind.isInstance(it) } }
+            assertTrue(
+                missing.isEmpty(),
+                "every control reaches the handler; never delivered: ${missing.map { it.simpleName }}",
+            )
         }
     }
 }

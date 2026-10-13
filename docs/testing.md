@@ -36,7 +36,8 @@ The shared `commonTest` runs **once, on the JVM**, under `build`. A platform run
 the adapters and their contract bindings over the platform's own APIs (Keychain, PhotoKit, the native SQLite driver;
 Keystore, MediaStore, WorkManager, DownloadManager). Each platform has the same three CI gates (`ci.yml`): its
 **build** followed on the same runner by its **platform tests** (`ios-build`: the signed archive, then
-`iosPlatformTest`; `android-build`: R8 over the plain release on a delivering run, then every module's `connectedAndroidDeviceTest` on one emulator), and its **journeys**
+`iosPlatformTest`; `android-build`: R8 over the plain release on a delivering run, then every module's
+`connectedAndroidDeviceTest` on one emulator), and its **journeys**
 (`journeys (ios)`, `journeys (android)`, section "Journeys").
 
 The shared tests used to run on Kotlin/Native and on ART as well. In their history that caught only test NAMES those
@@ -381,10 +382,7 @@ question: what could an adapter answer at all? It reads `:domain:ports` by refle
   a `false`, a `Flow<T>` the variants of `T`, and any other type a single `returns`. A nullable type adds
   `null`.
 - `Port.handlers.field(Arg, …)`: a delivery an event port's adapter makes, crossed with the variants of
-  every argument it passes — a `Background` or `Granted` delivery's `Completion` among them. An argument typed
-  by a generic port's type parameter (`Ui`'s intent) is one variant, named by the type the composition binds:
-  the adapter carries that vocabulary through whole, so one tap proves the crossing, and which tap means which
-  intent is `:ui:screens`' click-tested table.
+  every argument it passes — a `Background` or `Granted` delivery's `Completion` among them.
 - `Port.member.param(…)`: the same, for a callback handed to a member.
 - `Port.Handle.member → Variant`: a handle (`Completion`, the `Running` a `Granted` delivery answers or
   `BackgroundTime.begin` is handed, …) counted under each port that hands it out or is handed it.
@@ -569,7 +567,8 @@ item is never read as absent).
 
 - **JVM:** ordinary test tasks in `build`.
 - **`IOS_SIM_KEXE`:** `iosPlatformTest`, in the `ios-build` job.
-- **`ANDROID_EMU`:** every module's `connectedAndroidDeviceTest` on one emulator in the `android-build` job (`androidPlatformTest`, a Gradle-managed emulator per module, locally).
+- **`ANDROID_EMU`:** every module's `connectedAndroidDeviceTest` on one emulator in the `android-build` job
+  (`androidPlatformTest`, a Gradle-managed emulator per module, locally).
 - **`IOS_SIM_APP`: live on every push.** The `journeys (ios)` job builds the app under
   `-Psnapsync.rig=true`, applies the declared grant, launches it, and `scripts/sim-contracts` runs every
   entry of the host's in-app registry (`GET /contract`) through the rig's contract verb. It fails on any

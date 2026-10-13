@@ -71,7 +71,7 @@ kotlin {
             // The Backend contract speaks the device API as `api/openapi.yaml` declares it: the generated routes,
             // replies and DTOs are its clauses' vocabulary, so a binding names them too.
             api(project(":domain:wire"))
-            // The screen's vocabulary the Ui contract crosses (`UiIntent`) over the port bound to it.
+            // The screen's vocabulary the Ui contract tours (`UiIntent`) over the port bound to it.
             api(project(":ui:state"))
             // `DatabasesContract` brings its own schema and reads through the driver it is handed.
             implementation(libs.sqldelight.runtime)

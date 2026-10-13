@@ -85,7 +85,7 @@ private fun <K : Enum<K>, T> execute(clause: Clause<K, T>, subject: T, kind: Bin
 
 /**
  * How long one clause may take in all. Longer than `runTest`'s minute because a clause may drive a real platform
- * surface end to end on a slow emulator or simulator — a screen rendered in software, an OS's own scheduling — while every
+ * surface end to end — the Ui contract tours every control of a screen an emulator renders in software — while every
  * wait on an operating-system callback inside it keeps its own real-time bound (`NotWithin`).
  */
 private val CLAUSE_BOUND = 5.minutes
