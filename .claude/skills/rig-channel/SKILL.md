@@ -635,22 +635,46 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
 ### The backend's typed services
 
 The backend's levers and reads are **typed services** (`docs/testing.md`, "Typed services"), served over **kRPC** on
-`ws://<host>:<port>/rpc` — not as `/device` verbs, so **curl cannot reach them**. Until the generated `rig` CLI lands
-(its own phase), drive them from Kotlin through `:test:control`'s typed client, which kotlinx-rpc generates from the
-interfaces in `:test:levers`:
+`ws://<host>:<port>/rpc` — not as `/device` verbs, so **curl cannot reach them**. From a shell, drive them with
+**`rig`** (`:test:cli`), whose commands are generated from the interfaces in `:test:levers`:
+
+```bash
+./gradlew :test:cli:installDist -q        # once per checkout, and after a :test:levers change
+R=test/cli/build/install/rig/bin/rig      # define it in the SAME call that uses it: shell state does not persist
+$R --help                                 # the services; `$R backend --help`, `$R backend fail --help` for more
+
+B=http://127.0.0.1:<port>                 # the JVM host's printed port, or the phone's forward (18101 SE2, 18102 XS)
+$R --url $B backend offline --on          # → ok
+$R --url $B backend fail --operation createEvent --fault maintenance --times 2
+$R --url $B public-backend foreign-device --device 6f1c1e9e-4a7b-4c55-9d3e-1b2c3d4e5f60 --assets A1,A2
+$R --url $B backend switches              # a read prints its JSON; --json prints it on one line
+$R --url $B rig advertise                 # what this host honours and refuses, typed services included
+$R --url $B run steps.txt                 # one command per line ('#' comments; '-' reads stdin), one connection
+```
+
+- **`--url` is required** — there is no default host and no environment variable.
+- **Exit codes:** `0` answered · `1` failed (the host's message as it arrived — from an iOS host, kRPC's stand-in
+  exception's) · `2` usage (an unknown service, method or flag, or a value its type cannot take; the message names
+  what there is) · `3` refused by this host (`refused: <service>.<method> is refused here: <reason>`).
+- **Flags:** a method or flag by its command spelling (`fail-listing`) or its Kotlin name (`failListing`); an enum
+  value in any case (`maintenance`, `server-error`, `MOTION_PHOTO`); a list by a repeated flag or comma-separated
+  (`--assets A1,A2`); a bare `Boolean` flag is `true` (`--on`; `--on false` to switch it off).
+- **A foreign `device` must be a canonical UUID.** Each call starts a JVM: about 0.6 s; a `run` file pays it once.
+
+From Kotlin, `:test:control`'s typed client calls the same interfaces:
 
 ```kotlin
 RigClient("http://127.0.0.1:$PORT").use { client ->
     client.levers(BackendLevers).offline(true)
-    client.levers(PublicBackendLevers).foreignDevice("F1", listOf("A1"))
-    client.levers(RigLevers).advertise()        // what this host honours and refuses, typed services included
+    client.levers(PublicBackendLevers).foreignDevice("6f1c1e9e-4a7b-4c55-9d3e-1b2c3d4e5f60", listOf("A1"))
+    client.levers(RigLevers).advertise()
 }
 ```
 
 What a host serves is in its advertisement — `GET /device` lists each typed method as `<service>.<method>`
 (`backend.offline`, `public-backend.foreignDeviceLeave`), honoured or refused with the reason. A refused service
 throws `LeverRefused`; an omitted `event` is the joined one, an omitted `device` this one, any other omitted argument
-`null` (pass `on = true` — it is never implied).
+`null` (a `Boolean` is never implied: pass `on = true`, or `--on` from `rig`).
 
 - `backend` (`BackendLevers`) — the backend mock's operator; refused over the real `api/` ("unavailable on this
   backend"): levers `offline(on)`, `failListing(on)`, `failUnion(on)`, `fallbackBearer(on)`, `minAppVersion(minimum?)`

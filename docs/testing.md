@@ -850,7 +850,7 @@ echoed back. The backend is the first face to move, as two services:
 HTTP routes. The plugin generates the client a test calls (`client.levers(BackendLevers).offline(true)`,
 `:test:control`) and the stub the rig registers the implementation under, so no message format, route or dispatch is
 written by hand. There is no readable HTTP form of a typed service: curl drives the string verbs not yet migrated, and
-a generated CLI (a later phase) will drive the typed ones.
+`rig` (`:test:cli`) drives the typed ones from a shell.
 
 - **The rig registers every declared service on every host** (`LeverDispatch.kt`), each behind one wrapper written
   for all of them. The wrapper refuses every method with `LeverRefused` and the reason when the host cannot meet the
@@ -872,6 +872,16 @@ a generated CLI (a later phase) will drive the typed ones.
 - **Measured on every host, 2026-10-13:** the JVM host (both backends), the Android rig release (R8) on the emulator
   and on the A40 over `adb forward`, the iOS simulator over its loopback, and the SE2 over `usbmux forward` — the
   advertisement, levers, reads, an implementation's refusal and a host's refusal each crossed.
+
+**`rig`, the typed services from a shell** (`:test:cli`): its commands are derived from the declared services'
+descriptors — `rig <service> <method> --<parameter> <value>` — so a service or method added in `:test:levers` is a
+command with no edit, and it sends each call through kRPC's client as a test does. A flag's text decodes by its
+parameter's serializer: an enum by its name in any case or its serial name, a list by a repeated or comma-separated
+flag, a bare `Boolean` flag as `true`, an omitted nullable as `null`. The host is `--url`, required. It prints a
+lever's `ok` and a read's JSON (`--json`: one line), and exits 1 on a host's failure (its message as it arrived), 2 on
+a usage error and 3 on a refusal (`LeverRefused`, with the host's reason); `rig run <file>` runs a command per line
+over one connection. Help is derived the same way and carries names and types, not the interfaces' KDoc. A call costs
+about 0.6 s, measured on the JVM host (2026-10-13), most of it the JVM's start.
 
 **The gate** (`LeverFacesTest`, `:test:architecture`) derives the faces from `MockDevice`'s mocks — each one's
 `operator` — and holds every face that implements a declared service to it: each public member is a method of its

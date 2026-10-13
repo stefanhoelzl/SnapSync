@@ -35,6 +35,7 @@ flowchart LR
   domain_services[":domain:services"]
   domain_wire[":domain:wire"]
   test_architecture[":test:architecture"]
+  test_cli[":test:cli"]
   test_contracts[":test:contracts"]
   test_control[":test:control"]
   test_edge[":test:edge"]
@@ -229,6 +230,8 @@ flowchart LR
   test_architecture --> test_contracts
   test_architecture --> test_levers
   test_architecture --> ui_state
+  test_cli --> test_levers
+  test_cli --> test_rig
   test_contracts --> adapter_generic_motionphoto
   test_contracts --> domain_domain
   test_contracts --> domain_inbound
