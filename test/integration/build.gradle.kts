@@ -121,4 +121,9 @@ tasks.test {
     // JUnit 4: the contracts module (on the runtime path through the rig) binds kotlin-test to JUnit 4 in its main
     // code, and two kotlin-test framework bindings cannot coexist (the same reason `:test:control` gives).
     useJUnit()
+    // Every test starts its own in-process rig host on an OS-chosen loopback port over in-memory mocks, so test classes
+    // share nothing and split across JVMs. Run in one, the suite was the build's longest task, and it depends on
+    // nearly every module, so nothing overlapped it: 276 s in one fork against 73 s in four (2026-10-13). Half the
+    // cores, at most four: each fork is a full composed app.
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
 }
