@@ -50,6 +50,8 @@ mkdir -p "$OUT"
 fail() { echo "sim-contracts: FAILED — $*" | tee -a "$OUT/result"; exit 1; }
 # stage, await_backend, run_journeys, print_journey_failures
 . scripts/lib/journeys.sh
+# image_iphone, stop_daemons
+. scripts/lib/sim.sh
 # Crash reports newer than this marker are this run's.
 touch "$OUT/.start"
 
@@ -110,19 +112,11 @@ BACKEND="http://127.0.0.1:8080/api/v2"
 # On CI, the runner image's own iPhone 17 on the newest iOS runtime: the image booted it once when it was built,
 # so it skips the first-boot data-container and photo-library migration a created device pays (minutes under the
 # build's load; `screenshots.yml` measured 209-224 s of it), and the runner VM is discarded, so it is as fresh as a
-# created one. Anywhere else an iPhone 17 is created, because a reused one keeps the photos earlier runs seeded.
+# created one (`scripts/sim-settle` says how CI caches it already booted and settled). Anywhere else an iPhone 17
+# is created, because a reused one keeps the photos earlier runs seeded.
 DEVICE=""; CREATED=""
 if [ "${CI:-}" = true ]; then
-    DEVICE="$(xcrun simctl list -j devices available | python3 -c '
-import json, sys
-runtimes = json.load(sys.stdin)["devices"]
-ios = sorted((r for r in runtimes if ".SimRuntime.iOS-" in r),
-             key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
-for r in ios:
-    for d in runtimes[r]:
-        if d["name"] == "iPhone 17":
-            print(d["udid"]); sys.exit(0)
-')"
+    DEVICE="$(image_iphone)"
     if [ -n "$DEVICE" ]; then echo "sim-contracts: reusing the image's iPhone 17 $DEVICE"
     else echo "sim-contracts: the image carries no iPhone 17 — creating a device"; fi
 fi
@@ -176,37 +170,9 @@ stage "simulator: booting"
 xcrun simctl boot "$DEVICE" || fail "the simulator did not boot"
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not finish booting"
 stage "simulator: booted"
-# The simulator's own daemons that nothing here needs, stopped for the rest of its life (`disable` keeps launchd from
-# starting one again; `bootout` ends a running one). Never fatal: a simulator that keeps one is only slower.
-# - apsd, the push daemon, loops reconnecting to sandbox.push.apple.com from the runner: ~5 300 TCP+TLS attempts and
-#   1.1 M log lines in six minutes, and serving that log cost `diagnosticd` ~170 s of CPU between boot and the app's
-#   first photo write (runs 36181223846, 36185184684). The app has no APNs entitlement, and its registration fails
-#   before apsd is asked. Stopping it cut that CPU to 67–104 s (run 36188792139, three attempts).
-# - mediaanalysisd (+ its .service) and photoanalysisd, the Photos library's on-device analysis, which the scheduler
-#   starts minutes after boot, once the contracts have imported photos: ~2.3 of the runner's 3 cores. In every
-#   `journeys (ios)` failure of 2026-10-05/06 (runs 37380983503, 37473734850, 37491092872, 37492840735) it was running
-#   during the journey's create, which stalled the app AND the local api until the app's 5 s timeout fired (the api
-#   answered 201 after 10–17 s); in none of 11 passing runs was it. The app reads and writes the library, never its
-#   analysis. Stopped, it cannot be restarted (`kickstart` finds no service) and `addmedia` still lands at once.
-# - The rest, measured on a stock simulator against one with them stopped (second boots, 6 min, iPhone 16 / iOS 26.5,
-#   2026-10-06): 190 → 95 CPU-s besides the two above, a share of it the log daemon serving their lines. Home-screen
-#   widgets (chronod) and wallpapers (PosterBoard, postersyncd), the App Store's engagement daemon (amsengagementd, at
-#   36–112% during the journeys of two of the failing runs), Shortcuts, Screen Time, Health, Fitness, Game Center,
-#   Weather, Reminders, News, Siri suggestions and Spotlight knowledge. SpringBoard, `addmedia` and Photos ran unharmed.
-STOPPED_DAEMONS="apsd mediaanalysisd mediaanalysisd.service photoanalysisd amsengagementd MapKit.SnapshotService
-    chronod PosterBoard contacts.postersyncd siriactionsd ShortcutsUI ScreenTimeAgent intelligenceplatformd
-    fitnessintelligenced fitnesscoachingd healthd healthappd healtheventsd healthrecordsd healthcontentd finhealthd
-    gamed weatherd remindd newsd suggestd spotlightknowledged spotlightknowledged.updater"
-{
-    for daemon in $STOPPED_DAEMONS; do
-        xcrun simctl spawn "$DEVICE" launchctl disable "system/com.apple.$daemon"
-        xcrun simctl spawn "$DEVICE" launchctl bootout "system/com.apple.$daemon"
-    done 2>&1 | grep -v 'Please switch to user/foreground'
-    echo "still loaded after the stop:"
-    xcrun simctl spawn "$DEVICE" launchctl list | awk '{ print $3 }' | while read -r label; do
-        for daemon in $STOPPED_DAEMONS; do [ "$label" = "com.apple.$daemon" ] && echo "  $label"; done
-    done
-} > "$OUT/daemons-stop.log" 2>&1
+# The simulator's own daemons that nothing here needs, stopped for the rest of its life (`scripts/lib/sim.sh` says
+# which and why). On CI the cached device (`scripts/sim-settle`) already holds them disabled, and this is a no-op.
+stop_daemons "$DEVICE" > "$OUT/daemons-stop.log" 2>&1
 # The app's first photo write waits until `assetsd` has built the library's compute cache and opened its search index
 # (74 s of `validate` in run 36181223846; 1:23–4:43 per run before this). Opening Photos now, while the app installs,
 # starts that preparation earlier: the first write then took 1–46 s (run 36188792139, three attempts). Photos stays
