@@ -1,6 +1,9 @@
 package app.snapsync.compose
 
-import app.snapsync.model.DeviceIdentityRole
+import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.trust.CachedCredentialStore
+import app.snapsync.data.trust.SecureCredentialStore
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
@@ -8,8 +11,6 @@ import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.identity.AttestState
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
@@ -17,7 +18,6 @@ import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.push.PushTokenSource
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.staging.StagingService
-import app.snapsync.services.trust.AttestStore
 import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 
@@ -75,16 +75,20 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      */
     val manifestStore: DeviceManifestService by lazy { DeviceManifestService(sharedDatabase) }
 
-    /** The attestation token and key id, in the shared store the extension reads. */
-    val attestStore: AttestStore by lazy { AttestState(ports.secureStore) }
+    /**
+     * The attestation token and key id, in the shared store the extension reads — held in memory between re-reads by
+     * this process's one copy, which the credential and the uploader share.
+     */
+    val credentials: CachedCredentialStore by lazy { CachedCredentialStore(SecureCredentialStore(ports.secureStore)) }
 
     /**
-     * The device identity. MINTING is the app's role alone: it also adopts an id an older
-     * build wrote, rather than re-minting a second identity that would orphan this device's byte partition. Read per
-     * use, and it keeps only a success, so a resolve that fails on a locked device is retried on the next call.
+     * The device identity. Minting is the app's alone: it also adopts an id an older build wrote, rather than
+     * re-minting a second identity that would orphan this device's byte partition. It keeps only a success, so a
+     * resolve that fails on a locked device is retried on the next call.
      */
-    val deviceIdentity: PersistedDeviceIdentity by lazy {
-        PersistedDeviceIdentity(DeviceIdentityRole.MINTING, ports.secureStore, ports.platformDeviceId)
+    @OptIn(AppProcessOnly::class)
+    val deviceIdentity: MintingDeviceIdentity by lazy {
+        MintingDeviceIdentity(ports.secureStore, ports.platformDeviceId)
     }
 
     /**

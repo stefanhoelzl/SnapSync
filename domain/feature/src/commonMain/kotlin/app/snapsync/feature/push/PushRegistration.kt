@@ -1,10 +1,11 @@
 package app.snapsync.feature.push
 
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.PushTokenPublisher
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.push.PushTokenSource
 import co.touchlab.kermit.Logger
@@ -36,7 +37,7 @@ class PushRegistration(
     private val record: PushRegistrationRecord,
     /** Whose registration this is: part of the registration, since a changed device id is a registration the backend
      *  has never seen. Read per publish — it is a Keychain read that throws while protected data is unavailable. */
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
     private val log: Logger = Logger.withTag("PushRegistration"),
 ) {
     /**
@@ -107,7 +108,7 @@ class PushRegistration(
 
     /** The registration [token] would make, or `null` while the device identity cannot be read (logged). */
     private fun keyOf(token: PushEndpoint): String? =
-        runCatchingCancellable { registrationKey(token, identity.deviceId()) }
+        runCatchingCancellable { registrationKey(token, identity.requireDeviceId()) }
             .onFailure { log.w(it) { "device identity unreadable — push registration deferred to the next trigger" } }
             .getOrNull()
 

@@ -1,11 +1,12 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeoutOrNull
@@ -45,7 +46,7 @@ class ShareSetLoad(
     private val files: DeviceFilesSource,
     private val ledger: LedgerService,
     /** The device identity; a thunk because it resolves against a protected store on first use. */
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
     private val log: Logger = Logger.withTag("ShareSetLoad"),
 ) {
     /** Load the share set of the membership in [eventId], the event being joined. */
@@ -53,7 +54,7 @@ class ShareSetLoad(
         // `list` answers failures as a `Result`; a throw (the device-id read, say) is folded into the same
         // arm. Cancellation is not a failure and is rethrown — the caller is being torn down.
         val listing = try {
-            withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(eventId, identity.deviceId()) }
+            withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(eventId, identity.requireDeviceId()) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

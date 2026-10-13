@@ -17,7 +17,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/diagnostics`
 
-- files: `CollectDiagnosticDump.kt`
+- files: `CollectDiagnosticDump.kt`, `ReportedIdentity.kt`
 - top-level types: `CollectDiagnosticDump (class)`
 
 ## `feature/download`

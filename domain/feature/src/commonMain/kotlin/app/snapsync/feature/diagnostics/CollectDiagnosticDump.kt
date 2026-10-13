@@ -1,5 +1,6 @@
 package app.snapsync.feature.diagnostics
 
+import app.snapsync.data.trust.RefusalFacts
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
@@ -22,7 +23,6 @@ import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.network.NetworkReadings
 import app.snapsync.services.settings.MobileDataSetting
-import app.snapsync.services.trust.RefusalFacts
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first

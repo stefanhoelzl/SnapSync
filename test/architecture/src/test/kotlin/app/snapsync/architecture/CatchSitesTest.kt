@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  * answers every expected failure as a value").
  *
  * The old zones still hold the catch-alls they were written with (`runCatchingCancellable`, `bestEffort`, `contained`,
- * `orNullLogged`, a broad or typed `catch`): [BASELINE] counts them per file, EXACT in both directions — a new one
+ * a broad or typed `catch`): [BASELINE] counts them per file, EXACT in both directions — a new one
  * fails, and one removed must be removed here too, so the count only falls. Phase 4 empties it as each zone moves under
  * entry points and sequences, and deletes the helpers with the last use.
  *
@@ -28,7 +28,6 @@ class CatchSitesTest {
         Regex("""\brunCatchingCancellable\b"""),
         Regex("""\.bestEffort\("""),
         Regex("""\.contained\("""),
-        Regex("""\.orNullLogged\("""),
     )
 
     /** Any `catch` clause, and the type it names — outside the adapters, a typed catch counts too. */
@@ -121,8 +120,6 @@ class CatchSitesTest {
             "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/databases/IosDatabases.kt" to 3,
             "/app/desktop/src/main/kotlin/app/snapsync/desktop/MirrorHarness.kt" to 4,
             "/app/desktop/src/main/kotlin/app/snapsync/desktop/WorldInspectorController.kt" to 2,
-            "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt" to 1,
-            "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/album/AlbumCoordinator.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/diagnostics/CollectDiagnosticDump.kt" to 3,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/download/DownloadController.kt" to 8,
@@ -159,11 +156,8 @@ class CatchSitesTest {
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt" to 5,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/databases/SharedDatabase.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/gallery/AlbumExclusions.kt" to 2,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/identity/PersistedDeviceIdentity.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/leave/PendingLeaves.kt" to 5,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/manifest/DeviceManifestService.kt" to 6,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/trust/DeviceAttestation.kt" to 7,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/trust/ExtensionCredential.kt" to 3,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/upload/SessionTransfer.kt" to 1,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/upload/UploadStandings.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/wake/EventChecks.kt" to 4,

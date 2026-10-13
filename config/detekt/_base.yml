@@ -54,6 +54,13 @@ naming:
 
 
 complexity:
+  CyclomaticComplexMethod:
+    # A `when` whose every entry is one expression counts ONCE: it SELECTS over a fact's cases, it does not nest a
+    # decision per case. Counted per entry (detekt's default), the exhaustive `when` the core's layers are required to
+    # write (`EntryPointShape`, `DataShape`; `docs/patterns.md`) measures the fact's SIZE — a six-way reply would read
+    # as six decisions — and no claim could hold for the very shape the layer rules demand. An entry with a block body
+    # still counts: that is a decision inside a case. It only ever relaxes, so no scope can be broken by it (phase 4.1).
+    ignoreSimpleWhenEntries: true
   TooManyFunctions:
     # `TooManyFunctions` measures a type's SURFACE — how many things a caller must hold in their head to
     # use it. A `@Test` function is not surface: nothing calls it, it takes no arguments, and it is
@@ -102,6 +109,11 @@ snapsync:
     active: true
     includes:
       - '**/domain/entrypoints/src/commonMain/**'
+  DataShape:
+    # Data translates and never decides: every branch is a domain verdict's, as an expression.
+    active: true
+    includes:
+      - '**/domain/data/src/commonMain/**'
   OneCallPerStep:
     active: true
     includes:
@@ -113,6 +125,8 @@ snapsync:
       - '**/domain/inbound/src/commonMain/**'
       - '**/domain/entrypoints/src/commonMain/**'
       - '**/domain/domain/src/commonMain/**'
+      - '**/domain/data/src/commonMain/**'
+      - '**/domain/application/src/commonMain/**'
   NoFunctionTypes:
     active: true
     includes:
@@ -120,6 +134,8 @@ snapsync:
       - '**/domain/scheduling/src/commonMain/**'
       - '**/domain/entrypoints/src/commonMain/**'
       - '**/domain/domain/src/commonMain/**'
+      - '**/domain/data/src/commonMain/**'
+      - '**/domain/application/src/commonMain/**'
   DomainPurity:
     # The domain is values and verdicts (`docs/patterns.md`, "The domain").
     active: true

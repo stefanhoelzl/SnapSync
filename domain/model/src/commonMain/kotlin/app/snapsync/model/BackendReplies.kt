@@ -82,10 +82,3 @@ enum class UnionTrigger(val wire: String, val full: Boolean) {
     /** Up to which position this device holds every photo of the others — what it reports once the event has ended. */
     RECEIVED_CHECK("received-check", full = true),
 }
-
-/**
- * A backend refusal of this build: the cell the version gate publishes and the status host reduces into the update
- * screen. [minimumVersion] is the version the backend named, or `null` when the refusal carried none — which is still a
- * refusal, never the same as no refusal at all.
- */
-data class VersionRefusal(val minimumVersion: String?)

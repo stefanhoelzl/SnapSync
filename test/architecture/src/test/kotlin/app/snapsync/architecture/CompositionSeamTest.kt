@@ -130,19 +130,13 @@ class CompositionSeamTest {
         "UploadServices.selectionScope" to
             "what discovery may read right now (capability `photo-access`), derived by the app composition from " +
             "current permission plus the in-memory snapshot — a call because the answer changes between cycles",
-        "UploadServices.token" to
-            "the attestation bearer, read per request from the extension's cached AttestState or the app core's own " +
-            "DeviceAttestation — a call because a renewal must be picked up without rebuilding the cycle",
-        "UploadServices.freshToken" to
-            "the same bearer as `token`, after dropping the in-memory copy (CachedAttestStore.reread) — what a " +
-            "retry's request carries, since the other process may have renewed it (capability `background-upload`)",
         "CollectDiagnosticDump.uploadFacts" to
             "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
         "CollectDiagnosticDump.appFacts" to
             "the bug report's facts only this core holds — the device id (never minted), the clock's zone, the process " +
             "footprint and the selection snapshot's size — each a direct read mapped to a Fact by model/",
         "CollectDiagnosticDump.refusalFacts" to
-            "the latest refused attestation's facts the attestation service holds in memory (DeviceAttestation." +
+            "the latest refused attestation's facts the credential's status holds in memory (AttestationStatus." +
             "refusalFacts) — read for a report offered from \"Report this\" (capability `privacy-security`)",
         "DownloadArm.enabled" to
             "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +

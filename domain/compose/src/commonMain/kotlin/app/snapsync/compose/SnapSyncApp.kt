@@ -1,8 +1,16 @@
 package app.snapsync.compose
 
+import app.snapsync.application.trust.RefreshAttestation
+import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.backend.BuildTarget
+import app.snapsync.data.trust.AttestationStatus
+import app.snapsync.data.trust.AttestingCredential
+import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
@@ -39,7 +47,6 @@ import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
@@ -49,9 +56,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
-import app.snapsync.model.VersionRefusal
 import app.snapsync.model.extensionRegistrable
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
@@ -79,7 +84,6 @@ import app.snapsync.ports.Ui
 import app.snapsync.ports.Wake
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
-import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crypto.DownloadOpening
@@ -100,15 +104,14 @@ import app.snapsync.services.gallery.LatestSelection
 import app.snapsync.services.gallery.PermissionAwareAssetPresence
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.gallery.denylistedAlbumMembers
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.transfer.SessionDrains
-import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.upload.OsDrivenRegistration
 import app.snapsync.services.upload.Resuming
 import app.snapsync.services.upload.SessionTransfer
 import app.snapsync.services.upload.TransferSetup
-import app.snapsync.services.version.AppVersionGate
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -260,19 +263,30 @@ class AppCore internal constructor(
     val versionGate: AppVersionGate = AppVersionGate()
 
     /**
-     * Device attestation — the bearer token EVERY backend call
-     * carries, and the app's recovery when the backend rejects it. Composed here; only the app process can
-     * attest (`DCAppAttestService.isSupported` is false in an app extension — measured), and the extension
-     * reads the token this writes.
+     * What the app's credential has learnt — whether this device holds a usable token, why the service refused it, the
+     * refusal's facts, and every new token. NOT lazy, for [versionGate]'s reason: the status host observes it from its
+     * first frame.
      */
-    val attestation: DeviceAttestation by lazy { attestationFor(services, process.clock, exchange) }
+    val attestationStatus: AttestationStatus = AttestationStatus()
+
+    /**
+     * The app's credential — the bearer token EVERY backend call carries, kept alive and recovered when the backend
+     * rejects it. Composed here; only the app process can attest (`DCAppAttestService.isSupported` is false in an app
+     * extension — measured), and the extension reads the token this writes.
+     */
+    internal val attestation: AttestingCredential by lazy {
+        attestingCredentialFor(services, process.clock, exchange, attestationStatus)
+    }
+
+    /** The wake's refresh of [attestation], the use case every wake's prelude calls. */
+    internal val refreshAttestation: RefreshAttestation by lazy { RefreshAttestation(attestation) }
 
     /**
      * The backend's protocol over [AppPorts.http] (`docs/architecture.md`, "The backend boundary"): where every request
      * goes, the version it declares, and the reply it reads — reporting a refused build to [versionGate]. The
-     * attestation service sends the token issuers through it; every other request goes through [backend]'s gateway.
+     * credential sends the token issuers through it; every other request goes through [backend]'s gateway.
      */
-    val exchange: BackendExchange by lazy { BackendExchange(ports.http, process.build, versionGate) }
+    val exchange: BackendExchange by lazy { BackendExchange(ports.http, BuildTarget(process.build), versionGate) }
 
     /**
      * The app's foreground life: whether it is in front now, and its returns as the create screen's draft follows
@@ -295,11 +309,11 @@ class AppCore internal constructor(
     /** [versionGate]'s cell, for readers outside the core (the status host), which see no service type. */
     val versionRefusal: StateFlow<VersionRefusal?> get() = versionGate.refusal
 
-    /** [attestation]'s health cell, for readers outside the core (the status host), which see no service type. */
-    val attested: StateFlow<Boolean> get() = attestation.attested
+    /** [attestationStatus]' health cell, for readers outside the core (the status host), which see no service type. */
+    val attested: StateFlow<Boolean> get() = attestationStatus.attested
 
     /** Why the service refused this phone at the latest attempt to verify it. */
-    val refusal: StateFlow<DeviceRefusal?> get() = attestation.refusal
+    val refusal: StateFlow<DeviceRefusal?> get() = attestationStatus.refusal
 
     /**
      * Every need-shaped backend service, over one gateway whose credential is [attestation] (a rejected
@@ -452,7 +466,7 @@ class AppCore internal constructor(
             eventAlbum = { albumCoordinator.albumIdFor(services.config.config.value) },
             onImportedIntoAlbum = { album -> albumCoordinator.onImportedInto(services.config.config.value, album) },
             stagedBytes = services.stagedBytes,
-            myDeviceId = services.deviceIdentity.deviceId(),
+            myDeviceId = services.deviceIdentity.requireDeviceId(),
             arm = downloadArm(),
             checks = services.eventChecks,
             readyToImport = { importsReady() },
@@ -875,8 +889,8 @@ class AppCore internal constructor(
      * process — so a delivered token is published at most once.
      *
      * **ATTEST FIRST.** `PUT /devices/<id>` is gated, and on a fresh install the APNs token can arrive
-     * before this device has attested at all — measured on the SE2, where that `PUT` took a `401`.
-     * Awaiting a refresh first removes the race.
+     * before this device has attested at all — measured on the SE2, where that `PUT` took a `401`. The publisher
+     * sends it through the gateway's `sendObtainingFirst`, which obtains a token before a PUT that holds none.
      *
      * **THE `tokenChanged` ARM IS THE POINT, and it is a JOIN BETWEEN TWO BLIND FEATURES** — trust emits
      * that a new credential exists, push consumes it. Neither knows the other, and the join is the whole
@@ -902,10 +916,7 @@ class AppCore internal constructor(
      */
     @OptIn(CompositionOnly::class)
     fun installCompositionSubscriptions() {
-        scope.launch {
-            runCatchingCancellable { attestation.ensureFresh() }
-            pushRegistration.run(services.pushTokens, attestation.tokenChanged)
-        }
+        scope.launch { pushRegistration.run(services.pushTokens, attestationStatus.tokenChanged) }
         // One selection-change emission → ONE read serving both consumers, the status total and the enqueue:
         // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
         // `refresh` recounts N over the very same snapshot — no second library read on this path, and

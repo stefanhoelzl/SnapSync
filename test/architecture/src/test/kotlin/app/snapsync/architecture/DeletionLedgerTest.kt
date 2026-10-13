@@ -177,4 +177,35 @@ class DeletionLedgerTest {
                 resurrections.joinToString("\n  "),
         )
     }
+
+    /**
+     * Trust before its layers (phase 4.1): one identity class with a role flag, where two types now say which process
+     * may mint; a throwing token store and an attestation service that decided inside the data it kept; the extension's
+     * credential under its old name; a gateway flag where a method now says a request must not go out without a token;
+     * a second, non-publishing refresh; and the dev backends' fallback bearer — a token attached to any request that
+     * carried none — where every caller now attests and both backends refuse a gated request without one, as deployed.
+     */
+    @Test
+    fun `trust's retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            declared(files, """enum class DeviceIdentity""" + "Role\\b").forEach {
+                add("the identity role flag in $it (two identity types say which may mint — 4.1)")
+            }
+            val pre = """(class|interface) (DeviceAttestation|ExtensionCredential|AttestStore|PersistedDevice""" +
+                "Identity)\\b"
+            declared(files, pre).forEach { add("trust's pre-layer types in $it (AttestingCredential & co — 4.1)") }
+            val calls = """\bobtain""" + "First\\b|fun ensure" + "Fresh\\b|fun tokenExpiry" + "Seconds\\b"
+            declared(files, calls).forEach {
+                add("a retired trust call in $it (sendObtainingFirst; one refresh; TokenText reads the expiry — 4.1)")
+            }
+            declared(files, """\bfallback""" + "Bearer\\b").forEach {
+                add("a fallback bearer in $it (every test host attests — 4.1)")
+            }
+            if (File(repoRoot, "api/src/dev/fallback.ts").exists()) {
+                add("api/src/dev/fallback.ts (the dev server attaches no token — 4.1)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
 }

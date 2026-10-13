@@ -148,22 +148,31 @@ class ModuleSetTest {
             "ports" to setOf(":domain:model", ":domain:inbound"),
             // The runtime runs on the process's background time and labels its threads: two ports, nothing above.
             "scheduling" to setOf(":domain:inbound", ":domain:ports"),
+            // The data layer: the repositories over the ports and the backend's protocol over the transport and the
+            // generated wire — translating, never deciding — labelling its lines with the structured log.
+            "data" to setOf(":domain:domain", ":domain:ports", ":domain:wire", ":domain:inbound"),
+            // The application layer: use cases over data and the domain's verdicts.
+            "application" to setOf(":domain:domain", ":domain:data"),
             // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
-            "services" to setOf(":domain:model", ":domain:domain", ":domain:ports", ":domain:inbound", ":domain:wire"),
+            // MIGRATING: the gateway and the device identity the need-shaped services stand on are data's since trust moved.
+            "services" to setOf(
+                ":domain:model", ":domain:domain", ":domain:ports", ":domain:inbound", ":domain:wire", ":domain:data",
+            ),
             // Features see services, never ports: with no `ports` edge a port type does not resolve in the zone. The
             // runtime for the work that outlives its caller (`outliving`) and a sequence's pass.
-            "feature" to setOf(":domain:model", ":domain:domain", ":domain:services", ":domain:scheduling"),
+            // MIGRATING: the device identity and the refusal's facts the features read are data's since trust moved.
+            "feature" to setOf(":domain:model", ":domain:domain", ":domain:services", ":domain:scheduling", ":domain:data"),
             // The entry points order the work of each trigger. MIGRATING: their steps still call the features and
             // services directly, until phase 4 moves the work under sequences.
             "entrypoints" to setOf(
                 ":domain:inbound", ":domain:scheduling", ":domain:model", ":domain:domain", ":domain:ports",
-                ":domain:feature", ":domain:services",
+                ":domain:feature", ":domain:services", ":domain:application", ":domain:data",
             ),
             // `:ui:state` because the app's `Ui` port is bound to the screen's vocabulary in `AppPorts`.
             "compose" to setOf(
                 ":domain:model", ":domain:domain", ":domain:ports", ":domain:services", ":domain:feature",
                 ":domain:inbound",
-                ":domain:scheduling", ":domain:entrypoints", ":ui:state",
+                ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:data", ":domain:application",
             ),
             // The UI-state reduction: of the zones, only the vocabulary and the features (and of the features,
             // only their `readmodel` packages — a line inside one module, held by `ReadModelImportsTest`), and the
@@ -207,7 +216,7 @@ class ModuleSetTest {
             ":domain:model", ":domain:domain", ":domain:wire", ":domain:ports", ":domain:services", ":domain:feature",
             ":domain:presentation", ":domain:compose", ":domain:host",
             // The layers the core's work runs on (`docs/patterns.md`): the deliveries, the runtime, the entry points.
-            ":domain:inbound", ":domain:scheduling", ":domain:entrypoints",
+            ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":domain:data", ":domain:application",
             // `:ui:state` withholds the domain from the screens: they see the screen's vocabulary, and no domain
             // type resolves there.
             ":ui:state", ":ui:screens", ":ui:components",
@@ -231,6 +240,7 @@ class ModuleSetTest {
             ":app:jvm",
             ":test:integration", ":test:architecture", ":test:harness-driver",
             ":tools:diagrams", ":tools:detekt-rules", ":test:edge", ":test:control", ":test:cli", ":test:feature",
+            ":test:data",
             ":test:partial-grant", ":test:no-grant",
         )
     }

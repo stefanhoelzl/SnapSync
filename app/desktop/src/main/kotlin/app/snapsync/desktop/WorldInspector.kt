@@ -27,7 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.DeviceRefusal
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferFailure

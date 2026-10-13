@@ -24,6 +24,8 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
+            // MIGRATING: the backend gateway and the device identity the need-shaped services stand on live in data.
+            implementation(project(":domain:data"))
             implementation(project(":domain:ports"))
             // How work enters: the structured log's lines, which the process's writers render onto its sinks.
             implementation(project(":domain:inbound"))

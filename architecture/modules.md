@@ -22,7 +22,9 @@ flowchart LR
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
   app_jvm[":app:jvm"]
+  domain_application[":domain:application"]
   domain_compose[":domain:compose"]
+  domain_data[":domain:data"]
   domain_domain[":domain:domain"]
   domain_entrypoints[":domain:entrypoints"]
   domain_feature[":domain:feature"]
@@ -38,6 +40,7 @@ flowchart LR
   test_cli[":test:cli"]
   test_contracts[":test:contracts"]
   test_control[":test:control"]
+  test_data[":test:data"]
   test_edge[":test:edge"]
   test_feature[":test:feature"]
   test_harness_driver[":test:harness-driver"]
@@ -73,6 +76,7 @@ flowchart LR
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
   adapter_generic_mock --> domain_compose
+  adapter_generic_mock --> domain_data
   adapter_generic_mock --> domain_domain
   adapter_generic_mock --> domain_feature
   adapter_generic_mock --> domain_inbound
@@ -97,6 +101,7 @@ flowchart LR
   adapter_ios_app_only --> test_contracts
   adapter_ios_ext_safe --> adapter_generic_app
   adapter_ios_ext_safe --> domain_compose
+  adapter_ios_ext_safe --> domain_data
   adapter_ios_ext_safe --> domain_domain
   adapter_ios_ext_safe --> domain_feature
   adapter_ios_ext_safe --> domain_inbound
@@ -175,6 +180,10 @@ flowchart LR
   app_jvm --> domain_presentation
   app_jvm --> domain_services
   app_jvm --> ui_state
+  domain_application --> domain_data
+  domain_application --> domain_domain
+  domain_compose --> domain_application
+  domain_compose --> domain_data
   domain_compose --> domain_domain
   domain_compose --> domain_entrypoints
   domain_compose --> domain_feature
@@ -184,6 +193,12 @@ flowchart LR
   domain_compose --> domain_scheduling
   domain_compose --> domain_services
   domain_compose --> ui_state
+  domain_data --> domain_domain
+  domain_data --> domain_inbound
+  domain_data --> domain_ports
+  domain_data --> domain_wire
+  domain_entrypoints --> domain_application
+  domain_entrypoints --> domain_data
   domain_entrypoints --> domain_domain
   domain_entrypoints --> domain_feature
   domain_entrypoints --> domain_inbound
@@ -191,6 +206,7 @@ flowchart LR
   domain_entrypoints --> domain_ports
   domain_entrypoints --> domain_scheduling
   domain_entrypoints --> domain_services
+  domain_feature --> domain_data
   domain_feature --> domain_domain
   domain_feature --> domain_model
   domain_feature --> domain_scheduling
@@ -214,6 +230,7 @@ flowchart LR
   domain_presentation --> ui_state
   domain_scheduling --> domain_inbound
   domain_scheduling --> domain_ports
+  domain_services --> domain_data
   domain_services --> domain_domain
   domain_services --> domain_inbound
   domain_services --> domain_model
@@ -233,6 +250,7 @@ flowchart LR
   test_cli --> test_levers
   test_cli --> test_rig
   test_contracts --> adapter_generic_motionphoto
+  test_contracts --> domain_data
   test_contracts --> domain_domain
   test_contracts --> domain_inbound
   test_contracts --> domain_model
@@ -246,9 +264,17 @@ flowchart LR
   test_control --> test_levers
   test_control --> test_rig
   test_control --> ui_state
+  test_data --> adapter_generic_mock
+  test_data --> domain_application
+  test_data --> domain_data
+  test_data --> domain_domain
+  test_data --> domain_inbound
+  test_data --> domain_ports
+  test_data --> domain_wire
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
   test_feature --> adapter_generic_mock
+  test_feature --> domain_data
   test_feature --> domain_domain
   test_feature --> domain_feature
   test_feature --> domain_inbound
@@ -290,6 +316,7 @@ flowchart LR
   test_rig --> adapter_ios_ext_safe
   test_rig --> app_jvm
   test_rig --> domain_compose
+  test_rig --> domain_data
   test_rig --> domain_domain
   test_rig --> domain_feature
   test_rig --> domain_inbound

@@ -2,6 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.contracts.attest.InMemoryKeyAttestation
+import app.snapsync.data.trust.TrustSlots
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterParse
@@ -15,7 +16,6 @@ import app.snapsync.ports.Files
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.SharedDatabase
-import app.snapsync.services.secure.SecureSlots
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +61,7 @@ internal fun launchWorld(
         declared = device.declaredVersion,
         attester = { InMemoryKeyAttestation() },
         ownToken = { id ->
-            val own = (ports.secureStore.value.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value
+            val own = (ports.secureStore.value.read(TrustSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value
             heldToken(ports.secureStore.value, id.takeIf { it == own })
         },
     ).takeIf { MockedSystem.BACKEND in mocked },
@@ -69,7 +69,7 @@ internal fun launchWorld(
     operatorRefusal = { realBackend },
     version = device.declaredVersion.takeIf { MockedSystem.BACKEND in mocked },
     os = PlayedOs(device) { it in mocked },
-    ownDeviceId = { (ports.secureStore.value.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
+    ownDeviceId = { (ports.secureStore.value.read(TrustSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
     joinedEventId = {
         val config = ConfigService(SharedDatabase(ports.databases.value, legacy = null), ports.clock.value)
         (config.read() as? ConfigRead.Joined)?.config?.eventId?.value

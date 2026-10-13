@@ -1,0 +1,11 @@
+# The `application` tier (`DetektTiersPlugin`): `:domain:application`, one use case per operation a trigger runs.
+#
+# A CLAIM, measured on the layer's first use case (2026-10-14: at most 3 / 1): a use case does one thing over the data
+# layer and the domain's verdicts, so a function stays at most 3 paths and 3 cognitive points — the data layer's claim.
+# A use case that needs more is two use cases, ordered by the entry point that calls them. detekt fails AT the threshold,
+# so each is one above the claim: do not "correct" it.
+complexity:
+  CyclomaticComplexMethod:
+    threshold: 4
+  CognitiveComplexMethod:
+    threshold: 4

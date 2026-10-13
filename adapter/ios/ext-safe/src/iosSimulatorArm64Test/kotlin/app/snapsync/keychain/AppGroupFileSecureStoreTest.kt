@@ -1,10 +1,13 @@
 package app.snapsync.keychain
 
+import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.StoredProtection
 import app.snapsync.ports.WriteOutcome
-import app.snapsync.services.secure.resolveOrMint
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.readTextFile
 import app.snapsync.testsupport.withTempDirectory
@@ -106,23 +109,22 @@ class AppGroupFileSecureStoreTest {
             assertEquals(SecureStoreRead.Absent, store.read(deviceId))
         }
 
+    @OptIn(AppProcessOnly::class)
     @Test
-    fun `resolveOrMint mints once over this store and returns the same id thereafter`() =
+    fun `an identity minted over this store is read back thereafter and never minted again`() =
         withTempDirectory { dir ->
             val store = AppGroupFileSecureStore(dir)
             var minted = 0
-
-            val first = resolveOrMint(store, deviceId) {
+            val platform = PlatformDeviceId {
                 minted++
-                "minted-$minted"
-            }
-            val second = resolveOrMint(store, deviceId) {
-                minted++
-                "minted-$minted"
+                "11111111-0000-4000-8000-00000000000$minted"
             }
 
-            assertEquals("minted-1", first)
-            assertEquals(first, second)
+            val first = MintingDeviceIdentity(store, platform).id()
+            val second = MintingDeviceIdentity(store, platform).id() // the next process
+
+            assertEquals(DeviceIdRead.Via.MINTED, assertIs<DeviceIdRead.Ok>(first).via)
+            assertEquals(first.value, assertIs<DeviceIdRead.Ok>(second).value)
             assertEquals(1, minted, "the second resolve must READ, not mint — a second id orphans the ledger")
         }
 }

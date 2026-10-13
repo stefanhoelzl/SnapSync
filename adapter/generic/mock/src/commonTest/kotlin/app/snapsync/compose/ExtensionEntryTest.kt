@@ -1,9 +1,13 @@
 package app.snapsync.compose
 
+import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.trust.SecureCredentialStore
+import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.mock.BackendMock
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.ExtensionHostMock
@@ -18,7 +22,6 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig
 import app.snapsync.model.TimestampText
 import app.snapsync.ports.HttpResult
@@ -27,8 +30,6 @@ import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.identity.AttestState
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Routes
@@ -47,6 +48,7 @@ import kotlin.time.Instant
  * because nothing outside the process can see it early: on a device the token's staleness shows only as a refusal much
  * later. What each invocation answers the operating system is `UploadCycleIntegrationTest`'s.
  */
+@OptIn(AppProcessOnly::class)
 class ExtensionEntryTest {
 
     @Test
@@ -63,7 +65,7 @@ class ExtensionEntryTest {
         )
 
         // The app renews into the shared item, and a new manifest is due (the app's enrolment invalidates the record).
-        attest.setToken("token-after")
+        attest.setToken(TokenText.parse("token-after"))
         DeviceManifestService(appDatabase).clearLastUploaded()
         host.operator.process(Dispatchers.Default)
         assertEquals(
@@ -77,7 +79,7 @@ class ExtensionEntryTest {
     private val clock = fixedClock(Instant.parse("2026-07-15T00:00:00Z"))
     private val databases = inMemoryDatabases()
     private val secureStore = inMemorySecureStore()
-    private val attest = AttestState(secureStore)
+    private val attest = SecureCredentialStore(secureStore)
     private val library = PhotoLibraryMock()
 
     /** The token each manifest publish carried, in order. */
@@ -102,8 +104,8 @@ class ExtensionEntryTest {
 
     /** What the app leaves behind for the extension: an identity, a token, a membership and the download store. */
     private suspend fun joinedWithAToken(token: String) {
-        PersistedDeviceIdentity(DeviceIdentityRole.MINTING, secureStore, platformDeviceId = { null }).deviceId()
-        attest.setToken(token)
+        MintingDeviceIdentity(secureStore, platformDeviceId = { null }).id()
+        attest.setToken(TokenText.parse(token))
         ConfigService(appDatabase, clock).save(
             EventConfig(
                 eventId = testEventId("11111111-1111-4111-8111-111111111111"),

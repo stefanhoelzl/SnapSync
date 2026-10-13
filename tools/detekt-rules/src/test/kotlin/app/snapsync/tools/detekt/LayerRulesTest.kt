@@ -22,6 +22,27 @@ class LayerRulesTest {
     }
 
     @Test
+    fun `data translates - its branches are named cases used as expressions`() {
+        val findings = DataShape().lint(
+            """
+            fun run(due: Boolean, n: Int): Int {
+                if (due) println()
+                when { n > 1 -> println() }
+                when (n) { 1 -> println(); else -> Unit }
+                val kept = when (due) { true -> 1; false -> 0 }
+                listOf(1).map { when (it) { 1 -> 2; else -> 3 } }
+                listOf(due).forEach { when (it) { true -> println(); false -> Unit } }
+                return when (due) { true -> kept; false -> n }
+            }
+            fun answer(due: Boolean) = when (due) { true -> 1; false -> 0 }
+            """.trimIndent(),
+        )
+        // The `if`; the subject-less `when` (and it is a statement); the `else` (and it is a statement); the lambda's
+        // `else`. The expression-bodied, returned, assigned and lambda-valued `when`s pass.
+        assertEquals(6, findings.size, findings.map { it.message }.toString())
+    }
+
+    @Test
     fun `a step holds one call`() {
         val findings = OneCallPerStep().lint(
             """

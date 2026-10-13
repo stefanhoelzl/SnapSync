@@ -31,6 +31,7 @@ kotlin {
             implementation(project(":domain:domain"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
+            implementation(project(":domain:data"))
             implementation(project(":domain:feature"))
             // The runtime a feature's outliving work runs under (`support/Runtime.kt`), and the entry points' tests.
             implementation(project(":domain:scheduling"))

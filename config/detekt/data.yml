@@ -1,0 +1,11 @@
+# The `data` tier (`DetektTiersPlugin`): `:domain:data`, the repositories and the backend's protocol.
+#
+# A CLAIM, not debt (`docs/patterns.md`, "The data layer"): data translates and never decides — its only branch is an
+# exhaustive `when` over a fact or a domain verdict (`DataShape`), so a function stays at most 3 paths and 3 cognitive
+# points. A function that needs more is deciding, and a decision is a domain verdict. detekt fails AT the threshold, so
+# each is one above the claim: do not "correct" it.
+complexity:
+  CyclomaticComplexMethod:
+    threshold: 4
+  CognitiveComplexMethod:
+    threshold: 4

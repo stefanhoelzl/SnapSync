@@ -156,7 +156,7 @@ and each rethrowing a `CancellationException` — a cancellation is the caller's
 
 `SingleFlight` turns a pass's end into a value for its waiters — answer, failure or cancellation (a cut) — and is
 the fourth `catch` in the layer. `CatchSitesTest` licenses exactly these files, and holds every other catch-all in
-production — the old zones' `runCatchingCancellable`, `bestEffort`, `contained`, `orNullLogged` and broad or typed
+production — the old zones' `runCatchingCancellable`, `bestEffort`, `contained` and broad or typed
 `catch` clauses (an adapter's typed catch excepted: turning a platform throw into a value is its job) — to a baseline,
 counted per file, that may only shrink. Phase 4 empties it as it moves the old zones under entry points and
 sequences, and deletes the helpers with their last use. `CatchGateTest` holds the other half: every site still
@@ -202,7 +202,7 @@ over them (`CaptureRange`). Packages are named for the concept: `time`, `event`,
   is inclusive, at most `EventWindow.MAX` long and overlapping its event. A verdict that can fail answers an
   `XVerdict` (`CaptureRangeVerdict.Ok(range)` or the reason), never a nullable fault.
 - **No format.** A `Timestamp` holds an instant and no text; a role holds a `Timestamp`. How a value is spelled on the
-  wire or in a store is §8's.
+  wire or in a store is §9's.
 - **A nullable or sentinel input that several rules re-check is a missing type.** `CaptureDate` is the worked
   example: `Dated(at) | Undated` replaced `creationDate: CaptureDate?`, so each capture rule matches both cases by name
   instead of remembering a null check. The claim below holds because of this — every rule bound for the layer that
@@ -218,7 +218,34 @@ it does not name, and the world read inside a call, are review's.
 
 ---
 
-## 8. Formats live at the boundary
+## 8. The data layer
+
+`:domain:data` holds the **repositories over the ports and the backend's protocol over the transport** — what the
+backend's routes say and how a store keeps a value. Today it holds trust (`docs/architecture.md`, "Trust"): the gateway,
+the credential stores, the device identity, the attestation handshake, the version gate. Its edges are the domain, the
+ports, the generated wire and the inbound log — never an old zone, never `application`.
+
+- **Data translates and never decides.** Its only branch is an exhaustive `when` over a fact or a domain verdict,
+  with a subject and no `else`, **used as an expression** — its value is the answer, so no case can quietly do nothing
+  (`DataShape`). No `if`. Loops, safe calls and typed catches of a library's exceptions pass; the decision a branch
+  stands for is a domain verdict (`RenewalVerdict`, `CredentialVerdict`, `VersionVerdict`).
+- **Nothing throws.** A store answers what it read (`TokenRead`, `KeyIdRead`, `DeviceIdRead`: the value, none, or
+  `Unavailable` — never mistaken for absence) and what it wrote (`WriteOutcome`).
+- **A process holds the kind it may hold, by type.** Where two processes may do different things with one concept,
+  they get two types, never a flag: `MintingDeviceIdentity` and `StoredDeviceIdentity`, `AttestingCredential` and
+  `DropOnlyCredential`. The app-only kinds carry `@AppProcessOnly` on their constructors (§10).
+- **The claim: ≤ 3 cyclomatic, ≤ 3 cognitive** per function (`config/detekt/data.yml`). A `when` whose every entry is
+  one expression counts once (`_base.yml`): it selects over a fact's cases. A function that needs more is deciding.
+- **The old zones reach it one way while their concepts move** (MIGRATING). A shim that keeps an old zone's shape for
+  callers a later phase owns — the throwing `requireDeviceId()` over the sealed device-id read — lives in the old zone,
+  never in the layer, and is listed in `PENDING_CLEANUPS.md` with the phases that delete its callers.
+
+Its suites run over the ports' mocks in `:test:data` (no core module may name a mock), credited to it; its pure
+translations are tested in its own `commonTest`.
+
+---
+
+## 9. Formats live at the boundary
 
 A value's text — on the wire, in a store, in a JSON file — is the boundary's, never the domain's, and it is written
 **once per format**:
@@ -236,7 +263,7 @@ value can be (`ledgerRow.eventId`'s parked `''`) stays text, converted where it 
 
 ---
 
-## 9. Opt-in capabilities
+## 10. Opt-in capabilities
 
 A `@RequiresOptIn(level = ERROR)` marker turns "only X may do Y" into a compile error everywhere else — stronger than
 a text scan, because the compiler resolves names: an anonymous object, a fully qualified call or a type alias cannot
@@ -257,30 +284,31 @@ freely: it plays the core or the platform.
 
 ---
 
-## 10. Evidence types
+## 11. Evidence types
 
 A verdict that gates a later step answers an **evidence type** the step requires: the step cannot be called without
 the verdict having said yes. Each evidence constructor carries its **own** `@RequiresOptIn(ERROR)` marker, opted into
-at exactly **one** call site (never module-wide), and listed by the pin (§9). Evidence is minted fresh for each use —
+at exactly **one** call site (never module-wide), and listed by the pin (§10). Evidence is minted fresh for each use —
 never stored, never `@Serializable`, never a `data class`, never in API Swift can see — and a value class keeps it
 free. The mechanism is in place; each concept's evidence arrives with its phase.
 
 ---
 
-## 11. Use cases are leaves
+## 12. Use cases are leaves
 
 A use case (`VerbNoun`, one operation) never calls another: entry points orchestrate, use cases do one thing. The
-compiler will hold it — `invoke` carries an `EntryPointCall` opt-in only an entry point takes — and so there is no
-shared `UseCase` interface, since a call through it would skip the marker. The marker arrives with the first use
-case.
+compiler holds it — `invoke` carries an `EntryPointCall` opt-in only an entry point takes, pinned where it is taken
+(`OptInPinsTest`) — and so there is no shared `UseCase` interface, since a call through it would skip the marker. The
+first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs. A use case answers an `XOutcome`;
+`:domain:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
 
 ---
 
-## 12. Secret types and rendering
+## 13. Secret types and rendering
 
 A value that must never reach the crash channel is a **secret type** whose `toString` is masked: an event's key, a
-bearer token, and an invite link with only its key masked (the rest of the link stays readable). Each arrives with
-its concept. **Device, event and asset ids render in full** (`privacy-security`: crash reports may carry device,
+bearer token (`BearerToken`, trust's, equal by its secret), and an invite link with only its key masked (the rest of
+the link stays readable). Each arrives with its concept. **Device, event and asset ids render in full** (`privacy-security`: crash reports may carry device,
 event and photo ids — never an event key), so `EventId`, `DeviceId` and `AssetId` render as the id itself.
 
 ### Result naming
@@ -292,24 +320,28 @@ subclass cannot cross modules.
 
 ---
 
-## 13. What holds these rules
+## 14. What holds these rules
 
 | rule | gate |
 |---|---|
 | An entry point holds no `if`; a `when` only over a subject, every case named | detekt `EntryPointShape` (`:domain:entrypoints`) |
+| Data holds no `if`; a `when` only over a subject, every case named, used as an expression | detekt `DataShape` (`:domain:data`) |
+| Only an entry point calls a use case | `EntryPointCall` + `OptInPinsTest` |
 | A step is one call | detekt `OneCallPerStep` (`:domain:entrypoints`) |
-| Only the runtime starts coroutines | detekt `CoroutinesInScheduling` (`:domain:inbound`, `:domain:entrypoints`, `:domain:domain`; the old zones join in phase 4) |
-| Behaviour crosses as an interface, never a function-typed field, `fun interface` or alias | detekt `NoFunctionTypes` (`:domain:inbound`, `:domain:scheduling`, `:domain:entrypoints`, `:domain:domain`) |
+| Only the runtime starts coroutines | detekt `CoroutinesInScheduling` (`:domain:inbound`, `:domain:entrypoints`, `:domain:domain`, `:domain:data`, `:domain:application`; the old zones join in phase 4) |
+| Behaviour crosses as an interface, never a function-typed field, `fun interface` or alias | detekt `NoFunctionTypes` (`:domain:inbound`, `:domain:scheduling`, `:domain:entrypoints`, `:domain:domain`, `:domain:data`, `:domain:application`) |
 | The entry points' decisions and the runtime's size stay small | the `entrypoints` and `scheduling` tiers (`config/detekt/entrypoints.yml`, `scheduling.yml`) — claims, not debt |
 | An entry point names no port | `EntryPointsCallNoPortTest` |
 | Only the runtime's sites catch everything; the old zones' catch-alls only shrink | `CatchSitesTest` (+ `CatchGateTest`: cancellation is kept) |
 | The project's markers, and the delicate library ones, are opted into only where pinned; no build script opts a module in | `OptInPinsTest` |
 | The domain is values and verdicts: no suspension, state, behaviour as a value, world or top-level function | detekt `DomainPurity` (`:domain:domain`) |
 | A domain verdict stays small | the `domain` tier (`config/detekt/domain.yml`) — a claim, measured |
+| Data and a use case stay small | the `data` and `application` tiers (`config/detekt/data.yml`, `application.yml`) — claims |
+| Only the app process mints an identity or attests | `@AppProcessOnly` on `MintingDeviceIdentity` and `AttestingCredential` + `OptInPinsTest` |
 | The walk memo stays in the app process | `@AppProcessOnly` + `OptInPinsTest` |
 | A format is written once, at the boundary | `TimestampText`, the `AsString` serializers, the column adapters — review; a missing serializer or adapter is a compile error |
 | A handler bundle is built and registered only by a composition | `ListenDoorTest` |
 | No OS completion handler is stored in a field | `OsHandlerContainmentTest` |
 | A background entry point never names the membership's teardown | `BackgroundTeardownTest` |
-| `inbound`, `scheduling` and `entrypoints` have no uncovered line | `coverageZero` (the entry points credited by the integration surface) |
+| `inbound`, `scheduling`, `entrypoints`, `domain`, `data` and `application` have no uncovered line | `coverageZero` (the entry points credited by the integration surface, data and application by `:test:data`) |
 

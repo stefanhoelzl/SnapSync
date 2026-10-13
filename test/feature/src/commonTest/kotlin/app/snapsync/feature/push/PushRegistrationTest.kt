@@ -1,11 +1,12 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, app.snapsync.inbound.AppProcessOnly::class)
 
 package app.snapsync.feature.push
 
+import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.trust.TrustSlots
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.PrefRead
 import app.snapsync.model.PushEndpoint
 import app.snapsync.ports.PlatformDeviceId
@@ -15,10 +16,8 @@ import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.backend.PushTokenPublisher
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.push.PushTokenSource
-import app.snapsync.services.secure.SecureSlots
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
@@ -65,8 +64,7 @@ class PushRegistrationTest {
     private var identity = identityMinting("DEVICE-1")
 
     private fun identityMinting(deviceId: String) =
-        PersistedDeviceIdentity(
-            DeviceIdentityRole.MINTING,
+        MintingDeviceIdentity(
             secureStore,
             PlatformDeviceId { testDeviceId(deviceId).value },
         )
@@ -223,7 +221,7 @@ class PushRegistrationTest {
         client.calls.clear()
 
         // A device reset: the identity is gone from the store and a new process mints another.
-        secureStore.delete(SecureSlots.DEVICE_ID)
+        secureStore.delete(TrustSlots.DEVICE_ID)
         identity = identityMinting("DEVICE-2")
         val source = PushTokenSource("apns", "sandbox")
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(source) }

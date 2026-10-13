@@ -7,6 +7,8 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.download.readmodel.DownloadProgress
@@ -15,7 +17,6 @@ import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
@@ -36,7 +37,6 @@ import app.snapsync.model.SyncStatus
 import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
-import app.snapsync.model.VersionRefusal
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.grantsPhotoAccess

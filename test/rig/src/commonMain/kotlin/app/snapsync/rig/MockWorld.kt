@@ -3,6 +3,7 @@ package app.snapsync.rig
 import app.snapsync.contracts.Attester
 import app.snapsync.contracts.SERVED_APP_VERSION
 import app.snapsync.contracts.attest.DeviceTokens
+import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.mock.DeclaredVersion
@@ -23,7 +24,6 @@ import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
-import app.snapsync.services.secure.SecureSlots
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.DeviceFilesReply
 import app.snapsync.wire.api.EventFilesReply
@@ -288,4 +288,4 @@ private fun DeviceManifest.onWire(): Manifest = Manifest(
  * none) — what a reach sends for the app's own device, whose enrolment a fresh mint would replace.
  */
 fun heldToken(store: SecureStore, deviceId: String?): String? =
-    deviceId?.let { (store.read(SecureSlots.ATTEST_TOKEN) as? SecureStoreRead.Found)?.value }
+    deviceId?.let { (store.read(TrustSlots.ATTEST_TOKEN) as? SecureStoreRead.Found)?.value }

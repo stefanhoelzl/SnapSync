@@ -23,6 +23,9 @@ kotlin {
             implementation(project(":domain:domain"))
             // The shared capabilities features stand on: the storage, gallery, transfer and backend services.
             implementation(project(":domain:services"))
+            // MIGRATING: the trust concept the features read — the device identity, the refusal's facts — lives in
+            // data.
+            implementation(project(":domain:data"))
             // How work runs: an import outlives the drain that started it, and a wake's re-arm reads how its passes
             // ended.
             implementation(project(":domain:scheduling"))

@@ -77,6 +77,8 @@ kotlin {
             implementation(libs.sqldelight.runtime)
             // The schema clauses (`SchemaClauses.kt`) run every statement through the databases' generated code.
             implementation(project(":domain:services"))
+            // The production gateway the Backend contract's client is (`Edge.kt`).
+            implementation(project(":domain:data"))
             api(kotlin("test"))
             api(libs.coroutines.test)
             implementation(libs.coroutines.core)

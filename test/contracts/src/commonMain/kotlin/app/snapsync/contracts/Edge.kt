@@ -1,15 +1,20 @@
 package app.snapsync.contracts
 
 import app.snapsync.contracts.attest.DeviceTokens
+import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.BackendTarget
+import app.snapsync.data.backend.Credential
+import app.snapsync.data.backend.TokenRead
+import app.snapsync.data.backend.VersionIgnored
+import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.trust.BearerToken
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
-import app.snapsync.services.backend.BackendExchange
-import app.snapsync.services.backend.BackendGateway
-import app.snapsync.services.backend.Credential
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.EventFilesReply
 import app.snapsync.wire.api.GatedRequest
@@ -107,8 +112,8 @@ class EdgeSubject<P>(
  * ([backendCell]). The credential is the identity's token, never renewed: a rejected one is the request's answer.
  */
 class BackendClient(transport: HttpTransport, base: String, identity: ClientIdentity, private val log: CallLog) {
-    private val exchange = BackendExchange(transport, { base }, { identity.appVersion }, versionGate = null)
-    private val gateway = BackendGateway(exchange, HeldToken(identity.token))
+    private val exchange = BackendExchange(transport, FixedTarget(base, identity.appVersion), VersionIgnored)
+    private val gateway = BackendGateway(exchange, HeldCredential(identity.token))
 
     /** One gated request, answered in its route's reply. */
     suspend fun <R : Reply> send(request: GatedRequest<R>): R =
@@ -117,12 +122,21 @@ class BackendClient(transport: HttpTransport, base: String, identity: ClientIden
     /** One open request — the `/attest/…` issuers — answered in its route's reply. */
     suspend fun <R : Reply> send(request: OpenRequest<R>): R =
         exchange.send(request).also { log.record(backendCell(request.operationId, it::class)) }
+}
 
-    private class HeldToken(private val token: String?) : Credential {
-        override fun token(): String? = token
-        override suspend fun rejected(sent: String): String? = null
-        override suspend fun missing(): String? = null
-    }
+/** A backend at [base], every request declaring [declaredVersion] — what a test client addresses. */
+class FixedTarget(override val base: String, override val declaredVersion: String) : BackendTarget
+
+/**
+ * A credential that holds [token] — or none — and never recovers: a rejected token is the request's answer. What a test
+ * client playing one device's fixed identity carries.
+ */
+class HeldCredential(private val token: String?) : Credential {
+    override fun token(): TokenRead = token?.let { TokenRead.Held(TokenText.parse(it)) } ?: TokenRead.None
+
+    override suspend fun rejected(sent: BearerToken): TokenRead = TokenRead.None
+
+    override suspend fun missing(): TokenRead = TokenRead.None
 }
 
 /**

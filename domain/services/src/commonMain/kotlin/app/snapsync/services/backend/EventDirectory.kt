@@ -1,5 +1,6 @@
 package app.snapsync.services.backend
 
+import app.snapsync.data.backend.BackendGateway
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId

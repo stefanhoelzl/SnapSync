@@ -1,11 +1,13 @@
 package app.snapsync.services.backend
 
+import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.JoinResult
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.wire.api.Closed
 import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.JoinEventReply
@@ -78,7 +80,7 @@ fun interface ReceivedReporter {
 class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
 
     override suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult =
-        when (gateway.send(Routes.JoinEvent.request(eventId.value, deviceId.value), obtainFirst = true)) {
+        when (gateway.sendObtainingFirst(Routes.JoinEvent.request(eventId.value, deviceId.value))) {
             JoinEventReply.Joined -> JoinResult.JOINED
             // A completed event — or one closed before events stopped closing — admits nobody.
             is Closed -> JoinResult.EVENT_CLOSED
@@ -118,11 +120,11 @@ class BackendManifestPublisher(private val gateway: BackendGateway) : ManifestPu
  */
 class BackendLeaveNotifier(
     private val gateway: BackendGateway,
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
 ) : LeaveNotifier {
 
     override suspend fun notifyLeaving(eventId: EventId, received: Boolean): Result<Unit> {
-        val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
+        val id = runCatchingCancellable { identity.requireDeviceId() }.getOrElse { return Result.failure(it) }
         return when (val reply = gateway.send(Routes.LeaveEvent.request(eventId.value, id.value, received))) {
             LeaveEventReply.Left -> Result.success(Unit)
             // An event the backend no longer holds has nothing left to leave: the leave is as done as it will ever be.
@@ -138,11 +140,11 @@ class BackendLeaveNotifier(
  */
 class BackendReceivedReporter(
     private val gateway: BackendGateway,
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
 ) : ReceivedReporter {
 
     override suspend fun report(eventId: EventId, position: Long): Boolean {
-        val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return false }
+        val id = runCatchingCancellable { identity.requireDeviceId() }.getOrElse { return false }
         return gateway.send(Routes.ReportReceived.request(eventId.value, id.value, Received(position))) ==
             ReportReceivedReply.Recorded
     }

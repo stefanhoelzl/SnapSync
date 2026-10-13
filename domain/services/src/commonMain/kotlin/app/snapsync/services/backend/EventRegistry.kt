@@ -1,5 +1,6 @@
 package app.snapsync.services.backend
 
+import app.snapsync.data.backend.BackendGateway
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.RenameOutcome
@@ -78,7 +79,7 @@ class BackendEventCreation(
                 keyId = keyId,
             ),
         )
-        return when (val reply = gateway.send(request, obtainFirst = true)) {
+        return when (val reply = gateway.sendObtainingFirst(request)) {
             // An id that is no event id is a malformed reply, answered as any other the backend could not have meant.
             is CreateEventReply.Created -> EventId.parse(reply.event.eventId)
                 ?.let { CreateOutcome.Created(eventId = it, name = reply.event.name) }

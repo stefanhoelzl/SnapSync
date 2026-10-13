@@ -1,7 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.DeviceRefusal
+import app.snapsync.levers.AttestationRefusal
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
@@ -26,7 +26,7 @@ class TrustIntegrationTest {
         foreignDevice(OTHER, "FA")
         val before = union(event)
 
-        device("backend/refuse-attestation", "reason" to DeviceRefusal.DEVICE_MODIFIED.wireName)
+        backend.refuseAttestation(AttestationRefusal.DEVICE_MODIFIED)
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
         user("confirmJoin")
@@ -72,7 +72,7 @@ class TrustIntegrationTest {
     fun photos_taken_while_outdated_are_shared_after_the_update() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
-        device("backend/min-app-version", "minimum" to "0.4")
+        backend.minAppVersion("0.4")
         device("app-version", "version" to "0.3")
         reconcile()
         awaitState { it.ui.layer is Layer.UpdateRequired }

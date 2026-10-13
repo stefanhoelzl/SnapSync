@@ -109,7 +109,14 @@ and the mocks together; its `support/` package holds the shared setups (`configS
 (over hand-written port doubles) or, where they need the mocks, in `:adapter:generic:mock`'s `commonTest` — which also
 holds the composition's process tests and the mocks' own contract bindings, because the mocks are `internal` and only their own module's
 tests can build one in a chosen state. **A feature's tests may be split across `:domain:feature` and `:test:feature`.
-Look in both.** A feature whose work runs `outliving` its caller runs under a runtime in its tests too
+Look in both.**
+
+**The data layer's suites** live in **`:test:data`** for the same reason (JVM and the iOS simulator, `commonTest`
+only): `:domain:data` may name no mock, and its repositories and the backend's protocol are tested over the real ones —
+the secure store, a scripted transport, a scripted integrity service — and observed at the port. Its pure translations
+(a reply's category, the issuers' answers, a DER chain) are tested in `:domain:data`'s own `commonTest`, and the
+domain's verdicts in `:domain:domain`'s. `:test:data` also tests the application layer's use cases, over the data they
+call; both layers are credited with it. A feature whose work runs `outliving` its caller runs under a runtime in its tests too
 (`support/Runtime.kt`'s `underRuntime { }`), so a cancelled caller leaves that work running as it does in the app.
 
 The runtime itself — entry-point bases, expiry and its grace, steps, single flight — is tested in
@@ -239,8 +246,12 @@ Where bindings live: beside their implementations.
   `EventNotFound`, `AppTooOld` — and its cells are those outcomes (`Backend.<operationId> → <Outcome>`, one
   `Backend.* → <Outcome>` for an outcome several operations share), which the port grid derives from the generated
   replies; what an outcome MEANS is the services' decision above the gateway, tested beside those services
-  (`BackendGatewayTest`, `BackendServicesTest`). A binding enters states through the backend's public surface,
-  `EdgeSetup` over HTTP — the real `api/`'s and the mock's alike. The `HttpTransport` port beneath it has its own
+  (`BackendGatewayTest` in `:test:data`, `BackendServicesTest`). A binding enters states through the backend's public
+  surface, `EdgeSetup` over HTTP — the real `api/`'s and the mock's alike — each step carrying the token of the device
+  it acts for, minted as a device mints one (`DeviceTokens`: a challenge, a proof, the mint) with the binding's keys: a
+  software Android key the local `api/` accepts (`SoftwareKeyAttestation`), the mock's in-memory proofs
+  (`InMemoryKeyAttestation`). Neither backend serves a gated request without a token
+  (`A_GATED_ROUTE_REFUSES_A_REQUEST_WITHOUT_A_TOKEN`). The `HttpTransport` port beneath it has its own
   contract, held per engine (CIO and OkHttp on the JVM, OkHttp on `ANDROID_EMU`).
 - The live backend, and the JVM `Databases` and `Files` adapters: `:adapter:generic:app` `jvmTest` — so every
   `build` runs them, not only CI's simulator job.
@@ -1264,10 +1275,11 @@ Facts worth knowing:
   whose photos are gone, and that looks like "downloads are broken" with no error.
 - A `filesystem` deployment declares **no database credentials**, so a dev run structurally cannot reach
   the production store.
-- The attestation gate stays on. A request with **no** `authorization` header gets a dev token, so bare
-  `curl` works. The same fallback **enrols** the device the path names, because a simulator can never
-  attest and would otherwise get `401` on push registration forever. A physical device recovers by itself:
-  the `401` drops its token and it attests for real.
+- The attestation gate is the deployed one: a gated request with **no** token is `401`. Every caller attests — a
+  phone for real; a simulator rig build, an emulator, the JVM rig host and the journeys' second member with a
+  software Android key the local deployment's `androidAttestationTrust: any` accepts (`SoftwareKeyAttestation`,
+  `SoftwareKeyIntegrity`, `DeviceTokens` in `:test:contracts`). A device crossing backends recovers by itself: the
+  `401` drops its token and it attests anew.
 - `src/dev/` cannot ship: the bundle is rooted at `src/main.ts`, which imports nothing under it. Running
   `src/main.ts` directly targets the **real** zone and database.
 - Crossing backends with a device build requires `POST /device/reset` (section 6).

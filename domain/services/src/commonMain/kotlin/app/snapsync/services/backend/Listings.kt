@@ -1,5 +1,6 @@
 package app.snapsync.services.backend
 
+import app.snapsync.data.backend.BackendGateway
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId

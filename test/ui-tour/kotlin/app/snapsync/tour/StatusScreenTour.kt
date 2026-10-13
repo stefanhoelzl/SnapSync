@@ -2,10 +2,10 @@
 
 package app.snapsync.tour
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeTimeoutException
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -26,16 +26,20 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import app.snapsync.contracts.UiUnderTest
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
-import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.model.DeviceRefusal
+import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.version.VersionRefusal
+import app.snapsync.feature.status.readmodel.NetworkStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.domain.event.EventEnd
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.domain.event.EventStart
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
@@ -47,12 +51,10 @@ import app.snapsync.model.ReportOutcome
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
-import app.snapsync.model.VersionRefusal
-
 import app.snapsync.model.encodeEventUrl
-
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
@@ -60,7 +62,6 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
-import app.snapsync.ui.components.resources.Res as ComponentRes
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.components.resources.share_range_custom
@@ -123,13 +124,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
-import kotlin.time.Instant
-
 import kotlin.concurrent.Volatile
-import app.snapsync.domain.event.DeletesAt
-import app.snapsync.model.TimestampText
-import app.snapsync.domain.event.EventId
-import app.snapsync.domain.event.OpenUntil
+import kotlin.time.Instant
+import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /** The event the joined parts of the tour are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"

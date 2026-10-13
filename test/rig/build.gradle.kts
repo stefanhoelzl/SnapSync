@@ -90,6 +90,7 @@ kotlin {
             implementation(project(":domain:compose"))
             // The device-log writer the rig re-points at the extension's log for an invoked cycle.
             implementation(project(":domain:services"))
+            implementation(project(":domain:data"))
             implementation(project(":domain:presentation"))
             // The screen state `/device/state` reports, and the intents `/user` dispatches.
             api(project(":ui:state"))

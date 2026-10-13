@@ -46,9 +46,9 @@ kotlin {
             // A rig build's launch adapters hand a root back its `DevicePorts`, some swapped for mocks
             // (`:test:launch-adapters`).
             api(project(":domain:compose"))
-            // The slots the core keeps its items under (`SecureSlots`): the keychain mock is seeded at the device-id
-            // slot, and its persisted state names the slots it restores.
-            implementation(project(":domain:services"))
+            // The slots trust keeps its items under (`TrustSlots`): the keychain mock is seeded at the device-id slot,
+            // and its persisted state names the slots it restores.
+            implementation(project(":domain:data"))
             // The backend's mock answers the device API as `api/openapi.yaml` declares it: the generated routes
             // and DTOs.
             implementation(project(":domain:wire"))

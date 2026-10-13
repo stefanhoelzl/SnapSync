@@ -1,7 +1,7 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.ui.state.AlbumStyle

@@ -1,5 +1,10 @@
+@file:OptIn(app.snapsync.inbound.AppProcessOnly::class)
+
 package app.snapsync.feature.upload
 
+import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.identity.StoredDeviceIdentity
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -17,7 +22,6 @@ import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PauseReason
 import app.snapsync.model.SelectionRule
@@ -30,7 +34,6 @@ import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.testids.testEventId
@@ -84,7 +87,7 @@ class CycleGateReadTest {
         store: SharedStore = SharedStore(),
         records: SharedDatabase = store.db,
         ledger: LedgerService = TestLedger().service,
-        identity: PersistedDeviceIdentity = testIdentity("11111111-1111-4111-8111-111111111111"),
+        identity: DeviceIdentity = testIdentity("11111111-1111-4111-8111-111111111111"),
         suppression: Suppression = Suppression(),
         admission: UploadAdmission = UploadAdmission.Admit,
         albumExclusions: suspend (CaptureCutoff) -> Set<AssetId> = { emptySet() },
@@ -263,11 +266,7 @@ class CycleGateReadTest {
 
     @Test
     fun `an identity this process may not mint skips naming it absent`() = runTest {
-        val readOnly = PersistedDeviceIdentity(
-            DeviceIdentityRole.READ_ONLY,
-            inMemorySecureStore(),
-            PlatformDeviceId { "never minted" },
-        )
+        val readOnly = StoredDeviceIdentity(inMemorySecureStore())
 
         val skip = assertIs<CycleGate.Skip>(gate(identity = readOnly).read())
 
@@ -279,8 +278,7 @@ class CycleGateReadTest {
 
     @Test
     fun `any other identity failure propagates rather than becoming a skip`() = runTest {
-        val broken = PersistedDeviceIdentity(
-            DeviceIdentityRole.MINTING,
+        val broken = MintingDeviceIdentity(
             inMemorySecureStore(),
             PlatformDeviceId { throw IllegalStateException("platform id fault") },
         )

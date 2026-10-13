@@ -1,5 +1,7 @@
 package app.snapsync.entrypoints
 
+import app.snapsync.application.EntryPointCall
+import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
@@ -56,7 +58,6 @@ import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.push.PushTokenRequest
 import app.snapsync.services.push.PushTokenSource
 import app.snapsync.services.transfer.SessionDrains
-import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.upload.SessionTransfer
 import app.snapsync.services.wake.Heartbeat
 
@@ -302,10 +303,11 @@ class UploadEngine(
  * What the re-read before a wake's own work covers: the membership, which another process may have changed, and the
  * token.
  */
-class Prelude(private val config: ConfigService, private val attestation: DeviceAttestation) {
+class Prelude(private val config: ConfigService, private val refreshAttestation: RefreshAttestation) {
+    @OptIn(EntryPointCall::class)
     suspend fun run() = steps {
         isolated("membership") { config.reload() }
-        isolated("attestation") { attestation.refresh() }
+        isolated("attestation") { refreshAttestation() }
     }
 }
 

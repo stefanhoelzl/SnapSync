@@ -1,10 +1,11 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeoutOrNull
@@ -46,7 +47,7 @@ class StoredUploadSettle(
     private val files: DeviceFilesSource,
     private val ledger: LedgerService,
     /** The device identity; a thunk because it resolves against a protected store on first use. */
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
     private val log: Logger = Logger.withTag("StoredUploadSettle"),
 ) {
     /** [settle] against the joined event [eventId] — nothing while not joined, when nothing is in flight to settle. */
@@ -59,7 +60,7 @@ class StoredUploadSettle(
         try {
             val pending = ledger.pendingResources().mapTo(mutableSetOf()) { it.key }
             if (pending.isEmpty()) return // nothing in flight could be settled: no request
-            val listing = withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(eventId, identity.deviceId()) }
+            val listing = withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(eventId, identity.requireDeviceId()) }
             if (listing == null) {
                 log.w { "device listing timed out — nothing settled this foreground" }
                 return

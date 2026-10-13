@@ -8,9 +8,11 @@ import io.gitlab.arturbosch.detekt.api.Issue
 import io.gitlab.arturbosch.detekt.api.Rule
 import io.gitlab.arturbosch.detekt.api.Severity
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
+import org.jetbrains.kotlin.psi.KtFunctionLiteral
 import org.jetbrains.kotlin.psi.KtFunctionType
 import org.jetbrains.kotlin.psi.KtIfExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
@@ -28,30 +30,59 @@ import org.jetbrains.kotlin.psi.psiUtil.containingClass
 // `config/detekt/_base.yml`.
 
 /**
- * An entry point orders steps and decides nothing (`docs/patterns.md`, "Entry points"): no `if`, and a `when` only over
- * a subject, with every case named — no `else`, so a new case of the fact is a compile error rather than a silent
- * default. A decision that needs more is a feature's.
+ * A layer that does not decide (`docs/patterns.md`): no `if`, and a `when` only over a subject, with every case named —
+ * no `else`, so a new case of the fact is a compile error rather than a silent default. [decider] names where a
+ * decision belongs instead.
  */
-class EntryPointShape(config: Config = Config.empty) : Rule(config) {
+abstract class BranchShape(config: Config, private val layer: String, private val decider: String) : Rule(config) {
+    override fun visitIfExpression(expression: KtIfExpression) {
+        super.visitIfExpression(expression)
+        report(CodeSmell(issue, Entity.from(expression), "An `if` in $layer decides: move it into $decider."))
+    }
+
+    override fun visitWhenExpression(expression: KtWhenExpression) {
+        super.visitWhenExpression(expression)
+        if (expression.subjectExpression == null) {
+            report(CodeSmell(issue, Entity.from(expression), "A `when` in $layer selects over a subject."))
+        }
+        if (expression.elseExpression != null) {
+            report(CodeSmell(issue, Entity.from(expression), "A `when` in $layer names every case: no `else`."))
+        }
+    }
+}
+
+/**
+ * An entry point orders steps and decides nothing (`docs/patterns.md`, "Entry points"): [BranchShape]. A decision that
+ * needs more is a feature's.
+ */
+class EntryPointShape(config: Config = Config.empty) : BranchShape(config, "an entry point", "a feature") {
     override val issue = Issue(
         javaClass.simpleName,
         Severity.Maintainability,
         "An entry point orders steps; a decision belongs in a feature.",
         Debt.TWENTY_MINS,
     )
+}
 
-    override fun visitIfExpression(expression: KtIfExpression) {
-        super.visitIfExpression(expression)
-        report(CodeSmell(issue, Entity.from(expression), "An `if` in an entry point decides: move it into a feature."))
-    }
+/**
+ * Data translates and never decides (`docs/patterns.md`, "The data layer"): [BranchShape], and every `when` is used as
+ * an expression — its value is the answer, so no case can quietly do nothing. A `when` standing as a statement in a
+ * block is reported; one that is a lambda's last statement is the lambda's value and passes.
+ */
+class DataShape(config: Config = Config.empty) : BranchShape(config, "data", "a domain verdict") {
+    override val issue = Issue(
+        javaClass.simpleName,
+        Severity.Maintainability,
+        "Data translates; a decision belongs in a domain verdict.",
+        Debt.TWENTY_MINS,
+    )
 
     override fun visitWhenExpression(expression: KtWhenExpression) {
         super.visitWhenExpression(expression)
-        if (expression.subjectExpression == null) {
-            report(CodeSmell(issue, Entity.from(expression), "A `when` in an entry point selects over a subject."))
-        }
-        if (expression.elseExpression != null) {
-            report(CodeSmell(issue, Entity.from(expression), "A `when` in an entry point names every case: no `else`."))
+        val block = expression.parent as? KtBlockExpression ?: return
+        val lambdaValue = block.parent is KtFunctionLiteral && block.statements.lastOrNull() == expression
+        if (!lambdaValue) {
+            report(CodeSmell(issue, Entity.from(expression), "A `when` in data is used as an expression: its value."))
         }
     }
 }

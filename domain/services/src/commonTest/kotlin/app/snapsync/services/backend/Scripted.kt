@@ -1,12 +1,19 @@
 package app.snapsync.services.backend
 
+import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.BackendTarget
+import app.snapsync.data.backend.Credential
+import app.snapsync.data.backend.TokenRead
+import app.snapsync.data.backend.VersionIgnored
+import app.snapsync.data.trust.TokenText
+import app.snapsync.domain.trust.BearerToken
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.identityOf
-import app.snapsync.services.version.AppVersionGate
 
 /** The base every scripted exchange addresses — the device API's, one version prefix included. */
 internal const val BASE = "https://backend.test/api/v2"
@@ -55,34 +62,22 @@ internal fun appTooOld(minimum: String): HttpResult = json(
     """{"error":"app too old","minAppVersion":"$minimum"}""",
 )
 
-/** The exchange over [transport], declaring [VERSION] at [BASE], reporting to [gate]. */
-internal fun exchangeOver(transport: HttpTransport, gate: AppVersionGate? = null): BackendExchange =
-    BackendExchange(transport, { BASE }, { VERSION }, gate)
+/** The exchange over [transport], declaring [VERSION] at [BASE]. */
+internal fun exchangeOver(transport: HttpTransport): BackendExchange =
+    BackendExchange(transport, ScriptedTarget, VersionIgnored)
 
-/** A [Credential] holding [current], which a rejection replaces with [recovered] (or keeps, for `null`). */
-internal class ScriptedCredential(
-    var current: String?,
-    private val recovered: String? = null,
-    /** What [missing] obtains — `null`, the extension's answer, by default. */
-    private val obtained: String? = null,
-) : Credential {
-    val rejections = mutableListOf<String>()
-    var reads = 0
-    var obtains = 0
+private object ScriptedTarget : BackendTarget {
+    override val base = BASE
+    override val declaredVersion = VERSION
+}
 
-    override suspend fun missing(): String? {
-        obtains++
-        if (obtained != null) current = obtained
-        return obtained
-    }
+/** A [Credential] holding [current] — or none — and never recovering. */
+internal class ScriptedCredential(private val current: String?) : Credential {
+    override fun token(): TokenRead = current?.let { TokenRead.Held(TokenText.parse(it)) } ?: TokenRead.None
 
-    override fun token(): String? = current.also { reads++ }
+    override suspend fun rejected(sent: BearerToken): TokenRead = TokenRead.None
 
-    override suspend fun rejected(sent: String): String? {
-        rejections += sent
-        if (recovered != null) current = recovered
-        return recovered
-    }
+    override suspend fun missing(): TokenRead = TokenRead.None
 }
 
 /** Services over a gateway whose transport answers every request with [reply], for the need-shaped mappings. */

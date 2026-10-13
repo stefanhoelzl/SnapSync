@@ -1,13 +1,15 @@
+@file:OptIn(app.snapsync.inbound.AppProcessOnly::class)
+
 package app.snapsync.feature.support
 
 import app.cash.sqldelight.db.QueryResult
+import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
@@ -27,7 +29,6 @@ import app.snapsync.services.config.toConfig
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.ledger.db.LedgerDatabase
@@ -218,17 +219,15 @@ fun configService(
  * A device identity that resolves to the fixture device [id] stands for ([testDeviceId]) — the app's, minting the
  * platform id over an empty secure store.
  */
-fun testIdentity(id: String): PersistedDeviceIdentity =
-    PersistedDeviceIdentity(
-        DeviceIdentityRole.MINTING,
+fun testIdentity(id: String): MintingDeviceIdentity =
+    MintingDeviceIdentity(
         inMemorySecureStore(),
         PlatformDeviceId { testDeviceId(id).value },
     )
 
 /** A device identity that cannot be read — the secure store answers as a locked device's does. */
-fun unreadableIdentity(): PersistedDeviceIdentity =
-    PersistedDeviceIdentity(
-        DeviceIdentityRole.MINTING,
+fun unreadableIdentity(): MintingDeviceIdentity =
+    MintingDeviceIdentity(
         inMemorySecureStore(unavailable = true),
         PlatformDeviceId { "unread" },
     )

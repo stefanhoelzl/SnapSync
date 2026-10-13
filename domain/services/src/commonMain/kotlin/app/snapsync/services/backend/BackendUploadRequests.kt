@@ -1,7 +1,10 @@
 package app.snapsync.services.backend
 
+import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.trust.BearerToken
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.Resource
@@ -50,25 +53,25 @@ import app.snapsync.wire.api.Routes
  * the ledger matches its completion by the destination path it recorded when the request was made.
  *
  * The base and the declared version are the [BackendExchange]'s — the same every backend request carries; [eventId] and
- * [deviceId] come from the cycle's config and the shared Keychain. The provider makes no platform call.
+ * [deviceId] come from the cycle's config and the shared Keychain; the token is the [credentials]' in-memory copy, and a
+ * retry's is read from the store of record first — the other process may have renewed it. One that cannot be read
+ * builds a request without one, as a device that holds none does. The provider makes no platform call.
  */
 class BackendUploadRequests(
     private val exchange: BackendExchange,
     private val eventId: EventId,
     private val deviceId: DeviceId,
-    private val token: suspend () -> String?,
-    /**
-     * The credential read from its store of record, bypassing any in-process copy — what [provideForRetry] uses.
-     * Required, like [token]: a composition with no credential states `{ null }` for both.
-     */
-    private val freshToken: suspend () -> String?,
+    private val credentials: CachedCredentialStore,
 ) : UploadRequestProvider {
 
-    override suspend fun provide(resource: Resource): UploadRequest = mint(resource, token())
+    override suspend fun provide(resource: Resource): UploadRequest = mint(resource, credentials.token().held())
 
-    override suspend fun provideForRetry(resource: Resource): UploadRequest = mint(resource, freshToken())
+    override suspend fun provideForRetry(resource: Resource): UploadRequest {
+        credentials.reread()
+        return mint(resource, credentials.token().held())
+    }
 
-    private fun mint(resource: Resource, bearer: String?): UploadRequest {
+    private fun mint(resource: Resource, bearer: BearerToken?): UploadRequest {
         // Identity in the PATH, capture name in a required QUERY. `assetId` and `role` are derived from
         // the ledger key through the shared parsers, so the one definition of that layout stays in
         // `model/` and the destination cannot disagree with the row it belongs to.
@@ -86,7 +89,7 @@ class BackendUploadRequests(
         val headers = buildMap {
             put("Content-Type", contentTypeOf(resource))
             putAll(exchange.versionHeaders())
-            bearer?.let { put("Authorization", "Bearer $it") }
+            bearer?.let { put("Authorization", "Bearer ${it.secret}") }
         }
         return UploadRequest(url = url, headers = headers, resource = resource)
     }

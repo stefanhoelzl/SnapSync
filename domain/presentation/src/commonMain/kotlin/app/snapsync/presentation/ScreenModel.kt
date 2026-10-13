@@ -4,9 +4,9 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.EventWindow
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.BuildLabel
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome

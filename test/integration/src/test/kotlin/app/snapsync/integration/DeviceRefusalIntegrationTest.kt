@@ -1,8 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.levers.AttestationRefusal
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.presentation.message
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
