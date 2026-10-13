@@ -25,7 +25,10 @@ kotlin {
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
             implementation(project(":domain:feature"))
-            implementation(project(":domain:flow"))
+            // How work enters and runs: the runtime, the entry points this composition builds and hands to the ports.
+            implementation(project(":domain:inbound"))
+            implementation(project(":domain:scheduling"))
+            implementation(project(":domain:entrypoints"))
             // The screen's vocabulary the app's port bundle binds its Ui port to (`Ui<UiState, UiIntent>`).
             implementation(project(":ui:state"))
             // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by

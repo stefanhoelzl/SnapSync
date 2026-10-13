@@ -1,7 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.logging.FileLogSink
-import app.snapsync.logging.IosEntryContext
+import app.snapsync.logging.IosThreadLabel
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.extensionLogDestination
 import app.snapsync.services.logs.SinkLogWriter
@@ -102,7 +102,7 @@ private suspend fun invokeExtensionCycle(
         // Setting them per call makes every invoked cycle land where an extension's cycle lands, which is
         // what makes that log answerable at all on this host.
         Logger.setLogWriters(
-            SinkLogWriter(listOf(PublicNSLogSink(), FileLogSink(extensionLogDestination().path)), IosEntryContext),
+            SinkLogWriter(listOf(PublicNSLogSink(), FileLogSink(extensionLogDestination().path)), IosThreadLabel),
         )
         process()
     } finally {

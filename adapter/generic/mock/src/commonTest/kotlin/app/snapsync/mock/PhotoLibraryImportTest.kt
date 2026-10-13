@@ -1,5 +1,9 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.mock
 
+import app.snapsync.contracts.inboundOf
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.Gallery
@@ -44,11 +48,11 @@ class PhotoLibraryImportTest {
 
     /**
      * The marker writes are the registered handlers, so every gallery here is listened to first — an import before
-     * `listen` has nowhere to record its marker, and the mock refuses it rather than look like a working one while
+     * `inbound` has nowhere to record its marker, and the mock refuses it rather than look like a working one while
      * every pass creates another asset (`docs/testing.md`).
      */
     private fun importer(library: PhotoLibraryMock = PhotoLibraryMock()) = library.port().apply {
-        listen(GalleryHandlers(onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
+        inbound(GalleryHandlers(onImportPlaceholder = inboundOf {}, onImportSettled = inboundOf {}))
     }
 
     /** Every created asset gets its own identifier, exactly as PhotoKit mints a fresh one per request. */

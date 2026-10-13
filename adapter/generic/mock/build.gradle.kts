@@ -40,8 +40,9 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
+            // The inbound kinds the event ports deliver through, and the completion handles.
+            api(project(":domain:inbound"))
             api(project(":domain:feature"))
-            api(project(":domain:flow"))
             // A rig build's launch adapters hand a root back its `DevicePorts`, some swapped for mocks
             // (`:test:launch-adapters`).
             api(project(":domain:compose"))
@@ -80,6 +81,8 @@ kotlin {
             implementation(project(":domain:services"))
             // The process services hand the root a Kermit writer to install (`ProcessServices.logWriters`).
             implementation(libs.kermit)
+            // A process's composition takes its runtime (`snapSyncProcess`, `ExtensionEntryTest`).
+            implementation(project(":domain:scheduling"))
         }
     }
 }

@@ -1,20 +1,26 @@
 package app.snapsync.mock
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.destinationPathOf
 import app.snapsync.ports.ChangeOutcome
-import app.snapsync.ports.Completion
+import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.Files
+import app.snapsync.ports.FinishedDownload
+import app.snapsync.ports.FinishedTransfer
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.OsUploadJob
 import app.snapsync.ports.OsUploadJobHandle
 import app.snapsync.ports.OsUploadQueue
+import app.snapsync.ports.SessionDrain
+import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.Transfer
 import app.snapsync.ports.TransferFailure
@@ -245,13 +251,17 @@ class UploadSessionMock(
     internal val handlers = HandlerSlot<TransferHandlers>("TransferSession", BeforeListen.Thrown)
 
     @Volatile internal var handbacks = 0
+
+    /** The drain reports the session has made — the count a relaunch is told it arrived after. */
+    @Volatile internal var drains = 0
     internal val live = mutableListOf<Live>()
     internal val created = mutableListOf<String>()
 
     fun port(): TransferSession = object : TransferSession {
         override val takesResources: Boolean = false
 
-        override fun listen(handlers: TransferHandlers) {
+        @CompositionOnly
+        override fun inbound(handlers: TransferHandlers) {
             this@UploadSessionMock.handlers.set(handlers)
         }
 
@@ -273,7 +283,7 @@ class UploadSessionMock(
             val live = transfer.handle as? Live ?: return
             if (locked { this@UploadSessionMock.live.remove(live) }) {
                 handlers.orNull("a cancelled transfer's end", BeforeListen.Dropped)
-                    ?.onFinished(live.tag, TransferFailure("cancelled"))
+                    ?.onFinished?.deliver(FinishedTransfer(live.tag, TransferFailure("cancelled")))
             }
         }
     }
@@ -311,7 +321,7 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
             status in 200..299 -> null
             else -> TransferFailure("http:$status")
         }
-        mock.handlers.require("a transfer's end").onFinished(transfer.tag, failure)
+        mock.handlers.require("a transfer's end").onFinished.deliver(FinishedTransfer(transfer.tag, failure))
     }
 
     /**
@@ -320,9 +330,9 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
      */
     fun handBack(completion: Completion) {
         val registered = mock.handlers.require("a hand-back")
-        registered.onBackgroundEvents(completion)
+        registered.onBackgroundEvents.handle(SessionRelaunch(mock.drains), completion)
         mock.handbacks++
-        registered.onEventsDrained()
+        registered.onEventsDrained.deliver(SessionDrain(++mock.drains))
     }
 
     private companion object {
@@ -389,13 +399,17 @@ class DownloadSessionMock(
     internal val started = mutableListOf<Started>()
     internal val handlers = HandlerSlot<DownloadHandlers>("Download", BeforeListen.Thrown)
 
+    /** The drain reports the session has made — the count a relaunch is told it arrived after. */
+    @Volatile internal var drains = 0
+
     @Volatile internal var current: Face? = null
 
     internal inner class Face : Download {
         /** Whether this process has brought the session up — by starting, cancelling, or being handed its events. */
         @Volatile var realized: Boolean = false
 
-        override fun listen(handlers: DownloadHandlers) {
+        @CompositionOnly
+        override fun inbound(handlers: DownloadHandlers) {
             this@DownloadSessionMock.handlers.set(handlers)
             current = this
         }
@@ -411,7 +425,7 @@ class DownloadSessionMock(
         override suspend fun cancelAll() {
             realized = true
             val cancelled = locked { started.filterNot { it.cancelled }.onEach { it.cancelled = true } }
-            cancelled.forEach { registered().onCompleted(it.description, "cancelled") }
+            cancelled.forEach { registered().onCompleted.deliver(CompletedDownload(it.description, "cancelled")) }
         }
     }
 
@@ -472,16 +486,18 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
             !held
         }
         if (!runs) return
-        mock.registered().onFinished(description, outcome, mock.leaveTempFile(description, bytes))
-        mock.registered().onCompleted(description, null)
+        mock.registered().onFinished.deliver(
+            FinishedDownload(description, outcome, mock.leaveTempFile(description, bytes)),
+        )
+        mock.registered().onCompleted.deliver(CompletedDownload(description, null))
     }
 
     /** The operating system relaunches the app for this session's events, handing [completion]. */
     fun handBack(completion: Completion) {
-        mock.registered().onBackgroundEvents(completion)
+        mock.registered().onBackgroundEvents.handle(SessionRelaunch(mock.drains), completion)
         mock.current?.realized = true
     }
 
     /** The session reports every event delivered (`urlSessionDidFinishEvents`). */
-    fun reportEventsDrained() = mock.registered().onEventsDrained()
+    fun reportEventsDrained() = mock.registered().onEventsDrained.deliver(SessionDrain(++mock.drains))
 }

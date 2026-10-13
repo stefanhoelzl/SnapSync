@@ -17,7 +17,6 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.CaptureCeiling
@@ -27,6 +26,7 @@ import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
+import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit

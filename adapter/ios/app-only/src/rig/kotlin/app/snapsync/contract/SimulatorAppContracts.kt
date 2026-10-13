@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@file:OptIn(CompositionOnly::class, ExperimentalForeignApi::class, BetaInteropApi::class)
 
 package app.snapsync.contract
 
@@ -52,6 +52,7 @@ import app.snapsync.device.IosDeviceConditions
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
@@ -262,7 +263,7 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             GalleryImportState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
         }
         val delivered = ImportDeliveries()
-        val importer = contractGallery().recorded(log).apply { listen(delivered.handlers) }
+        val importer = contractGallery().recorded(log).apply { inbound(delivered.handlers) }
         var staged = 0
         val stage = {
             staged++
@@ -307,7 +308,7 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
             LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED -> PhotoLibrary.brokenMotionPhoto
         }
         val delivered = ImportDeliveries()
-        val importer = contractGallery().recorded(log).apply { listen(delivered.handlers) }
+        val importer = contractGallery().recorded(log).apply { inbound(delivered.handlers) }
         val stage = {
             val key = "contract-$clauseId-primary.jpg"
             val path = NSTemporaryDirectory() + key

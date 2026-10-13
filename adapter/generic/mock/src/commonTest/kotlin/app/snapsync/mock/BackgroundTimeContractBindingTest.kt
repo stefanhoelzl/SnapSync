@@ -9,6 +9,8 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.InboundImplementation
+import app.snapsync.inbound.Running
 import app.snapsync.ports.BackgroundTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
@@ -38,8 +40,8 @@ class BackgroundTimeContractBindingTest {
     fun `the table holds exactly the holds not yet ended and an end removes only its own`() {
         val held = MutableStateFlow<List<HeldBackgroundTime>>(emptyList())
         val time = inMemoryBackgroundTime(held)
-        val first = time.begin("first") {}
-        val second = time.begin("second") {}
+        val first = time.begin("first", expiring {})
+        val second = time.begin("second", expiring {})
         assertEquals(listOf("first", "second"), held.value.map { it.label })
         first.end()
         first.end()
@@ -52,7 +54,7 @@ class BackgroundTimeContractBindingTest {
     fun `the operating system’s expiry runs the handler once and leaves the hold to its holder`() {
         val held = MutableStateFlow<List<HeldBackgroundTime>>(emptyList())
         var expiries = 0
-        val hold = inMemoryBackgroundTime(held).begin("expiring") { expiries++ }
+        val hold = inMemoryBackgroundTime(held).begin("expiring", expiring { expiries++ })
         held.value.single().expire()
         held.value.single().expire()
         assertEquals(1, expiries, "the handler runs at most once")
@@ -60,4 +62,10 @@ class BackgroundTimeContractBindingTest {
         hold.end()
         assertTrue(held.value.isEmpty())
     }
+}
+
+/** The run a hold is begun for, as the runtime hands it: [onExpiry] is what the operating system's expiry does to it. */
+@OptIn(InboundImplementation::class)
+private fun expiring(onExpiry: () -> Unit): Running = object : Running {
+    override fun expire() = onExpiry()
 }

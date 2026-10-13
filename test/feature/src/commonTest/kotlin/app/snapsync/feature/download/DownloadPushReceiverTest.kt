@@ -120,6 +120,26 @@ class DownloadPushReceiverTest {
     }
 
     @Test
+    fun a_push_is_read_from_its_payload_and_one_naming_no_event_receives_nothing() = runTest {
+        val union = RecordingUnion()
+        val receiver = receiver(union, active = eventA)
+        receiver.onSilentPush(mapOf<Any?, Any?>("aps" to mapOf("content-available" to 1)))
+        assertTrue(union.requested.isEmpty(), "a payload with no event id runs nothing")
+        receiver.onSilentPush(mapOf<Any?, Any?>("eventId" to eventA))
+        assertEquals(listOf(eventA), union.requested)
+    }
+
+    @Test
+    fun the_joined_event_is_reconciled_and_nothing_while_not_joined() = runTest {
+        val union = RecordingUnion()
+        val controller = controller(union)
+        controller.reconcileJoined(null, app.snapsync.model.UnionTrigger.FOREGROUND)
+        assertTrue(union.requested.isEmpty())
+        controller.reconcileJoined(eventA, app.snapsync.model.UnionTrigger.FOREGROUND)
+        assertEquals(listOf(eventA), union.requested)
+    }
+
+    @Test
     fun push_with_no_active_event_is_a_noop() = runTest {
         val union = RecordingUnion()
         receiver(union, active = null).onSilentPush(eventA)

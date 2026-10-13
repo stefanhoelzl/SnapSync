@@ -25,5 +25,6 @@ class SwitchDecisionTest {
     fun `a first join is a join not a switch and not a stay`() {
         // A join loads the share set; a stay must not (it would reset a live membership's ledger).
         assertEquals(SwitchDecision.Join, switchDecision(null, "NEW"))
+        kotlin.test.assertNull(SwitchDecision.Join.previousEventId, "a first join leaves nothing first")
     }
 }

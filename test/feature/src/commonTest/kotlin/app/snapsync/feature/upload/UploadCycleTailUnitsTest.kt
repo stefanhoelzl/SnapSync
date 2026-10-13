@@ -1,6 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.feature.support.TestLedger
+import app.snapsync.feature.support.galleryAccess
 import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CycleResult
@@ -16,20 +17,27 @@ import app.snapsync.model.UploadRequestProvider
 import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionRulesFor
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.upload.BackgroundTransfer
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
  * The shared cycle's two **tail units** (capability `sync-status`, "Each OS wake does its own work, then hands the
  * rest to one opportunistic tail"; `background-upload`, "The producer tops up from the ledger, not from the walk's
  * output"; decision record `changes/own-work-per-wake`, D1, D2, D6): the top-up ② creates from the ledger and never
- * walks; the walk ③ records and publishes and never creates; a stop abandons a walk before it writes anything, and
- * ends a top-up between two creations. The whole-cycle behaviour both share is `UploadCycleTest`'s.
+ * walks; the walk ③ records and publishes and never creates; a cancellation abandons a walk before it writes
+ * anything, and ends a top-up between two creations. The whole-cycle behaviour both share is `UploadCycleTest`'s.
  */
 class UploadCycleTailUnitsTest {
 
@@ -40,17 +48,23 @@ class UploadCycleTailUnitsTest {
         var resolves = 0
         var platformReads = 0
 
+        /** What happens as the walk reads the library, and after each creation — where a test's time runs out. */
+        var onWalk: () -> Unit = {}
+        var onCreated: () -> Unit = {}
+
         override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = emptyList<PlatformUploadJob>().also { platformReads++ }
         override suspend fun drainTerminals(): List<PlatformUploadJob> = emptyList<PlatformUploadJob>().also { platformReads++ }
         override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) = Unit
         override suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome {
             if (created.size >= limit) return UploadCreateOutcome.LIMIT_EXCEEDED
             created += resource.filename
+            onCreated()
             return UploadCreateOutcome.CREATED
         }
 
         override suspend fun discover(policy: SelectionPolicy): Discovery {
             walks++
+            onWalk()
             val candidates: List<Candidate> = candidatesFromResources(resources)
             return Discovery(candidates, fullEnumeration = true)
         }
@@ -109,8 +123,6 @@ class UploadCycleTailUnitsTest {
         data = null,
     )
 
-    private val never: () -> Boolean = { false }
-
     @Test
     fun `a paused cycle touches nothing in any unit and asks to be invoked again`() = runTest {
         // The extension found the download store at an older schema than its own (capability `receiving-photos`): it
@@ -121,8 +133,8 @@ class UploadCycleTailUnitsTest {
         val paused = CycleResult.Paused(PauseReason.OLD_SCHEMA)
 
         assertEquals(paused, cycle.run())
-        assertEquals(paused, cycle.topUp(never))
-        assertEquals(WalkOutcome.Walked(paused, addedRows = false), cycle.walkAndPublish(never))
+        assertEquals(paused, cycle.topUp())
+        assertEquals(WalkOutcome(paused, addedRows = false), cycle.walkAndPublish())
         assertEquals(0, f.library.platformReads, "nothing presented is read or acknowledged")
         assertEquals(0, f.library.walks, "the library is not walked")
         assertTrue(f.library.created.isEmpty(), "no job is created")
@@ -133,9 +145,9 @@ class UploadCycleTailUnitsTest {
     @Test
     fun `the walk records and publishes but creates no job`() = runTest {
         val f = Fixture(listOf(resource("a"), resource("b")))
-        val outcome = f.cycle().walkAndPublish(never)
+        val outcome = f.cycle().walkAndPublish()
 
-        assertEquals(WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = true), outcome)
+        assertEquals(WalkOutcome(CycleResult.COMPLETED, addedRows = true), outcome)
         assertEquals(LedgerState.DISCOVERED, f.backend.get("a")?.state)
         assertEquals(1, f.publishes, "the walk and the publish are one unit")
         assertTrue(f.library.created.isEmpty(), "creation is the top-up's")
@@ -145,8 +157,8 @@ class UploadCycleTailUnitsTest {
     fun `the top-up after a walk creates from the walk’s handles without resolving`() = runTest {
         val f = Fixture(listOf(resource("a"), resource("b")))
         val cycle = f.cycle()
-        cycle.walkAndPublish(never)
-        val result = cycle.topUp(never)
+        cycle.walkAndPublish()
+        val result = cycle.topUp()
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(listOf("a", "b"), f.library.created)
@@ -158,7 +170,7 @@ class UploadCycleTailUnitsTest {
     fun `a top-up with no walk before it resolves from the ledger and walks nothing`() = runTest {
         val f = Fixture(listOf(resource("a")))
         LedgerWriter(f.backend).recordDiscovered(listOf(resource("a")))
-        val result = f.cycle().topUp(never)
+        val result = f.cycle().topUp()
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(listOf("a"), f.library.created)
@@ -170,29 +182,34 @@ class UploadCycleTailUnitsTest {
     fun `a walk that found nothing new reports no added rows`() = runTest {
         val f = Fixture(listOf(resource("a")))
         val cycle = f.cycle()
-        cycle.walkAndPublish(never)
-        assertEquals(WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false), cycle.walkAndPublish(never))
+        cycle.walkAndPublish()
+        assertEquals(WalkOutcome(CycleResult.COMPLETED, addedRows = false), cycle.walkAndPublish())
     }
 
     @Test
-    fun `a stop during the walk records nothing and publishes nothing`() = runTest {
+    fun `a walk whose time runs out records nothing and publishes nothing`() = runTest {
         val f = Fixture(listOf(resource("a")))
-        val outcome = f.cycle().walkAndPublish { true }
+        val cycle = f.cycle()
+        val walk = async { cycle.walkAndPublish() }
+        f.library.onWalk = { walk.cancel() }
 
-        assertEquals(WalkOutcome.Abandoned, outcome)
-        assertEquals(null, f.backend.get("a"), "nothing the abandoned walk saw is recorded")
+        assertFailsWith<CancellationException> { walk.await() }
+        assertEquals(1, f.library.walks)
+        assertEquals(null, f.backend.get("a"), "nothing the cancelled walk saw is recorded")
         assertEquals(0, f.publishes, "and no manifest is published from it")
     }
 
     @Test
-    fun `a stop ends the top-up between two creations and reports work left`() = runTest {
+    fun `a top-up whose time runs out ends between two creations`() = runTest {
         val f = Fixture(listOf(resource("a"), resource("b"), resource("c")))
         LedgerWriter(f.backend).recordDiscovered(listOf(resource("a"), resource("b"), resource("c")))
-        var creations = 0
-        val result = f.cycle().topUp { creations++ >= 1 }
+        val cycle = f.cycle()
+        val topUp = async { cycle.topUp() }
+        f.library.onCreated = { topUp.cancel() }
 
-        assertEquals(CycleResult.PROCESSING, result, "rows not reached still need a job")
+        assertFailsWith<CancellationException> { topUp.await() }
         assertEquals(listOf("a"), f.library.created, "the creation in flight completed, and no further one started")
+        assertEquals(LedgerState.REQUESTED, f.backend.get("a")?.state, "and the job it created is recorded with it")
         assertEquals(LedgerState.DISCOVERED, f.backend.get("b")?.state)
     }
 
@@ -205,8 +222,8 @@ class UploadCycleTailUnitsTest {
         )) {
             val f = Fixture(listOf(resource("a")))
             val cycle = f.cycle(gate)
-            assertEquals(expected, cycle.topUp(never), "top-up at $gate")
-            assertEquals(WalkOutcome.Walked(expected, addedRows = false), cycle.walkAndPublish(never), "walk at $gate")
+            assertEquals(expected, cycle.topUp(), "top-up at $gate")
+            assertEquals(WalkOutcome(expected, addedRows = false), cycle.walkAndPublish(), "walk at $gate")
             assertTrue(f.library.created.isEmpty())
             assertEquals(0, f.library.walks, "a declined unit reads no library")
         }
@@ -217,9 +234,9 @@ class UploadCycleTailUnitsTest {
         runTest {
             val f = Fixture(listOf(resource("a")))
             val cycle = f.cycle(policy = app.snapsync.model.noContribution())
-            assertEquals(CycleResult.SKIPPED, cycle.topUp(never))
+            assertEquals(CycleResult.SKIPPED, cycle.topUp())
             assertEquals(0, f.publishes, "the top-up publishes nothing")
-            assertEquals(WalkOutcome.Walked(CycleResult.SKIPPED, addedRows = false), cycle.walkAndPublish(never))
+            assertEquals(WalkOutcome(CycleResult.SKIPPED, addedRows = false), cycle.walkAndPublish())
             assertEquals(1, f.publishes, "the walk publishes the empty manifest")
         }
 
@@ -227,6 +244,57 @@ class UploadCycleTailUnitsTest {
     fun `a refused creation truncates the top-up`() = runTest {
         val f = Fixture(listOf(resource("a"), resource("b")), limit = 1)
         LedgerWriter(f.backend).recordDiscovered(listOf(resource("a"), resource("b")))
-        assertEquals(CycleResult.PROCESSING, f.cycle().topUp(never))
+        assertEquals(CycleResult.PROCESSING, f.cycle().topUp())
+    }
+
+    // ---- the app's own uploads over the two units (`OwnUploads`) ------------------------------------------------------
+
+    private fun Fixture.own(cycle: UploadCycle, grant: LibraryGrant, admission: UploadAdmission = UploadAdmission.Admit) =
+        OwnUploads(cycle, galleryAccess(MutableStateFlow(grant)), admission = { admission })
+
+    @Test
+    fun `a wake walks only under a full grant and tops up again only for what the walk recorded`() = runTest {
+        val f = Fixture(listOf(resource("a")))
+        val limited = f.own(f.cycle(), LibraryGrant.LIMITED)
+        assertEquals(null, limited.walk(), "under a partial grant the selection is the scope: no walk")
+        assertEquals(null, limited.topUpAfter(null))
+
+        val full = f.own(f.cycle(), LibraryGrant.GRANTED)
+        val walked = assertNotNull(full.walk())
+        assertEquals(CycleResult.COMPLETED, full.topUpAfter(walked), "the walk recorded a row: its top-up is due")
+        assertEquals(null, full.topUpAfter(full.walk()), "a walk that recorded nothing asks for no top-up")
+        assertEquals(listOf("a"), f.library.created)
+        assertEquals(CycleResult.COMPLETED, full.topUp())
+    }
+
+    @Test
+    fun `a selection change walks the selection whatever the grant`() = runTest {
+        val f = Fixture(listOf(resource("a")))
+        assertEquals(
+            WalkOutcome(CycleResult.COMPLETED, addedRows = true),
+            f.own(f.cycle(), LibraryGrant.LIMITED).walkSelection(),
+        )
+    }
+
+    @Test
+    fun `a freed slot is filled only while the app may create`() = runTest {
+        val f = Fixture(emptyList())
+        assertTrue(f.own(f.cycle(), LibraryGrant.GRANTED).mayFillSlot())
+        assertFalse(f.own(f.cycle(), LibraryGrant.GRANTED, UploadAdmission.Withheld).mayFillSlot())
+    }
+
+    @Test
+    fun `a wake's uploads come to the latest skip - then work left - then a failure - then completion`() = runTest {
+        val f = Fixture(emptyList())
+        val own = f.own(f.cycle(), LibraryGrant.GRANTED)
+        assertEquals(CycleResult.COMPLETED, own.outcome(), "a wake that ran no step completed")
+        assertEquals(CycleResult.SKIPPED, own.outcome(CycleResult.PROCESSING, null, CycleResult.SKIPPED))
+        assertEquals(CycleResult.PROCESSING, own.outcome(CycleResult.COMPLETED, CycleResult.PROCESSING))
+        assertEquals(
+            CycleResult.PROCESSING,
+            own.outcome(CycleResult.Paused(PauseReason.OLD_SCHEMA), CycleResult.COMPLETED),
+            "a paused step's work remains",
+        )
+        assertEquals(CycleResult.FAILED, own.outcome(CycleResult.FAILED, CycleResult.COMPLETED))
     }
 }

@@ -1,5 +1,6 @@
 package app.snapsync.services.upload
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AesKey
 import app.snapsync.model.AssetId
 import app.snapsync.model.FileAccess
@@ -86,7 +87,9 @@ class SessionResumeTest {
         val created = mutableListOf<Pair<TransferSource.File, Map<String, String>>>()
         var live: List<Transfer> = emptyList()
         var answer = CreateOutcome.CREATED
-        override fun listen(handlers: TransferHandlers) = Unit
+
+        @CompositionOnly
+        override fun inbound(handlers: TransferHandlers) = Unit
         override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
             created += (source as TransferSource.File) to target.headers
             return answer

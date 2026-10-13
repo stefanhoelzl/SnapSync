@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
 import app.cash.sqldelight.TransacterImpl
@@ -5,6 +7,7 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -265,7 +268,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         DatabasesState.SHARED,
         covers = cells {
             on<Databases> {
-                answers(Databases::listen).returns()
+                answers(Databases::inbound).returns()
                 answers(Databases::open).with(DbOpen.Opened::class)
                 calls(DatabaseHandlers::onChangedElsewhere, String::class)
             }
@@ -287,7 +290,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         DatabasesState.SHARED,
         covers = cells {
             on<Databases> {
-                answers(Databases::listen).returns()
+                answers(Databases::inbound).returns()
                 answers(Databases::open).with(DbOpen.Opened::class)
                 calls(DatabaseHandlers::onChangedElsewhere, String::class)
             }
@@ -310,7 +313,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         DatabasesState.SHARED,
         covers = cells {
             on<Databases> {
-                answers(Databases::listen).returns()
+                answers(Databases::inbound).returns()
                 answers(Databases::open).with(DbOpen.Opened::class)
             }
         },
@@ -332,7 +335,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         DatabasesState.CURRENT,
         covers = cells {
             on<Databases> {
-                answers(Databases::listen).returns()
+                answers(Databases::inbound).returns()
                 answers(Databases::open).with(DbOpen.Opened::class)
             }
         },
@@ -351,7 +354,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
 /** Every database [DatabasesSubject.databases] heard another process commit to, in order. */
 private fun DatabasesSubject.listening(): StateFlow<List<String>> {
     val heard = MutableStateFlow(emptyList<String>())
-    databases.listen(DatabaseHandlers(onChangedElsewhere = { name -> heard.update { it + name } }))
+    databases.inbound(DatabaseHandlers(onChangedElsewhere = inboundOf { name -> heard.update { it + name } }))
     return heard
 }
 

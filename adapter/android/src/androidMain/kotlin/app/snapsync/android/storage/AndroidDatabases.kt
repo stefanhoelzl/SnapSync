@@ -9,6 +9,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
@@ -36,7 +37,8 @@ import java.io.File
 class AndroidDatabases(private val context: Context, private val directory: File) : Databases {
 
     /** One process: no commit is ever another process's, so the handlers are never called. */
-    override fun listen(handlers: DatabaseHandlers) = Unit
+    @CompositionOnly
+    override fun inbound(handlers: DatabaseHandlers) = Unit
 
     /** Production: the app's database directory (a secondary constructor, not a default). */
     constructor(context: Context) : this(context, context.getDatabasePath("placeholder").parentFile!!)

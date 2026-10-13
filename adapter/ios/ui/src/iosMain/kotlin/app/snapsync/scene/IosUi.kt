@@ -4,7 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
-import app.snapsync.logging.invocation
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
@@ -50,9 +50,10 @@ class IosUi(
     private val log: Logger,
 ) : Ui<UiState, UiIntent> {
     private val shown = MutableStateFlow<UiState?>(null)
-    private val handlers = HandlerSlot<UiHandlers<UiIntent>>("Ui", BeforeListen.Logged(log))
+    private val handlers = HandlerSlot<UiHandlers<UiState, UiIntent>>("Ui", BeforeListen.Logged(log))
 
-    override fun listen(handlers: UiHandlers<UiIntent>) = this.handlers.set(handlers)
+    @CompositionOnly
+    override fun inbound(handlers: UiHandlers<UiState, UiIntent>) = this.handlers.set(handlers)
 
     override fun show(state: UiState) {
         shown.value = state
@@ -62,7 +63,7 @@ class IosUi(
     @PlatformEntry
     fun viewController(): UIViewController {
         val mode = record.resolve(UIApplication.sharedApplication.applicationState.value)
-        return log.invocation("MainViewController", params = "mode=${mode.diagnosticName}") {
+        return run {
             if (mode == SceneMode.Deferred) {
                 placeholder()
             } else {
@@ -70,7 +71,7 @@ class IosUi(
                 // fault, logged and answered with the placeholder rather than a throw across the ObjC boundary.
                 handlers.orNull("a live scene's pull")?.let(::liveScreen) ?: placeholder()
             }
-        }
+        }.also { log.i { "MainViewController(mode=${mode.diagnosticName})" } }
     }
 
     /**
@@ -79,10 +80,10 @@ class IosUi(
      * from one carrying a stale rebuild signal is that value.
      */
     @PlatformEntry
-    fun onSceneActive(): Int = log.invocation("onSceneActive", result = { "generation=$it" }) {
+    fun onSceneActive(): Int = run {
         record.markActive()
         record.generation
-    }
+    }.also { log.i { "onSceneActive = generation=$it" } }
 
     private fun placeholder(): UIViewController {
         val placeholder = UIViewController(nibName = null, bundle = null)
@@ -90,9 +91,9 @@ class IosUi(
         return placeholder
     }
 
-    private fun liveScreen(registered: UiHandlers<UiIntent>): UIViewController {
-        registered.onLive()
-        val actions = statusActions(registered.onIntent)
+    private fun liveScreen(registered: UiHandlers<UiState, UiIntent>): UIViewController {
+        shown.value = registered.onLive.deliver(Unit)
+        val actions = statusActions(registered.onIntent::deliver)
         return ComposeUIViewController {
             val state by shown.collectAsState()
             CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {

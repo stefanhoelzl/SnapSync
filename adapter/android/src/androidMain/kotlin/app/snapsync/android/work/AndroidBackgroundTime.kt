@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.snapsync.adapter.android.R
+import app.snapsync.inbound.Running
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import co.touchlab.kermit.Logger
@@ -29,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Each hold is an **expedited** one-time work ([HoldWorker]) that runs until the hold ends: a running worker keeps a
  * process the member just left — or one a worker started — from being cached and frozen mid-unit. Past the app's
  * expedited quota it runs as ordinary work. The worker being stopped IS the operating system's expiry: the hold's
- * `onExpiry` runs, once. A hold that cannot be requested is an immediate expiry, as the port allows.
+ * run expires, once. A hold that cannot be requested is an immediate expiry, as the port allows.
  *
  * Holds live in this process's memory; a hold worker a previous process left behind finds no hold and ends at once.
  */
@@ -45,13 +46,13 @@ class AndroidBackgroundTime(
         registered = this
     }
 
-    override fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold {
+    override fun begin(label: String, expiry: Running): BackgroundTimeHold {
         // Unique across instances AND processes: the live holds are this process's, and a work's unique name is the
         // device's. A counter restarting at 1 — per instance, or per process — named a new hold after one whose worker
         // was still being cancelled, or one a dead process left enqueued: `KEEP` ignored the new request, and the old
         // worker's stop then expired the new hold.
         val id = "hold.${UUID.randomUUID()}"
-        val hold = Hold(id, label, onExpiry)
+        val hold = Hold(id, label, expiry)
         holds[id] = hold
         try {
             val request = OneTimeWorkRequestBuilder<HoldWorker>()
@@ -78,12 +79,12 @@ class AndroidBackgroundTime(
         }
     }
 
-    private inner class Hold(val id: String, val label: String, private val onExpiry: () -> Unit) : BackgroundTimeHold {
+    private inner class Hold(val id: String, val label: String, private val expiry: Running) : BackgroundTimeHold {
         val ended = CompletableDeferred<Unit>()
         private val expired = AtomicBoolean(false)
 
         fun expire() {
-            if (expired.compareAndSet(false, true)) onExpiry()
+            if (expired.compareAndSet(false, true)) expiry.expire()
         }
 
         override fun end() {

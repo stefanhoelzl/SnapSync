@@ -1,6 +1,7 @@
 package app.snapsync.services.upload
 
 import app.snapsync.model.CycleResult
+import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 
 /**
@@ -14,73 +15,13 @@ import co.touchlab.kermit.Logger
  * re-invocation, so this polls at its cadence, not in a loop.) This tier alone needs it — it
  * cannot observe a completion while not running; the app-driven tier's pump can.
  *
- * [pending] is consulted **only** on a completed cycle (a skipped/failed/processing result already
- * carries its re-arm answer); [onRequeue] is a diagnostics hook for the debug.log line.
+ * The [ledger]'s pending count is read **only** on a completed cycle (a skipped/failed/processing result already
+ * carries its re-arm answer).
  */
-suspend fun CycleResult.requeueWhilePending(
-    pending: suspend () -> Int,
-    onRequeue: (Int) -> Unit = {},
-): CycleResult {
+suspend fun CycleResult.requeueWhilePending(ledger: LedgerService, log: Logger): CycleResult {
     if (this != CycleResult.COMPLETED) return this
-    val open = pending()
+    val open = ledger.aggregates().pending
     if (open <= 0) return this
-    onRequeue(open)
+    log.i { "process: $open pending — requesting re-invocation" }
     return CycleResult.PROCESSING
 }
-
-/**
- * One OS-driven `process()` invocation — [run] the cycle, then [requeueWhilePending] — as a function
- * that **never throws**. The extension root forwards its result
- * across the ObjC boundary, where a Kotlin throwable is not a failed cycle but a Kotlin/Native
- * `abort()` of the whole extension process: no result reaches the OS and nothing is reported.
- *
- * A throw from the cycle is reported through [onCycleFailed]; a throw from anything after it — the
- * [pending] ledger read, or a hook — through [onLateFailure]. Both answer [CycleResult.FAILED]: a
- * cycle whose bookkeeping could not be completed cannot claim `COMPLETED` (it may rest with jobs in
- * flight), and `PROCESSING` means "more work", not "error". The one path left unguarded is
- * [onLateFailure] itself, the last resort.
- *
- * Guarding the whole body rather than the one known read is the point: the defect was a shape — any
- * line after the cycle's own guard could abort the process — not a single bad call.
- */
-suspend fun runProcessCycle(
-    run: suspend () -> CycleResult,
-    pending: suspend () -> Int,
-    onCycleFinished: (CycleResult) -> Unit = {},
-    onCycleFailed: (Throwable) -> Unit = {},
-    onRequeue: (Int) -> Unit = {},
-    onLateFailure: (Throwable) -> Unit = {},
-): CycleResult =
-    // Catches EVERYTHING, cancellation included, and deliberately: this is an ObjC boundary, where a Kotlin
-    // throwable — a `CancellationException` no less than any other — aborts the extension process. The one
-    // sanctioned catch-all outside the `model/` helpers (named in the catch gate).
-    try {
-        val ran = try {
-            run()
-        } catch (t: Throwable) {
-            onCycleFailed(t)
-            null
-        }
-        // The hook runs outside the cycle's own guard, so a throwing hook is a LATE failure, not a failed cycle.
-        when (ran) {
-            null -> CycleResult.FAILED
-            else -> ran.also(onCycleFinished).requeueWhilePending(pending, onRequeue)
-        }
-    } catch (t: Throwable) {
-        onLateFailure(t)
-        CycleResult.FAILED
-    }
-
-/**
- * [runProcessCycle] with every outcome logged by [log] — the extension's `process()`: a finished cycle at `Info`, a
- * failed one or a late failure at `Error` (each then reported `FAILED`), and a requeue at `Info`.
- */
-suspend fun runProcessCycle(run: suspend () -> CycleResult, pending: suspend () -> Int, log: Logger): CycleResult =
-    runProcessCycle(
-        run = run,
-        pending = pending,
-        onCycleFinished = { log.i { "process: cycle finished — $it" } },
-        onCycleFailed = { log.e(it) { "process cycle failed" } },
-        onRequeue = { open -> log.i { "process: $open pending — requesting re-invocation" } },
-        onLateFailure = { log.e(it) { "process failed after the cycle — reporting FAILED" } },
-    )

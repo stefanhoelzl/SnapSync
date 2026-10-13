@@ -1,5 +1,8 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
@@ -115,7 +118,7 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
                 on<Gallery> {
                     answers(Gallery::requestAccess).with(LibraryGrant.LIMITED)
                     answers(Gallery::widenSelection).with(LibraryGrant.LIMITED)
-                    answers(Gallery::listen).returns()
+                    answers(Gallery::inbound).returns()
                     answers(Gallery::observeChanges).returns()
                     emits(Gallery::selection).returns()
                 }
@@ -130,7 +133,9 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
                 "the answer is the grant as it stands; a revised selection arrives through the observer",
             )
             // Registered as a composition registers them; the selection itself arrives on the flow, not through them.
-            subject.gallery.listen(GalleryHandlers(onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
+            subject.gallery.inbound(
+                GalleryHandlers(onImportPlaceholder = inboundOf { }, onImportSettled = inboundOf { }),
+            )
             subject.gallery.observeChanges(true)
             try {
                 awaitWithin { subject.gallery.selection.value != null }

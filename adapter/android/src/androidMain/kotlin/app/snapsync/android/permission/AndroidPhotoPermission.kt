@@ -6,8 +6,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import app.snapsync.android.scene.ForegroundActivity
-import app.snapsync.model.EntryScope
-import app.snapsync.model.invocation
 import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
@@ -72,11 +70,7 @@ class AndroidPhotoPermission(
         if (current() != LibraryGrant.LIMITED) state.value else ask("widenSelection")
 
     private fun refresh() {
-        log.invocation(
-            EntryScope.None,
-            "photoPermission.onResumed",
-            result = { access: LibraryGrant -> "$access" },
-        ) { current() }
+        run { current() }.also { log.i { "photoPermission.onResumed = ${"$it"}" } }
     }
 
     private suspend fun ask(name: String): LibraryGrant = withContext(Dispatchers.Main) {
@@ -88,16 +82,11 @@ class AndroidPhotoPermission(
             var launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>? = null
             launcher = activity.activityResultRegistry.register(key, ActivityResultContracts.RequestMultiplePermissions()) { answers ->
                 val granted = answers.filterValues { it }.keys.map { it.substringAfterLast('.') }
-                val now = log.invocation(
-                    EntryScope.None,
-                    "photoPermission.$name.completion",
-                    params = "granted=$granted",
-                    result = { access: LibraryGrant -> "$access" },
-                ) {
+                val now = run {
                     launcher?.unregister()
                     record.edit().putBoolean(ASKED, true).apply()
                     current()
-                }
+                }.also { log.i { "photoPermission.$name.completion(granted=$granted) = ${"$it"}" } }
                 if (cont.isActive) cont.resume(now)
             }
             launcher.launch(requested())

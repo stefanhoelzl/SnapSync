@@ -6,11 +6,11 @@ import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.DeviceConditions
-import app.snapsync.ports.EntryContext
 import app.snapsync.ports.LogSink
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.SystemUi
+import app.snapsync.ports.ThreadLabel
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.flow.onEach
 
@@ -52,15 +52,14 @@ internal class DeviceConditionsProxy(private val inner: DeviceConditions, log: C
     override suspend fun read() = r.returns("read", inner.read())
 }
 
-/** [EntryContext] as its clause's [CallLog] sees it. */
-fun EntryContext.recorded(log: CallLog): EntryContext = EntryContextProxy(this, log)
+/** [ThreadLabel] as its clause's [CallLog] sees it. */
+fun ThreadLabel.recorded(log: CallLog): ThreadLabel = ThreadLabelProxy(this, log)
 
-internal class EntryContextProxy(private val inner: EntryContext, log: CallLog) : EntryContext {
-    private val r = log.recorder("EntryContext")
+internal class ThreadLabelProxy(private val inner: ThreadLabel, log: CallLog) : ThreadLabel {
+    private val r = log.recorder("ThreadLabel")
 
+    override fun swap(label: String?) = r.returns("swap", inner.swap(label))
     override fun current() = r.returns("current", inner.current())
-    override fun enter(name: String) = r.answer("enter", inner.enter(name))
-    override fun exit(owned: Boolean) = r.returns("exit", inner.exit(owned))
 }
 
 /** [LogSink] as its clause's [CallLog] sees it. */

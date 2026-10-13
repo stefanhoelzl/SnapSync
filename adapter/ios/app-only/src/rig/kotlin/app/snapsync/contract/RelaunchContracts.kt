@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, ExperimentalAtomicApi::class)
+@file:OptIn(CompositionOnly::class, ExperimentalForeignApi::class, BetaInteropApi::class, ExperimentalAtomicApi::class)
 
 package app.snapsync.contract
 
@@ -23,10 +23,14 @@ import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.SharePresenterState
 import app.snapsync.contracts.TransferSessionContract
 import app.snapsync.contracts.TransferSessionState
+import app.snapsync.contracts.backgroundOf
+import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.ios.urlsession.SessionEvents
@@ -37,7 +41,6 @@ import app.snapsync.ios.urlsession.UploadSessionApi
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.logging.documentsDirectory
-import app.snapsync.ports.Completion
 import app.snapsync.ports.SystemUi
 import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferSource
@@ -241,11 +244,11 @@ internal fun relaunchedUpload(
     val ended = AtomicReference<List<Ended>>(emptyList())
     val handedOver = AtomicReference<List<Completion>>(emptyList())
     val drains = AtomicInt(0)
-    platform.listen(
+    platform.inbound(
         TransferHandlers(
-            onFinished = { tag, error -> ended.append(Ended(tag, error)) },
-            onBackgroundEvents = { completion -> handedOver.append(completion) },
-            onEventsDrained = { drains.incrementAndFetch() },
+            onFinished = inboundOf { end -> ended.append(Ended(end.tag, end.failure)) },
+            onBackgroundEvents = backgroundOf { _, completion -> handedOver.append(completion) },
+            onEventsDrained = inboundOf { drains.incrementAndFetch() },
         ),
     )
     return Entered.Ready(

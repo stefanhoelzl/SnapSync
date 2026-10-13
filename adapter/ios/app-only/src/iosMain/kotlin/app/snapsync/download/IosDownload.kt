@@ -2,12 +2,17 @@
 
 package app.snapsync.download
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.upload.applyTransferNetwork
+import app.snapsync.ios.urlsession.DrainCount
 import app.snapsync.ios.urlsession.SessionCompletion
 import app.snapsync.ios.urlsession.transferSessionConfiguration
-import app.snapsync.logging.invocation
+import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.FinishedDownload
+import app.snapsync.ports.SessionDrain
+import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
@@ -60,7 +65,11 @@ class IosDownload internal constructor(
     /** The tags of the transfers started or reported here and not yet completed — what an invalidation ends. */
     private val open = AtomicReference<Set<String>>(emptySet())
 
-    override fun listen(handlers: DownloadHandlers) {
+    /** The session's drain reports, counted for the relaunches that wait for them. */
+    private val drains = DrainCount()
+
+    @CompositionOnly
+    override fun inbound(handlers: DownloadHandlers) {
         this.handlers.store(handlers)
     }
 
@@ -115,40 +124,40 @@ class IosDownload internal constructor(
     }
 
     /** Cancels every task the session holds — ones a relaunched process inherited included — and returns once done. */
-    override suspend fun cancelAll() = log.invocation("download.cancelAll") {
+    override suspend fun cancelAll() = run {
         val tasks = session().tasks()
         tasks.forEach { it.cancel() }
         log.i { "cancelled ${tasks.size} download task(s)" }
-    }
+    }.also { log.i { "download.cancelAll" } }
 
     /**
      * The operating system relaunched (or woke) the app to deliver this session's events. The handler is handed over
-     * FIRST, then the session is brought up — so every event it then delivers, and the drain report after them, land in
-     * that handler's window (adopt, then create).
+     * FIRST, with the count of drain reports so far, then the session is brought up — so every event it then delivers,
+     * and the drain report after them, land after the relaunch the core waits on.
      */
-    fun handleEvents(completion: () -> Unit) = log.invocation("download.handleEvents") {
+    fun handleEvents(completion: () -> Unit) {
         val registered = handlers.load()
         if (registered == null) {
-            log.e { "download session events arrived before the composition listened — released at once" }
+            log.e { "download session events arrived before the composition registered — released at once" }
             SessionCompletion(completion, api).complete()
         } else {
-            registered.onBackgroundEvents(SessionCompletion(completion, api))
+            registered.onBackgroundEvents.handle(SessionRelaunch(drains.now), SessionCompletion(completion, api))
         }
         session()
-        Unit
+        log.i { "download.handleEvents" }
     }
 
     private fun onFinished(task: DownloadTask, facts: TransferOutcome, temp: String) {
         val tag = task.tag ?: return
         update { it + tag }
-        handlers.load()?.onFinished?.invoke(tag, facts, temp)
+        handlers.load()?.onFinished?.deliver(FinishedDownload(tag, facts, temp))
             ?: log.e { "download $tag finished before the composition listened — its bytes are downloaded again later" }
     }
 
     private fun onComplete(task: DownloadTask, error: NSError?) {
         val tag = task.tag ?: return
         update { it - tag }
-        handlers.load()?.onCompleted?.invoke(tag, error?.localizedDescription)
+        handlers.load()?.onCompleted?.deliver(CompletedDownload(tag, error?.localizedDescription))
     }
 
     /**
@@ -159,7 +168,7 @@ class IosDownload internal constructor(
         current.compareAndSet(session, null)
         val ended = open.exchange(emptySet())
         val reason = "the session was invalidated by the system: ${error?.localizedDescription ?: "no error"}"
-        ended.forEach { tag -> handlers.load()?.onCompleted?.invoke(tag, reason) }
+        ended.forEach { tag -> handlers.load()?.onCompleted?.deliver(CompletedDownload(tag, reason)) }
     }
 
     private fun update(change: (Set<String>) -> Set<String>) {
@@ -170,6 +179,6 @@ class IosDownload internal constructor(
     }
 
     private fun onEventsFinished() {
-        handlers.load()?.onEventsDrained?.invoke()
+        handlers.load()?.onEventsDrained?.deliver(SessionDrain(drains.next()))
     }
 }

@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.runCatchingCancellable
@@ -15,6 +16,8 @@ import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.ImportOutcome
+import app.snapsync.ports.ImportPlaceholder
+import app.snapsync.ports.ImportSettled
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.SelectionSnapshot
@@ -71,7 +74,8 @@ class AndroidGallery(
         scope.launch { permission.grant.collect { reconcile() } }
     }
 
-    override fun listen(handlers: GalleryHandlers) = this.handlers.set(handlers)
+    @CompositionOnly
+    override fun inbound(handlers: GalleryHandlers) = this.handlers.set(handlers)
 
     override fun observeChanges(enabled: Boolean) {
         observing = enabled
@@ -86,9 +90,11 @@ class AndroidGallery(
         val handlers = handlers.orNull("the import of ${request.correlation}")
             ?: return ImportOutcome.Failed("no import handlers registered")
         val result = withContext(Dispatchers.IO) {
-            importer.import(request) { id -> handlers.onImportPlaceholder(request.correlation, id) }
+            importer.import(
+                request,
+            ) { id -> handlers.onImportPlaceholder.deliver(ImportPlaceholder(request.correlation, id)) }
         }
-        handlers.onImportSettled(request.correlation, result)
+        handlers.onImportSettled.deliver(ImportSettled(request.correlation, result))
         return result
     }
 

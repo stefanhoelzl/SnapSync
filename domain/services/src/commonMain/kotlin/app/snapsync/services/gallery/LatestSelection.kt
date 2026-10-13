@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 /**
  * **The latest selection snapshot** of a partial grant — set only by [follow], from the
@@ -43,23 +44,18 @@ class LatestSelection {
     }
 
     /**
-     * Follow the gallery's selection [changes]: each one becomes the latest snapshot, then [onChanged] runs — one
-     * emission, ONE read serving every consumer: one discovery serves both the status total
-     * and the enqueue. Returns only when [changes] completes.
+     * The gallery's selection [changes], each published: it becomes the latest snapshot, then the returned flow emits —
+     * one emission, ONE read serving every consumer: one discovery serves both the status total and the enqueue.
      *
      * [beforePublish] sees each snapshot BEFORE any reader can: what it withholds (a membership whose newly visible
      * received photos are not recognised yet) is withheld before a cycle could admit from the snapshot.
      */
-    suspend fun follow(
+    fun published(
         changes: Flow<SelectionSnapshot?>,
         beforePublish: suspend (List<Resource>) -> Unit,
-        onChanged: suspend () -> Unit,
-    ) {
-        changes.filterNotNull().collect { change ->
-            val resources = resourcesFrom(change.assets)
-            beforePublish(resources)
-            latest.value = resources
-            onChanged()
-        }
+    ): Flow<Unit> = changes.filterNotNull().map { change ->
+        val resources = resourcesFrom(change.assets)
+        beforePublish(resources)
+        latest.value = resources
     }
 }

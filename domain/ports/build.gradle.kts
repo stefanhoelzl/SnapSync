@@ -21,6 +21,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:model"))
+            // How work enters: the inbound kinds the event ports' handlers are typed as, and the completion handles.
+            implementation(project(":domain:inbound"))
             // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the
             // config/manifest vocabulary and cutoff codecs), kermit (the engine's diagnostics).

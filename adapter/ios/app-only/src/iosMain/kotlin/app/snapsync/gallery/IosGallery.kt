@@ -1,6 +1,7 @@
 package app.snapsync.gallery
 
 import app.snapsync.download.IosPhotoLibraryImporter
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.discovery.libraryChangeTokenOf
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.model.BeforeListen
@@ -71,7 +72,8 @@ class IosGallery(
         scope.launch { lane.snapshots.collect { read.value = it } }
     }
 
-    override fun listen(handlers: GalleryHandlers) = this.handlers.set(handlers)
+    @CompositionOnly
+    override fun inbound(handlers: GalleryHandlers) = this.handlers.set(handlers)
 
     override fun observeChanges(enabled: Boolean) = lane.observe(enabled)
 

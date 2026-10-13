@@ -141,7 +141,7 @@ class EntryIntegrationTest {
         val atRelease = osAtRelease(os("app", "onSilentPush", event))
 
         assertTrue(atRelease.downloadsStarted > 0, "released after its own work: the union read and the enqueue")
-        awaitOs { r -> r.backgroundTimeHolds.none { it == "onSilentPush" } }
+        awaitOs { r -> r.backgroundTimeHolds.none { it == "OnSilentPush" } }
         val after = osRecord()
         assertEquals(0, after.releasedAgain, "the completion is released exactly once")
         assertFalse(after.screenShown, "a silent push builds no screen")
@@ -159,7 +159,7 @@ class EntryIntegrationTest {
         val atRelease = osAtRelease(os("app", "onSilentPush", OTHER_EVENT))
 
         assertEquals(0, atRelease.downloadsStarted, "the download arm's guard refuses it")
-        awaitOs { r -> r.backgroundTimeHolds.none { it == "onSilentPush" } }
+        awaitOs { r -> r.backgroundTimeHolds.none { it == "OnSilentPush" } }
         assertEquals(armed, osRecord().heartbeatsScheduled, "and no tail runs for it, so nothing re-arms")
     }
 
@@ -185,7 +185,10 @@ class EntryIntegrationTest {
         device("import/suspend-next")
         stage(wait = false) // the staging requests the tail, whose import parks
         device("import/await-parked")
-        assertTrue(osRecord().backgroundTimeHolds.any { it.startsWith("tail(") }, "precondition: the tail holds time")
+        assertTrue(
+            osRecord().backgroundTimeHolds.any { it == "OnDownloadStaged" },
+            "precondition: the import holds time",
+        )
 
         expire()
 
@@ -240,6 +243,25 @@ class EntryIntegrationTest {
         // The start's own baseline read discovers A and creates it: a start that never read its selection withholds.
         assertEquals(listOf(primaryKey("A")), awaitAppUploads(1).live)
         assertFalse(osRecord().screenShown, "and the start built no screen")
+    }
+
+    @Test
+    fun an_upload_that_ends_while_the_app_may_not_create_fills_no_slot() = rigTest {
+        createAndJoin()
+        repeat(6) { addPhoto("P$it") } // more than the session holds live at once
+        foreground()
+        awaitAppUploads(4)
+        awaitOs { it.backgroundTimeHolds.isEmpty() }
+        val created = appUploads().created
+        device("uploaders", "app" to "off")
+        completeAppUploads()
+        awaitOs { it.backgroundTimeHolds.isEmpty() }
+        assertEquals(
+            created,
+            appUploads().created,
+            "a finished upload's freed slot stays empty while the app may not create",
+        )
+        assertTrue(appUploads().live.isEmpty(), "and every end was recorded")
     }
 
     private companion object {

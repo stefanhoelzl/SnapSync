@@ -1,9 +1,6 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.feature.upload.WalkOutcome
-import app.snapsync.model.CycleResult
-import app.snapsync.model.invocation
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.upload.Uploader
@@ -16,9 +13,9 @@ import app.snapsync.services.upload.Uploader
  * object, never a loss (decision record `changes/both-uploaders-active`).
  *
  * It reads [core] directly — its services, its ports and the build's constants — so no root supplies anything for it.
- * It holds **no trigger, no OS completion handler and no heartbeat**: which wake runs what is the core's tail runner's
- * (decision record `changes/own-work-per-wake`, D1 and D5). Both units pass through the shared cycle's entry gate,
- * which decides whether this process may create.
+ * It holds **no trigger, no OS completion handler and no heartbeat**: which wake runs what is the entry points' (the
+ * sequences `domain/entrypoints` runs; decision record `changes/own-work-per-wake`, D1 and D5). Both units pass through
+ * the shared cycle's entry gate, which decides whether this process may create.
  */
 internal class AppUploader(private val core: AppCore) {
 
@@ -43,7 +40,7 @@ internal class AppUploader(private val core: AppCore) {
      * the PUT this tier's uploads would never appear in the event union) and the engine wiring are the same code the
      * ≥26.1 extension and the world harness run. Long-lived: each unit re-reads the membership.
      */
-    private val cycle: UploadCycle by lazy {
+    val cycle: UploadCycle by lazy {
         uploadCycle(
             core.process,
             UploadServices(
@@ -86,27 +83,4 @@ internal class AppUploader(private val core: AppCore) {
             ),
         )
     }
-
-    /** The tail's ② — the top-up from the ledger; `stopRequested` is checked between two job creations. */
-    suspend fun topUp(stopRequested: () -> Boolean): CycleResult =
-        log.invocation(core.process.entryContext, "url-session.topUp", result = { "$it" }) {
-            cycle.topUp(stopRequested)
-        }
-
-    /**
-     * The tail's ③ — the walk and the manifest publish, abandoned on a stop: the discovery walk is atomic under a
-     * stop. Also a selection change's own work under a partial grant, where the walk is the selection snapshot.
-
-     */
-    suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome =
-        log.invocation(core.process.entryContext, "url-session.walkAndPublish", result = { "$it" }) {
-            cycle.walkAndPublish(stopRequested)
-        }
-
-    /**
-     * Cancel every in-flight transfer and delete its staged file — a **leave** only (a switch leaves first). A
-     * cancelled transfer's terminal is recorded through the guarded write, which matches no row once the leave has
-     * cleared the ledger.
-     */
-    suspend fun cancelTransfers() = core.events.uploadTransfer.cancelAll()
 }

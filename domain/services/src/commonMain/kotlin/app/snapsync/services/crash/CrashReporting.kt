@@ -1,5 +1,6 @@
 package app.snapsync.services.crash
 
+import app.snapsync.inbound.LogLine
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
@@ -7,6 +8,7 @@ import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpResult
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
+import app.snapsync.model.LoggedCrash
 import app.snapsync.model.PLATFORM_TAG
 import app.snapsync.model.PROCESS_METRIC_CONTEXT
 import app.snapsync.model.PROCESS_TAG
@@ -24,8 +26,9 @@ import app.snapsync.model.scrubbedCrumb
 import app.snapsync.model.scrubbedEvent
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.CrashReporter
-import app.snapsync.ports.EntryContext
 import app.snapsync.ports.Files
+import app.snapsync.ports.ThreadLabel
+import app.snapsync.services.logs.message
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
 
@@ -47,8 +50,8 @@ class CrashReporting(
     private val reporter: CrashReporter,
     /** What the running build is: where it reports to (`null` for nowhere) and the facts every report carries. */
     private val build: BuildInfo,
-    /** The ambient entry point a log line belongs to, which rides an event as its `entry_point` tag. */
-    private val entry: EntryContext,
+    /** The trigger the calling thread is labelled with, which rides an event as its `entry_point` tag. */
+    private val label: ThreadLabel,
     /** The process's files: where a build that reports nowhere keeps the latest report. */
     private val files: Files,
 ) {
@@ -68,7 +71,10 @@ class CrashReporting(
      * The logging seam into the channel, or `null` for a build that reports nowhere — so such a build never constructs
      * one. Every line becomes a breadcrumb, and an `Error`/`Assert` line an event too.
      */
-    val logWriter: LogWriter? = if (dsn != null) CrashLogWriter(reporter, entry) else null
+    val logWriter: LogWriter? = if (dsn != null) CrashLogWriter(reporter, label) else null
+
+    /** The same, for the structured log's lines. */
+    val lines: app.snapsync.inbound.LogWriter? = if (dsn != null) CrashLines(reporter, label) else null
 
     /**
      * Start the channel — the process's first act. Idempotent, and a complete no-op without a destination. Reads
@@ -120,7 +126,7 @@ class CrashReporting(
     fun reportCrossing(emission: ProcessMetricEmission, report: ProcessMetricReport) {
         start()
         if (!isConfigured) return
-        reporter.capture(processMetricCrossingEvent(emission, report, entry.current()))
+        reporter.capture(processMetricCrossingEvent(emission, report, label.current()))
     }
 
     /**
@@ -146,10 +152,20 @@ class CrashReporting(
 }
 
 /** The logging seam onto the channel: [loggedCrash] decides what each line becomes. */
-internal class CrashLogWriter(private val reporter: CrashReporter, private val entry: EntryContext) : LogWriter() {
-    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-        val logged = loggedCrash(severity, message, tag, throwable, entry.current())
-        reporter.breadcrumb(logged.crumb)
-        logged.event?.let(reporter::capture)
-    }
+internal class CrashLogWriter(private val reporter: CrashReporter, private val label: ThreadLabel) : LogWriter() {
+    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) =
+        reporter.report(loggedCrash(severity, message, tag, throwable, label.current()))
+}
+
+/** The seam for a structured line: the same rule, its trigger — or the thread's — as the line's entry point. */
+internal class CrashLines(private val reporter: CrashReporter, private val label: ThreadLabel) :
+    app.snapsync.inbound.LogWriter {
+    override fun write(line: LogLine) = reporter.report(
+        loggedCrash(line.severity, line.message(), line.tag, line.cause, line.trigger ?: label.current()),
+    )
+}
+
+private fun CrashReporter.report(logged: LoggedCrash) {
+    breadcrumb(logged.crumb)
+    logged.event?.let(::capture)
 }

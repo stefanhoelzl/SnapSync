@@ -84,7 +84,7 @@ class NetworkIntegrationTest {
 
         // The download is planned by the work the network's return runs — the screen shows it arriving.
         assertIs<SyncHealth.Syncing>(awaitHealth { it is SyncHealth.Syncing })
-        eventually(read = { client.logs() }) { logs: String -> "onNetworkReturned" in logs }
+        eventually(read = { client.logs() }) { logs: String -> "OnNetworkReturned" in logs }
     }
 
     @Test
@@ -96,7 +96,7 @@ class NetworkIntegrationTest {
         os("app", "onBackground")
         network("online")
         delay(GRACE_PASSED)
-        assertFalse("onNetworkReturned" in client.logs(), "a backgrounded app resumed work on the network's return")
+        assertFalse("OnNetworkReturned" in client.logs(), "a backgrounded app resumed work on the network's return")
     }
 
     // ── the create screen ────────────────────────────────────────────────────────────────────────────────

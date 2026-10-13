@@ -12,17 +12,15 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.await
 import androidx.work.workDataOf
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
-import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.Completion
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
@@ -33,8 +31,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.toJavaDuration
 
 /**
@@ -64,13 +60,14 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
 
     private val handlers = HandlerSlot<WakeHandlers>("Wake", BeforeListen.Dropped)
 
-    override fun listen(handlers: WakeHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: WakeHandlers) {
         this.handlers.set(handlers)
         registration.value = this
     }
 
     override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
-        log.invocation(EntryScope.None, "wake.schedule", params = "id=$id", result = { "$it" }) { enqueue(id, trigger) }
+        run { enqueue(id, trigger) }.also { log.i { "wake.schedule(id=$id) = $it" } }
 
     private suspend fun enqueue(id: WakeId, trigger: WakeTrigger): ScheduleResult = try {
         val request = OneTimeWorkRequestBuilder<WakeWorker>()
@@ -119,28 +116,27 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
         }
     }
 
-    override fun cancel(id: WakeId) = log.invocation(EntryScope.None, "wake.cancel", params = "id=$id") {
+    override fun cancel(id: WakeId) = run {
         work.cancelUniqueWork(nameOf(id))
         Unit
-    }
+    }.also { log.i { "wake.cancel(id=$id)" } }
 
     /** The worker's run: hand the wake to the core, and hold the run open until its completion is released. */
-    internal suspend fun run(id: WakeId) = log.invocation(EntryScope.None, "wake.onTaskLaunched", params = "id=$id") {
-        val registered = handlers.orNull("a $id wake") ?: return@invocation
+    internal suspend fun run(id: WakeId) = run body@{
+        val registered = handlers.orNull("a $id wake") ?: return@body
         val done = CompletableDeferred<Unit>()
-        val completion = WorkerCompletion(done)
         running += id
+        val run = registered.onWake.handle(id, WorkerCompletion(done))
         try {
-            registered.onWake(id, completion)
             done.await()
         } catch (e: CancellationException) {
             log.i { "the operating system stopped the $id wake — its time is up" }
-            completion.expire()
+            run.expire()
             throw e
         } finally {
             running -= id
         }
-    }
+    }.also { log.i { "wake.onTaskLaunched(id=$id)" } }
 
     internal companion object {
         const val ID = "wake"
@@ -152,31 +148,10 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
     }
 }
 
-/**
- * A wake's [Completion]: released once, and expired once — when WorkManager stops the worker. The expiry action runs at
- * most once, whichever comes first, its registration or the stop, as `IosWake`'s does.
- */
-private class WorkerCompletion(private val done: CompletableDeferred<Unit>) : ExpiringCompletion {
-    private val expired = AtomicBoolean(false)
-    private val action = AtomicReference<(() -> Unit)?>(null)
-    private val actionRan = AtomicBoolean(false)
-
+/** A wake's [Completion]: what the worker awaits before it ends. */
+private class WorkerCompletion(private val done: CompletableDeferred<Unit>) : Completion {
     override fun complete() {
         done.complete(Unit)
-    }
-
-    override fun onExpired(action: () -> Unit) {
-        this.action.set(action)
-        if (expired.get()) runOnce(action)
-    }
-
-    fun expire() {
-        expired.set(true)
-        action.get()?.let(::runOnce)
-    }
-
-    private fun runOnce(action: () -> Unit) {
-        if (actionRan.compareAndSet(false, true)) action()
     }
 }
 

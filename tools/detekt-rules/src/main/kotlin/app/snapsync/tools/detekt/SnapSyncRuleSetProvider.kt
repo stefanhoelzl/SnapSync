@@ -9,5 +9,15 @@ class SnapSyncRuleSetProvider : RuleSetProvider {
     override val ruleSetId: String = "snapsync"
 
     override fun instance(config: Config): RuleSet =
-        RuleSet(ruleSetId, listOf(HardCodedUiText(config), HardCodedSystemText(config)))
+        RuleSet(
+            ruleSetId,
+            listOf(
+                HardCodedUiText(config),
+                HardCodedSystemText(config),
+                EntryPointShape(config),
+                OneCallPerStep(config),
+                CoroutinesInScheduling(config),
+                NoFunctionTypes(config),
+            ),
+        )
 }

@@ -1,7 +1,7 @@
 package app.snapsync.permission
 
-import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.logAt
 import app.snapsync.objc.objcBoundary
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
@@ -44,6 +44,6 @@ class PhotoSelectionObserver(
     @PlatformEntry
     override fun photoLibraryDidChange(changeInstance: PHChange) =
         objcBoundary(log, "photoLibraryDidChange") {
-            log.invocation("photoLibraryDidChange", severity = Severity.Debug) { onChange(changeInstance) }
+            run { onChange(changeInstance) }.also { log.logAt(Severity.Debug) { "photoLibraryDidChange" } }
         }
 }

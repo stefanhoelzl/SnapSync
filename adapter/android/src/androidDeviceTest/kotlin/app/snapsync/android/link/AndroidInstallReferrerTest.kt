@@ -1,8 +1,12 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.android.link
 
 import android.content.Context
 import android.content.SharedPreferences
 import app.snapsync.android.storage.context
+import app.snapsync.contracts.inboundOf
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.ports.LinkDelivery
@@ -24,7 +28,7 @@ class AndroidInstallReferrerTest {
     private val delivered = mutableListOf<LinkDelivery>()
     private val links = AndroidLinks(
         Logger.withTag("test"),
-    ).apply { listen(LinkHandlers(onLink = { delivered += it })) }
+    ).apply { inbound(LinkHandlers(onLink = inboundOf { delivered += it })) }
     private lateinit var record: SharedPreferences
 
     @BeforeTest

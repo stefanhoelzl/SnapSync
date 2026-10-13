@@ -1,11 +1,10 @@
 package app.snapsync.android.link
 
 import android.content.Intent
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
-import app.snapsync.model.invocation
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links
@@ -25,7 +24,8 @@ import co.touchlab.kermit.Logger
 class AndroidLinks(private val log: Logger) : Links {
     private val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Logged(log))
 
-    override fun listen(handlers: LinkHandlers) = this.handlers.set(handlers)
+    @CompositionOnly
+    override fun inbound(handlers: LinkHandlers) = this.handlers.set(handlers)
 
     /**
      * The intent the activity was created with. A [restored] activity (a rotation, a process the platform brought back)
@@ -39,9 +39,9 @@ class AndroidLinks(private val log: Logger) : Links {
     /** The intent the activity was started or re-delivered with, through [hook]'s path. */
     @PlatformEntry
     fun deliverIntent(hook: String, intent: Intent?) =
-        log.invocation(EntryScope.None, hook, params = "action=${intent?.action} data=${intent?.data != null}") {
+        run {
             deliver(deliveryOf(hook, intent))
-        }
+        }.also { log.i { "$hook(action=${intent?.action} data=${intent?.data != null})" } }
 
     /** The referrer a Google Play install carried ([AndroidInstallReferrer]), raw: whether it is an invite is the core's. */
     @PlatformEntry
@@ -50,7 +50,7 @@ class AndroidLinks(private val log: Logger) : Links {
     ) = deliver(LinkDelivery.InstallReferrer(INSTALL_REFERRER_HOOK, referrer))
 
     private fun deliver(delivery: LinkDelivery) {
-        handlers.orNull("a link through ${delivery.hook}")?.onLink(delivery)
+        handlers.orNull("a link through ${delivery.hook}")?.onLink?.deliver(delivery)
     }
 }
 

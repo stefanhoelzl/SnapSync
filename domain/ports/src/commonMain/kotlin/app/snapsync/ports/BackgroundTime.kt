@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.Running
+
 /**
  * The app process's **background time**: "keep this process running while I finish, and tell me when time is up"
  * (`docs/architecture.md`, "Background time is an outbound port named for the need"; decision record
@@ -23,17 +25,16 @@ interface BackgroundTime : Port {
     /**
      * Begin a hold, labelled [label] for the diagnostic line, and return it.
      *
-     * [onExpiry] is how the operating system says this hold's time is up. It is invoked **at most once**, on a
-     * thread the implementation does not choose (the main thread on iOS), and possibly **before [begin] returns** —
-     * a process whose time is already up is refused a hold, and that refusal is reported as an immediate expiry
-     * rather than as an error, because it means the same thing to the caller. It SHALL only request a stop and
-     * return: the operating system expects the handler back promptly, so it must not wait for the work it stops.
+     * [expiry] is the run the hold is for: the adapter calls [Running.expire] when the operating system says this
+     * hold's time is up. At most once, on a thread the implementation does not choose (the main thread on iOS), and
+     * possibly **before [begin] returns** — a process whose time is already up is refused a hold, and that refusal
+     * is reported as an immediate expiry rather than as an error, because it means the same thing to the caller.
+     * [Running.expire] returns at once: the operating system expects its handler back promptly.
      *
-     * An expiry does **not** end the hold by itself: the caller ends it with [BackgroundTimeHold.end] — at once,
-     * from inside [onExpiry], after requesting the stop, and without waiting for the unit in flight: expiry
-     * stops work cooperatively at the next boundary. A hold that is never ended is, per Apple, a termination.
+     * An expiry does **not** end the hold by itself: the run ends it with [BackgroundTimeHold.end] once its
+     * cancellation has unwound, or its grace has run out. A hold that is never ended is, per Apple, a termination.
      */
-    fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold
+    fun begin(label: String, expiry: Running): BackgroundTimeHold
 }
 
 /** One hold [BackgroundTime.begin] granted. Its only operation is ending it. */

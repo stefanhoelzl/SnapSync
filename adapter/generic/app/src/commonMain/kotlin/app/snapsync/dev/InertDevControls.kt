@@ -1,5 +1,6 @@
 package app.snapsync.dev
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
@@ -19,7 +20,8 @@ import app.snapsync.ports.DevHandlers
  */
 object InertDevControls : DevControls {
     /** Registers nothing: this adapter never delivers, so there is no handler to hold. */
-    override fun listen(handlers: DevHandlers) = Unit
+    @CompositionOnly
+    override fun inbound(handlers: DevHandlers) = Unit
 
     override fun uploaderPin(): UploaderPin? = null
 

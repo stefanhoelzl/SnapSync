@@ -4,6 +4,7 @@ import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
@@ -106,7 +107,9 @@ class EncryptedTransfersTest {
     private class FileSession : TransferSession {
         override val takesResources = false
         val created = mutableListOf<Pair<TransferSource, UploadTarget>>()
-        override fun listen(handlers: TransferHandlers) = Unit
+
+        @CompositionOnly
+        override fun inbound(handlers: TransferHandlers) = Unit
         override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
             created += source to target
             return CreateOutcome.CREATED

@@ -4,7 +4,6 @@ package app.snapsync.gallery
 
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
-import app.snapsync.logging.invocation
 import app.snapsync.model.WriteOutcome
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
@@ -78,17 +77,17 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      */
     override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> {
         var readQos = "?"
-        return log.invocation(
-            "gallery.assets",
-            params = "qos=${qosLabel()}",
-            result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}, read at qos=$readQos" },
-        ) {
+        return run {
             readable {
                 readQos = qosLabel()
                 val options = predicateFor(
                     filter,
                 )?.let { predicate -> PHFetchOptions().apply { this.predicate = predicate } }
                 photoKitAssets(PHAsset.fetchAssetsWithOptions(options))
+            }
+        }.also {
+            log.i {
+                "gallery.assets(qos=${qosLabel()}) = ${"${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}, read at qos=$readQos"}"
             }
         }
     }
@@ -97,12 +96,13 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         readable { if (ids.isEmpty()) emptyList() else photoKitAssets(fetchById(ids)) }
 
     override suspend fun resources(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAssetResources>> =
-        log.invocation(
-            "gallery.resources",
-            params = "${ids.size} asset(s), qos=${qosLabel()}",
-            result = { "${(it as? GalleryRead.Read)?.value?.sumOf { a -> a.resources.size } ?: "not readable"} resource(s)" },
-        ) {
+        run {
             readable { if (ids.isEmpty()) emptyList() else photoKitAssetResources(fetchById(ids)) }
+        }.also {
+            val read = (it as? GalleryRead.Read)?.value?.sumOf { a -> a.resources.size }
+            log.i {
+                "gallery.resources(${ids.size} asset(s), qos=${qosLabel()}) = ${read ?: "not readable"} resource(s)"
+            }
         }
 
     /** User albums only: a smart album's title is system-localized, so nothing can be decided on it. */

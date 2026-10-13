@@ -1,9 +1,12 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
-import app.snapsync.ports.Completion
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushNotifications
 import kotlin.test.assertEquals
@@ -44,7 +47,7 @@ object PushNotificationsContract : Contract<PushState, PushUnderTest>("PushNotif
             covers = cells {
                 on<PushNotifications> {
                     answers(PushNotifications::kind).returns()
-                    answers(PushNotifications::listen).returns()
+                    answers(PushNotifications::inbound).returns()
                     answers(PushNotifications::register).returns()
                     calls(PushHandlers::onTokenFailure, PlatformError::class)
                 }
@@ -52,11 +55,11 @@ object PushNotificationsContract : Contract<PushState, PushUnderTest>("PushNotif
         ) { subject ->
             val failures = mutableListOf<PlatformError>()
             val tokens = mutableListOf<PushToken>()
-            subject.push.listen(
+            subject.push.inbound(
                 PushHandlers(
-                    onToken = { tokens += it },
-                    onTokenFailure = { failures += it },
-                    onMessage = { _, c -> c.complete() },
+                    onToken = inboundOf { tokens += it },
+                    onTokenFailure = inboundOf { failures += it },
+                    onMessage = backgroundOf { _, c -> c.complete() },
                 ),
             )
             assertTrue(subject.push.kind.isNotBlank(), "the registration names its service")
@@ -73,8 +76,12 @@ object PushNotificationsContract : Contract<PushState, PushUnderTest>("PushNotif
         ) { subject ->
             val os = kotlin.test.assertNotNull(subject.os, "a delivering binding plays the service")
             val tokens = mutableListOf<PushToken>()
-            subject.push.listen(
-                PushHandlers(onToken = { tokens += it }, onTokenFailure = {}, onMessage = { _, c -> c.complete() }),
+            subject.push.inbound(
+                PushHandlers(
+                    onToken = inboundOf { tokens += it },
+                    onTokenFailure = inboundOf { },
+                    onMessage = backgroundOf { _, c -> c.complete() },
+                ),
             )
             os.issueToken("contract-token")
             awaitWithin { tokens.isNotEmpty() }
@@ -93,11 +100,15 @@ object PushNotificationsContract : Contract<PushState, PushUnderTest>("PushNotif
         ) { subject ->
             val os = kotlin.test.assertNotNull(subject.os, "a delivering binding plays the service")
             val payloads = mutableListOf<Map<Any?, *>>()
-            subject.push.listen(
-                PushHandlers(onToken = {}, onTokenFailure = {}, onMessage = { message, completion ->
-                    payloads += message.payload
-                    completion.complete()
-                }),
+            subject.push.inbound(
+                PushHandlers(
+                    onToken = inboundOf { },
+                    onTokenFailure = inboundOf { },
+                    onMessage = backgroundOf { message, completion ->
+                        payloads += message.payload
+                        completion.complete()
+                    },
+                ),
             )
             val released = os.deliver(mapOf("eventId" to "contract-event"))
             assertEquals("contract-event", payloads.single()["eventId"], "the payload arrives whole")

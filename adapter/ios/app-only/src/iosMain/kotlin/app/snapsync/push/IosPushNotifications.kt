@@ -2,6 +2,8 @@
 
 package app.snapsync.push
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PUSH_KIND_APNS
@@ -9,7 +11,6 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
-import app.snapsync.ports.Completion
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushNotifications
 import co.touchlab.kermit.Logger
@@ -34,7 +35,8 @@ class IosPushNotifications(private val log: Logger) : PushNotifications {
 
     override val kind: String = PUSH_KIND_APNS
 
-    override fun listen(handlers: PushHandlers) = this.handlers.set(handlers)
+    @CompositionOnly
+    override fun inbound(handlers: PushHandlers) = this.handlers.set(handlers)
 
     override fun register() {
         UIApplication.sharedApplication.registerForRemoteNotifications()
@@ -43,13 +45,13 @@ class IosPushNotifications(private val log: Logger) : PushNotifications {
     /** APNs issued this device [hex] — the delegate renders the token's bytes as lowercase hex. */
     @PlatformEntry
     fun deliverToken(hex: String) {
-        handlers.orNull("a token")?.onToken(PushToken(hex))
+        handlers.orNull("a token")?.onToken?.deliver(PushToken(hex))
     }
 
     /** APNs could not issue a token; [description] is the platform's error, as it said it. */
     @PlatformEntry
     fun deliverTokenFailure(description: String) {
-        handlers.orNull("a token failure")?.onTokenFailure(PlatformError(description))
+        handlers.orNull("a token failure")?.onTokenFailure?.deliver(PlatformError(description))
     }
 
     /**
@@ -60,7 +62,11 @@ class IosPushNotifications(private val log: Logger) : PushNotifications {
     @PlatformEntry
     fun deliverMessage(payload: Map<Any?, *>, complete: () -> Unit) {
         val registered = handlers.orNull("a push")
-        if (registered == null) complete() else registered.onMessage(PushMessage(payload), PushCompletion(complete))
+        if (registered == null) {
+            complete()
+        } else {
+            registered.onMessage.handle(PushMessage(payload), PushCompletion(complete))
+        }
     }
 }
 

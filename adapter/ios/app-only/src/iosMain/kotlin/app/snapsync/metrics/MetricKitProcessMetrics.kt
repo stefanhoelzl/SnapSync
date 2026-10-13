@@ -1,8 +1,7 @@
 package app.snapsync.metrics
 
-import app.snapsync.logging.IosThreadEntryContext
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.PlatformEntry
-import app.snapsync.model.invocation
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.MetricNode
@@ -70,10 +69,11 @@ class MetricKitProcessMetrics internal constructor(
 
     private val log: Logger = Logger.withTag("processMetrics")
 
-    override fun listen(handlers: MetricHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: MetricHandlers) {
         // Hand over INLINE — before the delivery returns (see [MetricKitSubscriber]) — as a view: nothing is converted
         // until the core reads it, and a branch it skips is never converted at all.
-        val queue = api.subscribe { raw -> handlers.onReport(ProcessMetricPayload(metricNode(raw) ?: EMPTY)) }
+        val queue = api.subscribe { raw -> handlers.onReport.deliver(ProcessMetricPayload(metricNode(raw) ?: EMPTY)) }
         // The two `past…` counts say something about the QUEUE rather than only about us, which is the
         // one thing four days of silence could not distinguish: an empty queue reads the same as a
         // subscriber that cannot be reached. Measured to be 0 on a fresh process even moments before a
@@ -126,11 +126,10 @@ internal class SystemMetricKitApi : MetricKitApi {
  * The ObjC end of the subscription — an `NSObject` conforming to MetricKit's subscriber protocol, and
  * nothing else.
  *
- * Both callbacks claim the log prefix for **their own thread only** ([IosThreadEntryContext]). Handling is
- * inline and launches nothing, so every line of theirs is on the calling thread; a process-wide claim
- * instead labelled seven concurrent launch lines `[didReceiveMetricPayloads]`. ⚠️ If a callback ever hands
- * work to another thread, those lines log unprefixed — move it to the process-wide claim rather than accept that
- * silently.
+ * Both callbacks deliver inline (`OnMetricReport`), which labels **the calling thread only**, for the delivery: it
+ * launches nothing, so every line of theirs is on that thread; a process-wide label instead labelled seven concurrent
+ * launch lines `[didReceiveMetricPayloads]`. ⚠️ If a delivery ever hands work to another thread, those lines log
+ * unlabelled.
  *
  * **Delivery is inline** — handed over before the callback returns, not hopped to another lane, deliberately and
  * against the observer convention this module otherwise follows. The work is small (call-stack branches are skipped by
@@ -152,20 +151,20 @@ internal class MetricKitSubscriber(
 
     @PlatformEntry
     override fun didReceiveMetricPayloads(payloads: List<*>) = objcBoundary(log, "didReceiveMetricPayloads") {
-        log.invocation(IosThreadEntryContext, "didReceiveMetricPayloads", params = "count=${payloads.size}") {
+        run {
             payloads.forEach { payload ->
                 (payload as? MXMetricPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
-        }
+        }.also { log.i { "didReceiveMetricPayloads(count=${payloads.size})" } }
     }
 
     @PlatformEntry
     override fun didReceiveDiagnosticPayloads(payloads: List<*>) = objcBoundary(log, "didReceiveDiagnosticPayloads") {
-        log.invocation(IosThreadEntryContext, "didReceiveDiagnosticPayloads", params = "count=${payloads.size}") {
+        run {
             payloads.forEach { payload ->
                 (payload as? MXDiagnosticPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
-        }
+        }.also { log.i { "didReceiveDiagnosticPayloads(count=${payloads.size})" } }
     }
 }
 

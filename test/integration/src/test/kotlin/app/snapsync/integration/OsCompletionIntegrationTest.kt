@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
  * host can see land — the import of a staged photo (its bytes leave the staging directory) — so most tests start from
  * a photo whose first import failed and whose bytes wait staged.
  *
- * Which of the tail's units ran, and that none starts after a stop, is `TailRunnerTest`'s (`:test:feature`): the JVM
+ * Which of a wake's units ran, and that none starts after a stop, is the units' own tests (`:test:feature`): the JVM
  * root's uploader is the operator, so its top-up and walk move nothing a protocol could read.
  */
 class OsCompletionIntegrationTest {

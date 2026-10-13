@@ -6,8 +6,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **An OS completion handler is held in one type** (`docs/architecture.md`; spec
- * `sync-status`, "OS completion handlers are released only after their work completes").
+ * **No OS completion handler is stored in a field** (`docs/patterns.md`, "Entry points"; spec `sync-status`, "OS
+ * completion handlers are released only after their work completes").
  *
  * iOS hands the app a completion block on every background wake, and calling it declares *"I am done"*.
  * Failing to call one costs the app its **future** background wakes — uploads and downloads silently stop
@@ -16,45 +16,27 @@ import kotlin.test.fail
  * system's expiry, never at a clock of the app's own — and a second handover must not **replace**
  * an outstanding handler rather than releasing it.
  *
- * **This confines; it does not forbid** — and the distinction is the whole design. Storing the handler is
- * the platform's own recipe: *"You should then store that completion handler before creating a background
- * configuration object with the same identifier"*
- * (`URLSessionDelegate.urlSessionDidFinishEvents(forBackgroundURLSession:)`). A rule banning storage
- * outright would forbid what Apple documents and force the one legitimate holder to dodge its own gate.
- * So, in the shape [KeychainContainmentTest] uses for `SecItem*`: the handler-shaped mutable property is
- * legal in exactly one tested place and nowhere else.
- *
- * **The owning type's exemption is a licence, not a description.** [OWNER] currently holds each handler in
- * an immutable `val` of each handover rather than in a mutable field, so it would pass this gate unexempted. The
- * exemption is here so that the *rule* names its one home, and so that a future implementation which does
- * need a field is not forced to invent an exception.
+ * Both are the runtime's now, by construction: an adapter wraps the block it was handed in an immutable
+ * `Completion` and delivers it with the event that brought it, and the run that delivery starts answers it exactly
+ * once — when its work ends, or after the expiry's grace. So nothing needs to keep a handler in a mutable field, and
+ * nothing may: there is no licensed owner, and the rule is a plain ban.
  *
  * **Why the type and not the name.** A previous attempt matched field *names* containing `ompletion` /
- * `nComplete`. `IosUrlSessionUploadPlatform` declared `var onBackgroundEventsFinished: (() -> Unit)? = null`
- * — the exact forbidden type, in a directory that guard was scanning — and passed, purely on its name. It
- * also scanned three hard-coded directories. Matching the type over the whole project is what makes the
- * rule mean anything; that adapter's slot is now a constructor `val`, so this gate's allowlist never has to
- * hold something that is not an OS handler at all.
+ * `nComplete`. `IosUrlSessionUploadPlatform` declared a nullable nullary-`Unit` function `var` named
+ * `onBackgroundEventsFinished` — the exact forbidden type, in a directory that guard was scanning — and passed,
+ * purely on its name. Matching the type over the whole project is what makes the rule mean anything.
  *
- * **Residue, stated rather than implied away.** This catches *storing*, not *releasing early*: an entry
- * point that invokes its raw handler inline stores nothing and passes here — that shape is prevented by
- * `OsCompletions`' type, not by this gate, and only where it is used at all. Not matched either: a
- * handler held in a collection or a property delegate, one behind a `typealias`, and any shape that is not
- * a nullary `Unit`-returning function (a handler taking an argument, e.g. the silent-push fetch handler's
- * `(UIBackgroundFetchResult) -> Void`, would need the rule widened). It reads raw source text, so it also
- * matches the shape inside a **comment**: prose must describe the declaration rather than quote it (this
- * caught the very KDoc written to explain the field's removal). That is the same trade
- * [MainLaneContainmentTest] makes, and it errs toward noticing. `val` is deliberately outside the
- * rule: `OsCompletions.Handover`'s own `handler` parameter is an immutable nullary-`Unit` function, and an immutable
- * parameter can be neither overwritten nor left unreleased. **If one of these bites, widen the rule** — do
- * not add an exception, which is the hand-maintained list this design exists to avoid.
+ * **Residue, stated rather than implied away.** This catches *storing*, not *releasing early*: an adapter that
+ * invokes its raw handler inline stores nothing and passes here. Not matched either: a handler held in a collection
+ * or a property delegate, one behind a `typealias`, and any shape that is not a nullary `Unit`-returning function
+ * (a handler taking an argument, e.g. the silent-push fetch handler's `(UIBackgroundFetchResult) -> Void`, would
+ * need the rule widened). It reads raw source text, so it also matches the shape inside a **comment**: prose must
+ * describe the declaration rather than quote it. That is the same trade [MainLaneContainmentTest] makes, and it errs
+ * toward noticing. `val` is deliberately outside the rule: an adapter's `Completion` takes the block as an immutable
+ * parameter, which can be neither overwritten nor left unreleased. **If one of these bites, widen the rule** — do not
+ * add an exception.
  */
 class OsHandlerContainmentTest {
-
-    /** The one type licensed to hold an OS completion handler, and why. */
-    private val allowed = mapOf(
-        OWNER to "the one type that releases every outstanding handler — after the wake's own work, or at the OS's expiry",
-    )
 
     /**
      * A mutable property whose type is a nullary `Unit`-returning function — the shape a stored OS
@@ -110,13 +92,6 @@ class OsHandlerContainmentTest {
             files.size >= 100,
             "scanned only ${files.size} production files — the source tree moved and this gate proves nothing",
         )
-        // The licence must point at the type that exists: an exemption for a moved or renamed owner exempts
-        // nothing, and the handler's real home would then be judged by the rule it is licensed to break.
-        assertTrue(
-            files.any { it.path.endsWith(OWNER) && Regex("""\bclass\s+OsCompletions\b""").containsMatchIn(it.text) },
-            "the licensed owner $OWNER is missing or no longer declares OsCompletions — re-aim the licence",
-        )
-
         val swift = swiftShellFiles()
         assertTrue(
             swift.size >= 2,
@@ -151,27 +126,23 @@ class OsHandlerContainmentTest {
     }
 
     @Test
-    fun `no production source outside the owning type stores an OS completion handler`() {
+    fun `no production source stores an OS completion handler`() {
         val offenders = productionFiles()
-            .filterNot { file -> allowed.keys.any { file.path.endsWith(it) } }
             .flatMap { file -> storedHandler.findAll(file.text).map { file.path to it.value.trim() } } +
             swiftShellFiles()
                 .flatMap { file -> storedHandlerSwift.findAll(file.readText()).map { file.path to it.value.trim() } }
         if (offenders.isEmpty()) return
         fail(
             buildString {
-                appendLine("A stored OS completion handler must live in $OWNER and nowhere else.")
                 appendLine(
-                    "It releases every outstanding handler after its own work or at the OS's expiry; a bare field",
+                    "An OS completion handler must not be stored in a field: wrap it in a `Completion` and deliver it",
                 )
-                appendLine("does neither,")
-                appendLine("and an unanswered handler costs the app its future background wakes.")
+                appendLine(
+                    "with its event — the run answers it once, after its work or at the OS's expiry. A bare field",
+                )
+                appendLine("does neither, and an unanswered handler costs the app its future background wakes.")
                 offenders.forEach { (path, decl) -> appendLine("  $path :: $decl") }
             },
         )
-    }
-
-    private companion object {
-        const val OWNER = "/domain/services/src/commonMain/kotlin/app/snapsync/services/wake/OsCompletions.kt"
     }
 }

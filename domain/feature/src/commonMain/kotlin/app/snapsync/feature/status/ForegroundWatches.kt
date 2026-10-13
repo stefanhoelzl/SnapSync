@@ -2,7 +2,7 @@ package app.snapsync.feature.status
 
 /**
  * What follows the app only while its screen is visible: the status-counts poll and the
- * network watch. One value so the `Foreground` flow starts them together and the `Background` flow stops them
+ * network watch. One value so the foreground starts them together and the background stops them
  * together — a watch the one starts and the other forgets would run through every suspension for a screen nobody sees.
  */
 class ForegroundWatches(

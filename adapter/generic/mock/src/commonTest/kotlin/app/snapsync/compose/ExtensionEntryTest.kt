@@ -4,6 +4,7 @@ import app.snapsync.mock.BackendMock
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.PhotoLibraryMock
+import app.snapsync.mock.ThreadLabelMock
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.mock.UploadQueueMock
 import app.snapsync.mock.fakeCrypto
@@ -125,7 +126,7 @@ class ExtensionEntryTest {
             files = files,
             clock = clock,
             crypto = fakeCrypto(),
-            entryContext = NoEntryContext,
+            threadLabel = ThreadLabelMock(),
             build = BuildInfoMock().port(),
         ),
         databases = databases,

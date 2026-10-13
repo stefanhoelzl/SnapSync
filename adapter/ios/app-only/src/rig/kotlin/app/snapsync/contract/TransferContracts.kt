@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@file:OptIn(CompositionOnly::class, ExperimentalForeignApi::class, BetaInteropApi::class)
 
 package app.snapsync.contract
 
@@ -18,12 +18,15 @@ import app.snapsync.contracts.RunParameters
 import app.snapsync.contracts.SessionUnderTest
 import app.snapsync.contracts.TransferSessionContract
 import app.snapsync.contracts.TransferSessionState
+import app.snapsync.contracts.backgroundOf
+import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.uploadClauseKey
 import app.snapsync.download.IosDownload
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.PhotoKitResource
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.CreateOutcome
@@ -171,11 +174,11 @@ class SimAppSessionBinding : Binding<TransferSessionState, SessionUnderTest>, Ru
         )
         val platform = adapter.recorded(log)
         val ended = mutableListOf<Ended>()
-        platform.listen(
+        platform.inbound(
             TransferHandlers(
-                onFinished = { tag, error -> ended += Ended(tag, error) },
-                onBackgroundEvents = { it.complete() },
-                onEventsDrained = {},
+                onFinished = inboundOf { end -> ended += Ended(end.tag, end.failure) },
+                onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
+                onEventsDrained = inboundOf {},
             ),
         )
         val files = scratch("$contract-files", clauseId)

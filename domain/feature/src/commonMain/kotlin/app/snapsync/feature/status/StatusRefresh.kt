@@ -19,18 +19,16 @@ import co.touchlab.kermit.Logger
  * completed arrive together rather than the total arriving alone and the screen briefly reporting
  * `0 of N`"* — and the scenario *The cheap reads precede the enumeration* is the assertion.
  *
- * **A rule in a feature, not order in a flow, and that is the sanctioned reading of the law rather than
- * an exception to it.** `docs/architecture.md`'s "Rules in features, order in flows" offers both remedies
- * for a sequence found outside a flow: restore the branch to the flow, *"or the rule is named and kept
- * in the feature as a rule."* This is the second, because there are **three** callers and only two are
- * flows — `Foreground` and `Provision` coordinate it, and `ReconfigureEvent` is a `feature/membership`
- * use-case that cannot hold a flow's ordering at all. Putting the order in `Foreground.run()` would have
- * stated it twice: once transcribed into the flow, once rebuilt in `compose/` for the other two. A rule
- * with three callers is a rule.
+ * **A rule in a feature, not order in an entry point, and that is the sanctioned reading of the law rather
+ * than an exception to it.** `docs/architecture.md`'s "Rules in features, order in entry points" offers both
+ * remedies for a sequence found outside an entry point: restore it to the entry point's steps, *"or the rule is
+ * named and kept in the feature as a rule."* This is the second, because there are **three** callers and only two
+ * are entry points' work — the foreground's and the join's `Provision` — while `ReconfigureEvent` is a
+ * `feature/membership` use-case that cannot hold an entry point's ordering at all. A rule with three callers is a
+ * rule.
  *
- * It was previously an opaque `refreshStatus = { refreshStatusSources() }` lambda built in `compose/`,
- * which made `Foreground`'s own KDoc — *"This flow coordinates (ordering + fan-out); it decides
- * nothing"* — true of the flow and false of what it called.
+ * It was previously an opaque `refreshStatus = { refreshStatusSources() }` lambda built in `compose/`, which made
+ * the foreground's claim to decide nothing true of its own order and false of what it called.
  *
  * **Two features, one rule, and the sibling reached through a lambda.** The counts and the total are
  * `feature/status`; the "downloaded X of Y" line is `feature/download`. Features are mutually blind, so
@@ -112,7 +110,7 @@ class StatusRefresh(
             // here — swallowing it would break structured concurrency AND post an Error-severity line, which
             // reaches the crash reporter on production builds, for an
             // ordinary teardown.
-            // Bounded, not thrown: this runs as one child of the Foreground flow's `coroutineScope`, so
+            // Bounded, not thrown: this runs as one child of the foreground's concurrent steps, so
             // an escaping failure would cancel its SIBLINGS — the download reconcile, the staged-byte
             // reclaim, the membership refresh — none of which have anything to do with a policy read.
             // The spec requires exactly that: *"A failure in any one refresh SHALL NOT cancel its

@@ -1,9 +1,13 @@
-@file:OptIn(ExperimentalAtomicApi::class)
+@file:OptIn(CompositionOnly::class, ExperimentalAtomicApi::class)
 
 package app.snapsync.contracts
 
-import app.snapsync.ports.Completion
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.FinishedTransfer
+import app.snapsync.ports.SessionDrain
+import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.Transfer
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferHandle
@@ -91,7 +95,7 @@ class SessionUnderTest(
 class Relaunch(
     /** Hands the port the relaunch, with the system's completion handler, as the app's delegate does. */
     val deliver: () -> Unit,
-    /** Every completion the port handed its owner for a relaunch, in order. */
+    /** Every completion the port handed its owner with a drain report, in order. */
     val handedOver: () -> List<Completion>,
     /** How many drain reports the port gave its owner. */
     val drains: () -> Int,
@@ -126,7 +130,7 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
         val landed = cells {
             on<TransferSession> {
                 answers(TransferSession::create).with(CreateOutcome.CREATED)
-                calls(TransferHandlers::onFinished, String::class, null)
+                calls(TransferHandlers::onFinished, FinishedTransfer::class)
             }
         }
 
@@ -200,7 +204,7 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             cells {
                 on<TransferSession> {
                     answers(TransferSession::create).with(CreateOutcome.CREATED)
-                    calls(TransferHandlers::onFinished, String::class, TransferFailure::class)
+                    calls(TransferHandlers::onFinished, FinishedTransfer::class)
                 }
             },
         ) { subject ->
@@ -303,9 +307,9 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             TransferSessionState.RELAUNCHED_WITH_EVENTS,
             covers = cells {
                 on<TransferSession> {
-                    calls(TransferHandlers::onBackgroundEvents, Completion::class)
-                    calls(TransferHandlers::onFinished, String::class, TransferFailure::class)
-                    calls(TransferHandlers::onEventsDrained)
+                    calls(TransferHandlers::onFinished, FinishedTransfer::class)
+                    calls(TransferHandlers::onBackgroundEvents, SessionRelaunch::class, Completion::class)
+                    calls(TransferHandlers::onEventsDrained, SessionDrain::class)
                     handle<Completion>().answers(Completion::complete).returns()
                 }
             },
@@ -317,9 +321,9 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             TransferSessionState.REPORTS_AS_IT_HAPPENS,
             covers = cells {
                 on<TransferSession> {
-                    answers(TransferSession::listen).returns()
+                    answers(TransferSession::inbound).returns()
                     answers(TransferSession::create).with(CreateOutcome.CREATED)
-                    calls(TransferHandlers::onFinished, String::class, null)
+                    calls(TransferHandlers::onFinished, FinishedTransfer::class)
                 }
             },
         ) { subject ->
@@ -327,11 +331,11 @@ object TransferSessionContract : Contract<TransferSessionState, SessionUnderTest
             val route = path(id, UPLOAD_ACCEPT)
             // The clause's own owner, listened last: the session tells whoever listened, not whoever listened first.
             val told = AtomicReference<List<Ended>>(emptyList())
-            subject.session.listen(
+            subject.session.inbound(
                 TransferHandlers(
-                    onFinished = { tag, failure -> told.update { it + Ended(tag, failure) } },
-                    onBackgroundEvents = { it.complete() },
-                    onEventsDrained = {},
+                    onFinished = inboundOf { end -> told.update { it + Ended(end.tag, end.failure) } },
+                    onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
+                    onEventsDrained = inboundOf {},
                 ),
             )
             assertEquals(

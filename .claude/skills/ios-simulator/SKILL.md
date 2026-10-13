@@ -109,9 +109,9 @@ State these before writing a scenario against this host, or you will write one t
   - the OS never relaunches the app for `handleEventsForBackgroundURLSession`. You can still fire the
     `onBackgroundTransfers` trigger, but it exercises adopt + channel routing ONLY;
   - because a default session never sends `didFinishEventsForBackgroundURLSession`, that trigger's
-    completion handler is **never** released by a drain report: `OsCompletions` holds it until the background
-    time's own expiry (Apple's signal, whose clock runs only once the app is backgrounded) and then logs a
-    release-on-expiry line. **That expiry is the host, not a
+    completion handler is **never** released by a drain report: the relaunch's run waits for one until the
+    background time's own expiry (Apple's signal, whose clock runs only once the app is backgrounded), is
+    cancelled then, and logs the expiry line (`operating system expiry: cancelling`). **That expiry is the host, not a
     fault.** The app logs the whole caveat at session construction, and `/trigger` returns it in the
     response's `note` beside `transferBinding`;
   - `__NSURLBackgroundSession` is never exercised, so it cannot cover the invalidation defect in

@@ -1,6 +1,9 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
@@ -63,16 +66,10 @@ internal class DevControlsProxy(private val inner: DevControls, log: CallLog) : 
     override fun inviteLinkHints() = r.answer("inviteLinkHints", inner.inviteLinkHints())
     override fun createsPlainEvents() = r.answer("createsPlainEvents", inner.createsPlainEvents())
 
-    override fun listen(handlers: DevHandlers) = r.returns(
-        "listen",
-        inner.listen(
-            DevHandlers(
-                onReset = {
-                    r.called("handlers.onReset")
-                    handlers.onReset()
-                },
-            ),
-        ),
+    @CompositionOnly
+    override fun inbound(handlers: DevHandlers) = r.returns(
+        "inbound",
+        inner.inbound(DevHandlers(BackgroundProxy(handlers.onReset, r, "onReset"))),
     )
 }
 
@@ -82,18 +79,13 @@ fun ExtensionHost.recorded(log: CallLog): ExtensionHost = ExtensionHostProxy(thi
 internal class ExtensionHostProxy(private val inner: ExtensionHost, log: CallLog) : ExtensionHost {
     private val r = log.recorder("ExtensionHost")
 
-    override fun listen(handlers: ExtensionHandlers) = r.returns(
-        "listen",
-        inner.listen(
+    @CompositionOnly
+    override fun inbound(handlers: ExtensionHandlers) = r.returns(
+        "inbound",
+        inner.inbound(
             ExtensionHandlers(
-                onProcess = {
-                    r.called("handlers.onProcess")
-                    handlers.onProcess()
-                },
-                onTerminate = {
-                    r.called("handlers.onTerminate")
-                    handlers.onTerminate()
-                },
+                AnsweredProxy(handlers.onProcess, r, "onProcess"),
+                InboundProxy(handlers.onTerminate, r, "onTerminate"),
             ),
         ),
     )
@@ -105,18 +97,13 @@ fun Lifecycle.recorded(log: CallLog): Lifecycle = LifecycleProxy(this, log)
 internal class LifecycleProxy(private val inner: Lifecycle, log: CallLog) : Lifecycle {
     private val r = log.recorder("Lifecycle")
 
-    override fun listen(handlers: LifecycleHandlers) = r.returns(
-        "listen",
-        inner.listen(
+    @CompositionOnly
+    override fun inbound(handlers: LifecycleHandlers) = r.returns(
+        "inbound",
+        inner.inbound(
             LifecycleHandlers(
-                onForeground = {
-                    r.called("handlers.onForeground")
-                    handlers.onForeground()
-                },
-                onBackground = {
-                    r.called("handlers.onBackground")
-                    handlers.onBackground()
-                },
+                BackgroundProxy(handlers.onForeground, r, "onForeground"),
+                InboundProxy(handlers.onBackground, r, "onBackground"),
             ),
         ),
     )
@@ -128,16 +115,10 @@ fun Links.recorded(log: CallLog): Links = LinksProxy(this, log)
 internal class LinksProxy(private val inner: Links, log: CallLog) : Links {
     private val r = log.recorder("Links")
 
-    override fun listen(handlers: LinkHandlers) = r.returns(
-        "listen",
-        inner.listen(
-            LinkHandlers(
-                onLink = { delivery ->
-                    r.called("handlers.onLink", Recorder.arg(delivery))
-                    handlers.onLink(delivery)
-                },
-            ),
-        ),
+    @CompositionOnly
+    override fun inbound(handlers: LinkHandlers) = r.returns(
+        "inbound",
+        inner.inbound(LinkHandlers(InboundProxy(handlers.onLink, r, "onLink"))),
     )
 }
 
@@ -147,16 +128,10 @@ fun ProcessMetrics.recorded(log: CallLog): ProcessMetrics = ProcessMetricsProxy(
 internal class ProcessMetricsProxy(private val inner: ProcessMetrics, log: CallLog) : ProcessMetrics {
     private val r = log.recorder("ProcessMetrics")
 
-    override fun listen(handlers: MetricHandlers) = r.returns(
-        "listen",
-        inner.listen(
-            MetricHandlers(
-                onReport = { report ->
-                    r.called("handlers.onReport", Recorder.arg(report, "ProcessMetricPayload"))
-                    handlers.onReport(report)
-                },
-            ),
-        ),
+    @CompositionOnly
+    override fun inbound(handlers: MetricHandlers) = r.returns(
+        "inbound",
+        inner.inbound(MetricHandlers(InboundProxy(handlers.onReport, r, "onReport", "ProcessMetricPayload"))),
     )
 }
 
@@ -169,26 +144,14 @@ internal class PushNotificationsProxy(private val inner: PushNotifications, log:
     override val kind get() = r.returns("kind", inner.kind)
     override fun register() = r.returns("register", inner.register())
 
-    override fun listen(handlers: PushHandlers) = r.returns(
-        "listen",
-        inner.listen(
+    @CompositionOnly
+    override fun inbound(handlers: PushHandlers) = r.returns(
+        "inbound",
+        inner.inbound(
             PushHandlers(
-                onToken = { token ->
-                    r.called("handlers.onToken", Recorder.arg(token, "PushToken"))
-                    handlers.onToken(token)
-                },
-                onTokenFailure = { error ->
-                    r.called("handlers.onTokenFailure", Recorder.arg(error, "PlatformError"))
-                    handlers.onTokenFailure(error)
-                },
-                onMessage = { message, completion ->
-                    r.called(
-                        "handlers.onMessage",
-                        Recorder.arg(message, "PushMessage"),
-                        Recorder.arg(completion, "Completion"),
-                    )
-                    handlers.onMessage(message, CompletionProxy(completion, r.handle("Completion")))
-                },
+                InboundProxy(handlers.onToken, r, "onToken", "PushToken"),
+                InboundProxy(handlers.onTokenFailure, r, "onTokenFailure", "PlatformError"),
+                BackgroundProxy(handlers.onMessage, r, "onMessage", "PushMessage"),
             ),
         ),
     )
@@ -202,19 +165,11 @@ internal class UiProxy(private val inner: Ui<UiState, UiIntent>, log: CallLog) :
 
     override fun show(state: UiState) = r.returns("show", inner.show(state))
 
-    override fun listen(handlers: UiHandlers<UiIntent>) = r.returns(
-        "listen",
-        inner.listen(
-            UiHandlers(
-                onIntent = { intent ->
-                    r.called("handlers.onIntent", Recorder.arg(intent))
-                    handlers.onIntent(intent)
-                },
-                onLive = {
-                    r.called("handlers.onLive")
-                    handlers.onLive()
-                },
-            ),
+    @CompositionOnly
+    override fun inbound(handlers: UiHandlers<UiState, UiIntent>) = r.returns(
+        "inbound",
+        inner.inbound(
+            UiHandlers(InboundProxy(handlers.onIntent, r, "onIntent"), InboundProxy(handlers.onLive, r, "onLive")),
         ),
     )
 }

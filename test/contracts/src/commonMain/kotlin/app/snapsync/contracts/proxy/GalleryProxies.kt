@@ -1,6 +1,9 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
@@ -82,22 +85,13 @@ internal class GalleryProxy(private val inner: Gallery, log: CallLog) :
     GalleryImport by GalleryImportProxy(inner, log) {
     private val r = log.recorder("Gallery")
 
-    override fun listen(handlers: GalleryHandlers) = r.returns(
-        "listen",
-        inner.listen(
+    @CompositionOnly
+    override fun inbound(handlers: GalleryHandlers) = r.returns(
+        "inbound",
+        inner.inbound(
             GalleryHandlers(
-                onImportPlaceholder = { correlation, id ->
-                    r.called(
-                        "handlers.onImportPlaceholder",
-                        Recorder.arg(correlation, "String"),
-                        Recorder.arg(id, "PlatformAssetId"),
-                    )
-                    handlers.onImportPlaceholder(correlation, id)
-                },
-                onImportSettled = { correlation, result ->
-                    r.called("handlers.onImportSettled", Recorder.arg(correlation, "String"), Recorder.arg(result))
-                    handlers.onImportSettled(correlation, result)
-                },
+                InboundProxy(handlers.onImportPlaceholder, r, "onImportPlaceholder", "ImportPlaceholder"),
+                InboundProxy(handlers.onImportSettled, r, "onImportSettled", "ImportSettled"),
             ),
         ),
     )

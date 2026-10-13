@@ -25,6 +25,9 @@ kotlin {
             implementation(project(":domain:model"))
             // The shared capabilities features stand on: the storage, gallery, transfer and backend services.
             implementation(project(":domain:services"))
+            // How work runs: an import outlives the drain that started it, and a wake's re-arm reads how its passes
+            // ended.
+            implementation(project(":domain:scheduling"))
             // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the
             // config/manifest vocabulary and cutoff codecs), kermit (the engine's diagnostics).

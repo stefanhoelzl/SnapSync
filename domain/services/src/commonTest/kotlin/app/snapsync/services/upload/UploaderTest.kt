@@ -1,5 +1,6 @@
 package app.snapsync.services.upload
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.UploadFailure
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
@@ -29,7 +30,9 @@ class UploaderTest {
 
     private object Session : TransferSession {
         override val takesResources = false
-        override fun listen(handlers: TransferHandlers) = Unit
+
+        @CompositionOnly
+        override fun inbound(handlers: TransferHandlers) = Unit
         override suspend fun create(source: TransferSource, target: UploadTarget, tag: String) = CreateOutcome.CREATED
         override suspend fun live(): List<Transfer> = emptyList()
         override suspend fun cancel(transfer: Transfer) = Unit

@@ -20,9 +20,9 @@ import app.snapsync.model.EventConfig
  *    forced where the OS allows it, the app armed where access is usable. After the save, so a registered
  *    extension never reads the previous membership's config over the new ledger.
  *
- * The order is the whole of this class, which is why it is a class rather than lambdas in the flow: the flow
- * grammar allows one call per branch of the transition (`docs/architecture.md`), and the ordering is a
- * rule worth a test of its own. Decision record: `changes/both-uploaders-active` (D5).
+ * The order is the whole of this class, which is why it is a class rather than steps in the join's `Provision`: a
+ * step is one call (`docs/patterns.md`), and the ordering is a rule worth a test of its own. Decision record:
+ * `changes/both-uploaders-active` (D5).
  */
 class MembershipEntry(
     /** Stop the previous membership's uploads (the upload arm's leave verb). */
@@ -38,6 +38,16 @@ class MembershipEntry(
     /** Start the uploads for the membership just saved (the upload arm's join verb). */
     private val startUploads: suspend () -> Unit,
 ) {
+    /**
+     * Provision [cfg] over the joined [activeEventId] ([switchDecision]): enter it — a switch, or a first join — or,
+     * re-provisioning the event already joined, save it whole, leaving and loading nothing.
+     */
+    suspend fun provision(activeEventId: String?, cfg: EventConfig) =
+        when (val decision = switchDecision(activeEventId, cfg.eventId)) {
+            is SwitchDecision.Enter -> enter(decision.previousEventId, cfg)
+            SwitchDecision.Stay -> saveConfig(cfg)
+        }
+
     /** Enter [cfg]'s membership, leaving [previousEventId] first when this is a switch (`null` for a first join). */
     suspend fun enter(previousEventId: String?, cfg: EventConfig) {
         if (previousEventId != null) {

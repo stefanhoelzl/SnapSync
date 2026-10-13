@@ -1,14 +1,14 @@
 package app.snapsync.compose
 
+import app.snapsync.entrypoints.OnProcess
+import app.snapsync.entrypoints.OnTerminate
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.feature.upload.answer
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.invocation
 import app.snapsync.model.orNullLogged
 import app.snapsync.ports.Databases
-import app.snapsync.ports.EntryContext
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.GalleryReader
@@ -18,6 +18,7 @@ import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
+import app.snapsync.scheduling.Runtime
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendGateway
@@ -39,7 +40,7 @@ import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.services.trust.ExtensionCredential
 import app.snapsync.services.upload.Uploader
-import app.snapsync.services.upload.runProcessCycle
+import kotlinx.coroutines.Dispatchers
 
 /**
  * **The upload extension's ports** — everything its composition consumes, and nothing but ports ([Port]; spec
@@ -100,24 +101,26 @@ class ComposedExtension internal constructor(
  * - admission is this process's own grant read (a full grant only), the library is walked unrestricted, and a failed
  *   denylisted-album lookup fails the cycle, which the next invocation retries.
  */
+@OptIn(CompositionOnly::class)
 fun snapSyncExtension(ports: ExtensionPorts): ComposedExtension {
-    val process = snapSyncProcess(ports.process)
+    // The extension's own runtime: no scope of its root's to live under, and no background time to hold — it answers on
+    // the invoking thread.
+    val runtime = Runtime(parent = null, Dispatchers.Default, backgroundTime = null, ports.process.threadLabel)
+    val process = snapSyncProcess(ports.process, runtime)
     // The device token, read from the shared protected store the app writes. Held in
     // memory between re-reads ([CachedAttestStore]): every request reads it, and a store read each time was measurable.
     // Re-read at every invocation — the app renews into the shared item, which this copy cannot see — so the copy's
     // staleness is bounded to one invocation.
     val attestStore = CachedAttestStore(AttestState(ports.secureStore))
     val services = extensionServices(process, ports, attestStore)
-    val composed = ComposedExtension(process, services, lazy { uploadCycle(process, services) })
-    ports.host.listen(
-        extensionHandlers(
-            services = services,
-            cycle = { composed.cycle },
-            entryContext = process.entryContext,
-            rereadCredential = attestStore::reread,
+    val cycle = lazy { uploadCycle(process, services) }
+    ports.host.inbound(
+        ExtensionHandlers(
+            OnProcess(runtime, attestStore, services.config, cycle, services.ledger),
+            OnTerminate(runtime),
         ),
     )
-    return composed
+    return ComposedExtension(process, services, cycle)
 }
 
 /** The extension's services over its ports — see [snapSyncExtension] for what differs from the app's. */
@@ -188,50 +191,6 @@ private fun extensionServices(
         log = log,
     )
 }
-
-/** The extension's handlers: one upload cycle per invocation, and the invocation's end recorded. */
-internal fun extensionHandlers(
-    services: UploadServices,
-    cycle: () -> UploadCycle,
-    entryContext: EntryContext,
-    /**
-     * Drop this process's in-memory copy of the device token, so the invocation reads the one the app last
-     * stored. The app renews into the shared protected item, which the
-     * extension's copy cannot see; re-reading at every OS invocation bounds that copy's staleness to one.
-     */
-    rereadCredential: () -> Unit,
-): ExtensionHandlers = ExtensionHandlers(
-    // The cycle, the pending → PROCESSING requeue and the never-throw guard around both are `runProcessCycle`: a
-    // throwable escaping here would cross the ObjC boundary and abort the extension process.
-    onProcess = {
-        val log = services.log
-        log.invocation(entryContext, "process", result = { "$it" }) {
-            runProcessCycle(
-                // Inside the guarded run, so nothing the re-read could raise escapes across the ObjC boundary.
-                run = {
-                    rereadCredential()
-                    // The app joins, switches and leaves while this process lives; the ledger is scoped to the event
-                    // this read finds.
-                    services.config.reload()
-                    cycle().run()
-                },
-                pending = { services.ledger.aggregates().pending },
-                log = log,
-            )
-        }.answer()
-    },
-    // The OS's `notifyTermination` marks the END of an invocation, not a kill (see [ExtensionHandlers.onTerminate]).
-    // So this records an ordinary end at `Info`. A KILLED call is the one that reads as a `→ process` with no
-    // `← process` and no line from here — which is how to tell the two apart.
-    onTerminate = {
-        val log = services.log
-        log.invocation(entryContext, "onTerminate") {
-            log.i {
-                "the OS ended this invocation — notifyTermination follows a normal return; a killed call gets none"
-            }
-        }
-    },
-)
 
 /**
  * The upload extension's backend services: the same need-shaped services the app

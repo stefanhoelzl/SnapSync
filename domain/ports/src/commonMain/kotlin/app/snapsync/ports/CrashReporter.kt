@@ -35,7 +35,10 @@ class CrashHandlers(
  *   this process and delivered on a later launch.
  * - [sendDump] queues one event; returning does not mean it left the device, and no caller may claim it has.
  */
-interface CrashReporter : Listenable<CrashHandlers> {
+interface CrashReporter : Port {
+    /** Registers the [CrashHandlers] every event and breadcrumb passes on its way out. Once, by the composition. */
+    fun listen(handlers: CrashHandlers)
+
     fun start(options: CrashOptions)
     fun capture(event: CrashEvent)
     fun breadcrumb(crumb: Crumb)

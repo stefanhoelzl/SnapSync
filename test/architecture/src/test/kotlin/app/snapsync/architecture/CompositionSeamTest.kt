@@ -127,9 +127,6 @@ class CompositionSeamTest {
         "UploadServices.albumExclusions" to
             "denylistedAlbumMembers over the tier's GalleryAlbums service and its own grant read: the app's " +
             "AppCore.albumExclusionsWhenReadable (admit on doubt), the extension's FailCycle answer",
-        "AppTail.appUploader" to
-            "this core's own app uploader (AppCore.appUploader), resolved at first use — deferred construction, " +
-            "since the uploader reads the graph the tail belongs to; its platform touches are its Upload port's",
         "UploadServices.selectionScope" to
             "what discovery may read right now (capability `photo-access`), derived by the app composition from " +
             "current permission plus the in-memory snapshot — a call because the answer changes between cycles",
@@ -220,39 +217,12 @@ class CompositionSeamTest {
         "StatusCountsPoller.refreshCheapLocalReads" to "this core's own StatusRefresh.refreshCheapLocalReads()",
         "StatusRefresh.refreshDownloadLine" to "the sibling download status source's refresh — feature-blindness",
         "StatusRefresh.policyFor" to "the membership's ONE selection-policy derivation, built in compose/",
-        // The tail runner's units are injected so the runner knows their order and their stop, never their
-        // internals (`own-work-per-wake`, D1); `AppTail` binds them.
-        "TailRunner.importStaged" to
-            "the sibling download arm's staged-import drain (its PhotoKit touches are the importer PORT's) — " +
-            "feature-blindness",
-        "TailRunner.topUp" to "the tier's own UploadCycle top-up — core machinery, whose transfer is a port",
-        "TailRunner.walkAndPublish" to
-            "the tier's own UploadCycle walk → manifest publish — core machinery, whose reads and publish are ports",
-        "TailRunner.walkPermitted" to "this core's current photo permission, already held in memory — a pure core read",
-        "TailRunner.mayCreate" to "this core's own app admission, read fresh at each completion",
-        "TailRunner.foregrounded" to "this core's own lifecycle fact (whether the app is active), held in memory",
-        "TailRunner.refreshStatus" to "the sibling ledger-counts refresh — feature-blindness",
-        "TailRunner.leftover" to
-            "a one-line summary of what a stop left, read from the core's own DownloadStore PORT (the staged imports " +
-            "not yet made) for the operating-system expiry line — a read the runner may not name (feature-blindness)",
-        "TailRunner.importsRemain" to
-            "whether staged downloads still wait to be imported, read from the core's own DownloadStore PORT for the " +
-            "heartbeat's re-arm — a read the runner may not name (feature-blindness)",
-        "TailRunner.cadenceFacts" to
+        // The app's own uploads, as a wake and a finished upload take them (`OwnUploads`, `WakeRearm`).
+        "OwnUploads.admission" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
+        "WakeRearm.facts" to
             "this core's own facts for the heartbeat's cadence (cadenceFactsOf): the membership and grant already " +
-            "held in memory, and the extension registration SERVICE's answer over its port — reads the runner may not name",
-        "TailSignal.stop" to
-            "the running tail's own stop flag (set by TailRunner.stop, Apple's expiry forwarded) — built only by the " +
-            "runner itself (internal constructor), an in-memory read",
-        "AppTail.downloads" to
-            "the composed DownloadController, resolved when the tail's ① runs rather than when the tail is built — " +
-            "deferred construction: a cold background wake builds no more of the graph than it reaches",
-        "AppTail.mayCreate" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
-        "AppTail.cadenceFacts" to "this core's own cadence facts (cadenceFactsOf), forwarded to its tail runner",
-        "AppTail.refreshCounts" to "this core's own ledger-counts refresh (AppCore.ledgerCounts.refresh)",
-        "AppTail.finish" to
-            "this core's own end-of-wake step (MembershipEnd.endOfWake: the bounded photo check, then EventCompletion.finish), " +
-            "run after the tail rather than inside it",
+            "held in memory, and the extension registration SERVICE's answer over its port — reads the re-arm may " +
+            "not name",
         "EventCompletion.publishFinal" to
             "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
         "EventCompletion.receivedPosition" to
@@ -272,7 +242,7 @@ class CompositionSeamTest {
             "the sibling AlbumCoordinator.place (its PhotoKit touches are the AlbumManager port's)",
         "UploadTransitions.extensionRegistrable" to
             "model/'s pure registrability fact over the OS fact, the grant and the rig pin",
-        "UploadTransitions.appEngine" to "AppTail.appEngine — this core's tail runner and the uploader mechanism behind it",
+        "UploadTransitions.appEngine" to "the entry points' UploadEngine — this core's own uploads and the uploader behind them",
     )
 
     // ---- scanning ---------------------------------------------------------------------------------

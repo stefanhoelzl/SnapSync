@@ -6,14 +6,18 @@ import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.invocation
+import app.snapsync.model.logAt
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.Completion
+import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.FinishedDownload
+import app.snapsync.ports.SessionDrain
+import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
@@ -31,6 +35,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The Android [Download]: Android's `DownloadManager`, which owns each transfer — it
@@ -75,7 +80,8 @@ class AndroidDownload(
 
     private val handlers = HandlerSlot<DownloadHandlers>("Download", BeforeListen.Dropped)
 
-    override fun listen(handlers: DownloadHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: DownloadHandlers) {
         this.handlers.set(handlers)
         registration.value = this
         val recovered = deliverFinished(null)
@@ -123,9 +129,9 @@ class AndroidDownload(
             )
 
     override suspend fun cancelAll() {
-        log.invocation(EntryScope.None, "download.cancelAll", result = { cancelled: Int -> "$cancelled transfer(s)" }) {
+        run {
             cancel()
-        }
+        }.also { log.i { "download.cancelAll = ${"$it transfer(s)"}" } }
     }
 
     private fun cancel(): Int {
@@ -136,25 +142,26 @@ class AndroidDownload(
                 .onEach { (id, _) -> manager.remove(id) }
         }
         // DownloadManager says nothing about a removal, so every cancelled transfer is reported here, as the port promises.
-        cancelled.forEach { (_, tag) -> tag?.let { handlers.orNull("$it's cancel")?.onCompleted(it, "cancelled") } }
+        cancelled.forEach { (_, tag) ->
+            tag?.let { handlers.orNull("$it's cancel")?.onCompleted?.deliver(CompletedDownload(it, "cancelled")) }
+        }
         return cancelled.size
     }
 
     /**
-     * One completion broadcast as one wake: [DownloadHandlers.onBackgroundEvents] with [completion], the finished rows
-     * delivered (the broadcast's own, and any other a missed broadcast left), then the drain report.
+     * One completion broadcast as one relaunch: handed over first with [completion] and the count of drain reports so
+     * far, then the finished rows delivered (the broadcast's own, and any other a missed broadcast left), then the drain
+     * report — so the core's wait ends on this broadcast's report.
      */
     internal fun deliverBroadcast(id: Long, completion: Completion) =
-        log.invocation(
-            EntryScope.None,
-            "download.handleEvents",
-            params = "id=$id",
-            result = { "$it finished transfer(s)" },
-        ) {
-            val current = handlers.orNull("a completion broadcast") ?: return@invocation 0.also { completion.complete() }
-            current.onBackgroundEvents(completion)
-            deliverFinished(null).also { current.onEventsDrained() }
-        }
+        run body@{
+            val current = handlers.orNull("a completion broadcast") ?: return@body 0.also { completion.complete() }
+            current.onBackgroundEvents.handle(SessionRelaunch(drains.get()), completion)
+            deliverFinished(null).also { current.onEventsDrained.deliver(SessionDrain(drains.incrementAndGet())) }
+        }.also { log.i { "download.handleEvents(id=$id) = $it finished transfer(s)" } }
+
+    /** The drain reports made so far — what a broadcast's relaunch is told it arrived after. */
+    private val drains = AtomicInteger(0)
 
     /** Deliver every finished row still held (only [id]'s when given), each removed once delivered. Answers how many. */
     private fun deliverFinished(id: Long?): Int = synchronized(lock) {
@@ -162,14 +169,9 @@ class AndroidDownload(
         val finished = rows(id) { it.finishedRow() }.filterNotNull()
         for (row in finished) {
             runCatchingCancellable {
-                log.invocation(
-                    EntryScope.None,
-                    "download.didComplete",
-                    params = "tag=${row.tag}",
-                    severity = Severity.Debug,
-                ) {
+                run {
                     row.deliverTo(current)
-                }
+                }.also { log.logAt(Severity.Debug) { "download.didComplete(tag=${row.tag})" } }
             }
                 .onFailure { log.w(it) { "${row.tag}: delivering the finished transfer failed" } }
             manager.remove(row.id)
@@ -181,7 +183,7 @@ class AndroidDownload(
         if (succeeded) {
             val path = localPath
             if (path == null) {
-                handlers.onCompleted(tag, "DownloadManager reported success with no file")
+                handlers.onCompleted.deliver(CompletedDownload(tag, "DownloadManager reported success with no file"))
                 return
             }
             val file = File(path)
@@ -194,10 +196,10 @@ class AndroidDownload(
                 restart(handlers)
                 return
             }
-            handlers.onFinished(tag, facts(file.length()), path)
-            handlers.onCompleted(tag, null)
+            handlers.onFinished.deliver(FinishedDownload(tag, facts(file.length()), path))
+            handlers.onCompleted.deliver(CompletedDownload(tag, null))
         } else {
-            handlers.onCompleted(tag, "download failed (reason $reason)")
+            handlers.onCompleted.deliver(CompletedDownload(tag, "download failed (reason $reason)"))
         }
     }
 
@@ -223,14 +225,18 @@ class AndroidDownload(
         val url = url
         if (url == null || restarts >= MAX_RESTARTS) {
             log.w { "$tag: DownloadManager ran the transfer twice, $restarts restart(s) already; refusing its file" }
-            handlers.onCompleted(tag, "DownloadManager ran the transfer twice; its file cannot be trusted")
+            handlers.onCompleted.deliver(
+                CompletedDownload(tag, "DownloadManager ran the transfer twice; its file cannot be trusted"),
+            )
             return
         }
         runCatchingCancellable { manager.enqueue(request(url, headers, tag, restarts + 1, network)) }.fold(
             onSuccess = { log.w { "$tag: DownloadManager ran the transfer twice; fetching it again (${restarts + 1})" } },
             onFailure = {
                 log.w(it) { "$tag: DownloadManager refused the restart" }
-                handlers.onCompleted(tag, "DownloadManager ran the transfer twice and refused its restart")
+                handlers.onCompleted.deliver(
+                    CompletedDownload(tag, "DownloadManager ran the transfer twice and refused its restart"),
+                )
             },
         )
     }
@@ -353,7 +359,7 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
     }
 }
 
-/** A [Completion] released once, with no expiry signal of its own ([onExpired] never runs). */
+/** A [Completion] released once. */
 internal class OnceCompletion(private val release: () -> Unit) : Completion {
     private val done = AtomicBoolean(false)
 

@@ -1,9 +1,5 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.upload.TailTrigger
-import app.snapsync.model.contained
-import kotlinx.coroutines.launch
-
 /**
  * Keep [linkKey] as the joined event's key — only when the device has LOST it and [linkKey] is that event's own,
  * since otherwise reopening the current event's invite changes nothing — then read the key's presence again and run
@@ -17,9 +13,5 @@ internal suspend fun AppCore.restoreEventKey(linkKey: String): Boolean =
 
 private fun AppCore.resumeAfterRestore() {
     eventKeyReads.reread()
-    val wake = tail.hold("restoreEventKey")
-    scope.launch {
-        log.contained("the foreground flow after a restored key failed; its tail still runs") { foregroundFlow.run() }
-        tail.handTo(wake, TailTrigger.FOREGROUND)
-    }
+    work.keyRestored.requested()
 }

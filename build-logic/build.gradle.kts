@@ -17,6 +17,9 @@ dependencies {
     compileOnly(libs.android.gradle)
     // compileOnly for the same reason: `snapsync.coverage` configures the ONE Kover plugin the root build loaded.
     compileOnly("org.jetbrains.kotlinx:kover-gradle-plugin:${libs.versions.kover.get()}")
+    // compileOnly for the same reason: `snapsync.detekt-tiers` registers tasks of the ONE detekt plugin the root
+    // loaded.
+    compileOnly(libs.detekt.gradle)
     // The zero coverage gate reads a module's compiled classes to recognise compiler glue by its bytecode shape
     // (`CoverageZero`). An ordinary dependency: nothing else on this classpath loads ASM under its own name.
     implementation(libs.asm.tree)
@@ -77,6 +80,14 @@ gradlePlugin {
         register("wire") {
             id = "snapsync.wire"
             implementationClass = "app.snapsync.buildlogic.wire.WirePlugin"
+        }
+        register("layer") {
+            id = "snapsync.layer"
+            implementationClass = "app.snapsync.buildlogic.LayerPlugin"
+        }
+        register("detektTiers") {
+            id = "snapsync.detekt-tiers"
+            implementationClass = "app.snapsync.buildlogic.DetektTiersPlugin"
         }
         register("liveEdge") {
             id = "snapsync.live-edge"

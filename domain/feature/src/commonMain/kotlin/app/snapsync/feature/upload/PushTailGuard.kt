@@ -15,8 +15,8 @@ import co.touchlab.kermit.Logger
  * still do wrong is **wake it for another event**. A locally-left event is the one that matters: leave is local-only,
  * so its backend membership persists and keeps pushing this device.
  *
- * So the wake joins the tail only when the pushed event is the active one, read from the membership the flow has just
- * re-read. No event configured, another event, or an **unreadable** membership each join nothing — unreadable is not
+ * So the push runs the wake's work only when the pushed event is the active one, read from the membership the entry
+ * point has just re-read. No event configured, another event, or an **unreadable** membership each join nothing — unreadable is not
  * "no event", and it is logged as its own answer, because only it is a reason to look at the device's lock state.
  *
  * The other two guards stay where they were, orthogonal to this one: the **limited-grant read discipline** is the tail's

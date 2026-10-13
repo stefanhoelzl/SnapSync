@@ -1,5 +1,7 @@
 package app.snapsync.background
 
+import app.snapsync.inbound.InboundImplementation
+import app.snapsync.inbound.Running
 import co.touchlab.kermit.Logger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,7 +35,7 @@ class IosBackgroundTimeTest {
     fun `the system's expiry is reported once and ends nothing`() {
         val system = System(grants = true)
         var expiries = 0
-        val hold = IosBackgroundTime(log, system).begin("push") { expiries++ }
+        val hold = IosBackgroundTime(log, system).begin("push", expiring { expiries++ })
         system.handlers.single().invoke()
         system.handlers.single().invoke()
         assertEquals(1, expiries, "the core hears of the expiry once")
@@ -46,8 +48,8 @@ class IosBackgroundTimeTest {
     fun `a hold is ended with the system exactly once`() {
         val system = System(grants = true)
         val time = IosBackgroundTime(log, system)
-        val first = time.begin("first") {}
-        val second = time.begin("second") {}
+        val first = time.begin("first", expiring {})
+        val second = time.begin("second", expiring {})
         first.end()
         first.end()
         second.end()
@@ -58,7 +60,7 @@ class IosBackgroundTimeTest {
     fun `a refusal is an immediate expiry and its hold ends nothing`() {
         val system = System(grants = false)
         var expiries = 0
-        val hold = IosBackgroundTime(log, system).begin("late") { expiries++ }
+        val hold = IosBackgroundTime(log, system).begin("late", expiring { expiries++ })
         assertEquals(1, expiries, "reported before begin returned")
         hold.end()
         assertTrue(system.ended.isEmpty(), "there is no task to end")
@@ -69,7 +71,13 @@ class IosBackgroundTimeTest {
     @Test
     fun `a throwing expiry callback is contained at the boundary`() {
         val system = System(grants = true)
-        IosBackgroundTime(log, system).begin("throws") { error("the core's stop threw") }
+        IosBackgroundTime(log, system).begin("throws", expiring { error("the core's stop threw") })
         system.handlers.single().invoke()
     }
+}
+
+/** The run a hold is begun for, as the runtime hands it: [onExpiry] is what the operating system's expiry does to it. */
+@OptIn(InboundImplementation::class)
+private fun expiring(onExpiry: () -> Unit): Running = object : Running {
+    override fun expire() = onExpiry()
 }

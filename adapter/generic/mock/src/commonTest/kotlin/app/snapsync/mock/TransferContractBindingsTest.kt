@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.mock
 
 import app.snapsync.contracts.Binding
@@ -18,11 +20,14 @@ import app.snapsync.contracts.SessionUnderTest
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.TransferSessionContract
 import app.snapsync.contracts.TransferSessionState
+import app.snapsync.contracts.backgroundOf
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.uploadClauseKey
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Download
 import app.snapsync.ports.GalleryResourceHandle
@@ -161,11 +166,11 @@ class TransferContractBindingsTest {
             val networked = NetworkedSession(UploadSessionMock(answeringNetwork(received), held))
             val recorded = networked.recorded(log)
             val ended = mutableListOf<Ended>()
-            recorded.listen(
+            recorded.inbound(
                 TransferHandlers(
-                    onFinished = { tag, error -> ended += Ended(tag, error) },
-                    onBackgroundEvents = { it.complete() },
-                    onEventsDrained = {},
+                    onFinished = inboundOf { end -> ended += Ended(end.tag, end.failure) },
+                    onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
+                    onEventsDrained = inboundOf {},
                 ),
             )
             if (state == TransferSessionState.AT_CAP) {

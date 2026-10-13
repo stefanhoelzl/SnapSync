@@ -111,8 +111,8 @@ suspend fun Rig.expireNext() {
     os("app", "onExpiry", "next")
 }
 
-/** The label the foreground entry begins its background time under (`EntryHandlers.lifecycleHandlers`). */
-private const val FOREGROUND_HOLD = "onForeground"
+/** The label the foreground entry begins its background time under (its entry point, `OnForeground`). */
+private const val FOREGROUND_HOLD = "OnForeground"
 
 /** The heartbeat's task identifier, as the operating system hands it to `onBackgroundTask`. */
 const val HEARTBEAT_TASK = "app.snapsync.upload.heartbeat"

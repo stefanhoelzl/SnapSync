@@ -1,13 +1,13 @@
 package app.snapsync.presentation
 
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
+import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.NetworkAccess
@@ -72,8 +72,8 @@ class StatusSources(
      * Whether the backend is refusing this build as too old, and the version it named — `AppVersionGate.refusal`,
      * written by the core's authenticated backend on every backend answer.
      *
-     * An OBSERVATION, like every field here, so it does not cross `flow/` (`docs/architecture.md`,
-     * "Commands cross one door": reads do not). Defaults to never-refused, so a host with no backend —
+     * An OBSERVATION, like every field here, so it is no command (`docs/architecture.md`, "Commands cross one door":
+     * reads do not). Defaults to never-refused, so a host with no backend —
      * every test that does not exercise it — constructs unchanged.
      */
     val versionRefusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),

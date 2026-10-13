@@ -4,6 +4,10 @@ package app.snapsync.launchadapters
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.compose.ExtensionDevicePorts
+import app.snapsync.inbound.Answered
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
+import app.snapsync.inbound.InboundImplementation
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockState
 import app.snapsync.mock.MockedSystem
@@ -227,7 +231,18 @@ fun chosenExtensionHost(inner: ExtensionHost, launch: LaunchAdapters): Extension
 
 /** An extension host whose invocations are answered without a composition — see [chosenExtensionHost]. */
 private class UncomposedExtensionHost(private val inner: ExtensionHost) : ExtensionHost {
-    override fun listen(handlers: ExtensionHandlers) = inner.listen(
-        ExtensionHandlers(onProcess = { ProcessingAnswer.COMPLETED }, onTerminate = {}),
-    )
+    @CompositionOnly
+    override fun inbound(handlers: ExtensionHandlers) = inner.inbound(ExtensionHandlers(Completed, Ended))
+
+    /** An invocation answered at once: nothing is composed to run a cycle. */
+    @OptIn(InboundImplementation::class)
+    private object Completed : Answered<Unit, ProcessingAnswer> {
+        override fun answer(arg: Unit) = ProcessingAnswer.COMPLETED
+    }
+
+    /** An invocation's end, heard by nobody. */
+    @OptIn(InboundImplementation::class)
+    private object Ended : Inbound<Unit, Unit> {
+        override fun deliver(arg: Unit) = Unit
+    }
 }

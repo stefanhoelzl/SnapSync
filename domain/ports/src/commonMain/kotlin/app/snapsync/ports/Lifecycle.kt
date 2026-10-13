@@ -1,5 +1,9 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
+
 /**
  * **The app's foreground life**: hear it become active and stop being active. On iOS the
  * application's `didBecomeActive` / `willResignActive` notifications — `willResignActive` includes the transient
@@ -11,12 +15,12 @@ package app.snapsync.ports
  * registered once per adapter as the graph is composed; registering installs the platform's observers and runs no
  * handler.
  */
-interface Lifecycle : Listenable<LifecycleHandlers>
+interface Lifecycle : EventPort<LifecycleHandlers>
 
 /** What the app's foreground life tells the core. Built only by a composition. */
-class LifecycleHandlers(
-    /** The app became active. The handler assembles the status host before its foreground work. */
-    val onForeground: () -> Unit,
+class LifecycleHandlers @CompositionOnly constructor(
+    /** The app became active. Nobody waits on it: the adapter hands [Completion.None]. */
+    val onForeground: Background<Unit>,
     /** The app is leaving the active state, including a transient interruption. */
-    val onBackground: () -> Unit,
+    val onBackground: Inbound<Unit, Unit>,
 )

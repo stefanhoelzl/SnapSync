@@ -1,5 +1,8 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
+
 /**
  * **The links the platform opens this app with**: a Universal Link delivered cold at
  * launch or warm to a running app, and an opened URL. On iOS the scene delegate's user activities and SwiftUI's
@@ -9,7 +12,7 @@ package app.snapsync.ports
  * event link — and what opening one does — is the core's. An event port, registered once per adapter as the graph is
  * composed, so a link that launched the app finds its handler.
  */
-interface Links : Listenable<LinkHandlers>
+interface Links : EventPort<LinkHandlers>
 
 /**
  * What the platform opened the app with, as the platform delivered it. Each names the [hook] that delivered it — the
@@ -33,7 +36,7 @@ sealed interface LinkDelivery {
 }
 
 /** What the platform's link deliveries tell the core. Built only by a composition. */
-class LinkHandlers(
-    /** The app was opened with [LinkDelivery]. The handler assembles the status host first: a person opened the app. */
-    val onLink: (LinkDelivery) -> Unit,
+class LinkHandlers @CompositionOnly constructor(
+    /** The app was opened with [LinkDelivery]. */
+    val onLink: Inbound<LinkDelivery, Unit>,
 )

@@ -1,11 +1,15 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
+
 /**
  * The app's background transfer session — a background `URLSession`, Android's in-process uploads — which sends a
  * file (or, where [takesResources], a library resource) to a destination and tells the app when each transfer ended.
  * Thin: what an end means for the ledger, and what is staged for it, are the upload services'.
  */
-interface TransferSession : Port, Listenable<TransferHandlers> {
+interface TransferSession : Port, EventPort<TransferHandlers> {
     /** Whether [create] also takes a library resource directly; otherwise it sends files only. */
     val takesResources: Boolean
 
@@ -38,14 +42,30 @@ class Transfer(val handle: TransferHandle, val tag: String?)
 interface TransferHandle
 
 /** What the session tells the app. Each runs on the session's delivering thread and must return promptly. */
-class TransferHandlers(
+class TransferHandlers @CompositionOnly constructor(
+    /** A transfer ended — once, so it is recorded inline, before this returns. */
+    val onFinished: Inbound<FinishedTransfer, Unit>,
     /**
-     * A transfer ended — once, so it is recorded inline, before this returns. [tag] is what it was made with (an end
-     * the platform tells without one is the adapter's to report and drop); [failure] is `null` for a success.
+     * The OS relaunched the app for the session's events, handing the completion the relaunch's run answers once they
+     * are drained — or once its time is up.
      */
-    val onFinished: (tag: String, failure: TransferFailure?) -> Unit,
-    /** The OS relaunched the app for the session's events; [completion] is released when they are drained. */
-    val onBackgroundEvents: (completion: Completion) -> Unit,
+    val onBackgroundEvents: Background<SessionRelaunch>,
     /** Every event the OS held for the session has been delivered. */
-    val onEventsDrained: () -> Unit,
+    val onEventsDrained: Inbound<SessionDrain, Unit>,
 )
+
+/**
+ * A transfer ended. [tag] is what it was made with (an end the platform tells without one is the adapter's to report
+ * and drop); [failure] is `null` for a success.
+ */
+class FinishedTransfer(val tag: String, val failure: TransferFailure?)
+
+/**
+ * A relaunch for a session's events, arriving after the session's [drainsBefore]th drain report: its run waits for a
+ * later one. The count is the adapter's own — it orders the two deliveries, so a drain report that arrives before the
+ * relaunch's run has started is neither missed nor confused with an earlier one.
+ */
+class SessionRelaunch(val drainsBefore: Int)
+
+/** The session's [drains]th drain report: every event it held has been delivered. */
+class SessionDrain(val drains: Int)

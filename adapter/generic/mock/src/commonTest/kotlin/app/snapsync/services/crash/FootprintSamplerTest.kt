@@ -5,6 +5,7 @@ import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.Availability
 import app.snapsync.model.MemoryFootprint
 import app.snapsync.ports.ProcessInfo
+import app.snapsync.services.foreground.AppForeground
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -27,9 +28,12 @@ class FootprintSamplerTest {
         override fun memoryFootprint(): MemoryFootprint? = footprint.also { reads++ }
     }
 
+    private val backgrounded = AppForeground(fixedClock(Instant.fromEpochSeconds(0)))
+    private val foregrounded = AppForeground(fixedClock(Instant.fromEpochSeconds(0))).apply { entered() }
+
     @Test
     fun `a backgrounded app records its footprint at the moment`() {
-        FootprintSampler(Reading(MemoryFootprint(footprintBytes = 64L shl 20)), trail) { false }.record("push")
+        FootprintSampler(Reading(MemoryFootprint(footprintBytes = 64L shl 20)), trail, backgrounded).record("push")
         val fields = trail.fields()
         assertTrue(fields.isNotEmpty(), "the reading is in the trail")
         assertTrue(fields.values.any { "push" in it }, "and names its moment: $fields")
@@ -38,7 +42,7 @@ class FootprintSamplerTest {
     @Test
     fun `a foregrounded app records nothing and reads nothing`() {
         val info = Reading(MemoryFootprint(footprintBytes = 64L shl 20))
-        FootprintSampler(info, trail) { true }.record("push")
+        FootprintSampler(info, trail, foregrounded).record("push")
         assertEquals(0, info.reads)
         assertEquals(emptyMap(), trail.fields())
         assertTrue(privateFiles.isEmpty())
@@ -47,7 +51,7 @@ class FootprintSamplerTest {
     @Test
     fun `a platform with no footprint reading records nothing`() {
         val info = Reading(null)
-        FootprintSampler(info, trail) { false }.record("push")
+        FootprintSampler(info, trail, backgrounded).record("push")
         assertEquals(1, info.reads)
         assertEquals(emptyMap(), trail.fields())
         assertTrue(privateFiles.isEmpty())
@@ -56,7 +60,7 @@ class FootprintSamplerTest {
     @Test
     fun `a reading the private area cannot keep is lost without failing the moment`() {
         val unkept = FootprintTrail(inMemoryFiles(private = null), fixedClock(Instant.fromEpochSeconds(0)))
-        FootprintSampler(Reading(MemoryFootprint(footprintBytes = 64L shl 20)), unkept) { false }.record("push")
+        FootprintSampler(Reading(MemoryFootprint(footprintBytes = 64L shl 20)), unkept, backgrounded).record("push")
         assertEquals(emptyMap(), unkept.fields())
     }
 }

@@ -10,6 +10,7 @@ import app.snapsync.android.device.AndroidDeviceConditions
 import app.snapsync.android.download.AndroidDownload
 import app.snapsync.android.gallery.AndroidGallery
 import app.snapsync.android.link.AndroidLinks
+import app.snapsync.android.logging.AndroidThreadLabel
 import app.snapsync.android.logging.FileLogSink
 import app.snapsync.android.logging.LogcatSink
 import app.snapsync.android.network.AndroidNetworkMonitor
@@ -33,15 +34,12 @@ import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppDevicePorts
-import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.http.KtorHttpTransport
-import app.snapsync.model.EntryScope
 import app.snapsync.model.PlatformEntry
-import app.snapsync.model.invocation
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.sentry.SentryCrashReporter
@@ -162,7 +160,7 @@ class SnapSyncRoot(internal val application: Application) {
             files = ports.files.value,
             clock = ports.clock.value,
             crypto = ports.crypto.value,
-            entryContext = NoEntryContext,
+            threadLabel = AndroidThreadLabel(),
             build = AndroidBuildInfo(
                 appVersion = BuildConfig.APP_VERSION,
                 buildNumber = BuildConfig.VERSION_CODE.toString(),
@@ -219,8 +217,9 @@ class SnapSyncRoot(internal val application: Application) {
      * port's handlers, the lifecycle's process observer among them, before any activity can resume.
      */
     @PlatformEntry
-    fun onLaunch() = log.invocation(EntryScope.None, "onLaunch") {
+    fun onLaunch() {
         composed
         adapters.afterLaunch()
+        log.i { "onLaunch" }
     }
 }

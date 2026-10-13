@@ -208,8 +208,10 @@ private object IosEntryDriver : EntryDriver {
     override fun continueLink(url: String) =
         SnapSyncRoot.links.deliverUserActivity("onSceneContinueActivity", browsingWebActivity(url))
 
-    override fun backgroundTask(identifier: String, done: () -> Unit) =
+    override fun backgroundTask(identifier: String, done: () -> Unit) {
+        // The channel plays no expiry of its own on this host: the run it starts is the operating system's to expire.
         SnapSyncRoot.wakeAdapter.onTaskLaunched(identifier, rigCompletion(done))
+    }
 
     override fun backgroundTransfers(identifier: String, done: () -> Unit) =
         SnapSyncRoot.onBackgroundTransfers(identifier, done)

@@ -40,21 +40,21 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
             put("eventId", eventId)
             seq?.let { put("seq", it) }
         }
-        device.pushService.operator.deliverMessage(payload, os.completion(done))
+        os.deliver(done) { device.pushService.operator.deliverMessage(payload, it) }
     }
 
     override fun continueLink(url: String) = device.links.operator.open(url)
 
     override fun backgroundTask(identifier: String, done: () -> Unit) {
         val heartbeat = identifier == UPLOAD_HEARTBEAT_TASK || identifier == IDLE_HEARTBEAT_TASK
-        if (heartbeat) device.wakes.operator.fire(WakeId.Heartbeat, os.completion(done)) else done()
+        if (heartbeat) os.grant(done) { device.wakes.operator.fire(WakeId.Heartbeat, it) } else done()
     }
 
     override fun backgroundTransfers(identifier: String, done: () -> Unit) {
         if (identifier == UPLOAD_TRANSFER_CHANNEL) {
-            device.uploadSession.operator.handBack(os.completion(done))
+            os.deliver(done) { device.uploadSession.operator.handBack(it) }
         } else {
-            device.downloads.operator.handBack(os.completion(done))
+            os.deliver(done) { device.downloads.operator.handBack(it) }
         }
     }
 }

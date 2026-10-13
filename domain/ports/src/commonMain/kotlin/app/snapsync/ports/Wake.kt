@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Granted
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
@@ -15,11 +17,11 @@ import app.snapsync.model.WakeTrigger
  * for it, and the services arm and cancel every [WakeId] on every platform, so there is no platform branch above the
  * port (iOS has no library-change wake; Android has both).
  *
- * An event port: [listen] registers the composition's handlers once per adapter, and on iOS that registration is the
+ * An event port: [inbound] registers the composition's handlers once per adapter, and on iOS that registration is the
  * `BGTaskScheduler` launch-handler registration Apple requires before the app finishes launching — so the composition
  * that registers it is built at launch (`SnapSyncRoot.onLaunch`).
  */
-interface Wake : Listenable<WakeHandlers> {
+interface Wake : EventPort<WakeHandlers> {
 
     /**
      * Ask for [id] to wake the app when [trigger] allows. Idempotent: a request for an [id] already pending replaces
@@ -39,10 +41,11 @@ interface Wake : Listenable<WakeHandlers> {
  * What the operating system tells the core about its wakes. Built only by a composition (law "Commands cross one
  * door").
  */
-class WakeHandlers(
+class WakeHandlers @CompositionOnly constructor(
     /**
-     * The operating system woke the app for [id], and handed [completion] — held by the core across the wake's work
-     * (its tail) and released after it, or at once on the operating system's expiry ([ExpiringCompletion.onExpired]).
+     * The operating system woke the app for a [WakeId]. The adapter keeps the [app.snapsync.inbound.Running] it gets
+     * back and expires it when the operating system says the wake's time is up — also when that came before `handle`
+     * returned; the completion is answered after the wake's work, or once its cancellation has unwound.
      */
-    val onWake: (id: WakeId, completion: ExpiringCompletion) -> Unit,
+    val onWake: Granted<WakeId>,
 )

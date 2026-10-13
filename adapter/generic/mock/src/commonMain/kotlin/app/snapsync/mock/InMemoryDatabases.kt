@@ -6,6 +6,7 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
@@ -140,7 +141,8 @@ internal class Process(private val databases: InMemoryDatabases) : Databases {
     @Volatile
     private var handlers: DatabaseHandlers? = null
 
-    override fun listen(handlers: DatabaseHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: DatabaseHandlers) {
         this.handlers = handlers
     }
 
@@ -151,7 +153,7 @@ internal class Process(private val databases: InMemoryDatabases) : Databases {
         }
 
     fun changedElsewhere(name: String) {
-        handlers?.onChangedElsewhere(name)
+        handlers?.onChangedElsewhere?.deliver(name)
     }
 }
 

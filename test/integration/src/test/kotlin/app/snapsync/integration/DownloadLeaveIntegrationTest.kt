@@ -80,10 +80,10 @@ class DownloadLeaveIntegrationTest {
 
         leave()
 
-        assertTrue(
-            deviceJson("backend/departed", "event" to event).getValue("departed").jsonPrimitive.boolean,
-            "this device is departed",
-        )
+        // The backend leave is sent after the local teardown, without the screen waiting for it.
+        eventually(read = { deviceJson("backend/departed", "event" to event) }) { departed ->
+            departed.getValue("departed").jsonPrimitive.boolean
+        }
         assertTrue(
             deviceJson("backend/event", "event" to event).getValue("registered").jsonPrimitive.boolean,
             "the event lives on",

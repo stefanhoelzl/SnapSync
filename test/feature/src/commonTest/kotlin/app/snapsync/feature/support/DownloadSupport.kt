@@ -6,6 +6,7 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
@@ -75,7 +76,8 @@ class RecordingDownload(var accept: Boolean = true) : Download {
     var cancelled: Boolean = false
         private set
 
-    override fun listen(handlers: DownloadHandlers) = Unit
+    @CompositionOnly
+    override fun inbound(handlers: DownloadHandlers) = Unit
 
     override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
         started += Start(url, tag, network)
@@ -117,7 +119,8 @@ class RecordingDatabases(private val inner: Databases = inMemoryDatabases()) : D
 
     val statements: MutableList<Statement> = mutableListOf()
 
-    override fun listen(handlers: DatabaseHandlers) = inner.listen(handlers)
+    @CompositionOnly
+    override fun inbound(handlers: DatabaseHandlers) = inner.inbound(handlers)
 
     /** How many transactions were opened — an empty one runs no statement, so it is counted here. */
     var transactions: Int = 0

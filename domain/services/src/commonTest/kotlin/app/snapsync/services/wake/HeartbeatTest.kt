@@ -1,5 +1,6 @@
 package app.snapsync.services.wake
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
@@ -33,7 +34,8 @@ class HeartbeatTest {
         val scheduled = mutableListOf<Pair<WakeId, WakeTrigger>>()
         val cancelled = mutableListOf<WakeId>()
 
-        override fun listen(handlers: WakeHandlers) = Unit
+        @CompositionOnly
+        override fun inbound(handlers: WakeHandlers) = Unit
 
         override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult {
             scheduled += id to trigger

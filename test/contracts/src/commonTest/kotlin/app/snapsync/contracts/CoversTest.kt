@@ -1,11 +1,12 @@
 package app.snapsync.contracts
 
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.Running
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.BackgroundTime
-import app.snapsync.ports.Completion
+import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryChangeTokenRead
@@ -37,10 +38,9 @@ class CoversTest {
             on<Gallery>().emits(Gallery::grant).with(LibraryGrant.DENIED)
             on<LibraryChangeTokenRead>().answers(LibraryChangeTokenRead::changeToken).with(null)
             on<Lifecycle>().calls(LifecycleHandlers::onForeground)
-            on<Download>().calls(DownloadHandlers::onCompleted, String::class, null)
-            on<BackgroundTime>().callsBack(BackgroundTime::begin, "onExpiry")
+            on<Download>().calls(DownloadHandlers::onCompleted, CompletedDownload::class)
+            on<BackgroundTime>().handle<Running>().answers(Running::expire).returns()
             on<Wake>().handle<Completion>().answers(Completion::complete).returns()
-            on<Wake> { handle<ExpiringCompletion>().callsBack(ExpiringCompletion::onExpired, "action") }
         }
         assertEquals(
             listOf(
@@ -51,10 +51,9 @@ class CoversTest {
                 "Gallery.grant → LibraryGrant.DENIED",
                 "LibraryChangeTokenRead.changeToken → null",
                 "Lifecycle.handlers.onForeground()",
-                "Download.handlers.onCompleted(String, null)",
-                "BackgroundTime.begin.onExpiry()",
+                "Download.handlers.onCompleted(CompletedDownload)",
+                "BackgroundTime.Running.expire → returns",
                 "Wake.Completion.complete → returns",
-                "Wake.ExpiringCompletion.onExpired.action()",
             ),
             covers.cells,
         )

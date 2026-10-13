@@ -3,6 +3,8 @@ package app.snapsync.ports
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
 
 /**
  * **This process's SQLite databases, by name** — one external system, and nothing decided here
@@ -28,24 +30,24 @@ import app.cash.sqldelight.db.SqlSchema
  * - a database that exists but cannot be opened (locked, unreadable, not a database) is [DbOpen.Failed] on
  *   **both** paths, never [DbOpen.Missing].
  *
- * **What another process committed arrives through [listen]** ([DatabaseHandlers.onChangedElsewhere]): the app and
+ * **What another process committed arrives through [inbound]** ([DatabaseHandlers.onChangedElsewhere]): the app and
  * the upload extension write the same files, and neither process's own reads would otherwise learn of the other's
  * commit until it re-read on its own. A commit is a transaction that finished — the moment SQLDelight notifies the
  * driver's listeners, after the commit and never for a rollback; this process's own commits are never delivered back
  * to it. A missed delivery costs freshness, never correctness: every entry re-reads what it acts on.
  */
-interface Databases : Listenable<DatabaseHandlers> {
+interface Databases : EventPort<DatabaseHandlers> {
 
     fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen
 }
 
 /** What a [Databases] tells the process it belongs to. */
-class DatabaseHandlers(
+class DatabaseHandlers @CompositionOnly constructor(
     /**
-     * Another process committed to [database] — the name it was opened by. Never called for this process's own
+     * Another process committed to the database of the name it was opened by. Never called for this process's own
      * commits; several commits may arrive as one call. Called off the main thread.
      */
-    val onChangedElsewhere: (database: String) -> Unit,
+    val onChangedElsewhere: Inbound<String, Unit>,
 )
 
 /** One [Databases.open] answer. */

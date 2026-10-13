@@ -1,5 +1,6 @@
 package app.snapsync.extension
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
@@ -7,20 +8,20 @@ import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.runBlocking
 
 /**
  * The iOS [ExtensionHost]: the PhotoKit background-upload extension's `process()`
  * and `notifyTermination()`, which the Swift principal class forwards to [deliverProcess] and [deliverTerminate].
  *
  * `process()` is synchronous by the operating system's own contract and the process does not outlive it, so
- * [deliverProcess] blocks its thread on the handler — the one pinned `runBlocking` in production
- * (`MainLaneContainmentTest`) — and answers the platform's raw result ([processingResultRawValue]).
+ * [deliverProcess] asks the handler for its answer on its own thread — the core's answered entry point blocks it — and
+ * answers the platform's raw result ([processingResultRawValue]).
  */
 class IosExtensionHost(private val log: Logger) : ExtensionHost {
     private val handlers = HandlerSlot<ExtensionHandlers>("ExtensionHost", BeforeListen.Logged(log))
 
-    override fun listen(handlers: ExtensionHandlers) = this.handlers.set(handlers)
+    @CompositionOnly
+    override fun inbound(handlers: ExtensionHandlers) = this.handlers.set(handlers)
 
     /**
      * One invocation: the handler's answer, passed through as the `PHBackgroundResourceUploadProcessingResult` raw value the
@@ -30,14 +31,14 @@ class IosExtensionHost(private val log: Logger) : ExtensionHost {
     @PlatformEntry
     fun deliverProcess(): Int {
         val registered = handlers.orNull("process()")
-        val answer = if (registered == null) ProcessingAnswer.FAILED else runBlocking { registered.onProcess() }
+        val answer = registered?.onProcess?.answer(Unit) ?: ProcessingAnswer.FAILED
         return answer.processingResultRawValue()
     }
 
     /** The end of an invocation — never a kill, which sends nothing. Only recorded. */
     @PlatformEntry
     fun deliverTerminate() {
-        handlers.orNull("notifyTermination()", BeforeListen.Dropped)?.onTerminate()
+        handlers.orNull("notifyTermination()", BeforeListen.Dropped)?.onTerminate?.deliver(Unit)
     }
 }
 

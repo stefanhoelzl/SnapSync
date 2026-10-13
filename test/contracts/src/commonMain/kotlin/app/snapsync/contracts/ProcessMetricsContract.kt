@@ -1,7 +1,8 @@
-@file:OptIn(ExperimentalAtomicApi::class)
+@file:OptIn(CompositionOnly::class, ExperimentalAtomicApi::class)
 
 package app.snapsync.contracts
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.MetricNode
 import app.snapsync.ports.ProcessMetricPayload
@@ -37,10 +38,10 @@ object ProcessMetricsContract : Contract<ProcessMetricsState, ProcessMetrics>("P
         clause(
             "NO_PROVIDER_LISTENING_REPORTS_NOTHING",
             ProcessMetricsState.NO_PROVIDER,
-            covers = cells { on<ProcessMetrics>().answers(ProcessMetrics::listen).returns() },
+            covers = cells { on<ProcessMetrics>().answers(ProcessMetrics::inbound).returns() },
         ) { metrics ->
             val reports = mutableListOf<ProcessMetricPayload>()
-            metrics.listen(MetricHandlers(onReport = { reports += it }))
+            metrics.inbound(MetricHandlers(onReport = inboundOf { reports += it }))
             settle()
             assertTrue(reports.isEmpty(), "a process with no provider is handed no report")
         }
@@ -50,13 +51,13 @@ object ProcessMetricsContract : Contract<ProcessMetricsState, ProcessMetrics>("P
             ProcessMetricsState.PROVIDER_DELIVERS,
             covers = cells {
                 on<ProcessMetrics> {
-                    answers(ProcessMetrics::listen).returns()
+                    answers(ProcessMetrics::inbound).returns()
                     calls(MetricHandlers::onReport, ProcessMetricPayload::class)
                 }
             },
         ) { metrics ->
             val reports = AtomicReference<List<ProcessMetricPayload>>(emptyList())
-            metrics.listen(MetricHandlers(onReport = { report -> reports.update { it + report } }))
+            metrics.inbound(MetricHandlers(onReport = inboundOf { report -> reports.update { it + report } }))
             awaitWithin { reports.load().isNotEmpty() }
             for (report in reports.load()) {
                 val root = assertIs<MetricNode.Branch>(

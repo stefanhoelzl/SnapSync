@@ -6,6 +6,7 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
+import app.snapsync.model.EventLookup
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.captureCeiling
@@ -13,6 +14,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.config.ConfigService
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -76,6 +78,21 @@ class MembershipRefreshTest {
         refresh(config).refresh("E", found("Anna's Birthday"))
         // The WHOLE config is saved with only `name` replaced — the cutoff (and every other
         // membership field) rides along untouched (capability `photo-sharing`).
+        assertEquals(joined.copy(name = "Anna's Birthday"), config.saved)
+    }
+
+    @Test
+    fun `the joined membership is kept current from the directory - and nothing is asked while not joined`() = runTest {
+        val config = Membership(joined)
+        var fetches = 0
+        val directory = EventDirectory {
+            fetches++
+            EventLookup.Found("Anna's Birthday", STARTS, ENDS, DELETES)
+        }
+        val rule = refresh(config)
+        rule.refreshJoined(null, directory)
+        assertEquals(0, fetches, "not joined: nothing to ask")
+        rule.refreshJoined("E", directory)
         assertEquals(joined.copy(name = "Anna's Birthday"), config.saved)
     }
 

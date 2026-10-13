@@ -1,9 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.EntryScope
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.MembershipRead
-import app.snapsync.model.invocation
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.upload.ExtensionRegistration
@@ -20,9 +18,9 @@ import kotlinx.coroutines.flow.dropWhile
  * | [disarm] | cancel the scheduled `BGProcessingTask` — nothing else; in-flight transfers finish and record |
  * | [cancelTransfers] | cancel the in-flight transfers and delete their staged files — a **leave** only |
  *
- * The OS wakes do not reach the uploader through this seam: each wake does its own work and hands the rest to the
- * process's tail runner, whose upload units are the app uploader's (decision record
- * `changes/own-work-per-wake`, D1). The composition implements this over that runner and that mechanism.
+ * The OS wakes do not reach the uploader through this seam: each wake does its own work, then runs the sequences the
+ * entry points share, whose upload units are the app uploader's (decision record `changes/own-work-per-wake`, D1).
+ * The entry points implement this over those sequences and that mechanism (`UploadEngine`).
  *
  * None of them clears the ledger or repairs a row: nothing a transition does orphans a `REQUESTED` row, because
  * no transition but a leave stops in-flight work and the leave clears the ledger (decision record
@@ -80,7 +78,6 @@ class UploadTransitions(
     /** The app-driven engine, obtained at first use (it owns a process-lifetime background session). */
     private val appEngine: () -> AppUploadEngine,
     private val log: Logger = Logger.withTag("UploadTransitions"),
-    private val entryContext: EntryScope = EntryScope.None,
 ) {
 
     /**
@@ -88,18 +85,18 @@ class UploadTransitions(
      * the one transition allowed to repair a stale record. A re-provision of the joined event never reaches here
      * (the membership entry is not run for it), so a re-scan can never wipe the extension's in-flight jobs.
      */
-    suspend fun onJoin() = log.invocation(entryContext, "uploads.onJoin") {
+    suspend fun onJoin() = run {
         if (extensionRegistrable()) registration.register()
         armIfUsable()
-    }
+    }.also { log.i { "uploads.onJoin" } }
 
     /**
      * A reconfigure, in any direction. The registration is not touched — it spans the membership — and the app
      * engine is kicked; the selection policy decides whether anything uploads.
      */
-    suspend fun onReconfigure() = log.invocation(entryContext, "uploads.onReconfigure") {
+    suspend fun onReconfigure() = run {
         if (joined()) armIfUsable()
-    }
+    }.also { log.i { "uploads.onReconfigure" } }
 
     /**
      * The upload **launch reconcile**, then every real change of the photo grant handed to [onChanged]: launch
@@ -117,31 +114,31 @@ class UploadTransitions(
 
     /** A real change of the photo grant — never the permission `StateFlow`'s replayed first value. */
     suspend fun onPermissionChanged() =
-        log.invocation(entryContext, "uploads.onPermissionChanged") { compare(deregisterIfOff = false) }
+        run { compare(deregisterIfOff = false) }.also { log.i { "uploads.onPermissionChanged" } }
 
     /**
      * The rig's uploader switch was set or cleared (rig builds only). Compared, and immediate: the extension
      * cannot read the switch, so turning it off must deregister it now.
      */
     suspend fun onOverrideChanged() =
-        log.invocation(entryContext, "uploads.onOverrideChanged") { compare(deregisterIfOff = true) }
+        run { compare(deregisterIfOff = true) }.also { log.i { "uploads.onOverrideChanged" } }
 
     /**
      * Host assembly — the app launched with its UI. Compared, so the extension's in-flight jobs survive a launch.
      * A cold background launch never reaches here.
      */
-    suspend fun onLaunch() = log.invocation(entryContext, "uploads.onLaunch") { compare(deregisterIfOff = false) }
+    suspend fun onLaunch() = run { compare(deregisterIfOff = false) }.also { log.i { "uploads.onLaunch" } }
 
     /**
      * A leave, or a switch leaving the previous membership: the one transition that stops in-flight work. The
      * caller clears the upload ledger and the configured event afterwards.
      */
-    suspend fun onLeave() = log.invocation(entryContext, "uploads.onLeave") {
+    suspend fun onLeave() = run {
         registration.deregister()
         val engine = appEngine()
         engine.disarm()
         engine.cancelTransfers()
-    }
+    }.also { log.i { "uploads.onLeave" } }
 
     /**
      * The compared reconcile. With no membership nothing is armed and nothing registered — a surviving record is

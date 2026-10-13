@@ -4,6 +4,11 @@ package app.snapsync.rig
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.config.bakedUploadBase
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Granted
+import app.snapsync.inbound.InboundImplementation
+import app.snapsync.inbound.Running
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterProcess
@@ -81,6 +86,7 @@ class RigLaunch internal constructor(
  * scheduled would otherwise launch a process with none. A mocked wake also cancels that real request, so the real
  * operating system stops waking a run whose wakes the channel plays.
  */
+@OptIn(CompositionOnly::class)
 fun rigLaunch(real: AppDevicePorts): RigLaunch {
     val launch = LaunchAdapters.load(
         real.files.value,
@@ -90,7 +96,7 @@ fun rigLaunch(real: AppDevicePorts): RigLaunch {
     val chosen = launch as? LaunchAdapters.Chosen
     val mocked = chosen?.choice?.mocked.orEmpty()
     if (launch is LaunchAdapters.Refused || MockedSystem.WAKE in mocked) {
-        real.wake.value.listen(WakeHandlers(onWake = { _, completion -> completion.complete() }))
+        real.wake.value.inbound(WakeHandlers(onWake = QuietWake))
         if (MockedSystem.WAKE in mocked) real.wake.value.cancel(WakeId.Heartbeat)
     }
     chosen?.let(::keepSaving)
@@ -212,3 +218,16 @@ private fun osCarriesUploadExtension(): Boolean = NSProcessInfo.processInfo.isOp
         patchVersion = 0
     },
 )
+
+/** A real wake a mocked one replaces: answered at once, nothing run — the operating system's own task is released. */
+@OptIn(InboundImplementation::class)
+private object QuietWake : Granted<WakeId> {
+    override fun handle(arg: WakeId, completion: Completion): Running {
+        completion.complete()
+        return Unexpirable
+    }
+
+    private object Unexpirable : Running {
+        override fun expire() = Unit
+    }
+}

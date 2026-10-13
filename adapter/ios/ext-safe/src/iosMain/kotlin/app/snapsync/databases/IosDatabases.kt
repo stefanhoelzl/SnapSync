@@ -5,6 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.isNoSuchFile
@@ -69,13 +70,14 @@ class IosDatabases(private val basePath: String?) : Databases {
     @Volatile
     private var handlers: DatabaseHandlers? = null
 
-    override fun listen(handlers: DatabaseHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: DatabaseHandlers) {
         this.handlers = handlers
     }
 
     /** [driver], announcing its commits to the other process and hearing the other process's. */
     private fun signalled(name: String, driver: SqlDriver): SqlDriver {
-        val commits = DarwinCommits(name, driver, log) { handlers?.onChangedElsewhere(name) }
+        val commits = DarwinCommits(name, driver, log) { handlers?.onChangedElsewhere?.deliver(name) }
         return CommitSignalling(driver, committed = commits::post, closed = commits::close)
     }
 

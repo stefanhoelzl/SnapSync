@@ -1,7 +1,13 @@
 package app.snapsync.architecture
 
 import app.snapsync.compose.AppPorts
-import app.snapsync.ports.Listenable
+import app.snapsync.inbound.Answered
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.Granted
+import app.snapsync.inbound.Inbound
+import app.snapsync.inbound.Running
+import app.snapsync.ports.EventPort
 import app.snapsync.ports.Port
 import app.snapsync.wire.api.Reply
 import kotlinx.coroutines.flow.Flow
@@ -14,6 +20,7 @@ import kotlin.reflect.KParameter
 import kotlin.reflect.KType
 import kotlin.reflect.KTypeParameter
 import kotlin.reflect.full.allSupertypes
+import kotlin.reflect.full.createType
 import kotlin.reflect.full.declaredMemberProperties
 import kotlin.reflect.full.declaredMembers
 import kotlin.reflect.full.isSubclassOf
@@ -34,7 +41,7 @@ internal object PortGrid {
 
     /**
      * Every port: each non-generic interface of the ports zone, and each generic one the app's composition binds
-     * ([bound]). A generic port the composition does not bind is a base (`Listenable`), whose members its ports own.
+     * ([bound]). A generic port the composition does not bind is a base (`EventPort`), whose members its ports own.
      */
     val ports: List<KClass<*>> by lazy {
         portInterfaces()
@@ -96,14 +103,19 @@ internal object PortGrid {
         val own = ownedMembers(port).flatMap { memberCells(name, name, it, handles) }
         val handlers = handlerBundleType(port)?.let { bundleType ->
             (bundleType.classifier as KClass<*>).declaredMemberProperties.sortedBy { it.name }.flatMap { f ->
-                callbackCells(
-                    name,
-                    "$name.handlers.${f.name}",
-                    f.name,
-                    f.returnType,
-                    handles,
-                    bindingOf(port, bundleType),
-                )
+                if (deliveryReturnsRunning(f.returnType)) handles += Running::class
+                if (isFunction(f.returnType)) {
+                    // A shaping callback the platform's SDK calls (`CrashReporter.listen`'s): a handler all the same.
+                    callbackCells(name, "$name.handlers.${f.name}", f.name, f.returnType, handles)
+                } else {
+                    argumentCells(
+                        name,
+                        "$name.handlers.${f.name}",
+                        f.name,
+                        deliveryArgs(f.returnType, bindingOf(port, bundleType)),
+                        handles,
+                    )
+                }
             }
         }.orEmpty()
         val handed = handles.sortedBy { it.simpleName }.flatMap { h ->
@@ -121,6 +133,8 @@ internal object PortGrid {
 
     private fun memberCells(port: String, owner: String, member: KCallable<*>, handles: MutableSet<KClass<*>>): List<Cell> {
         noteHandle(member.returnType, handles)
+        // A run the adapter is handed and expires (`BackgroundTime.begin`'s): a handle whose member the adapter calls.
+        member.parameters.filter { it.kind == KParameter.Kind.VALUE }.forEach { noteInboundHandle(it.type, handles) }
         if (declaresThrows(member)) throwing += "$owner.${member.name}"
         val returns = variants(member.returnType, plain = RETURNS)
             .map { Cell(port, "$owner.${member.name} → $it", member.name, listOf(it)) }
@@ -136,11 +150,24 @@ internal object PortGrid {
         member: String,
         type: KType,
         handles: MutableSet<KClass<*>>,
-        binding: Map<KTypeParameter, KType> = emptyMap(),
     ): List<Cell> {
-        val args = type.arguments.dropLast(1).mapNotNull { it.type?.let { arg -> arg.boundBy(binding) } }
+        val args = type.arguments.dropLast(1).mapNotNull { it.type }
             .filterNot { (it.classifier as? KClass<*>) == Continuation::class }
-        args.forEach { noteHandle(it, handles) }
+        return argumentCells(port, prefix, member, args, handles)
+    }
+
+    /** One cell per crossing of the variants of [args], what the adapter passes. */
+    private fun argumentCells(
+        port: String,
+        prefix: String,
+        member: String,
+        args: List<KType>,
+        handles: MutableSet<KClass<*>>,
+    ): List<Cell> {
+        args.forEach {
+            noteHandle(it, handles)
+            noteInboundHandle(it, handles)
+        }
         val crossed = args.fold(listOf(emptyList<String>())) { acc, arg ->
             val vs = variants(arg, plain = (arg.classifier as? KClass<*>)?.simpleName ?: arg.toString())
             acc.flatMap { done -> vs.map { done + it } }
@@ -183,14 +210,22 @@ internal object PortGrid {
         if (inZone && !Port::class.isSuperclassOf(k) && !k.isSealed) handles += k
     }
 
-    /** The handler bundle an event port ([Listenable]) is listened to with, or `null` for a port that is not one. */
+    /** The handler bundle an event port ([EventPort]) is listened to with, or `null` for a port that is not one. */
     fun handlerBundle(port: KClass<*>): KClass<*>? = handlerBundleType(port)?.classifier as? KClass<*>
 
-    /** [handlerBundle] as a type, its arguments bound as the composition binds [port] ([bound]). */
+    /**
+     * [handlerBundle] as a type, its arguments bound as the composition binds [port] ([bound]): an [EventPort]'s, or
+     * the bundle of a port that is not one but is listened to all the same (`CrashReporter.listen`, whose handlers
+     * shape what the platform's SDK sends).
+     */
     private fun handlerBundleType(port: KClass<*>): KType? =
         port.allSupertypes.firstOrNull {
-            it.classifier == Listenable::class
+            it.classifier == EventPort::class
         }?.arguments?.single()?.type?.boundBy(bound[port].orEmpty())
+            ?: port.declaredMembers.firstOrNull { it.name == LISTEN }?.parameters?.last()?.type
+
+    /** The member a port that is not an event port registers its handlers through. */
+    const val LISTEN = "listen"
 
     /** [type] as the composition binds it: a generic port's type parameter is what [AppPorts] binds it to. */
     fun bindingFor(type: KType): KType =
@@ -200,16 +235,14 @@ internal object PortGrid {
     fun handlerArgTypes(port: KClass<*>, field: String): List<KType> {
         val bundleType = handlerBundleType(port)!!
         val f = (bundleType.classifier as KClass<*>).declaredMemberProperties.first { it.name == field }
-        return f.returnType.arguments.dropLast(1).mapNotNull { it.type?.boundBy(bindingOf(port, bundleType)) }
+        if (isFunction(f.returnType)) return f.returnType.arguments.dropLast(1).mapNotNull { it.type }
+        return deliveryArgs(f.returnType, bindingOf(port, bundleType))
     }
 
     /** The handler bundle's own type parameters, bound through [port]'s binding. */
     private fun bindingOf(port: KClass<*>, bundleType: KType): Map<KTypeParameter, KType> =
         (bundleType.classifier as KClass<*>).typeParameters
             .zip(bundleType.arguments.map { it.type!!.boundBy(bound[port].orEmpty()) }).toMap()
-
-    /** [this] with a type parameter of [binding] replaced by what it is bound to, at the top level only. */
-    private fun KType.boundBy(binding: Map<KTypeParameter, KType>): KType = binding[classifier] ?: this
 
     /** The top-level interfaces declared in `:domain:ports`, by simple name — the same read [PortBundleTest] makes. */
     private fun portInterfaces(): Set<String> {
@@ -229,3 +262,30 @@ internal object PortGrid {
     const val BACKEND = "Backend"
     const val RETURNS = "returns"
 }
+
+/** A handle the inbound kinds hand across ([Completion], [Running]): its members are cells of the port that hands it. */
+private fun noteInboundHandle(type: KType, handles: MutableSet<KClass<*>>) {
+    val k = type.classifier as? KClass<*> ?: return
+    if (k == Completion::class || k == Running::class) handles += k
+}
+
+/**
+ * What an adapter passes a delivery of [type] — an inbound kind: its argument (none for `Unit`), and for a
+ * [Background] or [Granted] delivery the completion it hands over with it.
+ */
+internal fun deliveryArgs(type: KType, binding: Map<KTypeParameter, KType> = emptyMap()): List<KType> {
+    val k = type.classifier as? KClass<*>
+    val arg = type.arguments.first().type!!.boundBy(binding)
+    val own = listOfNotNull(arg.takeUnless { it.classifier == Unit::class })
+    return when (k) {
+        Background::class, Granted::class -> own + Completion::class.createType()
+        Inbound::class, Answered::class -> own
+        else -> error("a handler is an inbound kind (Inbound, Background, Granted, Answered), not $type")
+    }
+}
+
+/** Whether a delivery of [type] answers the adapter a [Running] it may expire: a [Granted] one. */
+internal fun deliveryReturnsRunning(type: KType): Boolean = type.classifier == Granted::class
+
+/** [this] with a type parameter of [binding] replaced by what it is bound to, at the top level only. */
+private fun KType.boundBy(binding: Map<KTypeParameter, KType>): KType = binding[classifier] ?: this

@@ -2,15 +2,15 @@
 
 package app.snapsync.background
 
-import app.snapsync.logging.invocation
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Running
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.objc.objcBoundary
-import app.snapsync.ports.Completion
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
@@ -68,14 +68,18 @@ class IosWake internal constructor(
 
     private val handlers = AtomicReference<WakeHandlers?>(null)
 
-    override fun listen(handlers: WakeHandlers) = log.invocation("wake.listen") {
+    @CompositionOnly
+    override fun inbound(handlers: WakeHandlers) = run {
         this.handlers.store(handlers)
         // One explicit registration per identifier: `RuntimeIdentityTest` reads each one's constant against the plist.
         registered(HEARTBEAT_TASK_IDENTIFIER, tasks.register(HEARTBEAT_TASK_IDENTIFIER) { launched(it) })
         registered(IDLE_TASK_IDENTIFIER, tasks.register(IDLE_TASK_IDENTIFIER) { launched(it) })
-    }
+    }.also { log.i { "wake.inbound" } }
 
-    private fun launched(task: BGTask) = onTaskLaunched(task.identifier, TaskCompletion(task, log))
+    private fun launched(task: BGTask) {
+        val completion = TaskCompletion(task, log)
+        onTaskLaunched(task.identifier, completion)?.let(completion::ran)
+    }
 
     /** Never silent: an unregistered task is a heartbeat the OS can never run, and nothing else would say so. */
     private fun registered(identifier: String, accepted: Boolean) {
@@ -83,44 +87,46 @@ class IosWake internal constructor(
     }
 
     override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
-        log.invocation("wake.schedule", params = "id=$id") {
+        run {
             when (id) {
                 WakeId.Heartbeat -> submit(trigger)
                 WakeId.LibraryChanged -> ScheduleResult.Unsupported
             }
-        }
+        }.also { log.i { "wake.schedule(id=$id)" } }
 
-    override fun cancel(id: WakeId) = log.invocation("wake.cancel", params = "id=$id") {
+    override fun cancel(id: WakeId) = run {
         when (id) {
             WakeId.Heartbeat -> TASK_IDENTIFIERS.forEach(tasks::cancel)
             WakeId.LibraryChanged -> Unit
         }
-    }
+    }.also { log.i { "wake.cancel(id=$id)" } }
 
     /**
      * The operating system launched the background task [identifier] — its own identifier, never one the shell chose —
      * and hands [completion]. Routed to the registered handlers by the identifier; one this adapter does not know is
-     * completed at once and logged, because a task held forever costs the app its future background time.
+     * completed at once and logged, because a task held forever costs the app its future background time. Answers the
+     * run the task's expiry expires, or `null` when none started.
      *
-     * Public for the control channel, which plays the operating system (`/os onBackgroundTask`) until the entry surface
-     * becomes event ports (11g).
+     * Public for the control channel, which plays the operating system (`/os onBackgroundTask`).
      */
-    fun onTaskLaunched(identifier: String, completion: ExpiringCompletion) =
-        log.invocation("wake.onTaskLaunched", params = "identifier=$identifier") { route(identifier, completion) }
+    fun onTaskLaunched(identifier: String, completion: Completion): Running? =
+        route(identifier, completion).also { log.i { "wake.onTaskLaunched(identifier=$identifier)" } }
 
-    private fun route(identifier: String, completion: ExpiringCompletion) {
+    private fun route(identifier: String, completion: Completion): Running? {
         val id = if (identifier in TASK_IDENTIFIERS) WakeId.Heartbeat else null
         val registered = handlers.load()
-        when {
+        return when {
             id == null -> {
                 log.w { "unknown background task '$identifier' — completed without work" }
                 completion.complete()
+                null
             }
             registered == null -> {
-                log.e { "background task '$identifier' launched before the composition listened — completed at once" }
+                log.e { "background task '$identifier' launched before the composition registered — completed at once" }
                 completion.complete()
+                null
             }
-            else -> registered.onWake(id, completion)
+            else -> registered.onWake.handle(id, completion)
         }
     }
 
@@ -169,21 +175,21 @@ class IosWake internal constructor(
 }
 
 /**
- * A `BGTask`'s completion (`setTaskCompleted`) and expiration handler as one [Completion]: completed once, and its
- * expiry delivered once to the action the core registers — at once if the expiry came first.
+ * A `BGTask`'s completion (`setTaskCompleted`) and expiration handler: completed once, and its expiry delivered once to
+ * the run the task started — also when the expiry came before the run did ([ran]).
  */
 @OptIn(ExperimentalForeignApi::class)
-private class TaskCompletion(private val task: BGTask, private val log: Logger) : ExpiringCompletion {
+private class TaskCompletion(private val task: BGTask, private val log: Logger) : Completion {
     private val completed = AtomicBoolean(false)
     private val expired = AtomicBoolean(false)
-    private val actionRan = AtomicBoolean(false)
-    private val action = AtomicReference<(() -> Unit)?>(null)
+    private val expiredRun = AtomicBoolean(false)
+    private val run = AtomicReference<Running?>(null)
 
     init {
         task.expirationHandler = {
             objcBoundary(log, "bgTask.expirationHandler(${task.identifier})") {
                 expired.store(true)
-                action.load()?.let(::runOnce)
+                run.load()?.let(::expireOnce)
             }
         }
     }
@@ -192,12 +198,13 @@ private class TaskCompletion(private val task: BGTask, private val log: Logger) 
         if (completed.compareAndSet(expectedValue = false, newValue = true)) task.setTaskCompletedWithSuccess(true)
     }
 
-    override fun onExpired(action: () -> Unit) {
-        this.action.store(action)
-        if (expired.load()) runOnce(action)
+    /** The task started [running]: the run its expiry expires. */
+    fun ran(running: Running) {
+        run.store(running)
+        if (expired.load()) expireOnce(running)
     }
 
-    private fun runOnce(action: () -> Unit) {
-        if (actionRan.compareAndSet(expectedValue = false, newValue = true)) action()
+    private fun expireOnce(running: Running) {
+        if (expiredRun.compareAndSet(expectedValue = false, newValue = true)) running.expire()
     }
 }

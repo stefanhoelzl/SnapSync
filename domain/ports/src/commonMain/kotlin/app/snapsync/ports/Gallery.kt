@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
 import app.snapsync.model.WriteOutcome
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
@@ -100,20 +102,26 @@ interface GalleryReader : Port {
  * What the app's gallery tells the core (`docs/architecture.md`, the handler table). Each runs on the gallery's
  * delivering thread and must return promptly.
  */
-class GalleryHandlers(
+class GalleryHandlers @CompositionOnly constructor(
     /**
      * The asset an import is creating, called INSIDE the platform's change block — before the asset can be
      * observed — so the marker that keeps it from being uploaded back lands first.
      * The write is synchronous, on the delivering thread. If a change block runs again, the last call wins.
      */
-    val onImportPlaceholder: (correlation: String, created: PlatformAssetId) -> Unit,
+    val onImportPlaceholder: Inbound<ImportPlaceholder, Unit>,
     /**
      * An import's outcome, once, from the platform's completion — which runs even when the requester is gone, so
      * the outcome is persisted here, inline, and never only returned (`docs/architecture.md`, "A delivery the
      * platform makes once is persisted before the entry point returns").
      */
-    val onImportSettled: (correlation: String, outcome: ImportOutcome) -> Unit,
+    val onImportSettled: Inbound<ImportSettled, Unit>,
 )
+
+/** The asset the import [correlation] names is being [created] as. */
+class ImportPlaceholder(val correlation: String, val created: PlatformAssetId)
+
+/** The import [correlation] names came out as [outcome]. */
+class ImportSettled(val correlation: String, val outcome: ImportOutcome)
 
 /**
  * Rebuilding one foreign asset in the gallery — the one [Gallery] member the
@@ -132,9 +140,9 @@ interface GalleryImport : Port {
 /**
  * The app's gallery: the [GalleryReader] plus what only the foreground process may do — ask for access, hand
  * the member the platform's selection picker, observe a partial grant's selection, import foreign photos, and read
- * the library's change token for the walk memo. What it observes arrives through [listen].
+ * the library's change token for the walk memo. What it observes arrives through [inbound].
  */
-interface Gallery : GalleryReader, LibraryChangeTokenRead, GalleryImport, Listenable<GalleryHandlers> {
+interface Gallery : GalleryReader, LibraryChangeTokenRead, GalleryImport, EventPort<GalleryHandlers> {
 
     /**
      * The grant as last read. Neither PhotoKit nor MediaStore calls back when it changes, so a change is

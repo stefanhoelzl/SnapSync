@@ -1,5 +1,6 @@
 package app.snapsync.link
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
@@ -21,7 +22,8 @@ import platform.Foundation.NSUserActivity
 class IosLinks(private val log: Logger) : Links {
     private val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Logged(log))
 
-    override fun listen(handlers: LinkHandlers) = this.handlers.set(handlers)
+    @CompositionOnly
+    override fun inbound(handlers: LinkHandlers) = this.handlers.set(handlers)
 
     /** A restored or continued user activity, through [hook]'s path (a cold launch's, or a running app's). */
     @PlatformEntry
@@ -44,6 +46,6 @@ class IosLinks(private val log: Logger) : Links {
     }
 
     private fun deliver(delivery: LinkDelivery) {
-        handlers.orNull("a link through ${delivery.hook}")?.onLink(delivery)
+        handlers.orNull("a link through ${delivery.hook}")?.onLink?.deliver(delivery)
     }
 }

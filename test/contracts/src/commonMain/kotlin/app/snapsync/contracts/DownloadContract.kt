@@ -1,10 +1,15 @@
-@file:OptIn(ExperimentalAtomicApi::class)
+@file:OptIn(CompositionOnly::class, ExperimentalAtomicApi::class)
 
 package app.snapsync.contracts
 
-import app.snapsync.ports.Completion
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.FinishedDownload
+import app.snapsync.ports.SessionDrain
+import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
@@ -104,13 +109,13 @@ class ClauseDownloadHandlers(private val readTemp: (String) -> ByteArray?) {
     }
 
     val handlers = DownloadHandlers(
-        onFinished = { tag, facts, tempPath -> add(DownloadEvent.Finished(tag, facts, readTemp(tempPath))) },
-        onCompleted = { tag, error -> add(DownloadEvent.Completed(tag, error)) },
-        onBackgroundEvents = { completion: Completion ->
+        onFinished = inboundOf { add(DownloadEvent.Finished(it.tag, it.facts, readTemp(it.tempPath))) },
+        onCompleted = inboundOf { add(DownloadEvent.Completed(it.tag, it.error)) },
+        onBackgroundEvents = backgroundOf { _, completion ->
             count(wakes)
             completion.complete()
         },
-        onEventsDrained = { count(drains) },
+        onEventsDrained = inboundOf { count(drains) },
     )
 }
 
@@ -132,7 +137,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
     private suspend fun DownloadUnderTest.transfer(clauseId: String, answer: FixtureAnswer): List<DownloadEvent> {
         val owner = ClauseDownloadHandlers(readTemp)
         val download = open()
-        download.listen(owner.handlers)
+        download.inbound(owner.handlers)
         assertEquals(
             StartResult.Started,
             download.start(base + path(clauseId, answer), NO_HEADERS, "d-$clauseId", TransferNetwork.ANY),
@@ -149,8 +154,8 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.WAKES_TO_DELIVER,
             covers = cells {
                 on<Download> {
-                    calls(DownloadHandlers::onBackgroundEvents, Completion::class)
-                    calls(DownloadHandlers::onEventsDrained)
+                    calls(DownloadHandlers::onBackgroundEvents, SessionRelaunch::class, Completion::class)
+                    calls(DownloadHandlers::onEventsDrained, SessionDrain::class)
                     handle<Completion>().answers(Completion::complete).returns()
                 }
             },
@@ -159,7 +164,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val ended = assertNotNull(subject.wakeEnded, "a binding that reaches this state can see the wake end")
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
-            download.listen(owner.handlers)
+            download.inbound(owner.handlers)
             assertEquals(
                 StartResult.Started,
                 download.start(
@@ -183,10 +188,10 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.READY,
             covers = cells {
                 on<Download> {
-                    answers(Download::listen).returns()
+                    answers(Download::inbound).returns()
                     answers(Download::start).with(StartResult.Started)
-                    calls(DownloadHandlers::onFinished, String::class, TransferOutcome::class, String::class)
-                    calls(DownloadHandlers::onCompleted, String::class, null)
+                    calls(DownloadHandlers::onFinished, FinishedDownload::class)
+                    calls(DownloadHandlers::onCompleted, CompletedDownload::class)
                 }
             },
         ) { subject ->
@@ -205,10 +210,10 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.READY,
             covers = cells {
                 on<Download> {
-                    answers(Download::listen).returns()
+                    answers(Download::inbound).returns()
                     answers(Download::start).with(StartResult.Started)
-                    calls(DownloadHandlers::onFinished, String::class, TransferOutcome::class, String::class)
-                    calls(DownloadHandlers::onCompleted, String::class, null)
+                    calls(DownloadHandlers::onFinished, FinishedDownload::class)
+                    calls(DownloadHandlers::onCompleted, CompletedDownload::class)
                 }
             },
         ) { subject ->
@@ -230,7 +235,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.READY,
             covers = cells {
                 on<Download> {
-                    answers(Download::listen).returns()
+                    answers(Download::inbound).returns()
                     answers(Download::start).with(StartResult.Started)
                 }
             },
@@ -259,7 +264,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.READY,
             covers = cells {
                 on<Download> {
-                    answers(Download::listen).returns()
+                    answers(Download::inbound).returns()
                     answers(Download::start).with(StartResult.Started)
                 }
             },
@@ -288,7 +293,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.READY,
             covers = cells {
                 on<Download> {
-                    answers(Download::listen).returns()
+                    answers(Download::inbound).returns()
                     answers(Download::start).with(StartResult.Started)
                 }
             },
@@ -311,17 +316,17 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.READY,
             covers = cells {
                 on<Download> {
-                    answers(Download::listen).returns()
+                    answers(Download::inbound).returns()
                     answers(Download::start).with(StartResult.Started)
                     answers(Download::cancelAll).returns()
-                    calls(DownloadHandlers::onCompleted, String::class, String::class)
+                    calls(DownloadHandlers::onCompleted, CompletedDownload::class)
                 }
             },
         ) { subject ->
             val id = "CANCEL_ALL_COMPLETES_WHAT_IT_HOLDS_WITH_AN_ERROR"
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
-            download.listen(owner.handlers)
+            download.inbound(owner.handlers)
             assertEquals(
                 StartResult.Started,
                 download.start(subject.base + path(id, FixtureAnswer.Hold), NO_HEADERS, "d-$id", TransferNetwork.ANY),
@@ -340,17 +345,17 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.READY,
             covers = cells {
                 on<Download> {
-                    answers(Download::listen).returns()
+                    answers(Download::inbound).returns()
                     answers(Download::cancelAll).returns()
                     answers(Download::start).with(StartResult.Started)
-                    calls(DownloadHandlers::onCompleted, String::class, null)
+                    calls(DownloadHandlers::onCompleted, CompletedDownload::class)
                 }
             },
         ) { subject ->
             val id = "A_TRANSFER_STARTED_AFTER_CANCEL_ALL_RETURNS_RUNS"
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
-            download.listen(owner.handlers)
+            download.inbound(owner.handlers)
             download.cancelAll()
             val tag = "d-$id"
             assertEquals(
@@ -374,10 +379,10 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.RESTRICTED_NETWORK,
             covers = cells {
                 on<Download> {
-                    answers(Download::listen).returns()
+                    answers(Download::inbound).returns()
                     answers(Download::start).with(StartResult.Started)
-                    calls(DownloadHandlers::onFinished, String::class, TransferOutcome::class, String::class)
-                    calls(DownloadHandlers::onCompleted, String::class, null)
+                    calls(DownloadHandlers::onFinished, FinishedDownload::class)
+                    calls(DownloadHandlers::onCompleted, CompletedDownload::class)
                 }
             },
             route = { id -> path(id, FixtureAnswer.Respond(200, length = 8)) },
@@ -393,7 +398,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val id = "AN_UNFETCHABLE_URL_IS_NOT_STARTED"
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
-            download.listen(owner.handlers)
+            download.inbound(owner.handlers)
             assertEquals(
                 StartResult.NotStarted,
                 download.start("ftp://contract.invalid/$id", NO_HEADERS, "d-$id", TransferNetwork.ANY),
@@ -416,7 +421,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val id = "UNUSABLE_URL_NEVER_FINISHES"
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
-            download.listen(owner.handlers)
+            download.inbound(owner.handlers)
             // Never a throw. The port leaves filtering an unusable URL to its caller and collapses "not started" with
             // "started, then failed" because they converge — so either answer is honest, and what is asserted is the
             // convergence: nothing finished, and a transfer that did start completes with an error. Measured
@@ -438,8 +443,8 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             DownloadState.RELAUNCHED_WITH_EVENTS,
             covers = cells {
                 on<Download> {
-                    calls(DownloadHandlers::onBackgroundEvents, Completion::class)
-                    calls(DownloadHandlers::onEventsDrained)
+                    calls(DownloadHandlers::onBackgroundEvents, SessionRelaunch::class, Completion::class)
+                    calls(DownloadHandlers::onEventsDrained, SessionDrain::class)
                     handle<Completion>().answers(Completion::complete).returns()
                 }
             },
@@ -454,7 +459,7 @@ private val NO_HEADERS = emptyMap<String, String>()
 /** A download session as the shared hold clause drives it: a fresh session, listened to by the clause's own owner. */
 private fun heldDownload(subject: DownloadUnderTest): HeldSession {
     val owner = ClauseDownloadHandlers(subject.readTemp)
-    val download = subject.open().also { it.listen(owner.handlers) }
+    val download = subject.open().also { it.inbound(owner.handlers) }
     return object : HeldSession {
         override suspend fun start(route: String, tag: String, network: TransferNetwork) =
             download.start(subject.base + route, NO_HEADERS, tag, network) == StartResult.Started
@@ -474,10 +479,10 @@ private fun heldDownload(subject: DownloadUnderTest): HeldSession {
 private fun relaunchedDownload(subject: DownloadUnderTest): RelaunchedSession {
     val relaunch = assertNotNull(subject.relaunch, "a binding that reaches this state holds the relaunch")
     val owner = ClauseDownloadHandlers(subject.readTemp)
-    subject.open().listen(owner.handlers)
+    subject.open().inbound(owner.handlers)
     return object : RelaunchedSession {
         override fun deliver() = relaunch()
-        override fun handedOver() = owner.wakesHandedOver
+        override fun handedOver() = owner.drainsReported
         override fun drains() = owner.drainsReported
         override fun toldTimes(tag: String) = owner.events.count { it is DownloadEvent.Completed && it.tag == tag }
         override fun release() = Unit

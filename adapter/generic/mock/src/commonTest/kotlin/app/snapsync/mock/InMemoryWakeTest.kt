@@ -1,5 +1,9 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.mock
 
+import app.snapsync.contracts.grantedOf
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
 import app.snapsync.model.ScheduleResult
@@ -24,7 +28,7 @@ class InMemoryWakeTest {
         val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
         val wake = inMemoryWake(pending, supported = setOf(WakeId.Heartbeat))
         var woken = 0
-        wake.listen(WakeHandlers(onWake = { _, _ -> woken++ }))
+        wake.inbound(WakeHandlers(onWake = grantedOf { _, _ -> woken++ }))
         assertEquals(
             ScheduleResult.Unsupported,
             wake.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(60.seconds)),

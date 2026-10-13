@@ -17,7 +17,7 @@ import app.snapsync.http.KtorHttpTransport
 import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.keychain.platformSecureStore
 import app.snapsync.logging.FileLogSink
-import app.snapsync.logging.IosEntryContext
+import app.snapsync.logging.IosThreadLabel
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.extensionLogDestination
 import app.snapsync.logging.neverBlockOnStdio
@@ -128,7 +128,7 @@ object UploadExtensionRoot {
                 files = device.files.value,
                 clock = device.clock.value,
                 crypto = device.crypto.value,
-                entryContext = IosEntryContext,
+                threadLabel = IosThreadLabel,
                 build = IosBuildInfo(),
             ),
             host = extensionHost(host),

@@ -1,5 +1,9 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contracts
 
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Running
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import kotlin.test.assertEquals
@@ -46,7 +50,7 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
             },
         ) { time ->
             val expiries = Expiries()
-            val hold = time.begin("contract.granted", expiries::fire)
+            val hold = time.begin("contract.granted", expiries)
             assertEquals(0, expiries.count, "a granted hold does not report an expiry as it begins")
             settle()
             assertEquals(0, expiries.count, "nor shortly after, while the app's time is not up")
@@ -61,8 +65,8 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
             },
         ) { time ->
             val expiries = Expiries()
-            val first = time.begin("contract.first", expiries::fire)
-            val second = time.begin("contract.second", expiries::fire)
+            val first = time.begin("contract.first", expiries)
+            val second = time.begin("contract.second", expiries)
             settle()
             assertEquals(0, expiries.count, "background time is per app: a second hold is granted, not refused")
             first.end()
@@ -77,7 +81,7 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
             },
         ) { time ->
             val expiries = Expiries()
-            time.begin("contract.ended", expiries::fire).end()
+            time.begin("contract.ended", expiries).end()
             settle()
             assertEquals(0, expiries.count, "a hold ended before its time was up is never reported expired")
         }
@@ -93,10 +97,10 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
             },
         ) { time ->
             val expiries = Expiries()
-            val hold = time.begin("contract.twice", expiries::fire)
+            val hold = time.begin("contract.twice", expiries)
             hold.end()
             hold.end()
-            val next = time.begin("contract.after", expiries::fire)
+            val next = time.begin("contract.after", expiries)
             settle()
             assertEquals(0, expiries.count, "a repeated end neither fails nor disturbs a hold begun after it")
             next.end()
@@ -108,13 +112,13 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
             covers = cells {
                 on<BackgroundTime> {
                     answers(BackgroundTime::begin).returns()
-                    callsBack(BackgroundTime::begin, "onExpiry")
+                    handle<Running>().answers(Running::expire).returns()
                     handle<BackgroundTimeHold>().answers(BackgroundTimeHold::end).returns()
                 }
             },
         ) { time ->
             val expiries = Expiries()
-            val hold = time.begin("contract.expiry", expiries::fire)
+            val hold = time.begin("contract.expiry", expiries)
             awaitWithin(EXPIRY_BOUND) { expiries.count > 0 }
             settle()
             assertEquals(1, expiries.count, "the operating system's \"time is up\" is reported exactly once")
@@ -127,12 +131,12 @@ object BackgroundTimeContract : Contract<BackgroundTimeState, BackgroundTime>("B
 /** How long a backgrounded app's hold may run before its time is up: about thirty seconds on iOS 26, with margin. */
 private val EXPIRY_BOUND = 3.minutes
 
-/** Counts the expiries a clause's holds report. */
-private class Expiries {
+/** The run a clause's holds are for: counts the expiries they report. */
+private class Expiries : Running {
     var count = 0
         private set
 
-    fun fire() {
+    override fun expire() {
         count++
     }
 }

@@ -5,14 +5,16 @@ import android.content.res.AssetFileDescriptor
 import android.net.Uri
 import app.snapsync.android.gallery.MediaOriginals
 import app.snapsync.android.gallery.MediaStoreResource
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Running
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.invocation
+import app.snapsync.model.logAt
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.FinishedTransfer
 import app.snapsync.ports.Transfer
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferHandle
@@ -114,7 +116,8 @@ class AndroidUpload(
     override val takesResources: Boolean = true
 
     /** Register the core's handlers, then report what a previous process left unfinished — each as a failure. */
-    override fun listen(handlers: TransferHandlers) {
+    @CompositionOnly
+    override fun inbound(handlers: TransferHandlers) {
         this.handlers.set(handlers)
         val orphans = journal.all.keys.filter { tag -> !live.containsKey(tag) }
         for (tag in orphans) {
@@ -124,12 +127,7 @@ class AndroidUpload(
     }
 
     override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome =
-        log.invocation(
-            EntryScope.None,
-            "upload.create",
-            params = "tag=$tag",
-            result = { "$it" },
-        ) { start(source, target, tag) }
+        run { start(source, target, tag) }.also { log.i { "upload.create(tag=$tag) = $it" } }
 
     private fun start(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
         val body = when (source) {
@@ -147,7 +145,7 @@ class AndroidUpload(
             journal.edit().putBoolean(tag, true).commit()
             val transfer = Live(tag)
             live[tag] = transfer
-            if (live.size == 1) hold = time.begin("uploads") { expireAll() }
+            if (live.size == 1) hold = time.begin("uploads", expiresAll)
             transfer.job = scope.launch { transfer.result = transfer.run(body, target) }
                 .apply { invokeOnCompletion(transfer::ended) }
         }
@@ -155,6 +153,11 @@ class AndroidUpload(
     }
 
     override suspend fun live(): List<Transfer> = live.values.map { Transfer(it, it.tag) }
+
+    /** What the uploads' background-time hold is held for: its expiry stops every live transfer. */
+    private val expiresAll = object : Running {
+        override fun expire() = expireAll()
+    }
 
     override suspend fun cancel(transfer: Transfer) {
         (transfer.handle as? Live)?.job?.cancel()
@@ -168,14 +171,9 @@ class AndroidUpload(
 
     /** Report [tag]'s end once: persisted by the core inline, then dropped from the journal and the live set. */
     private fun finish(tag: String, error: TransferFailure?) {
-        log.invocation(
-            EntryScope.None,
-            "upload.didComplete",
-            params = "tag=$tag error=$error",
-            severity = Severity.Debug,
-        ) {
-            handlers.orNull("$tag's end")?.onFinished?.invoke(tag, error)
-        }
+        run {
+            handlers.orNull("$tag's end")?.onFinished?.deliver(FinishedTransfer(tag, error))
+        }.also { log.logAt(Severity.Debug) { "upload.didComplete(tag=$tag error=$error)" } }
         journal.edit().remove(tag).commit()
         synchronized(live) {
             live.remove(tag)

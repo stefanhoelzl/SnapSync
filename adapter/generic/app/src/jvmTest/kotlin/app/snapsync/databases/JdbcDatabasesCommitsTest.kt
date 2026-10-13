@@ -1,9 +1,13 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.databases
 
 import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.contracts.inboundOf
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.DbOpen
 import java.nio.file.Files
@@ -37,7 +41,7 @@ class JdbcDatabasesCommitsTest {
         JdbcDatabases(dir).opened() // opened, never listened
         val heard = LinkedBlockingQueue<String>()
         JdbcDatabases(dir).apply {
-            listen(DatabaseHandlers(onChangedElsewhere = heard::add))
+            inbound(DatabaseHandlers(onChangedElsewhere = inboundOf { heard.add(it) }))
             opened()
         }
         val committer = JdbcDatabases(dir).opened()

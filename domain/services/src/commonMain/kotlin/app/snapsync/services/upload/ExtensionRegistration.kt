@@ -1,8 +1,6 @@
 package app.snapsync.services.upload
 
-import app.snapsync.model.EntryScope
 import app.snapsync.model.RegistrationState
-import app.snapsync.model.invocation
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
 import co.touchlab.kermit.Logger
@@ -43,7 +41,6 @@ interface ExtensionRegistration {
 class OsDrivenRegistration(
     private val registry: ExtensionRegistry,
     private val log: Logger = Logger.withTag("OsDrivenRegistration"),
-    private val entryContext: EntryScope = EntryScope.None,
 ) : ExtensionRegistration {
     /**
      * Register the extension — a **disable→enable toggle**, not a bare enable.
@@ -65,7 +62,7 @@ class OsDrivenRegistration(
      * `enableBackgroundUpload()` this producer replaces — resolved to a destructive teardown followed by a
      * no-op.
      */
-    override suspend fun register() = log.invocation(entryContext, "photokit.register") {
+    override suspend fun register() = run {
         write(false)
         // The outcome IS the report. There used to be an `Info` line here claiming the extension had been
         // re-registered, logged unconditionally — so a device whose enable had just failed terminally at
@@ -77,16 +74,16 @@ class OsDrivenRegistration(
         // hold. `RegistrationOutcome` carries its own severity and message precisely so the shell renders
         // without deciding — a shell that asserts is a shell that decided.
         write(true)
-    }
+    }.also { log.i { "photokit.register" } }
 
     /**
      * Deregister the extension — **and nothing else**: at a leave (a switch leaves first), or the rig's
      * `extension=off`. The disable wipes every in-flight OS job; at a leave the
      * ledger is cleared right after, and on the rig path the wipe is the test's intent.
      */
-    override suspend fun deregister() = log.invocation(entryContext, "photokit.deregister") {
+    override suspend fun deregister() = run {
         write(false)
-    }
+    }.also { log.i { "photokit.deregister" } }
 
     override fun isRegistered(): Boolean? = when (registry.isEnabled()) {
         RegistrationState.REGISTERED -> true

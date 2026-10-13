@@ -46,6 +46,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
+            api(project(":domain:inbound"))
             api(project(":domain:feature"))
             api(project(":domain:compose"))
             // The relocated, JVM-covered upload orchestration (UploadCycle + the BackgroundTransfer seam

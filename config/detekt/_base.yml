@@ -96,6 +96,28 @@ snapsync:
     active: true
     includes:
       - '**/adapter/android/src/androidMain/**'
+  # The core's layers (`docs/patterns.md`). The old zones join each rule as phase 4 moves them underneath.
+  EntryPointShape:
+    # An entry point orders steps and decides nothing.
+    active: true
+    includes:
+      - '**/domain/entrypoints/src/commonMain/**'
+  OneCallPerStep:
+    active: true
+    includes:
+      - '**/domain/entrypoints/src/commonMain/**'
+  CoroutinesInScheduling:
+    # Only the runtime (`:domain:scheduling`) starts coroutines.
+    active: true
+    includes:
+      - '**/domain/inbound/src/commonMain/**'
+      - '**/domain/entrypoints/src/commonMain/**'
+  NoFunctionTypes:
+    active: true
+    includes:
+      - '**/domain/inbound/src/commonMain/**'
+      - '**/domain/scheduling/src/commonMain/**'
+      - '**/domain/entrypoints/src/commonMain/**'
 
 # ktlint's formatting rules (`detekt-formatting`), the shape every Kotlin file is written in. A finding is fixed by
 # the tool, not by hand: `./gradlew <tier> -Psnapsync.detektAutoCorrect` rewrites what it flags. Imports follow the

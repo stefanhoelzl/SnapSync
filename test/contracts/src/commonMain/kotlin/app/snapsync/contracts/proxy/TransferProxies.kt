@@ -1,14 +1,15 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Running
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
-import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.OsUploadJob
@@ -30,21 +31,6 @@ internal class CompletionProxy(private val inner: Completion, private val r: Rec
     override fun complete() = r.returns("complete", inner.complete())
 }
 
-/** The [ExpiringCompletion] a wake hands its owner: [CompletionProxy]'s release, and the expiry action called back. */
-internal class ExpiringCompletionProxy(
-    private val inner: ExpiringCompletion,
-    private val r: Recorder,
-) : ExpiringCompletion {
-    override fun complete() = r.returns("complete", inner.complete())
-    override fun onExpired(action: () -> Unit) = r.returns(
-        "onExpired",
-        inner.onExpired {
-            r.called("onExpired.action")
-            action()
-        },
-    )
-}
-
 /** [Download] as its clause's [CallLog] sees it. */
 fun Download.recorded(log: CallLog): Download = DownloadProxy(this, log)
 
@@ -57,31 +43,15 @@ internal class DownloadProxy(private val inner: Download, log: CallLog) : Downlo
     )
     override suspend fun cancelAll() = r.returns("cancelAll", inner.cancelAll())
 
-    override fun listen(handlers: DownloadHandlers) = r.returns(
-        "listen",
-        inner.listen(
+    @CompositionOnly
+    override fun inbound(handlers: DownloadHandlers) = r.returns(
+        "inbound",
+        inner.inbound(
             DownloadHandlers(
-                onFinished = { tag, facts, tempPath ->
-                    r.called(
-                        "handlers.onFinished",
-                        Recorder.arg(tag, "String"),
-                        Recorder.arg(facts, "TransferOutcome"),
-                        Recorder.arg(tempPath, "String"),
-                    )
-                    handlers.onFinished(tag, facts, tempPath)
-                },
-                onCompleted = { tag, error ->
-                    r.called("handlers.onCompleted", Recorder.arg(tag, "String"), Recorder.arg(error, "String"))
-                    handlers.onCompleted(tag, error)
-                },
-                onBackgroundEvents = { completion ->
-                    r.called("handlers.onBackgroundEvents", Recorder.arg(completion, "Completion"))
-                    handlers.onBackgroundEvents(CompletionProxy(completion, r.handle("Completion")))
-                },
-                onEventsDrained = {
-                    r.called("handlers.onEventsDrained")
-                    handlers.onEventsDrained()
-                },
+                InboundProxy(handlers.onFinished, r, "onFinished", "FinishedDownload"),
+                InboundProxy(handlers.onCompleted, r, "onCompleted", "CompletedDownload"),
+                BackgroundProxy(handlers.onBackgroundEvents, r, "onBackgroundEvents", "SessionRelaunch"),
+                InboundProxy(handlers.onEventsDrained, r, "onEventsDrained", "SessionDrain"),
             ),
         ),
     )
@@ -113,26 +83,14 @@ internal class TransferSessionProxy(private val inner: TransferSession, log: Cal
     override suspend fun live() = r.returns("live", inner.live())
     override suspend fun cancel(transfer: Transfer) = r.returns("cancel", inner.cancel(transfer))
 
-    override fun listen(handlers: TransferHandlers) = r.returns(
-        "listen",
-        inner.listen(
+    @CompositionOnly
+    override fun inbound(handlers: TransferHandlers) = r.returns(
+        "inbound",
+        inner.inbound(
             TransferHandlers(
-                onFinished = { tag, failure ->
-                    r.called(
-                        "handlers.onFinished",
-                        Recorder.arg(tag, "String"),
-                        Recorder.arg(failure, "TransferFailure"),
-                    )
-                    handlers.onFinished(tag, failure)
-                },
-                onBackgroundEvents = { completion ->
-                    r.called("handlers.onBackgroundEvents", Recorder.arg(completion, "Completion"))
-                    handlers.onBackgroundEvents(CompletionProxy(completion, r.handle("Completion")))
-                },
-                onEventsDrained = {
-                    r.called("handlers.onEventsDrained")
-                    handlers.onEventsDrained()
-                },
+                InboundProxy(handlers.onFinished, r, "onFinished", "FinishedTransfer"),
+                BackgroundProxy(handlers.onBackgroundEvents, r, "onBackgroundEvents", "SessionRelaunch"),
+                InboundProxy(handlers.onEventsDrained, r, "onEventsDrained", "SessionDrain"),
             ),
         ),
     )
@@ -147,16 +105,10 @@ internal class WakeProxy(private val inner: Wake, log: CallLog) : Wake {
     override suspend fun schedule(id: WakeId, trigger: WakeTrigger) = r.answer("schedule", inner.schedule(id, trigger))
     override fun cancel(id: WakeId) = r.returns("cancel", inner.cancel(id))
 
-    override fun listen(handlers: WakeHandlers) = r.returns(
-        "listen",
-        inner.listen(
-            WakeHandlers(
-                onWake = { id, completion ->
-                    r.called("handlers.onWake", Recorder.arg(id), Recorder.arg(completion, "ExpiringCompletion"))
-                    handlers.onWake(id, ExpiringCompletionProxy(completion, r.handle("ExpiringCompletion")))
-                },
-            ),
-        ),
+    @CompositionOnly
+    override fun inbound(handlers: WakeHandlers) = r.returns(
+        "inbound",
+        inner.inbound(WakeHandlers(GrantedProxy(handlers.onWake, r, "onWake"))),
     )
 }
 
@@ -166,14 +118,8 @@ fun BackgroundTime.recorded(log: CallLog): BackgroundTime = BackgroundTimeProxy(
 internal class BackgroundTimeProxy(private val inner: BackgroundTime, log: CallLog) : BackgroundTime {
     private val r = log.recorder("BackgroundTime")
 
-    override fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold {
-        val hold = r.returns(
-            "begin",
-            inner.begin(label) {
-                r.called("begin.onExpiry")
-                onExpiry()
-            },
-        )
+    override fun begin(label: String, expiry: Running): BackgroundTimeHold {
+        val hold = r.returns("begin", inner.begin(label, RunningProxy(expiry, r.handle("Running"))))
         return HoldProxy(hold, r.handle("BackgroundTimeHold"))
     }
 

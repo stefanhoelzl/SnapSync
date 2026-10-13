@@ -35,10 +35,9 @@ enum class JoinCommit {
  * triggers do. Seated in `model/`: the bundle is pure vocabulary — an interface, like a port, so it carries
  * no code of its own — and `model/` is the one zone both `compose/` (which
  * builds the live instance) and `:domain:presentation` (which receives it by constructor) may name;
- * the armed presentation gate forbids presentation referencing `flow/`, and `flow/` itself may
- * keep importing `model/`. Live instances are still **built and decorated only in `compose/`**
- * (`AppCore.userCommands`) — presentation never references a feature command (or a flow callable)
- * directly, which is what the presentation gate enforces.
+ * presentation has no edge to the entry points, and they may keep importing `model/`. Live instances are
+ * still **built and decorated only in `compose/`** (`AppCore.userCommands`) — presentation never references a
+ * feature command (or an entry point) directly, which is what the presentation gate enforces.
  *
  * Reads do NOT ride here: presentation observes feature read-model StateFlows directly (config,
  * permission, sync status, creation status, download progress), and the join gate's details fetch

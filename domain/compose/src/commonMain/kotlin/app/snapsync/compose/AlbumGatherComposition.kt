@@ -5,7 +5,6 @@ import app.snapsync.feature.album.AlbumGather
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.ports.EntryContext
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.galleryAccess
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +20,6 @@ import kotlinx.coroutines.launch
  */
 internal fun albumGather(
     services: AppServices,
-    entryContext: EntryContext,
     access: GalleryAccessState,
     coordinator: AlbumCoordinator,
     scope: CoroutineScope,
@@ -34,7 +32,6 @@ internal fun albumGather(
     photoAccess = access,
     coordinator = coordinator,
     scope = scope,
-    entryContext = entryContext,
 )
 
 /**
