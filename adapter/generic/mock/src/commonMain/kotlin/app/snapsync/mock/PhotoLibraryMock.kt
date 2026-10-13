@@ -130,15 +130,17 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         state.locked { state.addedLog.filter { it.first == albumId }.flatMap { it.second } }
 
     /**
-     * The photos in the app's album [albumId]: under [LibraryAlbumKind.COLLECTION] every asset it was asked to add, in order
-     * ([assetsIn]); under [LibraryAlbumKind.FOLDER] the photos its folder holds now.
+     * The photos the app's album [albumId] holds now, as a person sees it — each once, and only while the library still
+     * holds it: under [LibraryAlbumKind.COLLECTION] its members in the order they first joined, under
+     * [LibraryAlbumKind.FOLDER] the photos its folder holds. What the app ASKED for, repeats included, is [assetsIn].
      */
-    fun contentsOf(albumId: String): List<PlatformAssetId> = when (state.albumKind) {
-        LibraryAlbumKind.COLLECTION -> assetsIn(albumId)
-        LibraryAlbumKind.FOLDER -> {
-            val held = state.library.value.mapTo(mutableSetOf()) { it.id }
-            state.locked {
-                state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
+    fun contentsOf(albumId: String): List<PlatformAssetId> {
+        val held = state.library.value.mapTo(mutableSetOf()) { it.id }
+        return state.locked {
+            when (state.albumKind) {
+                LibraryAlbumKind.COLLECTION -> state.created[albumId]?.members.orEmpty().filter { it in held }
+                LibraryAlbumKind.FOLDER ->
+                    state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
             }
         }
     }
