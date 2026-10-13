@@ -115,21 +115,21 @@ class CollectDiagnosticDumpTest {
     // ---- a refused phone's offered report (capability `privacy-security`) ----
 
     /** What the attestation service holds about the latest refusal, for the collector a test builds next. */
-    private var refusalFacts: app.snapsync.model.RefusalFacts? = null
+    private var refusalFacts: app.snapsync.services.trust.RefusalFacts? = null
 
-    private val refused = app.snapsync.model.RefusalFacts(
+    private val refused = app.snapsync.services.trust.RefusalFacts(
         app.snapsync.model.DeviceRefusal.DEVICE_UNVERIFIABLE,
         detail = "certificate",
-        chain = app.snapsync.model.AttestationChain(
+        chain = app.snapsync.services.trust.PresentedChain(
             listOf(
-                app.snapsync.model.CertificateFacts(
+                app.snapsync.services.trust.PresentedCertificate(
                     "CN=Intermediate,O=OnePlus",
                     "CN=Root,O=OnePlus",
                     "2019-03-01T00:00:00Z",
                     "2029-03-01T00:00:00Z",
                     "EC 256",
                 ),
-                app.snapsync.model.CertificateFacts(
+                app.snapsync.services.trust.PresentedCertificate(
                     "CN=Root,O=OnePlus",
                     "CN=Root,O=OnePlus",
                     "2016-01-01T00:00:00Z",
@@ -163,7 +163,7 @@ class CollectDiagnosticDumpTest {
 
     @Test
     fun `a refusal with no detail and no chain carries its reason alone`() = runTest {
-        refusalFacts = app.snapsync.model.RefusalFacts(
+        refusalFacts = app.snapsync.services.trust.RefusalFacts(
             app.snapsync.model.DeviceRefusal.DEVICE_UNVERIFIABLE,
             detail = null,
             chain = null,

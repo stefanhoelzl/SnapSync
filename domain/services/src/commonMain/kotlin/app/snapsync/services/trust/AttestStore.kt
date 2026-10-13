@@ -18,7 +18,7 @@ interface AttestStore {
      * The current token, or null if none was ever stored. MAY be expired — the reader decides.
      *
      * Absence: null means the token is **absent** and nothing else. An unreadable store is NOT
-     * collapsed here — `readExisting` throws [SecureStoreUnavailable] instead, and [app.snapsync.model.SecureStoreRead]
+     * collapsed here — `readExisting` throws [SecureStoreUnavailable] instead, and [app.snapsync.ports.SecureStoreRead]
      * keeps `Absent` and `Unavailable` apart on purpose ("never mistaken for absence"). That
      * separation is what lets a caller treat null as "not attested yet" and mint.
      */

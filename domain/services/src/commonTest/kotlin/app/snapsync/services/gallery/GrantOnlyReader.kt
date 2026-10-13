@@ -1,6 +1,5 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
@@ -12,6 +11,7 @@ import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.WriteOutcome
 import kotlin.time.Instant
 
 /** A library a test reads only the grant of: [grant] is asked on every read, and any other call fails. */

@@ -2,7 +2,6 @@ package app.snapsync.contracts
 
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Running
-import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.Download
@@ -14,6 +13,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.Wake
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.EventNotFound

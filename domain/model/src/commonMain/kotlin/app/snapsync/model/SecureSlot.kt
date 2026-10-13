@@ -3,37 +3,6 @@ package app.snapsync.model
 import app.snapsync.domain.device.DeviceId
 
 /**
- * One addressed item of the `SecureStore` port: a (service, account) pair, and whether it lives in the store's
- * **shared** place — on iOS the App-Group Keychain access group both processes are entitled to — or is searched
- * without naming one ([shared] `false`: whatever groups this process may read; a write lands where the platform
- * chooses from the writing build's entitlements).
- *
- * Unscoped placement is how the app and the extension once came to hold two different device ids, so every
- * unscoped slot is a pinned inventory (`RuntimeIdentityTest`), and new items name their place.
- */
-data class SecureSlot(val service: String, val account: String, val shared: Boolean)
-
-/**
- * The items this app keeps in the `SecureStore` — runtime identity: the installed base holds them under exactly
- * these addresses, and a re-valued one silently addresses a different real item (`docs/architecture.md`).
- */
-object SecureSlots {
-
-    /** The device id, in the shared group both processes read. */
-    val DEVICE_ID = SecureSlot(service = "app.snapsync.deviceid", account = "deviceid", shared = true)
-
-    /** The attestation token and its App Attest key id. Unscoped (pinned). */
-    val ATTEST_TOKEN = SecureSlot(service = "app.snapsync.attest", account = "token", shared = false)
-    val ATTEST_KEY_ID = SecureSlot(service = "app.snapsync.attest", account = "keyid", shared = false)
-
-    /**
-     * The joined event's key, when it is ENCRYPTED (the encrypted file format, `docs/architecture.md`): base64url, in
-     * the shared group, because the upload extension derives each file's key from it. One slot — one membership.
-     */
-    val EVENT_KEY = SecureSlot(service = "app.snapsync.eventkey", account = "key", shared = true)
-}
-
-/**
  * Who may create the device identity. Two roles, and only one may mint.
  */
 enum class DeviceIdentityRole {

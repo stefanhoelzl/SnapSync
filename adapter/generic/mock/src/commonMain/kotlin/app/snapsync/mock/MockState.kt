@@ -15,10 +15,6 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -31,10 +27,14 @@ import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
+import app.snapsync.ports.SecureSlot
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
+import app.snapsync.services.secure.SecureSlots
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable

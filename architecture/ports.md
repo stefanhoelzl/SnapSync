@@ -82,7 +82,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `HeadRead` | `:domain:model` | `:domain:model` Read, Refused | no |
 | `Hmac` | `:domain:model` | `:domain:model` Recording | no |
 | `HostAssembly` | `:domain:entrypoints` | `:domain:host` HostFirst | no |
-| `HttpResult` | `:domain:model` | `:domain:model` Response, Unreachable | no |
+| `HttpResult` | `:domain:ports` | `:domain:ports` Response, Unreachable | no |
 | `HttpTransport` | `:domain:ports` | `:adapter:generic:app` KtorHttpTransport; `:adapter:generic:mock` BackendRouter, FakeClient; `:domain:services` ScriptedTransport; `:test:architecture` Probe; `:test:contracts` HttpTransportProxy | yes |
 | `ImportOutcome` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
 | `ImportResult` | `:domain:model` | `:domain:model` Failed, Imported | no |
@@ -134,8 +134,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Running` | `:domain:inbound` | `:domain:scheduling` Run; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:feature` LockableSecureStore | yes |
-| `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
-| `SecureStoreResolution` | `:domain:model` | `:domain:model` Found, Minted | no |
+| `SecureStoreRead` | `:domain:ports` | `:domain:ports` Absent, Found, Unavailable | no |
+| `SecureStoreResolution` | `:domain:services` | `:domain:services` Found, Minted | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |
 | `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unread, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Ready | no |
@@ -168,4 +168,4 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Wake` | `:domain:ports` | `:adapter:android` AndroidWake; `:adapter:generic:mock` Face, InMemoryWake; `:adapter:ios:app-only` IosWake; `:domain:services` RecordingWake; `:test:contracts` WakeProxy | yes |
 | `WakeTrigger` | `:domain:model` | `:domain:model` After, LibraryChange | no |
 | `Work` | `:domain:model` | `:domain:model` Retry, Upload | no |
-| `WriteOutcome` | `:domain:model` | `:domain:model` Failed, Ok | no |
+| `WriteOutcome` | `:domain:ports` | `:domain:ports` Failed, Ok | no |

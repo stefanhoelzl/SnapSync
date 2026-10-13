@@ -1,7 +1,7 @@
 package app.snapsync.http
 
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient

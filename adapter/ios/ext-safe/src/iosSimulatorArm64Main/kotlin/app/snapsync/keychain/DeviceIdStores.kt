@@ -3,12 +3,11 @@
 package app.snapsync.keychain
 
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
-import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
+import app.snapsync.ports.WriteOutcome
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
@@ -37,7 +36,7 @@ actual fun platformSecureStore(): SecureStore = SimulatorSecureStore(
 )
 
 /**
- * Routes every SHARED slot ([SecureSlots.DEVICE_ID], [SecureSlots.EVENT_KEY]) to [files] — the shared access group cannot
+ * Routes every SHARED slot (the device id's, the event key's) to [files] — the shared access group cannot
  * exist on a simulator — and the rest to [keychain].
  */
 internal class SimulatorSecureStore(private val keychain: SecureStore, private val files: SecureStore) : SecureStore {
@@ -53,15 +52,13 @@ internal class SimulatorSecureStore(private val keychain: SecureStore, private v
 
 /**
  * A [SecureStore] over files in [directory] (the App-Group container; `null` when this process has none — every
- * read then answers `Unavailable` and every write `Failed`, never absence). One file per slot; the device id keeps
- * the file name simulator builds have always used.
+ * read then answers `Unavailable` and every write `Failed`, never absence). One file per slot, named after it.
  *
  * The directory is a value resolved once, not a lookup the store calls: no adapter constructor takes a function.
  */
 internal class AppGroupFileSecureStore(private val directory: String?) : SecureStore {
 
-    private fun fileName(slot: SecureSlot) =
-        if (slot == SecureSlots.DEVICE_ID) DEVICE_ID_FILE_NAME else "${slot.service}.${slot.account}.simulator.json"
+    private fun fileName(slot: SecureSlot) = "${slot.service}.${slot.account}.simulator.json"
 
     private fun path(slot: SecureSlot): String? = directory?.let { "$it/${fileName(slot)}" }
 
@@ -115,10 +112,5 @@ internal class AppGroupFileSecureStore(private val directory: String?) : SecureS
                 "secure file delete failed: ${errorVar.value?.localizedDescription}",
             )
         }
-    }
-
-    private companion object {
-        /** The device-id file every simulator build has used. */
-        const val DEVICE_ID_FILE_NAME: String = "deviceid.simulator.json"
     }
 }

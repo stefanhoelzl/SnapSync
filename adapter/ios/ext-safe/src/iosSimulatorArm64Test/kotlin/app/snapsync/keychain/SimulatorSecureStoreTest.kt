@@ -1,11 +1,10 @@
 package app.snapsync.keychain
 
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
-import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
+import app.snapsync.ports.WriteOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -46,27 +45,32 @@ class SimulatorSecureStoreTest {
 
     @Test
     fun `the device id goes to the file store`() {
-        assertEquals(WriteOutcome.Ok, store.write(SecureSlots.DEVICE_ID, "an-id"))
+        assertEquals(WriteOutcome.Ok, store.write(DEVICE_ID, "an-id"))
 
         assertEquals(
             SecureStoreRead.Found("an-id", StoredProtection.BACKGROUND_READABLE),
-            store.read(SecureSlots.DEVICE_ID),
+            store.read(DEVICE_ID),
         )
-        assertEquals(WriteOutcome.Ok, store.delete(SecureSlots.DEVICE_ID))
-        assertEquals(listOf(SecureSlots.DEVICE_ID), files.touched.distinct())
+        assertEquals(WriteOutcome.Ok, store.delete(DEVICE_ID))
+        assertEquals(listOf(DEVICE_ID), files.touched.distinct())
         assertTrue(keychain.touched.isEmpty(), "the device id never reaches the simulator's Keychain")
     }
 
     @Test
     fun `every other slot goes to the keychain`() {
-        store.write(SecureSlots.ATTEST_TOKEN, "bearer-abc")
+        store.write(ATTEST_TOKEN, "bearer-abc")
 
         assertEquals(
             SecureStoreRead.Found("bearer-abc", StoredProtection.BACKGROUND_READABLE),
-            store.read(SecureSlots.ATTEST_TOKEN),
+            store.read(ATTEST_TOKEN),
         )
-        store.read(SecureSlots.ATTEST_KEY_ID)
-        assertEquals(listOf(SecureSlots.ATTEST_TOKEN, SecureSlots.ATTEST_KEY_ID), keychain.touched.distinct())
+        store.read(ATTEST_KEY_ID)
+        assertEquals(listOf(ATTEST_TOKEN, ATTEST_KEY_ID), keychain.touched.distinct())
         assertTrue(files.touched.isEmpty())
     }
 }
+
+/** The production slots' addresses, as the installed base holds them (their one source is the core's slot list). */
+private val DEVICE_ID = SecureSlot(service = "app.snapsync.deviceid", account = "deviceid", shared = true)
+private val ATTEST_TOKEN = SecureSlot(service = "app.snapsync.attest", account = "token", shared = false)
+private val ATTEST_KEY_ID = SecureSlot(service = "app.snapsync.attest", account = "keyid", shared = false)

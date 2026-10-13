@@ -3,11 +3,11 @@ package app.snapsync.mock
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileHead
 import app.snapsync.model.Hmac
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.Event

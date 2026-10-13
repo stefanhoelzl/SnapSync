@@ -1,7 +1,7 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.HttpResult
 import app.snapsync.model.VersionRefusal
+import app.snapsync.ports.HttpResult
 import app.snapsync.services.version.AppVersionGate
 import app.snapsync.wire.api.EventFilesReply
 import app.snapsync.wire.api.EventNotFound

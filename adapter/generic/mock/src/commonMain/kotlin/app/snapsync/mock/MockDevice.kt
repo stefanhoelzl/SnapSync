@@ -3,9 +3,9 @@ package app.snapsync.mock
 import app.snapsync.model.FileArea
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.SecureSlots
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferNetwork
+import app.snapsync.services.secure.SecureSlots
 import kotlin.time.Instant
 
 /**

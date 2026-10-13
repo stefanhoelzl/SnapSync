@@ -4,9 +4,9 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
-import app.snapsync.model.Proof
-import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.Proof
+import app.snapsync.ports.ProofFormat
 import app.snapsync.ports.ProveResult
 import java.io.IOException
 import java.security.GeneralSecurityException

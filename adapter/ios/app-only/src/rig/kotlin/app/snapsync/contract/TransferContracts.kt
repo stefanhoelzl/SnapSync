@@ -28,13 +28,13 @@ import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
+import app.snapsync.ports.WriteOutcome
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

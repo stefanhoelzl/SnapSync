@@ -11,7 +11,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.RefusalFacts
 import app.snapsync.model.ReportContext
 import app.snapsync.model.TimestampText
 import app.snapsync.model.runCatchingCancellable
@@ -23,6 +22,7 @@ import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.network.NetworkReadings
 import app.snapsync.services.settings.MobileDataSetting
+import app.snapsync.services.trust.RefusalFacts
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first

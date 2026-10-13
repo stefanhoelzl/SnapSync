@@ -3,8 +3,8 @@ package app.snapsync.services.push
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.PrefRead
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.WriteOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int

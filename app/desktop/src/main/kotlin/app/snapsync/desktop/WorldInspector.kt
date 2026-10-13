@@ -29,9 +29,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.SecureSlots
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferFailure
+import app.snapsync.services.secure.SecureSlots
 import kotlin.time.Instant
 
 /** The failures a live job can be given, by the label its button shows. */

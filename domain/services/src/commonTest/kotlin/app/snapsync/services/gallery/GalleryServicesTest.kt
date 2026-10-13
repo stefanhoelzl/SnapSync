@@ -8,7 +8,6 @@ import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.TimestampText
-import app.snapsync.model.WriteOutcome
 import app.snapsync.model.resourcesOf
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
@@ -20,6 +19,7 @@ import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.WriteOutcome
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

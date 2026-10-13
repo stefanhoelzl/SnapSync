@@ -7,8 +7,6 @@ import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.DeviceManifest
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
@@ -16,6 +14,8 @@ import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionResource
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.uploadKey
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.DeviceFilesReply

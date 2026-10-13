@@ -4,12 +4,12 @@ import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.DeviceIdResult
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.DeviceIdentityRole
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.SecureStoreResolution
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.services.secure.SecureSlots
+import app.snapsync.services.secure.SecureStoreResolution
 import app.snapsync.services.secure.readExisting
 import app.snapsync.services.secure.resolveOrMint
 import co.touchlab.kermit.Logger

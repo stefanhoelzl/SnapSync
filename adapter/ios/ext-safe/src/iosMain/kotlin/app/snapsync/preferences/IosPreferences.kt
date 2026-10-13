@@ -4,8 +4,8 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
 import app.snapsync.model.PrefRead
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.WriteOutcome
 import platform.Foundation.NSUserDefaults
 
 /**

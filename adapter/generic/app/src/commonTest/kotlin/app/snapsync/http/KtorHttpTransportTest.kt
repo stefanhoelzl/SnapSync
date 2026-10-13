@@ -1,7 +1,7 @@
 package app.snapsync.http
 
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond

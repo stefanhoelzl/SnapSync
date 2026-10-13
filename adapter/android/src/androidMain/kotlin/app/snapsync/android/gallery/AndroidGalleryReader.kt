@@ -11,7 +11,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
-import app.snapsync.model.WriteOutcome
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
@@ -26,6 +25,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
+import app.snapsync.ports.WriteOutcome
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

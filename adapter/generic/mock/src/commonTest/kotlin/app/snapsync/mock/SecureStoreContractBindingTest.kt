@@ -9,9 +9,9 @@ import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
 import kotlin.test.Test
 
 /**

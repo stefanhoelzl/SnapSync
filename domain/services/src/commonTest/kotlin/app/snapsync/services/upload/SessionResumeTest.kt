@@ -13,7 +13,6 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Files
@@ -26,6 +25,7 @@ import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

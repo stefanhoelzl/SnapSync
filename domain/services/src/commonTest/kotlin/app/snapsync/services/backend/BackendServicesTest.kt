@@ -5,7 +5,6 @@ import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventLookup
-import app.snapsync.model.HttpResult
 import app.snapsync.model.JoinResult
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.MemberCounts
@@ -15,6 +14,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.StoredResource
 import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionTrigger
+import app.snapsync.ports.HttpResult
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.identityOf
 import app.snapsync.testids.testDeviceId

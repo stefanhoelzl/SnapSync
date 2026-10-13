@@ -1,6 +1,6 @@
 package app.snapsync.keychain
 
-import app.snapsync.model.SecureSlots
+import app.snapsync.ports.SecureSlot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -28,7 +28,7 @@ class SecureSlotAddressTest {
      */
     @Test
     fun `the device-id slot names the shared group and the pinned service and account`() {
-        val address = store.item(SecureSlots.DEVICE_ID).itemAddress()
+        val address = store.item(DEVICE_ID).itemAddress()
 
         assertEquals("app.snapsync.deviceid", address["svce"], "the service names the item")
         assertEquals("deviceid", address["acct"], "the account names the item")
@@ -53,10 +53,15 @@ class SecureSlotAddressTest {
      */
     @Test
     fun `the attestation slots address the pinned unscoped items`() {
-        val token = store.item(SecureSlots.ATTEST_TOKEN).itemAddress()
-        val keyId = store.item(SecureSlots.ATTEST_KEY_ID).itemAddress()
+        val token = store.item(ATTEST_TOKEN).itemAddress()
+        val keyId = store.item(ATTEST_KEY_ID).itemAddress()
 
         assertEquals(mapOf("svce" to "app.snapsync.attest", "acct" to "token", "agrp" to null), token)
         assertEquals(mapOf("svce" to "app.snapsync.attest", "acct" to "keyid", "agrp" to null), keyId)
     }
 }
+
+/** The production slots' addresses, as the installed base holds them (their one source is the core's slot list). */
+private val DEVICE_ID = SecureSlot(service = "app.snapsync.deviceid", account = "deviceid", shared = true)
+private val ATTEST_TOKEN = SecureSlot(service = "app.snapsync.attest", account = "token", shared = false)
+private val ATTEST_KEY_ID = SecureSlot(service = "app.snapsync.attest", account = "keyid", shared = false)

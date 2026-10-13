@@ -28,7 +28,6 @@ import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
-import app.snapsync.model.WriteOutcome
 import app.snapsync.model.decodeEventKey
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
@@ -46,6 +45,7 @@ import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.EventKeyMinting
 import app.snapsync.services.crypto.EventKeys

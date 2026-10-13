@@ -9,12 +9,12 @@ import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.EventConfig
 import app.snapsync.model.TimestampText
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId

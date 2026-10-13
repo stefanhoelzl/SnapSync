@@ -3,8 +3,8 @@ package app.snapsync.android.storage
 import android.content.Context
 import android.content.SharedPreferences
 import app.snapsync.model.PrefRead
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.WriteOutcome
 
 /**
  * The Android [Preferences]: one private `SharedPreferences` file. Every write is a synchronous `commit()`, because

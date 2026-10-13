@@ -1,10 +1,10 @@
 package app.snapsync.contracts
 
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendGateway

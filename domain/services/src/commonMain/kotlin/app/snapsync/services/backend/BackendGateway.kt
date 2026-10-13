@@ -1,8 +1,8 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
 import app.snapsync.ports.BuildInfo
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.services.version.AppVersionGate
 import app.snapsync.wire.api.GatedRequest

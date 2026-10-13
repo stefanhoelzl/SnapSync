@@ -2,11 +2,11 @@
 
 package app.snapsync.attest
 
-import app.snapsync.model.Proof
-import app.snapsync.model.ProofFormat
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.Proof
+import app.snapsync.ports.ProofFormat
 import app.snapsync.ports.ProveResult
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi

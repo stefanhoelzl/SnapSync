@@ -2,12 +2,11 @@ package app.snapsync.services.trust
 
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.ProofFormat
-import app.snapsync.model.RefusalFacts
 import app.snapsync.model.TokenOutcome
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.ProofFormat
 import app.snapsync.ports.ProveResult
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.Credential
@@ -423,7 +422,7 @@ class DeviceAttestation(
                 ),
             )
             if (outcome is TokenOutcome.Minted) store.setKeyId(proof.handle)
-            if (outcome is TokenOutcome.Refused) facts = RefusalFacts(outcome.reason, outcome.detail, proof.chain)
+            if (outcome is TokenOutcome.Refused) facts = RefusalFacts(outcome.reason, outcome.detail, proof.chain?.let(PresentedChain::of))
             outcome
         }.getOrElse {
             log.w(it) { "the attested keyId could not be stored — not accepting the token" }

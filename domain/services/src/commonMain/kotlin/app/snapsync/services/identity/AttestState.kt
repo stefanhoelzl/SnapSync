@@ -1,8 +1,8 @@
 package app.snapsync.services.identity
 
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureSlots
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
+import app.snapsync.services.secure.SecureSlots
 import app.snapsync.services.secure.persist
 import app.snapsync.services.secure.readExisting
 import app.snapsync.services.trust.AttestStore

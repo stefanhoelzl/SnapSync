@@ -1,10 +1,10 @@
 package app.snapsync.services.identity
 
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.model.StoredProtection
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
 import app.snapsync.services.secure.RecordingSecureStore
+import app.snapsync.services.secure.SecureSlots
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
