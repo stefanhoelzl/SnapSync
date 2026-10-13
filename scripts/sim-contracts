@@ -261,7 +261,10 @@ run_contracts() {
     status=0
     for name in $(cat "$OUT/registry$tag"); do
         sep="${q:+&}"; sep="${sep:-?}"
-        code="$(curl -sS -o "$OUT/$name$tag.txt" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/contract/$name$q${sep}fixture=$FIXTURE")"
+        # Bounded: a clause that never returns (a stalled import spins in the app) must fail this run, not hold the
+        # macOS runner until the job's default six hours. Every contract takes seconds (measured: ~35 s for all).
+        code="$(curl -sS --max-time 300 -o "$OUT/$name$tag.txt" -w '%{http_code}' \
+            -X POST "http://127.0.0.1:$PORT/contract/$name$q${sep}fixture=$FIXTURE")" || code="timeout"
         echo "=== $name$tag (HTTP $code)"
         cat "$OUT/$name$tag.txt"
         if [ "$code" != 200 ]; then echo "  -> refused or missing"; status=1; fi
