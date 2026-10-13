@@ -342,6 +342,8 @@ object SnapSyncRoot {
         snapSyncHost(
             scope = scope,
             lane = compositionLane,
+            // The CPU lane: presentation reduces on the platform's pool, off the composition lane.
+            reduction = Dispatchers.Default,
             cutoffFormatter = cutoffFormatter,
             ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),
         ).also { adapters.bootLines.forEach { line -> log.i { line } } }

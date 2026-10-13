@@ -108,6 +108,7 @@ class GuardedIntentTest {
                             zone = TimeZone.UTC,
                         ),
                         diagnostics = testDiagnostics(),
+                        reduction = Dispatchers.Default,
                     ),
                 )
             } finally {

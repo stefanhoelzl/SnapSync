@@ -180,4 +180,33 @@ class EntryPointTest {
             assertEquals(Severity.Error, world.log.lines.single().severity)
         }
     }
+
+    // Delicate: a thread of its own, closed by hand below.
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    @Test
+    fun `an answered delivery's work runs on the lane the runtime answers on, labelled, while the caller waits`() {
+        val thread = kotlinx.coroutines.newSingleThreadContext("answering")
+        try {
+            val lane = RecordingLane(thread)
+            val label = FakeThreadLabel()
+            val runtime = Runtime(parent = null, lane, backgroundTime = null, label, answerOn = lane)
+            class OnAsk : AnsweredEntryPoint<Unit, String>(runtime, onFailure = "FAILED") {
+                override suspend fun run(arg: Unit): String = "${label.current()}:${lane.dispatched}"
+            }
+            assertEquals("OnAsk:1", OnAsk().answer(Unit), "the work ran in the lane's task, labelled with its trigger")
+        } finally {
+            thread.close()
+        }
+    }
+
+    /** A lane that counts what it is handed. */
+    private class RecordingLane(private val lane: kotlinx.coroutines.CoroutineDispatcher) :
+        kotlinx.coroutines.CoroutineDispatcher() {
+        var dispatched = 0
+
+        override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: kotlinx.coroutines.Runnable) {
+            dispatched++
+            lane.dispatch(context, block)
+        }
+    }
 }

@@ -175,4 +175,7 @@ tasks.test {
     // nearly every module, so nothing overlapped it: 276 s in one fork against 73 s in four (2026-10-13). Half the
     // cores, at most four: each fork is a full composed app.
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+    // How the host's lanes take turns (`docs/testing.md`, "How a test waits"): `turns` by default, `shuffled:<seed>` to
+    // replay one order, `parallel` to hunt a race — `-Psnapsync.lanes=…`.
+    providers.gradleProperty("snapsync.lanes").orNull?.let { systemProperty("snapsync.lanes", it) }
 }

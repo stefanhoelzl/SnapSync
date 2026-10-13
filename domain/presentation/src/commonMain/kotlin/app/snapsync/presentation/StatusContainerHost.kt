@@ -68,6 +68,7 @@ import app.snapsync.ui.state.UiState
 import app.snapsync.ui.state.step
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -97,6 +98,11 @@ class StatusContainerHost(
     // ([commands], [queries]) and what it EMITS ([StatusDiagnostics]) stay separate.
     sources: StatusSources,
     private val scope: CoroutineScope,
+    // The lane presentation reduces on — the CPU lane (`docs/architecture.md`, "Concurrency and failure"): Orbit's event
+    // loop, kept off the composition lane so a blocked platform call there never freezes the screen. Named by the
+    // composition, never left to Orbit's default, so a host that must see every task (the control channel's JVM host)
+    // can hand its own.
+    private val reduction: CoroutineDispatcher,
     // Supplies "now" as a cutoff string and converts a local pick.
     // Injected — with NO default: a default would have to read the system clock here, which the
     // through-ports law forbids. Production wires
@@ -299,6 +305,7 @@ class StatusContainerHost(
             // `StatusContainerHostTest`'s liveness pin asserts a later intent still lands, and a bump that
             // changes the semantics fails the build rather than quietly restoring the dead container.
             buildSettings = {
+                eventLoopDispatcher = { reduction }
                 exceptionHandler = CoroutineExceptionHandler { _, throwable -> onIntentError(throwable) }
             },
         ) {

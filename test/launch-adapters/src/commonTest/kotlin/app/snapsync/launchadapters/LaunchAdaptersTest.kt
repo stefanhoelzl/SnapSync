@@ -32,6 +32,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 /**
  * What a process launches with (`docs/testing.md`, "Launch-time adapters"): the adapters file read through the real files
@@ -237,7 +238,7 @@ class LaunchAdaptersTest {
                 ProcessingAnswer.COMPLETED
             }, onTerminate = {}),
         )
-        host.operator.process()
+        host.operator.process(Dispatchers.Default)
         assertTrue(composed)
     }
 
@@ -246,7 +247,7 @@ class LaunchAdaptersTest {
         chosenExtensionHost(host.port(), launch).inbound(
             handlers(onProcess = { error("composed under $launch") }, onTerminate = { error("composed") }),
         )
-        assertEquals(ProcessingAnswer.COMPLETED, host.operator.process())
+        assertEquals(ProcessingAnswer.COMPLETED, host.operator.process(Dispatchers.Default))
         host.operator.terminate()
     }
 

@@ -24,6 +24,7 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The create draft against the clock and the app's foreground life (capability `create-event`): its start follows the clock
@@ -95,6 +96,7 @@ class CreateFormClockTest {
         cutoffFormatter = CutoffFormatter(now = now, zone = TimeZone.UTC),
         queries = noQueries,
         diagnostics = testDiagnostics(),
+        reduction = Dispatchers.Default,
     )
 
     private companion object {

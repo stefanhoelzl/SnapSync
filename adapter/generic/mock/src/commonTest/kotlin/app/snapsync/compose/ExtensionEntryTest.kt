@@ -36,6 +36,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The upload extension's entry port, over the handlers its composition registers (`snapSyncExtension`): the in-memory
@@ -51,10 +52,10 @@ class ExtensionEntryTest {
     @Test
     fun a_token_the_app_renewed_between_invocations_is_the_one_the_next_invocation_sends() = runTest {
         val host = ExtensionHostMock()
-        snapSyncExtension(extensionPorts(host))
+        snapSyncExtension(extensionPorts(host), lane = Dispatchers.Default)
         joinedWithAToken("token-before")
 
-        host.operator.process()
+        host.operator.process(Dispatchers.Default)
         assertEquals(
             listOf<String?>("token-before"),
             publishedWith,
@@ -64,7 +65,7 @@ class ExtensionEntryTest {
         // The app renews into the shared item, and a new manifest is due (the app's enrolment invalidates the record).
         attest.setToken("token-after")
         DeviceManifestService(appDatabase).clearLastUploaded()
-        host.operator.process()
+        host.operator.process(Dispatchers.Default)
         assertEquals(
             listOf<String?>("token-before", "token-after"),
             publishedWith,

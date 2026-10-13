@@ -33,6 +33,12 @@ internal sealed interface RigBackend {
     /** The network an OS upload crosses to this backend, or `null` for the mocks' own byte route. */
     val network: UploadNetwork?
 
+    /**
+     * Whether this backend answers on the requesting lane — the mock, whose held request is parked there — rather than
+     * off it, over a network the host's loop must wait on.
+     */
+    val answersOnTheLoop: Boolean
+
     /** The device API's transport a launch of the app — or the host's own seeding — talks through. */
     fun port(mocks: JvmMocks): HttpTransport
 
@@ -61,6 +67,7 @@ internal sealed interface RigBackend {
         override val base = "https://in-memory.backend/api/v2"
         override val attests = true
         override val network: UploadNetwork? = null
+        override val answersOnTheLoop = true
         override fun port(mocks: JvmMocks): HttpTransport = mocks.backend.port()
         override fun operator(mocks: JvmMocks): BackendOperator = mocks.backend.operator
     }
@@ -77,6 +84,7 @@ internal sealed interface RigBackend {
         override val name = "deno"
         override val base: String get() = LiveEdge.base
         override val attests = false
+        override val answersOnTheLoop = false
         override val network: UploadNetwork = httpNetwork { HttpClient(engine) }
         override fun port(mocks: JvmMocks): HttpTransport = KtorHttpTransport(HttpClient(engine))
         override fun operator(mocks: JvmMocks): BackendOperator? = null

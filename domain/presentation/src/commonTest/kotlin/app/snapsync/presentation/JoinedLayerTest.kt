@@ -38,6 +38,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 private const val EVENT_ID = "44444444-4444-4444-8444-444444444444"
 
@@ -92,6 +93,7 @@ class JoinedLayerTest {
         commands = testCommands(),
         queries = noQueries,
         diagnostics = testDiagnostics(),
+        reduction = Dispatchers.Default,
     )
 
     private fun StatusContainerHost.layer(): Layer.Joined = assertIs<Layer.Joined>(screen.value.layer)

@@ -28,6 +28,7 @@ import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
@@ -70,6 +71,12 @@ class Runtime(
     private val backgroundTime: BackgroundTime?,
     private val threadLabel: ThreadLabel,
     private val grace: Duration = EXPIRY_GRACE,
+    /**
+     * Where an [Answered][app.snapsync.inbound.Answered] delivery's work runs while its delivering thread waits for the
+     * answer: `null` — every phone — runs it on that thread, in the blocking call's own loop. A host that must see every
+     * task of the process (the control channel's JVM host, whose timers run on mocked time) names its lane here.
+     */
+    private val answerOn: CoroutineDispatcher? = null,
 ) {
     private val log = Log("Runtime")
 
@@ -136,7 +143,8 @@ class Runtime(
     internal fun <R> blocking(name: String, onFailure: R, body: suspend () -> R): R {
         val replaced = threadLabel.swap(name)
         return try {
-            runBlocking(Trigger.of(name) + RuntimeElement(this)) { body() }
+            val on = answerOn?.let { labelling(it, threadLabel) } ?: EmptyCoroutineContext
+            runBlocking(on + Trigger.of(name) + RuntimeElement(this)) { body() }
         } catch (failure: Throwable) {
             log.unlabelled.e("delivery failed", "trigger" of name, cause = failure)
             onFailure

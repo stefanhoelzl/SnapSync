@@ -40,7 +40,7 @@ import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.services.trust.ExtensionCredential
 import app.snapsync.services.upload.Uploader
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 
 /**
  * **The upload extension's ports** — everything its composition consumes, and nothing but ports ([Port]; spec
@@ -102,10 +102,19 @@ class ComposedExtension internal constructor(
  *   denylisted-album lookup fails the cycle, which the next invocation retries.
  */
 @OptIn(CompositionOnly::class)
-fun snapSyncExtension(ports: ExtensionPorts): ComposedExtension {
+fun snapSyncExtension(
+    ports: ExtensionPorts,
+    /** The lane the extension's own work runs on — its root's to name, as every root names the app's. */
+    lane: CoroutineDispatcher,
+    /**
+     * Where `process()`'s work runs while the operating system's thread waits for its answer: `null` on the phone — on
+     * that thread — or a lane a host must see every task on (`Runtime`'s `answerOn`).
+     */
+    answerOn: CoroutineDispatcher? = null,
+): ComposedExtension {
     // The extension's own runtime: no scope of its root's to live under, and no background time to hold — it answers on
     // the invoking thread.
-    val runtime = Runtime(parent = null, Dispatchers.Default, backgroundTime = null, ports.process.threadLabel)
+    val runtime = Runtime(parent = null, lane, backgroundTime = null, ports.process.threadLabel, answerOn = answerOn)
     val process = snapSyncProcess(ports.process, runtime)
     // The device token, read from the shared protected store the app writes. Held in
     // memory between re-reads ([CachedAttestStore]): every request reads it, and a store read each time was measurable.

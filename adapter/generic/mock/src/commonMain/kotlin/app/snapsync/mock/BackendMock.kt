@@ -14,6 +14,7 @@ import app.snapsync.levers.PublishedManifest
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.StoredDeviceConfig
 import app.snapsync.levers.UnionFetch
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -61,6 +62,15 @@ class BackendMock internal constructor(internal val state: BackendState) {
      * gateway sends it from the process's build facts.
      */
     fun port(): HttpTransport = BackendRouter(state)
+
+    /**
+     * Tells [listener] what this backend records as it records it — each request that reaches it, each one an operator's
+     * hold parks — on the requesting thread, so it is told before the request goes on. One listener: the control
+     * channel's event stream (`docs/testing.md`, "How a test waits").
+     */
+    fun watch(listener: (WorldEvent.Backend) -> Unit) {
+        state.watcher = listener
+    }
 
     /**
      * [port], for a process whose build's version is baked but which an operator plays as another one: every request
@@ -421,8 +431,17 @@ internal class BackendState(
 
     /** Wait while an operator holds [call] — outside the lock, which the operator's release needs. */
     suspend fun awaitRelease(call: BackendCall) {
-        locked { holds[call] }?.await()
+        locked { holds[call] }?.let { hold ->
+            told(WorldEvent.BackendHeld(call))
+            hold.await()
+        }
     }
+
+    /** Who is told what this backend records, as it records it — the control channel's event stream, or no one. */
+    @Volatile var watcher: (WorldEvent.Backend) -> Unit = {}
+
+    /** Tells the [watcher] of [event], on the requesting thread, before the request goes on. */
+    fun told(event: WorldEvent.Backend) = watcher(event)
 
     fun issueChallenge(): String = "in-memory-challenge-${challenges.size + 1}".also { challenges += it }
 

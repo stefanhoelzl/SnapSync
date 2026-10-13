@@ -77,6 +77,7 @@ class NoticeTimersTest {
         commands = testCommands(sendDiagnostics = { _, _ -> report() }),
         queries = noQueries,
         diagnostics = testDiagnostics(),
+        reduction = Dispatchers.Default,
     )
 
     private fun UiState.createError(): ScreenMessage? = assertIs<Layer.CreateEvent>(layer).error

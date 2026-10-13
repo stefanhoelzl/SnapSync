@@ -79,6 +79,11 @@ fun snapSyncHost(
     scope: CoroutineScope,
     /** The composition lane [scope] runs on — named by the root, which owns that thread (see `AppCore.coreLane`). */
     lane: CoroutineDispatcher,
+    /**
+     * The CPU lane presentation reduces on (`docs/architecture.md`, "Concurrency and failure") — the root's to name,
+     * as it names [lane]: the platform's pool on a phone, and a lane of its own where a host must see every task.
+     */
+    reduction: CoroutineDispatcher,
     ports: AppPorts,
     /**
      * The one cutoff formatter of this process — built by the root, which read the device zone once, and handed to
@@ -99,6 +104,7 @@ fun snapSyncHost(
         val host = StatusContainerHost(
             statusSourcesOf(core, ports),
             scope = scope,
+            reduction = reduction,
             cutoffFormatter = cutoffFormatter,
             commands = core.userCommands,
             queries = core.userQueries,

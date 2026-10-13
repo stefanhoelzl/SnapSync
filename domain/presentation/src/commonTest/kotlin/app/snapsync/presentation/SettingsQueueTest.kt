@@ -29,6 +29,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 private val MEMBERSHIP = EventConfig(
     eventId = testEventId("55555555-5555-4555-8555-555555555555"),
@@ -71,6 +72,7 @@ class SettingsQueueTest {
         ),
         queries = noQueries,
         diagnostics = testDiagnostics(onIntentError = { world.errors += it }),
+        reduction = Dispatchers.Default,
     )
 
     @Test

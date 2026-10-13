@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The event ports' dispatch (`docs/testing.md`, "Mocks"): what the platform reports reaches the ONE handler of the
@@ -151,7 +152,7 @@ class EntryDispatchTest {
             ),
         )
 
-        assertEquals(ProcessingAnswer.FAILED, host.operator.process())
+        assertEquals(ProcessingAnswer.FAILED, host.operator.process(Dispatchers.Default))
         host.operator.terminate()
 
         assertEquals(listOf("process", "terminate"), ran)

@@ -43,6 +43,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The network notice in the reduction (capabilities `sync-status`, `create-event`, `join-event`; decision record
@@ -92,6 +93,7 @@ class StatusContainerHostNetworkTest {
         commands = testCommands(),
         cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
         diagnostics = testDiagnostics(),
+        reduction = Dispatchers.Default,
     )
 
     /** [block] with the container's intents running, as on a screen — Orbit starts them on create. */

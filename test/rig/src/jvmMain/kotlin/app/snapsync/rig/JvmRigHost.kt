@@ -10,19 +10,18 @@ import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.uploadersCarried
+import app.snapsync.rig.time.LoopTime
 import app.snapsync.services.logs.LogTailService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /**
  * The control channel's **JVM host** (`docs/testing.md`, "One control protocol, served by two hosts"): the unchanged
@@ -44,14 +43,19 @@ class JvmRigHost private constructor(
     val port: Int,
     private val server: RigServer,
     private val scope: CoroutineScope,
-    private val lane: kotlinx.coroutines.CloseableCoroutineDispatcher,
 ) : AutoCloseable {
+
+    /**
+     * Every lane rule the app broke while this host ran (`docs/testing.md`, "How a test waits") — work that reached it
+     * from a thread the loop does not own. A test fails on any.
+     */
+    val violations: List<String> get() = rig.threads.violations.toList()
 
     /** Stop serving and tear the app down. The backend process, when there is one, is the JVM's, not this host's. */
     override fun close() {
         server.stop()
         scope.cancel()
-        lane.close()
+        rig.threads.close()
     }
 
     companion object {
@@ -62,14 +66,24 @@ class JvmRigHost private constructor(
          * Compose the app over the backend named [backend] — `mock` (the in-memory backend mock) or `deno` (the real
          * `api/`, through `:test:edge`) — and serve it on loopback [port]. `0` asks the OS for a free port, which is what
          * a test wants. Returns once the server has bound.
+         *
+         * [time] is where the app's timers get their time: [LoopTime.MOCKED] from the clock mock, which only an advance
+         * moves — starting at [startAt] — or [LoopTime.REAL], the wall clock, for a caller that still waits by polling.
+         * How the lanes take turns is the `snapsync.lanes` system property's ([Interleaving.parse]).
          */
-        suspend fun start(backend: String = "mock", port: Int = 0): JvmRigHost = start(RigBackend.named(backend), port)
+        suspend fun start(
+            backend: String = "mock",
+            port: Int = 0,
+            time: LoopTime = LoopTime.REAL,
+            startAt: Instant? = null,
+        ): JvmRigHost = start(RigBackend.named(backend), port, time, startAt)
 
-        @OptIn(DelicateCoroutinesApi::class, ExperimentalCoroutinesApi::class)
-        internal suspend fun start(backend: RigBackend, port: Int): JvmRigHost {
-            val lane = newSingleThreadContext("rig-jvm-composition")
-            val scope = CoroutineScope(SupervisorJob() + lane)
-            val rig = withContext(lane) { compose(scope, backend, lane) }
+        internal suspend fun start(backend: RigBackend, port: Int, time: LoopTime, startAt: Instant?): JvmRigHost {
+            val threads = HostThreads.open(time, startAt, backend)
+            val scope = CoroutineScope(SupervisorJob() + threads.composition)
+            val rig = threads.loop.outside("composing the app") {
+                withContext(threads.composition) { compose(scope, backend, threads) }
+            }
             val bound = CompletableDeferred<Int>()
             val server = RigServer(
                 core = { rig.app.composed.core },
@@ -84,20 +98,16 @@ class JvmRigHost private constructor(
             val actual = try {
                 withTimeout(BIND_TIMEOUT) { bound.await() }
             } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
-                server.stop()
-                scope.cancel()
-                lane.close()
+                JvmRigHost(rig, port, server, scope).close()
                 throw IllegalStateException(
                     "the JVM rig host did not bind loopback:$port within $BIND_TIMEOUT — see the `[rig]` log line",
                     timeout,
                 )
             } catch (failed: BindFailed) {
-                server.stop()
-                scope.cancel()
-                lane.close()
+                JvmRigHost(rig, port, server, scope).close()
                 throw failed
             }
-            return JvmRigHost(rig, actual, server, scope, lane)
+            return JvmRigHost(rig, actual, server, scope)
         }
 
         /**
@@ -107,13 +117,11 @@ class JvmRigHost private constructor(
         private class BindFailed(port: Int, cause: Throwable) :
             IllegalStateException("the JVM rig host failed to bind loopback:$port — see the `[rig]` log line", cause)
 
-        private fun compose(scope: CoroutineScope, backend: RigBackend, lane: kotlinx.coroutines.CoroutineDispatcher): JvmRig {
-            // Invite-link hints honoured, as the rig's development controls answer them on a device: this host IS the
-            // control channel, whose callers join headlessly with `autoJoin`.
-            val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Honoured, network = backend.network)
-            // A missing network is told after a short grace here, not the phone's five seconds: the rule (slow to warn,
-            // instant to clear) is the watch's own suite's, and a test of what the screen says need not wait it out.
-            mocks.devControls.operator.networkGraceMillis = NETWORK_GRACE_MILLIS
+        private fun compose(scope: CoroutineScope, backend: RigBackend, threads: HostThreads): JvmRig {
+            val mocks = threads.mocks
+            // A missing network is told after a short grace under real time, not the phone's five seconds: a test that
+            // still waits by polling need not wait it out. Under mocked time the phone's grace stands, and costs nothing.
+            if (threads.time == LoopTime.REAL) mocks.devControls.operator.networkGraceMillis = NETWORK_GRACE_MILLIS
             val version = DeclaredVersion(SERVED_VERSION)
             val log = RecordedLog()
             val build = BuildInfoMock(
@@ -123,21 +131,21 @@ class JvmRigHost private constructor(
                 store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
                 pushEnvironment = "sandbox",
             )
-            val app = JvmApp(scope, lane, mocks) { device ->
+            val app = JvmApp(scope, threads.lanes, mocks) { device ->
                 device.adapters(
                     build,
                     attests = backend.attests,
-                    http = backend.port(device),
+                    http = threads.counted(backend.port(device)),
                     logSinks = listOf(log),
                 )
             }
-            val network = backend.network ?: mocks.backend.byteRoute
+            val network = threads.network ?: mocks.backend.byteRoute
             val rig = JvmRig(
                 app,
                 backend,
                 version,
                 log,
-                lane,
+                threads,
                 scope,
                 BackendReach(backend.base, backend.name, backend.port(mocks), network, version),
                 PlayedOs(mocks),
@@ -150,11 +158,13 @@ class JvmRigHost private constructor(
             val mocks = rig.mocks
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
-                services = rig.world.servedServices(),
+                services = rig.world.servedServices(rig.threads.acts),
                 uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",
                 mainLane = rig.lane,
+                world = servedWorld(JvmWorld(rig.threads), refusal = null),
+                acts = rig.threads.acts,
                 deviceLog = { process, maxBytes ->
                     when (process) {
                         LogTailService.Process.APP -> rig.log.lines.joinToString("\n").takeLast(maxBytes)
@@ -170,14 +180,19 @@ class JvmRigHost private constructor(
                         excluded = emptyMap(),
                     ),
                     "photokit-ext" to TriggerGroup(
-                        // The extension process has no main lane: its root runs on the OS-invoked thread.
-                        lane = Dispatchers.Default,
+                        // The extension process has no main lane: its root runs on the OS-invoked thread, which the
+                        // trigger hands it to from the act's own lane.
+                        lane = rig.threads.operator,
                         wired = mapOf(
                             "processRawValue" to RigTrigger.Answering { _, body ->
                                 if (body != null) {
                                     """{"refused":"the mocked upload-job queue is the host's own; job sets cannot be handed in","queue":"mock"}""" + "\n"
                                 } else {
-                                    val result = mocks.extensionHost.operator.process()
+                                    // On the operating system's own thread, which the answer blocks: work the loop
+                                    // waits on, while the cycle itself runs on the extension's lane.
+                                    val result = rig.threads.loop.outside("the extension's process()") {
+                                        mocks.extensionHost.operator.process(rig.threads.osThread)
+                                    }
                                     """{"result":"${result.toString().lowercase()}","queue":"mock",""" +
                                         """"created":${mocks.uploadQueue.operator.created.size}}""" + "\n"
                                 }
@@ -233,7 +248,8 @@ internal class JvmRig(
     val backend: RigBackend,
     val version: DeclaredVersion,
     val log: RecordedLog,
-    val lane: kotlinx.coroutines.CoroutineDispatcher,
+    /** The host's loop and every lane both processes run on (`docs/testing.md`, "How a test waits"). */
+    val threads: HostThreads,
     /** The host's scope, for work a verb starts and does not wait for. */
     val scope: CoroutineScope,
     val reach: BackendReach,
@@ -241,6 +257,9 @@ internal class JvmRig(
     val os: PlayedOs,
 ) {
     val mocks: JvmMocks get() = app.durable
+
+    /** The composition lane: what the app's entry points are invoked on, as Swift invokes them on main. */
+    val lane: kotlinx.coroutines.CoroutineDispatcher get() = threads.composition
 
     /** What the operator levers act on: every mock of the device (`MockLevers.kt`). */
     val world: MockWorld by lazy { jvmWorld(this, os) }

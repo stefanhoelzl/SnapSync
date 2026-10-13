@@ -187,6 +187,7 @@ internal class ContainerRig(
             override suspend fun switchLosesNothing(): Boolean = false
         },
         diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
+        reduction = Dispatchers.Default,
     )
 
     val state: UiState get() = host.screen.value
