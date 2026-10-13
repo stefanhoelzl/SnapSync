@@ -4,6 +4,8 @@ import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.services.BuildService
+import org.gradle.api.services.BuildServiceParameters
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
@@ -86,11 +88,23 @@ class AndroidTargetPlugin : Plugin<Project> {
     /** The device-test runs — on the managed device, or a connected one — start the host's transfer fixture first. */
     private fun serveTransferFixture(project: Project) {
         val fixture = TransferFixtureService.registered(project)
+        val emulator = project.gradle.sharedServices.registerIfAbsent("oneEmulator", OneEmulator::class.java) {
+            maxParallelUsages.set(1)
+        }
         project.tasks.matching { it.name in DEVICE_TEST_TASKS }.configureEach {
             usesService(fixture)
             doFirst { fixture.get().ensureStarted() }
         }
+        // One device run at a time across the whole build, whatever `org.gradle.parallel` schedules beside it: each
+        // module's managed run boots an emulator of its own, and four booted at once took CI's runner down (run
+        // 38326650673); a connected run shares the one emulator someone booted. Setup installs the shared image.
+        project.tasks.matching { it.name in DEVICE_TEST_TASKS || it.name == "${MANAGED_DEVICE}Setup" }.configureEach {
+            usesService(emulator)
+        }
     }
+
+    /** Holds nothing: a lease of one, so only one task using it runs at a time. */
+    abstract class OneEmulator : BuildService<BuildServiceParameters.None>
 
     private companion object {
 
