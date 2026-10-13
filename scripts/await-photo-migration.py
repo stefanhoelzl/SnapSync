@@ -20,8 +20,11 @@ it holding the system library's writes). Which id is the system library's is rea
 was upgraded: its migration logs `stat: st_dev=… st_ino=…`. Run AFTER the first write has returned: by then the
 library has opened, so every task it will submit has been submitted, and none submitted means none pending.
 
+A device CI restored already settled (`scripts/sim-settle`) upgrades no library — its system library is current — yet
+may still submit a task; with no upgraded library to name the system one, every submitted task is awaited.
+
 It follows `log stream` (attached first) and reads `log show` (the past) — no polling, and the narrow predicate keeps
-the log daemon's cost negligible. It FAILS rather than guesses: when the system library's id cannot be told apart,
+the log daemon's cost negligible. It FAILS rather than guesses: when two upgraded libraries cannot be told apart,
 when the stream ends, or when the completion has not come within --bound seconds (a broken platform, not a slow one:
 the longest measured migration took 184 s). Stdlib only; dev infrastructure, loads nothing on Linux.
 """
@@ -65,6 +68,14 @@ class Migrations:
         """("settled" | "waiting" | "unknown", why)."""
         if not self.submitted:
             return "settled", "no background migration was submitted"
+        if not self.upgraded:
+            # No library's schema was upgraded on this boot — a device CI restored already settled (`scripts/sim-settle`),
+            # whose system library is current — yet a migration was submitted, and which library it is cannot be told.
+            # Awaited, every one: a wait is bounded, while a write during the system library's migration fails a clause.
+            pending = [s for s in self.submitted if s not in self.completed]
+            if not pending:
+                return "settled", f"no library was upgraded and every submitted migration completed: {self.submitted}"
+            return "waiting", f"no library was upgraded; awaiting every submitted migration: {pending}"
         if len(self.upgraded) != 1:
             return "unknown", (
                 f"cannot tell the system library's migration apart: upgraded libraries {self.upgraded or 'none'}, "

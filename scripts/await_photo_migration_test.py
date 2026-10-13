@@ -77,8 +77,12 @@ class MigrationsTest(unittest.TestCase):
     def test_a_system_library_that_submitted_nothing_is_settled(self):
         self.assertEqual("settled", state_after(STAT, SUBMIT_SYNDICATION))
 
-    def test_submissions_with_no_upgraded_library_fail_rather_than_guess(self):
-        self.assertEqual("unknown", state_after(SUBMIT_SYSTEM, SUBMIT_SYNDICATION))
+    def test_submissions_with_no_upgraded_library_are_each_awaited(self):
+        # A settled device restored from CI's cache: its system library is current, so nothing is upgraded on this boot.
+        self.assertEqual("waiting", state_after(SUBMIT_SYSTEM, SUBMIT_SYNDICATION))
+        self.assertEqual("waiting", state_after(SUBMIT_SYSTEM, SUBMIT_SYNDICATION, COMPLETE_SYSTEM))
+        complete_syndication = COMPLETE_SYSTEM.replace(SYSTEM, SYNDICATION)
+        self.assertEqual("settled", state_after(SUBMIT_SYSTEM, SUBMIT_SYNDICATION, COMPLETE_SYSTEM, complete_syndication))
 
     def test_two_upgraded_libraries_fail_rather_than_guess(self):
         other = STAT.replace("st_ino=3098355", "st_ino=4000000")
