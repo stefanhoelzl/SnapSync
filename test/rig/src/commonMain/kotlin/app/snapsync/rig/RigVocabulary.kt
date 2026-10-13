@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import kotlinx.serialization.Serializable
+import app.snapsync.levers.DeviceAdvertisement
 
 /**
  * The control protocol's **closed vocabulary** (`docs/testing.md`, "One control protocol, served by
@@ -132,10 +132,10 @@ object RigVocabulary {
     }
 
     /**
-     * The typed services' verbs (`LeverDispatch.kt`): every method of every declared service, `device/<service>/<method>`,
-     * derived from its interface — never listed here. Honoured like [worldLevers], by what each service needs.
+     * The typed services' methods (`LeverDispatch.kt`), each `<service>.<method>`, served over kRPC — derived from the
+     * interfaces, never listed here. Honoured like [worldLevers], by what each service needs.
      */
-    val serviceVerbs: List<String> = SERVICE_VERBS
+    val serviceVerbs: List<String> = SERVICE_ENTRIES
 
     /** The port-contract verb (`GET /contract`, `POST /contract/<name>`). */
     const val CONTRACT: String = "contract"
@@ -148,18 +148,6 @@ object RigVocabulary {
             .toSet()
 }
 
-/** `GET /device`'s body: what this host honours and refuses, and anything it failed to classify. */
-@Serializable
-data class DeviceAdvertisement(
-    val host: String,
-    val honoured: List<String>,
-    val refused: Map<String, String>,
-    /** Vocabulary entries this host neither wires nor refuses. Non-empty answers `500`. */
-    val unclassified: List<String>,
-    /** Verbs this host wires that the vocabulary does not name. Non-empty answers `500`. */
-    val outsideVocabulary: List<String>,
-)
-
 /** Classify this host's hooks against [RigVocabulary]. */
 internal fun RigHooks.advertise(host: String, readsHonoured: Boolean = true): DeviceAdvertisement {
     val wired = buildSet {
@@ -167,6 +155,8 @@ internal fun RigHooks.advertise(host: String, readsHonoured: Boolean = true): De
         deviceCommands.keys.forEach { add("device/$it") }
         if (readsHonoured) addAll(RigVocabulary.reads)
         if (RigVocabulary.CONTRACT !in refusals) add(RigVocabulary.CONTRACT)
+        // Every typed service is registered on every host — a refused one answers each call with its reason.
+        addAll(RigVocabulary.serviceVerbs)
     }
     val honoured = wired.intersect(RigVocabulary.entries).minus(refusals.keys)
     return DeviceAdvertisement(

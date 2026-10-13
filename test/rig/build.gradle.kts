@@ -98,6 +98,10 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
+            // The typed services' transport (`RigServer`'s kRPC route): kRPC over a Ktor WebSocket.
+            implementation(libs.ktor.server.websockets)
+            implementation(libs.kotlinx.rpc.krpc.ktor.server)
+            implementation(libs.kotlinx.rpc.krpc.serialization.json)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.coroutines.core)
             implementation(libs.kermit)

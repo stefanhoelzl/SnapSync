@@ -574,8 +574,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
 ```
 
 - `mock` (the default) is the in-memory backend mock; `deno` starts the real `api/` (`serve.ts --ephemeral`,
-  loopback-only). On `deno`, a lever only the backend mock's operator can pull (`device/backend/offline`, …)
-  answers `409` "unavailable on this backend".
+  loopback-only). On `deno`, a lever only the backend mock's operator can pull (`backend.offline`, …) is refused
+  "unavailable on this backend".
 - Same `/os`, `/user`, `/device/state` shapes as the app. `/os` drives the mocks' operator faces (the OS played);
   `os/app/onSceneContinueActivity?arg=<link>` reaches the `Links` port's handler, `os/photokit-ext/processRawValue`
   invokes the extension's entry port, whose cycle creates jobs on the upload-queue mock.
@@ -615,7 +615,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   - the backend: its two **typed services**, below;
   - OS and library: `clock/advance?to=<instant>`, `network?access=online|offline|blocked` (what the OS reports to
     the app; a notice follows after the watch's ~5 s grace, and only while the app is foregrounded — pair `offline`
-    with `backend/offline?on=true` to play a network that is really gone), `conditions?<key>=<value>|unsupported|failed:<reason>[&hold=true|false]`
+    with the backend's `offline(true)` to play a network that is really gone), `conditions?<key>=<value>|unsupported|failed:<reason>[&hold=true|false]`
     (power saving, battery, thermal state and background allowance as a bug report reads them; the keys are the report's —
     `power_saving`, `background_refresh`, `standby_bucket`, `battery_optimization_exempt`, `battery_percent`,
     `battery_charging`, `thermal`; `hold=true` leaves every read unanswered), `app-version?version=`, `relaunch[?scene=false]`, `selection/change?assets=a,b`,
@@ -627,41 +627,48 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
 - Device facts off the mocked disk and library: `device/staging`, `device/album/contents`.
 - `/contract` refuses on this host (`409`, naming `JVM`): JVM contract bindings run under Gradle.
 - Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception), and
-  `client.levers(BackendLevers)` / `client.levers(PublicBackendLevers)` for the typed services (a refusal throws
-  `LeverRefused`).
+  `client.levers(BackendLevers)` / `client.levers(PublicBackendLevers)` for the typed services, over kRPC (a refusal
+  throws `LeverRefused`).
+- Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line
+  contains that string: it matches itself.
 
 ### The backend's typed services
 
-The backend's verbs are **derived from interfaces** in `:test:levers` (`docs/testing.md`, "Typed services"):
-`/device/<service>/<method-in-kebab>`, one per method, listed by `GET /device` like every other verb. Arguments go in
-the query by name — `on=true`, `call=leave`, `reason=device-modified`, `assets=A,B` — and the reply is the method's
-return value as JSON (`{}` for a lever). An argument the method does not take, a missing one, or a value its type does
-not accept answers `400` naming what is accepted. An omitted `event` is the joined one, an omitted `device` this one;
-every other omitted argument is `null` (say `on=true` — it is never implied).
+The backend's levers and reads are **typed services** (`docs/testing.md`, "Typed services"), served over **kRPC** on
+`ws://<host>:<port>/rpc` — not as `/device` verbs, so **curl cannot reach them**. Until the generated `rig` CLI lands
+(its own phase), drive them from Kotlin through `:test:control`'s typed client, which kotlinx-rpc generates from the
+interfaces in `:test:levers`:
 
-- `backend/…` — the backend mock's operator (refused over the real `api/`, `409` "unavailable on this backend"):
-  - levers: `offline?on=`, `fail-listing?on=`, `fail-union?on=`, `fallback-bearer?on=`, `min-app-version[?minimum=]`
-    (omitted: the gate is off), `next-event-id?id=` (the next create mints this id, once), `hold?call=event|create|join|leave`
-    and `release?call=` (the call waits unanswered until released — the only way to catch a screen the app shows while
-    it waits), `fail?operation=<operationId>&fault=SERVER_ERROR|MAINTENANCE|UNREACHABLE|MALFORMED|ENDED_FOR_GOOD|CLOSED[&times=]`
-    (the next `times` — once by default — requests to that `api/openapi.yaml` operation answer the fault; an operation
-    the API does not declare is a `400`), `sweep[?event=]`, `complete[?event=]`, `wipe-bytes[?device=]`,
-    `refuse-next-credential`, `refuse-attestation[?reason=device-modified|device-unverifiable|app-not-genuine][&detail=]`
-    (no reason: the phone is genuine again);
-  - reads: `is-offline`, `refusing-attestation`, `held?call=`, `manifest[?event=&device=]` (`assets` with their
-    `roles`, `final`, `version`; `null` with no membership), `departed`, `publishes`, `reads` (`union`, `details`),
-    `union-fetches`, `union-position`, `finished`, `completed`, `device-config[?device=]` (`token`, `env`, `writes`),
-    `pushes`.
-- `public-backend/…` — the backend's public surface, so honoured over the real `api/` too: `union[?event=]`,
-  `event[?event=]` (`registered`, `name`, `closedAt`), `objects[?device=&event=]`,
-  `foreign-device?device=&assets=a,b[&event=][&filename=][&kind=motion-photo][&final=true][&uploading=a]` (a fellow
-  member with complete photos — `motion-photo`: each a real Google motion photo, as an Android member shares it;
-  answers the event), `foreign-device-leave?device=[&event=]`, `foreign-device-received?device=[&event=]`.
+```kotlin
+RigClient("http://127.0.0.1:$PORT").use { client ->
+    client.levers(BackendLevers).offline(true)
+    client.levers(PublicBackendLevers).foreignDevice("F1", listOf("A1"))
+    client.levers(RigLevers).advertise()        // what this host honours and refuses, typed services included
+}
+```
 
-Renamed from the hand-written verbs: `backend/refuse-credential` → `backend/refuse-next-credential`,
-`backend/hold?…&on=false` → `backend/release?call=`, `backend/objects`/`union`/`event` → `public-backend/…`,
-`foreign-device[/leave|/received]` → `public-backend/foreign-device[-leave|-received]`; `backend/deposit` is gone (an
-own photo's bytes land unacknowledged with `jobs/complete` and no extension invoke).
-- Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line
-  contains that string: it matches itself.
+What a host serves is in its advertisement — `GET /device` lists each typed method as `<service>.<method>`
+(`backend.offline`, `public-backend.foreignDeviceLeave`), honoured or refused with the reason. A refused service
+throws `LeverRefused`; an omitted `event` is the joined one, an omitted `device` this one, any other omitted argument
+`null` (pass `on = true` — it is never implied).
+
+- `backend` (`BackendLevers`) — the backend mock's operator; refused over the real `api/` ("unavailable on this
+  backend"): levers `offline(on)`, `failListing(on)`, `failUnion(on)`, `fallbackBearer(on)`, `minAppVersion(minimum?)`
+  (none: the gate is off), `nextEventId(id)` (the next create mints this id, once), `hold(call)` / `release(call)`
+  (`BackendCall.EVENT|CREATE|JOIN|LEAVE`: the call waits unanswered until released — the only way to catch a screen
+  the app shows while it waits), `fail(operation, fault, times?)` (the next `times` — once by default — requests to that
+  `api/openapi.yaml` operationId answer `BackendFault.SERVER_ERROR|MAINTENANCE|UNREACHABLE|MALFORMED|ENDED_FOR_GOOD|CLOSED`;
+  an operation the API does not declare throws), `sweep(event?)`, `complete(event?)`, `wipeBytes(device?)`,
+  `refuseNextCredential()`, `refuseAttestation(reason?, detail?)` (no reason: the phone is genuine again); reads
+  `switches()` (every lever's state, the held calls), `membership(event?, device?)` (departed, publishes, the manifest),
+  `eventState(event?)` (union and detail reads, union fetches and position, finished, completed),
+  `deviceConfig(device?)` (token, env, writes), `pushes()`.
+- `public-backend` (`PublicBackendLevers`) — the backend's public surface, so honoured over the real `api/` too:
+  `union(event?)`, `event(event?)` (registered, name, closedAt), `objects(device?, event?)`,
+  `foreignDevice(device, assets, event?, kind?, filename?, final?, uploading?)` (a fellow member with complete photos —
+  `PhotoKind.MOTION_PHOTO`: each a real Google motion photo; answers the event), `foreignDeviceLeave(device, event?)`,
+  `foreignDeviceReceived(device, event?)`.
+
+Gone with the move: every `backend/…` and `foreign-device[/…]` curl verb; `backend/deposit` (an own photo's bytes land
+unacknowledged with `jobs/complete` and no extension invoke).
 

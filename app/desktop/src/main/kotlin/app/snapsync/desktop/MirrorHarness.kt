@@ -20,9 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.control.RigClient
 import app.snapsync.dates.JvmDateFormatting
+import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.presentation.url
-import app.snapsync.rig.DeviceAdvertisement
 import app.snapsync.rig.RigState
 import app.snapsync.services.dates.formatsFor
 import app.snapsync.ui.AccessActions

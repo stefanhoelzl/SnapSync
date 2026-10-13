@@ -31,7 +31,7 @@ class PushIntegrationTest {
         val pushes = pushesSent()
         assertTrue(pushes.isNotEmpty(), "the completed foreign photo woke the registered member")
         // Only this device registered the token, and the foreign member that woke it is never pushed itself.
-        assertTrue(pushes.all { (e, d, t) -> e == event && d != "DEV-F" && t == "DEADBEEF" })
+        assertTrue(pushes.all { (e, d, t) -> e == event && d != DEV_F && t == "DEADBEEF" })
     }
 
     @Test

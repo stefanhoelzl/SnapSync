@@ -58,6 +58,7 @@ interface PublicBackendLevers {
 
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<PublicBackendLevers>(
+        PublicBackendLevers::class,
         "public-backend",
         setOf(LeverNeed.BACKEND_REACHABLE),
         { serviceDescriptorOf() },

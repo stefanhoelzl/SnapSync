@@ -1,50 +1,61 @@
 package app.snapsync.rig
 
+import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.JoinedEvent
 import app.snapsync.levers.LEVER_SERVICES
 import app.snapsync.levers.LeverNeed
+import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.LeverService
+import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.RigLevers
 import app.snapsync.levers.ThisDevice
-import kotlinx.rpc.descriptor.RpcCallable
+import app.snapsync.mock.MockedSystem
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.flow.Flow
+import kotlinx.rpc.RpcCall
+import kotlinx.rpc.RpcClient
 import kotlinx.rpc.descriptor.RpcInvokator
-import kotlinx.rpc.descriptor.RpcParameter
 import kotlinx.rpc.internal.utils.ExperimentalRpcApi
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.descriptors.SerialKind
-import kotlinx.serialization.descriptors.StructureKind
-import kotlinx.serialization.descriptors.elementNames
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.serializer
 
-// The typed services' verbs (`docs/testing.md`, "Typed services"): every method of every declared service
-// (`LEVER_SERVICES`) is the `/device` verb `<service>/<method-in-kebab>`, dispatched onto the service's implementation
-// through the descriptor the kotlinx-rpc compiler plugin generates — nothing here names a method. The same verb answers
-// curl (arguments in the query, `assets=A,B` for a list) and the typed client in `:test:control` (arguments as one JSON
-// object in the body, each encoded by its parameter's serializer); the reply is the return value, JSON-encoded.
+// The typed services as this host serves them (`docs/testing.md`, "Typed services"). The rig registers every declared
+// service (`LEVER_SERVICES`) on its kRPC route, each behind ONE wrapper written for all of them: it names the joined event
+// and this device for an omitted `@JoinedEvent` / `@ThisDevice` argument, refuses every method with the reason when the
+// host cannot meet the service's needs, and calls the implementation through the descriptor's invoker — so a face that
+// migrates adds an interface and an implementation, and nothing here.
 
-/** The implementation of each service this world can serve — `null` where it has none (a need is unmet). */
-internal fun MockWorld.serviceImplementation(service: LeverService<*>): Any? = when (service.name) {
-    "backend" -> device.backend.operator.takeIf { isMocked(app.snapsync.mock.MockedSystem.BACKEND) }
-    "public-backend" -> reach?.let { PublicBackend(this, it) }
-    else -> null
-}
+/** A declared service as this world serves it: the wrapper the kRPC route registers, and why it refuses, if it does. */
+class ServedService internal constructor(val service: LeverService<*>, internal val wrapper: Any, val refusal: String?)
 
-/** Every declared service's verbs as levers, each needing what its service declares. */
-internal fun MockWorld.serviceLevers(): Map<String, Lever> = LEVER_SERVICES.flatMap { service ->
-    val needs = service.needs.map(::needOf)
-    service.verbs.map { (method, verb) -> verb to Lever(needs, serviceCommand(service, method)) }
+/** Every declared service but the channel's own ([RigLevers], which the server serves over its hooks). */
+fun MockWorld.servedServices(): List<ServedService> =
+    LEVER_SERVICES.filter { it !== RigLevers }.map { service ->
+        val refusal = refusalFor(service.needs.map(::needOf), service.name)
+        served(service, if (refusal == null) implementationOf(service) else null, refusal)
+    }
+
+/** The channel's own service: what this host advertises. */
+internal fun servedRig(advertise: () -> app.snapsync.levers.DeviceAdvertisement): ServedService =
+    ServedService(
+        RigLevers,
+        object : RigLevers {
+            override suspend fun advertise() = advertise()
+        },
+        refusal = null,
+    )
+
+/** Every typed service's methods, as a host's advertisement names them (`<service>.<method>`). */
+internal val SERVICE_ENTRIES: List<String> = LEVER_SERVICES.filter { it !== RigLevers }.flatMap { it.entries }
+
+/** The refusal of each method of every service this world refuses, by advertisement entry. */
+internal fun MockWorld.serviceRefusals(): Map<String, String> = servedServices().flatMap { served ->
+    served.refusal?.let { why -> served.service.entries.map { it to why } }.orEmpty()
 }.toMap()
 
-/** The `/device` verbs of every declared service — what [RigVocabulary] lists for them. */
-internal val SERVICE_VERBS: List<String> = LEVER_SERVICES.flatMap { it.verbs.values }.map { "device/$it" }
+private fun MockWorld.implementationOf(service: LeverService<*>): Any = when (service) {
+    BackendLevers -> device.backend.operator.also { check(isMocked(MockedSystem.BACKEND)) }
+    PublicBackendLevers -> PublicBackend(this, checkNotNull(reach))
+    else -> error("$service has no implementation in this world")
+}
 
 private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.BACKEND_MOCKED -> Need.Operator
@@ -52,110 +63,46 @@ private fun needOf(need: LeverNeed): Need = when (need) {
 }
 
 @OptIn(ExperimentalRpcApi::class)
-private fun MockWorld.serviceCommand(
-    service: LeverService<*>,
-    method: String,
-): RigCommand = RigCommand { params, body ->
+private fun MockWorld.served(service: LeverService<*>, implementation: Any?, refusal: String?): ServedService {
     @Suppress("UNCHECKED_CAST")
     val typed = service as LeverService<Any>
-    val callable = typed.descriptor.getCallable(method) ?: error("$service declares no $method")
-    val implementation = serviceImplementation(service) ?: error("$service has no implementation in this world")
-    val arguments = try {
-        argumentsOf(callable, params, body)
-    } catch (bad: BadArgument) {
-        return@RigCommand CommandResult.badRequest(bad.why)
-    }
-    val invoker = callable.invokator as RpcInvokator.Method<Any>
-    val result = try {
-        invoker.call(implementation, arguments)
-    } catch (refused: IllegalArgumentException) {
-        return@RigCommand CommandResult.badRequest(refused.message ?: "refused")
-    }
-    CommandResult.ok(leverJson.encodeToString(serializerOf(callable.returnType.kType), result))
+    val wrapper = typed.descriptor.createInstance(0L, Resolving(this, typed, implementation, refusal))
+    return ServedService(service, wrapper, refusal)
 }
-
-/** An argument the method cannot take as sent — a `400` naming what was wrong. */
-private class BadArgument(val why: String, cause: Throwable? = null) : Exception(why, cause)
 
 /**
- * The call's arguments, in declaration order: from the body's JSON object when one was sent, else from the query text;
- * an omitted [JoinedEvent] or [ThisDevice] resolved here; any other omitted one `null`, or a `400` when it is not
- * nullable.
+ * The wrapper's calls: what the generated stub of a service's interface hands an [RpcClient] — here not sent anywhere,
+ * but resolved and invoked on the implementation in this process.
  */
 @OptIn(ExperimentalRpcApi::class)
-private fun MockWorld.argumentsOf(callable: RpcCallable<*>, query: Map<String, String>, body: String?): Array<Any?> {
-    val sent = body?.takeIf { it.isNotBlank() }?.let {
-        runCatching { leverJson.parseToJsonElement(it) as? JsonObject }.getOrNull()
-            ?: throw BadArgument("the body must be a JSON object of the arguments, by name")
+private class Resolving(
+    private val world: MockWorld,
+    private val service: LeverService<Any>,
+    private val implementation: Any?,
+    private val refusal: String?,
+) : RpcClient {
+    override suspend fun <T> call(call: RpcCall): T {
+        log.i { "→ ${service.name}.${call.callableName}" }
+        refusal?.let { throw LeverRefused("${service.name}.${call.callableName} is refused here: $it") }
+        val callable = checkNotNull(service.descriptor.getCallable(call.callableName))
+        val arguments = call.parameters.copyOf()
+        callable.parameters.forEachIndexed { i, parameter ->
+            if (arguments[i] != null) return@forEachIndexed
+            when {
+                parameter.annotations.any { it is JoinedEvent } ->
+                    arguments[i] = world.joinedEventId() ?: throw IllegalArgumentException("no joined event, and no `event` was named")
+                parameter.annotations.any { it is ThisDevice } -> arguments[i] = world.ownDeviceId()
+            }
+        }
+        val invoker = callable.invokator as RpcInvokator.Method<Any>
+        @Suppress("UNCHECKED_CAST")
+        return invoker.call(checkNotNull(implementation), arguments) as T
     }
-    val names = callable.parameters.map { it.name }
-    val unknown = (query.keys + sent?.keys.orEmpty()) - names.toSet()
-    if (unknown.isNotEmpty()) {
-        throw BadArgument(
-            "${callable.name} takes ${names.joinToString().ifEmpty { "no arguments" }}; unknown: ${unknown.sorted()}",
-        )
-    }
-    return callable.parameters.map {
-        argumentOf(
-            it,
-            sent?.get(it.name)?.takeUnless { e -> e is JsonNull },
-            query[it.name],
-        )
-    }
-        .toTypedArray()
-}
 
-/** One argument: [sent] in the body, else [text] in the query, else omitted. */
-@OptIn(ExperimentalRpcApi::class)
-private fun MockWorld.argumentOf(parameter: RpcParameter, sent: JsonElement?, text: String?): Any? {
-    val serializer = serializerOf(parameter.type.kType)
-    val element = sent ?: text?.let {
-        fromQuery(it, serializer.descriptor) ?: throw BadArgument("${parameter.name}: '$it' is no ${accepted(serializer.descriptor)}")
-    }
-    if (element == null) return omitted(parameter, serializer.descriptor.isNullable)
-    return try {
-        leverJson.decodeFromJsonElement(serializer, element)
-    } catch (bad: SerializationException) {
-        throw BadArgument(
-            "${parameter.name}: ${bad.message?.lineSequence()?.first()} — accepted: ${accepted(serializer.descriptor)}",
-            bad,
-        )
+    override fun <T> callServerStreaming(call: RpcCall): Flow<T> =
+        error("${service.name}.${call.callableName}: no service of the channel streams yet")
+
+    private companion object {
+        val log = Logger.withTag("rig")
     }
 }
-
-/** An omitted argument: the joined event or this device where marked, else `null` — or a `400` where it may not be. */
-@OptIn(ExperimentalRpcApi::class)
-private fun MockWorld.omitted(parameter: RpcParameter, nullable: Boolean): Any? {
-    val resolved = resolveOmitted(parameter)
-    if (resolved == null && parameter.annotations.any { it is JoinedEvent }) {
-        throw BadArgument("no joined event, and no `event` was named")
-    }
-    if (resolved == null && !nullable) throw BadArgument("${parameter.name} is required")
-    return resolved
-}
-
-/** What an omitted [JoinedEvent] or [ThisDevice] names here, or `null`. */
-@OptIn(ExperimentalRpcApi::class)
-private fun MockWorld.resolveOmitted(parameter: RpcParameter): String? = when {
-    parameter.annotations.any { it is JoinedEvent } -> joinedEventId()
-    parameter.annotations.any { it is ThisDevice } -> ownDeviceId()
-    else -> null
-}
-
-/** Query text as the JSON the parameter's serializer reads — `null` when it cannot be. */
-private fun fromQuery(text: String, descriptor: SerialDescriptor): JsonElement? = when (descriptor.kind) {
-    PrimitiveKind.STRING, SerialKind.ENUM -> JsonPrimitive(text)
-    StructureKind.LIST -> JsonArray(text.split(',').filter { it.isNotBlank() }.map(::JsonPrimitive))
-    is PrimitiveKind -> runCatching { leverJson.parseToJsonElement(text) }.getOrNull() as? JsonPrimitive
-    else -> runCatching { leverJson.parseToJsonElement(text) }.getOrNull()
-}
-
-/** What a parameter accepts, for a `400`: an enum's values, or its kind. */
-private fun accepted(descriptor: SerialDescriptor): String = when (descriptor.kind) {
-    SerialKind.ENUM -> descriptor.elementNames.joinToString("|")
-    else -> descriptor.serialName.removeSuffix("?").substringAfterLast('.')
-}
-
-private fun serializerOf(type: kotlin.reflect.KType): KSerializer<Any?> = serializer(type)
-
-private val leverJson = Json { encodeDefaults = true }

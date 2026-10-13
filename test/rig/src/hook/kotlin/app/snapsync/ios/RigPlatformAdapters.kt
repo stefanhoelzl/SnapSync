@@ -42,6 +42,7 @@ import app.snapsync.rig.rigCompletion
 import app.snapsync.rig.rigLaunch
 import app.snapsync.rig.rigPort
 import app.snapsync.rig.rigPortFilePath
+import app.snapsync.rig.servedServices
 import app.snapsync.rig.startWhenReady
 import app.snapsync.rig.userCommands
 import app.snapsync.services.logs.LogTailService
@@ -165,6 +166,8 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
         handleReport = SnapSyncRoot.process.processAccount::handle,
     ),
     readGallery = galleryReader(launch, core = { SnapSyncRoot.app }),
+    // The typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it.
+    services = launch.world.servedServices(),
     // The registration the app runs over — the adapter choice's, where it mocks it.
     osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.ports.extensionRegistry.value }),
     // The path decision (and its `null` case) lives in `:test:rig`; this side supplies only the write,

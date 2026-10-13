@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.contracts.PhotoLibrary
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.levers.EventRecord
 import app.snapsync.levers.PhotoKind
 import app.snapsync.levers.PublicBackendLevers
@@ -15,7 +16,7 @@ import app.snapsync.model.DeviceManifestAsset
  */
 internal class PublicBackend(private val world: MockWorld, private val reach: BackendReach) : PublicBackendLevers {
     override suspend fun union(event: String?): List<UnionEntry> = reach.unionOf(named(event)).map { a ->
-        UnionEntry(a.deviceId, a.assetId.value, a.resources.map { it.role })
+        UnionEntry(a.deviceId.value, a.assetId.value, a.resources.map { it.role })
     }
 
     override suspend fun event(event: String?): EventRecord {
@@ -96,7 +97,9 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
                 }
             }
         }
-        reach.publish(eventId, DeviceManifest(deviceId = who, assets = assets, final = final))
+        val device =
+            requireNotNull(DeviceId.parse(who)) { "device must be a device id — a canonical UUID — was '$who'" }
+        reach.publish(eventId, DeviceManifest(deviceId = device, assets = assets, final = final))
         return eventId
     }
 

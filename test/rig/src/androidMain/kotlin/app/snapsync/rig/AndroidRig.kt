@@ -198,6 +198,7 @@ private fun AndroidRigLaunch.hooks(
         androidGalleryReader(core, context)
     },
     osExtensionEnabled = { null },
+    services = world.servedServices(),
     publishBoundPort = { bound ->
         rigPortFilePath(
             context.filesDir.path,

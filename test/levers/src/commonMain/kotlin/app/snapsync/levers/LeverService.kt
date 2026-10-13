@@ -1,25 +1,26 @@
 package app.snapsync.levers
 
 import kotlinx.rpc.annotations.Rpc
-import kotlinx.rpc.descriptor.RpcCallable
 import kotlinx.rpc.descriptor.RpcServiceDescriptor
 import kotlinx.rpc.internal.utils.ExperimentalRpcApi
+import kotlin.reflect.KClass
 
 /**
  * **A mocked system's operator face as a typed service** (`docs/testing.md`, "Typed services"): an `@Rpc`
- * interface whose companion object extends this, naming the service once — its route [name] and what a host must
- * offer before any of its methods is honoured ([needs]).
+ * interface whose companion object extends this, naming the service once — its [name] and what a host must offer
+ * before any of its methods is honoured ([needs]).
  *
- * The control channel serves every method as `/device/<name>/<method-in-kebab>`, derived from the [descriptor] the
- * kotlinx-rpc compiler plugin generates: a method's parameters are the verb's arguments and its return type is its
- * reply — `Unit` for a lever, the value for a read. A test calls the same interface through a client built from the
- * same descriptor, so a renamed lever or a changed type is a compile error, not a `400` at run time.
+ * The control channel serves it over kRPC: the kotlinx-rpc compiler plugin generates the client a test calls and the
+ * server stub the rig registers the implementation under, so a renamed lever or a changed type is a compile error. A
+ * method's parameters are its arguments and its return type is its reply — `Unit` for a lever, the value for a read.
  *
  * A method that needs more than its service's [needs] does not belong in it: it lives in a service declaring those.
  */
 @OptIn(ExperimentalRpcApi::class)
 abstract class LeverService<@Rpc T : Any>(
-    /** The route segment: `/device/<name>/…`. */
+    /** The interface, which the channel registers its implementation under. */
+    val type: KClass<T>,
+    /** The service's name, by which a host classifies it (`<name>.<method>`) and a refusal names it. */
     val name: String,
     /** Every need a host must meet to honour this service's methods; one unmet refuses them all, with its reason. */
     val needs: Set<LeverNeed>,
@@ -28,14 +29,8 @@ abstract class LeverService<@Rpc T : Any>(
     /** The compiler plugin's description of the interface: its methods, their parameters and an invoker. */
     val descriptor: RpcServiceDescriptor<T> by lazy(descriptor)
 
-    /** The `/device` verb of each method, by the method's name, in declaration order. */
-    val verbs: Map<String, String> by lazy {
-        this.descriptor.callables.keys.associateWith { "$name/${kebab(it)}" }
-    }
-
-    /** The method [verb] (`<name>/<method-in-kebab>`) names, or `null`. */
-    fun callableOf(verb: String): RpcCallable<T>? =
-        verbs.entries.firstOrNull { it.value == verb }?.let { this.descriptor.getCallable(it.key) }
+    /** Each method's entry in a host's advertisement — `<name>.<method>` — in declaration order. */
+    val entries: List<String> by lazy { this.descriptor.callables.keys.map { "$name.$it" } }
 
     override fun toString(): String = "LeverService($name)"
 }
@@ -73,7 +68,10 @@ annotation class ThisDevice
 annotation class StandsInFor(vararg val members: String)
 
 /** Every service the channel serves. A face migrates by joining this list; nothing else registers it. */
-val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(BackendLevers, PublicBackendLevers)
+val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(RigLevers, BackendLevers, PublicBackendLevers)
 
-/** `refuseNextCredential` → `refuse-next-credential`. */
-fun kebab(camel: String): String = camel.replace(Regex("([a-z0-9])([A-Z])"), "$1-$2").lowercase()
+/**
+ * A host refused a service's method: one of the service's needs is unmet here. kRPC carries it to the client as this
+ * same class (it is rebuilt by name), so a caller tells a refusal from a failure by its type.
+ */
+class LeverRefused(message: String) : IllegalStateException(message)
