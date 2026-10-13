@@ -46,11 +46,12 @@ members who join later, until the event's photos are deleted — unless the memb
 - **WHEN** a member shares photos and leaves, and a new guest joins afterwards
 - **THEN** the new guest receives the departed member's photos
 
-### Requirement: A member's share is settled only after the event has ended
+### Requirement: A member's share is settled only after their own range has ended
 
-A member's device SHALL settle which of its photos it shares to an event only after the event's range has
-ended and only once it has looked at the photo library since then, so that every photo the member took
-within their range before the end is part of what they share — including photos only in iCloud or taken
+A member's device SHALL settle which of its photos it shares to an event only after the member's own capture
+range has ended — for most members the event's end; earlier for a range that ends before it, later for one that
+ends after it (capability `photo-sharing`) — and only once it has looked at the photo library since then, so
+that every photo the member took within their range is part of what they share — including photos only in iCloud or taken
 while the phone was offline. Settling SHALL NOT wait for the photos to finish uploading, and SHALL NOT stop
 the member sharing: until the event's photos are deleted, a member's device that finds more photos to share
 SHALL still share them.
@@ -76,10 +77,21 @@ left SHALL count as done with whatever of theirs had reached the event.
 - **WHEN** every member of an ended event is done and a late guest joins and shares photos
 - **THEN** the other members are not done until those photos are in their libraries
 
+#### Scenario: A range that ends after the event keeps it unfinished
+- **WHEN** a member's range ends two days after the event's end, and every other member is done by then
+- **THEN** the event is not finished before that member's range has ended and their device has settled, and
+  their photos from those two days are shared
+
+#### Scenario: A range that ends early is done early
+- **WHEN** a member who shares but does not receive has a range ending on Saturday evening, their phone settles
+  that evening once their photos have reached the event and then stays off, and the event ends on Sunday with
+  every other member done
+- **THEN** the event is finished without waiting for that phone
+
 ### Requirement: An event's photos are deleted once it is finished, and after 30 days at the latest
 
 An event SHALL be **finished** once its open-until date has passed and every member still in it is done
-(see "A member's share is settled only after the event has ended"); a guest joining afterwards SHALL make it
+(see "A member's share is settled only after their own range has ended"); a guest joining afterwards SHALL make it
 unfinished again until they are done too.
 
 An event's photos SHALL be deleted from the server within about a day of whichever comes first: the event

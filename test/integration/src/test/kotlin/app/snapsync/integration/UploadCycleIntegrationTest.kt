@@ -116,7 +116,7 @@ class UploadCycleIntegrationTest {
     @Test
     @Verifies(
         spec = "photo-sharing",
-        requirement = "Only photos taken inside the member's capture range are shared",
+        requirement = "Only photos inside the range the member chose are shared",
         scenario = "A photo from before the range stays private",
     )
     fun a_cutoff_keeps_a_pre_cutoff_photo_out_of_the_upload_and_the_union() = rigTest {

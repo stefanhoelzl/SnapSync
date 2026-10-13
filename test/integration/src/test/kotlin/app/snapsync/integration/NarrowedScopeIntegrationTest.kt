@@ -36,7 +36,7 @@ class NarrowedScopeIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "photo-sharing", requirement = "Only photos taken inside the member's capture range are shared")
+    @Verifies(spec = "photo-sharing", requirement = "Only photos inside the range the member chose are shared")
     fun raising_the_cutoff_stops_uploading_the_rows_the_wider_one_recorded() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
@@ -69,7 +69,7 @@ class NarrowedScopeIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "photo-sharing", requirement = "Only photos taken inside the member's capture range are shared")
+    @Verifies(spec = "photo-sharing", requirement = "Only photos inside the range the member chose are shared")
     fun excluded_rows_do_not_starve_admitted_work() = rigTest {
         extensionUploadsOnly()
         // The one way to make this worse than the bug: admit AFTER a bounded read. Rows needing a job come back in

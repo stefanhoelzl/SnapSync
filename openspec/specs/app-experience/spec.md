@@ -148,20 +148,22 @@ screen never promises an album, a feed or a date range the membership will not p
 - **WHEN** the member changes the date range they share
 - **THEN** the line stating what will be shared updates to the new range at once
 
-### Requirement: Picking a date range is guided and cannot go wrong
+### Requirement: Picking a date range is guided and only offers what is allowed
 
 Picking a date range SHALL happen in one dialog holding the dates and both times, committed by one
 confirmation. The first tap on a day SHALL set the start, the second the end (the same day twice meaning
 a single day), and a third SHALL start over; changing the days SHALL keep the chosen times. Where a
-range must lie inside the event's window, days and times outside it SHALL be unselectable and a picked
-value SHALL be kept inside it. An end before the start SHALL be unreachable. Cancelling SHALL leave the
-previous choice untouched. A "Now" choice that falls outside the event's window SHALL be shown disabled,
-not hidden.
+range is bounded — an event's range, and the range a member shares (at most 30 days, overlapping the event's
+dates, capability `join-event`) — days and times that would break the bound SHALL be unselectable and a
+picked value SHALL be kept within it. When picking the range a member shares, the event's own days SHALL stay
+marked in the calendar. An end before the start SHALL be unreachable. Cancelling SHALL leave the previous
+choice untouched. The dialog SHALL hold only the calendar and the times: the quick choices for what a member
+shares are on the screen beside it (capability `join-event`).
 
-#### Scenario: A range inside the window
+#### Scenario: A shared range around the event
 - **WHEN** the member picks a custom range for what they share
-- **THEN** only days within the event's window can be picked, and the confirmed range lies inside it
-  with its end after its start
+- **THEN** the event's days are marked, only days that keep the range at most 30 days long and overlapping the
+  event can be picked, and the confirmed range has its end after its start
 
 #### Scenario: Third tap starts over
 - **WHEN** a start and end day are picked and the member taps a third day
@@ -170,10 +172,6 @@ not hidden.
 #### Scenario: Cancel keeps the old choice
 - **WHEN** the member opens the custom picker and cancels
 - **THEN** the previous choice is unchanged
-
-#### Scenario: Now before the event
-- **WHEN** the member joins an event that has not started
-- **THEN** the "Now" choice is visible but disabled
 
 ### Requirement: Text entry sheets stay usable while typing
 

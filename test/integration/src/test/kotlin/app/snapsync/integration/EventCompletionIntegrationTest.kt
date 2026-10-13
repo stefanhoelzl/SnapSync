@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 class EventCompletionIntegrationTest {
 
     @Test
-    @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after the event has ended")
+    @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after their own range has ended")
     fun the_only_member_settles_its_share_and_stays_in_the_finished_event() = rigTest {
         extensionUploadsOnly()
         device("clock/advance", "to" to DURING)
