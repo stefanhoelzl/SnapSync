@@ -91,14 +91,14 @@ fun osAtRelease(answer: String): OsRecord = OsRecord(
 /**
  * The person brings the app to the foreground, and the foreground's work finishes: its own work — the membership
  * re-read, the status read, the download reconcile — and its tail, awaited through the background time it holds
- * (the `onForeground` hold ends with its tail). [awaited] `false` returns once the entry is delivered.
+ * (the `onForeground` hold ends with its tail, and is begun before the entry is answered). Awaited until no
+ * foreground holds any: counting against the holds before would let an earlier foreground still running stand in
+ * for this one, and return while this one's reconcile has not run. [awaited] `false` returns once the entry is
+ * delivered.
  */
 suspend fun Rig.foreground(awaited: Boolean = true) {
-    val before = osRecord().backgroundTimeHolds.count { it == FOREGROUND_HOLD }
     os("app", "onForeground")
-    if (awaited) {
-        eventually(read = { osRecord() }) { r -> r.backgroundTimeHolds.count { it == FOREGROUND_HOLD } <= before }
-    }
+    if (awaited) awaitOs { r -> FOREGROUND_HOLD !in r.backgroundTimeHolds }
 }
 
 /** The operating system says time is up — for every handler it holds and every background-time hold. */
