@@ -116,11 +116,18 @@ fun withExtension(filename: String, extension: String): String {
     return (if (dot > 0) filename.substring(0, dot) else filename) + extension
 }
 
+/**
+ * The `MotionPhoto` item's length from the container directory, its fields read in either RDF form: the attribute form a
+ * camera writes (`<Container:Item Item:Semantic="MotionPhoto" Item:Length="…"/>`) and the element form ImageIO hands
+ * back when it re-serializes the same XMP (`<Container:Item rdf:parseType="Resource"><Item:Semantic>MotionPhoto
+ * </Item:Semantic>…`). Reading only the first made every Pixel and Samsung motion photo a still on iPhone, where the
+ * XMP arrives through ImageIO: only a file that also carried the legacy `MicroVideoOffset` moved.
+ */
 private fun motionItemLength(xmp: String): Long? =
-    Regex("<Container:Item\\b[^>]*>").findAll(xmp)
+    Regex("<Container:Item\\b[^>]*?(/>|>[\\s\\S]*?</Container:Item>)").findAll(xmp)
         .map { it.value }
-        .firstOrNull { attribute(it, "Item:Semantic") == "MotionPhoto" }
-        ?.let { attribute(it, "Item:Length")?.toLongOrNull() }
+        .firstOrNull { itemField(it, "Semantic") == "MotionPhoto" }
+        ?.let { itemField(it, "Length")?.toLongOrNull() }
 
 private fun legacyOffset(xmp: String): Long? = property(xmp, "MicroVideoOffset")
 
@@ -129,8 +136,12 @@ private fun property(xmp: String, name: String): Long? =
     Regex("\\w+:$name\\s*=\\s*\"(-?\\d+)\"").find(xmp)?.let { it.groupValues[1].toLongOrNull() }
         ?: Regex("<\\w+:$name>\\s*(-?\\d+)\\s*</").find(xmp)?.let { it.groupValues[1].toLongOrNull() }
 
-private fun attribute(element: String, name: String): String? =
-    Regex("\\b$name\\s*=\\s*\"([^\"]*)\"").find(element)?.let { it.groupValues[1] }
+/** A container item's field [name], as an attribute (`Item:Name="v"`) or as a child element (`<Item:Name>v</…>`). */
+private fun itemField(item: String, name: String): String? {
+    val match = Regex("\\bItem:$name\\s*=\\s*\"([^\"]*)\"").find(item)
+        ?: Regex("<Item:$name>\\s*([^<]*?)\\s*</Item:$name>").find(item)
+    return match?.let { it.groupValues[1] }
+}
 
 /** The JPEG segments this codec reads and writes: the ones before the image data. */
 internal object JpegSegments {

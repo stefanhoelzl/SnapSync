@@ -154,6 +154,42 @@ class MotionPhotoTest {
     }
 
     @Test
+    fun the_element_form_imageio_hands_back_locates_the_video() {
+        // A Pixel 6 Pro's directory as ImageIO re-serializes it on iPhone (measured 2026-10-13): no legacy offset, and
+        // every item field an element, the primary and the gain map listed before the video.
+        val xmp = """
+            <GCamera:MotionPhoto>1</GCamera:MotionPhoto>
+            <Container:Directory><rdf:Seq><rdf:li rdf:parseType="Resource">
+              <Container:Item rdf:parseType="Resource">
+                 <Item:Mime>image/jpeg</Item:Mime>
+                 <Item:Semantic>Primary</Item:Semantic>
+              </Container:Item>
+              <Container:Item rdf:parseType="Resource">
+                 <Item:Length>182335</Item:Length>
+                 <Item:Mime>image/jpeg</Item:Mime>
+                 <Item:Semantic>GainMap</Item:Semantic>
+              </Container:Item>
+              <Container:Item rdf:parseType="Resource">
+                 <Item:Mime>video/mp4</Item:Mime>
+                 <Item:Semantic>MotionPhoto</Item:Semantic>
+                 <Item:Padding>0</Item:Padding>
+                 <Item:Length>64</Item:Length>
+              </Container:Item>
+            </rdf:li></rdf:Seq></Container:Directory>
+        """.trimIndent()
+        val file = jpeg() + mp4(bytes = 64)
+        assertEquals(file.size - 64 until file.size, locateMotionVideo(xmp, file))
+    }
+
+    @Test
+    fun the_attribute_form_a_camera_writes_locates_the_video() {
+        val xmp = """<Container:Item Item:Mime="image/jpeg" Item:Semantic="Primary" Item:Length="0"/>""" +
+            """<Container:Item Item:Mime="video/mp4" Item:Semantic="MotionPhoto" Item:Length="64"/>"""
+        val file = jpeg() + mp4(bytes = 64)
+        assertEquals(file.size - 64 until file.size, locateMotionVideo(xmp, file))
+    }
+
+    @Test
     fun a_video_wrapped_in_an_mpvd_box_is_found_inside_it() {
         val video = mp4(bytes = 64)
         val box = byteArrayOf(0, 0, 0, 72) + "mpvd".encodeToByteArray() + video

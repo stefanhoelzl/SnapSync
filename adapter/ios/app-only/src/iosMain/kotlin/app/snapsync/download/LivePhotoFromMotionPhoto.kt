@@ -137,7 +137,11 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         val file = checkedObjCValue("dataWithContentsOfFile") { NSData.dataWithContentsOfFile(primary.path, 0u, it) }
             .onFailure { log.w(it) { "$assetId: the staged photo is unreadable — imported as it is" } }
             .getOrNull()?.toByteArray() ?: return@withContext null
-        val video = locateMotionVideo(xmp, file) ?: return@withContext null
+        // Said aloud: an XMP that names a motion photo whose video is not found is a still the member will not see move,
+        // and nothing else reports it — every real Pixel and Samsung file fell here, unseen, until a journey showed it.
+        val video = locateMotionVideo(xmp, file) ?: return@withContext null.also {
+            log.w { "$assetId: motion-photo XMP, but no video where it says — imported as its still" }
+        }
         val identifier = NSUUID().UUIDString
         val dir = NSTemporaryDirectory() + "motion-photo/"
         checkedObjC("createDirectoryAtPath") {
