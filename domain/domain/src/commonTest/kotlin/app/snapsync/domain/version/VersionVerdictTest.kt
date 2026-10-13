@@ -13,14 +13,15 @@ class VersionVerdictTest {
     }
 
     @Test
-    fun a_served_request_clears_and_any_other_answer_says_nothing() {
-        assertEquals(VersionVerdict.Clear, VersionVerdict.of(BackendAnswer.Served))
-        for (other in listOf(
-            BackendAnswer.Rejected,
-            BackendAnswer.Refused,
-            BackendAnswer.ServerIssue,
-            BackendAnswer.NoAnswer,
-        )) {
+    fun an_answer_from_past_the_version_check_clears() {
+        for (past in listOf(BackendAnswer.Served, BackendAnswer.Rejected, BackendAnswer.Refused)) {
+            assertEquals(VersionVerdict.Clear, VersionVerdict.of(past), "$past")
+        }
+    }
+
+    @Test
+    fun a_server_issue_or_no_answer_says_nothing() {
+        for (other in listOf(BackendAnswer.ServerIssue, BackendAnswer.NoAnswer)) {
             assertEquals(VersionVerdict.NoVerdict, VersionVerdict.of(other), "$other")
         }
     }

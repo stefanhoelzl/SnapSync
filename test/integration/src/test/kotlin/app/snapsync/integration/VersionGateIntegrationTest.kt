@@ -67,6 +67,24 @@ class VersionGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "app-update-required", requirement = "The notice clears by itself")
+    fun an_updated_build_whose_first_answer_is_a_refusal_of_the_request_is_cleared_too() = rigTest {
+        // Served means past the version check, not a success: once updated, the first answer this member gets is a
+        // 404 for an event the nightly sweep deleted — and that answer, too, says this build is no longer refused.
+        val event = createAndJoin()
+        backend.minAppVersion("0.4")
+        device("app-version", "version" to "0.3")
+        anyBackendCall()
+        awaitState { it.ui.layer is Layer.UpdateRequired }
+
+        backend.sweep(event)
+        device("app-version", "version" to "0.4")
+        anyBackendCall()
+
+        awaitState { it.ui.layer !is Layer.UpdateRequired } // the 404 cleared the update notice
+    }
+
+    @Test
     fun a_served_build_never_sees_the_screen() = rigTest {
         // The negative direction, and it is not ceremony: a gate that reported on every response would park
         // every member on an update screen, and the two tests above would still pass.

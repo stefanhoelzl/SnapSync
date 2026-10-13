@@ -17,7 +17,7 @@ import kotlin.test.assertNull
 /**
  * The read-model that owns "the backend is refusing this build" (capability `app-update-required`). What is worth
  * pinning is not that it stores a value but the rules around it: a refusal that names no version is still a refusal,
- * a served request CLEARS it, and the `Error` that reaches crash reporting fires on the TRANSITION rather than on every
+ * an answer from past the version check CLEARS it, and the `Error` that reaches crash reporting fires on the TRANSITION rather than on every
  * refused request.
  */
 @OptIn(CompositionOnly::class)
@@ -96,17 +96,22 @@ class AppVersionGateTest {
     }
 
     @Test
-    fun any_other_answer_says_nothing_about_this_build() = runTest {
+    fun a_refusal_of_the_request_clears_the_refusal_too() = runTest {
+        // The backend checks the version first: a 401 or a 404 came from past that check, so this build is served.
+        for (answer in listOf(BackendAnswer.Rejected, BackendAnswer.Refused)) {
+            val gate = AppVersionGate()
+            gate.observe(BackendAnswer.TooOld("0.4"))
+            gate.observe(answer)
+            assertNull(gate.refusal.value, "$answer")
+        }
+    }
+
+    @Test
+    fun a_server_issue_or_no_answer_says_nothing_about_this_build() = runTest {
         val gate = AppVersionGate()
         gate.observe(BackendAnswer.TooOld("0.4"))
-        for (answer in listOf(
-            BackendAnswer.Rejected,
-            BackendAnswer.Refused,
-            BackendAnswer.ServerIssue,
-            BackendAnswer.NoAnswer,
-        )) {
-            gate.observe(answer)
-        }
-        assertEquals(VersionRefusal("0.4"), gate.refusal.value, "only a success heals the screen")
+        gate.observe(BackendAnswer.ServerIssue)
+        gate.observe(BackendAnswer.NoAnswer)
+        assertEquals(VersionRefusal("0.4"), gate.refusal.value, "neither need have come from past the version check")
     }
 }
