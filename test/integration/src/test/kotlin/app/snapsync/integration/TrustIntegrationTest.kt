@@ -71,7 +71,7 @@ class TrustIntegrationTest {
         device("app-version", "version" to "0.4")
         reconcile()
         awaitState { it.ui.layer !is Layer.UpdateRequired }
-        eventually(read = { uploadAll(); objects() }) { held: Set<String> -> primaryKey("P1") in held }
+        eventually(read = { uploadedObjects() }) { held: Set<String> -> primaryKey("P1") in held }
         downloadAll()
         assertEquals(2L, libraryTotal(), "and the fellow member's photo arrives once it is served again")
     }
@@ -99,8 +99,14 @@ class TrustIntegrationTest {
 
         // `objects()` lists what the backend holds under the identifier the phone presents NOW: the second install's
         // photo lands beside the first install's, so the phone is the same device to its event.
-        val held = eventually(read = { uploadAll(); objects() }) { held: Set<String> -> primaryKey("P2") in held }
+        val held = eventually(read = { uploadedObjects() }) { held: Set<String> -> primaryKey("P2") in held }
         assertTrue(primaryKey("P1") in held, "the reinstalled phone presents the identifier it had before")
+    }
+
+    /** Everything the cycle picks up uploaded, then the object keys the backend holds for this phone. */
+    private suspend fun Rig.uploadedObjects(): Set<String> {
+        uploadAll()
+        return objects()
     }
 
     private suspend fun Rig.downloadedNothing(): Boolean = libraryTotal() == 1L

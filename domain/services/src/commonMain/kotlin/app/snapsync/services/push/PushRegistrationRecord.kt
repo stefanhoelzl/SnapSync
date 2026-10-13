@@ -3,9 +3,9 @@ package app.snapsync.services.push
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.PrefRead
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.WriteOutcome
 import co.touchlab.kermit.Logger
 
 /** The registration record's Preferences key — runtime identity. */

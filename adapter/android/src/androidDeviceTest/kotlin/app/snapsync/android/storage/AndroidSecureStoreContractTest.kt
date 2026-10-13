@@ -9,8 +9,8 @@ import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.WriteOutcome
 import java.security.KeyStore
 import kotlin.test.Test
 

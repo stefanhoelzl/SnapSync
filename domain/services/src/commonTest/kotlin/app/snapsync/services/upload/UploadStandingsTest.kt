@@ -1,7 +1,7 @@
 package app.snapsync.services.upload
 
 import app.snapsync.model.DeviceIdentityRole
-import app.snapsync.model.HttpResult
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.backend.BackendGateway
 import app.snapsync.services.backend.ScriptedCredential

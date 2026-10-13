@@ -22,7 +22,6 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.TimestampText
-import app.snapsync.model.WriteOutcome
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
@@ -31,6 +30,7 @@ import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService

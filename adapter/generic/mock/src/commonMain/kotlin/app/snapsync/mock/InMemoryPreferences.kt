@@ -1,8 +1,8 @@
 package app.snapsync.mock
 
 import app.snapsync.model.PrefRead
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.WriteOutcome
 
 /**
  * The honest in-memory [Preferences]: [values] is the caller's own cell (initial state by constructor). A key in

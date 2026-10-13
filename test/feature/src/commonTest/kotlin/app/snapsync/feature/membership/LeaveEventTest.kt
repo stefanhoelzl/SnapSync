@@ -256,7 +256,10 @@ class LeaveEventTest {
             everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
         ).leave()
-        assertEquals(app.snapsync.model.SecureStoreRead.Absent, store.read(app.snapsync.model.SecureSlots.EVENT_KEY))
+        assertEquals(
+            app.snapsync.ports.SecureStoreRead.Absent,
+            store.read(app.snapsync.services.secure.SecureSlots.EVENT_KEY),
+        )
     }
 
     // ── A switch's leave of the previous membership says whether it had everything (capability `manage-membership`) ──

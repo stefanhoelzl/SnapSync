@@ -1,9 +1,9 @@
 package app.snapsync.services.settings
 
 import app.snapsync.model.PrefRead
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.WriteOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

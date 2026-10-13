@@ -2,11 +2,11 @@
 
 package app.snapsync.keychain
 
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
-import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
+import app.snapsync.ports.WriteOutcome
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf

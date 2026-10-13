@@ -6,7 +6,6 @@ import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
-import app.snapsync.model.WriteOutcome
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
@@ -23,6 +22,7 @@ import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.WriteOutcome
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

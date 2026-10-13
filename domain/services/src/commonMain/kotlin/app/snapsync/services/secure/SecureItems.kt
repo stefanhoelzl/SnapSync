@@ -1,11 +1,11 @@
 package app.snapsync.services.secure
 
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.SecureStoreResolution
 import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
+import app.snapsync.ports.WriteOutcome
 
 /**
  * The mint-once-then-read core, shared by every [SecureStore]-backed store and tested in `commonTest`
@@ -77,4 +77,50 @@ fun persist(store: SecureStore, slot: SecureSlot, value: String) {
         WriteOutcome.Ok -> Unit
         is WriteOutcome.Failed -> throw SecureStoreUnavailable("write refused: ${written.detail}")
     }
+}
+
+/**
+ * Which branch of [resolveOrMint] produced the returned value — reported to the caller so it can be
+ * *observed*, not merely trusted.
+ *
+ * This exists because a silent mint is indistinguishable from a successful read at every layer above
+ * this one, and the difference is the whole ballgame: a second mint hands the process a **new
+ * identity**, orphaning its `/files/devices/<deviceId>/` partition and making its own uploads read as
+ * another contributor's (`DownloadController` skips an asset only when `asset.deviceId ==
+ * myDeviceId`, so a re-minted id re-downloads and re-imports every photo the device itself
+ * contributed — one duplicate per photo, in the user's own library).
+ *
+ * That is not hypothetical: on 2026-07-20 an SE2 ran for nine hours with the app on one id and the
+ * upload extension on another, and **nothing anywhere logged either one** — the symptom reached the
+ * screen as an indefinite "pending" and reached the library as duplicated photos. [Found] carries the
+ * item's protection because an unexpected protection is the leading suspect for a read that reports
+ * *absent* against an item that does exist.
+ */
+sealed interface SecureStoreResolution {
+
+    /** An existing item was read, and the [protection] the store reported for it (a diagnostic). */
+    data class Found(val protection: StoredProtection) : SecureStoreResolution
+
+    /** No item existed anywhere, so one was generated and persisted. The only new-identity branch. */
+    data object Minted : SecureStoreResolution
+}
+
+/**
+ * The items this app keeps in the `SecureStore` — runtime identity: the installed base holds them under exactly
+ * these addresses, and a re-valued one silently addresses a different real item (`docs/architecture.md`).
+ */
+object SecureSlots {
+
+    /** The device id, in the shared group both processes read. */
+    val DEVICE_ID = SecureSlot(service = "app.snapsync.deviceid", account = "deviceid", shared = true)
+
+    /** The attestation token and its App Attest key id. Unscoped (pinned). */
+    val ATTEST_TOKEN = SecureSlot(service = "app.snapsync.attest", account = "token", shared = false)
+    val ATTEST_KEY_ID = SecureSlot(service = "app.snapsync.attest", account = "keyid", shared = false)
+
+    /**
+     * The joined event's key, when it is ENCRYPTED (the encrypted file format, `docs/architecture.md`): base64url, in
+     * the shared group, because the upload extension derives each file's key from it. One slot — one membership.
+     */
+    val EVENT_KEY = SecureSlot(service = "app.snapsync.eventkey", account = "key", shared = true)
 }

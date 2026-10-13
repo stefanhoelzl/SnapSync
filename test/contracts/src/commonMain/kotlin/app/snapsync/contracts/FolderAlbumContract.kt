@@ -1,6 +1,5 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
@@ -12,6 +11,7 @@ import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.WriteOutcome
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals

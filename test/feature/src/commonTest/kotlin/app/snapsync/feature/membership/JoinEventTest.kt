@@ -19,11 +19,11 @@ import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinResult
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.TimestampText
+import app.snapsync.ports.SecureStoreRead
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.secure.SecureSlots
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest

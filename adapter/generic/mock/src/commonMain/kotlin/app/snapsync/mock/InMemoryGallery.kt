@@ -1,7 +1,6 @@
 package app.snapsync.mock
 
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAlbum
@@ -21,6 +20,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.SelectionSnapshot
+import app.snapsync.ports.WriteOutcome
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

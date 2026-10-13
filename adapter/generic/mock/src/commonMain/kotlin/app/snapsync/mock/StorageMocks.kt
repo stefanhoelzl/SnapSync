@@ -1,14 +1,14 @@
 package app.snapsync.mock
 
 import app.snapsync.model.FileArea
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
 
 // The storage mocks (`docs/testing.md`, "Mocks"): each holds what the device keeps on disk — which a relaunch of the
 // app finds again — and hands a process a port-typed face over it. The operator reads and writes the disk the way an

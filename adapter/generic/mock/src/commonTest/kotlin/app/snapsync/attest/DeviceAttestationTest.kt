@@ -6,15 +6,15 @@ import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
-import app.snapsync.model.Proof
-import app.snapsync.model.ProofFormat
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.TokenOutcome
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.ports.Proof
+import app.snapsync.ports.ProofFormat
 import app.snapsync.ports.ProveResult
 import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.identity.AttestState
@@ -49,7 +49,7 @@ private class FakeKey(
     val supported: Boolean = true,
     var attestRefused: Boolean = false,
     var assertRefused: Boolean = false,
-    val chain: app.snapsync.model.AttestationChain? = null,
+    val chain: app.snapsync.ports.AttestationChain? = null,
 ) : DeviceIntegrity {
     var generated = 0
     var attested = 0
@@ -349,9 +349,9 @@ class DeviceAttestationTest {
 
     @Test
     fun `a refusal keeps the service's answer and the chain the phone presented - until a success`() = runTest {
-        val chain = app.snapsync.model.AttestationChain(
+        val chain = app.snapsync.ports.AttestationChain(
             listOf(
-                app.snapsync.model.CertificateFacts(
+                app.snapsync.ports.CertificateFacts(
                     "CN=Intermediate",
                     "CN=Root",
                     "2020-01-01T00:00:00Z",
@@ -364,7 +364,11 @@ class DeviceAttestationTest {
         val (attestation, client, _) = attestation(FakeKey(chain = chain))
         client.mintAnswers += TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE, detail = "certificate")
         attestation.refresh()
-        val facts = app.snapsync.model.RefusalFacts(DeviceRefusal.DEVICE_UNVERIFIABLE, "certificate", chain)
+        val facts = app.snapsync.services.trust.RefusalFacts(
+            DeviceRefusal.DEVICE_UNVERIFIABLE,
+            "certificate",
+            app.snapsync.services.trust.PresentedChain.of(chain),
+        )
         assertEquals(facts, attestation.refusalFacts())
 
         // Not refusal's bracket: a refresh under way still finds them, for a report opened meanwhile.

@@ -14,8 +14,8 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.ProofFormat
 import app.snapsync.ports.ProveResult
 import kotlinx.coroutines.test.runTest
 import java.security.KeyPairGenerator

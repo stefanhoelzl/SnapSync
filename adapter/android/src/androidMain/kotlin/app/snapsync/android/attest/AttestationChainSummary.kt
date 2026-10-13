@@ -1,7 +1,7 @@
 package app.snapsync.android.attest
 
-import app.snapsync.model.AttestationChain
-import app.snapsync.model.CertificateFacts
+import app.snapsync.ports.AttestationChain
+import app.snapsync.ports.CertificateFacts
 import java.security.MessageDigest
 import java.security.cert.Certificate
 import java.security.cert.X509Certificate

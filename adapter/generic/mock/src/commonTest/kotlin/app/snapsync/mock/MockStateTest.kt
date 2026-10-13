@@ -11,7 +11,6 @@ import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
 import app.snapsync.model.FileArea
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.SecureSlots
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
@@ -21,6 +20,7 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadTarget
+import app.snapsync.services.secure.SecureSlots
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.GetEventReply

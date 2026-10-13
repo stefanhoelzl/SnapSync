@@ -7,12 +7,12 @@ import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.contracts.CallLog
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.FileArea
-import app.snapsync.model.SecureSlot
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.Files
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Preferences
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
 
 /** [Files] as its clause's [CallLog] sees it. */

@@ -2,7 +2,6 @@ package app.snapsync.ports
 
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
-import app.snapsync.model.WriteOutcome
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
 

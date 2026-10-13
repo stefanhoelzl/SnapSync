@@ -8,10 +8,10 @@ import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
 import app.snapsync.model.KeyPresence
-import app.snapsync.model.SecureSlot
 import app.snapsync.model.TimestampText
-import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger

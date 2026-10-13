@@ -4,11 +4,11 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.SelectionCalibration
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.PlatformAlbumId
+import app.snapsync.ports.WriteOutcome
 import co.touchlab.kermit.Logger
 
 /**

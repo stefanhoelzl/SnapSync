@@ -28,10 +28,3 @@ enum class DeviceRefusal(val wireName: String) {
         ): DeviceRefusal = entries.firstOrNull { it.wireName == name?.trim() } ?: DEVICE_UNVERIFIABLE
     }
 }
-
-/**
- * What the app knows about the latest refused attestation, for a report the user sends from "Report this": the
- * service's [reason] and diagnostic [detail] as it named them, and the [chain] the phone presented, where the platform
- * exposes it. Held in memory only.
- */
-data class RefusalFacts(val reason: DeviceRefusal, val detail: String?, val chain: AttestationChain?)

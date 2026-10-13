@@ -1,7 +1,6 @@
 package app.snapsync.ports
 
 import app.snapsync.model.PrefRead
-import app.snapsync.model.WriteOutcome
 
 /**
  * **Small shared key–value preferences** — one external system (on iOS the App-Group `UserDefaults` suite, which

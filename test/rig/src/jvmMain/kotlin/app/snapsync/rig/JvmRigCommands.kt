@@ -4,11 +4,11 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.SecureSlots
 import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.SharedDatabase
+import app.snapsync.services.secure.SecureSlots
 import app.snapsync.ui.state.Layer
 
 // The JVM host's `/device` writes, its gallery read, and what it refuses of the shared vocabulary (`docs/testing.md`,

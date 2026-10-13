@@ -1,6 +1,6 @@
 package app.snapsync.services.trust
 
-import app.snapsync.model.ProofFormat
+import app.snapsync.ports.ProofFormat
 import app.snapsync.wire.models.AndroidKeyProof
 import app.snapsync.wire.models.AppleAppAttestProof
 import kotlin.io.encoding.Base64

@@ -1,10 +1,10 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
-import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
+import app.snapsync.ports.WriteOutcome
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue

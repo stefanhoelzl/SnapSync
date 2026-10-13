@@ -8,12 +8,12 @@ import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.HttpRequest
-import app.snapsync.model.HttpResult
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.Routes

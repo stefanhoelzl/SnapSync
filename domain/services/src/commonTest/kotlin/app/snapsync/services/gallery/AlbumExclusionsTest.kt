@@ -5,7 +5,6 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.TimestampText
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset
@@ -17,6 +16,7 @@ import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
+import app.snapsync.ports.WriteOutcome
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

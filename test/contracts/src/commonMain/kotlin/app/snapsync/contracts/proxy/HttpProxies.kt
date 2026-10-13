@@ -1,7 +1,7 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
-import app.snapsync.model.HttpRequest
+import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpTransport
 
 /** [HttpTransport] as its clause's [CallLog] sees it. */

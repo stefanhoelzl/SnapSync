@@ -20,8 +20,8 @@ import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig
-import app.snapsync.model.HttpResult
 import app.snapsync.model.TimestampText
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.LegacyRecords

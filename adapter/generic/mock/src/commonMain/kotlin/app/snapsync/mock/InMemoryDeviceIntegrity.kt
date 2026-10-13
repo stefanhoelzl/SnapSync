@@ -1,10 +1,10 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AttestationChain
-import app.snapsync.model.CertificateFacts
-import app.snapsync.model.Proof
-import app.snapsync.model.ProofFormat
+import app.snapsync.ports.AttestationChain
+import app.snapsync.ports.CertificateFacts
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.Proof
+import app.snapsync.ports.ProofFormat
 import app.snapsync.ports.ProveResult
 
 /**

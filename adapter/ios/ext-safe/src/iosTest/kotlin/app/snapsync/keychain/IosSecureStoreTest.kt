@@ -1,9 +1,9 @@
 package app.snapsync.keychain
 
-import app.snapsync.model.SecureSlot
-import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureSlot
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.secure.readExisting
 import app.snapsync.services.secure.resolveOrMint
 import kotlin.test.Test

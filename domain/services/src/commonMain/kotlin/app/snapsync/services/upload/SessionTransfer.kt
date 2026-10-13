@@ -8,12 +8,12 @@ import app.snapsync.model.Resource
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.gallery.galleryHandle
 import app.snapsync.wire.api.Routes

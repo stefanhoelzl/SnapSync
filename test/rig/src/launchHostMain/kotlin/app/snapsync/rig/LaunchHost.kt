@@ -10,11 +10,11 @@ import app.snapsync.mock.MockedSystem
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.Files
+import app.snapsync.ports.SecureStoreRead
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.SharedDatabase
+import app.snapsync.services.secure.SecureSlots
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

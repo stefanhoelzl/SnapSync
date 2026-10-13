@@ -19,12 +19,12 @@ import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.HttpRequest
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.withFinal
+import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.Routes

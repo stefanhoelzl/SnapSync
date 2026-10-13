@@ -11,7 +11,6 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryAlbum
@@ -25,6 +24,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferNetwork
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.GalleryResourceRef
 import app.snapsync.services.gallery.UploadDiscovery
