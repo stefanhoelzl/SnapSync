@@ -8,18 +8,20 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSData
+import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.Foundation.create
+import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.Foundation.writeToFile
 import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHAssetResourceCreationOptions
 import platform.Photos.PHAssetResourceTypePairedVideo
 import platform.Photos.PHAssetResourceTypePhoto
 import platform.Photos.PHPhotoLibrary
+import kotlin.time.Instant
 
 /**
  * `POST /device/gallery/add-moving` where the photo library is REAL on iPhone: ONE asset made of the camera's own
@@ -37,8 +39,10 @@ fun addLivePhoto(log: Logger, photo: MovingPhoto): String {
         val names = photo.files.map { it.name }
         refused("an iPhone photo is one still, with at most one paired movie; was $names")
     }
-    val date = NSISO8601DateFormatter().dateFromString(photo.date)
+    // Kotlin's parser, not NSISO8601DateFormatter: its default options refuse the fractional seconds an instant carries.
+    val instant = runCatching { Instant.parse(photo.date) }.getOrNull()
         ?: refused("date must be an ISO-8601 instant, was '${photo.date}'")
+    val date = NSDate.dateWithTimeIntervalSince1970(instant.toEpochMilliseconds() / MILLIS_PER_SECOND)
     val dir = NSTemporaryDirectory() + "add-moving-" + NSUUID().UUIDString + "/"
     NSFileManager.defaultManager.createDirectoryAtPath(
         dir,
@@ -75,3 +79,5 @@ fun addLivePhoto(log: Logger, photo: MovingPhoto): String {
         NSFileManager.defaultManager.removeItemAtPath(dir, error = null)
     }
 }
+
+private const val MILLIS_PER_SECOND = 1000.0
