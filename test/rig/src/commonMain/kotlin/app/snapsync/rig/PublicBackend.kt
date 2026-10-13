@@ -37,6 +37,7 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
         final: Boolean?,
         uploading: List<String>?,
     ): String {
+        val who = deviceId(device)
         require(assets.isNotEmpty()) { "assets must name at least one asset" }
         val motion = kind == PhotoKind.MOTION_PHOTO
         // The capturing device's own file name for every asset — what an import names its photo after.
@@ -50,7 +51,7 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
         }
         val bytes = if (motion) PhotoLibrary.motionPhoto else null
         return addForeignDevice(
-            device,
+            who,
             manifest,
             event ?: world.joinedEventId(),
             bytes,
@@ -60,11 +61,11 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
     }
 
     override suspend fun foreignDeviceLeave(device: String, event: String?) {
-        reach.leave(named(event), device)
+        reach.leave(named(event), deviceId(device).value)
     }
 
     override suspend fun foreignDeviceReceived(device: String, event: String?) {
-        reach.reportReceived(named(event), device)
+        reach.reportReceived(named(event), deviceId(device).value)
     }
 
     /**
@@ -73,7 +74,7 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
      * and publishes its manifest. Returns the event.
      */
     private suspend fun addForeignDevice(
-        who: String,
+        who: DeviceId,
         assets: List<DeviceManifestAsset>,
         event: String?,
         bytes: ByteArray?,
@@ -81,27 +82,29 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
         uploading: Set<String>,
     ): String {
         val eventId = event ?: reach.createEvent(FOREIGN_EVENT_NAME, FOREIGN_EVENT_START)
-        reach.join(eventId, who)
+        reach.join(eventId, who.value)
         assets.filterNot { it.assetId.value in uploading }.forEach { asset ->
             asset.resources.forEach {
                 if (bytes != null) {
                     reach.upload(
-                        who,
+                        who.value,
                         asset.assetId,
                         it,
                         bytes,
                         eventId,
                     )
                 } else {
-                    reach.upload(who, asset.assetId, it, eventId = eventId)
+                    reach.upload(who.value, asset.assetId, it, eventId = eventId)
                 }
             }
         }
-        val device =
-            requireNotNull(DeviceId.parse(who)) { "device must be a device id — a canonical UUID — was '$who'" }
-        reach.publish(eventId, DeviceManifest(deviceId = device, assets = assets, final = final))
+        reach.publish(eventId, DeviceManifest(deviceId = who, assets = assets, final = final))
         return eventId
     }
+
+    /** [device] as a device id, refused — before anything reaches the backend — unless it is a canonical UUID. */
+    private fun deviceId(device: String): DeviceId =
+        requireNotNull(DeviceId.parse(device)) { "device must be a device id — a canonical UUID — was '$device'" }
 
     private fun named(id: String?): String = requireNotNull(id) { "the channel names the joined event and this device" }
 

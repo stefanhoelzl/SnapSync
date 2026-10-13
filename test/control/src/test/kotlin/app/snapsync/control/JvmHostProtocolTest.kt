@@ -187,6 +187,27 @@ class JvmHostProtocolTest {
     }
 
     /**
+     * A fellow member is named by a device id: any other name is refused before anything reaches the backend — no
+     * event minted for it, no join to the event named.
+     */
+    @Test
+    fun a_foreign_device_that_is_no_device_id_is_refused_with_nothing_done() = onHost { client ->
+        val public = client.levers(PublicBackendLevers)
+        val backend = client.levers(BackendLevers)
+
+        backend.nextEventId(MINTED)
+        val unjoined = assertFailsWith<IllegalArgumentException> { public.foreignDevice("F1", listOf("a1")) }
+        assertTrue("canonical UUID" in unjoined.message.orEmpty(), unjoined.message)
+        assertEquals(false, public.event(MINTED).registered, "no event was minted for it")
+
+        val event = public.foreignDevice(MEMBER, listOf("a1"))
+        assertFailsWith<IllegalArgumentException> { public.foreignDevice("F1", listOf("a2"), event = event) }
+        assertEquals(null, backend.membership(event, "F1").manifest, "it was not joined to the event named")
+        assertFailsWith<IllegalArgumentException> { public.foreignDeviceLeave("F1", event) }
+        assertFailsWith<IllegalArgumentException> { public.foreignDeviceReceived("F1", event) }
+    }
+
+    /**
      * The backend mock's per-route faults, reachable over the channel: a fault on the create route reaches the screen,
      * and the next create — the fault spent — goes through. An operation the device API does not declare is refused,
      * since a fault on it would never fire.
@@ -295,5 +316,10 @@ class JvmHostProtocolTest {
         } finally {
             host.close()
         }
+    }
+
+    private companion object {
+        const val MINTED = "0b0e5f2a-7c1d-4e8a-9f3b-2d6c8a1e4f70"
+        const val MEMBER = "5d2c9e1a-3b4f-4a6d-8e7c-1f0a2b3c4d5e"
     }
 }
