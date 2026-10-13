@@ -73,8 +73,8 @@ class Runtime(
     private val grace: Duration = EXPIRY_GRACE,
     /**
      * Where an [Answered][app.snapsync.inbound.Answered] delivery's work runs while its delivering thread waits for the
-     * answer: `null` — every phone — runs it on that thread, in the blocking call's own loop. A host that must see every
-     * task of the process (the control channel's JVM host, whose timers run on mocked time) names its lane here.
+     * answer: `null` — every phone — runs it on that thread, in the blocking call's own loop. A host that must see
+     * every task of the process (the control channel's JVM host, whose timers run on mocked time) names its lane here.
      */
     private val answerOn: CoroutineDispatcher? = null,
 ) {
@@ -143,7 +143,7 @@ class Runtime(
     internal fun <R> blocking(name: String, onFailure: R, body: suspend () -> R): R {
         val replaced = threadLabel.swap(name)
         return try {
-            val on = answerOn?.let { labelling(it, threadLabel) } ?: EmptyCoroutineContext
+            val on: CoroutineContext = if (answerOn == null) EmptyCoroutineContext else labelling(answerOn, threadLabel)
             runBlocking(on + Trigger.of(name) + RuntimeElement(this)) { body() }
         } catch (failure: Throwable) {
             log.unlabelled.e("delivery failed", "trigger" of name, cause = failure)

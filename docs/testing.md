@@ -899,6 +899,21 @@ R8 rules that keep the stubs and the names of their interfaces. Without the seco
 start (`Unable to find a service descriptor of the class jv`: R8 had renamed the interface, measured 2026-10-13); the
 `journeys (android)` job runs that release, so a rule that stops holding fails there.
 
+### The world's events
+
+The **`world` service** (`WorldLevers`) is the channel's own, beside the advertisement: the host's event stream
+(`events()`, a `Flow` over kRPC, served from the host's start so a late subscriber misses nothing), the acts' tags
+(`tagActs`, `actsTagged`: a caller finds where its own acts begin and end), the clock (`advance`, itself an act) and
+`whyNotSettled()`. Only a host that can say when its app is settled serves it — the JVM host, whose loop runs every
+task (section 7, "How a test waits"). A device host refuses every method: its operating system runs work the channel
+cannot see. The journeys keep condition waits until they convert (a later phase).
+
+**On the JVM host every request is a task of the loop**, on the channel's own lane: a `POST` and a typed service's call
+are **acts**, announced (`Acted`) before they do anything; a `GET` is a read, run there unannounced, because a read can
+still start app work (the state read refreshes the counts it reports). The mocks tell the stream what they record as
+they record it — the screen mock each state the app shows, the backend mock each request that reaches it and each one
+an operator's hold parks — on the thread that did it, so the order is the app's.
+
 ### Launch-time adapters
 
 **A rig build of the real iOS app — on a simulator or the phone — runs with some systems mocked and the rest real,
@@ -1005,28 +1020,88 @@ compile boundary and that gate are the read-model rule.** Decision record:
 
 ### `:test:integration`: seam → observable outcome
 
-Each test (`rigTest { … }` in `Rig.kt`) starts a **fresh in-process JVM host over the backend mock**, drives
-it only through `RigClient`, and closes it. Tests run sequentially. A test cannot name a mock, a port, an entry point or
-`compose/`: the module does not compile against them.
+Each test states **one behaviour**, named as a sentence:
+
+```kotlin
+@Test
+@Verifies(spec = "join-event", requirement = "The join screen verifies the event before offering to join")
+fun a_held_details_load_keeps_the_join_gate_loading_until_released() = behaviour {
+    val link = given {
+        val link = inviteFor(registeredEvent())
+        step("the event's details held", act = { backend.hold(BackendCall.EVENT) }, until = {})
+        link
+    }
+    whenever { openLink(link) }
+    then {
+        screen<Layer.JoiningEvent> { it.phase == JoinPhase.Loading }
+        neverScreen<Layer.JoiningEvent> { it.phase != JoinPhase.Loading }
+    }
+    whenever { backend.release(BackendCall.EVENT) }
+    then { screen<Layer.JoiningEvent> { it.phase is JoinPhase.Detailed } }
+}
+```
+
+`behaviour { … }` (`:test:control`, `app.snapsync.control.behaviour`) starts a **fresh in-process JVM host over the
+backend mock on mocked time**, subscribes to its event stream from the start, and closes it. `given` runs shared named
+steps (`Steps.kt`), each acting and awaiting its own outcome; then an ordered chain of `whenever`/`then` pairs, each
+`then` judged against the events from its own act on. A test cannot name a mock, a port, an entry point or `compose/`:
+the module does not compile against them. Test classes run in up to four JVMs at once, each test on its own host and
+port.
+
+Older tests still run under `rigTest { … }` (`Rig.kt`), which polls the state on real time (`awaitState`,
+`eventually`, `neverWithin`). Each face batch converts the tests it touches; phase 3g deletes the polling.
 
 Tests use **mocks only**, with no per-test real system. The port contracts are what justify trusting the
 mocks, and the journeys exercise the real systems.
 
-**Assert observable outcomes only:**
-- the projected `UiState`, **required** when the seam reaches presentation,
-- what a system outside the app records:
-  - backend objects, union, manifests, the push registration it stored and how many, event existence and name,
-    departed members, publish counts,
-  - the photo library (census, albums, original filenames),
-  - OS upload jobs,
-  - the operating system's record of the app (`device/os-record`): completion handlers released, heartbeat requests,
-    the heartbeat pending now and its cadence,
-    background-time holds, the screen, the selection observer, push registrations, the transfer sessions, the
-    databases opened,
-  - the download staging directory,
-  - reporter dumps,
-  - pushes sent,
-  - logs.
+#### How a test waits
+
+The JVM host runs the app on **one loop** (`LaneLoop`, `:test:rig`): every lane both processes run on — the composition
+lane, the CPU lane presentation reduces on, the extension's lane — and the channel's own is a lane of it, each on its
+own thread, under one rule for whose turn it is and one source of time. So the loop knows what no thread pool does:
+when the app is **settled** — no task running, none runnable at the loop's now, and no work outside the app in flight
+but what an operator holds. A held request is parked on its lane, not in flight, so a held screen settles; a real
+backend's request, or the extension's `process()` on the operating system's own thread, is counted as outside work
+until it answers.
+
+The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
+(`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (today the backend's
+`BackendReceived` and `BackendHeld`; each face batch adds its face's), each `Settled(now, nextTimer)`, and each lane rule
+broken (`LaneViolation`). Every request a caller makes runs as a task of the loop — an act announced first, a read
+not — so everything after an act's announcement is the act's or later.
+
+Under mocked time the clock moves only when a test moves it: `advance(d)` fires each timer due on the way at its own
+instant, settling between them, and reports one `Settled` at the end. A five-second grace costs nothing; a timer is a
+method of the mocked world, never a wait.
+
+**The interleaving is a switch** (`-Psnapsync.lanes=…`): `turns`, the default, runs one task at a time in the order
+they were queued, the same on every run; `shuffled:<seed>` draws each next task among the runnable lanes from the seed,
+so an order a test depends on shows up, and replays from its seed; `parallel` runs every lane on its own thread at once,
+as the phone does, to hunt a race. A failure under either of the last two is an app bug or an order the test assumed,
+never a flake to retry.
+
+#### The rules
+
+Each rule names what holds it. By construction first — the DSL offers no poll, no timeout parameter and no read of
+the app — then a gate, then review.
+
+| rule | held by |
+|---|---|
+| **Wait on events, never poll.** A test awaits the event it cares about; it never settles and then reads | the DSL (no read, no poll); `TestsWaitOnEventsTest` (no `delay`, `Thread.sleep`, `withTimeout`, system clock or dispatcher in integration sources) |
+| **A positive expectation fails the moment the app settles without it**; a negative (`never`, `neverScreen`) holds only once it has. `Settled` exists only to prove a negative; "never, even later" is `settled { it.nextTimer == null }` | the DSL's judge |
+| **Time only from the clock mock**, in a fixed zone; a timer fires by `advance`, never by waiting | `TestsWaitOnEventsTest`; the app side is the law "the lanes are the app's only timers" (`docs/architecture.md`, "Concurrency and failure") |
+| **A transient is observed only by holding what it waits for**: every external wait needs a hold lever | review |
+| **Typed matchers, not equality**: `screen<L> { … }`, `event<E> { … }`, `never<E>`, `neverScreen<L>`. Unordered by default; `inOrder { … }` only where the order is the contract, `times(n) { … }` only where a count is the behaviour | the DSL; review |
+| **Observe what a person sees and what the outside world records**: the screen, the backend, the photo library, the push service, the crash reporter's receipts, and of the operating system's record only what the OS knows (handlers handed over and released, wakes and their timing, background-time holds, push registrations, sessions) — never an app-side label such as the trigger a hold began under | the stream carries nothing else; review for the polling tests |
+| **Never** log text, the app's private files (`device/staging`, the staging seeder), its databases, the ledger, or `device/gallery` (it runs the app's own selection policy) | the stream; review for the polling tests, whose remaining reads the face batches replace |
+| **Nothing asserted on a generated id or a random value** (`next-event-id` where a fixed id is needed; mock randomness seeded per test); **no global mutable state** in the app, the mocks or the rig, so tests pass in any order and in parallel | review; `-Psnapsync.lanes=shuffled:<seed>` and `parallel` find what order hides |
+| **Work reaches the app only through the loop** | the host: a dispatch onto an app lane from a thread the loop does not own fails the test (`LaneViolation`) |
+| **No retries, anywhere** | review |
+| **Every test claims the requirement it verifies** (`@Verifies`, below) | `TestsWaitOnEventsTest` |
+| **One behaviour per test; setup through shared named steps**, never copied code | review |
+| **No timeout inside a test.** One 30-second guard per behaviour catches a hung harness and reports why the app is not settled — what runs, what is queued, what it waits on outside. Host start-up does not count against it, and the real `api/` keeps its own start-up bound (`LiveEdge`'s 180 s) | the DSL |
+
+The gates' lists of classes not yet converted may only shrink, exact both ways; phase 3g empties them.
 
 **Never assert** ledger or download-store content (the protocol no longer carries the ledger), in-memory feature
 state, or call counts on a mock whose real system records nothing

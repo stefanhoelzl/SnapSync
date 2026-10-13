@@ -36,7 +36,10 @@ fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {
             Rig(client).apply { device("clock/advance", "to" to Rig.NOW) }.body()
         }
         // The host's loop saw every task, or the test's waits could not be trusted (`docs/testing.md`, "How a test waits").
-        assertTrue(host.violations.isEmpty(), "work reached the app from a thread the host's loop does not own:\n  " + host.violations.joinToString("\n  "))
+        assertTrue(
+            host.violations.isEmpty(),
+            "work reached the app from a thread the host's loop does not own:\n  " + host.violations.joinToString("\n  "),
+        )
     } finally {
         host.close()
     }

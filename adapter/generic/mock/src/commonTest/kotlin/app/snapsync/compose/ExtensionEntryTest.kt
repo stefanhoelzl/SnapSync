@@ -32,11 +32,11 @@ import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Routes
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Instant
-import kotlinx.coroutines.Dispatchers
 
 /**
  * The upload extension's entry port, over the handlers its composition registers (`snapSyncExtension`): the in-memory
@@ -52,7 +52,7 @@ class ExtensionEntryTest {
     @Test
     fun a_token_the_app_renewed_between_invocations_is_the_one_the_next_invocation_sends() = runTest {
         val host = ExtensionHostMock()
-        snapSyncExtension(extensionPorts(host), lane = Dispatchers.Default)
+        snapSyncExtension(extensionPorts(host), lane = Dispatchers.Default, answerOn = null)
         joinedWithAToken("token-before")
 
         host.operator.process(Dispatchers.Default)

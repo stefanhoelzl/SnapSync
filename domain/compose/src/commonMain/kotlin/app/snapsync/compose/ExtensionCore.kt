@@ -110,7 +110,7 @@ fun snapSyncExtension(
      * Where `process()`'s work runs while the operating system's thread waits for its answer: `null` on the phone — on
      * that thread — or a lane a host must see every task on (`Runtime`'s `answerOn`).
      */
-    answerOn: CoroutineDispatcher? = null,
+    answerOn: CoroutineDispatcher?,
 ): ComposedExtension {
     // The extension's own runtime: no scope of its root's to live under, and no background time to hold — it answers on
     // the invoking thread.

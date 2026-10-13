@@ -55,7 +55,13 @@ internal fun servedRig(advertise: () -> DeviceAdvertisement): ServedService =
  * one that cannot. Never an act itself: a call that moves the world ([WorldLevers.advance]) runs its own.
  */
 fun servedWorld(implementation: WorldLevers?, refusal: String?): ServedService =
-    served(WorldLevers, implementation, refusal ?: "no world is served".takeIf { implementation == null }, RigActs.Direct, null)
+    served(
+        WorldLevers,
+        implementation,
+        refusal ?: "no world is served".takeIf { implementation == null },
+        RigActs.Direct,
+        null,
+    )
 
 /** Why a device host refuses the world's events: its operating system runs work the channel cannot see. */
 const val WORLD_REFUSED_ON_A_DEVICE: String =

@@ -151,7 +151,8 @@ object RigVocabulary {
 /** Classify this host's hooks against [RigVocabulary]. */
 internal fun RigHooks.advertise(host: String, readsHonoured: Boolean = true): DeviceAdvertisement {
     // The world's events are the host's own service: refused, each of its methods says why.
-    val refused = refusals + world.refusal?.let { why -> world.service.entries.associateWith { why } }.orEmpty()
+    val worldRefused = world.service.refusal?.let { why -> world.service.service.entries.associateWith { why } }
+    val refused = refusals + worldRefused.orEmpty()
     val wired = buildSet {
         triggerGroups.forEach { (root, group) -> group.wired.keys.forEach { add("os/$root/$it") } }
         deviceCommands.keys.forEach { add("device/$it") }

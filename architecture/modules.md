@@ -270,6 +270,7 @@ flowchart LR
   test_launch_adapters --> domain_model
   test_launch_adapters --> domain_ports
   test_launch_adapters --> ui_state
+  test_levers --> ui_state
   test_no_grant --> adapter_android
   test_no_grant --> domain_model
   test_no_grant --> domain_ports

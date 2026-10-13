@@ -68,18 +68,17 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import org.orbitmvi.orbit.test.testWithInternalState
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlin.coroutines.ContinuationInterceptor
-import kotlin.test.assertSame
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 
@@ -320,7 +319,6 @@ private fun host(
     // The shipped answer by default, as a production root composes; the autoJoin tests pass `Honoured`,
     // which only a rig build's root does.
     inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
-    reduction: CoroutineDispatcher = Dispatchers.Default,
 ) = StatusContainerHost(
     StatusSources(source, permission.permission, configFake.config, verification = verification),
     scope,
@@ -334,7 +332,7 @@ private fun host(
     cutoffFormatter = fixedCutoffFormatter(),
     diagnostics = testDiagnostics(onIntentError = onIntentError),
     inviteLinkHints = inviteLinkHints,
-    reduction = reduction,
+    reduction = Dispatchers.Default,
 )
 
 /** A first join (config absent) whose details load succeeds — the gate the explainer is decided in. */
@@ -368,7 +366,19 @@ class StatusContainerHostTest {
     @Test
     fun `the container reduces on the lane the composition names`() = runTest {
         val lane = Dispatchers.Default.limitedParallelism(1)
-        val host = host(FakeSyncStatusSource(SyncStatus.Loading), backgroundScope, reduction = lane)
+        val host = StatusContainerHost(
+            StatusSources(
+                FakeSyncStatusSource(SyncStatus.Loading),
+                FakePermissionSource().permission,
+                FakeConfig().config,
+            ),
+            backgroundScope,
+            commands = testCommands(),
+            cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
+            diagnostics = testDiagnostics(),
+            reduction = lane,
+        )
         assertSame(lane, host.container.scope.coroutineContext[ContinuationInterceptor])
     }
 

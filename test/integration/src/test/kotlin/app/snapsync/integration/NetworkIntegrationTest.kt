@@ -1,6 +1,9 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.feature.status.NetworkWatch
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
@@ -8,13 +11,8 @@ import app.snapsync.ui.state.SyncHealth
 import kotlinx.coroutines.delay
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.time.Duration.Companion.seconds
-import app.snapsync.control.behaviour.behaviour
-import app.snapsync.levers.WorldEvent
-import app.snapsync.feature.status.NetworkWatch
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * **The app says when it cannot reach the network** (decision record `changes/tell-when-offline`), over the real

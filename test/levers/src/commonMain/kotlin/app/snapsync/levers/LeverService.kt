@@ -68,7 +68,12 @@ annotation class ThisDevice
 annotation class StandsInFor(vararg val members: String)
 
 /** Every service the channel serves. A face migrates by joining this list; nothing else registers it. */
-val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(RigLevers, WorldLevers, BackendLevers, PublicBackendLevers)
+val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
+    RigLevers,
+    WorldLevers,
+    BackendLevers,
+    PublicBackendLevers,
+)
 
 /**
  * A host refused a service's method: one of the service's needs is unmet here. kRPC carries it to the client as this

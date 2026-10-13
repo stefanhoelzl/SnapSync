@@ -37,9 +37,9 @@ import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
-import kotlinx.coroutines.Dispatchers
 
 /**
  * The entry ports' mocks held to the contracts their real adapters pass (`docs/testing.md`, "Mocks"): each driven

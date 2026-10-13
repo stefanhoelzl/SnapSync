@@ -55,6 +55,7 @@ class LaneLoop(
     private var running = 0
     private var chosen: Task? = null
     private var generation = 0L
+
     // An empty loop has settled on nothing: the first report follows the first work.
     private var settledGeneration = 0L
     private var advancing = false

@@ -696,3 +696,33 @@ throws `LeverRefused`; an omitted `event` is the joined one, an omitted `device`
 Gone with the move: every `backend/…` and `foreign-device[/…]` curl verb; `backend/deposit` (an own photo's bytes land
 unacknowledged with `jobs/complete` and no extension invoke).
 
+### The world's events — waiting without polling (JVM host only)
+
+The JVM host runs the app on **one loop** (`LaneLoop`): every lane of both processes, and the channel's own, is a lane
+of it, so the loop knows when the app is **settled** — nothing running or runnable, nothing outside the app in flight
+but an operator's hold (`docs/testing.md` §7, "How a test waits"). Every request is a task of that loop: a `POST` or a
+typed call is an **act**, announced first; a `GET` runs there unannounced. Two consequences when driving it by hand:
+
+- **Time.** `JvmRigHost.start(time = LoopTime.REAL)` — what `runJvmHost` and the old `rigTest` use — keeps the wall
+  clock: timers fire after their real duration and `clock/advance?to=` only moves the clock the app reads. Under
+  `LoopTime.MOCKED` (what `behaviour { }` uses) nothing fires until `world.advance(millis)` moves the clock, each timer
+  at its own instant, settling between them.
+- **Lanes.** `-Dsnapsync.lanes=turns|shuffled:<seed>|parallel` (the integration suite: `-Psnapsync.lanes=…`) picks how
+  the lanes take turns. A dispatch onto an app lane from a thread the loop does not own is a **lane violation**: told on
+  the stream, and a test fails on it.
+
+The `world` service (`WorldLevers`, kRPC, refused by a device host):
+
+```kotlin
+RigClient("http://127.0.0.1:$PORT").use { client ->
+    val world = client.levers(WorldLevers)
+    world.events().collect { println(it) }   // from the host's start: Acted, UiChanged, BackendReceived, BackendHeld, Settled, LaneViolation
+    world.advance(5_000)                      // an act: the mocked clock 5 s on
+    world.whyNotSettled()                     // what runs, what is queued, what it waits on outside
+}
+```
+
+`tagActs(tag)` / `actsTagged(tag)` mark a caller's acts so it finds where they begin in the stream — the behaviour DSL's
+own bookkeeping. A test never reads the stream by hand: it states a `behaviour { given / whenever / then }`
+(`:test:control`'s `app.snapsync.control.behaviour`). Phase 14's `rig await` is to wait on the same stream.
+

@@ -21,6 +21,7 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
@@ -33,7 +34,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.time.Instant
-import kotlinx.coroutines.Dispatchers
 
 /**
  * A device that lost the joined event's key (capabilities `sync-status`, `join-event`): the status line asks for the

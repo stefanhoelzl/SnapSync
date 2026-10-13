@@ -262,6 +262,7 @@ edge :test:launch-adapters :domain:inbound
 edge :test:launch-adapters :domain:model
 edge :test:launch-adapters :domain:ports
 edge :test:launch-adapters :ui:state
+edge :test:levers :ui:state
 edge :test:no-grant :adapter:android
 edge :test:no-grant :domain:model
 edge :test:no-grant :domain:ports

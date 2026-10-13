@@ -6,7 +6,6 @@ import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.uploadersCarried
@@ -163,8 +162,7 @@ class JvmRigHost private constructor(
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",
                 mainLane = rig.lane,
-                world = servedWorld(JvmWorld(rig.threads), refusal = null),
-                acts = rig.threads.acts,
+                world = HostWorld(servedWorld(JvmWorld(rig.threads), refusal = null), rig.threads.acts),
                 deviceLog = { process, maxBytes ->
                     when (process) {
                         LogTailService.Process.APP -> rig.log.lines.joinToString("\n").takeLast(maxBytes)
