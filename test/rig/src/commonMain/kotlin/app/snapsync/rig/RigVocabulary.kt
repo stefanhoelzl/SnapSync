@@ -45,7 +45,8 @@ object RigVocabulary {
     val reads: List<String> = listOf("device/state", "device/logs", "device/gallery")
 
     /** Device writes whose subject both hosts have: durable sync state and a photo library. */
-    val sharedCommands: List<String> = listOf("device/reset", "device/gallery/seed", "device/gallery/wipe")
+    val sharedCommands: List<String> =
+        listOf("device/reset", "device/gallery/seed", "device/gallery/wipe", "device/gallery/add-moving")
 
     /** Device writes that name an operating-system facility only the app host has. */
     val appHostCommands: List<String> = listOf(

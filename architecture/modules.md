@@ -253,6 +253,7 @@ flowchart LR
   test_rig --> adapter_android
   test_rig --> adapter_generic_app
   test_rig --> adapter_generic_mock
+  test_rig --> adapter_generic_motionphoto
   test_rig --> adapter_ios_app_only
   test_rig --> adapter_ios_ext_safe
   test_rig --> app_jvm

@@ -1,5 +1,6 @@
 package app.snapsync.rig.gallery
 
+import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
 import app.snapsync.compose.AppCore
@@ -26,25 +27,33 @@ fun androidGalleryReader(core: () -> AppCore, context: Context): suspend (String
 /**
  * The member's default gallery as MediaStore holds it: every image and video under `DCIM`, on every volume. A
  * screenshot or screen recording is counted by the folder the platform files it in, the only mark MediaStore keeps.
+ * A motion photo has no mark there at all, so the moving count reads each image's own bytes ([isMotionPhoto]).
  */
 private fun mediaStoreCensus(context: Context): CensusView {
-    val collections = listOf(
-        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL),
-        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL),
-    )
-    val paths = collections.flatMap { uri ->
+    val images = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+    val collections = listOf(images, MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL))
+    val items = collections.flatMap { uri ->
         context.contentResolver.query(
             uri,
-            arrayOf(MediaStore.MediaColumns.RELATIVE_PATH),
+            arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH),
             "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
             arrayOf("DCIM/%"),
             null,
-        )?.use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0).orEmpty()) } }.orEmpty()
+        )?.use { cursor ->
+            buildList { while (cursor.moveToNext()) add(Triple(uri, cursor.getLong(0), cursor.getString(1).orEmpty())) }
+        }.orEmpty()
+    }
+    val paths = items.map { it.third }
+    val moving = items.count { (uri, id, _) ->
+        uri == images && runCatching {
+            context.contentResolver.openInputStream(ContentUris.withAppendedId(uri, id))?.use { isMotionPhoto(it.readBytes()) }
+        }.getOrNull() == true
     }
     return CensusView(
         total = paths.size.toLong(),
         screenshots = paths.count { "Screenshots" in it }.toLong(),
         screenRecordings = paths.count { "Screen record" in it || "ScreenRecord" in it }.toLong(),
+        moving = moving.toLong(),
     )
 }
 

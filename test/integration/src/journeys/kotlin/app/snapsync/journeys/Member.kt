@@ -56,13 +56,21 @@ class Member(private val http: HttpClient, backend: String) {
     }
 
     /** Uploads [count] real photos captured at [creationDate] and publishes them; answers their asset ids. */
-    suspend fun share(eventId: String, count: Int, creationDate: String): Set<AssetId> {
-        val assets = List(count) {
+    suspend fun share(eventId: String, count: Int, creationDate: String): Set<AssetId> =
+        share(eventId, List(count) { listOf(Part(ResourceRole.PRIMARY, "image/jpeg", FILENAME, JPEG)) }, creationDate).toSet()
+
+    /**
+     * Uploads [photos] — each the parts ONE photo is made of, as a device uploads it: a still, a Live Photo's still and
+     * movie, a motion photo's single file — captured at [creationDate], and publishes them; answers their asset ids in
+     * order.
+     */
+    suspend fun share(eventId: String, photos: List<List<Part>>, creationDate: String): List<AssetId> {
+        val assets = photos.map { parts ->
             // The canonical id an iOS device mints for a PhotoKit local identifier.
             val assetId = AssetId("${UUID.randomUUID().toString().uppercase()}_L0_001")
-            DeviceManifestAsset(assetId, creationDate, listOf(primary(assetId)))
+            parts.forEach { upload(eventId, assetId, it) }
+            DeviceManifestAsset(assetId, creationDate, parts.map { it.resource(assetId) })
         }
-        assets.forEach { upload(eventId, it.assetId) }
         // The backend refuses a manifest without a version; 0 is always admitted (equal is, and a join clears it).
         val manifest = DeviceManifest(deviceId, assets, version = 0)
         checked(
@@ -73,25 +81,34 @@ class Member(private val http: HttpClient, backend: String) {
                 setBody(manifest.encodeToJson())
             },
         )
-        return assets.mapTo(mutableSetOf()) { it.assetId }
+        return assets.map { it.assetId }
     }
 
-    private suspend fun upload(eventId: String, assetId: AssetId) {
+    /** One file of a photo, as a device uploads it: its [role], [contentType], camera [filename] and [bytes]. */
+    class Part(val role: ResourceRole, val contentType: String, val filename: String, val bytes: ByteArray) {
+        fun resource(assetId: AssetId) =
+            ManifestResource(role = role, contentType = contentType, key = uploadKey(assetId, role, filename), filename = filename)
+    }
+
+    private suspend fun upload(eventId: String, assetId: AssetId, part: Part) {
         checked(
-            "upload $assetId",
-            http.put("$backend/events/$eventId/files/devices/$deviceId/$assetId/${ResourceRole.PRIMARY.wire}?filename=$FILENAME") {
+            "upload $assetId ${part.role.wire}",
+            http.put(
+                "$backend/events/$eventId/files/devices/$deviceId/$assetId/${part.role.wire}?filename=${part.filename}",
+            ) {
                 served()
-                contentType(ContentType.Image.JPEG)
-                setBody(eventKey?.let { sealed(it, eventId, assetId) } ?: JPEG)
+                contentType(ContentType.parse(part.contentType))
+                setBody(eventKey?.let { sealed(it, eventId, assetId, part) } ?: part.bytes)
             },
         )
     }
 
     /**
-     * [JPEG] in the encrypted file format (`docs/architecture.md`), as a member's device seals it: the format's own
+     * [part]'s bytes in the encrypted file format (`docs/architecture.md`), as a member's device seals it: the format's own
      * derivations from `model/`, over the JDK's HMAC-SHA256 and AES-256-GCM — the primitives the JVM's `Crypto` binds.
      */
-    private fun sealed(key: ByteArray, eventId: String, assetId: AssetId): ByteArray {
+    private fun sealed(key: ByteArray, eventId: String, assetId: AssetId, part: Part): ByteArray {
+        val plain = part.bytes
         val hmac = Hmac { k, message ->
             Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(k, "HmacSHA256")) }.doFinal(message)
         }
@@ -101,30 +118,23 @@ class Member(private val http: HttpClient, backend: String) {
             salt = ByteArray(EncryptedFileFormat.SALT_LENGTH).also(random::nextBytes),
             noncePrefix = ByteArray(EncryptedFileFormat.NONCE_PREFIX_LENGTH).also(random::nextBytes),
         )
-        val associated = EncryptedFileFormat.associatedData(eventId, deviceId, assetId.value, ResourceRole.PRIMARY.wire)
+        val associated = EncryptedFileFormat.associatedData(eventId, deviceId, assetId.value, part.role.wire)
         val fileKey = SecretKeySpec(EncryptedFileFormat.fileKeyOf(key, head.salt, associated, hmac).bytes, "AES")
         var file = EncryptedFileFormat.encodeHead(head)
         var offset = 0
         var segment = 0
         do {
-            val end = minOf(JPEG.size, offset + EncryptedFileFormat.plaintextSegmentLength(segment))
-            val last = end == JPEG.size
+            val end = minOf(plain.size, offset + EncryptedFileFormat.plaintextSegmentLength(segment))
+            val last = end == plain.size
             val nonce = EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, fileKey, GCMParameterSpec(EncryptedFileFormat.TAG_LENGTH * Byte.SIZE_BITS, nonce.bytes))
-            file += cipher.doFinal(JPEG, offset, end - offset)
+            file += cipher.doFinal(plain, offset, end - offset)
             offset = end
             segment++
         } while (!last)
         return file
     }
-
-    private fun primary(assetId: AssetId) = ManifestResource(
-        role = ResourceRole.PRIMARY,
-        contentType = "image/jpeg",
-        key = uploadKey(assetId, ResourceRole.PRIMARY, FILENAME),
-        filename = FILENAME,
-    )
 
     private fun HttpRequestBuilder.served() = header(Limits.VERSION_HEADER, SERVED_VERSION)
 

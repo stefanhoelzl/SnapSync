@@ -20,6 +20,7 @@ import app.snapsync.model.FileResult
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.Files
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.rig.gallery.addMotionPhoto
 import app.snapsync.rig.gallery.androidGalleryReader
 import app.snapsync.rig.gallery.seedMediaStore
 import app.snapsync.services.logs.LogTailService
@@ -183,7 +184,11 @@ private fun AndroidRigLaunch.hooks(
         "gallery/seed" to seedCommand { n, kind ->
             if (world.isMocked(MockedSystem.LIBRARY)) world.seedMockLibrary(n, kind) else seedMediaStore(context, log, n, kind)
         },
-    ),
+    ) + if (world.isMocked(MockedSystem.LIBRARY)) {
+        emptyMap()
+    } else {
+        mapOf("gallery/add-moving" to addMovingCommand { photo -> addMotionPhoto(context, log, photo) })
+    },
     readGallery = if (world.isMocked(
             MockedSystem.LIBRARY,
         )
@@ -266,6 +271,13 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
         "a mocked library is fresh for every launch, and a real one's photos are the member's: seed or remove them " +
             "through MediaStore (`adb push` and a scan), never through the channel",
     )
+    if (world.isMocked(MockedSystem.LIBRARY)) {
+        put(
+            "device/gallery/add-moving",
+            "the photo library is mocked on this launch and holds no media bytes; its moving photo is " +
+                "POST /device/gallery/add?kind=live-photo",
+        )
+    }
     put("device/uploaders", "Android composes no OS-driven upload mechanism for a switch to choose between")
     put("device/process-metrics", "process-metric reports are MetricKit's; no Android provider is composed")
     put("device/disk", "the disk census is iOS's (the App Group is not pullable there); an Android app's files are read with `adb shell run-as`")

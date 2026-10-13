@@ -177,6 +177,11 @@ fun iosRefusals(launch: RigLaunch): Map<String, String> = buildMap {
             "device/gallery/wipe",
             "the photo library is mocked on this launch; a mocked library is never PhotoKit's to wipe",
         )
+        put(
+            "device/gallery/add-moving",
+            "the photo library is mocked on this launch and holds no media bytes; its moving photo is " +
+                "POST /device/gallery/add?kind=live-photo",
+        )
     }
     putAll(uploadJobRefusals())
     if (world.isMocked(MockedSystem.UPLOAD_QUEUE)) {

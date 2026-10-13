@@ -122,6 +122,8 @@ kotlin {
         // the iOS half, only into a rig build.
         androidMain.dependencies {
             implementation(project(":adapter:android"))
+            // The motion-photo codec: what the census and the seeder recognise a motion photo by.
+            implementation(project(":adapter:generic:motionphoto"))
         }
 
         // The JVM host: the JVM root it composes the app with, over the mocks it drives — and the real backend, served
