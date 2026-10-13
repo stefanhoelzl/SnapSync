@@ -209,13 +209,16 @@ class StatusContainerHostMenuTest {
 
     @Test
     fun `each report outcome is told — and the word clears itself`() {
-        for (outcome in ReportOutcome.entries) {
-            val world = World().apply { this.outcome = { outcome } }
-            onHost(world) { host, _ ->
+        // One host, each outcome in turn: a later report's word replaces the earlier one's, and only the last is
+        // left to clear — the clear is the same timer for every outcome, and it is real time (4 s) on this host.
+        val world = World()
+        onHost(world) { host, _ ->
+            for (outcome in ReportOutcome.entries) {
+                world.outcome = { outcome }
                 host.onSendDiagnostics("photos are missing", "joined")
                 host.stateWhere("told $outcome") { it.overlays.reportNotice == outcome.shown }
-                host.stateWhere("cleared") { it.overlays.reportNotice == null }
             }
+            host.stateWhere("cleared") { it.overlays.reportNotice == null }
         }
     }
 
