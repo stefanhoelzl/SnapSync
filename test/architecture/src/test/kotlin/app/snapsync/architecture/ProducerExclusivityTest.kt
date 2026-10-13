@@ -93,18 +93,15 @@ class ProducerExclusivityTest {
     }
 
     /** One device: OS fact, grant, membership, the rig switch, and the two uploaders' platform state. */
-    private class Device(val osSupported: Boolean, registered: Boolean) {
+    private class Device(val osSupported: Boolean, registered: Boolean, database: SharedDatabase) {
         private val grantCell = MutableStateFlow(LibraryGrant.NOT_DETERMINED)
         var grant: LibraryGrant
             get() = grantCell.value
             set(value) { grantCell.value = value }
         var joined = false
 
-        /** The REAL membership, over an in-memory shared database. */
-        val config = ConfigService(
-            SharedDatabase(inMemoryDatabases(), LegacyRecords(inMemoryFiles(), inMemoryPreferences())),
-            fixedClock(Instant.parse("2026-01-02T00:00:00Z")),
-        )
+        /** The REAL membership, over [database] — which the caller hands over with no membership row. */
+        val config = ConfigService(database, CLOCK)
         var pin: UploaderPin? = null
         val registration = PlatformRegistration(grant, registered, supported = osSupported)
         val engine = Engine()
@@ -205,9 +202,14 @@ class ProducerExclusivityTest {
     @Test
     fun `no transition but a leave orphans in-flight work`() = runTest {
         var scripts = 0
+        // One in-memory shared database for every script, its membership row cleared before each: opening and
+        // migrating a fresh one per script was most of this guard's runtime (~16k scripts, 27 s).
+        val database = SharedDatabase(inMemoryDatabases(), LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
+        val reset = ConfigService(database, CLOCK)
         for (osSupported in listOf(true, false)) for (registered in listOf(false, true)) {
             for (a in steps) for (b in steps) for (c in steps) {
-                val device = Device(osSupported, registered = registered && osSupported)
+                reset.clear()
+                val device = Device(osSupported, registered = registered && osSupported, database)
                 val script = listOf(a, b, c)
                 for (step in script) {
                     device.registration.calls.clear()
@@ -251,6 +253,8 @@ class ProducerExclusivityTest {
         }
     }
 }
+
+private val CLOCK = fixedClock(Instant.parse("2026-01-02T00:00:00Z"))
 
 /** The membership a join persists. */
 private val MEMBERSHIP =
