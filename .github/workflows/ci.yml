@@ -603,7 +603,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
       # The platform-bound tests, on this same runner after the build: every module's device tests on ONE emulator
-      # (`.github/actions/android-emulator`: Pixel 6 / API 36, animations off), with the upload
+      # (`.github/actions/android-emulator`: Pixel 6 / API 36, animations ON as on the managed device: the Ui contract's
+      # tour drags wheels that settle by a snap animation, run 38439772784), with the upload
       # contract's transfer fixture served on the host by the build. One boot for all four APKs, not a Gradle-managed
       # device per module: each managed run booted its own (~1 min apiece, for 1-43 s of tests in three of them). The
       # APKs are built before the emulator boots, so the two never compete for the runner. The modules that test a
@@ -614,6 +615,7 @@ jobs:
       - name: Platform tests on the emulator
         uses: ./.github/actions/android-emulator
         with:
+          disable-animations: "false"
           script: |
             ./gradlew :test:no-grant:connectedAndroidDeviceTest :test:partial-grant:connectedAndroidDeviceTest
             ./gradlew :adapter:android:connectedAndroidDeviceTest :adapter:generic:sentry:connectedAndroidDeviceTest

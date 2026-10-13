@@ -130,6 +130,7 @@ class EntryMockContractBindingsTest {
             mock.operator.pin = DevControlsContract.PINNED
             mock.operator.inviteLinkHints = InviteLinkHints.Honoured
             mock.operator.encryptsNewEvents = true
+            mock.operator.networkGraceMillis = DevControlsContract.SHORT_GRACE_MILLIS
             return Entered.Ready(DevControlsUnderTest(mock.port().recorded(log)) { mock.operator.reset() })
         }
     }
